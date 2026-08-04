@@ -103,7 +103,8 @@ feature, persistence schema, or policy decision.
 | Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
 | OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
 | OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
-| Lucky-skin-window and team-resource delivery | migration queue | Existing behaviour is baseline only | Extract service ports and typed refs before adding delivery, subscription or identity features. |
+| Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
+| Team-resource subscription delivery | migration queue | Existing behaviour is baseline only | Extract service ports and typed refs before adding delivery, subscription or identity features. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
 | Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
 
@@ -265,14 +266,16 @@ OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
 The current push-preference SQLite schema still stores OneBot target IDs; its
 conversion is confined to composition until the later identity-state migration.
 
-The next delivery migrations are intentionally ordered by existing semantic
-overlap, not by file size: first lucky-skin-window notification delivery, then
-team-resource subscription delivery, then the remaining messaging schedulers.
-Each task must extract a typed service-side port and move the corresponding
-OneBot `MessageTarget` call into `integrations.onebot`; it must not add another
-platform-neutral wrapper around `MessageTarget`. This order keeps current
-subscription, queue, rate-limit and failure semantics available while reducing
-the old chain one domain at a time.
+Lucky-skin-window notification delivery now follows this rule: its service
+owns `ActorRef`-scoped account, binding, cache and watch-preference policy;
+the OneBot adapter owns numeric QQ conversion, unsubscription, daily-hint
+deduplication and `OneBotDelivery`. The next delivery migrations are ordered
+by semantic overlap, not file size: team-resource subscription delivery, then
+the remaining messaging schedulers. Each task must extract a typed
+service-side port and move the corresponding OneBot `MessageTarget` call into
+`integrations.onebot`; it must not add another platform-neutral wrapper around
+`MessageTarget`. This order keeps current subscription, queue, rate-limit and
+failure semantics available while reducing the old chain one domain at a time.
 
 The eventual composition is:
 

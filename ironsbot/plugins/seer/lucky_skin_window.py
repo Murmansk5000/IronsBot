@@ -19,6 +19,7 @@ from nonebot.typing import T_State
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -49,7 +50,6 @@ from ironsbot.services.seer.lucky_skin_window import (
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
-    from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.operations.scheduler import Scheduler
 
 _COMMANDS = ("幸运橱窗", "橱窗")
@@ -112,7 +112,6 @@ __plugin_meta__ = PluginMetadata(
 def plugin_contribution(
     service: LuckySkinWindowService,
     features: FeatureService,
-    delivery: MessageDelivery,
     scheduler: Scheduler,
 ) -> PluginContribution:
     return PluginContribution(
@@ -185,7 +184,7 @@ def plugin_contribution(
             startup=(
                 (
                     "lucky_skin_window_schedule",
-                    partial(_register_schedule, service, delivery, scheduler),
+                    partial(_register_schedule, service, scheduler),
                 ),
             ),
         ),
@@ -200,7 +199,7 @@ def _help_visible(
 ) -> bool:
     if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return False
-    if not service.is_eligible_user(event.user_id):
+    if not service.is_eligible_actor(_actor_from_event(event)):
         return False
     if isinstance(event, GroupMessageEvent):
         return features.group_has_feature(event.group_id, "lucky_skin_window")
@@ -233,6 +232,12 @@ def _watch_feature_allowed(
     return isinstance(event, PrivateMessageEvent) and (
         features.is_private_feature_allowed(event.user_id, "lucky_skin_window")
     )
+
+
+def _actor_from_event(event: MessageEvent) -> ActorRef:
+    """Adapt the OneBot event identity before calling the domain service."""
+
+    return ActorRef(Platform.ONEBOT, str(event.user_id))
 
 
 async def _matches_watch_exact(
@@ -275,7 +280,7 @@ def _semantic_request(
     state: T_State,
 ) -> SemanticRequest:
     _ = state
-    account = service.account_for_user(event.user_id)
+    account = service.account_for_actor(_actor_from_event(event))
     target_key = str(account.player_id) if account is not None else str(event.user_id)
     return SemanticRequest(
         action=_ACTION,
@@ -305,7 +310,8 @@ async def _handle_query(
     event: MessageEvent,
 ) -> None:
     try:
-        cached = service.cached_for_user(event.user_id)
+        actor = _actor_from_event(event)
+        cached = service.cached_for_actor(actor)
     except LuckySkinWindowNotConfiguredError:
         await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
         return
@@ -321,11 +327,11 @@ async def _handle_query(
         await finish_event_reply(
             matcher,
             event,
-            service.format_result(cached, user_id=event.user_id),
+            service.format_result(cached, actor=actor),
         )
         return
 
-    account = service.account_for_user(event.user_id)
+    account = service.account_for_actor(actor)
     if account is None:
         await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
         return
@@ -363,8 +369,9 @@ async def _query_and_reply(
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
+    actor = _actor_from_event(event)
     try:
-        result = await service.check_for_user(event.user_id)
+        result = await service.check_for_actor(actor)
     except LuckySkinWindowNotConfiguredError:
         await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
         return
@@ -380,8 +387,8 @@ async def _query_and_reply(
         return
     except LuckySkinWindowError as error:
         logger.warning(
-            "lucky skin window query unavailable: user_id=%s error=%s",
-            event.user_id,
+            "lucky skin window query unavailable: actor=%s error=%s",
+            actor,
             error,
         )
         await finish_event_reply(
@@ -396,7 +403,7 @@ async def _query_and_reply(
     await finish_event_reply(
         matcher,
         event,
-        service.format_result(result, user_id=event.user_id),
+        service.format_result(result, actor=actor),
     )
 
 
@@ -406,7 +413,7 @@ async def _handle_watch_list(
     event: MessageEvent,
 ) -> None:
     try:
-        items = service.watched_skins(event.user_id)
+        items = service.watched_skins(_actor_from_event(event))
     except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
         await _finish_watch_access_error(matcher, event, error)
         return
@@ -426,7 +433,7 @@ async def _handle_watch_change(
 ) -> None:
     arg = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
     try:
-        candidates = service.resolve_watch_candidates(event.user_id, arg)
+        candidates = service.resolve_watch_candidates(_actor_from_event(event), arg)
     except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
         await _finish_watch_access_error(matcher, event, error)
         return
@@ -437,7 +444,12 @@ async def _handle_watch_change(
         await finish_event_reply(
             matcher,
             event,
-            _apply_watch_change(service, event.user_id, operation, candidates[0]),
+            _apply_watch_change(
+                service,
+                _actor_from_event(event),
+                operation,
+                candidates[0],
+            ),
         )
         return
     await enter_prompt(
@@ -472,7 +484,12 @@ async def _handle_watch_selection(
     await finish_event_reply(
         matcher,
         event,
-        _apply_watch_change(service, event.user_id, operation, item.value),
+        _apply_watch_change(
+            service,
+            _actor_from_event(event),
+            operation,
+            item.value,
+        ),
     )
 
 
@@ -482,7 +499,7 @@ async def _handle_watch_clear(
     event: MessageEvent,
 ) -> None:
     try:
-        changed = service.clear_watched_skins(event.user_id)
+        changed = service.clear_watched_skins(_actor_from_event(event))
     except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
         await _finish_watch_access_error(matcher, event, error)
         return
@@ -496,7 +513,7 @@ async def _handle_watch_reset(
     event: MessageEvent,
 ) -> None:
     try:
-        items = service.reset_watched_skins(event.user_id)
+        items = service.reset_watched_skins(_actor_from_event(event))
     except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
         await _finish_watch_access_error(matcher, event, error)
         return
@@ -509,16 +526,16 @@ async def _handle_watch_reset(
 
 def _apply_watch_change(
     service: LuckySkinWindowService,
-    user_id: int,
+    actor: ActorRef,
     operation: str,
     item: LuckySkinWatchItem,
 ) -> str:
     label = f"{item.name}（{_watch_item_ids(item)}）"
     if operation == "add":
-        if service.add_watched_skin(user_id, item.skin_id):
+        if service.add_watched_skin(actor, item.skin_id):
             return f"已关注：{label}"
         return f"已经关注：{label}"
-    if service.remove_watched_skin(user_id, item.skin_id):
+    if service.remove_watched_skin(actor, item.skin_id):
         return f"已取消关注：{label}"
     return f"尚未关注：{label}"
 
@@ -654,7 +671,6 @@ def _install(
 
 def _register_schedule(
     service: LuckySkinWindowService,
-    delivery: MessageDelivery,
     scheduler: Scheduler,
 ) -> None:
     if not service.enabled:
@@ -671,7 +687,7 @@ def _register_schedule(
         timezone=config.timezone,
     )
     JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
-        partial(service.send_daily_notifications, delivery),
+        service.send_daily_notifications,
         "cron",
         job_id="daily",
         hour=daily_hour,
@@ -687,7 +703,6 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             context.resources.lucky_skin_window,
             context.resources.features,
-            context.resources.delivery,
             context.scheduler,
         ),
     )

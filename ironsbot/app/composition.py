@@ -40,6 +40,11 @@ from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
+from ironsbot.integrations.onebot.lucky_skin_window import (
+    OneBotLuckySkinWindowNotificationSender,
+    OneBotLuckySkinWindowSubscriptionOptions,
+    build_onebot_lucky_skin_window_accounts,
+)
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     install_outbound_rate_limit_hooks,
@@ -359,18 +364,21 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
-        settings.onebot_references,
-        player_accounts,
+        build_onebot_lucky_skin_window_accounts(
+            settings.seer.lucky_skin_window,
+            settings.onebot_references,
+            player_accounts,
+        ),
         features,
         headless_sessions,
         seer_database,
         player_bindings,
-        subscriptions,
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(
             settings.paths.runtime_state,
             legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
         ),
+        OneBotLuckySkinWindowNotificationSender(delivery, subscriptions),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
@@ -405,7 +413,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         delivery,
         (
             bilibili.targets.subscription_options,
-            lucky_skin_window.subscription_options,
+            OneBotLuckySkinWindowSubscriptionOptions(
+                lucky_skin_window,
+                subscriptions,
+            ).subscription_options,
         ),
         _push_message_limiter=push_message_limiter,
         _prepare_extra_push_options=bilibili.targets.prepare_account_names,

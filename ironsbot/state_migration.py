@@ -323,7 +323,7 @@ def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
     )
     PushUnsubscribeStore(qq_state).preference_targets()
     SqliteBiliPushPreferenceStore(qq_state).get_mode("private", 0, 0)
-    SqliteLuckySkinWatchPreferenceStore(qq_state).get(0)
+    SqliteLuckySkinWatchPreferenceStore(qq_state).get(migration_actor)
     SqliteRankDisplayStore(qq_state).get(
         ConversationRef(Platform.ONEBOT, "group", "0")
     )

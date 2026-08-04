@@ -399,7 +399,6 @@ def build_test_plugin_registry(
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,
             runtime.features,
-            resources.delivery,
             SchedulerFacade(),
         ),
         team_audit_plugin_contribution(
