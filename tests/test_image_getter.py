@@ -1,14 +1,20 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
+from ironsbot.integrations.storage.seer_assets import (
+    SeerAssetStore,
+    SeerAssetStoreLimits,
+)
 
 HTTP_NOT_FOUND = 404
 HTTP_OK = 200
+MAX_ASSET_FETCH_CONCURRENCY = 4
 
 
 class _ConcurrentDetectingClient(httpx.AsyncClient):
@@ -46,10 +52,19 @@ class _ItemFallbackClient(httpx.AsyncClient):
         )
 
 
-async def _fetch_many_images() -> int:
+async def _fetch_many_images(cache_dir: Path) -> int:
     cache = _ConcurrentDetectingClient()
     clients = HttpClients(cache=cache)
-    images = HttpSeerImageSource(clients)
+    images = SeerAssetStore(
+        HttpSeerImageSource(clients),
+        cache_dir,
+        SeerAssetStoreLimits(
+            memory_max_size_bytes=1024,
+            disk_max_size_bytes=1024 * 1024,
+            max_network_concurrent=MAX_ASSET_FETCH_CONCURRENCY,
+            negative_ttl_seconds=300,
+        ),
+    )
     try:
         await asyncio.gather(
             *(
@@ -82,8 +97,8 @@ async def _fetch_sign_buff() -> tuple[bytes, list[str]]:
         await clients.close()
 
 
-def test_image_fetches_are_serialized_for_shared_cache_client() -> None:
-    assert asyncio.run(_fetch_many_images()) == 1
+def test_image_fetches_use_bounded_asset_store_concurrency(tmp_path: Path) -> None:
+    assert asyncio.run(_fetch_many_images(tmp_path)) == MAX_ASSET_FETCH_CONCURRENCY
 
 
 def test_item_image_tries_known_asset_categories() -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 SEER_ASSET_TEMPLATES_PATH = Path(__file__).resolve().parent / "rendering" / "templates"
+SEER_RENDERING_PATH = Path(__file__).resolve().parent / "rendering"
 CUSTOM_PET_INFO_TEMPLATE_PATH = SEER_ASSET_TEMPLATES_PATH / "pet_info"
 PET_INFO_IMAGES_PATH = CUSTOM_PET_INFO_TEMPLATE_PATH / "images"
 SHARED_TEMPLATE_PATH = SEER_ASSET_TEMPLATES_PATH / "_shared"

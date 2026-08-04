@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from ironsbot.services.seer.rendering import TemplatePath
+
+HTML_TEMPLATE_RENDERER_SOURCE_PATH = Path(__file__).resolve()
 
 
 async def render_html_template(

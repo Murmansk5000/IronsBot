@@ -1,0 +1,210 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Shared verified cache for Seer image assets."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import time
+from collections import OrderedDict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from ironsbot.services.seer.images import (
+    ImageKind,
+    ImageSourceError,
+    ImageSourceStatusError,
+)
+
+from .verified_file_cache import VerifiedFileCache
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+    from pathlib import Path
+
+    from ironsbot.config.models.seer import RenderConfig
+    from ironsbot.services.seer.images import SeerImageSource
+
+
+_NEGATIVE_STATUS_CODES = frozenset({404, 410})
+
+
+@dataclass(frozen=True, slots=True)
+class SeerAssetStoreLimits:
+    memory_max_size_bytes: int
+    disk_max_size_bytes: int
+    max_network_concurrent: int
+    negative_ttl_seconds: float
+
+
+class SeerAssetStore:
+    """Cache image fetches with bounded memory, verified disk, and singleflight."""
+
+    def __init__(
+        self,
+        source: SeerImageSource,
+        cache_dir: Path,
+        limits: SeerAssetStoreLimits,
+    ) -> None:
+        self._source = source
+        self._memory = _MemoryAssetCache(limits.memory_max_size_bytes)
+        self._disk = VerifiedFileCache(cache_dir, limits.disk_max_size_bytes)
+        self._network = asyncio.Semaphore(limits.max_network_concurrent)
+        self._negative_ttl_seconds = limits.negative_ttl_seconds
+        self._negative: dict[str, float] = {}
+        self._inflight: dict[str, asyncio.Future[bytes]] = {}
+        self._inflight_lock = asyncio.Lock()
+
+    async def fetch(
+        self,
+        kind: ImageKind,
+        key: str,
+        *,
+        fallback: bool = True,
+    ) -> bytes:
+        cache_key = _cache_key("image", kind, key, str(fallback))
+        return await self._get_or_fetch(
+            cache_key,
+            lambda: self._source.fetch(kind, key, fallback=fallback),
+        )
+
+    async def fetch_url(self, url: str) -> bytes:
+        cache_key = _cache_key("url", url)
+        return await self._get_or_fetch(cache_key, lambda: self._source.fetch_url(url))
+
+    async def _get_or_fetch(
+        self,
+        cache_key: str,
+        fetch: Callable[[], Awaitable[bytes]],
+    ) -> bytes:
+        if (asset := self._memory.get(cache_key)) is not None:
+            return asset
+        if self._is_negative(cache_key):
+            raise ImageSourceStatusError(404, "cached missing image")
+        if (asset := await asyncio.to_thread(self._disk.get, cache_key)) is not None:
+            self._memory.put(cache_key, asset)
+            return asset
+        return await self._await_shared_fetch(cache_key, fetch)
+
+    async def _await_shared_fetch(
+        self,
+        cache_key: str,
+        fetch: Callable[[], Awaitable[bytes]],
+    ) -> bytes:
+        async with self._inflight_lock:
+            future = self._inflight.get(cache_key)
+            if future is None:
+                future = asyncio.get_running_loop().create_future()
+                future.add_done_callback(_consume_future_exception)
+                self._inflight[cache_key] = future
+                is_owner = True
+            else:
+                is_owner = False
+        if not is_owner:
+            return await asyncio.shield(future)
+
+        try:
+            asset = await self._fetch_and_store(cache_key, fetch)
+        except asyncio.CancelledError:
+            future.cancel()
+            raise
+        except BaseException as error:
+            future.set_exception(error)
+            raise
+        else:
+            future.set_result(asset)
+            return asset
+        finally:
+            async with self._inflight_lock:
+                if self._inflight.get(cache_key) is future:
+                    self._inflight.pop(cache_key, None)
+
+    async def _fetch_and_store(
+        self,
+        cache_key: str,
+        fetch: Callable[[], Awaitable[bytes]],
+    ) -> bytes:
+        try:
+            async with self._network:
+                asset = await fetch()
+        except ImageSourceStatusError as error:
+            if error.status_code in _NEGATIVE_STATUS_CODES:
+                self._negative[cache_key] = (
+                    time.monotonic() + self._negative_ttl_seconds
+                )
+            raise
+        except ImageSourceError:
+            raise
+        if not asset:
+            raise ImageSourceError("图片响应为空")
+        self._negative.pop(cache_key, None)
+        self._memory.put(cache_key, asset)
+        await asyncio.to_thread(self._disk.put, cache_key, asset)
+        return asset
+
+    def _is_negative(self, cache_key: str) -> bool:
+        expires_at = self._negative.get(cache_key)
+        if expires_at is None:
+            return False
+        if expires_at > time.monotonic():
+            return True
+        self._negative.pop(cache_key, None)
+        return False
+
+
+class _MemoryAssetCache:
+    def __init__(self, max_size_bytes: int) -> None:
+        self._max_size_bytes = max_size_bytes
+        self._size_bytes = 0
+        self._entries: OrderedDict[str, bytes] = OrderedDict()
+
+    def get(self, key: str) -> bytes | None:
+        value = self._entries.pop(key, None)
+        if value is not None:
+            self._entries[key] = value
+        return value
+
+    def put(self, key: str, value: bytes) -> None:
+        previous = self._entries.pop(key, None)
+        if previous is not None:
+            self._size_bytes -= len(previous)
+        if len(value) > self._max_size_bytes:
+            return
+        self._entries[key] = value
+        self._size_bytes += len(value)
+        while self._size_bytes > self._max_size_bytes:
+            _key, evicted = self._entries.popitem(last=False)
+            self._size_bytes -= len(evicted)
+
+
+def _cache_key(*parts: str) -> str:
+    encoded = "\0".join(parts).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _consume_future_exception(future: asyncio.Future[bytes]) -> None:
+    if future.cancelled():
+        return
+    _ = future.exception()
+
+
+def build_seer_asset_store(
+    source: SeerImageSource,
+    cache_dir: Path,
+    render_config: RenderConfig,
+) -> SeerAssetStore:
+    """Build the shared Seer image asset port from application configuration."""
+    return SeerAssetStore(
+        source,
+        cache_dir,
+        SeerAssetStoreLimits(
+            memory_max_size_bytes=(
+                render_config.asset_memory_max_size_mb * 1024 * 1024
+            ),
+            disk_max_size_bytes=(
+                render_config.asset_cache_max_size_mb * 1024 * 1024
+            ),
+            max_network_concurrent=render_config.asset_fetch_max_concurrent,
+            negative_ttl_seconds=render_config.asset_negative_ttl_seconds,
+        ),
+    )

@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, Any
 
 from seerapi_models import SkillORM
 
-from .analyze_description import (
+from ironsbot.services.seer.rendering.analyze_description import (
     format_analyze_description,
     format_plain_analyze_description,
 )
-from .custom_pet_models import SkillDict
+from ironsbot.services.seer.rendering.custom_pet_models import SkillDict
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess

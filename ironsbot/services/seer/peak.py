@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from seerapi_models import (
     PeakExpertPoolORM,
@@ -265,26 +265,57 @@ PeakPoolRenderer = Callable[
 ]
 
 
-class PeakVoteRank(TypedDict):
-    items: list[RankEntry]
+@dataclass(frozen=True, slots=True)
+class PeakVoteItemSnapshot:
+    id: int
+    name: str
+    score: int
+
+
+@dataclass(frozen=True, slots=True)
+class PeakVotePoolInput:
     title: str
-    pets: list[PeakPetSnapshot]
+    items: tuple[PeakVoteItemSnapshot, ...]
+    pets: tuple[PeakPetSnapshot, ...]
 
 
-PeakVoteRenderer = Callable[[list[PeakVoteRank]], Awaitable[bytes]]
+PeakVoteRenderer = Callable[
+    [tuple[PeakVotePoolInput, ...], str],
+    Awaitable[bytes],
+]
+
+@dataclass(frozen=True, slots=True)
+class PeakPetPickSnapshot:
+    id: int
+    count: int
+    win: int
+
+    @property
+    def win_rate(self) -> float:
+        if self.count == 0:
+            return 0
+        return round(self.win / self.count * 100, 2)
+
+
+@dataclass(frozen=True, slots=True)
+class PeakPetBanSnapshot:
+    id: int
+    name: str
+    score: int
+
+
+@dataclass(frozen=True, slots=True)
+class PeakPetRankRenderInput:
+    title: str
+    pick_items: tuple[PeakPetPickSnapshot, ...]
+    ban_items: tuple[PeakPetBanSnapshot, ...]
+    pets: tuple[PeakPetSnapshot, ...]
+
+
+PeakPetRenderer = Callable[[PeakPetRankRenderInput], Awaitable[bytes]]
+
 
 logger = logging.getLogger(__name__)
-
-
-class PeakPetRenderer(Protocol):
-    async def __call__(
-        self,
-        *,
-        title: str,
-        pick_items: list[PeakItemData],
-        ban_items: list[RankEntry],
-        pet_map: dict[int, PeakPetSnapshot],
-    ) -> bytes: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,7 +407,7 @@ class PeakQueryService:
             return PeakQueryResult(message=error)
         with self._data.query(load_peak_votes) as database_votes:
             votes = snapshot_peak_votes(database_votes)
-        pools: list[PeakVoteRank] = []
+        pools: list[PeakVotePoolInput] = []
         now = time.now(tz=time.TZ_CN)
         for vote in sort_peak_pool_votes_by_time(votes):
             start_time = normalize_peak_vote_time(vote.start_time)
@@ -395,14 +426,28 @@ class PeakQueryService:
             else:
                 continue
             pools.append(
-                {"items": rank, "title": title, "pets": list(vote.pets)}
+                PeakVotePoolInput(
+                    items=tuple(
+                        PeakVoteItemSnapshot(
+                            id=item.id,
+                            name=item.nick,
+                            score=item.score,
+                        )
+                        for item in rank
+                    ),
+                    title=title,
+                    pets=vote.pets,
+                )
             )
         if not pools:
             return PeakQueryResult(message="❌当前没有进行中的巅峰投票。")
         await progress("正在生成图片...")
         try:
             image = await asyncio.wait_for(
-                self._render_vote(pools),
+                self._render_vote(
+                    tuple(pools),
+                    time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M"),
+                ),
                 timeout=PEAK_VOTE_RENDER_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
@@ -507,16 +552,31 @@ class PeakQueryService:
         ) as database_pets:
             pet_map = snapshot_peak_pet_map(database_pets)
         await progress("正在生成图片...")
-        image = await self._render_pet(
+        render_input = PeakPetRankRenderInput(
             title=(
                 f"{name}精灵{period.category}榜<br>"
                 f"{period.start_time:%Y-%m-%d} ~ "
                 f"{period.end_time:%Y-%m-%d}"
             ),
-            pick_items=pick_rank,
-            ban_items=ban_rank,
-            pet_map=pet_map,
+            pick_items=tuple(
+                PeakPetPickSnapshot(
+                    id=item.id,
+                    count=item.count,
+                    win=item.win,
+                )
+                for item in pick_rank
+            ),
+            ban_items=tuple(
+                PeakPetBanSnapshot(
+                    id=item.id,
+                    name=item.nick,
+                    score=item.score,
+                )
+                for item in ban_rank
+            ),
+            pets=tuple(sorted(pet_map.values(), key=lambda pet: pet.id)),
         )
+        image = await self._render_pet(render_input)
         return PeakQueryResult(image=image)
 
     def _game(self) -> tuple[PeakGame | None, str]:

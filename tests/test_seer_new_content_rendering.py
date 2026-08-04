@@ -6,14 +6,18 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.integrations.seer_data import (
+    new_content_renderer as new_content_rendering,
+)
+from ironsbot.integrations.seer_data.new_content_renderer import (
+    render_new_content_menu,
+)
 from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
 from ironsbot.services.seer.new_content import (
     NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
 )
-from ironsbot.services.seer.rendering import new_content as new_content_rendering
-from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -206,12 +210,12 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
         )
         assert result == b"menu-image"
         row = captured["items"][0]
-        assert row["code"] == "1"
+        assert row.code == "1"
         rendered_rows[category] = row
 
-    assert rendered_rows["pet"]["image"] is not None
-    assert rendered_rows["skill"]["image"] is None  # 技能不显示图片
-    assert rendered_rows["autocard_sanctuary_effect"]["image"] is None
+    assert rendered_rows["pet"].image is not None
+    assert rendered_rows["skill"].image is None  # 技能不显示图片
+    assert rendered_rows["autocard_sanctuary_effect"].image is None
     assert ("pet_head", "101") in images.requests
     assert ("pet_head", "1856") in images.requests
     assert ("mintmark", "2") in images.requests
@@ -256,9 +260,9 @@ async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> 
         "mintmark",
     )
 
-    item_row = next(row for row in captured["items"] if row["code"] == "1")
-    assert item_row["name"] == "条目 2"
-    assert item_row["image"] is None
+    item_row = next(row for row in captured["items"] if row.code == "1")
+    assert item_row.name == "条目 2"
+    assert item_row.image is None
 
 
 def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
