@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent
 
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
+from ironsbot.services.seer.player_id_resolver import (
+    PlayerIdResolution,
+    PlayerIdResolver,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -17,13 +20,6 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.config.player_accounts import PlayerAccountRegistry
-
-
-@dataclass(frozen=True, slots=True)
-class PlayerTargetResolution:
-    player_id: int | None
-    offer_binding: bool
-    error: str | None = None
 
 
 def resolve_event_player_reference(
@@ -39,46 +35,19 @@ def resolve_event_player_reference(
     )
 
 
-def resolve_player_target(  # noqa: PLR0911
+def resolve_player_target(
     event: MessageEvent,
     *,
     numeric_player_id: int | None,
     binding_for_user: Callable[[int], int | None],
-) -> PlayerTargetResolution:
-    """Use exactly one current-message @ target, never a quoted message body."""
-
+) -> PlayerIdResolution:
+    """Adapt current OneBot input to the shared player-ID resolver."""
     context = message_input_context(event)
-    if context.has_member_mentions:
-        if not isinstance(event, GroupMessageEvent):
-            return PlayerTargetResolution(
-                None,
-                offer_binding=False,
-                error="私聊不能使用 @成员 查询米米号。",
-            )
-        if numeric_player_id is not None:
-            return PlayerTargetResolution(
-                None,
-                offer_binding=False,
-                error="米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。",
-            )
-        if len(context.member_mentions) != 1:
-            return PlayerTargetResolution(
-                None,
-                offer_binding=False,
-                error="请一次只 @ 一名成员查询其已绑定的米米号。",
-            )
-        player_id = binding_for_user(int(context.member_mentions[0].id))
-        if player_id is None:
-            return PlayerTargetResolution(
-                None,
-                offer_binding=False,
-                error="该成员尚未绑定米米号。",
-            )
-        return PlayerTargetResolution(player_id, offer_binding=False)
-
-    if numeric_player_id is not None:
-        return PlayerTargetResolution(numeric_player_id, offer_binding=True)
-    return PlayerTargetResolution(
-        binding_for_user(event.user_id),
-        offer_binding=False,
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: numeric_player_id,
+        lambda actor: binding_for_user(int(actor.id)),
+    )
+    return resolver.resolve(
+        context,
+        "resolved-player-reference" if numeric_player_id is not None else None,
     )
