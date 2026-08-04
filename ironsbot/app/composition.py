@@ -63,9 +63,7 @@ from ironsbot.integrations.onebot.team_resource import (
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
-from ironsbot.integrations.seer_data.pet_info_renderer import (
-    render_published_pet_info,
-)
+from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.sendpic import SendpicBackendProvider
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
@@ -98,6 +96,7 @@ from ironsbot.integrations.storage.push_subscriptions import (
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
 from ironsbot.integrations.storage.render_cache import FileRenderCache
+from ironsbot.integrations.storage.seer_assets import build_seer_asset_store
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
@@ -463,7 +462,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    seer_images = HttpSeerImageSource(http_clients)
+    seer_images = build_seer_asset_store(
+        HttpSeerImageSource(http_clients),
+        cache_paths.assets_dir(),
+        settings.seer.render,
+    )
     render_cache = FileRenderCache(
         cache_paths.render_dir(),
         settings.seer.render.cache_max_size_mb * 1024 * 1024,

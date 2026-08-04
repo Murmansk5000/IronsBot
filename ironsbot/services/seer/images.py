@@ -24,6 +24,14 @@ class ImageSourceError(RuntimeError):
     pass
 
 
+class ImageSourceStatusError(ImageSourceError):
+    """An image request that failed with a concrete HTTP status."""
+
+    def __init__(self, status_code: int, reason: str) -> None:
+        super().__init__(f"{status_code} {reason}")
+        self.status_code = status_code
+
+
 class SeerImageSource(Protocol):
     async def fetch(
         self,

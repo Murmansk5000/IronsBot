@@ -483,6 +483,11 @@ Future data work follows these rules:
   PNG conversion, and deterministic association building at build time.
 - IronsBot reads published facts through repositories; it does not repeat
   expensive association guessing or SWF conversion while replying to users.
+- All Seer image reads pass through one asset store: a bounded in-memory LRU,
+  integrity-checked disk cache, singleflight request coalescing, bounded
+  upstream concurrency, and short-lived negative caching only for 404/410.
+  Renderer and query features use the same image port rather than creating
+  feature-specific download caches.
 - Official effect relationships retain provenance and ambiguity records. The
   runtime renderer uses a prepared `PetRenderViewModel` and never tries to
   infer a new association from free text.

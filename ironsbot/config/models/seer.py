@@ -528,6 +528,10 @@ class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cache_max_size_mb: int = Field(default=200, gt=0)
+    asset_memory_max_size_mb: int = Field(default=128, gt=0)
+    asset_cache_max_size_mb: int = Field(default=1000, gt=0)
+    asset_fetch_max_concurrent: int = Field(default=4, ge=1, le=16)
+    asset_negative_ttl_seconds: float = Field(default=300.0, ge=0)
 
 
 class SeasonCountdownConfig(BaseModel):

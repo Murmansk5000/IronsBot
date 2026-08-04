@@ -54,6 +54,10 @@ PLAYER_ALIAS_GROUP_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
+DEFAULT_ASSET_MEMORY_CACHE_MAX_SIZE_MB = 128
+DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB = 1000
+DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
+DEFAULT_ASSET_NEGATIVE_TTL_SECONDS = 300
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
@@ -1651,3 +1655,19 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.paths.cache_root == Path("cache")
     assert app_config.runtime.concurrency.render_max_concurrent == 1
     assert app_config.seer.render.cache_max_size_mb == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
+    assert (
+        app_config.seer.render.asset_memory_max_size_mb
+        == DEFAULT_ASSET_MEMORY_CACHE_MAX_SIZE_MB
+    )
+    assert (
+        app_config.seer.render.asset_cache_max_size_mb
+        == DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB
+    )
+    assert (
+        app_config.seer.render.asset_fetch_max_concurrent
+        == DEFAULT_ASSET_FETCH_MAX_CONCURRENT
+    )
+    assert (
+        app_config.seer.render.asset_negative_ttl_seconds
+        == DEFAULT_ASSET_NEGATIVE_TTL_SECONDS
+    )
