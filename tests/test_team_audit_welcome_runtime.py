@@ -8,6 +8,7 @@ from typing import Any
 from ironsbot.config.models.messaging import TeamAuditWelcomeConfig
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
+    MentionPart,
     OutboundMessage,
     SendResult,
 )
@@ -95,7 +96,8 @@ class FakeMessenger:
         if self.sent is None:
             self.sent = []
 
-    def capabilities_for(self, _conversation: ConversationRef) -> DeliveryCapabilities:
+    def capabilities_for(self, conversation: ConversationRef) -> DeliveryCapabilities:
+        del conversation
         return DeliveryCapabilities(
             can_reply_to_event=True,
             can_send_proactively=True,
@@ -236,6 +238,7 @@ def test_team_audit_welcome_sends_mention_and_schedules_followup() -> None:
 
     assert messenger.sent is not None
     assert messenger.sent[0][0] == CONVERSATION
+    assert isinstance(messenger.sent[0][1].parts[0], MentionPart)
     assert messenger.sent[0][1].parts[0].actor == ACTOR
     assert store.reminder is not None
     assert scheduler.jobs[0]["func"] == service.send_followup
@@ -249,6 +252,7 @@ def test_team_audit_followup_uses_platform_messenger() -> None:
 
     assert messenger.sent is not None
     assert messenger.sent[0][0] == CONVERSATION
+    assert isinstance(messenger.sent[0][1].parts[0], MentionPart)
     assert messenger.sent[0][1].parts[0].actor == ACTOR
     assert store.reminder is not None
     assert store.reminder.step == FINAL_FOLLOWUP_STEP
