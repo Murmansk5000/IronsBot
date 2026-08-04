@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
     OutboundRateLimitConfig,
-    PushDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig
@@ -17,13 +18,13 @@ from ironsbot.core.features import (
     FeatureService,
 )
 from ironsbot.core.onebot_references import OneBotReferenceResolver
-from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
 )
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
@@ -35,7 +36,7 @@ class TestRuntime:
     delivery: OneBotDelivery
     admin_notices: AdminNoticeService
     cooldown: CommandCooldownService
-    request_coordinator: RequestCoordinator
+    in_flight_requests: InFlightRequestService
     matcher_priorities: MatcherPriorityConfig
     prompt_sessions: PromptSessionManager
     tasks: TaskOwner
@@ -45,7 +46,7 @@ class TestRuntime:
             self.cooldown,
             self.matcher_priorities,
             prompt_session_manager=self.prompt_sessions,
-            request_coordinator=self.request_coordinator,
+            in_flight_requests=self.in_flight_requests,
         )
 
 
@@ -57,11 +58,12 @@ def build_test_runtime(  # noqa: PLR0913
     schedule_features: frozenset[str] = frozenset(),
     outbound_config: OutboundRateLimitConfig | None = None,
     push_unsubscribe: PushUnsubscribeConfig | None = None,
-    state_path: Path = Path("data/state/qq_state.sqlite"),
+    state_path: Path | None = None,
     cooldown_config: CommandCooldownConfig | None = None,
     matcher_priority_config: MatcherPriorityConfig | None = None,
 ) -> TestRuntime:
     resolved_feature_config = feature_config or FeatureConfig()
+    isolated_state_path = state_path or _isolated_state_path()
     features = FeatureService(
         resolved_feature_config,
         frozenset(superuser_ids),
@@ -84,10 +86,7 @@ def build_test_runtime(  # noqa: PLR0913
                 resolved_feature_config.user_aliases,
             ),
         ),
-        PushUnsubscribeStore(state_path),
-        PushDeliveryConfig(),
-        tuple(resolved_feature_config.group_aliases.values()),
-        tuple(resolved_feature_config.user_aliases.values()),
+        PushUnsubscribeStore(isolated_state_path),
     )
     return TestRuntime(
         features=features,
@@ -97,7 +96,7 @@ def build_test_runtime(  # noqa: PLR0913
             cooldown_config or CommandCooldownConfig(),
             features,
         ),
-        request_coordinator=RequestCoordinator(
+        in_flight_requests=InFlightRequestService(
             features,
             cooldown_config or CommandCooldownConfig(),
         ),
@@ -105,3 +104,8 @@ def build_test_runtime(  # noqa: PLR0913
         prompt_sessions=PromptSessionManager(),
         tasks=tasks,
     )
+
+
+def _isolated_state_path() -> Path:
+    temp_root = Path(os.environ.get("TEMP", Path.cwd()))
+    return temp_root / f"ironsbot-test-state-{uuid4().hex}.sqlite"

@@ -1,34 +1,114 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
+    Message,
     MessageEvent,
     PrivateMessageEvent,
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.app.command_directory.rows import commands_from_rows
+from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.commands import parse_confirmation
+from ironsbot.core.features import Feature
+from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
-from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    PluginHooks,
+    active_plugin_install_context,
+)
+from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
 from ironsbot.runtime.rules import explicit_command, member_targets_command
-from ironsbot.services.seer.team import TeamQueryActor
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
-from .overview import TeamOverviewMenus
-
 if TYPE_CHECKING:
-    from ironsbot.services.seer.player_service import PlayerService
-    from ironsbot.services.seer.team import SeerTeamQueryService
+    from ironsbot.config.models.seer import TeamResourceConfig
+    from ironsbot.core.features import FeatureService
+    from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.team.resource import TeamResourceService
 
-logger = logging.getLogger(__name__)
+__plugin_meta__ = PluginMetadata(
+    name="战队资源订阅",
+    description="查询订阅战队的资源，并在资源不足时发送提醒。",
+    usage="发送“战队”查看订阅；管理员可发送“订阅战队123456”。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
+
+
+def command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
+    if not enabled:
+        return ()
+    return (
+        *commands_from_rows(
+            "team_resource",
+            "查询",
+            "team_resource_subscription",
+            (
+                (
+                    "team_resource.query",
+                    ("战队",),
+                    "查看当前会话订阅战队的信息和资源",
+                    {"show_in_poke": True},
+                ),
+            ),
+        ),
+        *commands_from_rows(
+            "team_resource",
+            "订阅管理",
+            "team_resource_subscription",
+            (
+                (
+                    "team_resource.subscribe",
+                    ("订阅战队123456",),
+                    "订阅战队资源提醒；群聊可在末尾 @ 提醒对象",
+                    {
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
+                        "show_in_poke": True,
+                    },
+                ),
+                (
+                    "team_resource.unsubscribe",
+                    ("取消订阅战队123456",),
+                    "取消当前会话指定战队订阅",
+                    {
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
+                        "show_in_poke": True,
+                    },
+                ),
+                (
+                    "team_resource.list",
+                    ("战队订阅",),
+                    "查看和管理当前会话的战队订阅",
+                    {
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
+                        "show_in_poke": True,
+                    },
+                ),
+            ),
+        ),
+    )
 
 
 def _is_team_resource_query(
@@ -51,15 +131,11 @@ def _is_team_resource_manage(
 ) -> bool:
     command = service.parse_manage(event.get_plaintext())
     target = _subscription_target(event)
-    if (
-        command is None
-        or target is None
-        or not service.target_has_feature(target)
-    ):
-        return False
-    if command.action == "list":
-        return service.allows_target(event.user_id, target)
-    return service.enabled
+    return (
+        command is not None
+        and target is not None
+        and service.allows_target(event.user_id, target)
+    )
 
 
 def _is_team_resource_prompt_choice(
@@ -80,7 +156,6 @@ async def handle_team_resource_manage(
     matcher: Matcher,
     event: MessageEvent,
     service: TeamResourceService,
-    menus: TeamOverviewMenus,
 ) -> None:
     target = _subscription_target(event)
     if target is None:
@@ -91,7 +166,11 @@ async def handle_team_resource_manage(
         await matcher.finish()
 
     if command.action == "list":
-        await handle_team_resource(matcher, event, service, menus)
+        await finish_event_reply(
+            matcher,
+            event,
+            service.subscriptions_message(target),
+        )
         return
 
     if isinstance(event, GroupMessageEvent) and not can_manage_group_event(
@@ -101,12 +180,9 @@ async def handle_team_resource_manage(
         await finish_event_reply(
             matcher,
             event,
-            "只有群主、管理员或超级管理员可以修改战队订阅。",
+            "只有群主、管理员或超级管理员可以修改本群战队订阅。",
         )
         return
-
-    if not service.allows_target(event.user_id, target):
-        await matcher.finish()
 
     team_id = command.team_id
     if team_id is None:
@@ -126,7 +202,6 @@ async def handle_team_resource_manage(
                 "手动输入 @QQ号 不会保存为提醒对象。",
             )
             return
-        target = _with_default_group_reminder(target, event.user_id)
         message = await service.add_target_subscription(
             target=target,
             team_id=team_id,
@@ -158,39 +233,30 @@ async def handle_team_resource(
     matcher: Matcher,
     event: MessageEvent,
     service: TeamResourceService,
-    menus: TeamOverviewMenus,
 ) -> None:
     target = _subscription_target(event)
     if target is None:
         await matcher.finish()
 
-    first_team_id = await _bound_player_team_id(
-        event,
-        service,
-        menus.player,
-        menus.query,
-    )
-    items = await service.query_overview(target, first_team_id=first_team_id)
-    if not items:
+    messages = await service.query_target_messages(target)
+    if not messages:
         await finish_event_reply(
             matcher,
             event,
             service.subscriptions_message(target),
         )
         return
-    await menus.open(matcher, event, items)
+    await finish_message_sequence(
+        matcher,
+        [Message(message) for message in messages],
+        event=event,
+    )
 
 
 def install(
     registry: MatcherRegistry,
     service: TeamResourceService,
-    team_query: SeerTeamQueryService,
-    player: PlayerService,
-    notice_timeout_seconds: float = 180,
 ) -> None:
-    menus = TeamOverviewMenus(service, team_query, player, notice_timeout_seconds)
-    menus.install(registry)
-
     def is_manage(event: MessageEvent) -> bool:
         return _is_team_resource_manage(event, service=service)
 
@@ -215,11 +281,13 @@ def install(
         block=True,
     )
     manage_matcher.append_handler(
-        bind_async(handle_team_resource_manage, service=service, menus=menus)
+        bind_async(handle_team_resource_manage, service=service)
     )
 
     prompt_matcher = registry.on_message(
-        policy=CommandPolicy.exempt("second-level team subscription confirmation"),
+        policy=CommandPolicy.exempt(
+            "second-level team subscription confirmation"
+        ),
         rule=Rule(is_prompt_choice) & explicit_command(),
         priority=priority,
         block=True,
@@ -237,43 +305,50 @@ def install(
         priority=priority,
         block=True,
     )
-    query_matcher.append_handler(
-        bind_async(handle_team_resource, service=service, menus=menus)
-    )
+    query_matcher.append_handler(bind_async(handle_team_resource, service=service))
 
 
-async def _bound_player_team_id(
-    event: MessageEvent,
+def plugin_contribution(
+    *,
+    config: TeamResourceConfig,
+    features: FeatureService,
+    scheduler: Scheduler,
     service: TeamResourceService,
-    player: PlayerService,
-    team_query: SeerTeamQueryService,
-) -> int | None:
-    player_id = player.default_player_id(event.user_id)
-    if player_id is None:
-        return None
-    group_id = event.group_id if isinstance(event, GroupMessageEvent) else None
-    lookup = await team_query.lookup_player_team(
-        player_id,
-        TeamQueryActor(
-            event.user_id,
-            group_id,
-            can_manage_group_event(service, event)
-            if isinstance(event, GroupMessageEvent)
-            else service.is_superuser(event.user_id),
+) -> PluginContribution:
+    """Declare team resource commands, matchers, and scheduled scans."""
+
+    return PluginContribution(
+        id="team_resource",
+        features=frozenset({Feature.TEAM_RESOURCE_SUBSCRIPTION}),
+        help=HelpEntry(
+            name="战队资源订阅",
+            description="订阅战队，并在资源不足时定时提醒当前会话。",
+            group="seer",
+            order=50,
+            visible=partial(
+                feature_help_visible,
+                features=features,
+                feature="team_resource_subscription",
+                enabled=config.enabled,
+            ),
+        ),
+        commands=command_descriptors(enabled=config.enabled),
+        install=partial(install, service=service),
+        hooks=PluginHooks(
+            startup=(
+                (
+                    "team_resource_jobs",
+                    partial(service.register_jobs, scheduler),
+                ),
+            ),
         ),
     )
-    if lookup.error is not None:
-        logger.info(
-            "bound player team lookup skipped: user_id=%s player_id=%s reason=%s",
-            event.user_id,
-            player_id,
-            lookup.error,
-        )
-    return lookup.team_id
 
 
 def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:
-    return message_input_context(event).member_user_ids
+    return tuple(
+        int(member.id) for member in message_input_context(event).member_mentions
+    )
 
 
 def _subscription_target(
@@ -290,14 +365,13 @@ def _subscription_target(
     return None
 
 
-def _with_default_group_reminder(
-    target: TeamResourceSubscriptionTarget,
-    operator_id: int,
-) -> TeamResourceSubscriptionTarget:
-    if not target.is_group or target.at_user_ids:
-        return target
-    return TeamResourceSubscriptionTarget(
-        target.kind,
-        target.target_id,
-        (operator_id,),
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            config=context.settings.seer.team_resource,
+            features=context.resources.features,
+            scheduler=context.scheduler,
+            service=context.resources.team_resource,
+        ),
     )

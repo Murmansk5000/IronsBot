@@ -12,49 +12,17 @@ from ironsbot.core.time import (
 )
 
 INVALID_RESTART_TIME_ERROR = (
-    "operations.restart.times must contain daily HH:MM:SS times, "
-    'for example "04:30:00,16:10:05" or ["04:30:00","16:10:05"]'
+    "operations.restart.times must contain daily HH:MM times, "
+    'for example "04:30,16:10" or ["04:30","16:10"]'
 )
 INVALID_RECONNECT_TIME_ERROR = (
     "operations.headless_notice.reconnect_check_times must contain "
-    "daily HH:MM:SS times, "
-    'for example "00:05:00" or ["00:05:00"]'
+    "daily HH:MM times, "
+    'for example "00:05" or ["00:05"]'
 )
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
 WorkflowInputValue = str | int | float | bool
-DEFAULT_SERVER_STATUS_COMMANDS = (
-    "开服了吗",
-    "开服了嘛",
-    "开服了没",
-    "开服没",
-    "关服了吗",
-    "关服了嘛",
-    "开了吗",
-    "关了吗",
-)
-
-
-class ServerStatusConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    commands: list[str] = Field(
-        default_factory=lambda: list(DEFAULT_SERVER_STATUS_COMMANDS)
-    )
-
-    @field_validator("commands")
-    @classmethod
-    def validate_commands(cls, value: list[str]) -> list[str]:
-        commands = list(dict.fromkeys(command.strip() for command in value))
-        if not commands or any(
-            not command or command.startswith("/") for command in commands
-        ):
-            message = "server status commands must be nonempty ordinary commands"
-            raise ValueError(message)
-        if "开服查询" in commands:
-            message = "开服查询 is reserved for administrator commands"
-            raise ValueError(message)
-        return commands
 
 
 class RemoteBuildStepConfig(BaseModel):
@@ -81,7 +49,6 @@ class RemoteBuildStepConfig(BaseModel):
 
 class RemoteBuildConfig(RemoteBuildStepConfig):
     enabled: bool = False
-    downstream_publication_pending: bool = False
     steps: list[RemoteBuildStepConfig] = Field(default_factory=list)
 
     def build_steps(self) -> list[RemoteBuildStepConfig]:
@@ -112,7 +79,6 @@ class DataSourceConfig(BaseModel):
     url: str
     fingerprint_url: str = ""
     interval_minutes: int = Field(default=60, gt=0)
-    interval_second: int = Field(default=0, ge=0, le=59)
     local_path: str
     remote_build: RemoteBuildConfig = Field(default_factory=RemoteBuildConfig)
 
@@ -132,13 +98,14 @@ class DataSyncConfig(BaseModel):
                     f"{SEERAPI_DATA_RELEASE}/seerapi-data-latest/"
                     "seerapi-data.sqlite.sha256"
                 ),
-                interval_minutes=5,
+                interval_minutes=60,
                 local_path="data/seerapi-data.sqlite",
             ),
             "aliases": DataSourceConfig(
                 url=f"{IRONSBOT_RELEASE}/alias-db-latest/aliases-data.sqlite",
                 fingerprint_url=(
-                    f"{IRONSBOT_RELEASE}/alias-db-latest/aliases-data.sqlite.sha256"
+                    f"{IRONSBOT_RELEASE}/alias-db-latest/"
+                    "aliases-data.sqlite.sha256"
                 ),
                 interval_minutes=60,
                 local_path="data/aliases-data.sqlite",
@@ -166,8 +133,6 @@ class DockerUpdateConfig(BaseModel):
     watchtower_image: str = "containrrr/watchtower:latest"
     watchtower_docker_api_version: str = "1.40"
     timeout_seconds: float = Field(default=300.0, gt=0)
-    handoff_timeout_seconds: float = Field(default=90.0, gt=0)
-    fallback_to_current_image_on_handoff_failure: bool = True
     registry_username: str = Field(default="", exclude=True, repr=False)
     registry_token: str = Field(default="", exclude=True, repr=False)
 
@@ -215,7 +180,7 @@ class RestartConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    times: str = "04:30:00"
+    times: str = "04:30"
     grace_seconds: float = Field(default=10.0, ge=0)
     signal_parent: bool = True
 
@@ -253,7 +218,10 @@ class HeadlessNoticeConfig(BaseModel):
     )
     state_notice: bool = True
     state_offline_message: str = (
-        "无头米米号已掉线。\n米米号：{user_id}\n状态：{reason}\n来源：{source}"
+        "无头米米号已掉线。\n"
+        "米米号：{user_id}\n"
+        "状态：{reason}\n"
+        "来源：{source}"
     )
     state_online_message: str = (
         "无头米米号已恢复登录。\n"
@@ -261,7 +229,7 @@ class HeadlessNoticeConfig(BaseModel):
         "离线时长：{offline_duration}\n"
         "来源：{source}"
     )
-    reconnect_check_times: str = "00:05:00"
+    reconnect_check_times: str = "00:05"
 
     @field_validator("reconnect_check_times", mode="before")
     @classmethod
@@ -289,13 +257,10 @@ class HeadlessConfig(BaseModel):
     reconnect_retries: int = -1
     reconnect_delay: float = 5.0
     reconnect_delay_max: float = 120.0
-
-
 class OperationsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_sync: DataSyncConfig = Field(default_factory=DataSyncConfig)
-    server_status: ServerStatusConfig = Field(default_factory=ServerStatusConfig)
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)

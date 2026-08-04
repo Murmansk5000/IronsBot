@@ -4,6 +4,7 @@ import logging
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Any
 
 from seerapi_models import MintmarkORM, PetORM, SkillInPetORM, SoulmarkORM
@@ -45,13 +46,12 @@ from .custom_pet_soulmark_icons import (
     load_soulmark_icons,
     resolve_soulmark_icon_urls,
 )
-from .custom_pet_soulmark_matching import partition_soulmarks as _partition_soulmarks
 from .custom_pet_special_effects import (
     _add_linked_glossary_effects,
     _add_named_status_icons,
     _add_pet_linked_status_effects,
     _add_skill_red_effects,
-    _add_soulmark_highlight_effects,
+    _add_soulmark_highlight_status_effects,
     _assign_special_effect_colors,
     _deduplicate_special_effects,
     _extract_special_effects,
@@ -60,6 +60,8 @@ from .custom_pet_special_effects import (
 
 SPECIAL_SOULMARK_PET_ID = 2500
 HIDDEN_SKILL_ID = 19002
+PARTNER_UPGRADE_MIN_SIMILARITY = 0.8
+PARTNER_UPGRADE_MIN_DELTA = 0.01
 _RICH_TEXT_COLOR_OPEN_RE = re.compile(r"<color=(#[0-9a-fA-F]{6})>")
 _RICH_TEXT_TAG_RE = re.compile(r"</?[^>]+>")
 logger = logging.getLogger(__name__)
@@ -410,6 +412,95 @@ def _format_plain_desc(
     return format_plain_analyze_description(value, effect_colors)
 
 
+def _partition_soulmarks(
+    soulmarks: list[SoulmarkDict],
+    partner: PetPartner | None,
+) -> tuple[list[SoulmarkDict], list[SoulmarkDict]]:
+    upgraded_indexes = {
+        index for index, soulmark in enumerate(soulmarks) if soulmark["intensified"]
+    }
+    if partner is not None:
+        partner_upgrade_index = _find_partner_upgrade_soulmark_index(
+            soulmarks,
+            partner,
+        )
+        if partner_upgrade_index is not None:
+            upgraded_indexes.add(partner_upgrade_index)
+
+    return (
+        [
+            soulmark
+            for index, soulmark in enumerate(soulmarks)
+            if index not in upgraded_indexes
+        ],
+        [
+            soulmark
+            for index, soulmark in enumerate(soulmarks)
+            if index in upgraded_indexes
+        ],
+    )
+
+
+def _find_partner_upgrade_soulmark_index(
+    soulmarks: Sequence[SoulmarkDict],
+    partner: PetPartner,
+) -> int | None:
+    """Locate the real upgraded soulmark instead of rendering partner text again."""
+    indexes_by_id = {soulmark["id"]: index for index, soulmark in enumerate(soulmarks)}
+    for soulmark in soulmarks:
+        upgraded_id = soulmark["intensified_to_id"]
+        if upgraded_id is not None and upgraded_id in indexes_by_id:
+            return indexes_by_id[upgraded_id]
+
+    after = _normalize_soulmark_text(partner.after_description)
+    before = _normalize_soulmark_text(partner.before_description)
+    if not after:
+        return None
+
+    candidates = [
+        (
+            SequenceMatcher(
+                None, _normalize_soulmark_text(soulmark["desc"]), after
+            ).ratio(),
+            SequenceMatcher(
+                None,
+                _normalize_soulmark_text(soulmark["desc"]),
+                before,
+            ).ratio(),
+            index,
+        )
+        for index, soulmark in enumerate(soulmarks)
+    ]
+    if not candidates:
+        return None
+    after_score, _before_score, after_index = max(
+        candidates,
+        key=lambda candidate: (candidate[0] - candidate[1], candidate[0]),
+    )
+    if after_score < PARTNER_UPGRADE_MIN_SIMILARITY:
+        return None
+
+    _after_score, before_score, before_index = max(
+        candidates,
+        key=lambda candidate: (candidate[1] - candidate[0], candidate[1]),
+    )
+    if (
+        before_score >= PARTNER_UPGRADE_MIN_SIMILARITY
+        and before_index != after_index
+        and soulmarks[before_index]["id"] > soulmarks[after_index]["id"]
+    ):
+        # Some partner-upgrade payloads reverse the before/after text fields.
+        # When both variants match strongly, soulmark IDs are the reliable
+        # chronological fallback: the later ID is the enhanced variant.
+        return before_index
+    return after_index
+
+
+def _normalize_soulmark_text(value: str | None) -> str:
+    without_markup = re.sub(r"<[^>]+>", "", value or "")
+    return re.sub(r"[\W_]+", "", without_markup).casefold()
+
+
 def _pet_introduction(pet: PetORM) -> str:
     encyclopedia = pet.encyclopedia
     if encyclopedia is None:
@@ -511,7 +602,7 @@ async def render_custom_pet_info(
     special_effects = _extract_special_effects(pet)
     _add_pet_linked_status_effects(session, special_effects, pet_id=pet_id)
     _add_skill_red_effects(session, pet, special_effects)
-    _add_soulmark_highlight_effects(session, pet, special_effects)
+    _add_soulmark_highlight_status_effects(session, pet, special_effects)
     _add_named_status_icons(session, special_effects)
     _add_linked_glossary_effects(session, special_effects)
     _add_named_status_icons(session, special_effects)

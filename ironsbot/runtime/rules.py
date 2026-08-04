@@ -8,11 +8,8 @@ from nonebot.consts import ENDSWITH_KEY, STARTSWITH_KEY
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.runtime.message_input import (
-    MessageInputKind,
-    is_self_command,
-    message_input_context,
-)
+from ironsbot.core.message_input import MessageInputKind
+from ironsbot.runtime.message_input import message_input_context
 
 BOT_COMMAND_ARG_KEY: Literal["_irons_bot_command_arg"] = "_irons_bot_command_arg"
 
@@ -150,9 +147,7 @@ class _InputStrategy:
     async def __call__(self, event: Event, _: T_State) -> bool:
         context = message_input_context(event)
         if self.name == "natural_language":
-            return (
-                not is_self_command(event) and context.kind is MessageInputKind.DIRECT
-            )
+            return context.kind is MessageInputKind.DIRECT
         if context.kind is MessageInputKind.BOT_MENTION:
             return False
         if context.kind is MessageInputKind.MEMBER_MENTION:
@@ -196,18 +191,7 @@ def bot_mention() -> Rule:
 
     async def _matches(event: Event, _: T_State) -> bool:
         context = message_input_context(event)
-        return (
-            not is_self_command(event) and context.kind is MessageInputKind.BOT_MENTION
-        )
-
-    return Rule(_matches)
-
-
-def bot_mention_including_reply() -> Rule:
-    """Accept a current-message bot @, including when it accompanies a reply."""
-
-    async def _matches(event: Event, _: T_State) -> bool:
-        return not is_self_command(event) and message_input_context(event).mentions_bot
+        return context.kind is MessageInputKind.BOT_MENTION
 
     return Rule(_matches)
 

@@ -9,16 +9,15 @@ from ironsbot.plugins.operations.db_sync import (
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
+    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMANDS,
+    NORMAL_SERVER_STATUS_COMMAND,
 )
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 
 
-def server_status_commands(
-    examples: tuple[str, ...] = NORMAL_SERVER_STATUS_COMMANDS,
-) -> tuple[CommandDescriptor, ...]:
+def server_status_commands() -> tuple[CommandDescriptor, ...]:
     return (
         *commands_from_rows(
             "server_status",
@@ -27,7 +26,7 @@ def server_status_commands(
             (
                 (
                     "server_status.query",
-                    examples,
+                    (NORMAL_SERVER_STATUS_COMMAND,),
                     "查询当前维护和开服状态",
                     {"show_in_poke": True},
                 ),
@@ -51,7 +50,11 @@ def server_status_commands(
                     "server_status.headless_instances",
                     HEADLESS_INSTANCE_STATUS_COMMANDS,
                     "查看公共查询池与临时专用会话的当前在线实例数",
-                    {"access": (CommandAccess(scope="private", audience="superuser"),)},
+                    {
+                        "access": (
+                            CommandAccess(scope="private", audience="superuser"),
+                        )
+                    },
                 ),
             ),
         ),
@@ -67,13 +70,19 @@ def docker_update_commands() -> tuple[CommandDescriptor, ...]:
             (
                 "docker_update.restart",
                 BOT_RESTART_COMMANDS,
-                "打开机器人维护菜单，可选择仅重启或更新镜像并重启",
+                "重启机器人进程",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
             (
                 "docker_update.image_update",
                 DOCKER_UPDATE_COMMANDS,
-                "先检查镜像，再打开机器人维护菜单选择重启方式",
+                "检查镜像并重启机器人",
+                {"access": (CommandAccess(audience="superuser"),)},
+            ),
+            (
+                "docker_update.image_check",
+                DOCKER_CHECK_UPDATE_COMMANDS,
+                "只检查远端镜像，不拉取或重启机器人",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
@@ -89,13 +98,13 @@ def data_sync_commands() -> tuple[CommandDescriptor, ...]:
             (
                 "db_sync.update",
                 tuple(f"/{command}" for command in MANUAL_SYNC_COMMANDS),
-                "检查后选择同步已发布数据，或构建上游数据后同步",
+                "构建远程数据并同步到机器人",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
             (
                 "db_sync.force_update",
                 tuple(f"/{command}" for command in FORCE_MANUAL_SYNC_COMMANDS),
-                "选择第 2 项时强制重建上游数据后同步",
+                "忽略本地指纹，强制同步数据",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),

@@ -23,9 +23,6 @@ class RankLookupCost:
     cache_page_hits: int = 0
     online_page_fetches: int = 0
     restricted_miss: bool = False
-    cached_rank_age_seconds: float | None = None
-    used_recent_cache_anchor: bool = False
-    used_recent_cache_fallback: bool = False
 
     @property
     def lightweight_confirmed(self) -> bool:
@@ -44,32 +41,11 @@ class RankLookupResult:
     score_name: str
     rank: int | None = None
     score: int | None = None
-    observed_score: int | None = None
     excluded: bool = False
     searched_limit: int = 0
     queried: bool = False
     failure: str | None = None
-    fallback_cached_at: float | None = None
-    profile_score: int | None = None
-    scanned_count: int = 0
-    scan_complete: bool = False
-    budget_exhausted: bool = False
-    query_id: str = "-"
     cost: RankLookupCost = field(default_factory=RankLookupCost)
-
-    @property
-    def status(self) -> str:
-        if self.failure and "顺序异常" in self.failure:
-            return "order_anomaly"
-        if self.budget_exhausted and self.rank is None:
-            return "budget_exhausted"
-        if self.failure:
-            return "failed"
-        if self.rank is not None:
-            return "found"
-        if self.scan_complete:
-            return "scanned_missing"
-        return "unconfirmed" if self.queried else "not_queried"
 
 
 @dataclass(slots=True)
@@ -107,7 +83,6 @@ class RankScoreSearchResult:
     items: list[RankScoreSearchItem] = field(default_factory=list)
     higher_gap: RankScoreGap | None = None
     lower_gap: RankScoreGap | None = None
-    failure: str | None = None
 
 
 @dataclass(slots=True)

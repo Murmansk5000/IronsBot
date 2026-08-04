@@ -57,9 +57,8 @@ def _invalidate_autocard_prompt(
 
 def _build_autocard_reply(entry: AutocardEntry, *, image: bool) -> Message:
     message = Message()
-    if image:
-        for image_url in entry.image_urls:
-            message += MessageSegment.image(image_url)
+    if image and entry.image_url:
+        message += MessageSegment.image(entry.image_url)
     message += MessageSegment.text(entry.text)
     return message
 

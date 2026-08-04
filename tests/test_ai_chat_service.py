@@ -5,15 +5,14 @@ import nonebot
 import pytest
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
+from ironsbot.config.models.ai import AiConfig
 from ironsbot.core.features import FeatureConfig
-from ironsbot.plugins.ai import _is_reserved_private_command
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from tests.helpers.ai import FakeAiCompletionClient
-from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_events import group_message_event
 from tests.helpers.runtime import build_test_runtime
 
 GROUP_ID = 456
@@ -42,11 +41,6 @@ class FakeBot:
         return {"group_id": group_id, "group_name": "示例群"}
 
 
-@pytest.mark.parametrize("choice", ("0", "1", "4", "a1", "B20", "y", "否"))
-def test_private_menu_choices_never_fall_through_to_ai_chat(choice: str) -> None:
-    assert _is_reserved_private_command(private_message_event(choice), choice)
-
-
 async def _successful_completion(
     _config: AiConfig,
     _messages: list[HistoryMessage],
@@ -60,17 +54,7 @@ def _ai_service(
     superusers: tuple[int, ...] = (),
     request_completion: CompletionRequester = _successful_completion,
 ) -> AiService:
-    config = AiConfig(
-        endpoints=[
-            AiEndpointConfig(
-                name="test",
-                base_url="https://example.test/v1",
-                models=["test-model"],
-                api_key="test-key",
-            )
-        ],
-        memory=False,
-    )
+    config = AiConfig(api_key="test-key", memory=False)
     runtime = build_test_runtime(
         feature_config=FeatureConfig(
             group_policy={
@@ -163,6 +147,7 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
         onebot_context.build_notice_source(
             event,
             "你好",
+            {},
             bot=FakeBot(),
         )
     )
@@ -173,7 +158,7 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
     assert "消息：你好" in source
 
 
-def test_ai_notice_source_context_falls_back_to_group_id() -> None:
+def test_ai_notice_source_context_falls_back_to_group_alias() -> None:
     event = group_message_event("hello", group_id=GROUP_ID)
 
     async def fail_group_info(**_kwargs: object) -> dict[str, object]:
@@ -186,12 +171,12 @@ def test_ai_notice_source_context_falls_back_to_group_id() -> None:
         onebot_context.build_notice_source(
             event,
             "你好",
+            {"example": GROUP_ID},
             bot=FailingBot(),
         )
     )
 
-    assert f"群：{GROUP_ID}" in source
-    assert "example" not in source
+    assert f"群：example（{GROUP_ID}）" in source
 
 
 @pytest.mark.asyncio

@@ -8,10 +8,6 @@ from math import ceil
 from time import monotonic
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
 
-from ironsbot.core.request_coordination import (
-    current_request_response,
-    send_request_response,
-)
 from ironsbot.core.semantic_requests import SemanticRequest, semantic_request_scope
 from ironsbot.services.operations.headless_pool import (
     HeadlessRequestPriority,
@@ -20,6 +16,7 @@ from ironsbot.services.operations.headless_pool import (
     headless_request_priority_scope,
     headless_workflow_scope,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -120,7 +117,7 @@ class PlayerRequestProtectionService:
             priority=priority,
         )
         if not self._config.enabled:
-            await send_request_response(queued=False)
+            await send_request_feedback(queued=False)
             with (
                 semantic_request_scope(semantic_request, user_id=user_id),
                 headless_request_priority_scope(request_priority),
@@ -141,7 +138,7 @@ class PlayerRequestProtectionService:
                 joined_background = existing.background
                 if not background:
                     self._promote(existing, request_priority)
-                await send_request_response(queued=False)
+                await send_request_feedback(queued=False)
                 try:
                     return cast("T", await asyncio.shield(existing.future))
                 except Exception:
@@ -167,7 +164,6 @@ class PlayerRequestProtectionService:
             label=label,
             user_id=user_id,
             priority_state=priority_state,
-            feedback=current_request_response(),
         )
         self._workflow_sequence += 1
         item = _QueuedRequest(

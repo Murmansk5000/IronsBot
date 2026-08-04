@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 
 import pytest
 
-from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
+from ironsbot.config.models.ai import AiConfig
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import AiIntentAction
 from ironsbot.services.ai import intent
@@ -52,7 +52,7 @@ def _manual_action() -> AiIntentAction:
     return AiIntentAction(
         id="fire_manual",
         feature="ai_intent_fire_manual",
-        keywords=["手册", "词典", "辞典", "火火词典"],
+        keywords=["手册"],
         action="message",
         message="ok",
         intent="manual",
@@ -78,9 +78,6 @@ def test_fire_manual_strong_request_prefilter_accepts_explicit_requests() -> Non
     accepted = [
         "火火手册链接",
         "手册在哪",
-        "火火词典在哪",
-        "求辞典链接",
-        "词典怎么下载",
         "求火火手册",
         "发我手册链接",
         "火火手册怎么下载",
@@ -95,9 +92,6 @@ def test_fire_manual_strong_request_prefilter_rejects_weak_mentions() -> None:
     rejected = [
         "火火手册",
         "手册",
-        "火火词典",
-        "词典",
-        "我在看火火词典里的精灵资料。",
         "我是抄火火手册里面说的。",
         "我这周火火手册怎么更新不了",
         "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict",
@@ -151,14 +145,7 @@ def _service(
     request_completion: CompletionRequester = _yes_completion,
 ) -> AiService:
     config = AiConfig(
-        endpoints=[
-            AiEndpointConfig(
-                name="test",
-                base_url="https://example.test/v1",
-                models=["test-model"],
-                api_key="key",
-            )
-        ],
+        api_key="key",
         memory=False,
         intent_actions={action.id: action},
     )

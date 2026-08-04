@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.operations.headless_errors import (
@@ -12,14 +11,7 @@ from ironsbot.services.operations.headless_errors import (
     NotLoggedInError,
     SocketRecvError,
 )
-from ironsbot.services.seer.errors import (
-    format_player_query_error,
-    format_socket_recv_error,
-)
-from ironsbot.services.seer.external_references import (
-    SeerInfoReference,
-    SeerInfoReferences,
-)
+from ironsbot.services.seer.errors import format_socket_recv_error
 from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
 
 if TYPE_CHECKING:
@@ -29,26 +21,12 @@ if TYPE_CHECKING:
     from ironsbot.services.team.resource import TeamResourceService
 
 MAX_TEAM_QUERY_IDS = 3
-TEAM_BOSS_USUAL_MAX_ENERGY = 200
-
-
-class TeamBossActivityStatus(StrEnum):
-    OPEN = "开启"
-    CLOSED = "关闭"
-    UNKNOWN = "暂无法确认"
-
 
 @dataclass(frozen=True, slots=True)
 class TeamQueryActor:
     user_id: int
     group_id: int | None
     can_manage: bool
-
-
-@dataclass(frozen=True, slots=True)
-class PlayerTeamLookup:
-    team_id: int | None = None
-    error: str | None = None
 
 
 class SeerTeamQueryService:
@@ -58,73 +36,17 @@ class SeerTeamQueryService:
         headless: HeadlessService,
         error_message: ErrorMessageLookup,
         team_resource: TeamResourceService,
-        *,
-        external_references: SeerInfoReferences | None = None,
     ) -> None:
         self._config = config
         self._headless = headless
         self._error_message = error_message
         self._team_resource = team_resource
-        self._external_references = external_references
 
     @staticmethod
     def parse_team_ids(text: str) -> tuple[int, ...]:
         return tuple(dict.fromkeys(int(item) for item in re.findall(r"\d+", text)))
 
-    async def query_player_team(self, player_id: int, actor: TeamQueryActor) -> str:
-        lookup = await self.lookup_player_team(player_id, actor)
-        if lookup.error is not None:
-            return lookup.error
-        if lookup.team_id is None:
-            return f"米米号 {player_id} 当前未加入战队。"
-        return await self.query((lookup.team_id,), actor)
-
-    async def lookup_player_team(
-        self,
-        player_id: int,
-        actor: TeamQueryActor,
-    ) -> PlayerTeamLookup:
-        try:
-            game = self._headless.get_game()
-            with game.operations.track(
-                "玩家所属战队查询",
-                f"米米号 {player_id}",
-                source="战队查询",
-                group_id=actor.group_id,
-            ):
-                info = await asyncio.wait_for(
-                    game.get_user_info(player_id),
-                    timeout=self._config.timeout_seconds,
-                )
-        except TimeoutError:
-            return PlayerTeamLookup(
-                error=f"米米号 {player_id} 的所属战队查询超时，请稍后再试。"
-            )
-        except (NotLoggedInError, DisconnectedError) as error:
-            await self._headless.mark_unavailable(str(error), source="战队查询")
-            return PlayerTeamLookup(
-                error=format_player_query_error(
-                    player_id,
-                    error,
-                    self._error_message,
-                )
-            )
-        except SocketRecvError as error:
-            return PlayerTeamLookup(
-                error=format_player_query_error(
-                    player_id,
-                    error,
-                    self._error_message,
-                )
-            )
-        await self._headless.mark_available(
-            source="战队查询",
-            user_id=int(game.user_id),
-        )
-        team_id = int(getattr(info, "team_id", 0) or 0)
-        return PlayerTeamLookup(team_id=team_id or None)
-
-    async def query(  # noqa: C901 - distinct query failures retain their messages
+    async def query(
         self,
         team_ids: tuple[int, ...],
         actor: TeamQueryActor,
@@ -133,7 +55,6 @@ class SeerTeamQueryService:
             return f"一次最多查询 {MAX_TEAM_QUERY_IDS} 个战队，请分开查询。"
         messages: list[str] = []
         subscription_prompt: str | None = None
-        has_successful_reply = False
         for team_id in team_ids:
             if not is_valid_team_id(team_id):
                 messages.append(TEAM_ID_ERROR_MESSAGE)
@@ -165,16 +86,12 @@ class SeerTeamQueryService:
                 continue
 
             messages.append(message)
-            has_successful_reply = True
             if subscription_prompt is None:
                 subscription_prompt = self._subscription_prompt(actor, team_info)
 
         if subscription_prompt is not None:
             messages.append(subscription_prompt)
-        reply = "\n\n".join(messages)
-        if not has_successful_reply or self._external_references is None:
-            return reply
-        return self._external_references.append(reply, SeerInfoReference.TEAM_QUERY)
+        return "\n\n".join(messages)
 
     async def _query_one(
         self,
@@ -198,11 +115,7 @@ class SeerTeamQueryService:
             user_id=int(game.user_id),
         )
         return (
-            format_team_info(
-                team_info,
-                set(self._config.sections),
-                include_boss=True,
-            ),
+            format_team_info(team_info, set(self._config.sections)),
             team_info,
         )
 
@@ -246,36 +159,15 @@ def _append_section(
     enabled_sections: set[str],
     section: str,
     section_lines: list[str],
-    *,
-    separated: bool = True,
 ) -> None:
     if section not in enabled_sections:
         return
-    if separated and lines and lines[-1] != "":
+    if lines and lines[-1] != "":
         lines.append("")
     lines.extend(section_lines)
 
 
-def _format_team_boss(
-    total_damage: int,
-    activity_status: TeamBossActivityStatus,
-) -> str | None:
-    if activity_status is TeamBossActivityStatus.CLOSED:
-        return None
-    return (
-        f"战队 Boss：累计削减能量 {total_damage}"
-        f"｜最大体力通常为 {TEAM_BOSS_USUAL_MAX_ENERGY}"
-        f"｜活动状态：{activity_status.value}"
-    )
-
-
-def format_team_info(
-    info: Any,
-    enabled_sections: set[str],
-    *,
-    include_boss: bool = False,
-    boss_activity_status: TeamBossActivityStatus = TeamBossActivityStatus.UNKNOWN,
-) -> str:
+def format_team_info(info: Any, enabled_sections: set[str]) -> str:
     slogan = info.slogan or "（无）"
     notice = info.notice or "（无）"
     lines = [f"🏰【战队信息：{info.name}】"]
@@ -289,22 +181,14 @@ def format_team_info(
             f"战队等级：{info.new_team_level}",
         ],
     )
-    resource_lines = [
-        f"成员数：{info.member_count}",
-        f"战队资源：{info.score}",
-    ]
-    boss_line = (
-        _format_team_boss(info.total_boss_dmg, boss_activity_status)
-        if include_boss
-        else None
-    )
-    if boss_line is not None:
-        resource_lines.append(boss_line)
     _append_section(
         lines,
         enabled_sections,
         "resource",
-        resource_lines,
+        [
+            f"成员数：{info.member_count}",
+            f"战队资源：{info.score}",
+        ],
     )
     _append_section(
         lines,
@@ -315,6 +199,7 @@ def format_team_info(
             f"科技中心：{info.tech_center_level}",
             f"奖励中心：{info.bonus_center_level}",
             f"资源中心：{info.res_center_level}",
+            f"战队Boss总伤害：{info.total_boss_dmg}",
         ],
     )
     _append_section(
@@ -348,9 +233,9 @@ def format_team_info(
         enabled_sections,
         "text",
         [
+            "【文本】",
             f"标语：{slogan}",
             f"公告：{notice}",
         ],
-        separated=False,
     )
     return "\n".join(lines)

@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from ironsbot.core.platform import ActorRef
+
 class PlayerBindingState(NamedTuple):
-    qq_user_id: int
+    actor: ActorRef
     player_id: int | None = None
     player_nick: str = ""
     choice_completed: bool = False
@@ -19,31 +21,23 @@ class PlayerBindingState(NamedTuple):
 
 
 class PlayerBindingStore(Protocol):
-    def get(self, qq_user_id: int) -> PlayerBindingState: ...
+    def get(self, actor: ActorRef) -> PlayerBindingState: ...
 
     def bind(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         player_nick: str,
         changed_at: datetime | None = None,
     ) -> None: ...
 
-    def bind_without_cooldown(
-        self,
-        *,
-        qq_user_id: int,
-        player_id: int,
-        player_nick: str,
-    ) -> None: ...
-
-    def decline(self, *, qq_user_id: int) -> None: ...
+    def decline(self, *, actor: ActorRef) -> None: ...
 
     def unbind(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         changed_at: datetime | None = None,
     ) -> bool: ...
 
@@ -61,9 +55,8 @@ def player_binding_offer_message(
         and bound_default_daily_limit > unbound_daily_limit
     ):
         quota_hint = (
-            "设为默认米米号后，查询该米米号的每日查询额度可从 "
-            f"{unbound_daily_limit} 项提升至 {bound_default_daily_limit} 项。\n"
-            "额度按成功获取的数据项目结算；缓存、预热和超时不计入。\n"
+            "设为默认米米号后，查询该米米号实时数据的每日额度可从 "
+            f"{unbound_daily_limit} 次提升至 {bound_default_daily_limit} 次。\n"
         )
     return (
         f"已查到米米号：{player_id}（{nick}）\n\n"

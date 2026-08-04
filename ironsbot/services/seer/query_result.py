@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 if TYPE_CHECKING:
     from ironsbot.core.semantic_requests import SemanticTarget
-    from ironsbot.services.seer.query_work import QueryWorkResult
     from ironsbot.services.seer.rank_models import RankLookupResult
 
 T = TypeVar("T")
@@ -19,8 +18,6 @@ class QueryReply:
     image: bytes | None = None
     image_error: str = ""
     rank_lookups: tuple[RankLookupResult, ...] = ()
-    query_work: QueryWorkResult | None = None
-    complete: bool = True
 
     @property
     def rank_lookup_complete(self) -> bool:

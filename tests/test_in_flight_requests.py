@@ -3,10 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
-from ironsbot.core.request_coordination import (
-    RequestCoordinator,
-    RequestDecisionKind,
-)
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -27,8 +24,8 @@ def _request(action_id: str, target_key: str) -> SemanticRequest:
     )
 
 
-def _service(features: _Features | None = None) -> RequestCoordinator:
-    return RequestCoordinator(
+def _service(features: _Features | None = None) -> InFlightRequestService:
+    return InFlightRequestService(
         features or _Features(),
         CommandCooldownConfig(
             duplicate_window_seconds=60,
@@ -61,18 +58,15 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent(
     )
 
     assert first.allowed
-    assert first.kind is RequestDecisionKind.ADMITTED
     assert first.token is not None
     assert not second.allowed
-    assert second.kind is RequestDecisionKind.DUPLICATE
     assert second.feedback == DUPLICATE_MESSAGE
 
-    silent = service.admit(
+    assert not service.admit(
         user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=2,
-    )
-    assert silent.kind is RequestDecisionKind.SILENT
+    ).allowed
 
     service.finish(first.token, now=5)
 
@@ -135,31 +129,6 @@ def test_in_flight_request_keeps_users_actions_and_targets_independent() -> None
         user_id=OTHER_USER_ID,
         request=_request("seer_pet_info", "5000"),
     ).allowed
-
-
-def test_in_flight_request_keeps_the_same_user_independent_per_group() -> None:
-    service = _service()
-    request = _request("meeting_reply", "default")
-
-    first = service.admit(
-        user_id=USER_ID,
-        request=request,
-        scope="group:10001",
-    )
-    second_group = service.admit(
-        user_id=USER_ID,
-        request=request,
-        scope="group:10002",
-    )
-    repeated_group = service.admit(
-        user_id=USER_ID,
-        request=request,
-        scope="group:10001",
-    )
-
-    assert first.allowed
-    assert second_group.allowed
-    assert not repeated_group.allowed
 
 
 def test_in_flight_request_superusers_bypass_reservations() -> None:

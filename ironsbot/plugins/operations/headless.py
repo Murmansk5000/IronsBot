@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.time import scheduled_clock_time
+from ironsbot.core.time import daily_time_parts
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
@@ -16,16 +16,14 @@ def register_reconnect_jobs(
 ) -> None:
     registry = JobRegistry(scheduler, prefix="headless_reconnect_check:")
     for scheduled_time in service.reconnect_times:
-        clock_time = scheduled_clock_time(
-            scheduled_time,
-            error_message=(
-                "operations.headless_notice.reconnect_check_times must contain "
-                "daily HH:MM:SS times"
-            ),
-        )
-        registry.add_daily(
+        hour, minute = daily_time_parts(scheduled_time)
+        registry.add(
             service.reconnect,
-            job_id=str(clock_time),
+            "cron",
+            job_id=scheduled_time,
             args=[scheduled_time],
-            clock_time=clock_time,
+            hour=hour,
+            minute=minute,
+            second=0,
+            timezone="Asia/Shanghai",
         )

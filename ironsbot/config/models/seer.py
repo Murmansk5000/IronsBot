@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated
 
 from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
-    StrictBool,
     field_validator,
     model_validator,
 )
@@ -25,11 +24,6 @@ from ironsbot.core.rank_exclusions import (
 )
 from ironsbot.core.seer_ids import PLAYER_ID_MAX, PLAYER_ID_MIN
 from ironsbot.core.time import normalize_daily_time, normalized_daily_times
-
-from .seer_lucky import (  # noqa: F401 - compatibility re-export
-    LuckySkinWindowAccountConfig,
-    LuckySkinWindowConfig,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -59,9 +53,9 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "text",
 )
 RANK_PAGE_REFRESH_TIME_ERROR = (
-    "seer.rank.page_refresh.times must contain daily HH:MM:SS times"
+    "seer.rank.page_refresh.times must contain daily HH:MM times"
 )
-LOCAL_RANK_REFRESH_TIME_ERROR = "seer.local_rank.time must use HH:MM:SS"
+LOCAL_RANK_REFRESH_TIME_ERROR = "seer.local_rank.time must use HH:MM"
 RANK_PAGE_REFRESH_INTERVAL_OFFSET_ERROR = (
     "seer.rank.page_refresh.interval_offset_minutes must be smaller than "
     "interval_minutes"
@@ -70,28 +64,30 @@ RANK_PAGE_REFRESH_PAGES_PER_RUN_MIN_ERROR = (
     "seer.rank.page_refresh.pages_per_run_min must not be greater than pages_per_run"
 )
 RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR = (
-    "seer.rank.page_refresh active_start/active_end must be HH:MM:SS times"
+    "seer.rank.page_refresh active_start/active_end must be HH:MM times"
 )
 RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
     "seer.rank.page_refresh.active_start and active_end must be configured together"
 )
 PLAYER_RANK_LOOKUP_TIMEOUT_ERROR = "player lookup total timeout must cover one page"
-TEAM_RESOURCE_TIME_ERROR = (
-    "seer.team_resource.times must contain daily HH:MM:SS times"
+TEAM_RESOURCE_TIME_ERROR = "seer.team_resource.times must contain daily HH:MM times"
+LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR = (
+    "seer.lucky_skin_window watched_skin_ids must be positive"
 )
+LUCKY_SKIN_WINDOW_TIME_ERROR = "seer.lucky_skin_window.time must use HH:MM"
 PLAYER_ACCOUNT_NAME_ERROR = "seer.player_accounts name must not be empty"
 PLAYER_ACCOUNT_ALIASES_ERROR = (
     "seer.player_accounts aliases must not contain empty values"
 )
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
-    "01:15:00",
-    "01:45:00",
-    "02:15:00",
-    "02:45:00",
-    "03:15:00",
-    "03:45:00",
-    "04:15:00",
-    "04:45:00",
+    "01:15",
+    "01:45",
+    "02:15",
+    "02:45",
+    "03:15",
+    "03:45",
+    "04:15",
+    "04:45",
 )
 DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "图鉴积分",
@@ -112,38 +108,6 @@ RANK_EXCLUSION_USER_ID_ERROR = "seer.rank.exclusions user IDs must be positive"
 RANK_EXCLUSION_RANK_KEY_ERROR = (
     "seer.rank.exclusions.user_ids_by_rank contains an unsupported rank key"
 )
-RANK_LOOKUP_LIMIT_RANK_KEY_ERROR = (
-    "seer.rank.lookup_limits contains an unsupported global rank key"
-)
-NEW_CONTENT_CATEGORY_KEYS = (
-    "achievement",
-    "pet",
-    "pet_skin",
-    "skill",
-    "mintmark",
-    "suit",
-    "equip",
-    "mount",
-    "autocard_card",
-    "autocard_role",
-    "autocard_sanctuary_effect",
-)
-NEW_CONTENT_CATEGORY_ERROR = (
-    "seer.new_content.expanded_categories contains an unsupported category"
-)
-NewContentCategoryKey = Literal[
-    "achievement",
-    "pet",
-    "pet_skin",
-    "skill",
-    "mintmark",
-    "suit",
-    "equip",
-    "mount",
-    "autocard_card",
-    "autocard_role",
-    "autocard_sanctuary_effect",
-]
 
 
 class RankExclusionRankKeyError(ValueError):
@@ -151,23 +115,6 @@ class RankExclusionRankKeyError(ValueError):
         super().__init__(
             f"{RANK_EXCLUSION_RANK_KEY_ERROR}: {', '.join(sorted(unknown))}"
         )
-
-
-class RankLookupLimitRankKeyError(ValueError):
-    def __init__(self, unknown: set[str]) -> None:
-        super().__init__(
-            f"{RANK_LOOKUP_LIMIT_RANK_KEY_ERROR}: {', '.join(sorted(unknown))}"
-        )
-
-
-class RankLookupLimitValueError(ValueError):
-    def __init__(self) -> None:
-        super().__init__("seer.rank.lookup_limits values must be non-negative")
-
-
-class NewContentCategoryConfigError(ValueError):
-    def __init__(self, unknown: list[str]) -> None:
-        super().__init__(f"{NEW_CONTENT_CATEGORY_ERROR}: {', '.join(unknown)}")
 
 
 def _coerce_sections(value: object) -> object:
@@ -228,31 +175,16 @@ class PlayerBindingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     change_cooldown_days: int = Field(default=3, ge=0)
-    protect_superuser_bound_shortcuts: bool = False
 
 
 class PlayerQueryLimitsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    bound_default_daily_limit: int = Field(default=60, ge=0)
-    bound_other_daily_limit: int = Field(default=60, ge=0)
-    unbound_daily_limit: int = Field(default=30, ge=0)
+    bound_default_daily_limit: int = Field(default=10, ge=0)
+    other_target_action_daily_limit: int = Field(default=1, ge=0)
+    unbound_daily_limit: int = Field(default=1, ge=0)
     superuser_bypass: bool = True
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_other_target_limit(cls, value: object) -> object:
-        if not isinstance(value, dict):
-            return value
-        legacy = value.get("other_target_action_daily_limit")
-        if legacy is None or "bound_other_daily_limit" in value:
-            return value
-        return {
-            key: item
-            for key, item in value.items()
-            if key != "other_target_action_daily_limit"
-        } | {"bound_other_daily_limit": legacy}
 
 
 class PlayerRequestProtectionConfig(BaseModel):
@@ -315,9 +247,7 @@ class TeamQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timeout_seconds: float = Field(default=20, gt=0)
-    sections: list[str] = Field(
-        default_factory=lambda: ["basic", "resource", "text"]
-    )
+    sections: list[str] = Field(default_factory=lambda: ["basic", "resource"])
 
     @field_validator("sections", mode="before")
     @classmethod
@@ -356,7 +286,6 @@ class RankPageRefreshConfig(BaseModel):
     pages_per_run_min: int = Field(default=0, ge=0)
     interval_minutes: int = Field(default=0, ge=0, le=59)
     interval_offset_minutes: int = Field(default=0, ge=0, le=59)
-    interval_offset_seconds: int = Field(default=0, ge=0, le=59)
     schedule_jitter_seconds: int = Field(default=0, ge=0)
     request_interval_seconds: float = Field(default=0.0, ge=0)
     request_jitter_seconds: float = Field(default=0.0, ge=0)
@@ -433,8 +362,6 @@ class PlayerRankLookupConfig(BaseModel):
     page_timeout_seconds: float = Field(default=8, gt=0)
     total_timeout_seconds: float = Field(default=60, gt=0)
     page_retry_count: int = Field(default=1, ge=0, le=3)
-    recent_cache_max_age_seconds: float = Field(default=600, gt=0)
-    recent_cache_anchor_timeout_seconds: float = Field(default=5, gt=0)
 
     @model_validator(mode="after")
     def validate_budget(self) -> "PlayerRankLookupConfig":
@@ -486,8 +413,6 @@ class RankQueryConfig(BaseModel):
 
     limit: int = Field(default=10000, ge=0)
     online_limit: int = Field(default=2000, ge=0)
-    lookup_limits: dict[str, int] = Field(default_factory=dict)
-    superuser_score_limit_multiplier: int = Field(default=2, ge=1)
     page_size: int = Field(default=100, ge=1)
     display_limit: int = Field(default=10, ge=1, le=MAX_RANK_DISPLAY_LIMIT)
     max_display_limit: int = Field(
@@ -530,21 +455,6 @@ class RankQueryConfig(BaseModel):
             if key and 1 <= limit <= MAX_RANK_DISPLAY_LIMIT
         }
 
-    @field_validator("lookup_limits", mode="before")
-    @classmethod
-    def normalize_lookup_limits(cls, value: object) -> object:
-        return _normalize_int_mapping(value)
-
-    @field_validator("lookup_limits")
-    @classmethod
-    def validate_lookup_limits(cls, value: dict[str, int]) -> dict[str, int]:
-        unknown = set(value).difference(DEFAULT_RANK_PAGE_REFRESH_KEYS)
-        if unknown:
-            raise RankLookupLimitRankKeyError(unknown)
-        if any(limit < 0 for limit in value.values()):
-            raise RankLookupLimitValueError
-        return {key: limit for key, limit in value.items() if key}
-
     @model_validator(mode="after")
     def validate_display_limit_bounds(self) -> "RankQueryConfig":
         self.display_limit = min(self.display_limit, self.max_display_limit)
@@ -562,7 +472,7 @@ class LocalRankConfig(BaseModel):
     max_players: int = Field(default=5000, ge=1)
     batch_limit: int = Field(default=100, ge=1)
     auto_refresh: bool = True
-    time: str = "03:30:00"
+    time: str = "03:30"
     refresh_limit: int = Field(default=300, ge=1)
     refresh_max_age_hours: int = Field(default=24, ge=0)
     refresh_interval_seconds: float = Field(default=0.5, ge=0)
@@ -679,54 +589,47 @@ def _normalize_player_account_aliases(
     return list(dict.fromkeys(normalized))
 
 
-class ExternalReferencesConfig(BaseModel):
-    """Optional SeerInfo companion links for matching query replies."""
+class LuckySkinWindowAccountConfig(BaseModel):
+    """One QQ user's account-library subscription for lucky-window checks."""
 
     model_config = ConfigDict(extra="forbid")
 
-    player_query: StrictBool = True
-    team_query: StrictBool = True
-    server_status: StrictBool = True
-    weekly_preview: StrictBool = True
-    bilibili_history: StrictBool = True
-    peak_pool: StrictBool = True
-    peak_master_pool: StrictBool = True
-    peak_vote: StrictBool = True
-    peak_player_rank: StrictBool = True
-    peak_suit_rank: StrictBool = True
-    peak_title_rank: StrictBool = True
-    peak_pet_rank: StrictBool = True
+    user: str | int
+    account: str | int
+    watched_skin_ids: list[int] = Field(default_factory=list)
 
-
-class NewContentConfig(BaseModel):
-    """Control root previews of genuinely new weekly-content entries."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    expanded_categories: list[NewContentCategoryKey] = Field(default_factory=list)
-    auto_expand_max_items: int = Field(default=5, ge=0)
-
-    @field_validator("expanded_categories", mode="before")
+    @field_validator("watched_skin_ids")
     @classmethod
-    def validate_expanded_categories(cls, value: object) -> object:
-        if not isinstance(value, list):
-            return value
-        unknown = [
-            str(category)
-            for category in value
-            if category not in NEW_CONTENT_CATEGORY_KEYS
-        ]
-        if unknown:
-            raise NewContentCategoryConfigError(unknown)
-        return value
-
-    @field_validator("expanded_categories")
-    @classmethod
-    def deduplicate_expanded_categories(
-        cls,
-        value: list[NewContentCategoryKey],
-    ) -> list[NewContentCategoryKey]:
+    def normalize_watched_skin_ids(cls, value: list[int]) -> list[int]:
+        if any(skin_id <= 0 for skin_id in value):
+            raise ValueError(LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR)
         return list(dict.fromkeys(value))
+
+
+class LuckySkinWindowConfig(BaseModel):
+    """Daily public lucky-window lookup and per-user delivery policy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    time: str = "00:02"
+    timezone: str = "Asia/Shanghai"
+    timeout_seconds: float = Field(default=15.0, gt=0)
+    accounts: list[LuckySkinWindowAccountConfig] = Field(default_factory=list)
+
+    @field_validator("time")
+    @classmethod
+    def normalize_time(cls, value: str) -> str:
+        return normalize_daily_time(value, error_message=LUCKY_SKIN_WINDOW_TIME_ERROR)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo
+
+        normalized = value.strip()
+        ZoneInfo(normalized)
+        return normalized
 
 
 class SeerConfig(BaseModel):
@@ -742,26 +645,6 @@ class SeerConfig(BaseModel):
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
-    new_content: NewContentConfig = Field(default_factory=NewContentConfig)
-    external_references: ExternalReferencesConfig = Field(
-        default_factory=ExternalReferencesConfig
-    )
     lucky_skin_window: LuckySkinWindowConfig = Field(
         default_factory=LuckySkinWindowConfig
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def reject_unknown_external_references(cls, value: object) -> object:
-        if not isinstance(value, dict):
-            return value
-        references = value.get("external_references")
-        if not isinstance(references, dict):
-            return value
-        unknown = set(references).difference(ExternalReferencesConfig.model_fields)
-        if unknown:
-            message = ", ".join(sorted(str(key) for key in unknown))
-            raise ValueError(
-                "seer.external_references contains unknown key(s): " + message
-            )
-        return value

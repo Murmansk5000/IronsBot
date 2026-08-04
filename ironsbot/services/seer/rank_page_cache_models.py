@@ -25,14 +25,6 @@ class CachedRankLookup:
 
 
 @dataclass(frozen=True, slots=True)
-class CachedRankMiss:
-    user_id: int
-    searched_limit: int
-    fetched_at: float
-    is_stale: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class CachedRankPageSummary:
     start_index: int
     end_index: int

@@ -13,10 +13,6 @@ from ironsbot.services.operations.headless_errors import (
     NotLoggedInError,
 )
 from ironsbot.services.operations.headless_pool import HeadlessRequestPriority
-from ironsbot.services.seer.external_references import (
-    SeerInfoReference,
-    SeerInfoReferences,
-)
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
@@ -66,12 +62,10 @@ class ServerStatusService:
         notices: ServerNoticeSource,
         *,
         dedicated_sessions: HeadlessSessionFactory | None = None,
-        external_references: SeerInfoReferences | None = None,
     ) -> None:
         self._headless = headless
         self._notices = notices
         self._dedicated_sessions = dedicated_sessions
-        self._external_references = external_references
 
     async def query_headless_instances(self) -> ServerStatusResult:
         public_online = self._headless.healthy_worker_count
@@ -95,9 +89,6 @@ class ServerStatusService:
         queued = _format_public_pool_queue(pending)
         if queued:
             lines.append(f"公共查询等待：{queued}")
-        active = getattr(self._headless, "active_request_summaries", ())
-        if active:
-            lines.append(f"公共查询执行中：{'；'.join(active)}")
         if self._dedicated_sessions is not None:
             labels = self._dedicated_sessions.active_sessions_by_label
             if labels:
@@ -112,9 +103,9 @@ class ServerStatusService:
         now = datetime.now(LOCAL_TZ)
         status = self._headless_status()
         await self._record_status(status, source="开服了吗")
-        return ServerStatusResult(message=self._with_reference(
-            await self._notice_reply(status, now)
-        ))
+        return ServerStatusResult(
+            message=await self._notice_reply(status, now),
+        )
 
     async def query_admin(self) -> ServerStatusResult:
         now = datetime.now(LOCAL_TZ)
@@ -142,14 +133,8 @@ class ServerStatusService:
                 lines.append(f"重连结果：已登录米米号 {user_id}。")
 
         lines.extend(("", await self._notice_reply(status, now)))
-        return ServerStatusResult(message=self._with_reference("\n".join(lines)))
-
-    def _with_reference(self, message: str) -> str:
-        if self._external_references is None:
-            return message
-        return self._external_references.append(
-            message,
-            SeerInfoReference.SERVER_STATUS,
+        return ServerStatusResult(
+            message="\n".join(lines),
         )
 
     def _headless_status(self) -> _HeadlessStatus:

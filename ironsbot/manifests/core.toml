@@ -1,0 +1,22 @@
+[tool.nonebot]
+plugin_dirs = []
+
+[tool.nonebot.plugins]
+"@local" = [
+  "nonebot_plugin_saa",
+  "ironsbot.plugins.onebot.bootstrap",
+  "ironsbot.plugins.about",
+  "ironsbot.plugins.help",
+  "ironsbot.plugins.help.hint",
+  "ironsbot.plugins.sendpic",
+  "ironsbot.plugins.messaging.blacklist",
+  "ironsbot.plugins.messaging.meeting",
+  "ironsbot.plugins.messaging.red_packet",
+  "ironsbot.plugins.fire_manual_ad",
+  "ironsbot.plugins.seer.rank_help",
+  "ironsbot.plugins.team_audit",
+  "ironsbot.plugins.team.resource",
+  "ironsbot.plugins.activity",
+  "ironsbot.plugins.headless_seer_notice",
+  "ironsbot.plugins.scheduled_restart",
+]

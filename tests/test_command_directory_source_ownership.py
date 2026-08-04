@@ -4,10 +4,10 @@ from ironsbot.app.command_directory.operations import (
     server_status_commands,
 )
 from ironsbot.app.command_directory.plugins import (
-    activity_commands,
     bilibili_commands,
 )
 from ironsbot.app.command_directory.seer import seer_query_commands
+from ironsbot.plugins.activity import command_descriptors as activity_commands
 from ironsbot.plugins.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,
@@ -21,13 +21,13 @@ from ironsbot.plugins.operations.db_sync import (
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
+    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMANDS,
+    NORMAL_SERVER_STATUS_COMMAND,
 )
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
-    NEW_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
 )
 from ironsbot.services.seer.data_query_commands import (
@@ -57,7 +57,6 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
         f"/{DYNAMIC_UPDATE_COMMANDS[0]}",
     )
     assert activity["activity.ending"].examples == SOON_ENDING_ACTIVITY_COMMANDS[:1]
-    assert activity["activity.new"].examples == NEW_ACTIVITY_COMMANDS[:1]
     assert activity["activity.current"].examples == (
         f"/{CURRENT_ACTIVITY_COMMANDS[0]}",
     )
@@ -68,13 +67,13 @@ def test_operation_examples_use_matcher_command_sources() -> None:
     docker = _by_id(docker_update_commands())
     sync = _by_id(data_sync_commands())
 
-    assert status["server_status.query"].examples == NORMAL_SERVER_STATUS_COMMANDS
+    assert status["server_status.query"].examples == (NORMAL_SERVER_STATUS_COMMAND,)
     assert status["server_status.admin_query"].examples == (
         ADMIN_SERVER_STATUS_COMMAND,
     )
     assert docker["docker_update.restart"].examples == BOT_RESTART_COMMANDS
     assert docker["docker_update.image_update"].examples == DOCKER_UPDATE_COMMANDS
-    assert "docker_update.image_check" not in docker
+    assert docker["docker_update.image_check"].examples == DOCKER_CHECK_UPDATE_COMMANDS
     assert sync["db_sync.update"].examples == tuple(
         f"/{command}" for command in MANUAL_SYNC_COMMANDS
     )
@@ -87,18 +86,3 @@ def test_data_query_examples_use_matcher_command_sources() -> None:
     seer = _by_id(seer_query_commands())
 
     assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES
-
-
-def test_autocard_sanctuary_command_is_listed_separately_from_cards() -> None:
-    seer = _by_id(seer_query_commands())
-
-    assert seer["seer.autocard.query"].examples == (
-        "群星牌布布种子",
-        "布布种子群星牌",
-        "群星牌卡98",
-    )
-    assert seer["seer.autocard.sanctuary"].examples == (
-        "场地沧岚",
-        "场地潮涌",
-        "祝印碧流",
-    )

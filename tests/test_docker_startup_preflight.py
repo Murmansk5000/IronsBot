@@ -45,7 +45,6 @@ class FakeUpdateRunner:
         self._handoff_verified = handoff_verified
         self.calls = 0
         self.handoff_checks: list[tuple[str, str]] = []
-        self.abandoned_updaters: list[str] = []
 
     async def run_update(self) -> tuple[str, DockerUpdateResult]:
         self.calls += 1
@@ -61,9 +60,6 @@ class FakeUpdateRunner:
     ) -> bool:
         self.handoff_checks.append((expected_image_id, updater_container_id))
         return self._handoff_verified
-
-    async def abandon_update_handoff(self, *, updater_container_id: str) -> None:
-        self.abandoned_updaters.append(updater_container_id)
 
 
 def _store(tmp_path: Path) -> DockerStartupPreflightStore:
@@ -241,7 +237,7 @@ def test_source_instance_waits_without_restarting_watchtower(tmp_path: Path) -> 
     assert runner.handoff_checks == [("sha256:expected", "watchtower-id")]
 
 
-def test_unverified_handoff_failure_continues_current_image(tmp_path: Path) -> None:
+def test_unverified_handoff_failure_keeps_boot_blocked(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.save(
         DockerStartupPreflightRecord(
@@ -260,74 +256,8 @@ def test_unverified_handoff_failure_continues_current_image(tmp_path: Path) -> N
         DockerStartupPreflightService(DockerUpdateConfig(), runner, store).run()
     )
 
-    assert action is DockerStartupPreflightAction.CONTINUE
-    assert runner.calls == 1
-    assert runner.abandoned_updaters == ["watchtower-id"]
-    notice = consume_docker_startup_preflight_notice(store)
-    assert notice is not None
-    assert "已继续启动当前镜像" in notice
-
-
-def test_source_handoff_timeout_continues_current_image(tmp_path: Path) -> None:
-    store = _store(tmp_path)
-    store.save(
-        DockerStartupPreflightRecord(
-            container_name="ironsbot",
-            image="murmansk5000/ironsbot:latest",
-            result=DockerUpdateResult(
-                ok=True,
-                updater_container_id="watchtower-id",
-                current_image_id="sha256:old",
-                target_image_id="sha256:expected",
-            ),
-            source_instance_id="old-container",
-            created_at=0,
-        )
-    )
-    runner = FakeUpdateRunner(AssertionError("must not retry on source instance"))
-
-    action = asyncio.run(
-        DockerStartupPreflightService(
-            DockerUpdateConfig(handoff_timeout_seconds=60),
-            runner,
-            store,
-            instance_id="old-container",
-            now=lambda: 60,
-        ).run()
-    )
-
-    assert action is DockerStartupPreflightAction.CONTINUE
-    assert runner.calls == 0
-    assert runner.abandoned_updaters == ["watchtower-id"]
-
-
-def test_handoff_failure_can_keep_strict_waiting_when_fallback_is_disabled(
-    tmp_path: Path,
-) -> None:
-    store = _store(tmp_path)
-    store.save(
-        DockerStartupPreflightRecord(
-            container_name="ironsbot",
-            image="murmansk5000/ironsbot:latest",
-            result=DockerUpdateResult(
-                ok=True,
-                updater_container_id="watchtower-id",
-                target_image_id="sha256:expected",
-            ),
-        )
-    )
-    runner = FakeUpdateRunner(DockerUpdateResult(ok=False, message="pull failed"))
-
-    action = asyncio.run(
-        DockerStartupPreflightService(
-            DockerUpdateConfig(fallback_to_current_image_on_handoff_failure=False),
-            runner,
-            store,
-        ).run()
-    )
-
     assert action is DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
-    assert runner.abandoned_updaters == []
+    assert runner.calls == 1
 
 
 def test_preflight_records_failure_and_allows_boot(tmp_path: Path) -> None:
@@ -352,11 +282,11 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert 'ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]' in dockerfile
     assert 'CMD ["python", "-m", "ironsbot"]' in dockerfile
     assert "python -m ironsbot.app.docker_preflight" in entrypoint
-    assert 'while [ "$preflight_status" -eq 75 ]; do' in entrypoint
-    wait_offset = entrypoint.index('while [ "$preflight_status" -eq 75 ]; do')
+    assert "while :; do" in entrypoint
+    wait_offset = entrypoint.index("while :; do")
     app_start_offset = entrypoint.index('exec "$@"')
     assert wait_offset < app_start_offset
-    assert "run_preflight" in entrypoint[wait_offset:app_start_offset]
+    assert "break" not in entrypoint[wait_offset:app_start_offset]
     assert 'exec "$@"' in entrypoint
 
 

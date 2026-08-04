@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 
 from ironsbot.app.command_directory.rows import commands_from_rows
-from ironsbot.core.messaging import FIXED_IMAGE_COMMANDS
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
 
@@ -26,11 +25,7 @@ def messaging_help_visible(
 ) -> bool:
     if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return False
-    actions = [
-        *config.commands,
-        *config.keyword_replies,
-        *config.schedules,
-    ]
+    actions = [*config.commands, *config.keyword_replies, *config.schedules]
     return any(
         action.enabled
         and event_is_feature_visible_in_help(features, event, action.feature)
@@ -107,7 +102,7 @@ def configured_message_commands(
                 (
                     "messaging.push_subscription",
                     subscription_commands,
-                    "查看推送订阅；群主和管理员可切换订阅",
+                    "查看当前会话的推送订阅；群主和管理员可切换本群订阅",
                     {
                         "show_in_poke": True,
                         "interaction": "conversation",
@@ -117,13 +112,13 @@ def configured_message_commands(
         ),
         *commands_from_rows(
             "messaging",
-            "群管理",
+            "本群管理",
             None,
             (
                 (
                     "messaging.push_time",
                     ("推送时间", "提醒时间"),
-                    "管理定时推送和活动提醒时间",
+                    "管理本群定时推送和活动提醒时间",
                     {
                         "access": (CommandAccess("group", "group_manager"),),
                         "show_in_poke": True,
@@ -145,37 +140,8 @@ def _schedule_label(
     return f"{title}（{timing}）"
 
 
-def configured_image_commands(config: Settings) -> tuple[CommandDescriptor, ...]:
-    fixed = tuple(
-        CommandDescriptor(
-            id=f"sendpic.fixed.{command}",
-            plugin_id="sendpic",
-            section="固定图片",
-            examples=(command,),
-            description="发送固定图片",
-            features_any=("image",),
-            show_in_poke=True,
-        )
-        for command in FIXED_IMAGE_COMMANDS
-    )
-    configured = tuple(
-        CommandDescriptor(
-            id=f"sendpic.{item.id}",
-            plugin_id="sendpic",
-            section="自定义图片",
-            examples=(item.command, *sorted(item.aliases)),
-            description="发送配置的图片；可在命令后附加编号",
-            features_any=("image",),
-            show_in_poke=True,
-        )
-        for item in config.messaging.sendpic.configs
-        if item.id in config.messaging.sendpic.enabled_ids
-    )
-    return (*fixed, *configured)
-
-
 def ai_intent_commands(config: Settings) -> tuple[CommandDescriptor, ...]:
-    if not config.ai.ai_enabled or not config.ai.intent_actions_enabled:
+    if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
         return ()
     return tuple(
         CommandDescriptor(

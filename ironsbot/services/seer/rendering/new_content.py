@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from typing import TYPE_CHECKING, TypedDict
 
 from ironsbot.services.seer.autocard import (
@@ -11,16 +12,12 @@ from ironsbot.services.seer.autocard import (
     AutocardPromptValue,
     AutocardService,
 )
-from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
 from ironsbot.services.seer.images import ImageSourceError, SeerImageSource, to_data_uri
 from ironsbot.services.seer.new_content import (
     CATEGORY_NAMES,
-    PEAK_POOL_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
-    format_new_content_category_count,
-    new_content_category_preview_items,
 )
 from ironsbot.services.seer.render_paths import (
     NEW_CONTENT_TEMPLATE_PATH,
@@ -29,16 +26,6 @@ from ironsbot.services.seer.render_paths import (
 )
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
-from .new_content_change_details import with_change_summary
-from .new_content_pool_changes import (
-    PoolChangePreviewDict,
-    load_pool_change_images,
-    pool_change_preview,
-)
-from .new_content_render_policy import (
-    item_requires_image as _item_requires_image,
-)
-from .new_content_render_policy import new_content_cache_key as _cache_key
 from .new_content_skill_details import (
     SKILL_CATEGORY_ATTRIBUTE as _SKILL_CATEGORY_ATTRIBUTE,
 )
@@ -76,10 +63,8 @@ class NewContentMenuItemDict(TypedDict):
     is_category: bool
     expanded: bool
     image: str | None
-    image_notice: str
     skill: SkillDict | None
     friend_skill: SkillDict | None
-    pool_preview: PoolChangePreviewDict | None
 
 
 _EQUIP_PART_TYPE_NAMES = {
@@ -91,7 +76,6 @@ _EQUIP_PART_TYPE_NAMES = {
     5: "背景",
     6: "星际座驾",
 }
-MOUNT_IMAGE_PENDING_NOTICE = "官方图片暂未上线"
 
 
 async def render_new_content_menu(  # noqa: PLR0913
@@ -103,41 +87,22 @@ async def render_new_content_menu(  # noqa: PLR0913
     snapshot: NewContentSnapshot,
     display_categories: tuple[NewContentCategory, ...],
     focused_category: NewContentCategory | None,
-    menu_title: str = "新增内容",
-    expanded_categories: frozenset[NewContentCategory] = frozenset(),
-    auto_expand_max_items: int = 5,
 ) -> bytes:
     """Render the active categories and items without requiring every asset."""
+
     content_key = _cache_key(
         snapshot,
         display_categories,
         focused_category,
-        menu_title,
-        expanded_categories,
-        auto_expand_max_items,
     )
     if cached := cache.get("new_content", content_key):
         return cached
-    pool_items = (
-        tuple(
-            item
-            for item in snapshot.items
-            if item.category in PEAK_POOL_NEW_CONTENT_CATEGORIES
-            and item.category in display_categories
-        )
-        if focused_category is None
-        else ()
-    )
-    pool_images = await load_pool_change_images(images, pool_items)
-    cacheable = all(image is not None for image in pool_images.values())
+
     rows: list[NewContentMenuItemDict] = []
     item_rows: list[tuple[int, NewContentItem, _ItemDetails]] = []
     if focused_category is not None:
         for index, item in enumerate(snapshot.items_for(focused_category), start=1):
-            details = with_change_summary(
-                _item_details(data, autocard, item),
-                item,
-            )
+            details = _item_details(data, autocard, item)
             rows.append(
                 {
                     "code": str(index),
@@ -157,10 +122,8 @@ async def render_new_content_menu(  # noqa: PLR0913
                     "is_category": False,
                     "expanded": False,
                     "image": None,
-                    "image_notice": "",
                     "skill": details.skill,
                     "friend_skill": details.friend_skill,
-                    "pool_preview": None,
                 }
             )
             item_rows.append((len(rows) - 1, item, details))
@@ -168,32 +131,11 @@ async def render_new_content_menu(  # noqa: PLR0913
         for index, category in enumerate(display_categories):
             code = chr(ord("a") + index)
             items = snapshot.items_for(category)
-            pool_preview = (
-                pool_change_preview(category, items, pool_images)
-                if category in PEAK_POOL_NEW_CONTENT_CATEGORIES
-                else None
-            )
-            preview_items = (
-                new_content_category_preview_items(
-                    snapshot,
-                    category,
-                    auto_expand_max_items,
-                )
-                if category in expanded_categories
-                and category not in PEAK_POOL_NEW_CONTENT_CATEGORIES
-                and auto_expand_max_items > 0
-                else ()
-            )
-            expanded = bool(preview_items)
             rows.append(
                 {
                     "code": code,
                     "name": CATEGORY_NAMES[category],
-                    "description": (
-                        f"{len(items)} 只变化"
-                        if category in PEAK_POOL_NEW_CONTENT_CATEGORIES
-                        else format_new_content_category_count(items)
-                    ),
+                    "description": f"{len(items)} 项",
                     "metadata": "",
                     "side_title": "",
                     "side_description": "",
@@ -206,60 +148,27 @@ async def render_new_content_menu(  # noqa: PLR0913
                     "gender_icon": None,
                     "image_layout": "square",
                     "is_category": True,
-                    "expanded": expanded,
+                    "expanded": False,
                     "image": None,
-                    "image_notice": "",
                     "skill": None,
                     "friend_skill": None,
-                    "pool_preview": pool_preview,
                 }
             )
-            if expanded:
-                for item_index, item in enumerate(preview_items, start=1):
-                    details = with_change_summary(
-                        _item_details(data, autocard, item),
-                        item,
-                    )
-                    rows.append(
-                        {
-                            "code": f"{code}{item_index}",
-                            "name": item.name,
-                            "description": details.description,
-                            "metadata": details.metadata,
-                            "side_title": details.side_title,
-                            "side_description": details.side_description,
-                            "stats": details.stats,
-                            "stats_layout": details.stats_layout,
-                            "stats_total": details.stats_total,
-                            "type_name": details.type_name,
-                            "gender_name": details.gender_name,
-                            "type_icon": None,
-                            "gender_icon": _gender_icon_data_uri(details.gender_id),
-                            "image_layout": _item_image_layout(item),
-                            "is_category": False,
-                            "expanded": False,
-                            "image": None,
-                            "image_notice": "",
-                            "skill": details.skill,
-                            "friend_skill": details.friend_skill,
-                            "pool_preview": None,
-                        }
-                    )
-                    item_rows.append((len(rows) - 1, item, details))
+
     image_results = await asyncio.gather(
         *(
             _item_visuals(data, images, autocard, item, details)
             for _row_index, item, details in item_rows
         )
     )
-    for (row_index, item, _details), (image, type_icon, image_notice) in zip(
+    cacheable = True
+    for (row_index, item, _details), (image, type_icon) in zip(
         item_rows,
         image_results,
         strict=True,
     ):
         rows[row_index]["image"] = image
         rows[row_index]["type_icon"] = type_icon
-        rows[row_index]["image_notice"] = image_notice
         if _item_requires_image(item) and image is None:
             cacheable = False
 
@@ -274,10 +183,8 @@ async def render_new_content_menu(  # noqa: PLR0913
         template_name="template.html.j2",
         templates={
             "content_date": snapshot.weekly_cycle,
-            "menu_title": menu_title,
             "items": rows,
             "skill_type_icons": skill_type_icons,
-            "focused_category": focused_category,
         },
         max_width=1080,
         allow_refit=False,
@@ -290,13 +197,13 @@ async def render_new_content_menu(  # noqa: PLR0913
 async def _load_skill_type_icons(
     images: SeerImageSource,
     item_rows: list[tuple[int, NewContentItem, _ItemDetails]],
-    image_results: list[tuple[str | None, str | None, str]],
+    image_results: list[tuple[str | None, str | None]],
 ) -> dict[int | str, str]:
     """Build the icon map expected by the shared pet skill-card macro."""
 
     type_icons: dict[int | str, str] = {"prop": ""}
     has_attribute_skill = False
-    for (_row_index, _item, details), (_image, type_icon, _image_notice) in zip(
+    for (_row_index, _item, details), (_image, type_icon) in zip(
         item_rows,
         image_results,
         strict=True,
@@ -318,17 +225,12 @@ async def _item_visuals(
     autocard: AutocardService,
     item: NewContentItem,
     details: _ItemDetails,
-) -> tuple[str | None, str | None, str]:
+) -> tuple[str | None, str | None]:
     image, type_icon = await asyncio.gather(
         _item_image(data, images, autocard, item),
         _type_icon(images, details.type_id),
     )
-    image_notice = (
-        MOUNT_IMAGE_PENDING_NOTICE
-        if item.category == "mount" and image is None
-        else ""
-    )
-    return image, type_icon, image_notice
+    return image, type_icon
 
 
 async def _type_icon(
@@ -441,11 +343,9 @@ def _suit_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
             return _fallback_details(item)
         return _ItemDetails(
             metadata=f"ID：{suit.id}",
-            description=str(suit.suit_desc or "暂无官方介绍").strip(),
+            description="",
             side_title="套装效果",
-            side_description=str(
-                suit.bonus.desc if suit.bonus is not None else "暂无套装效果"
-            ).strip(),
+            side_description=str(suit.suit_desc or "暂无官方简介").strip(),
         )
 
 
@@ -612,6 +512,21 @@ def _gender_name(value: str) -> str:
     }.get(value.casefold(), value)
 
 
+def _cache_key(
+    snapshot: NewContentSnapshot,
+    categories: tuple[NewContentCategory, ...],
+    focused_category: NewContentCategory | None,
+) -> str:
+    raw = "|".join(
+        (
+            snapshot.config_version,
+            ",".join(categories),
+            focused_category or "root",
+        )
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
 async def _item_image(
     data: SeerDataAccess,
     images: SeerImageSource,
@@ -628,8 +543,6 @@ async def _item_image(
             image = await _achievement_title_image(images, item)
         elif item.category in {"autocard_card", "autocard_role"}:
             image = await _autocard_item_image(images, autocard, item)
-        elif item.category == "mount":
-            image = await _mount_item_image(data, images, item)
         elif image_request := _item_image_request(data, item):
             kind, resource_id = image_request
             image = await _fetch_data_uri(images, kind, resource_id)
@@ -637,18 +550,6 @@ async def _item_image(
         return None
     else:
         return image
-
-
-async def _mount_item_image(
-    data: SeerDataAccess,
-    images: SeerImageSource,
-    item: NewContentItem,
-) -> str | None:
-    try:
-        return await _fetch_data_uri(images, "equip", item.entity_id)
-    except ImageSourceError:
-        fallback = load_flash_mount_image(data, item.entity_id)
-        return None if fallback is None else to_data_uri(fallback)
 
 
 def _item_image_request(
@@ -667,6 +568,29 @@ def _item_image_request(
     }
     kind = image_kinds.get(item.category)
     return None if kind is None else (kind, item.entity_id)
+
+
+def _item_requires_image(item: NewContentItem) -> bool:
+    if item.category in {
+        "pet",
+        "pet_skin",
+        "mintmark",
+        "suit",
+        "equip",
+        "mount",
+        "autocard_card",
+        "autocard_role",
+    }:
+        return True
+    if item.category != "achievement":
+        return False
+    titles = item.payload.get("titles", [])
+    return bool(
+        isinstance(titles, list)
+        and titles
+        and isinstance(titles[0], dict)
+        and titles[0].get("id", titles[0].get("title_id", 0))
+    )
 
 
 async def _autocard_item_image(

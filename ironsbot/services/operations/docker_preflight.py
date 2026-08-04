@@ -4,8 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, replace
 from enum import IntEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -17,8 +16,6 @@ from .docker_formatting import (
 from .docker_models import DockerUpdateResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ironsbot.config.models.operations import DockerUpdateConfig
 
 DEFAULT_DOCKER_STARTUP_PREFLIGHT_PATH = Path(
@@ -46,12 +43,6 @@ class DockerUpdateRunner(Protocol):
         updater_container_id: str,
     ) -> bool: ...
 
-    async def abandon_update_handoff(
-        self,
-        *,
-        updater_container_id: str,
-    ) -> None: ...
-
 
 @dataclass(frozen=True, slots=True)
 class DockerStartupPreflightRecord:
@@ -60,7 +51,6 @@ class DockerStartupPreflightRecord:
     result: DockerUpdateResult
     source_instance_id: str = ""
     handoff_completed: bool = False
-    created_at: float = field(default_factory=time.time)
 
 
 class DockerStartupPreflightStore:
@@ -88,7 +78,6 @@ class DockerStartupPreflightStore:
                     "result": asdict(record.result),
                     "source_instance_id": record.source_instance_id,
                     "handoff_completed": record.handoff_completed,
-                    "created_at": record.created_at,
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -126,7 +115,6 @@ def _record_from_payload(payload: object) -> DockerStartupPreflightRecord:
     result = payload.get("result")
     source_instance_id = payload.get("source_instance_id", "")
     handoff_completed = payload.get("handoff_completed", False)
-    created_at = payload.get("created_at", 0.0)
     if not isinstance(container_name, str) or not isinstance(image, str):
         raise DockerStartupPreflightRecordError
     if not isinstance(result, dict):
@@ -135,15 +123,12 @@ def _record_from_payload(payload: object) -> DockerStartupPreflightRecord:
         raise DockerStartupPreflightRecordError
     if not isinstance(handoff_completed, bool):
         raise DockerStartupPreflightRecordError
-    if not isinstance(created_at, int | float):
-        raise DockerStartupPreflightRecordError
     return DockerStartupPreflightRecord(
         container_name=container_name,
         image=image,
         result=DockerUpdateResult(**result),
         source_instance_id=source_instance_id,
         handoff_completed=handoff_completed,
-        created_at=float(created_at),
     )
 
 
@@ -155,7 +140,6 @@ class DockerStartupPreflightService:
         store: DockerStartupPreflightStore,
         *,
         instance_id: str | None = None,
-        now: Callable[[], float] = time.time,
     ) -> None:
         self._config = config
         self._update_runner = update_runner
@@ -163,7 +147,6 @@ class DockerStartupPreflightService:
         self._instance_id = (
             instance_id if instance_id is not None else os.environ.get("HOSTNAME", "")
         )
-        self._now = now
 
     async def run(self) -> DockerStartupPreflightAction:
         if not self._config.check_on_startup:
@@ -174,30 +157,16 @@ class DockerStartupPreflightService:
 
         pending_handoff = self._pending_handoff()
         if pending_handoff is not None:
-            return await self._handle_pending_handoff(pending_handoff)
+            if self._is_source_instance(pending_handoff):
+                logger.warning(
+                    "Docker image handoff is still waiting for Watchtower: "
+                    "container=%s updater=%s",
+                    pending_handoff.container_name,
+                    pending_handoff.result.updater_container_id,
+                )
+                return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
+            return await self._retry_pending_handoff(pending_handoff)
 
-        return await self._start_update()
-
-    async def _handle_pending_handoff(
-        self,
-        record: DockerStartupPreflightRecord,
-    ) -> DockerStartupPreflightAction:
-        if not self._is_source_instance(record):
-            return await self._retry_pending_handoff(record)
-        if self._handoff_has_timed_out(record):
-            return await self._fallback_to_current_image(
-                record,
-                "等待 Watchtower 交接超时",
-            )
-        logger.warning(
-            "Docker image handoff is still waiting for Watchtower: "
-            "container=%s updater=%s",
-            record.container_name,
-            record.result.updater_container_id,
-        )
-        return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
-
-    async def _start_update(self) -> DockerStartupPreflightAction:
         try:
             container_name, result = await self._update_runner.run_update()
         except Exception as error:
@@ -290,21 +259,16 @@ class DockerStartupPreflightService:
             container_name, result = await self._update_runner.run_update()
         except Exception:
             logger.exception("could not retry pending Docker image handoff")
-            return await self._fallback_to_current_image(
-                record,
-                "重新发起 Watchtower 更新失败",
-            )
+            return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
 
         if not result.ok:
             logger.error(
-                "Docker image handoff retry failed: container=%s error=%s",
+                "Docker image handoff retry failed; waiting for retained "
+                "Watchtower logs: container=%s error=%s",
                 record.container_name,
                 result.message,
             )
-            return await self._fallback_to_current_image(
-                record,
-                f"重新拉取或更新镜像失败：{result.message or '未知错误'}",
-            )
+            return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
 
         self._save_result(container_name, result)
         if result.up_to_date:
@@ -312,65 +276,11 @@ class DockerStartupPreflightService:
         if result.updater_container_id:
             return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
         logger.error(
-            "Docker image handoff retry returned no updater: container=%s",
+            "Docker image handoff retry returned no updater; keeping the "
+            "application stopped: container=%s",
             record.container_name,
         )
-        return await self._fallback_to_current_image(
-            record,
-            "更新器未能启动",
-        )
-
-    def _handoff_has_timed_out(self, record: DockerStartupPreflightRecord) -> bool:
-        if record.created_at <= 0:
-            return True
-        return self._now() - record.created_at >= float(
-            self._config.handoff_timeout_seconds
-        )
-
-    async def _fallback_to_current_image(
-        self,
-        record: DockerStartupPreflightRecord,
-        reason: str,
-    ) -> DockerStartupPreflightAction:
-        if not self._config.fallback_to_current_image_on_handoff_failure:
-            logger.error(
-                "Docker image handoff failed and fallback is disabled: "
-                "container=%s reason=%s",
-                record.container_name,
-                reason,
-            )
-            return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
-        try:
-            await self._update_runner.abandon_update_handoff(
-                updater_container_id=record.result.updater_container_id,
-            )
-        except Exception:  # noqa: BLE001 - fallback must never block startup
-            logger.warning(
-                "could not remove failed Watchtower updater: %s",
-                record.result.updater_container_id,
-                exc_info=True,
-            )
-        fallback_result = DockerUpdateResult(
-            ok=False,
-            message=(
-                f"Docker 镜像更新未完成（{reason}），"
-                "已继续启动当前镜像。"
-            ),
-            current_image_id=record.result.current_image_id,
-            current_image_created=record.result.current_image_created,
-            current_image_commit=record.result.current_image_commit,
-            target_image_id=record.result.target_image_id,
-            target_image_created=record.result.target_image_created,
-            target_image_commit=record.result.target_image_commit,
-        )
-        self._save_result(record.container_name, fallback_result)
-        logger.error(
-            "Docker image handoff failed; continuing current image: "
-            "container=%s reason=%s",
-            record.container_name,
-            reason,
-        )
-        return DockerStartupPreflightAction.CONTINUE
+        return DockerStartupPreflightAction.WAIT_FOR_WATCHTOWER
 
     def _save_result(self, container_name: str, result: DockerUpdateResult) -> None:
         try:
@@ -380,7 +290,6 @@ class DockerStartupPreflightService:
                     image=str(self._config.image),
                     result=result,
                     source_instance_id=self._instance_id,
-                    created_at=self._now(),
                 )
             )
         except OSError:

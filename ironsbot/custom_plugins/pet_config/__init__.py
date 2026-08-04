@@ -15,7 +15,7 @@ from ironsbot.runtime.feature_policy import (
     feature_rule,
 )
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.runtime.plugins import HelpEntry, PluginDefinition
+from ironsbot.runtime.plugins import HelpEntry, PluginContribution
 from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
@@ -32,8 +32,8 @@ def plugin_definition(
     service: PetConfigQueryService,
     features: FeatureService,
     config: PetConfigConfig,
-) -> PluginDefinition:
-    return PluginDefinition(
+) -> PluginContribution:
+    return PluginContribution(
         id="pet_config",
         features=frozenset({Feature.PET_CONFIG}),
         help=HelpEntry(

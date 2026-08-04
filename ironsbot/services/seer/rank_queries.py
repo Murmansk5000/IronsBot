@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar
 
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -30,12 +31,6 @@ from ironsbot.services.seer.player_request_protection import (
     PlayerRequestReconnectError,
     player_request_protection_message,
 )
-from ironsbot.services.seer.query_result import QueryReply
-from ironsbot.services.seer.query_work import (
-    QueryWorkMeter,
-    query_work_scope,
-    record_rank_lookup_work,
-)
 from ironsbot.services.seer.rank_list_formatting import timestamp_text
 from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_message,
@@ -50,7 +45,6 @@ from ironsbot.services.seer.rank_list_score_messages import (
 )
 from ironsbot.services.seer.rank_player_query import (
     RankPlayerQueryResult,
-    fetch_cached_rank_player_result,
     fetch_rank_player_result,
 )
 
@@ -87,7 +81,6 @@ T = TypeVar("T")
 class RankQueryPolicy:
     player_error: PlayerErrorFormatter
     player_timeout_seconds: float
-    is_superuser: Callable[[int], bool]
 
 
 class RankQueryService:
@@ -119,34 +112,11 @@ class RankQueryService:
         qq_user_id: int | None = None,
         group_id: int | None = None,
     ) -> str:
-        return (
-            await self.list_reply(
-                command,
-                qq_user_id=qq_user_id,
-                group_id=group_id,
-            )
-        ).text
-
-    async def list_reply(
-        self,
-        command: RankListCommand,
-        *,
-        qq_user_id: int | None = None,
-        group_id: int | None = None,
-    ) -> QueryReply:
         if command.kind == "local":
-            return QueryReply(text=self._local_message(command))
-        quota_message = self._check_general_quota(
-            qq_user_id,
-            action_key=f"rank:list:{command.rank_key}",
-        )
-        if quota_message:
-            return self._cached_list_reply(command) or QueryReply(text=quota_message)
-        meter = QueryWorkMeter("foreground")
+            return self._local_message(command)
         try:
-            text = await self._run_headless_request(
-                lambda: self._global_message_with_work(
-                    meter,
+            return await self._run_headless_request(
+                lambda: self._global_message(
                     self._headless.get_game(),
                     command,
                     group_id=group_id,
@@ -155,8 +125,7 @@ class RankQueryService:
                 label="榜单查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return QueryReply(text=player_request_protection_message(error))
-        return QueryReply(text=text, query_work=meter.result())
+            return player_request_protection_message(error)
 
     async def score(
         self,
@@ -165,71 +134,39 @@ class RankQueryService:
         group_id: int | None,
         qq_user_id: int | None = None,
     ) -> str:
-        return (
-            await self.score_reply(
-                command,
-                group_id=group_id,
-                qq_user_id=qq_user_id,
-            )
-        ).text
-
-    async def score_reply(
-        self,
-        command: RankScoreCommand,
-        *,
-        group_id: int | None,
-        qq_user_id: int | None = None,
-    ) -> QueryReply:
-        quota_message = self._check_general_quota(
-            qq_user_id,
-            action_key=f"rank:score:{command.rank_key}",
-        )
-        if quota_message:
-            return self._cached_score_reply(
-                command,
-                display_limit=self.default_limit(group_id),
-            ) or QueryReply(text=quota_message)
-        meter = QueryWorkMeter("foreground")
-        use_superuser_limit = (
-            qq_user_id is not None and self._policy.is_superuser(int(qq_user_id))
-        )
         try:
-            text = await self._run_headless_request(
-                lambda: self._score_message_with_work(
-                    meter,
+            return await self._run_headless_request(
+                lambda: self._score_message(
                     self._headless.get_game(),
                     command,
                     display_limit=self.default_limit(group_id),
                     group_id=group_id,
-                    use_superuser_limit=use_superuser_limit,
                 ),
                 user_id=qq_user_id,
                 label="榜单分数查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return QueryReply(text=player_request_protection_message(error))
-        return QueryReply(text=text, query_work=meter.result())
+            return player_request_protection_message(error)
 
-    async def player_reply(  # noqa: PLR0911 - distinct query failure replies
+    async def player(  # noqa: PLR0911 - distinct query failure replies
         self,
         command: RankPlayerCommand,
         *,
         qq_user_id: int | None = None,
         group_id: int | None = None,
-    ) -> QueryReply:
+    ) -> str:
         spec = GLOBAL_RANKS[command.rank_key]
         if not is_valid_player_id(command.player_id):
-            return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
+            return PLAYER_ID_ERROR_MESSAGE
         quota_message = self._check_player_quota(command, qq_user_id)
-        if quota_message:
-            return self._cached_player_reply(command) or QueryReply(text=quota_message)
-        meter = QueryWorkMeter("foreground")
+        anchor_only = bool(quota_message)
         try:
             result = await self._run_headless_request(
-                lambda: self._fetch_player_message_with_work(
-                    meter,
+                lambda: self._fetch_player_message(
                     command,
+                    qq_user_id,
                     group_id=group_id,
+                    anchor_only=anchor_only,
                 ),
                 user_id=qq_user_id,
                 label="榜单玩家查询",
@@ -246,121 +183,48 @@ class RankQueryService:
                 ),
             )
         except PlayerQueryQuotaExceededError as error:
-            return QueryReply(text=error.message)
+            return error.message
         except _PLAYER_REQUEST_ERRORS as error:
-            return QueryReply(text=player_request_protection_message(error))
+            return player_request_protection_message(error)
         except TimeoutError:
-            return QueryReply(text=f"❌ {spec.title}玩家查询超时，请稍后再试。")
+            return f"❌ {spec.title}玩家查询超时，请稍后再试。"
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
-            return QueryReply(text=self._policy.player_error(command.player_id, error))
+            return self._policy.player_error(command.player_id, error)
         except Exception as error:  # noqa: BLE001
-            return QueryReply(text=f"❌ {spec.title}玩家查询失败：{error}")
-        return QueryReply(text=result.message, query_work=meter.result())
-
-    async def player(
-        self,
-        command: RankPlayerCommand,
-        *,
-        qq_user_id: int | None = None,
-        group_id: int | None = None,
-    ) -> str:
-        """Compatibility text API for non-OneBot callers."""
-
-        return (
-            await self.player_reply(
-                command,
-                qq_user_id=qq_user_id,
-                group_id=group_id,
+            return f"❌ {spec.title}玩家查询失败：{error}"
+        if quota_message:
+            return (
+                result.message
+                if result.lookup.cost.lightweight_confirmed
+                else quota_message
             )
-        ).text
-
-    def record_returned_player(
-        self,
-        command: RankPlayerCommand,
-        qq_user_id: int | None,
-        reply: QueryReply,
-    ) -> None:
-        if self._quotas is None or qq_user_id is None or reply.query_work is None:
-            return
-        self._quotas.record_successful_work(
-            qq_user_id=qq_user_id,
-            player_id=command.player_id,
-            action_key=f"rank:{command.rank_key}",
-            units=reply.query_work.billable_units,
-        )
-
-    def record_returned_general_reply(
-        self,
-        *,
-        qq_user_id: int | None,
-        action_key: str,
-        reply: QueryReply,
-    ) -> None:
-        if self._quotas is None or qq_user_id is None or reply.query_work is None:
-            return
-        self._quotas.record_general_work(
-            qq_user_id=qq_user_id,
-            action_key=action_key,
-            units=reply.query_work.billable_units,
-        )
-
-    async def _global_message_with_work(
-        self,
-        meter: QueryWorkMeter,
-        game: HeadlessGame,
-        command: RankListCommand,
-        *,
-        group_id: int | None,
-    ) -> str:
-        with query_work_scope(meter):
-            return await self._global_message(game, command, group_id=group_id)
-
-    async def _score_message_with_work(  # noqa: PLR0913
-        self,
-        meter: QueryWorkMeter,
-        game: HeadlessGame,
-        command: RankScoreCommand,
-        *,
-        display_limit: int,
-        group_id: int | None,
-        use_superuser_limit: bool,
-    ) -> str:
-        with query_work_scope(meter):
-            return await self._score_message(
-                game,
-                command,
-                display_limit=display_limit,
-                group_id=group_id,
-                use_superuser_limit=use_superuser_limit,
-            )
+        if (
+            result.lookup.failure is None
+            and not result.lookup.cost.lightweight_confirmed
+        ):
+            self._record_successful_player_quota(command, qq_user_id)
+        return result.message
 
     async def _fetch_player_message(
         self,
         command: RankPlayerCommand,
+        qq_user_id: int | None,
         *,
         group_id: int | None,
+        anchor_only: bool,
     ) -> RankPlayerQueryResult:
-        result = await asyncio.wait_for(
+        quota_message = self._check_player_quota(command, qq_user_id)
+        if quota_message and not anchor_only:
+            raise PlayerQueryQuotaExceededError(quota_message)
+        return await asyncio.wait_for(
             self._player_message(
                 self._headless.get_game(),
                 command,
                 group_id=group_id,
-                anchor_only=False,
+                anchor_only=anchor_only,
             ),
             timeout=self._policy.player_timeout_seconds,
         )
-        record_rank_lookup_work(command.rank_key, result.lookup)
-        return result
-
-    async def _fetch_player_message_with_work(
-        self,
-        meter: QueryWorkMeter,
-        command: RankPlayerCommand,
-        *,
-        group_id: int | None,
-    ) -> RankPlayerQueryResult:
-        with query_work_scope(meter):
-            return await self._fetch_player_message(command, group_id=group_id)
 
     def set_display_limit(
         self,
@@ -373,12 +237,12 @@ class RankQueryService:
         if group_id is None:
             return "❌ 这个设置只能在群聊中修改。"
         if not can_manage:
-            return "❌ 只有群主、管理员或超级管理员可以修改榜单默认显示条数。"
+            return "❌ 只有本群群主、管理员或超级管理员可以修改榜单默认显示条数。"
         max_limit = self._display.config.max_display_limit
         if limit < 1 or limit > max_limit:
             return f"❌ 榜单默认显示条数必须在 1~{max_limit} 之间，当前输入：{limit}。"
         self._display.set_group_limit(group_id, user_id, limit)
-        return f"✅ 榜单默认显示条数已设置为 {limit} 名（群号：{group_id}）。"
+        return f"✅ 本群榜单默认显示条数已设置为 {limit} 名（群号：{group_id}）。"
 
     async def _global_message(
         self,
@@ -422,7 +286,6 @@ class RankQueryService:
         *,
         display_limit: int,
         group_id: int | None,
-        use_superuser_limit: bool,
     ) -> str:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
@@ -442,7 +305,6 @@ class RankQueryService:
                 target_score=command.score,
                 rank_key=command.rank_key,
                 sample_limit=display_limit,
-                use_superuser_limit=use_superuser_limit,
             )
         logger.info(
             "rank score lookup completed: title=%s key=%s sub_key=%s "
@@ -512,73 +374,6 @@ class RankQueryService:
             requested_count=command.limit,
         )
 
-    def _cached_list_reply(self, command: RankListCommand) -> QueryReply | None:
-        spec = self._rank.get_spec(command.rank_key)
-        if self._rank.spec_needs_sub_key(spec):
-            return None
-        result = self._rank.cached_visible_range_result(
-            rank_key=command.rank_key,
-            key=spec.key,
-            sub_key=spec.sub_key,
-            start_rank=command.start_rank,
-            count=command.limit,
-        )
-        if result is None:
-            return None
-        return QueryReply(
-            text=_cache_only_message(
-                format_global_rank_message(
-                    spec,
-                    result.items,
-                    timestamp=timestamp_text(result.fetched_at),
-                    start_rank=command.start_rank,
-                    requested_count=command.limit,
-                )
-            )
-        )
-
-    def _cached_score_reply(
-        self,
-        command: RankScoreCommand,
-        *,
-        display_limit: int,
-    ) -> QueryReply | None:
-        spec = self._rank.get_spec(command.rank_key)
-        if self._rank.spec_needs_sub_key(spec):
-            return None
-        result = self._rank.cached_score_segment(
-            rank_key=command.rank_key,
-            key=spec.key,
-            sub_key=spec.sub_key,
-            title=spec.title,
-            score_name=spec.unit,
-            target_score=command.score,
-            sample_limit=display_limit,
-        )
-        if result is None:
-            return None
-        return QueryReply(
-            text=_cache_only_message(
-                format_global_rank_score_message(
-                    spec,
-                    result,
-                    timestamp=(
-                        timestamp_text(result.fetched_at) if result.fetched_at else None
-                    ),
-                    display_limit=display_limit,
-                )
-            )
-        )
-
-    def _cached_player_reply(
-        self,
-        command: RankPlayerCommand,
-    ) -> QueryReply | None:
-        cached = fetch_cached_rank_player_result(self._rank, command=command)
-        if cached is None:
-            return None
-        return QueryReply(text=_cache_only_message(cached.message))
-
     def _check_player_quota(
         self,
         command: RankPlayerCommand,
@@ -587,23 +382,9 @@ class RankQueryService:
         if self._quotas is None or qq_user_id is None:
             return ""
         decision = self._quotas.check(
-            qq_user_id=qq_user_id,
+            actor=_onebot_actor(qq_user_id),
             player_id=command.player_id,
             action_key=f"rank:{command.rank_key}",
-        )
-        return "" if decision.allowed else decision.message
-
-    def _check_general_quota(
-        self,
-        qq_user_id: int | None,
-        *,
-        action_key: str,
-    ) -> str:
-        if self._quotas is None or qq_user_id is None:
-            return ""
-        decision = self._quotas.check_general_query(
-            qq_user_id=qq_user_id,
-            action_key=action_key,
         )
         return "" if decision.allowed else decision.message
 
@@ -615,7 +396,7 @@ class RankQueryService:
         if self._quotas is None or qq_user_id is None:
             return ""
         decision = self._quotas.consume(
-            qq_user_id=qq_user_id,
+            actor=_onebot_actor(qq_user_id),
             player_id=command.player_id,
             action_key=f"rank:{command.rank_key}",
         )
@@ -661,5 +442,5 @@ _PLAYER_REQUEST_ERRORS = (
 )
 
 
-def _cache_only_message(text: str) -> str:
-    return f"{text}\n\n⚠️ 今日查询额度已用完，以上为缓存数据。"
+def _onebot_actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(int(user_id)))

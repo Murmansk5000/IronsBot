@@ -13,13 +13,11 @@ from nonebot_plugin_saa import Image, MessageFactory
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.data_query_commands import MASTER_POOL_COMMANDS
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.external_references import SeerInfoReferences
     from ironsbot.services.seer.peak import (
         PeakQueryResult,
         PeakQueryService,
@@ -33,44 +31,36 @@ async def _report_progress(matcher: Matcher, message: str) -> None:
 async def _finish_result(
     result: PeakQueryResult,
     matcher: Matcher,
-    references: SeerInfoReferences,
 ) -> None:
     if result.message:
         await matcher.finish(result.message)
         return
     if result.text:
-        await matcher.finish(references.append(result.text, result.reference))
+        await matcher.finish(result.text)
         return
     if result.image is not None:
-        message = MessageFactory(Image(result.image))
-        if url := references.url_for(result.reference):
-            message += f"\n相关查询：{url}"
-        await message.finish(at_sender=False)
+        await MessageFactory(Image(result.image)).finish(at_sender=False)
 
 
 async def _handle_pool(
     service: PeakQueryService,
-    references: SeerInfoReferences,
     matcher: Matcher,
     *,
     expert: bool,
-    master: bool = False,
 ) -> None:
     try:
         result = await service.pool(
             expert=expert,
-            master=master,
             progress=partial(_report_progress, matcher),
         )
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher, references)
+    await _finish_result(result, matcher)
 
 
 async def _handle_vote(
     service: PeakQueryService,
-    references: SeerInfoReferences,
     matcher: Matcher,
 ) -> None:
     try:
@@ -78,12 +68,11 @@ async def _handle_vote(
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher, references)
+    await _finish_result(result, matcher)
 
 
 async def _handle_item_rank(
     service: PeakQueryService,
-    references: SeerInfoReferences,
     matcher: Matcher,
     event: Event,
     *,
@@ -97,12 +86,11 @@ async def _handle_item_rank(
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher, references)
+    await _finish_result(result, matcher)
 
 
 async def _handle_pet_rank(
     service: PeakQueryService,
-    references: SeerInfoReferences,
     matcher: Matcher,
     event: Event,
 ) -> None:
@@ -114,17 +102,16 @@ async def _handle_pet_rank(
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    await _finish_result(result, matcher, references)
+    await _finish_result(result, matcher)
 
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.peak_query
-    references = group.resources.external_references
     rule = seer_feature_rule(group.features, "seer_peak") & explicit_command()
     priority = group.matcher_priority("seer_peak")
 
     pool = group.on_fullmatch(
-        ("竞技池", "竞技池变化", "巅峰竞技池", "竞技精灵池", "限制池"),
+        ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
         policy=CommandPolicy.command(
             "seer_peak_pool",
             help_ids=("seer.peak.query",),
@@ -132,10 +119,10 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pool.append_handler(bind_async(_handle_pool, service, references, expert=False))
+    pool.append_handler(bind_async(_handle_pool, service, expert=False))
 
     expert_pool = group.on_fullmatch(
-        ("专家池", "专家池变化", "巅峰专家池", "专家禁用池"),
+        ("专家池", "巅峰专家池", "专家禁用池"),
         policy=CommandPolicy.command(
             "seer_peak_expert_pool",
             help_ids=("seer.peak.query",),
@@ -143,21 +130,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    expert_pool.append_handler(
-        bind_async(_handle_pool, service, references, expert=True)
-    )
-
-    master_pool = group.on_fullmatch(
-        MASTER_POOL_COMMANDS,
-        policy=CommandPolicy.command(
-            "seer_peak_master_pool", help_ids=("seer.peak.master",)
-        ),
-        rule=rule,
-        priority=priority,
-    )
-    master_pool.append_handler(
-        bind_async(_handle_pool, service, references, expert=False, master=True)
-    )
+    expert_pool.append_handler(bind_async(_handle_pool, service, expert=True))
 
     vote = group.on_fullmatch(
         ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
@@ -168,7 +141,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    vote.append_handler(bind_async(_handle_vote, service, references))
+    vote.append_handler(bind_async(_handle_vote, service))
 
     suit = group.on_fullmatch(
         ("竞技套装榜", "狂野套装榜", "专家套装榜"),
@@ -179,7 +152,9 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    suit.append_handler(bind_async(_handle_item_rank, service, references, kind="套装"))
+    suit.append_handler(
+        bind_async(_handle_item_rank, service, kind="套装")
+    )
 
     title = group.on_fullmatch(
         ("竞技称号榜", "狂野称号榜", "专家称号榜"),
@@ -191,7 +166,7 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     title.append_handler(
-        bind_async(_handle_item_rank, service, references, kind="称号")
+        bind_async(_handle_item_rank, service, kind="称号")
     )
 
     pet = group.on_fullmatch(
@@ -210,4 +185,4 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    pet.append_handler(bind_async(_handle_pet_rank, service, references))
+    pet.append_handler(bind_async(_handle_pet_rank, service))

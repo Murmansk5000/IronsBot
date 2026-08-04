@@ -15,6 +15,7 @@ from ironsbot.services.seer.query_result import (
     QueryReply,
     QueryResult,
 )
+from ironsbot.services.seer.render_crash_report import render_crash_marker
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 from ironsbot.services.seer.skin_price import load_skin_details
 
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 PET_PROMPT_MAX_ITEMS = 20
 PetInfoRenderer = Callable[[PetORM], Awaitable[bytes]]
-PetRenderFailureNotifier = Callable[[str], Awaitable[object]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,12 +41,10 @@ class PetQueryService:
         data: SeerDataAccess,
         images: SeerImageSource,
         render_info: PetInfoRenderer,
-        render_failure_notifier: PetRenderFailureNotifier | None = None,
     ) -> None:
         self._data = data
         self._images = images
         self._render_info = render_info
-        self._render_failure_notifier = render_failure_notifier
 
     async def search_image(
         self,
@@ -66,9 +64,13 @@ class PetQueryService:
         if len(choices) > PET_PROMPT_MAX_ITEMS:
             exact = self._single_character_match(arg, choices)
             if exact is not None:
-                return QueryResult(reply=await self._build_image_reply(exact.value))
+                return QueryResult(
+                    reply=await self._build_image_reply(exact.value)
+                )
             return QueryResult(
-                message=(f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词：")
+                message=(
+                    f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
+                )
             )
         return QueryResult(choices=choices)
 
@@ -76,38 +78,41 @@ class PetQueryService:
         self,
         selection: PetImageSelection,
     ) -> QueryResult[object]:
-        return QueryResult(reply=await self._build_image_reply(selection))
+        return QueryResult(
+            reply=await self._build_image_reply(selection)
+        )
 
     async def search_info(self, arg: str) -> QueryResult[int]:
-        return await self._search_pet(arg, self._build_info_reply)
-
-    async def search_avatar(self, arg: str) -> QueryResult[int]:
-        return await self._search_pet(arg, self._build_avatar_reply)
-
-    async def _search_pet(
-        self,
-        arg: str,
-        build_reply: Callable[[PetORM], Awaitable[QueryReply]],
-    ) -> QueryResult[int]:
         with self._data.resolve(self._data.pet, arg) as values:
             pets = tuple(values)
             if not arg.strip() or not pets:
                 return QueryResult()
             if len(pets) == 1:
-                return QueryResult(reply=await build_reply(pets[0]))
+                return QueryResult(
+                    reply=await self._build_info_reply(pets[0])
+                )
             if len(pets) > PET_PROMPT_MAX_ITEMS:
                 exact = next(
-                    (pet for pet in pets if len(arg) == 1 and pet.name == arg),
+                    (
+                        pet
+                        for pet in pets
+                        if len(arg) == 1 and pet.name == arg
+                    ),
                     None,
                 )
                 if exact is not None:
-                    return QueryResult(reply=await build_reply(exact))
+                    return QueryResult(
+                        reply=await self._build_info_reply(exact)
+                    )
                 return QueryResult(
-                    message=(f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词：")
+                    message=(
+                        f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
+                    )
                 )
             return QueryResult(
                 choices=tuple(
-                    QueryChoice(str(pet.name), str(pet.id), int(pet.id)) for pet in pets
+                    QueryChoice(str(pet.name), str(pet.id), int(pet.id))
+                    for pet in pets
                 )
             )
 
@@ -115,21 +120,12 @@ class PetQueryService:
         with self._data.get(self._data.pet, pet_id) as pet:
             if pet is None:
                 return QueryResult(
-                    message=(f"❌未找到精灵 {pet_id}（这是一个bug，请反馈给开发者）")
+                    message=(
+                        f"❌未找到精灵 {pet_id}"
+                        "（这是一个bug，请反馈给开发者）"
+                    )
                 )
             return QueryResult(reply=await self._build_info_reply(pet))
-
-    async def select_avatar(self, pet_id: int) -> QueryResult[object]:
-        with self._data.get(self._data.pet, pet_id) as pet:
-            if pet is None:
-                return QueryResult(message=f"未找到精灵 {pet_id}。")
-            return QueryResult(reply=await self._build_avatar_reply(pet))
-
-    async def _build_avatar_reply(self, pet: PetORM) -> QueryReply:
-        image = await fetch_optional_image(
-            self._images, "pet_head", str(pet.resource_id)
-        )
-        return QueryReply(image=image.data, image_error=image.error)
 
     async def _build_image_reply(
         self,
@@ -165,7 +161,8 @@ class PetQueryService:
         ) as details:
             if details is not None:
                 text += (
-                    f"所属精灵：{details.pet_name}\n所属系列：{details.series_name}\n"
+                    f"所属精灵：{details.pet_name}\n"
+                    f"所属系列：{details.series_name}\n"
                 )
                 if details.card_price:
                     text += f"礼卡价格：{details.card_price}\n"
@@ -186,22 +183,13 @@ class PetQueryService:
             pet_name,
             resource_id,
         )
-        try:
+        with render_crash_marker(
+            operation="pet_info_render",
+            pet_id=pet_id,
+            pet_name=pet_name,
+            resource_id=resource_id,
+        ):
             image = await self._render_info(pet)
-        except Exception as error:
-            logger.exception(
-                "pet info render failed: pet_id=%s pet_name=%s resource_id=%s",
-                pet_id,
-                pet_name,
-                resource_id,
-            )
-            await self._notify_render_failure(
-                pet_id=pet_id,
-                pet_name=pet_name,
-                resource_id=resource_id,
-                error=error,
-            )
-            raise
         logger.info(
             "rendered pet info image: pet_id=%s pet_name=%s bytes=%s",
             pet_id,
@@ -209,31 +197,6 @@ class PetQueryService:
             len(image),
         )
         return QueryReply(image=image)
-
-    async def _notify_render_failure(
-        self,
-        *,
-        pet_id: int,
-        pet_name: str,
-        resource_id: int,
-        error: Exception,
-    ) -> None:
-        if self._render_failure_notifier is None:
-            return
-        message = (
-            "⚠️ 精灵信息渲染失败。\n"
-            f"精灵：{pet_name}\n"
-            f"精灵ID：{pet_id}\n"
-            f"资源ID：{resource_id}\n"
-            f"异常类型：{type(error).__name__}"
-        )
-        try:
-            await self._render_failure_notifier(message)
-        except Exception:
-            logger.exception(
-                "pet render failure notice failed: pet_id=%s",
-                pet_id,
-            )
 
     @staticmethod
     def _image_choices(

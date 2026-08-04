@@ -12,7 +12,6 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
     NEW_SUITS_COMMANDS,
-    PEAK_ENVIRONMENT_CHANGES_COMMANDS,
 )
 
 
@@ -51,18 +50,5 @@ def test_new_content_categories_use_prefix_aliases_only() -> None:
         assert any(command == f"本周{category}" for command in commands)
         assert any(command == f"更新{category}" for command in commands)
 
-    assert {"新增群星牌卡牌", "新增卡牌"}.issubset(NEW_AUTOCARD_CARDS_COMMANDS)
     assert "新成就" not in NEW_ACHIEVEMENTS_COMMANDS
     assert "皮肤更新" not in NEW_SKINS_COMMANDS
-
-
-def test_peak_environment_change_commands_are_explicit() -> None:
-    assert PEAK_ENVIRONMENT_CHANGES_COMMANDS == (
-        "巅峰环境变化",
-        "巅峰变化",
-        "巅峰修改",
-        "巅峰池改变",
-        "巅峰池变化",
-        "池子修改",
-        "池子改变",
-    )

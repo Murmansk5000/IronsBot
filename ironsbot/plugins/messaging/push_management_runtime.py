@@ -14,7 +14,6 @@ from ironsbot.runtime.matchers import (
     reject_with_rule,
     update_queued_reply_check,
 )
-from ironsbot.runtime.message_input import is_self_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
 PUSH_SUBSCRIPTION_OPTIONS_KEY = "_message_push_subscription_options"
-PUSH_SUBSCRIPTION_PARENT_OPTION_KEY = "_message_push_subscription_parent_option"
 PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
 PUSH_TIME_OPTIONS_KEY = "_message_push_time_options"
 PUSH_TIME_SELECTED_KEY = "_message_push_time_selected"
@@ -90,10 +88,7 @@ class PromptFlow:
                 return False
             return (
                 event_conversation_session_id(self.namespace, next_event) == session_id
-                and (
-                    next_event.user_id != next_event.self_id
-                    or is_self_command(next_event)
-                )
+                and next_event.user_id != next_event.self_id
                 and getattr(next_event, "reply", None) is None
                 and self.input_check(next_event, target_type, selection=selection)
             )
@@ -110,14 +105,12 @@ class PromptFlow:
         event_type = (
             GroupMessageEvent if target_type == "group" else PrivateMessageEvent
         )
-        if not isinstance(event, event_type) or (
-            event.user_id == event.self_id and not is_self_command(event)
-        ):
+        if not isinstance(event, event_type) or event.user_id == event.self_id:
             return False
         text = event.get_plaintext().strip()
         return text.isdigit() if selection else bool(text)
 
-    async def reject(  # noqa: PLR0913
+    async def reject(
         self,
         matcher: Matcher,
         state: T_State,
@@ -125,7 +118,6 @@ class PromptFlow:
         *,
         selection: bool = True,
         replace_menu_anchor: bool = False,
-        page_id: str | None = None,
     ) -> None:
         session_id = state.get(self.session_key)
         version = state.get(self.version_key)
@@ -162,7 +154,6 @@ class PromptFlow:
             ),
             prompt=prompt,
             replace_menu_anchor=replace_menu_anchor,
-            page_id=page_id,
         )
 
 

@@ -21,6 +21,7 @@ from ironsbot.core.onebot_references import (
     OneBotReferenceResolver,
     normalize_alias_mapping,
 )
+from ironsbot.core.platform import ActorRef, Platform
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -366,6 +367,11 @@ def _resolve_custom_all_features(
     return frozenset(declared)
 
 
+POKE_REPLY_REQUIRED_ERROR = (
+    "features.help.poke_replies requires non-empty group refs and messages"
+)
+
+
 def _coerce_alias_mapping(
     value: object,
     *,
@@ -390,6 +396,22 @@ class HelpConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ignored_plugins: NormalizedStringList = Field(default_factory=list)
+    poke_replies: dict[str, str] = Field(default_factory=dict)
+    poke_user_replies: dict[str, str] = Field(default_factory=dict)
+    hint_window_seconds: float = Field(default=60.0, gt=0)
+    hint_max_per_window: int = Field(default=3, ge=1)
+
+    @field_validator("poke_replies", "poke_user_replies")
+    @classmethod
+    def normalize_poke_replies(cls, value: dict[str, str]) -> dict[str, str]:
+        replies: dict[str, str] = {}
+        for raw_group, raw_message in value.items():
+            group = raw_group.strip()
+            message = raw_message.strip()
+            if not group or not message:
+                raise ValueError(POKE_REPLY_REQUIRED_ERROR)
+            replies[group] = message
+        return replies
 
 
 class FeatureConfig(BaseModel):
@@ -470,7 +492,6 @@ class FeatureService:
     superuser_ids: frozenset[int]
     command_features: frozenset[str] = frozenset()
     schedule_features: frozenset[str] = frozenset()
-    runtime_superuser_ids: frozenset[int] | set[int] = frozenset()
     _bundles: Mapping[str, frozenset[str]] = dataclass_field(
         init=False,
         repr=False,
@@ -501,7 +522,17 @@ class FeatureService:
         )
 
     def is_superuser(self, user_id: int) -> bool:
-        return user_id in self.superuser_ids or user_id in self.runtime_superuser_ids
+        return user_id in self.superuser_ids
+
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        """Map a configured OneBot superuser policy to a platform actor."""
+
+        if actor.platform is not Platform.ONEBOT:
+            return False
+        try:
+            return self.is_superuser(int(actor.id))
+        except ValueError:
+            return False
 
     def is_conversation_blocked(
         self,

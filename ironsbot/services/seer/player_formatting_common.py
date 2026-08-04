@@ -53,12 +53,9 @@ def format_team_text(user_info: Any, team_name: str) -> str:
 def format_player_identity(
     player_id: int,
     nick: str | None = None,
-    nick_error: str | None = None,
 ) -> str:
     if nick:
         return f"米米号：{player_id}（{nick}）"
-    if nick_error:
-        return f"米米号：{player_id}（昵称暂未获取：{nick_error}）"
     return f"米米号：{player_id}"
 
 
@@ -120,18 +117,6 @@ def sample_rank_text(summary: LocalRankSummary, key: str) -> str:
     return summary.sample_rank(key)
 
 
-def format_rank_cache_fallback(result: RankLookupResult | None) -> str:
-    """Describe an explicitly stale rank reused after live lookup failure."""
-
-    if result is None:
-        return ""
-    cached_at = getattr(result, "fallback_cached_at", None)
-    if not isinstance(cached_at, (int, float)) or cached_at <= 0:
-        return ""
-    failure = str(getattr(result, "failure", "") or "查询失败")
-    return f"上次记录，缓存于{format_datetime(int(cached_at))}，本次{failure}"
-
-
 def format_metric_line(
     title: str,
     value: int | None,
@@ -141,25 +126,11 @@ def format_metric_line(
     local_key: str,
 ) -> str | None:
     value_text = str(value) if value is not None and value >= 0 else "暂无数据"
-    if (
-        rank_result is not None
-        and rank_result.profile_score is not None
-        and rank_result.observed_score is not None
-        and rank_result.profile_score != rank_result.observed_score
-    ):
-        value_text = (
-            f"个人接口：{rank_result.profile_score}｜榜单：{rank_result.observed_score}"
-        )
     failure = None if rank_result is None else getattr(rank_result, "failure", None)
-    cached_fallback = format_rank_cache_fallback(rank_result)
     rank_text = (
-        f"{format_rank_position_text(rank_result)}（{cached_fallback}）"
-        if cached_fallback
-        else (
-            f"全服排行失败：{failure}"
-            if failure
-            else format_rank_position_text(rank_result)
-        )
+        f"全服排行失败：{failure}"
+        if failure
+        else format_rank_position_text(rank_result)
     )
 
     metric_text = join_metric_parts(

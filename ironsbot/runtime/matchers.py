@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
+from functools import partial
+from inspect import Signature, signature
 from secrets import token_urlsafe
-from typing import TYPE_CHECKING, Any, TypeAlias
+from time import monotonic
+from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
 
 from nonebot.adapters import Event, Message, MessageSegment, MessageTemplate
-from nonebot.adapters.onebot.v11 import (
-    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
-)
+from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11 import MessageSegment as OneBotMessageSegment
 from nonebot.consts import REJECT_CACHE_TARGET, REJECT_TARGET
-from nonebot.dependencies import Dependent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher, current_bot, current_event, current_handler
@@ -22,20 +23,23 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
 if TYPE_CHECKING:
-    from ironsbot.core.request_coordination import RequestCoordinator
     from ironsbot.runtime.commands import CommandCatalog
+    from ironsbot.runtime.in_flight_requests import (
+        InFlightRequestService,
+    )
     from ironsbot.runtime.matcher_contracts import (
         CommandCooldown,
+        CommandIdSource,
         QueuedSemanticRequestResolver,
+        SemanticRequestResolver,
     )
     from ironsbot.runtime.prompt_sessions import _QueuedConversation
-from ironsbot.runtime.bindings import bind, bind_async  # noqa: F401
+    from ironsbot.runtime.semantic_requests import SemanticRequest
 from ironsbot.runtime.matcher_contracts import (
-    CommandPolicy,
+    CommandPolicyError,
     default_semantic_request,
     static_command_id,
 )
-from ironsbot.runtime.onebot_context import event_request_scope
 from ironsbot.runtime.prompt_errors import (
     PromptLoopConfigurationError,
     PromptSessionManagerMissingError,
@@ -44,33 +48,84 @@ from ironsbot.runtime.prompt_sessions import (
     COMMAND_COOLDOWN_TOKEN_STATE_KEY as _COMMAND_COOLDOWN_TOKEN_KEY,
 )
 from ironsbot.runtime.prompt_sessions import (
+    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY as _IN_FLIGHT_REQUEST_TOKEN_KEY,
+)
+from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
     GroupMenuAnchor,
     PromptSessionManager,
 )
-from ironsbot.runtime.prompt_sessions import (
-    REQUEST_RESPONSE_TOKEN_STATE_KEY as _REQUEST_RESPONSE_TOKEN_KEY,
-)
-from ironsbot.runtime.queued_conversation_input import (
-    capture_queued_conversation_input,
-)
 
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
-EXPLICIT_COMMAND_STATE_KEY = "_ironsbot_explicit_command"
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
-QUEUED_CONVERSATION_EXIT_PRIORITY = -30
-QUEUED_CONVERSATION_INPUT_PRIORITY = -29
-QUEUED_CONVERSATION_RESERVATION_PRIORITY = -28
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
+T = TypeVar("T")
+
+
+class _BoundPartial(partial):
+    @property
+    def __globals__(self) -> dict[str, Any]:
+        """Expose the wrapped function globals for NoneBot dependency parsing."""
+
+        return cast("dict[str, Any]", getattr(self.func, "__globals__", {}))
+
+    @property
+    def __signature__(self) -> Signature:
+        """Hide arguments already supplied by the application runtime."""
+
+        original = signature(self.func)
+        try:
+            supplied = original.bind_partial(*self.args, **(self.keywords or {}))
+        except TypeError:
+            return original
+        return original.replace(
+            parameters=[
+                parameter
+                for name, parameter in original.parameters.items()
+                if name not in supplied.arguments
+            ]
+        )
+
+
+class _AsyncPartial(_BoundPartial):
+    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        result: Awaitable[Any] = super().__call__(*args, **kwargs)
+        return await result
+
+
+def bind(
+    func: Callable[..., T],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> Callable[..., T]:
+    """Bind a synchronous NoneBot callback without hiding its annotations."""
+
+    return cast("Callable[..., T]", _BoundPartial(func, *args, **kwargs))
+
+
+def bind_async(
+    func: Callable[..., Awaitable[T]],
+    /,
+    *args: Any,
+    **kwargs: Any,
+) -> Callable[..., Awaitable[T]]:
+    """Bind arguments while keeping the callable visibly asynchronous."""
+
+    return cast(
+        "Callable[..., Awaitable[T]]",
+        _AsyncPartial(func, *args, **kwargs),
+    )
 
 
 @dataclass(frozen=True, slots=True)
 class _MatcherRuntimeContext:
     prompt_session_manager: PromptSessionManager | None
-    request_coordinator: RequestCoordinator | None
+    in_flight_requests: InFlightRequestService | None
 
 
 _MATCHER_RUNTIME_CONTEXTS: dict[str, _MatcherRuntimeContext] = {}
@@ -107,32 +162,6 @@ def get_queued_conversation(
         return None
 
 
-def _matches_active_queued_conversation(
-    prompt_sessions: PromptSessionManager,
-    event: Event,
-    state: T_State,
-) -> bool:
-    """Attach the menu context that exclusively owns this message."""
-
-    context = prompt_sessions.matching_queued_conversation(event)
-    if context is None:
-        return False
-    state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
-    return True
-
-
-def _matches_active_queued_conversation_exit(
-    prompt_sessions: PromptSessionManager,
-    event: Event,
-    state: T_State,
-) -> bool:
-    """Attach an active menu for an explicit exit input."""
-
-    if event.get_plaintext().strip() != "0":
-        return False
-    return _matches_active_queued_conversation(prompt_sessions, event, state)
-
-
 def queued_conversation_is_cancelled(
     source: Matcher | dict[Any, Any],
 ) -> bool:
@@ -160,19 +189,12 @@ def update_queued_menu_anchor(
     matcher: Matcher,
     event: Event,
     send_result: object,
-    *,
-    page_id: str | None = None,
 ) -> None:
     """Replace the shared-reply anchor after emitting a new group menu."""
 
     context = get_queued_conversation(matcher)
     if context is not None:
         context.update_menu_anchor(_group_menu_anchor(event, send_result))
-        if page_id is not None:
-            get_prompt_session_manager(matcher).record_menu_page(
-                context,
-                page_id=page_id,
-            )
 
 
 def _group_menu_anchor(
@@ -218,18 +240,12 @@ async def reject_with_rule(
     **kwargs: Any,
 ) -> None:
     replace_menu_anchor = bool(kwargs.pop("replace_menu_anchor", False))
-    page_id = kwargs.pop("page_id", None)
     if queued_conversation_is_cancelled(matcher):
         raise FinishedException
     if prompt is not None:
         send_result = await matcher.send(prompt, **kwargs)
         if replace_menu_anchor:
-            update_queued_menu_anchor(
-                matcher,
-                current_event.get(),
-                send_result,
-                page_id=page_id,
-            )
+            update_queued_menu_anchor(matcher, current_event.get(), send_result)
 
     if get_queued_conversation(matcher) is not None:
         matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
@@ -253,7 +269,6 @@ async def enter_prompt_loop(  # noqa: PLR0913
     queue_group_reply_check: Callable[[Event], bool] | None = None,
     queue_allow_group_reply_exit: bool = False,
     queue_parallel: bool = False,
-    queue_page_id: str = "root",
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
     queue_event_session_id: str | None = None,
     queue_conversation_session_id: str | None = None,
@@ -262,27 +277,27 @@ async def enter_prompt_loop(  # noqa: PLR0913
     if queued_conversation_is_cancelled(matcher):
         raise FinishedException
     event = current_event.get()
+    prompt_sent = prompt is not None
+    menu_anchor = None
+    if prompt is not None:
+        send_result = await matcher.send(prompt, **kwargs)
+        menu_anchor = _group_menu_anchor(event, send_result)
     if queue_namespace is not None:
         if queue_reply_check is None:
             raise PromptLoopConfigurationError
         if context := get_queued_conversation(matcher):
             if context.namespace == queue_namespace:
-                menu_anchor = context.menu_anchor
-                if prompt is not None:
-                    send_result = await matcher.send(prompt, **kwargs)
-                    menu_anchor = _group_menu_anchor(event, send_result)
-                get_prompt_session_manager(matcher).activate_queued_conversation(
-                    context,
-                    state=matcher.state,
-                    reply_check=queue_reply_check,
-                    group_reply_check=queue_group_reply_check,
-                    menu_anchor=menu_anchor,
-                    allow_group_reply_exit=queue_allow_group_reply_exit,
-                    semantic_request_resolver=queue_semantic_request_resolver,
-                    handlers=handlers,
-                    parallel=queue_parallel,
-                    page_id=queue_page_id,
-                    menu_sent=prompt is not None,
+                if prompt_sent:
+                    context.update_menu_anchor(menu_anchor)
+                context.update_reply_check(
+                    queue_reply_check,
+                    queue_group_reply_check,
+                )
+                context.update_allow_group_reply_exit(
+                    allowed=queue_allow_group_reply_exit
+                )
+                context.update_semantic_request_resolver(
+                    queue_semantic_request_resolver
                 )
                 matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
                 raise FinishedException
@@ -306,104 +321,20 @@ async def enter_prompt_loop(  # noqa: PLR0913
             group_reply_check=queue_group_reply_check,
             handlers=handlers,
             semantic_request_resolver=queue_semantic_request_resolver,
-            request_coordinator=(
+            request_service=(
                 None
                 if runtime_context is None
-                else runtime_context.request_coordinator
+                else runtime_context.in_flight_requests
             ),
             conversation_session_id=queue_conversation_session_id,
-            menu_anchor=None,
-            allow_group_reply_exit=queue_allow_group_reply_exit,
-            parallel=queue_parallel,
-            pending_reply_check=queue_reply_check,
-            pending=True,
-        )
-        menu_anchor = None
-        try:
-            if prompt is not None:
-                send_result = await matcher.send(prompt, **kwargs)
-                menu_anchor = _group_menu_anchor(event, send_result)
-        except BaseException:
-            prompt_sessions.cancel_queued_context(queued)
-            raise
-        prompt_sessions.activate_queued_conversation(
-            queued,
-            state=matcher.state,
-            reply_check=queue_reply_check,
-            group_reply_check=queue_group_reply_check,
             menu_anchor=menu_anchor,
             allow_group_reply_exit=queue_allow_group_reply_exit,
-            semantic_request_resolver=queue_semantic_request_resolver,
-            handlers=handlers,
             parallel=queue_parallel,
-            page_id=queue_page_id,
-            menu_sent=prompt is not None,
         )
+        await _create_queued_temp_matcher(matcher, queued)
         raise FinishedException
-    if prompt is not None:
-        await matcher.send(prompt, **kwargs)
     await _create_temp_matcher(matcher, rule, handlers=handlers)
     raise FinishedException
-
-
-async def begin_queued_conversation(  # noqa: PLR0913
-    matcher: Matcher,
-    handlers: list[Any],
-    *,
-    namespace: str,
-    pending_reply_check: Callable[[Event], bool],
-    queue_reply_check: Callable[[Event], bool],
-    queue_group_reply_check: Callable[[Event], bool] | None = None,
-    queue_allow_group_reply_exit: bool = False,
-    queue_parallel: bool = False,
-    queue_page_id: str = "root",
-    queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
-    queue_event_session_id: str | None = None,
-    queue_conversation_session_id: str | None = None,
-) -> None:
-    """Open a queued menu before an asynchronous first-level command finishes."""
-
-    event = current_event.get()
-    if context := get_queued_conversation(matcher):
-        if context.namespace == namespace:
-            return
-        get_prompt_session_manager(matcher).cancel_queued_conversation(matcher.state)
-        matcher.state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
-        matcher.state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
-
-    prompt_sessions = get_prompt_session_manager(matcher)
-    event_session_id = queue_event_session_id or event.get_session_id()
-    if (
-        existing := prompt_sessions.queued_conversation_for(
-            namespace=namespace,
-            event_session_id=event_session_id,
-        )
-    ) and existing.pending:
-        matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = existing.token
-        return
-    runtime_context = _runtime_context(matcher)
-    raw_owner_user_id = getattr(event, "user_id", None)
-    owner_user_id = raw_owner_user_id if isinstance(raw_owner_user_id, int) else None
-    queued = prompt_sessions.start_queued_conversation(
-        namespace=namespace,
-        event_session_id=event_session_id,
-        owner_user_id=owner_user_id,
-        state=matcher.state,
-        reply_check=queue_reply_check,
-        group_reply_check=queue_group_reply_check,
-        handlers=handlers,
-        page_id=queue_page_id,
-        semantic_request_resolver=queue_semantic_request_resolver,
-        request_coordinator=(
-            None if runtime_context is None else runtime_context.request_coordinator
-        ),
-        conversation_session_id=queue_conversation_session_id,
-        allow_group_reply_exit=queue_allow_group_reply_exit,
-        parallel=queue_parallel,
-        pending_reply_check=pending_reply_check,
-        pending=True,
-    )
-    matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = queued.token
 
 
 async def _create_temp_matcher(
@@ -439,35 +370,154 @@ async def _create_temp_matcher(
     )
 
 
-async def _capture_queued_conversation_input(
+async def _create_queued_temp_matcher(
+    matcher: Matcher,
+    context: _QueuedConversation,
+) -> None:
+    bot = current_bot.get()
+    event = current_event.get()
+    permission = await matcher.update_permission(bot, event)
+    get_prompt_session_manager(matcher).refresh_queued_conversation_expiry(
+        context,
+        expires_after=bot.config.session_expire_timeout,
+    )
+    default_state: T_State = {
+        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+    }
+    if runtime_token := matcher.state.get(RUNTIME_CONTEXT_TOKEN_STATE_KEY):
+        default_state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = runtime_token
+    matcher.__class__.new(
+        "message",
+        Rule(context.matches),
+        permission,
+        [_capture_queued_conversation_input, *context.handlers],
+        temp=True,
+        priority=0,
+        block=True,
+        source=matcher.__class__._source,
+        expire_time=bot.config.session_expire_timeout,
+        default_state=default_state,
+        default_type_updater=matcher.__class__._default_type_updater,
+        default_permission_updater=matcher.__class__._default_permission_updater,
+    )
+
+
+async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     matcher: Matcher,
     event: Event,
     _state: T_State,
 ) -> None:
-    await capture_queued_conversation_input(
-        matcher,
-        event,
-        _state,
-        get_prompt_sessions=get_prompt_session_manager,
-        dispatch_handlers=_dispatch_queued_conversation_handlers,
+    context = get_queued_conversation(_state)
+    if context is None or not context.active:
+        raise FinishedException
+
+    if not isinstance(event, MessageEvent):
+        raise FinishedException
+
+    prompt_sessions = get_prompt_session_manager(_state)
+    if not prompt_sessions.claim_input(event):
+        logger.debug(
+            "queued conversation input already claimed: namespace=%s "
+            "session=%s user=%s message_id=%s",
+            context.namespace,
+            context.event_session_id,
+            event.user_id,
+            event.message_id,
+        )
+        raise FinishedException
+
+    is_shared_group_reply = context.is_shared_group_reply(event)
+    if event.get_plaintext().strip() == "0":
+        if is_shared_group_reply and context.allow_group_reply_exit:
+            await _create_queued_temp_matcher(matcher, context)
+            _state.clear()
+            _state.update(context.state)
+            _state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
+            return
+        get_prompt_session_manager(_state).cancel_queued_conversation(_state)
+        if getattr(event, "group_id", None) is not None:
+            await matcher.finish(
+                OneBotMessageSegment.at(event.user_id)
+                + OneBotMessageSegment.text(" 已退出当前选择。")
+            )
+        await matcher.finish("已退出当前选择。")
+
+    request: SemanticRequest | None = None
+    request_token: object | None = None
+    if context.semantic_request_resolver is not None:
+        if is_shared_group_reply:
+            context.state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
+        try:
+            request = context.semantic_request_resolver(event, context.state)
+        finally:
+            context.state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
+        request_service = context.request_service
+        if request is not None and request_service is not None:
+            decision = request_service.admit(
+                user_id=event.user_id,
+                request=request,
+            )
+            if not decision.allowed:
+                await _create_queued_temp_matcher(matcher, context)
+                _state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
+                if decision.feedback is not None:
+                    await _send_in_flight_feedback(matcher, event, decision.feedback)
+                raise FinishedException
+            request_token = decision.token
+
+    reservation = context.reserve(request_token)
+    if reservation is None:
+        raise FinishedException
+    ticket, ready = reservation
+    queued_at = monotonic()
+    waited = not ready.done()
+    try:
+        await _create_queued_temp_matcher(matcher, context)
+        await ready
+    except BaseException:
+        context.abort(ticket)
+        raise
+    if not context.active:
+        context.abort(ticket)
+        raise FinishedException
+    _state.clear()
+    _state.update(context.state)
+    _state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
+    _state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = ticket
+    if is_shared_group_reply:
+        _state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
+    if request_token is not None:
+        _state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_token
+    context.mark_dispatched(ticket)
+    action_id = (
+        request.action.id if request is not None else "none"
+    )
+    logger.info(
+        "queued conversation input dispatched: namespace=%s session=%s "
+        "user=%s message_id=%s ticket=%s action=%s waited=%s queue_wait=%.3fs",
+        context.namespace,
+        context.event_session_id,
+        event.user_id,
+        event.message_id,
+        ticket,
+        action_id,
+        waited,
+        monotonic() - queued_at,
     )
 
 
-def _dispatch_queued_conversation_handlers(
+async def _send_in_flight_feedback(
     matcher: Matcher,
-    context: _QueuedConversation,
+    event: MessageEvent,
+    feedback: str,
 ) -> None:
-    """Append this input's current menu handler after stable routing."""
-
-    for handler in context.handlers:
-        matcher.remain_handlers.append(
-            handler
-            if isinstance(handler, Dependent)
-            else Dependent[Any].parse(
-                call=handler,
-                allow_types=matcher.__class__.HANDLER_PARAM_TYPES,
-            )
+    if getattr(event, "group_id", None) is not None:
+        await matcher.send(
+            OneBotMessageSegment.at(event.user_id)
+            + OneBotMessageSegment.text(f" {feedback}")
         )
+        return
+    await matcher.send(feedback)
 
 
 async def _restore_temporary_matcher_state(state: T_State) -> None:
@@ -485,6 +535,46 @@ async def _restore_temporary_matcher_state(state: T_State) -> None:
     state.update(incoming_state)
 
 
+@dataclass(frozen=True, slots=True)
+class CommandPolicy:
+    command_id: CommandIdSource | None = None
+    exemption_reason: str | None = None
+    semantic_request: SemanticRequestResolver | None = None
+    help_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (self.command_id is None) == (self.exemption_reason is None):
+            raise CommandPolicyError.ambiguous()
+        if self.exemption_reason is not None and not self.exemption_reason.strip():
+            raise CommandPolicyError.empty_exemption()
+        if self.exemption_reason is not None and (
+            self.semantic_request is not None
+        ):
+            raise CommandPolicyError.exempt_with_semantic_request()
+        if self.exemption_reason is not None and self.help_ids:
+            raise CommandPolicyError.exempt_with_help_ids()
+        if any(not command_id.strip() for command_id in self.help_ids):
+            raise CommandPolicyError.empty_help_id()
+
+    @classmethod
+    def command(
+        cls,
+        command_id: CommandIdSource,
+        *,
+        semantic_request: SemanticRequestResolver | None = None,
+        help_ids: tuple[str, ...] = (),
+    ) -> CommandPolicy:
+        return cls(
+            command_id=command_id,
+            semantic_request=semantic_request,
+            help_ids=help_ids,
+        )
+
+    @classmethod
+    def exempt(cls, reason: str) -> CommandPolicy:
+        return cls(exemption_reason=reason)
+
+
 def _command_policy_label(policy: CommandPolicy) -> str:
     command_id = policy.command_id
     if isinstance(command_id, str):
@@ -499,7 +589,7 @@ class MatcherRegistry:
     cooldown: CommandCooldown
     priorities: object
     prompt_session_manager: PromptSessionManager | None = None
-    request_coordinator: RequestCoordinator | None = None
+    in_flight_requests: InFlightRequestService | None = None
     _message_matchers: list[type[Matcher]] = field(default_factory=list)
     _notice_matchers: list[type[Matcher]] = field(default_factory=list)
     _cooldown_registrations: dict[type[Matcher], tuple[str, str]] = field(
@@ -508,18 +598,17 @@ class MatcherRegistry:
     _command_help_ids: set[str] = field(default_factory=set)
     _unclassified_command_labels: set[str] = field(default_factory=set)
     _runtime_context_token: str | None = field(default=None, init=False, repr=False)
-    _queued_router_installed: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if (
             self.prompt_session_manager is None
-            and self.request_coordinator is None
+            and self.in_flight_requests is None
         ):
             return
         token = token_urlsafe(18)
         _MATCHER_RUNTIME_CONTEXTS[token] = _MatcherRuntimeContext(
             prompt_session_manager=self.prompt_session_manager,
-            request_coordinator=self.request_coordinator,
+            in_flight_requests=self.in_flight_requests,
         )
         self._runtime_context_token = token
 
@@ -530,12 +619,7 @@ class MatcherRegistry:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_message(
-                **self._with_runtime_hooks(
-                    kwargs,
-                    closes_active_conversation=policy.closes_active_conversation,
-                )
-            ),
+            on_message(**self._with_runtime_hooks(kwargs)),
             policy,
         )
 
@@ -547,13 +631,7 @@ class MatcherRegistry:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_fullmatch(
-                msg,
-                **self._with_runtime_hooks(
-                    kwargs,
-                    closes_active_conversation=policy.closes_active_conversation,
-                )
-            ),
+            on_fullmatch(msg, **self._with_runtime_hooks(kwargs)),
             policy,
         )
 
@@ -565,13 +643,7 @@ class MatcherRegistry:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_command(
-                cmd,
-                **self._with_runtime_hooks(
-                    kwargs,
-                    closes_active_conversation=policy.closes_active_conversation,
-                )
-            ),
+            on_command(cmd, **self._with_runtime_hooks(kwargs)),
             policy,
         )
 
@@ -585,48 +657,12 @@ class MatcherRegistry:
         async def finalize(state: T_State) -> None:
             with suppress(PromptSessionManagerMissingError):
                 get_prompt_session_manager(state).finish_queued_conversation(state)
-            token = state.pop(_REQUEST_RESPONSE_TOKEN_KEY, None)
-            if token is not None and self.request_coordinator is not None:
-                self.request_coordinator.finish(token)
+            token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
+            if token is not None and self.in_flight_requests is not None:
+                self.in_flight_requests.finish(token)
             token = state.pop(_COMMAND_COOLDOWN_TOKEN_KEY, None)
             if token is not None:
                 self.cooldown.finish(token)
-
-    def install_queued_conversation_router(self) -> None:
-        """Install one durable ingress matcher for every active menu session."""
-
-        if self.prompt_session_manager is None or self._queued_router_installed:
-            return
-
-        self._queued_router_installed = True
-
-        exit_matcher = self.on_message(
-            policy=CommandPolicy.exempt("active queued conversation exit"),
-            rule=Rule(
-                bind(
-                    _matches_active_queued_conversation_exit,
-                    self.prompt_session_manager,
-                )
-            ),
-            priority=QUEUED_CONVERSATION_EXIT_PRIORITY,
-            block=True,
-        )
-        exit_matcher.append_handler(_capture_queued_conversation_input)
-
-        matcher = self.on_message(
-            policy=CommandPolicy.exempt("active queued conversation input"),
-            rule=Rule(
-                bind(
-                    _matches_active_queued_conversation,
-                    self.prompt_session_manager,
-                )
-            ),
-            # Blacklist is -40. These permanent routers run immediately
-            # afterwards and never share a priority with configurable matchers.
-            priority=QUEUED_CONVERSATION_INPUT_PRIORITY,
-            block=True,
-        )
-        matcher.append_handler(_capture_queued_conversation_input)
 
     def priority(self, name: str) -> int:
         return int(getattr(self.priorities, name))
@@ -717,14 +753,13 @@ class MatcherRegistry:
             )
             if request is not None:
                 state[SEMANTIC_REQUEST_STATE_KEY] = request
-                if self.request_coordinator is not None:
-                    request_decision = self.request_coordinator.admit(
+                if self.in_flight_requests is not None:
+                    request_decision = self.in_flight_requests.admit(
                         user_id=event.user_id,
                         request=request,
-                        scope=event_request_scope(event),
                     )
                     if request_decision.token is not None:
-                        state[_REQUEST_RESPONSE_TOKEN_KEY] = request_decision.token
+                        state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_decision.token
                     if not request_decision.allowed:
                         await matcher.finish(request_decision.feedback)
 
@@ -733,9 +768,9 @@ class MatcherRegistry:
                 command_id=normalized_id,
             )
             if not decision.allowed:
-                request_token = state.pop(_REQUEST_RESPONSE_TOKEN_KEY, None)
-                if request_token is not None and self.request_coordinator is not None:
-                    self.request_coordinator.release(request_token)
+                request_token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
+                if request_token is not None and self.in_flight_requests is not None:
+                    self.in_flight_requests.release(request_token)
             if decision.token is not None:
                 state[_COMMAND_COOLDOWN_TOKEN_KEY] = decision.token
             if not decision.allowed:
@@ -746,18 +781,11 @@ class MatcherRegistry:
         matcher.handlers.insert(0, dependent)
         self._cooldown_registrations[matcher] = ("command", str(label))
 
-    def _with_runtime_hooks(
-        self,
-        kwargs: dict[str, Any],
-        *,
-        closes_active_conversation: bool = False,
-    ) -> dict[str, Any]:
+    def _with_runtime_hooks(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         if self._runtime_context_token is None:
             return kwargs
         updated = dict(kwargs)
         state = dict(updated.get("state") or {})
         state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = self._runtime_context_token
-        if closes_active_conversation:
-            state[EXPLICIT_COMMAND_STATE_KEY] = True
         updated["state"] = state
         return updated

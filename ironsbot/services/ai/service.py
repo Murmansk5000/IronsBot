@@ -31,20 +31,17 @@ if TYPE_CHECKING:
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.services.ai.client import AiCompletionClient
     from ironsbot.services.ai.memory import AiMemoryStore
-    from ironsbot.services.ai.responses import AiResponseResult
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
 REQUEST_FAILED_REPLY = "AI接口请求失败，我已经通知超级管理员。"
 EMPTY_REPLY = "AI没有返回有效内容，请稍后再试。"
-MISSING_KEY_REPLY = "AI聊天还没有配置可用的 API Key。"
+MISSING_KEY_REPLY = "AI聊天还没有配置 API Key。请先设置 AI_KEY。"
 TIMEOUT_REPLY = "AI接口响应超时，我已经通知超级管理员。"
 UNEXPECTED_ERROR_REPLY = "AI聊天出错了，我已经通知超级管理员。"
 TEAM_ACTIONS = frozenset({"team_recommend", "team_resource"})
-BILIBILI_SUMMARY_PROMPT_TEMPLATE = (
+BILIBILI_SUMMARY_PROMPT = (
     "你是 B 站动态摘要助手。请忠实概括原文，不编造任何内容；"
-    "优先覆盖活动时间、截止时间、奖励、规则和重要事项。"
-    "输出必须在 {max_chars} 个中文字符以内；内容很多时合并同类事项，"
-    "不要按原文逐条罗列，更不能写到一半留下未完成的编号、句子或列表。"
+    "保留活动时间、截止时间、奖励、规则和重要事项。"
     "只输出简洁中文摘要，不要标题、寒暄、Markdown 或链接。"
 )
 logger = logging.getLogger(__name__)
@@ -77,7 +74,7 @@ class AiService:
 
     @property
     def waiting_notice(self) -> bool:
-        return self._config.waiting_notice and self._config.ai_enabled
+        return self._config.waiting_notice and bool(self._config.api_key.strip())
 
     def _can_show_admin_notice(
         self,
@@ -132,7 +129,7 @@ class AiService:
     ) -> AiIntentAction | None:
         if (
             not self._config.intent_actions_enabled
-            or not self._config.ai_enabled
+            or not self._config.api_key.strip()
             or not is_ai_intent_allowed(self._features, user_id, group_id)
         ):
             return None
@@ -187,16 +184,12 @@ class AiService:
         max_chars: int,
     ) -> str | None:
         """Summarize a push without chat history, memory, or feature checks."""
-        if not self._config.ai_enabled:
-            logger.warning(
-                "Bilibili dynamic summary skipped: no AI endpoint key is configured"
-            )
+        if not self._config.api_key.strip():
+            logger.warning("Bilibili dynamic summary skipped: AI_KEY is not configured")
             return None
 
         messages = build_messages(
-            system_prompt=BILIBILI_SUMMARY_PROMPT_TEMPLATE.format(
-                max_chars=max_chars
-            ),
+            system_prompt=BILIBILI_SUMMARY_PROMPT,
             history_turns=0,
             history=[],
             memory=[],
@@ -217,9 +210,7 @@ class AiService:
                 result.error_detail,
             )
             return None
-        # The delivery service validates the completed model output and retries
-        # generation when it exceeds the configured limit.
-        return result.reply.strip()
+        return _truncate_plain_text(result.reply, max_chars)
 
     @staticmethod
     def is_team_action(action: AiIntentAction) -> bool:
@@ -245,20 +236,20 @@ class AiService:
             and not excluded_by_context(text, action)
         )
 
-    async def _complete(  # noqa: PLR0911
+    async def _complete(
         self,
         prompt: str,
         history: list[HistoryMessage],
         memory: list[HistoryMessage],
         source_context: str | None,
     ) -> _Completion:
-        if not self._config.ai_enabled:
+        if not self._config.api_key.strip():
             await self._notify_admin_once(
                 "missing_api_key",
                 _append_notice_source(
-                    "AI聊天还没有配置可用的 API Key。\n"
+                    "AI聊天还没有配置 API Key。\n"
                     "请在 Unraid 容器变量或 .env.prod 中设置 "
-                    "AI_KEY_<端点名称大写>。",
+                    "AI_KEY。",
                     source_context,
                 ),
             )
@@ -279,6 +270,7 @@ class AiService:
                 "timeout",
                 _append_notice_source(
                     "AI聊天接口响应超时。\n"
+                    f"接口：{self._config.base_url}\n"
                     f"超时时间：{self._config.timeout} 秒\n"
                     "请检查网络或适当调大 ai.timeout。",
                     source_context,
@@ -306,28 +298,12 @@ class AiService:
                 )
             )
 
-        if result.error_kind == "timeout":
-            await self._notify_admin_once(
-                "timeout",
-                _append_notice_source(
-                    "AI聊天接口响应超时。\n"
-                    f"端点：{result.endpoint or '未知'}\n"
-                    f"模型：{result.model or '未知'}\n"
-                    f"超时时间：{self._config.timeout} 秒\n"
-                    f"已尝试：{_format_attempts(result)}\n"
-                    "请检查网络或适当调大 ai.timeout。",
-                    source_context,
-                ),
-            )
-            return _Completion(error_reply=TIMEOUT_REPLY)
-
         if result.error_kind == "empty_reply":
             await self._notify_admin_once(
                 "empty_reply",
                 _append_notice_source(
                     "AI聊天接口返回了空内容。\n"
-                    f"端点：{result.endpoint or '未知'}\n"
-                    f"模型：{result.model or '未知'}\n"
+                    f"模型：{self._config.model}\n"
                     "请检查模型配置或稍后重试。",
                     source_context,
                 ),
@@ -335,9 +311,7 @@ class AiService:
             return _Completion(error_reply=EMPTY_REPLY)
 
         logger.warning(
-            "AI chat API failed: endpoint=%s model=%s HTTP=%s detail=%s",
-            result.endpoint,
-            result.model,
+            "AI chat API failed: HTTP %s, %s",
             result.status_code,
             result.error_detail,
         )
@@ -350,11 +324,10 @@ class AiService:
             _append_notice_source(
                 "AI聊天接口异常。\n"
                 f"类型：{result.error_title}\n"
-                f"HTTP：{result.status_code or '无'}\n"
-                f"端点：{result.endpoint or '未知'}\n"
-                f"模型：{result.model or '未知'}\n"
+                f"HTTP：{result.status_code}\n"
+                f"模型：{self._config.model}\n"
+                f"接口：{self._config.base_url}\n"
                 f"详情：{result.error_detail}\n"
-                f"已尝试：{_format_attempts(result)}\n"
                 "请检查 AI_KEY、账户额度、模型名和网络连接。",
                 source_context,
             ),
@@ -451,14 +424,3 @@ def _truncate_reply(text: str, max_chars: int) -> str:
 
 def _truncate_plain_text(text: str, max_chars: int) -> str:
     return text.strip()[:max_chars].rstrip()
-
-
-def _format_attempts(result: "AiResponseResult") -> str:
-    attempts = result.attempts
-    if not attempts:
-        return "无"
-    return "；".join(
-        f"{attempt.endpoint}/{attempt.model}"
-        f"（HTTP {attempt.status_code or '无'}：{attempt.error_title}）"
-        for attempt in attempts
-    )

@@ -8,19 +8,29 @@ import json
 import shutil
 import sqlite3
 import sys
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
+from ironsbot.integrations.storage.lucky_skin_watch import (
+    SqliteLuckySkinWatchPreferenceStore,
+)
 from ironsbot.integrations.storage.lucky_skin_window import (
     SqliteLuckySkinWindowCache,
+)
+from ironsbot.integrations.storage.platform_identity import (
+    ConversationIdentityColumns,
+)
+from ironsbot.integrations.storage.platform_state_schema import (
+    copy_qq_state,
+    copy_runtime_state,
 )
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
@@ -40,15 +50,19 @@ from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStor
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
+from ironsbot.platform_state_migration import (
+    PlatformStateMigrationError,
+    format_platform_state_migration_result,
+    migrate_platform_state_identities,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
-
-StateTarget = Literal["qq", "runtime"]
+    from collections.abc import Iterable
 
 QQ_STATE_NAMESPACES = frozenset(
     {
         "bilibili_preferences",
+        "lucky_skin_watch",
         "player_bindings",
         "player_query_limits",
         "push_subscriptions",
@@ -56,9 +70,7 @@ QQ_STATE_NAMESPACES = frozenset(
         "team_resources",
     }
 )
-RUNTIME_STATE_NAMESPACES = frozenset(
-    {"activity_reminder", "skin_window", "team_audit"}
-)
+RUNTIME_STATE_NAMESPACES = frozenset({"activity_reminder", "skin_window", "team_audit"})
 
 
 class StateMigrationError(RuntimeError):
@@ -112,7 +124,7 @@ class StateMigrationError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class LegacySource:
     relative_path: str
-    target: StateTarget | None
+    target: Literal["qq", "runtime"] | None
     tables: tuple[str, ...] = ()
 
 
@@ -175,6 +187,7 @@ LEGACY_SOURCES = (
     LegacySource("message_actions/reply_limits.sqlite", None),
     LegacySource("seer/achievement_history.sqlite", None),
 )
+
 
 def migrate_state_databases(  # noqa: PLR0913
     *,
@@ -298,10 +311,11 @@ def _temporary_target(target: Path) -> Path:
 
 
 def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
-    SqlitePlayerBindingStore(qq_state).get(0)
+    migration_actor = ActorRef(Platform.ONEBOT, "0")
+    SqlitePlayerBindingStore(qq_state).get(migration_actor)
     SqlitePlayerQueryLimitStore(qq_state).status(
         local_date=datetime.now(timezone.utc).date(),
-        qq_user_id=0,
+        actor=migration_actor,
         scope="bound_default",
         player_id=0,
         action_key="migration",
@@ -309,6 +323,7 @@ def _initialize_state_databases(qq_state: Path, runtime_state: Path) -> None:
     )
     PushUnsubscribeStore(qq_state).preference_targets()
     SqliteBiliPushPreferenceStore(qq_state).get_mode("private", 0, 0)
+    SqliteLuckySkinWatchPreferenceStore(qq_state).get(0)
     SqliteRankDisplayStore(qq_state).get(0)
     TeamResourceSubscriptionStore(qq_state).list_all()
 
@@ -341,28 +356,30 @@ def _copy_legacy_data(
     runtime_state: Path,
 ) -> dict[str, int]:
     copied: dict[str, int] = {}
-    targets = {"qq": qq_state, "runtime": runtime_state}
     for source, source_path in sources:
         if source.target is None:
             continue
-        target_path = targets[source.target]
-        with _write_connection(target_path) as target:
-            target.execute("ATTACH DATABASE ? AS legacy", (str(source_path),))
-            try:
+        target_path = qq_state if source.target == "qq" else runtime_state
+        with open_sqlite_connection(target_path) as target:
+            if source.target == "qq":
+                copy_qq_state(source_path, target)
+            elif "pending_team_audit_reminders" in source.tables:
+                copy_runtime_state(source_path, target)
+            else:
                 for table in source.tables:
-                    if not _table_exists(target, "legacy", table):
-                        continue
-                    copied[table] = _copy_table(target, table)
-                target.commit()
-            finally:
-                target.execute("DETACH DATABASE legacy")
+                    copied[table] = _copy_compatible_table(
+                        source_path,
+                        target,
+                        table,
+                    )
+            target.commit()
+        copied.update(_source_table_counts(source_path, source.tables))
 
     legacy_private = next(
         (
             path
             for source, path in sources
-            if source.relative_path
-            == "messaging/private_push_unsubscriptions.sqlite"
+            if source.relative_path == "messaging/private_push_unsubscriptions.sqlite"
         ),
         None,
     )
@@ -374,57 +391,71 @@ def _copy_legacy_data(
     return copied
 
 
-def _copy_table(connection: sqlite3.Connection, table: str) -> int:
-    table_sql = quote_sqlite_identifier(table)
-    source_columns = _table_columns(connection, "legacy", table)
-    target_columns = _table_columns(connection, "main", table)
-    columns = [column for column in target_columns if column in source_columns]
-    if not columns:
-        raise StateMigrationError.incompatible_table(table)
-    columns_sql = ", ".join(quote_sqlite_identifier(column) for column in columns)
-    source_count = int(
-        connection.execute(f"SELECT COUNT(*) FROM legacy.{table_sql}").fetchone()[0]
-    )
-    connection.execute(
-        f"INSERT INTO main.{table_sql} ({columns_sql}) "
-        f"SELECT {columns_sql} FROM legacy.{table_sql}"
-    )
-    return source_count
+def _copy_compatible_table(
+    source_path: Path,
+    target: sqlite3.Connection,
+    table: str,
+) -> int:
+    """Copy an identity-free table after the target schema is initialized."""
+
+    with _read_only_connection(source_path) as source:
+        if not _table_exists(source, "main", table):
+            return 0
+        source_columns = _table_columns(source, "main", table)
+        target_columns = _table_columns(target, "main", table)
+        columns = [column for column in target_columns if column in source_columns]
+        if not columns:
+            raise StateMigrationError.incompatible_table(table)
+        table_sql = quote_sqlite_identifier(table)
+        columns_sql = ", ".join(quote_sqlite_identifier(column) for column in columns)
+        rows = source.execute(f"SELECT {columns_sql} FROM {table_sql}").fetchall()
+        if rows:
+            placeholders = ", ".join("?" for _ in columns)
+            target.executemany(
+                f"INSERT INTO {table_sql} ({columns_sql}) VALUES ({placeholders})",
+                rows,
+            )
+    return len(rows)
 
 
 def _copy_private_unsubscriptions(target_path: Path, source_path: Path) -> int:
-    with _write_connection(target_path) as target:
-        target.execute("ATTACH DATABASE ? AS legacy_private", (str(source_path),))
-        try:
-            if not _table_exists(
-                target,
-                "legacy_private",
-                "private_push_unsubscriptions",
-            ):
+    with open_sqlite_connection(target_path) as target:
+        with _read_only_connection(source_path) as source:
+            if not _table_exists(source, "main", "private_push_unsubscriptions"):
                 return 0
-            before = int(
-                target.execute(
-                    "SELECT COUNT(*) FROM push_unsubscriptions"
-                ).fetchone()[0]
-            )
-            target.execute(
+            rows = source.execute(
                 """
-                INSERT OR IGNORE INTO push_unsubscriptions (
-                    target_type, target_id, subscription_key, feature, created_at
+                SELECT user_id, schedule_key, feature, created_at
+                FROM private_push_unsubscriptions
+                """
+            ).fetchall()
+        before = int(
+            target.execute("SELECT COUNT(*) FROM push_unsubscriptions").fetchone()[0]
+        )
+        target.executemany(
+            """
+            INSERT OR IGNORE INTO push_unsubscriptions (
+                conversation_platform, conversation_kind, conversation_id,
+                subscription_key, feature, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                (
+                    *ConversationIdentityColumns.from_conversation(
+                        ConversationRef(Platform.ONEBOT, "private", str(user_id))
+                    ).values(),
+                    schedule_key,
+                    feature,
+                    created_at,
                 )
-                SELECT 'private', user_id, schedule_key, feature, created_at
-                FROM legacy_private.private_push_unsubscriptions
-                """
-            )
-            target.commit()
-            after = int(
-                target.execute(
-                    "SELECT COUNT(*) FROM push_unsubscriptions"
-                ).fetchone()[0]
-            )
-            return after - before
-        finally:
-            target.execute("DETACH DATABASE legacy_private")
+                for user_id, schedule_key, feature, created_at in rows
+            ),
+        )
+        target.commit()
+        after = int(
+            target.execute("SELECT COUNT(*) FROM push_unsubscriptions").fetchone()[0]
+        )
+    return after - before
 
 
 def _table_exists(
@@ -476,8 +507,7 @@ def _legacy_row_counts(
         (
             path
             for source, path in sources
-            if source.relative_path
-            == "messaging/private_push_unsubscriptions.sqlite"
+            if source.relative_path == "messaging/private_push_unsubscriptions.sqlite"
         ),
         None,
     )
@@ -494,6 +524,21 @@ def _legacy_row_counts(
                     ).fetchone()[0]
                 )
     return counts
+
+
+def _source_table_counts(path: Path, tables: tuple[str, ...]) -> dict[str, int]:
+    if not tables:
+        return {}
+    with _read_only_connection(path) as connection:
+        return {
+            table: int(
+                connection.execute(
+                    f"SELECT COUNT(*) FROM {quote_sqlite_identifier(table)}"
+                ).fetchone()[0]
+            )
+            for table in tables
+            if _table_exists(connection, "main", table)
+        }
 
 
 def _expected_target_row_counts(
@@ -515,10 +560,7 @@ def _expected_target_row_counts(
                         (str(target_type), int(target_id), str(subscription_key))
                         for target_type, target_id, subscription_key in rows
                     )
-        elif (
-            source.relative_path
-            == "messaging/private_push_unsubscriptions.sqlite"
-        ):
+        elif source.relative_path == "messaging/private_push_unsubscriptions.sqlite":
             with _read_only_connection(path) as connection:
                 if _table_exists(
                     connection,
@@ -614,14 +656,10 @@ def _validate_integrity(path: Path) -> None:
 
 
 def _prepare_for_atomic_replace(path: Path) -> None:
-    connection = open_sqlite_connection(path)
-    try:
+    with open_sqlite_connection(path) as connection:
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        connection.commit()
         connection.execute("PRAGMA journal_mode=DELETE")
         result = connection.execute("PRAGMA integrity_check").fetchone()
-    finally:
-        connection.close()
     if result is None or str(result[0]).lower() != "ok":
         raise StateMigrationError.integrity_failed(path)
 
@@ -640,22 +678,8 @@ def _remove_sqlite_files(path: Path) -> None:
         candidate.unlink(missing_ok=True)
 
 
-@contextmanager
-def _write_connection(path: Path) -> Iterator[sqlite3.Connection]:
-    connection = open_sqlite_connection(path)
-    try:
-        yield connection
-    finally:
-        connection.close()
-
-
-@contextmanager
-def _read_only_connection(path: Path) -> Iterator[sqlite3.Connection]:
-    connection = open_sqlite_connection(path, read_only=True)
-    try:
-        yield connection
-    finally:
-        connection.close()
+def _read_only_connection(path: Path) -> sqlite3.Connection:
+    return open_sqlite_connection(path, read_only=True)
 
 
 def _write_manifest(  # noqa: PLR0913
@@ -710,7 +734,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-root", type=Path, default=Path("data"))
     parser.add_argument("--qq-state", type=Path)
     parser.add_argument("--runtime-state", type=Path)
+    parser.add_argument("--ai-memory", type=Path)
     parser.add_argument("--backup-root", type=Path)
+    parser.add_argument(
+        "--platform-identities",
+        action="store_true",
+        help=(
+            "Convert persisted OneBot integer identities to platform-neutral "
+            "actor and conversation columns."
+        ),
+    )
     parser.add_argument(
         "--apply",
         action="store_true",
@@ -721,6 +754,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = _parser().parse_args(None if argv is None else list(argv))
+    if args.platform_identities:
+        return _run_platform_identity_migration(args)
     try:
         result = migrate_state_databases(
             data_root=args.data_root,
@@ -733,6 +768,25 @@ def main(argv: Iterable[str] | None = None) -> int:
         sys.stderr.write(f"State migration failed: {error}\n")
         return 1
     sys.stdout.write(f"{_format_result(result)}\n")
+    return 0
+
+
+def _run_platform_identity_migration(args: argparse.Namespace) -> int:
+    """Run the explicit second-stage platform identity migration."""
+
+    try:
+        result = migrate_platform_state_identities(
+            data_root=args.data_root,
+            qq_state_path=args.qq_state,
+            runtime_state_path=args.runtime_state,
+            ai_memory_path=args.ai_memory,
+            backup_root=args.backup_root,
+            apply=args.apply,
+        )
+    except (OSError, sqlite3.Error, PlatformStateMigrationError) as error:
+        sys.stderr.write(f"Platform identity migration failed: {error}\n")
+        return 1
+    sys.stdout.write(f"{format_platform_state_migration_result(result)}\n")
     return 0
 
 

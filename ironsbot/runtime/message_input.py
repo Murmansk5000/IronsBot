@@ -4,13 +4,17 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-from ironsbot.runtime.onebot_reply import event_reply_message_id
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -18,46 +22,18 @@ if TYPE_CHECKING:
 _RAW_AT_PATTERN = re.compile(r"\[(?:CQ:)?at,qq=([^\],]+)")
 
 
-def is_self_command(event: Event) -> bool:
-    return bool(getattr(event, "_ironsbot_self_command", False)) and (
-        getattr(event, "user_id", None) == getattr(event, "self_id", None)
-    )
+class OneBotMessageInputError(ValueError):
+    @classmethod
+    def missing_user_id(cls) -> OneBotMessageInputError:
+        return cls("OneBot message event has no user_id")
 
+    @classmethod
+    def missing_message_id(cls) -> OneBotMessageInputError:
+        return cls("OneBot message event has no message_id")
 
-class MessageInputKind(str, Enum):
-    """Single routing class, evaluated in the declared precedence order."""
-
-    REPLY = "reply"
-    BOT_MENTION = "bot_mention"
-    MEMBER_MENTION = "member_mention"
-    DIRECT = "direct"
-
-
-@dataclass(frozen=True, slots=True)
-class MessageInputContext:
-    """Only the newly-sent message, never the quoted message body."""
-
-    text: str
-    is_reply: bool
-    has_any_mention: bool
-    mentions_bot: bool
-    member_user_ids: tuple[int, ...]
-
-    @property
-    def kind(self) -> MessageInputKind:
-        if self.is_reply:
-            return MessageInputKind.REPLY
-        if self.mentions_bot:
-            return MessageInputKind.BOT_MENTION
-        if self.has_any_mention:
-            return MessageInputKind.MEMBER_MENTION
-        return MessageInputKind.DIRECT
-
-    @property
-    def has_member_mentions(self) -> bool:
-        return bool(self.member_user_ids) or (
-            self.has_any_mention and not self.mentions_bot
-        )
+    @classmethod
+    def missing_reply_message_id(cls) -> OneBotMessageInputError:
+        return cls("OneBot reply metadata has no message_id")
 
 
 def message_input_context(event: Event) -> MessageInputContext:
@@ -69,31 +45,25 @@ def message_input_context(event: Event) -> MessageInputContext:
 
     self_id = str(getattr(event, "self_id", "") or "").strip()
     message = _current_message(event)
-    has_any_mention = False
     mentions_bot = False
-    member_ids: list[int] = []
+    member_ids: list[str] = []
 
     for segment in message:
         if getattr(segment, "type", "") != "at":
             continue
-        has_any_mention = True
         raw_target = str(getattr(segment, "data", {}).get("qq", "")).strip()
         if self_id and raw_target == self_id:
             mentions_bot = True
             continue
-        if raw_target.isdigit():
-            member_id = int(raw_target)
-            if member_id not in member_ids:
-                member_ids.append(member_id)
+        if raw_target.isdigit() and raw_target not in member_ids:
+            member_ids.append(raw_target)
 
     raw_message = str(getattr(event, "raw_message", "") or "")
     raw_targets = tuple(
         match.group(1).strip() for match in _RAW_AT_PATTERN.finditer(raw_message)
     )
-    if raw_targets:
-        has_any_mention = True
-        if self_id and self_id in raw_targets:
-            mentions_bot = True
+    if raw_targets and self_id and self_id in raw_targets:
+        mentions_bot = True
     # OneBot adapters may remove a group @ segment before matcher rules run and
     # leave only ``to_me``. Private messages can also be marked ``to_me`` by
     # transports, but are ordinary direct input rather than a bot mention.
@@ -107,12 +77,26 @@ def message_input_context(event: Event) -> MessageInputContext:
         text = event.get_plaintext()
     except Exception:  # noqa: BLE001
         text = ""
+    user_id = _event_user_id(event)
+    actor = ActorRef(Platform.ONEBOT, user_id)
+    group_id = getattr(event, "group_id", None)
+    conversation = ConversationRef(
+        Platform.ONEBOT,
+        "group" if group_id is not None else "private",
+        str(group_id if group_id is not None else user_id),
+    )
     return MessageInputContext(
-        text=text,
-        is_reply=event_reply_message_id(event) is not None,
-        has_any_mention=has_any_mention,
+        IncomingMessageRef(
+            id=_message_id(event),
+            actor=actor,
+            conversation=conversation,
+            text=text,
+            direct_mentions=tuple(
+                ActorRef(Platform.ONEBOT, member_id) for member_id in member_ids
+            ),
+            reply_to_id=_reply_message_id(event),
+        ),
         mentions_bot=mentions_bot,
-        member_user_ids=tuple(member_ids),
     )
 
 
@@ -120,3 +104,27 @@ def _current_message(event: Event) -> Any:
     """Prefer the original current message so bot preprocessing cannot hide @."""
 
     return getattr(event, "original_message", None) or getattr(event, "message", ())
+
+
+def _message_id(event: Event) -> str:
+    value = getattr(event, "message_id", None)
+    if value is None:
+        raise OneBotMessageInputError.missing_message_id()
+    return str(value)
+
+
+def _event_user_id(event: Event) -> str:
+    value = getattr(event, "user_id", None)
+    if value is None:
+        raise OneBotMessageInputError.missing_user_id()
+    return str(value)
+
+
+def _reply_message_id(event: Event) -> str | None:
+    reply = getattr(event, "reply", None)
+    if reply is None:
+        return None
+    value = getattr(reply, "message_id", None)
+    if value is None:
+        raise OneBotMessageInputError.missing_reply_message_id()
+    return str(value)

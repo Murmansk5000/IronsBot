@@ -10,7 +10,44 @@ from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
+from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
+from ironsbot.plugins.activity import (
+    plugin_contribution as activity_plugin_contribution,
+)
+from ironsbot.plugins.fire_manual_ad import (
+    plugin_contribution as fire_manual_ad_plugin_contribution,
+)
+from ironsbot.plugins.headless_seer_notice import (
+    plugin_contribution as headless_notice_plugin_contribution,
+)
+from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
+from ironsbot.plugins.help.hint import (
+    plugin_contribution as help_hint_plugin_contribution,
+)
+from ironsbot.plugins.messaging.blacklist import (
+    plugin_contribution as blacklist_plugin_contribution,
+)
+from ironsbot.plugins.messaging.meeting import (
+    plugin_contribution as meeting_plugin_contribution,
+)
+from ironsbot.plugins.messaging.red_packet import (
+    plugin_contribution as red_packet_plugin_contribution,
+)
+from ironsbot.plugins.scheduled_restart import (
+    plugin_contribution as scheduled_restart_plugin_contribution,
+)
+from ironsbot.plugins.seer.rank_help import (
+    plugin_contribution as rank_help_plugin_contribution,
+)
+from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
+from ironsbot.plugins.team.resource import (
+    plugin_contribution as team_resource_plugin_contribution,
+)
+from ironsbot.plugins.team_audit import (
+    plugin_contribution as team_audit_plugin_contribution,
+)
 from ironsbot.runtime.commands import CommandCatalog
+from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.player_detail_extensions import (
@@ -20,7 +57,7 @@ from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from ironsbot.app.composition import ApplicationResources
-    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.runtime.plugins import PluginContribution
 
 
 async def _noop_startup(_scheduler: object) -> None:
@@ -61,7 +98,7 @@ async def _noop_query() -> str:
 
 def build_test_plugin_registry(
     settings: Settings | None = None,
-) -> tuple[PluginDefinition, ...]:
+) -> tuple[PluginContribution, ...]:
     config = settings or Settings()
     runtime = build_test_runtime(
         feature_config=config.features,
@@ -98,13 +135,7 @@ def build_test_plugin_registry(
             bilibili=SimpleNamespace(
                 targets=SimpleNamespace(
                     can_target_query_history=lambda _target: False,
-                    dynamic_link_tag=lambda _uid, _categories: None,
-                    push_targets_for_uid=lambda _uid: (),
-                    seer_category_uid=lambda: None,
                 ),
-                history=None,
-                image_delivery_retries=None,
-                image_collage=None,
             ),
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,
@@ -122,7 +153,6 @@ def build_test_plugin_registry(
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
                 register_jobs=lambda _scheduler: None,
-                notice_observers=[],
             ),
             local_rank=object(),
             rank_page_refresh=object(),
@@ -150,7 +180,6 @@ def build_test_plugin_registry(
                     ),
                     select=lambda _value: None,
                 ),
-                autocard_sanctuary=object(),
                 team_query=SimpleNamespace(
                     parse_team_ids=lambda _text: (),
                     query=_noop_query,
@@ -168,8 +197,6 @@ def build_test_plugin_registry(
                     select=_noop_query,
                 ),
                 pet_query=SimpleNamespace(
-                    search_avatar=_noop_query,
-                    select_avatar=_noop_query,
                     search_image=_noop_query,
                     select_image=_noop_query,
                     search_info=_noop_query,
@@ -214,10 +241,6 @@ def build_test_plugin_registry(
                     cache_status=lambda _group_id: "",
                     cache_refresh=_noop_query,
                 ),
-                external_references=SimpleNamespace(
-                    append=lambda text, _reference: text,
-                    url_for=lambda _reference: "",
-                ),
             ),
             ai=object(),
             data_sync=SimpleNamespace(startup=_noop_startup),
@@ -225,15 +248,69 @@ def build_test_plugin_registry(
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             push_message_limiter=lambda message, _target: message,
             commands=CommandCatalog(),
+            contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),
             private_extensions=SimpleNamespace(
-                load_plugin_definitions=lambda _runtime: ()
+                load_plugin_contributions=lambda _runtime: ()
             ),
             private_extension_runtime=object(),
         ),
     )
-    return build_plugin_registry(
-        settings=config,
-        resources=resources,
-        scheduler=SchedulerFacade(),
+    return (
+        *build_plugin_registry(
+            settings=config,
+            resources=resources,
+            scheduler=SchedulerFacade(),
+        ),
+        about_plugin_contribution(),
+        help_plugin_contribution(
+            contribution_catalog=resources.contribution_catalog,
+            features=runtime.features,
+            commands=resources.commands,
+            ignored_plugins=tuple(config.features.help.ignored_plugins),
+        ),
+        sendpic_plugin_contribution(
+            service=resources.sendpic,
+            features=runtime.features,
+        ),
+        meeting_plugin_contribution(
+            commands=tuple(config.messaging.meeting.commands),
+            number=config.messaging.meeting.number,
+            template=config.messaging.meeting.template,
+            features=runtime.features,
+        ),
+        blacklist_plugin_contribution(features=runtime.features),
+        red_packet_plugin_contribution(
+            config=config.messaging.red_packet_notice,
+            admin_notices=runtime.admin_notices,
+        ),
+        fire_manual_ad_plugin_contribution(),
+        help_hint_plugin_contribution(service=resources.help_hint),
+        rank_help_plugin_contribution(
+            features=runtime.features,
+            commands=resources.commands,
+        ),
+        team_audit_plugin_contribution(
+            scheduler=SchedulerFacade(),
+            service=resources.team_audit,
+        ),
+        team_resource_plugin_contribution(
+            config=config.seer.team_resource,
+            features=runtime.features,
+            scheduler=SchedulerFacade(),
+            service=resources.team_resource,
+        ),
+        activity_plugin_contribution(
+            service=resources.activity,
+            features=runtime.features,
+            scheduler=SchedulerFacade(),
+        ),
+        headless_notice_plugin_contribution(
+            scheduler=SchedulerFacade(),
+            service=headless,
+        ),
+        scheduled_restart_plugin_contribution(
+            config=config.operations.restart,
+            scheduler=SchedulerFacade(),
+        ),
     )

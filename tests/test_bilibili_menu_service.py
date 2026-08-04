@@ -1,14 +1,11 @@
 import asyncio
 from pathlib import Path
-from typing import Any, cast
 
-from ironsbot.config.models.seer import ExternalReferencesConfig
 from ironsbot.core.features import FeatureConfig
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
 )
 from ironsbot.services.bilibili.dynamic_history import (
-    CompactedDynamicContent,
     DynamicHistoryRecord,
 )
 from ironsbot.services.bilibili.menu import (
@@ -18,7 +15,6 @@ from ironsbot.services.bilibili.menu import (
     select_cached_dynamic_id,
 )
 from ironsbot.services.bilibili.service import BiliFeedResponse
-from ironsbot.services.seer.external_references import SeerInfoReferences
 from tests.helpers.bilibili import build_test_bilibili_service
 
 
@@ -161,110 +157,5 @@ def test_bilibili_service_owns_dynamic_query_and_history(
 
     assert result.status == "ok"
     assert result.dynamic_ids == ("dynamic-1",)
-    assert "测试动态" in result.prompt
+    assert "赛尔号发布了一条动态" in result.prompt
     assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"
-
-
-def test_long_history_generates_and_reuses_summary(tmp_path: Path) -> None:
-    service = build_test_bilibili_service(tmp_path)
-    item = {
-        "id_str": "dynamic-summary",
-        "modules": {
-            "module_dynamic": {
-                "major": {"opus": {"summary": {"text": "完整原文" * 500}}}
-            }
-        },
-    }
-    history = cast("SqliteBiliDynamicHistoryStore", service.history)
-    history.save_item(
-        item,
-        pub_ts=1,
-        author_mid=1310714247,
-        author_name="赛尔号",
-        brief="测试动态",
-    )
-    calls = 0
-
-    async def compact(
-        item: dict[str, Any],
-        author_mid: int,
-        content: str,
-        *,
-        notify_failure: bool = True,
-    ) -> CompactedDynamicContent:
-        del item, author_mid, content
-        nonlocal calls
-        assert not notify_failure
-        calls += 1
-        return CompactedDynamicContent("生成后的摘要", generated_by_ai=True)
-
-    service.history_content_compactor = compact
-    first = service.history.get("dynamic-summary")
-    assert first is not None
-    assert asyncio.run(service.history_content_override(first)) == (
-        "本条动态文本过长，AI总结如下：\n生成后的摘要"
-    )
-
-    saved = service.history.get("dynamic-summary")
-    assert saved is not None
-    assert saved.summary == "生成后的摘要"
-    assert saved.summary_generated_by_ai
-    assert asyncio.run(service.history_content_override(saved)) == (
-        "本条动态文本过长，AI总结如下：\n生成后的摘要"
-    )
-    assert calls == 1
-
-
-def test_old_long_history_can_generate_summary(tmp_path: Path) -> None:
-    service = build_test_bilibili_service(tmp_path)
-    record = _record(
-        "old-dynamic",
-        pub_ts=1,
-    )._replace(
-        item={
-            "id_str": "old-dynamic",
-            "modules": {
-                "module_dynamic": {
-                    "major": {"opus": {"summary": {"text": "完整原文" * 500}}}
-                }
-            },
-        }
-    )
-
-    async def compact(
-        item: dict[str, Any],
-        author_mid: int,
-        content: str,
-        *,
-        notify_failure: bool = True,
-    ) -> CompactedDynamicContent:
-        del item, author_mid, content
-        assert not notify_failure
-        return CompactedDynamicContent("旧动态摘要", generated_by_ai=True)
-
-    service.history_content_compactor = compact
-
-    assert asyncio.run(service.history_content_override(record)) == (
-        "本条动态文本过长，AI总结如下：\n旧动态摘要"
-    )
-
-
-def test_bilibili_history_reference_is_added_only_when_enabled(
-    tmp_path: Path,
-) -> None:
-    service = build_test_bilibili_service(
-        tmp_path,
-        external_references=SeerInfoReferences(ExternalReferencesConfig()),
-    )
-
-    assert "https://seerinfo.yuyuqaq.cn/bilibili" in service.history_reference_message(
-        "📭 没有可展示的历史动态。"
-    )
-
-    disabled = build_test_bilibili_service(
-        tmp_path / "disabled",
-        external_references=SeerInfoReferences(
-            ExternalReferencesConfig(bilibili_history=False)
-        ),
-    )
-    assert disabled.history_reference_message("历史动态") == "历史动态"

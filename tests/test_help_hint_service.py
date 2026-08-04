@@ -1,11 +1,6 @@
-from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
-import pytest
-
-from ironsbot.config.models.messaging import PokeConfig
+from ironsbot.core.features import HelpConfig
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.runtime.commands import (
@@ -14,18 +9,11 @@ from ironsbot.runtime.commands import (
     CommandContext,
     CommandDescriptor,
 )
-from ironsbot.runtime.plugins import PluginDefinition
+from ironsbot.runtime.plugins import PluginContribution
 from ironsbot.services.messaging.help_hint import (
-    CommandHintCandidate,
-    CommandHintChooser,
     HelpHintService,
     is_poke_at_bot,
 )
-from ironsbot.services.messaging.poke_promotions import PokePromotionService
-
-_INITIAL_PROMOTION_WEIGHT = 5.0
-_FIVE_DAY_PROMOTION_WEIGHT = 3.0
-_TEN_DAY_PROMOTION_WEIGHT = 2.0
 
 
 @dataclass(slots=True)
@@ -64,7 +52,7 @@ class FakeFeatures:
 def _catalog() -> CommandCatalog:
     catalog = CommandCatalog()
     definitions = (
-        PluginDefinition(
+        PluginContribution(
             id="pet_config",
             commands=(
                 CommandDescriptor(
@@ -78,7 +66,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="server_status",
             commands=(
                 CommandDescriptor(
@@ -92,7 +80,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="activity",
             commands=(
                 CommandDescriptor(
@@ -116,7 +104,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="team_resource",
             commands=(
                 CommandDescriptor(
@@ -124,14 +112,14 @@ def _catalog() -> CommandCatalog:
                     plugin_id="team_resource",
                     section="查询",
                     examples=("战队",),
-                    description="查看战队订阅",
+                    description="查看本群战队订阅",
                     features_any=("team_resource_subscription",),
                     access=(CommandAccess(scope="group"),),
                     show_in_poke=True,
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="bilibili",
             commands=(
                 CommandDescriptor(
@@ -145,15 +133,15 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginDefinition(
+        PluginContribution(
             id="rank_help",
             commands=(
                 CommandDescriptor(
                     id="rank.display_limit",
                     plugin_id="rank_help",
-                    section="群管理",
+                    section="本群管理",
                     examples=("/榜单显示 20",),
-                    description="设置榜单默认显示名次",
+                    description="设置本群榜单默认显示名次",
                     features_any=("seer_rank",),
                     access=(CommandAccess("group", "group_manager"),),
                     show_in_poke=True,
@@ -175,15 +163,12 @@ def _catalog() -> CommandCatalog:
     return catalog
 
 
-def _service(  # noqa: PLR0913 - concise test fixture options
+def _service(
     *,
-    config: PokeConfig | None = None,
-    ignored_plugins: tuple[str, ...] = (),
+    config: HelpConfig | None = None,
     group_aliases: dict[str, int] | None = None,
     user_aliases: dict[str, int] | None = None,
     features: FakeFeatures | None = None,
-    promotions: PokePromotionService | None = None,
-    chooser: CommandHintChooser | None = None,
 ) -> HelpHintService:
     catalog = _catalog()
 
@@ -206,19 +191,13 @@ def _service(  # noqa: PLR0913 - concise test fixture options
         )
 
     return HelpHintService(
-        config=config or PokeConfig(),
-        ignored_plugins=ignored_plugins,
+        config=config or HelpConfig(),
         references=OneBotReferenceResolver(
             group_aliases=group_aliases or {},
             user_aliases=user_aliases or {},
         ),
         poke_hint_candidates=candidates,
-        promotions=promotions,
-        chooser=(
-            chooser
-            if chooser is not None
-            else lambda candidates, _weights: candidates[0]
-        ),
+        chooser=lambda candidates: candidates[0],
     )
 
 
@@ -238,7 +217,7 @@ def test_is_poke_at_bot_checks_poke_target() -> None:
 def test_group_poke_reply_prefers_configured_group_alias() -> None:
     service = _service(
         group_aliases={"example": 987654321},
-        config=PokeConfig(group_replies={"example": "自定义戳一戳回复"}),
+        config=HelpConfig(poke_replies={"example": "自定义戳一戳回复"}),
     )
 
     assert service.get_poke_reply(group_id=987654321, user_id=1) == (
@@ -249,7 +228,7 @@ def test_group_poke_reply_prefers_configured_group_alias() -> None:
 
 def test_group_poke_reply_accepts_numeric_group_id() -> None:
     service = _service(
-        config=PokeConfig(group_replies={"987654321": "数字群号回复"}),
+        config=HelpConfig(poke_replies={"987654321": "数字群号回复"}),
     )
 
     assert service.get_poke_reply(group_id=987654321, user_id=1) == "数字群号回复"
@@ -258,7 +237,7 @@ def test_group_poke_reply_accepts_numeric_group_id() -> None:
 def test_user_poke_reply_accepts_chinese_user_alias() -> None:
     service = _service(
         user_aliases={"示例昵称": 1234567890},
-        config=PokeConfig(user_replies={"示例昵称": "用户专属回复"}),
+        config=HelpConfig(poke_user_replies={"示例昵称": "用户专属回复"}),
     )
 
     assert service.get_poke_reply(group_id=None, user_id=1234567890) == (
@@ -271,9 +250,9 @@ def test_user_poke_reply_takes_priority_over_group_reply() -> None:
     service = _service(
         group_aliases={"example": 987654321},
         user_aliases={"example_user": 1234567890},
-        config=PokeConfig(
-            group_replies={"example": "群专属回复"},
-            user_replies={"example_user": "用户专属回复"},
+        config=HelpConfig(
+            poke_replies={"example": "群专属回复"},
+            poke_user_replies={"example_user": "用户专属回复"},
         ),
     )
 
@@ -285,37 +264,6 @@ def test_user_poke_reply_takes_priority_over_group_reply() -> None:
         service.get_poke_reply(group_id=987654321, user_id=2345678901)
         == "群专属回复"
     )
-
-
-@pytest.mark.parametrize("field", ["group_replies", "user_replies"])
-@pytest.mark.parametrize("replies", [{" ": "reply"}, {"123": " "}])
-def test_poke_config_rejects_empty_targets_or_replies(
-    field: str, replies: dict[str, str],
-) -> None:
-    with pytest.raises(ValueError, match="non-empty group/user refs and messages"):
-        PokeConfig.model_validate({field: replies})
-
-
-def test_poke_config_trims_reply_targets_and_text() -> None:
-    config = PokeConfig(
-        group_replies={" example ": " group reply "},
-        user_replies={" 123 ": " user reply "},
-    )
-    assert config.group_replies == {"example": "group reply"}
-    assert config.user_replies == {"123": "user reply"}
-
-
-@pytest.mark.parametrize("field", ["window_seconds", "max_per_window"])
-def test_poke_config_rejects_invalid_rate_limits(field: str) -> None:
-    with pytest.raises(ValueError):
-        PokeConfig.model_validate({field: 0})
-
-
-def test_poke_limiter_uses_custom_window_and_count() -> None:
-    service = _service(config=PokeConfig(window_seconds=10.0, max_per_window=1))
-    assert service.can_send(987654321, now=100.0)
-    assert not service.can_send(987654321, now=109.0)
-    assert service.can_send(987654321, now=111.0)
 
 
 def test_help_hint_limiter_allows_three_group_hints_per_minute() -> None:
@@ -389,7 +337,7 @@ def test_team_resource_poke_hint_is_group_only() -> None:
     )
 
     assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
-        "发送“战队”查看战队订阅。\n发送“帮助”可查看全部指令。"
+        "发送“战队”查看本群战队订阅。\n发送“帮助”可查看全部指令。"
     )
     assert service.get_default_poke_hint(group_id=None, user_id=1234567890) is None
 
@@ -411,7 +359,7 @@ def test_group_poke_hint_uses_the_poking_users_permission() -> None:
 
 def test_default_poke_hint_excludes_ignored_plugins() -> None:
     service = _service(
-        ignored_plugins=("seer_query",),
+        config=HelpConfig(ignored_plugins=["seer_query"]),
         features=FakeFeatures(
             group_features={987654321: {"pet_config"}},
             private_features={},
@@ -437,7 +385,7 @@ def test_group_manager_poke_hint_can_include_group_management_command() -> None:
         user_id=1,
         group_role="owner",
     ) == (
-        "发送“/榜单显示 20”设置榜单默认显示名次。\n"
+        "发送“/榜单显示 20”设置本群榜单默认显示名次。\n"
         "发送“帮助”可查看全部指令。"
     )
 
@@ -452,77 +400,6 @@ def test_superuser_poke_hint_can_include_group_management_command() -> None:
     )
 
     assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
-        "发送“/榜单显示 20”设置榜单默认显示名次。\n"
+        "发送“/榜单显示 20”设置本群榜单默认显示名次。\n"
         "发送“帮助”可查看全部指令。"
     )
-
-
-def test_new_poke_command_weight_decays_from_five_to_three() -> None:
-    introduced_at = datetime(2026, 8, 1, tzinfo=timezone.utc)
-    service = PokePromotionService(
-        introduced_at={"server_status.query": introduced_at},
-        initial_weight=_INITIAL_PROMOTION_WEIGHT,
-        half_life_days=5.0,
-    )
-
-    assert service.weight_for("pet_config.query", now=introduced_at) == 1.0
-    assert (
-        service.weight_for("server_status.query", now=introduced_at)
-        == _INITIAL_PROMOTION_WEIGHT
-    )
-    assert service.weight_for(
-        "server_status.query",
-        now=introduced_at + timedelta(days=5),
-    ) == _FIVE_DAY_PROMOTION_WEIGHT
-    assert service.weight_for(
-        "server_status.query",
-        now=introduced_at + timedelta(days=10),
-    ) == _TEN_DAY_PROMOTION_WEIGHT
-
-
-def test_poke_config_rejects_invalid_new_command_promotion_weights() -> None:
-    with pytest.raises(ValueError):
-        PokeConfig(new_command_initial_weight=0.5)
-    with pytest.raises(ValueError):
-        PokeConfig(new_command_half_life_days=0.0)
-
-
-def test_missing_poke_promotion_manifest_uses_uniform_weights(
-    tmp_path: Path,
-) -> None:
-    service = PokePromotionService.from_path(PokeConfig(), tmp_path / "missing.json")
-
-    assert service.weight_for("seer.autocard.sanctuary") == 1.0
-
-
-def test_default_poke_hint_passes_recency_weights_to_chooser() -> None:
-    now = datetime(2026, 8, 1, tzinfo=timezone.utc)
-    seen_weights: list[tuple[float, ...]] = []
-
-    def choose_highest(
-        candidates: Sequence[CommandHintCandidate],
-        weights: Sequence[float],
-    ) -> CommandHintCandidate:
-        candidate_list = tuple(candidates)
-        weight_list = tuple(weights)
-        seen_weights.append(weight_list)
-        return candidate_list[weight_list.index(max(weight_list))]
-
-    service = _service(
-        features=FakeFeatures(
-            group_features={987654321: {"pet_config", "server_status_query"}},
-            private_features={},
-        ),
-        promotions=PokePromotionService(
-            introduced_at={"server_status.query": now},
-            initial_weight=_INITIAL_PROMOTION_WEIGHT,
-            half_life_days=5.0,
-        ),
-        chooser=choose_highest,
-    )
-
-    assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
-        "发送“开服了吗”查询维护状态。\n发送“帮助”可查看全部指令。"
-    )
-    assert seen_weights[0][0] == 1.0
-    assert seen_weights[0][1] > 1.0

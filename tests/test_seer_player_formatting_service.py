@@ -1,8 +1,5 @@
-import logging
 from dataclasses import dataclass
 from typing import Any, cast
-
-import pytest
 
 from ironsbot.services.seer.player_collection_formatting import (
     format_autocard_rank_info,
@@ -159,7 +156,7 @@ def test_format_win_rate_handles_empty_and_non_empty_records() -> None:
     assert format_win_rate(2, 3) == "2/3=66.667%"
 
 
-def test_format_peak_uses_profile_values_regardless_of_season_rank() -> None:
+def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -> None:
     peak = UnityPeak(
         current_j_rank=4,
         current_j_star=0,
@@ -195,137 +192,10 @@ def test_format_peak_uses_profile_values_regardless_of_season_rank() -> None:
     )
 
     assert message.splitlines()[1].startswith("获取时间：")
-    assert "竞技：圣皇0星" in message
-    assert "王者33星" not in message
-    assert "场次124" in message
-    assert "赛季榜第1" in message
-    assert "狂野：天骄5星" in message
-    assert "专家：1234分" in message
-    assert "赛季榜前2000名未确认" in message
-
-
-def test_peak_logs_profile_value_even_when_rank_is_unconfirmed(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    peak = UnityPeak(
-        current_k_rank=0,
-        current_k_star=41,
-        current_k_win=10,
-        current_k_all=10,
-    )
-    summary = PeakSeasonRankSummary.empty()
-    summary.wild.queried = True
-    summary.wild.searched_limit = 20_000
-    summary.wild.query_id = "wild-rank-test"
-    with caplog.at_level(logging.INFO):
-        message = format_compact_peak_section(
-            _as_any(peak),
-            summary,
-            _as_any(_LocalSummary()),
-            player_id=PLAYER_ID,
-            query_id="peak-base-test",
-        )
-    assert "狂野：学徒41星" in message
-    assert "赛季榜前20000名未确认" in message
-    wild_line = next(line for line in message.splitlines() if line.startswith("狂野："))
-    assert "场次10" in wild_line
-    assert "胜率10/10=100.000%" in wild_line
-    record = next(
-        record.getMessage()
-        for record in caplog.records
-        if "mode=wild" in record.getMessage()
-    )
-    assert "query=peak-base-test" in record
-    assert "profile_available=True profile_score=41" in record
-    assert "rank_query=wild-rank-test rank=None" in record
-    assert "selected=学徒41星" in record
-
-
-@pytest.mark.parametrize("rank_state", ["conflict", "missing", "timeout", "unqueried"])
-def test_peak_profile_fields_are_independent_of_rank_state(rank_state: str) -> None:
-    peak = UnityPeak(current_k_win=10, current_k_all=10)
-    summary = PeakSeasonRankSummary.empty()
-    for result in (summary.standard, summary.wild, summary.expert):
-        result.queried = rank_state != "unqueried"
-        if rank_state == "conflict":
-            result.rank = 9
-            result.score = 300033
-            result.observed_score = 300033
-            result.profile_score = 42
-        elif rank_state == "missing":
-            result.searched_limit = 20_000
-        elif rank_state == "timeout":
-            result.failure = "查询超时"
-    message = format_compact_peak_section(
-        _as_any(peak),
-        summary,
-        _as_any(_LocalSummary()),
-    )
-    assert "竞技：王者2星｜历史圣皇1星｜场次10" in message
-    assert "狂野：天骄5星｜历史王者4星｜场次10" in message
-    assert "专家：1234分｜历史2345分｜场次4" in message
-    assert "胜率6/10=60.000%" in message
-    assert "胜率10/10=100.000%" in message
-    assert "胜率2/4=50.000%" in message
-    assert "个人接口：" not in message
-    assert "榜单：" not in message
-    assert "当前赛季" not in message
-    status = {
-        "conflict": "赛季榜第9",
-        "missing": "赛季榜前20000名未确认",
-        "timeout": "赛季榜查询超时",
-        "unqueried": "赛季榜未查询",
-    }[rank_state]
-    assert message.count(status) == len(
-        (summary.standard, summary.wild, summary.expert)
-    )
-
-
-def test_peak_shows_successful_zero_values_without_matches() -> None:
-    peak = UnityPeak(
-        current_j_rank=0,
-        current_j_star=0,
-        current_j_all=0,
-        current_k_rank=0,
-        current_k_star=0,
-        current_k_all=0,
-        current_z_score=0,
-        current_z_all=0,
-    )
-    summary = PeakSeasonRankSummary.empty()
-    for result in (summary.standard, summary.wild, summary.expert):
-        result.queried = True
-    message = format_compact_peak_section(
-        _as_any(peak),
-        summary,
-        _as_any(_LocalSummary()),
-    )
-    assert "竞技：学徒0星" in message
-    assert "狂野：学徒0星" in message
-    assert "专家：0分" in message
-    assert "暂未获取" not in message
-
-
-def test_peak_does_not_fill_failed_profile_fields_from_rank() -> None:
-    summary = PeakSeasonRankSummary.empty()
-    for result in (summary.standard, summary.wild, summary.expert):
-        result.queried = True
-        result.rank = 9
-        result.score = 300033
-    message = format_compact_peak_section(
-        _as_any(UnityPeak()),
-        summary,
-        _as_any(_LocalSummary()),
-        available_modes=frozenset(),
-        mode_errors=dict.fromkeys(("standard", "wild", "expert"), "查询超时"),
-    )
-    for label in ("竞技", "狂野", "专家"):
-        assert f"{label}：当前暂未获取（查询超时）｜历史暂未获取（查询超时）" in message
-    assert "王者33星" not in message
-    assert "300033分" not in message
-    assert "场次" not in message
-    assert "胜率" not in message
-    assert "赛季榜第9" in message
+    assert "竞技：王者33星" in message
+    assert "竞技：圣皇0星" not in message
+    assert "场次124" not in message
+    assert "狂野：当前赛季前2000名未确认" in message
 
 
 def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
@@ -369,64 +239,6 @@ def test_format_peak_does_not_report_unqueried_mode_as_unranked() -> None:
     assert "赛季榜未上榜" not in expert_line
 
 
-def test_format_peak_keeps_successful_mode_when_another_mode_times_out() -> None:
-    peak = UnityPeak(
-        current_z_score=1209,
-        history_z_score=1437,
-        current_z_win=8,
-        current_z_all=9,
-    )
-    summary = PeakSeasonRankSummary.empty()
-    summary.expert.rank = 143
-    summary.expert.score = 1209
-    summary.expert.queried = True
-
-    message = format_compact_peak_section(
-        _as_any(peak),
-        summary,
-        _as_any(_LocalSummary()),
-        available_modes=frozenset(("expert",)),
-        mode_errors={"standard": "查询超时", "wild": "查询未完成"},
-    )
-
-    standard_line = next(
-        line for line in message.splitlines() if line.startswith("竞技：")
-    )
-    wild_line = next(
-        line for line in message.splitlines() if line.startswith("狂野：")
-    )
-    expert_line = next(
-        line for line in message.splitlines() if line.startswith("专家：")
-    )
-    assert "当前暂未获取（查询超时）" in standard_line
-    assert "历史暂未获取（查询超时）" in standard_line
-    assert "学徒0星" not in standard_line
-    assert "当前暂未获取（查询未完成）" in wild_line
-    assert "专家：1209分" in expert_line
-    assert "历史1437分" in expert_line
-    assert "赛季榜第143" in expert_line
-
-
-def test_format_peak_does_not_turn_a_first_packet_timeout_into_zero_values() -> None:
-    message = format_compact_peak_section(
-        _as_any(UnityPeak()),
-        PeakSeasonRankSummary.empty(),
-        _as_any(_LocalSummary()),
-        available_modes=frozenset(),
-        mode_errors={
-            "standard": "查询超时",
-            "wild": "查询未完成",
-            "expert": "查询未完成",
-        },
-    )
-
-    assert "竞技：当前暂未获取（查询超时）" in message
-    assert "狂野：当前暂未获取（查询未完成）" in message
-    assert "专家：当前暂未获取（查询未完成）" in message
-    assert "学徒0星" not in message
-    assert "历史0分" not in message
-
-
 def test_format_autocard_rank_starts_with_fetch_time() -> None:
     message = format_autocard_rank_info(
         RankLookupResult(
@@ -443,25 +255,6 @@ def test_format_autocard_rank_starts_with_fetch_time() -> None:
     assert message.splitlines()[1].startswith("获取时间：")
 
 
-def test_format_autocard_rank_marks_cached_fallback_after_timeout() -> None:
-    message = format_autocard_rank_info(
-        RankLookupResult(
-            title="群星之巅榜",
-            score_name="分",
-            rank=15,
-            score=9525,
-            failure="查询超时",
-            fallback_cached_at=REG_TIME,
-        ),
-        player_identity="米米号：1269554（XJTLoveness）",
-        local_summary=_as_any(_LocalSummary()),
-    )
-
-    assert "9525分" in message
-    assert "前 15 名未上榜" not in message
-    assert "缓存于2000年1月1日 08:00:00，本次查询超时" in message
-
-
 def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     user_info = UserInfo(
         user_id=PLAYER_ID,
@@ -476,6 +269,7 @@ def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     message = format_compact_player_info(
         user_info,
         more_info,
+        team_name="无",
         online_info=None,
         unity_peak=_as_any(Empty()),
         peak_rank_summary=_as_any(Empty()),
@@ -487,6 +281,6 @@ def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     assert "🤖【玩家信息】" in message
     assert "米米号：712345678（赛小息）" in message
     assert "注册时间：2000年1月1日 08:00:00" in message
-    assert "战队：" not in message
+    assert "战队：未加入" in message
     assert "在线状态失败" in message
     assert "\n\n" not in message

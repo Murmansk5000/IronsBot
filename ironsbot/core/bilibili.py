@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Annotated, Literal, cast
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     BaseModel,
@@ -22,16 +20,13 @@ from ironsbot.core.commands import (
 )
 from ironsbot.core.time import normalize_daily_time
 
-INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM:SS"
-INVALID_SEER_PREVIEW_TIME_ERROR = (
-    "bilibili.seer_categories.preview_windows time must use HH:MM:SS"
-)
+INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 
 BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
 DEFAULT_BILI_ACCOUNT_UID = 1310714247
-DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 800
-DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 500
+DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 400
+DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 250
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "恭喜",
     "恭喜.*获得",
@@ -40,80 +35,6 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
-MAX_CLOCK_SECOND = 59
-SeerDynamicCategory = Literal[
-    "lottery",
-    "winning",
-    "version_preview",
-    "version_guide",
-    "pet",
-    "skin",
-    "skill_showcase",
-    "autocard",
-    "competition",
-    "story",
-    "event",
-    "interaction",
-    "other",
-]
-SEER_DYNAMIC_CATEGORIES: tuple[SeerDynamicCategory, ...] = (
-    "lottery",
-    "winning",
-    "version_preview",
-    "version_guide",
-    "pet",
-    "skin",
-    "skill_showcase",
-    "autocard",
-    "competition",
-    "story",
-    "event",
-    "interaction",
-    "other",
-)
-DEFAULT_SEER_MUTED_CATEGORIES: tuple[SeerDynamicCategory, ...] = (
-    "lottery",
-    "winning",
-)
-DEFAULT_SEER_CATEGORY_PATTERNS: dict[str, list[str]] = {
-    "lottery": ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"],
-    "winning": ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"],
-    "version_preview": ["新版本.*即将到来", "查看下方长图"],
-    "version_guide": ["一图掌握", "版本更新指引", "版本福利"],
-    "pet": ["全新精灵", "精灵觉醒", "精灵.*即将登场"],
-    "skin": ["全新皮肤", "限定皮肤", "皮肤.*返场", "皮肤.*即将登场"],
-    "skill_showcase": ["技能特效抢先看"],
-    "autocard": ["群星牌", "元素王座", "卡牌", "小小精灵"],
-    "competition": [
-        "大师赛",
-        "小师赛",
-        "赛事",
-        "比赛",
-        "赛程",
-        "直播",
-        "总决赛",
-    ],
-    "story": ["灵渊", "玄武复活", "全新剧情", "主线故事"],
-    "event": ["联动", "主题站", "通行证", "限时活动", "活动福利"],
-    "interaction": ["投票", "应援", "报名", "问卷", "创作激励", "征集"],
-}
-DEFAULT_SEER_PREVIEW_WINDOW_PATTERNS = ["新版本", "即将到来", "长图"]
-DEFAULT_SEER_PREVIEW_WEEKDAYS = ["mon", "wed"]
-
-
-def truncate_bilibili_text(text: str, max_chars: int) -> str:
-    """Keep a long dynamic readable without splitting a sentence or list item."""
-
-    normalized = "\n".join(line.strip() for line in text.splitlines() if line.strip())
-    if len(normalized) <= max_chars:
-        return normalized
-    clipped = normalized[:max_chars]
-    boundaries = [
-        index for index, character in enumerate(clipped) if character in "。！？；\n"
-    ]
-    if boundaries and boundaries[-1] >= max_chars // 3:
-        return clipped[: boundaries[-1] + 1].rstrip()
-    return clipped.rstrip("，、：:；;-. ") + "……"
 
 
 class BiliPushTargetConfigError(ValueError):
@@ -186,74 +107,20 @@ class BiliIntervalWindow(BaseModel):
         )
 
 
-class BiliBoostWindow(BaseModel):
-    """Extra short polling burst around a recurring wall-clock release slot."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    start: str
-    end: str
-    interval_minutes: int = Field(gt=0)
-    offset_seconds: list[int] = Field(min_length=1)
-
-    @field_validator("start", "end")
-    @classmethod
-    def validate_hhmm(cls, value: str) -> str:
-        return normalize_daily_time(
-            value,
-            error_message=INVALID_INTERVAL_TIME_ERROR,
-        )
-
-    @field_validator("offset_seconds")
-    @classmethod
-    def validate_offset_seconds(cls, value: list[int]) -> list[int]:
-        if any(not 0 <= second <= MAX_CLOCK_SECOND for second in value):
-            msg = (
-                "bilibili.polling.boost_windows offset_seconds "
-                "must be between 0 and 59"
-            )
-            raise ValueError(msg)
-        if len(set(value)) != len(value):
-            msg = (
-                "bilibili.polling.boost_windows offset_seconds "
-                "must not contain duplicates"
-            )
-            raise ValueError(msg)
-        return sorted(value)
-
-
 class BiliStorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data_dir: Path = Path("data/bilibili_monitor")
     history_max_items: int = Field(default=1000, ge=1)
-    history_query_limit: int = Field(default=10, ge=1)
 
 
 class BiliPollingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_minutes: int = Field(default=30, gt=0)
-    check_second: int = Field(default=5, ge=0, le=59)
     windows: list[BiliIntervalWindow] = Field(
         default_factory=lambda: [
-            BiliIntervalWindow(start="07:00:00", end="23:00:00", minutes=5)
-        ]
-    )
-    boost_windows: list[BiliBoostWindow] = Field(
-        default_factory=lambda: [
-            BiliBoostWindow(
-                start="10:00:00",
-                end="19:00:00",
-                interval_minutes=60,
-                offset_seconds=[0, 5, 10, 15],
-            ),
-            BiliBoostWindow(
-                start="14:30:00",
-                end="19:30:00",
-                interval_minutes=60,
-                offset_seconds=[0, 5, 10, 15],
-            ),
+            BiliIntervalWindow(start="07:00", end="23:00", minutes=5)
         ]
     )
 
@@ -290,7 +157,6 @@ class BiliPushConfig(BaseModel):
         ge=1,
     )
     summary_use_ai: bool = True
-    combine_images: bool = True
     groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
     users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
 
@@ -319,208 +185,6 @@ class BiliFilterConfig(BaseModel):
     )
 
 
-class BiliSeerCategoryConfigError(ValueError):
-    @classmethod
-    def invalid_weekday(cls) -> BiliSeerCategoryConfigError:
-        return cls(
-            "bilibili.seer_categories.preview_windows weekdays must use mon..sun"
-        )
-
-    @classmethod
-    def invalid_window_order(cls) -> BiliSeerCategoryConfigError:
-        return cls("bilibili.seer_categories.preview_windows start must be before end")
-
-    @classmethod
-    def empty_account(cls) -> BiliSeerCategoryConfigError:
-        return cls("bilibili.seer_categories.account must not be empty")
-
-    @classmethod
-    def invalid_timezone(cls, value: str) -> BiliSeerCategoryConfigError:
-        return cls(f"bilibili.seer_categories.timezone is invalid: {value}")
-
-    @classmethod
-    def unknown_muted_categories(
-        cls,
-        categories: list[str],
-    ) -> BiliSeerCategoryConfigError:
-        return cls(
-            "bilibili.seer_categories.default_muted_categories contains "
-            f"unknown categories: {', '.join(categories)}"
-        )
-
-    @classmethod
-    def invalid_regex(
-        cls,
-        field: str,
-        pattern: str,
-        error: re.error,
-    ) -> BiliSeerCategoryConfigError:
-        return cls(
-            f"bilibili.seer_categories.{field} has invalid regex {pattern!r}: {error}"
-        )
-
-
-class BiliSeerPreviewWindow(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    weekdays: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_PREVIEW_WEEKDAYS)
-    )
-    start: str = "17:00:00"
-    end: str = "18:00:00"
-
-    @field_validator("weekdays")
-    @classmethod
-    def validate_weekdays(cls, values: list[str]) -> list[str]:
-        valid = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
-        normalized = [value.strip().lower() for value in values if value.strip()]
-        if not normalized or any(value not in valid for value in normalized):
-            raise BiliSeerCategoryConfigError.invalid_weekday()
-        return list(dict.fromkeys(normalized))
-
-    @field_validator("start", "end")
-    @classmethod
-    def validate_hhmm(cls, value: str) -> str:
-        return normalize_daily_time(
-            value,
-            error_message=INVALID_SEER_PREVIEW_TIME_ERROR,
-        )
-
-    @model_validator(mode="after")
-    def validate_order(self) -> BiliSeerPreviewWindow:
-        if self.start >= self.end:
-            raise BiliSeerCategoryConfigError.invalid_window_order()
-        return self
-
-
-class BiliSeerCategoryConfig(BaseModel):
-    """Target-level category routing for the configured official Seer account."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = True
-    account: str = DEFAULT_BILI_ACCOUNT_ALIAS
-    timezone: str = "Asia/Shanghai"
-    default_muted_categories: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_MUTED_CATEGORIES)
-    )
-    preview_windows: list[BiliSeerPreviewWindow] = Field(
-        default_factory=lambda: [BiliSeerPreviewWindow()]
-    )
-    preview_window_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_PREVIEW_WINDOW_PATTERNS)
-    )
-    lottery_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["lottery"])
-    )
-    winning_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["winning"])
-    )
-    version_preview_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["version_preview"])
-    )
-    version_guide_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["version_guide"])
-    )
-    pet_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["pet"])
-    )
-    skin_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["skin"])
-    )
-    skill_showcase_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["skill_showcase"])
-    )
-    autocard_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["autocard"])
-    )
-    competition_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["competition"])
-    )
-    story_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["story"])
-    )
-    event_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["event"])
-    )
-    interaction_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["interaction"])
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_combined_lottery_category(cls, value: object) -> object:
-        """Preserve legacy "抽奖/中奖" TD choices when the category splits."""
-        if not isinstance(value, dict) or "winning_patterns" in value:
-            return value
-        data = dict(value)
-        muted = data.get("default_muted_categories")
-        if isinstance(muted, list) and "lottery" in muted and "winning" not in muted:
-            data["default_muted_categories"] = [*muted, "winning"]
-        return data
-
-    @field_validator("account")
-    @classmethod
-    def normalize_account(cls, value: str) -> str:
-        normalized = _normalize_account_alias(value)
-        if not normalized:
-            raise BiliSeerCategoryConfigError.empty_account()
-        return normalized
-
-    @field_validator("timezone")
-    @classmethod
-    def validate_timezone(cls, value: str) -> str:
-        try:
-            ZoneInfo(value)
-        except ZoneInfoNotFoundError as error:
-            raise BiliSeerCategoryConfigError.invalid_timezone(value) from error
-        return value
-
-    @field_validator("default_muted_categories")
-    @classmethod
-    def validate_muted_categories(cls, values: list[str]) -> list[str]:
-        invalid = sorted(set(values) - set(SEER_DYNAMIC_CATEGORIES))
-        if invalid:
-            raise BiliSeerCategoryConfigError.unknown_muted_categories(invalid)
-        return list(dict.fromkeys(values))
-
-    @model_validator(mode="after")
-    def validate_patterns(self) -> BiliSeerCategoryConfig:
-        for category, patterns in self.category_patterns().items():
-            for pattern in patterns:
-                self._validate_regex(f"{category}_patterns", pattern)
-        for pattern in self.preview_window_patterns:
-            self._validate_regex("preview_window_patterns", pattern)
-        return self
-
-    @staticmethod
-    def _validate_regex(field: str, pattern: str) -> None:
-        try:
-            re.compile(pattern)
-        except re.error as error:
-            raise BiliSeerCategoryConfigError.invalid_regex(
-                field,
-                pattern,
-                error,
-            ) from error
-
-    def category_patterns(self) -> dict[SeerDynamicCategory, list[str]]:
-        return {
-            "lottery": self.lottery_patterns,
-            "winning": self.winning_patterns,
-            "version_preview": self.version_preview_patterns,
-            "version_guide": self.version_guide_patterns,
-            "pet": self.pet_patterns,
-            "skin": self.skin_patterns,
-            "skill_showcase": self.skill_showcase_patterns,
-            "autocard": self.autocard_patterns,
-            "competition": self.competition_patterns,
-            "story": self.story_patterns,
-            "event": self.event_patterns,
-            "interaction": self.interaction_patterns,
-        }
-
-
 class BiliConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -533,9 +197,6 @@ class BiliConfig(BaseModel):
     polling: BiliPollingConfig = Field(default_factory=BiliPollingConfig)
     push: BiliPushConfig = Field(default_factory=BiliPushConfig)
     filters: BiliFilterConfig = Field(default_factory=BiliFilterConfig)
-    seer_categories: BiliSeerCategoryConfig = Field(
-        default_factory=BiliSeerCategoryConfig
-    )
     login_notice_cooldown_seconds: float = Field(
         default=DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
         ge=0,
@@ -579,11 +240,6 @@ class BiliConfig(BaseModel):
         _validate_target_account_refs(
             "bilibili.push.users",
             self.push.users,
-            accounts,
-        )
-        _validate_account_ref(
-            "bilibili.seer_categories.account",
-            self.seer_categories.account,
             accounts,
         )
         return self

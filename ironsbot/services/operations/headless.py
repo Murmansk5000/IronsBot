@@ -250,10 +250,6 @@ class HeadlessService:
         return self._dispatcher.idle_worker_count
 
     @property
-    def active_request_summaries(self) -> tuple[str, ...]:
-        return self._dispatcher.active_request_summaries
-
-    @property
     def pending_request_counts(self) -> dict[HeadlessRequestPriority, int]:
         """Ready public-pool packets grouped by their effective priority."""
 
@@ -406,6 +402,7 @@ class HeadlessService:
                     reason=reason,
                 ),
                 action_name="headless seer failure notice",
+                interval_seconds=1.2,
                 subscription_key="headless_seer_notice",
             )
 
@@ -613,6 +610,7 @@ class HeadlessService:
                 ),
             ),
             action_name="headless state notice",
+            interval_seconds=1.2,
             subscription_key="headless_seer_notice",
         )
 

@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -38,10 +37,9 @@ DEFAULT_FIRE_MANUAL_INTENT = (
     "Judge whether the QQ group message explicitly asks for the Fire manual "
     "entry, link, address, URL, download, or where to read it. Answer yes only "
     "when the sender is requesting the manual link/入口/地址/下载. Answer no when "
-    "the message only mentions 手册、词典、辞典、火火手册 or 火火词典, discusses "
-    "manual content, cites the manual as a source, asks why it has not updated "
-    "or cannot open, announces or shares a manual release/link, or is unrelated "
-    "to asking for the link."
+    "the message only mentions 手册 or 火火手册, discusses manual content, cites the "
+    "manual as a source, asks why it has not updated or cannot open, announces "
+    "or shares a manual release/link, or is unrelated to asking for the link."
 )
 DEFAULT_KEYWORD_INFO_PROMPT = (
     "You are IronsBot, a concise QQ group assistant.\n"
@@ -51,7 +49,6 @@ DEFAULT_KEYWORD_INFO_PROMPT = (
     "Reply briefly and directly. If real-time bot data is needed, say which bot "
     "command or feature should be used instead of inventing data."
 )
-AI_ENDPOINT_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
 def builtin_ai_actions() -> dict[str, AiIntentAction]:
@@ -77,7 +74,7 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
         "fire_manual": AiIntentAction(
             id="fire_manual",
             feature=FIRE_MANUAL_INTENT_FEATURE,
-            keywords=["手册", "词典", "辞典", "火火词典"],
+            keywords=["手册"],
             action="message",
             intent=DEFAULT_FIRE_MANUAL_INTENT,
             message=FIRE_MANUAL_LINK_MESSAGE,
@@ -93,58 +90,12 @@ def default_ai_actions() -> dict[str, AiIntentAction]:
     }
 
 
-class AiEndpointConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str
-    base_url: str
-    models: list[str]
-    api_key: str = Field(default="", exclude=True, repr=False)
-
-    @field_validator("name")
-    @classmethod
-    def normalize_name(cls, value: str) -> str:
-        name = value.strip().lower()
-        if not AI_ENDPOINT_NAME_PATTERN.fullmatch(name):
-            raise ValueError(  # noqa: TRY003
-                "ai.endpoints[].name must start with a letter and contain only "
-                "letters, digits, or underscores"
-            )
-        return name
-
-    @field_validator("base_url")
-    @classmethod
-    def normalize_base_url(cls, value: str) -> str:
-        base_url = value.strip().rstrip("/")
-        if not base_url:
-            raise ValueError("ai.endpoints[].base_url must not be empty")  # noqa: TRY003
-        return base_url
-
-    @field_validator("models")
-    @classmethod
-    def normalize_models(cls, value: list[str]) -> list[str]:
-        models: list[str] = []
-        for index, raw_model in enumerate(value):
-            model = raw_model.strip()
-            if not model:
-                raise ValueError(  # noqa: TRY003
-                    f"ai.endpoints[].models[{index}] must not be empty"
-                )
-            if model not in models:
-                models.append(model)
-        if not models:
-            raise ValueError("ai.endpoints[].models must not be empty")  # noqa: TRY003
-        return models
-
-    @property
-    def key_environment_name(self) -> str:
-        return f"AI_KEY_{self.name.upper()}"
-
-
 class AiConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    endpoints: list[AiEndpointConfig] = Field(default_factory=list)
+    api_key: str = Field(default="", exclude=True, repr=False)
+    base_url: str = "https://api.deepseek.com"
+    model: str = "deepseek-v4-pro"
     prompt: str = DEFAULT_AI_PROMPT
     history_turns: int = Field(default=6, ge=0, le=20)
     memory: bool = True
@@ -166,22 +117,10 @@ class AiConfig(BaseModel):
         default_factory=default_ai_actions
     )
 
-    @model_validator(mode="after")
-    def validate_endpoint_names(self) -> Self:
-        names = [endpoint.name for endpoint in self.endpoints]
-        if len(names) != len(set(names)):
-            raise ValueError("ai.endpoints contains duplicate endpoint names")  # noqa: TRY003
-        return self
-
-    @property
-    def configured_endpoints(self) -> tuple[AiEndpointConfig, ...]:
-        return tuple(
-            endpoint for endpoint in self.endpoints if endpoint.api_key.strip()
-        )
-
-    @property
-    def ai_enabled(self) -> bool:
-        return bool(self.configured_endpoints)
+    @field_validator("base_url")
+    @classmethod
+    def normalize_base_url(cls, value: str) -> str:
+        return value.strip().rstrip("/")
 
     @field_validator("intent_actions", mode="before")
     @classmethod

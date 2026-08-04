@@ -6,33 +6,15 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
-from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaDecision
 from ironsbot.services.seer.rank_admin import (
     RankAdminPolicy,
     RankAdminService,
 )
-from ironsbot.services.seer.rank_list_models import (
-    GLOBAL_RANKS,
-    RankListCommand,
-    RankPlayerCommand,
-    RankScoreCommand,
-)
-from ironsbot.services.seer.rank_models import (
-    RankEntry,
-    RankLookupResult,
-    RankPageResult,
-    RankScoreSearchItem,
-    RankScoreSearchResult,
-)
-from ironsbot.services.seer.rank_page_cache_models import CachedRankLookup
+from ironsbot.services.seer.rank_list_models import RankListCommand, RankPlayerCommand
 from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
-
-DISPLAY_LIMIT = 20
-NORMAL_USER_ID = 41
-SUPERUSER_ID = 42
 
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
@@ -74,7 +56,7 @@ class FakeDisplay:
 
     @staticmethod
     def limit_for_group(_group_id: int | None) -> int:
-        return DISPLAY_LIMIT
+        return 20
 
     def set_group_limit(
         self,
@@ -91,79 +73,6 @@ class NoHeadlessAccess:
         pytest.fail("local rank query must not require headless")
 
 
-class ExhaustedQuota:
-    @staticmethod
-    def check_general_query(**_kwargs: object) -> PlayerQueryQuotaDecision:
-        return PlayerQueryQuotaDecision(allowed=False, message="额度已用完")
-
-    @staticmethod
-    def check(**_kwargs: object) -> PlayerQueryQuotaDecision:
-        return PlayerQueryQuotaDecision(allowed=False, message="额度已用完")
-
-
-class CachedGlobalRank:
-    @staticmethod
-    def get_spec(rank_key: str) -> object:
-        return GLOBAL_RANKS[rank_key]
-
-    @staticmethod
-    def spec_needs_sub_key(_spec: object) -> bool:
-        return False
-
-    @staticmethod
-    def cached_visible_range_result(**_kwargs: object) -> RankPageResult:
-        return RankPageResult(
-            items=[RankEntry(id=1, nick="cached", score=999)],
-            fetched_at=1_781_234_567.0,
-            from_cache=True,
-        )
-
-    @staticmethod
-    def cached_score_segment(**_kwargs: object) -> RankScoreSearchResult:
-        return RankScoreSearchResult(
-            title="图鉴积分榜",
-            score_name="分",
-            target_score=999,
-            searched_limit=10_000,
-            queried=True,
-            start_rank=1,
-            end_rank=1,
-            total_count=1,
-            scanned_count=1,
-            fetched_at=1_781_234_567.0,
-            items=[
-                RankScoreSearchItem(
-                    id=1,
-                    nick="cached",
-                    score=999,
-                    rank_index=0,
-                )
-            ],
-        )
-
-    @staticmethod
-    def cached_player_lookup(
-        **_kwargs: object,
-    ) -> tuple[CachedRankLookup, RankLookupResult]:
-        return (
-            CachedRankLookup(
-                id=123456789,
-                nick="cached",
-                score=999,
-                rank_index=0,
-                fetched_at=1_781_234_567.0,
-            ),
-            RankLookupResult(
-                title="图鉴积分",
-                score_name="分",
-                rank=1,
-                score=999,
-                searched_limit=10_000,
-                queried=True,
-            ),
-        )
-
-
 def _query_service(
     local_rank: FakeLocalRank,
     display: FakeDisplay,
@@ -176,7 +85,6 @@ def _query_service(
         RankQueryPolicy(
             player_error=lambda _player_id, error: str(error),
             player_timeout_seconds=5,
-            is_superuser=lambda _user_id: False,
         ),
     )
 
@@ -222,90 +130,7 @@ def test_rank_display_limit_is_validated_and_saved_by_service() -> None:
     )
 
     assert display.saved == (123, 456, 30)
-    assert message.startswith("✅ 榜单默认显示条数已设置为 30 名")
-
-
-@pytest.mark.asyncio
-async def test_exhausted_quota_returns_cache_without_headless_access() -> None:
-    service = RankQueryService(
-        cast("RankService", CachedGlobalRank()),
-        cast("LocalRankService", FakeLocalRank()),
-        cast("RankDisplayService", FakeDisplay()),
-        cast("HeadlessService", NoHeadlessAccess()),
-        RankQueryPolicy(
-            player_error=lambda _player_id, error: str(error),
-            player_timeout_seconds=5,
-            is_superuser=lambda _user_id: False,
-        ),
-        cast("Any", ExhaustedQuota()),
-    )
-
-    list_reply = await service.list_reply(
-        RankListCommand(kind="global", rank_key="图鉴积分"),
-        qq_user_id=1,
-    )
-    score_reply = await service.score_reply(
-        RankScoreCommand(rank_key="图鉴积分", score=999),
-        group_id=None,
-        qq_user_id=1,
-    )
-    player_reply = await service.player_reply(
-        RankPlayerCommand(rank_key="图鉴积分", player_id=123456789),
-        qq_user_id=1,
-    )
-
-    assert "缓存数据" in list_reply.text
-    assert "缓存数据" in score_reply.text
-    assert "缓存数据" in player_reply.text
-    assert "cached" in player_reply.text
-
-
-@pytest.mark.asyncio
-async def test_score_query_selects_superuser_search_limit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = RankQueryService(
-        cast("RankService", FakeRank()),
-        cast("LocalRankService", FakeLocalRank()),
-        cast("RankDisplayService", FakeDisplay()),
-        cast("HeadlessService", SimpleNamespace(get_game=object)),
-        RankQueryPolicy(
-            player_error=lambda _player_id, error: str(error),
-            player_timeout_seconds=5,
-            is_superuser=lambda user_id: user_id == SUPERUSER_ID,
-        ),
-    )
-    selected_limits: list[bool] = []
-
-    async def fake_score_message(
-        _game: object,
-        _command: RankScoreCommand,
-        *,
-        display_limit: int,
-        group_id: int | None,
-        use_superuser_limit: bool,
-    ) -> str:
-        assert display_limit == DISPLAY_LIMIT
-        assert group_id is None
-        selected_limits.append(use_superuser_limit)
-        return "ok"
-
-    monkeypatch.setattr(service, "_score_message", fake_score_message)
-
-    normal = await service.score_reply(
-        RankScoreCommand(rank_key="图鉴积分", score=999),
-        group_id=None,
-        qq_user_id=NORMAL_USER_ID,
-    )
-    superuser = await service.score_reply(
-        RankScoreCommand(rank_key="图鉴积分", score=999),
-        group_id=None,
-        qq_user_id=SUPERUSER_ID,
-    )
-
-    assert normal.text == "ok"
-    assert superuser.text == "ok"
-    assert selected_limits == [False, True]
+    assert message.startswith("✅ 本群榜单默认显示条数已设置为 30 名")
 
 
 @pytest.mark.asyncio

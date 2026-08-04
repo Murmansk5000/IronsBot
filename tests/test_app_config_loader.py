@@ -23,7 +23,6 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
-    PushDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.operations import (
@@ -47,7 +46,7 @@ from ironsbot.core.rank_exclusions import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_AI_CHAT_PRIORITY = 100
+DEFAULT_AI_CHAT_PRIORITY = 200
 HEADLESS_USER_ID = 12345678
 ADDITIONAL_HEADLESS_USER_ID = 23456789
 PRIVATE_ALIAS_PLAYER_ID = 34567890
@@ -56,8 +55,6 @@ DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
-DEFAULT_DOCKER_UPDATE_HANDOFF_TIMEOUT_SECONDS = 90.0
-DEFAULT_DATA_SYNC_INTERVAL_MINUTES = 5
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
 _REFRESH_TTL_SECONDS = 120.0
@@ -65,18 +62,16 @@ DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
-DEFAULT_RANK_REFRESH_PAGES_PER_RUN = 20
-DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 10
+DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 1
 DEFAULT_RANK_REFRESH_INTERVAL_MINUTES = 15
 DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES = 4
 DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 240
-DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 8.0
-DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 12.0
+DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 3.0
+DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 3.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
-CUSTOM_SUPERUSER_SCORE_LIMIT_MULTIPLIER = 3
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
-DEFAULT_SEER_PLAYER_PRIORITY = 50
+DEFAULT_SEER_PLAYER_PRIORITY = 10
 LUCKY_SKIN_WINDOW_OWNER_ID = 123456789
 LUCKY_SKIN_WINDOW_PLAYER_ID = 712345678
 DEFAULT_PLAYER_REQUEST_MAX_QUEUED = 3
@@ -91,12 +86,6 @@ CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 480.0
 CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 240.0
 MAIN_BOT_ID = 111111111
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
-DEFAULT_PUSH_DELIVERY_MAX_ATTEMPTS = 3
-DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR = 3
-DEFAULT_PUSH_DELIVERY_MAX_PARALLEL_TARGETS = 5
-DEFAULT_PUSH_DELIVERY_TRANSPORT_COOLDOWN_SECONDS = 60.0
-DEFAULT_PUSH_DELIVERY_DELAY_MIN_SECONDS = 2.0
-DEFAULT_PUSH_DELIVERY_DELAY_MAX_SECONDS = 5.0
 TEAM_RESOURCE_THRESHOLD = 2000
 
 
@@ -120,31 +109,7 @@ def _assert_default_push_unsubscribe(
         ["订阅", "恢复订阅", "推送管理"],
     )
     assert "TD" in push_unsubscribe.hint
-    assert "可查看推送订阅" in push_unsubscribe.group_hint
-
-
-def _assert_default_push_delivery(push_delivery: PushDeliveryConfig) -> None:
-    assert push_delivery.max_attempts == DEFAULT_PUSH_DELIVERY_MAX_ATTEMPTS
-    assert (
-        push_delivery.retry_batch_divisor
-        == DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR
-    )
-    assert (
-        push_delivery.max_parallel_targets
-        == DEFAULT_PUSH_DELIVERY_MAX_PARALLEL_TARGETS
-    )
-    assert (
-        push_delivery.transport_failure_cooldown_seconds
-        == DEFAULT_PUSH_DELIVERY_TRANSPORT_COOLDOWN_SECONDS
-    )
-    assert (
-        push_delivery.batch_delay_min_seconds
-        == DEFAULT_PUSH_DELIVERY_DELAY_MIN_SECONDS
-    )
-    assert (
-        push_delivery.batch_delay_max_seconds
-        == DEFAULT_PUSH_DELIVERY_DELAY_MAX_SECONDS
-    )
+    assert "可查看本群推送订阅" in push_unsubscribe.group_hint
 
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
@@ -156,11 +121,6 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.watchtower_image == "containrrr/watchtower:latest"
     assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
-    assert (
-        docker_update.handoff_timeout_seconds
-        == DEFAULT_DOCKER_UPDATE_HANDOFF_TIMEOUT_SECONDS
-    )
-    assert docker_update.fallback_to_current_image_on_handoff_failure
     assert docker_update.registry_username == ""
     assert docker_update.registry_token == ""
 
@@ -190,7 +150,7 @@ def _assert_default_player_request_protection(
 def _assert_default_file_logging(config: Settings) -> None:
     assert not config.bot.logging.file_enabled
     assert not config.bot.logging.error_file_enabled
-    assert config.bot.logging.rotation == "00:00:00"
+    assert config.bot.logging.rotation == "00:00"
     assert config.bot.logging.retention == "30 days"
     assert config.bot.logging.compression is None
 
@@ -267,7 +227,6 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
     assert config.stale_age_max_multiplier == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
-    assert config.pages_per_run == DEFAULT_RANK_REFRESH_PAGES_PER_RUN
     assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
     assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
     assert (
@@ -280,12 +239,12 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
         config.request_interval_seconds == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
     )
     assert config.request_jitter_seconds == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
-    assert config.active_start == "07:30:00"
-    assert config.active_end == "01:30:00"
+    assert config.active_start == "07:30"
+    assert config.active_end == "01:30"
     assert config.times == []
 
 
-def test_example_config_parses() -> None:  # noqa: PLR0915
+def test_example_config_parses() -> None:
     config = load_settings(ROOT / "config.example.toml")
 
     assert config.features.superuser_bypass
@@ -299,8 +258,7 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
         "qq_group_manager": 2854196310,
     }
     assert config.features.user_policy["qq_group_manager"] == ["blacklist"]
-    assert config.ai.endpoints[0].name == "deepseek"
-    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
+    assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
     assert (
         config.bilibili.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid
@@ -309,11 +267,10 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
     assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
     assert config.bilibili.push.modes == {}
-    assert config.bilibili.polling.windows[0].start == "07:00:00"
+    assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
     _assert_default_push_unsubscribe(config.messaging.push_unsubscribe)
-    _assert_default_push_delivery(config.messaging.push_delivery)
     assert config.messaging.red_packet_notice.enabled
     assert (
         config.messaging.red_packet_notice.cooldown_seconds
@@ -336,13 +293,7 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
     _assert_example_bot_routing(config)
     assert not config.operations.data_sync.startup_trigger_remote_build
     assert config.operations.data_sync.sources["seerapi"].local_path
-    assert config.operations.data_sync.sources["seerapi"].interval_minutes == (
-        DEFAULT_DATA_SYNC_INTERVAL_MINUTES
-    )
     assert config.operations.data_sync.sources["seerapi"].remote_build.enabled
-    assert config.operations.data_sync.sources[
-        "seerapi"
-    ].remote_build.downstream_publication_pending
     _assert_default_docker_update(config.operations.docker_update)
     assert config.paths.log_file == Path("logs/ironsbot.log")
     assert config.paths.error_log_file == Path("logs/ironsbot.error.log")
@@ -357,9 +308,10 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
         "refresh_unity_config",
         "sync_config_sources",
         "build_api_data",
+        "build_ironsbot_data",
     ]
-    assert remote_build_steps[-1].repository == "Murmansk-Seer/api-data"
-    assert remote_build_steps[-1].workflow_id == "main.yml"
+    assert remote_build_steps[-1].repository == "Murmansk-Seer/seerapi"
+    assert remote_build_steps[-1].workflow_id == "build-seerapi-data-db.yml"
     assert remote_build_steps[0].inputs == {
         "force-update-assets": False,
         "force-update-config": False,
@@ -371,6 +323,7 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
         "debug_enabled": False,
         "force": False,
     }
+    assert remote_build_steps[4].inputs == {"force": False}
 
 
 def test_example_config_pet_config_defaults() -> None:
@@ -388,14 +341,14 @@ def test_example_config_has_no_unknown_fields() -> None:
 def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
         MessageScheduledAction(
-            messages=["私聊定时推送"],
+            message="私聊定时推送",
             time="23:00",
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
         MessageScheduledAction(
             id="每日 提醒",
-            messages=["私聊定时推送"],
+            message="私聊定时推送",
             time="23:00",
         )
 
@@ -404,13 +357,13 @@ def test_scheduled_push_migrates_legacy_hour_and_minute() -> None:
     action = MessageScheduledAction.model_validate(
         {
             "id": "daily",
-            "messages": ["私聊定时推送"],
+            "message": "私聊定时推送",
             "hour": 23,
             "minute": 5,
         }
     )
 
-    assert action.time == "23:05:00"
+    assert action.time == "23:05"
 
 
 def test_scheduled_push_ids_are_globally_unique() -> None:
@@ -419,12 +372,12 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
             schedules=[
                 MessageScheduledAction(
                     id="daily",
-                    messages=["私聊定时推送"],
+                    message="私聊定时推送",
                     time="23:00",
                 ),
                 MessageScheduledAction(
                     id="daily",
-                    messages=["群聊定时推送"],
+                    message="群聊定时推送",
                     time="23:00",
                 ),
             ],
@@ -438,7 +391,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
     ):
         MessageCommandAction(
             commands=["hello"],
-            messages=["world"],
+            message="world",
         )
 
     with pytest.raises(
@@ -448,7 +401,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         MessageCommandAction(
             id="daily reminder",
             commands=["hello"],
-            messages=["world"],
+            message="world",
         )
 
 
@@ -468,17 +421,6 @@ def test_outbound_rate_limit_requires_distinct_nonempty_windows() -> None:
         match=r"contains duplicate window_seconds",
     ):
         OutboundRateLimitConfig(windows=[window, window])
-
-
-def test_push_delivery_requires_a_valid_delay_range() -> None:
-    with pytest.raises(
-        ValidationError,
-        match=r"push_delivery\.batch_delay_max_seconds",
-    ):
-        PushDeliveryConfig(
-            batch_delay_min_seconds=5,
-            batch_delay_max_seconds=2,
-        )
 
 
 def test_command_cooldown_rejects_unknown_message_placeholders() -> None:
@@ -566,7 +508,7 @@ def test_missing_app_config_error_explains_expected_path(tmp_path: Path) -> None
 
 def test_config_path_is_selected_by_single_environment_variable() -> None:
     config = load_settings(env={CONFIG_ENV: str(ROOT / "config.example.toml")})
-    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
+    assert config.ai.model == "deepseek-v4-pro"
 
 
 def test_unknown_app_config_fields_are_ignored_and_reported(
@@ -584,7 +526,7 @@ old_player_setting = true
 [[messaging.commands]]
 id = "hello"
 commands = ["hello"]
-messages = ["world"]
+message = "world"
 feature = "text_push"
 unknown_command_field = true
 """.strip(),
@@ -599,39 +541,6 @@ unknown_command_field = true
     assert "unknown_top_level" in output
     assert "seer.player.old_player_setting" in output
     assert "messaging.commands[0].unknown_command_field" in output
-
-
-def test_legacy_poke_fields_are_reported_without_migration(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str],
-) -> None:
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[features.help]
-ignored_plugins = ["seer_query"]
-poke_replies = { "100" = "old group" }
-poke_user_replies = { "200" = "old user" }
-hint_window_seconds = 10.0
-hint_max_per_window = 1
-poke_new_command_initial_weight = 2.0
-poke_new_command_half_life_days = 1.0
-""", encoding="utf-8",
-    )
-    config = load_settings(config_path)
-    output = capsys.readouterr().err
-    for field in (
-        "poke_replies", "poke_user_replies", "hint_window_seconds",
-        "hint_max_per_window", "poke_new_command_initial_weight",
-        "poke_new_command_half_life_days",
-    ):
-        assert f"features.help.{field}" in output
-    assert config.messaging.poke.group_replies == {}
-    assert config.messaging.poke.user_replies == {}
-    assert config.messaging.poke.window_seconds == 60.0  # noqa: PLR2004
-    assert config.messaging.poke.max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
-    assert config.messaging.poke.new_command_initial_weight == 5.0  # noqa: PLR2004
-    assert config.messaging.poke.new_command_half_life_days == 5.0  # noqa: PLR2004
-    assert config.features.help.ignored_plugins == ["seer_query"]
 
 
 def test_unknown_fields_do_not_hide_invalid_known_fields(tmp_path: Path) -> None:
@@ -660,7 +569,7 @@ def test_unified_message_actions_parse_as_toml_arrays_of_tables(
 [[messaging.commands]]
 id = "activity_link"
 commands = ["activity"]
-messages = ["activity link"]
+message = "activity link"
 feature = "web_activity_link"
 at_user_ids = [123456789]
 
@@ -668,7 +577,7 @@ at_user_ids = [123456789]
 id = "daily_reminder"
 name = "Daily reminder"
 time = "23:00"
-messages = ["daily message"]
+message = "daily message"
 feature = "text_push"
 at_user_ids = [123456789]
 """.strip(),
@@ -697,7 +606,7 @@ main = ["chuchu_reply"]
 [[messaging.keyword_replies]]
 id = "chuchu_reply"
 keywords = ["出出"]
-messages = ["出出是蛆"]
+message = "出出是蛆"
 feature = "chuchu_reply"
 """.strip(),
         encoding="utf-8",
@@ -707,32 +616,6 @@ feature = "chuchu_reply"
 
     assert config.messaging.keyword_replies[0].keywords == ["出出"]
     assert config.messaging.command_feature_keys == frozenset({"chuchu_reply"})
-
-
-def test_mention_reply_actions_parse_user_aliases_without_features(
-    tmp_path: Path,
-) -> None:
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[features.group_aliases]
-main = 123456789
-
-[features.user_aliases]
-example_user = 234567890
-
-[[messaging.mention_replies]]
-id = "example_user_mention"
-user_ids = ["example_user"]
-messages = ["123"]
-""".strip(),
-        encoding="utf-8",
-    )
-
-    config = load_settings(config_path)
-
-    assert config.messaging.mention_replies[0].user_ids == ["example_user"]
-    assert config.messaging.command_feature_keys == frozenset()
 
 
 
@@ -754,7 +637,7 @@ main = ["standard"]
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym"]
-messages = ["https://seerinfo.yuyuqaq.cn/"]
+message = "https://seerinfo.yuyuqaq.cn/"
 feature = "seerinfo_link"
 """.strip(),
         encoding="utf-8",
@@ -791,7 +674,7 @@ owner = ["custom_reminder"]
 [[messaging.schedules]]
 id = "custom_reminder"
 time = "23:00"
-messages = ["remember"]
+message = "remember"
 feature = "custom_reminder"
 """.strip(),
         encoding="utf-8",
@@ -875,9 +758,9 @@ main_group = ["all"]
 [features.user_policy]
 owner = ["blacklist"]
 
-[messaging.poke]
-group_replies = { main_group = "group reply" }
-user_replies = { owner = "user reply" }
+[features.help]
+poke_replies = { main_group = "group reply" }
+poke_user_replies = { owner = "user reply" }
 
 [bilibili.push.groups.main_group]
 accounts = []
@@ -897,14 +780,14 @@ owner = "primary"
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-messages = ["custom reply"]
+message = "custom reply"
 feature = "private_extension"
 at_user_ids = ["at_user", "202"]
 
 [[messaging.schedules]]
 id = "custom_schedule"
 time = "12:00"
-messages = ["scheduled reply"]
+message = "scheduled reply"
 feature = "private_extension"
 at_user_ids = ["at_user", 202]
 
@@ -920,8 +803,6 @@ default_at_users = ["at_user", "202"]
     config = load_settings(config_path)
 
     assert config.superuser_ids == frozenset({200, 300})
-    assert config.messaging.poke.group_replies == {"main_group": "group reply"}
-    assert config.messaging.poke.user_replies == {"owner": "user reply"}
     assert config.onebot_references.resolve_groups(
         ["main_group", "100"],
         location="test.groups",
@@ -935,14 +816,6 @@ default_at_users = ["at_user", "202"]
 @pytest.mark.parametrize(
     ("toml", "expected_path"),
     [
-        (
-            '[messaging.poke.group_replies]\nunknown_group = "reply"',
-            "messaging.poke.group_replies.unknown_group",
-        ),
-        (
-            '[messaging.poke.user_replies]\nunknown_user = "reply"',
-            "messaging.poke.user_replies.unknown_user",
-        ),
         (
             """
 [features.group_policy]
@@ -962,7 +835,7 @@ unknown_group = ["seer"]
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-messages = ["custom reply"]
+message = "custom reply"
 feature = "text"
 at_user_ids = ["unknown_user"]
 """,
@@ -1168,7 +1041,7 @@ watched_skin_ids = [1400538]
     env = {account_password_env: "secret"}
     config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
-    assert config.seer.lucky_skin_window.time == "00:02:00"
+    assert config.seer.lucky_skin_window.time == "00:02"
     assert (
         config.seer.lucky_skin_window.accounts[0].account
         == "sample_account"
@@ -1255,16 +1128,8 @@ time = "24:02"
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="HH:MM:SS"):
+    with pytest.raises(ValidationError, match="time must use HH:MM"):
         load_settings(config_path)
-
-
-def test_lucky_skin_window_accepts_seconds_and_uses_precise_default() -> None:
-    assert LuckySkinWindowConfig().time == "00:01:05"
-    assert LuckySkinWindowConfig(time="0:2:5").time == "00:02:05"
-
-    with pytest.raises(ValidationError, match="HH:MM:SS"):
-        LuckySkinWindowConfig(time="00:01:60")
 
 
 def test_lucky_skin_window_requires_dedicated_password(
@@ -1425,74 +1290,6 @@ display_limit = "not an integer"
         load_settings(config_path)
 
 
-def test_runtime_menu_rejects_a_root_timeout_above_its_maximum(
-    tmp_path: Path,
-) -> None:
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[runtime.menu]
-root_timeout_minutes = 6
-max_timeout_minutes = 5
-""".strip(),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValidationError, match="root_timeout_minutes"):
-        load_settings(config_path)
-
-
-def test_rank_lookup_limits_accept_known_global_ranks_and_reject_unknown_keys(
-    tmp_path: Path,
-) -> None:
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[seer.rank]
-lookup_limits = { "群星牌" = 10000 }
-""".strip(),
-        encoding="utf-8",
-    )
-
-    assert load_settings(config_path).seer.rank.lookup_limits == {"群星牌": 10000}
-
-    config_path.write_text(
-        """
-[seer.rank]
-lookup_limits = { "不存在的榜" = 10000 }
-""".strip(),
-        encoding="utf-8",
-    )
-    with pytest.raises(ValidationError, match="unsupported global rank key"):
-        load_settings(config_path)
-
-
-def test_superuser_score_limit_multiplier_is_configurable(tmp_path: Path) -> None:
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        f"""
-[seer.rank]
-superuser_score_limit_multiplier = {CUSTOM_SUPERUSER_SCORE_LIMIT_MULTIPLIER}
-""".strip(),
-        encoding="utf-8",
-    )
-
-    assert (
-        load_settings(config_path).seer.rank.superuser_score_limit_multiplier
-        == CUSTOM_SUPERUSER_SCORE_LIMIT_MULTIPLIER
-    )
-
-    config_path.write_text(
-        """
-[seer.rank]
-superuser_score_limit_multiplier = 0
-""".strip(),
-        encoding="utf-8",
-    )
-    with pytest.raises(ValidationError, match="superuser_score_limit_multiplier"):
-        load_settings(config_path)
-
-
 def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
     config = TeamResourceConfig(
         times="08:30,23:00",  # type: ignore[arg-type]
@@ -1500,7 +1297,7 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
         default_at_users="owner,1234567890",  # type: ignore[arg-type]
     )
 
-    assert config.times == ["08:30:00", "23:00:00"]
+    assert config.times == ["08:30", "23:00"]
     assert config.default_threshold == TEAM_RESOURCE_THRESHOLD
     assert config.default_at_users == ["owner", "1234567890"]
 
@@ -1508,7 +1305,7 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
 def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     env = {
         "ONEBOT_ACCESS_TOKEN": "token",
-        "AI_KEY_DEEPSEEK": "sk-test",
+        "AI_KEY": "sk-test",
         "SENDPIC_CNB_TOKEN": "cnb-token",
         "GITHUB_WORKFLOW_TOKEN": "gh-token",
     }
@@ -1516,27 +1313,9 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     settings = load_settings(ROOT / "config.example.toml", env=env)
 
     assert settings.bot.onebot_token == "token"
-    assert settings.ai.endpoints[0].api_key == "sk-test"
+    assert settings.ai.api_key == "sk-test"
     assert settings.messaging.sendpic.cnb_token == "cnb-token"
     assert settings.operations.data_sync.github_token == "gh-token"
-
-
-def test_ai_endpoint_key_must_not_be_written_to_toml(tmp_path: Path) -> None:
-    config_path = tmp_path / "ironsbot.toml"
-    config_path.write_text(
-        """
-[ai]
-[[ai.endpoints]]
-name = "test"
-base_url = "https://example.test/v1"
-models = ["test-model"]
-api_key = "must-not-be-here"
-""",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="AI_KEY_<ENDPOINT_NAME>"):
-        load_settings(config_path)
 
 
 def test_player_accounts_resolve_names_and_hash_environment_passwords(
@@ -1629,10 +1408,6 @@ allowed_group = ["private_account"]
     assert accounts.resolve_player_id("public_account") == ADDITIONAL_HEADLESS_USER_ID
     assert accounts.resolve_player_id("私有账号") is None
     assert accounts.resolve_player_id("private_account") is None
-    assert (
-        accounts.resolve_player_id("私有账号", allow_private=True)
-        == PRIVATE_ALIAS_PLAYER_ID
-    )
     assert (
         accounts.resolve_player_id("私有账号", group_id=PLAYER_ALIAS_GROUP_ID)
         == PRIVATE_ALIAS_PLAYER_ID
@@ -1857,14 +1632,11 @@ def test_docker_registry_credentials_read_from_environment(
 def test_app_config_defaults_cover_runtime_services() -> None:
     app_config = load_settings(ROOT / "config.example.toml")
 
-    assert app_config.ai.endpoints[0].models == ["deepseek-v4-pro"]
-    assert app_config.runtime.menu.root_timeout_minutes == 3  # noqa: PLR2004
-    assert app_config.runtime.menu.page_extension_minutes == 1
-    assert app_config.runtime.menu.max_timeout_minutes == 5  # noqa: PLR2004
+    assert app_config.ai.model == "deepseek-v4-pro"
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (
-        app_config.messaging.poke.max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
+        app_config.features.help.hint_max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
     assert app_config.activity.lead_hours == [11, 1]
     assert not app_config.messaging.command_cooldown.enabled

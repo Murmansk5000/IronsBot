@@ -20,7 +20,6 @@ class SyncEntry(NamedTuple):
     get_fingerprint: GetFingerprintFn | None = None
     local_path: str | None = None
     remote_build: RemoteBuildConfig | None = None
-    sync_interval_second: int = 0
 
 
 class VersionInfo(NamedTuple):

@@ -24,7 +24,6 @@ PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
 PLAYER_AUTOCARD_KEY = "_player_autocard_message"
-PLAYER_TEAM_KEY = "_player_team_message"
 PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
 PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY = "_player_detail_builtin_selections"
 PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY = "_player_detail_extension_selections"
@@ -64,13 +63,8 @@ _PLAYER_DETAIL_REQUESTS = (
         menu_label="群星牌",
     ),
 )
-_PLAYER_TEAM_REQUEST = PlayerDetailReplyRequest(
-    key=PLAYER_TEAM_KEY,
-    label="战队信息",
-    menu_label="战队",
-)
 _PLAYER_DETAIL_REQUEST_BY_KEY = {
-    request.key: request for request in (*_PLAYER_DETAIL_REQUESTS, _PLAYER_TEAM_REQUEST)
+    request.key: request for request in _PLAYER_DETAIL_REQUESTS
 }
 
 
@@ -106,22 +100,13 @@ def extract_player_query_arg(text_value: str) -> str | None:
     return None
 
 
-def calculate_player_peak_scores(
-    unity_peak: object,
-    *,
-    available_modes: frozenset[str] | None = None,
-) -> PlayerPeakScores:
-    modes = (
-        available_modes
-        if available_modes is not None
-        else frozenset(("standard", "wild", "expert"))
-    )
+def calculate_player_peak_scores(unity_peak: object) -> PlayerPeakScores:
     standard_score = (
         build_peak_rating_score(
             int(getattr(unity_peak, "current_j_rank", 0)),
             int(getattr(unity_peak, "current_j_star", 0)),
         )
-        if "standard" in modes and int(getattr(unity_peak, "current_j_all", 0)) > 0
+        if int(getattr(unity_peak, "current_j_all", 0)) > 0
         else None
     )
     wild_score = (
@@ -129,12 +114,12 @@ def calculate_player_peak_scores(
             int(getattr(unity_peak, "current_k_rank", 0)),
             int(getattr(unity_peak, "current_k_star", 0)),
         )
-        if "wild" in modes and int(getattr(unity_peak, "current_k_all", 0)) > 0
+        if int(getattr(unity_peak, "current_k_all", 0)) > 0
         else None
     )
     expert_score = (
         int(getattr(unity_peak, "current_z_score", 0))
-        if "expert" in modes and int(getattr(unity_peak, "current_z_all", 0)) > 0
+        if int(getattr(unity_peak, "current_z_all", 0)) > 0
         else None
     )
     return PlayerPeakScores(
@@ -148,18 +133,11 @@ def validate_player_peak_season(
     unity_peak: UnityPeakInfo,
     candidate_scores: PlayerPeakScores,
     rank_summary: PeakSeasonRankSummary,
-    *,
-    available_modes: frozenset[str] | None = None,
 ) -> ValidatedPlayerPeak:
     scores: dict[str, int | None] = {}
     peak_updates: dict[str, int] = {}
     clear_metric_keys: set[str] = set()
     invalidates_total_matches = False
-    modes = (
-        available_modes
-        if available_modes is not None
-        else frozenset(("standard", "wild", "expert"))
-    )
     mode_specs = (
         (
             "standard",
@@ -198,9 +176,6 @@ def validate_player_peak_season(
         total_field,
         metric_keys,
     ) in mode_specs:
-        if mode not in modes:
-            scores[mode] = None
-            continue
         confirmed_score = (
             int(result.score)
             if result.rank is not None and result.score is not None
@@ -356,14 +331,13 @@ def _available_builtin_detail_requests(
     return tuple(requests)
 
 
-def plan_player_detail_prompt(  # noqa: PLR0913
+def plan_player_detail_prompt(
     *,
     has_collection: bool,
     has_peak: bool,
     has_autocard: bool,
     supports_conversation: bool,
     extension_actions: Iterable[PlayerDetailExtensionAction] = (),
-    team_menu_text: str | None = None,
 ) -> PlayerDetailPromptPlan:
     builtin_requests = _available_builtin_detail_requests(
         has_collection=has_collection,
@@ -371,30 +345,19 @@ def plan_player_detail_prompt(  # noqa: PLR0913
         has_autocard=has_autocard,
     )
     extensions = tuple(extension_actions)
-    primary_builtin_selections = tuple(
+    builtin_selections = tuple(
         (str(index), request.key)
         for index, request in enumerate(builtin_requests, start=1)
     )
     extension_selections = tuple(
         (str(index), action.id)
-        for index, action in enumerate(
-            extensions,
-            start=len(primary_builtin_selections) + 1,
-        )
+        for index, action in enumerate(extensions, start=len(builtin_selections) + 1)
     )
-    team_selection = (
-        (
-            str(len(primary_builtin_selections) + len(extension_selections) + 1),
-            PLAYER_TEAM_KEY,
-        ),
-    ) if team_menu_text else ()
-    builtin_selections = (*primary_builtin_selections, *team_selection)
     has_actions = bool(builtin_selections or extension_selections)
     accepted_commands = _unique_commands(
         (
-            *(selection for selection, _ in primary_builtin_selections),
+            *(selection for selection, _ in builtin_selections),
             *(selection for selection, _ in extension_selections),
-            *(selection for selection, _ in team_selection),
             "0",
         )
         if has_actions
@@ -406,7 +369,7 @@ def plan_player_detail_prompt(  # noqa: PLR0913
             *(
                 _format_player_detail_menu_item(selection, request.menu_label)
                 for selection, request in zip(
-                    primary_builtin_selections,
+                    builtin_selections,
                     builtin_requests,
                     strict=True,
                 )
@@ -418,10 +381,6 @@ def plan_player_detail_prompt(  # noqa: PLR0913
                     extensions,
                     strict=True,
                 )
-            ),
-            *(
-                f"{selection}.【战队】{team_menu_text}"
-                for selection, _ in team_selection
             ),
             EXIT_SELECTION_LINE,
         )

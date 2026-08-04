@@ -4,16 +4,6 @@
 from __future__ import annotations
 
 WEEKLY_PREVIEW_COMMANDS = ("下周预告",)
-MASTER_POOL_COMMANDS = (
-    "大师池",
-    "大师池变化",
-    "巅峰大师池",
-    "大师精灵池",
-    "新增大师池",
-    "每周大师池",
-    "本周大师池",
-    "更新大师池",
-)
 DATA_VERSION_COMMANDS = ("数据版本",)
 NEW_CONTENT_COMMANDS = (
     "新增内容",
@@ -35,8 +25,6 @@ NEW_EQUIPS_COMMANDS = ("新增部件", "每周部件", "本周部件", "更新�
 NEW_MOUNTS_COMMANDS = ("新增座驾", "每周座驾", "本周座驾", "更新座驾")
 NEW_AUTOCARD_CARDS_COMMANDS = (
     "新增群星牌",
-    "新增群星牌卡牌",
-    "新增卡牌",
     "每周群星牌",
     "本周群星牌",
     "更新群星牌",
@@ -56,15 +44,6 @@ NEW_AUTOCARD_SANCTUARIES_COMMANDS = (
     "本周圣域",
     "更新群星牌圣域",
     "更新圣域",
-)
-PEAK_ENVIRONMENT_CHANGES_COMMANDS = (
-    "巅峰环境变化",
-    "巅峰变化",
-    "巅峰修改",
-    "巅峰池改变",
-    "巅峰池变化",
-    "池子修改",
-    "池子改变",
 )
 SEASON_COUNTDOWN_COMMANDS = ("赛季倒计时", "赛季时间", "赛季结束", "赛季")
 DATA_QUERY_HELP_EXAMPLES = (

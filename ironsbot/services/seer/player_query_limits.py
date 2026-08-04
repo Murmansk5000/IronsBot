@@ -6,17 +6,14 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from ironsbot.core.time import TZ_CN
-from ironsbot.services.seer.external_references import (
-    SeerInfoReference,
-    SeerInfoReferences,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
-PlayerQueryQuotaScope = Literal["bound_default", "bound_other", "unbound"]
+PlayerQueryQuotaScope = Literal["bound_default", "other_target_action", "unbound"]
 
 
 class PlayerQueryQuotaExceededError(RuntimeError):
@@ -37,33 +34,33 @@ class PlayerQueryLimitStore(Protocol):
         self,
         *,
         local_date: date,
-        qq_user_id: int,
+        actor: ActorRef,
         scope: PlayerQueryQuotaScope,
         player_id: int,
         action_key: str,
         limit: int,
     ) -> PlayerQueryUsage: ...
 
-    def record(  # noqa: PLR0913
+    def consume(  # noqa: PLR0913
         self,
         *,
         local_date: date,
-        qq_user_id: int,
+        actor: ActorRef,
         scope: PlayerQueryQuotaScope,
         player_id: int,
         action_key: str,
-        amount: int,
+        limit: int,
     ) -> PlayerQueryUsage: ...
 
 
 class SuperuserLookup(Protocol):
-    def is_superuser(self, user_id: int) -> bool: ...
+    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
 
 
 class PlayerQueryLimitsConfig(Protocol):
     enabled: bool
     bound_default_daily_limit: int
-    bound_other_daily_limit: int
+    other_target_action_daily_limit: int
     unbound_daily_limit: int
     superuser_bypass: bool
 
@@ -75,29 +72,27 @@ class PlayerQueryQuotaDecision:
 
 
 class PlayerQueryQuotaService:
-    """Persistent daily budgets for foreground logical server work."""
+    """Apply persistent daily budgets only after a live lookup succeeds."""
 
-    def __init__(  # noqa: PLR0913 - composed persistence and reference services
+    def __init__(
         self,
         config: PlayerQueryLimitsConfig,
         bindings: PlayerBindingStore,
         features: SuperuserLookup,
         store: PlayerQueryLimitStore,
         *,
-        external_references: SeerInfoReferences | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._config = config
         self._bindings = bindings
         self._features = features
         self._store = store
-        self._external_references = external_references
         self._now = now or _now_cn
 
     def check(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> PlayerQueryQuotaDecision:
@@ -105,18 +100,18 @@ class PlayerQueryQuotaService:
             return PlayerQueryQuotaDecision(allowed=True)
         if (
             self._config.superuser_bypass
-            and self._features.is_superuser(qq_user_id)
+            and self._features.is_actor_superuser(actor)
         ):
             return PlayerQueryQuotaDecision(allowed=True)
 
         scope, storage_player_id, storage_action_key, limit = self._quota_key(
-            qq_user_id=qq_user_id,
+            actor=actor,
             player_id=player_id,
             action_key=action_key,
         )
         usage = self._store.status(
             local_date=self._now().date(),
-            qq_user_id=qq_user_id,
+            actor=actor,
             scope=scope,
             player_id=storage_player_id,
             action_key=storage_action_key,
@@ -126,7 +121,7 @@ class PlayerQueryQuotaService:
             return PlayerQueryQuotaDecision(allowed=True)
         return PlayerQueryQuotaDecision(
             allowed=False,
-            message=self._quota_exhausted_message(
+            message=_quota_exhausted_message(
                 scope=scope,
                 player_id=player_id,
                 limit=usage.limit,
@@ -136,96 +131,56 @@ class PlayerQueryQuotaService:
             ),
         )
 
-    def record_successful_work(
+    def consume(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
-        units: frozenset[str],
     ) -> PlayerQueryQuotaDecision:
-        if not units:
-            return PlayerQueryQuotaDecision(allowed=True)
         if not self._config.enabled:
             return PlayerQueryQuotaDecision(allowed=True)
         if (
             self._config.superuser_bypass
-            and self._features.is_superuser(qq_user_id)
+            and self._features.is_actor_superuser(actor)
         ):
             return PlayerQueryQuotaDecision(allowed=True)
 
-        scope, storage_player_id, storage_action_key, _limit = self._quota_key(
-            qq_user_id=qq_user_id,
+        scope, storage_player_id, storage_action_key, limit = self._quota_key(
+            actor=actor,
             player_id=player_id,
             action_key=action_key,
         )
-        self._store.record(
+        usage = self._store.consume(
             local_date=self._now().date(),
-            qq_user_id=qq_user_id,
+            actor=actor,
             scope=scope,
             player_id=storage_player_id,
             action_key=storage_action_key,
-            amount=len(units),
+            limit=limit,
         )
-        return PlayerQueryQuotaDecision(allowed=True)
-
-    def check_general_query(
-        self,
-        *,
-        qq_user_id: int,
-        action_key: str,
-    ) -> PlayerQueryQuotaDecision:
-        return self.check(
-            qq_user_id=qq_user_id,
-            player_id=self._bound_player_id(qq_user_id),
-            action_key=action_key,
-        )
-
-    def record_general_work(
-        self,
-        *,
-        qq_user_id: int,
-        action_key: str,
-        units: frozenset[str],
-    ) -> PlayerQueryQuotaDecision:
-        return self.record_successful_work(
-            qq_user_id=qq_user_id,
-            player_id=self._bound_player_id(qq_user_id),
-            action_key=action_key,
-            units=units,
-        )
-
-    def consume(
-        self,
-        *,
-        qq_user_id: int,
-        player_id: int,
-        action_key: str,
-    ) -> PlayerQueryQuotaDecision:
-        """Compatibility helper for one logical work unit.
-
-        Production query paths use ``record_successful_work`` after OneBot
-        delivery succeeds. Keeping this small wrapper makes existing callers
-        and older integrations explicit rather than silently changing their
-        accounting semantics.
-        """
-
-        return self.record_successful_work(
-            qq_user_id=qq_user_id,
-            player_id=player_id,
-            action_key=action_key,
-            units=frozenset((action_key,)),
+        if usage.allowed:
+            return PlayerQueryQuotaDecision(allowed=True)
+        return PlayerQueryQuotaDecision(
+            allowed=False,
+            message=_quota_exhausted_message(
+                scope=scope,
+                player_id=player_id,
+                limit=usage.limit,
+                bound_default_daily_limit=(
+                    self._config.bound_default_daily_limit
+                ),
+            ),
         )
 
     def _quota_key(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> tuple[PlayerQueryQuotaScope, int, str, int]:
-        del action_key
-        binding = self._bindings.get(qq_user_id)
+        binding = self._bindings.get(actor)
         if binding.player_id is None:
             return (
                 "unbound",
@@ -241,40 +196,10 @@ class PlayerQueryQuotaService:
                 self._config.bound_default_daily_limit,
             )
         return (
-            "bound_other",
-            0,
-            "all",
-            int(
-                getattr(
-                    self._config,
-                    "bound_other_daily_limit",
-                    getattr(self._config, "other_target_action_daily_limit", 0),
-                )
-            ),
-        )
-
-    def _bound_player_id(self, qq_user_id: int) -> int:
-        return int(self._bindings.get(qq_user_id).player_id or 0)
-
-    def _quota_exhausted_message(
-        self,
-        *,
-        scope: PlayerQueryQuotaScope,
-        player_id: int,
-        limit: int,
-        bound_default_daily_limit: int,
-    ) -> str:
-        message = _quota_exhausted_message(
-            scope=scope,
-            player_id=player_id,
-            limit=limit,
-            bound_default_daily_limit=bound_default_daily_limit,
-        )
-        if self._external_references is None:
-            return message
-        return self._external_references.append(
-            message,
-            SeerInfoReference.PLAYER_QUERY,
+            "other_target_action",
+            player_id,
+            action_key,
+            self._config.other_target_action_daily_limit,
         )
 
 
@@ -289,27 +214,25 @@ def _quota_exhausted_message(
     limit: int,
     bound_default_daily_limit: int,
 ) -> str:
-    del player_id
     if scope == "bound_default":
         return (
-            f"今日默认米米号的查询额度已用完（{limit} 项）。"
+            f"今日默认米米号实时数据查询额度已用完（{limit} 次）。"
             "仍可查看已有缓存；没有缓存的数据请明天再试。"
         )
-    if scope == "bound_other":
+    if scope == "other_target_action":
         return (
-            f"今日查询其他米米号的额度已用完（{limit} 项）。"
+            f"今日已实时查询过米米号 {player_id} 的这项数据。"
             "仍可查看已有缓存；没有缓存的数据请明天再试。"
         )
     message = (
-        f"今日未绑定米米号的查询额度已用完（{limit} 项）。"
+        f"今日未绑定米米号的实时数据查询额度已用完（{limit} 次）。"
         "仍可查看已有缓存；没有缓存的数据请明天再试。"
     )
     if bound_default_daily_limit <= limit:
         return message
     return (
         f"{message}\n"
-        "绑定默认米米号后，查询该米米号的每日查询额度可从 "
-        f"{limit} 项提升至 {bound_default_daily_limit} 项。\n"
-        "额度按成功获取的数据项目结算；缓存、预热和超时不计入。\n"
+        "绑定默认米米号后，查询该米米号实时数据的每日额度可从 "
+        f"{limit} 次提升至 {bound_default_daily_limit} 次。\n"
         "首次成功查询时可按提示设为默认米米号。"
     )

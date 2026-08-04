@@ -1,6 +1,5 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -10,15 +9,7 @@ from sqlmodel import Session, create_engine
 from ironsbot.services.seer.new_content import (
     NEW_CONTENT_CATEGORIES,
     NewContentIndexUnavailableError,
-    NewContentItem,
     NewContentService,
-    NewContentSnapshot,
-    current_new_content_weekly_cycle,
-    format_new_content_category_count,
-    format_new_content_change_summary,
-    format_new_content_item_description,
-    new_content_category_preview_items,
-    new_content_stale_week_message,
 )
 
 if TYPE_CHECKING:
@@ -39,16 +30,9 @@ def _service(path: Path) -> NewContentService:
     return NewContentService(cast("SeerDataAccess", FakeData(path)))
 
 
-def test_reads_embedded_release_index_and_payload(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     path = tmp_path / "seer.sqlite"
     service = _service(path)
-    monkeypatch.setattr(
-        "ironsbot.services.seer.new_content.current_new_content_weekly_cycle",
-        lambda: "2026-07-31",
-    )
     with Session(create_engine(f"sqlite:///{path}")) as session:
         session.connection().exec_driver_sql(
             """
@@ -105,8 +89,6 @@ def test_reads_embedded_release_index_and_payload(
 
     assert snapshot.baseline_established is True
     assert snapshot.weekly_cycle == "2026-07-31"
-    assert snapshot.source_weekly_cycle == "2026-07-31"
-    assert snapshot.is_current_week is True
     assert snapshot.items_for("achievement")[0].payload["point"] == 0
     assert snapshot.items_for("pet_skin")[0].payload["pet_name"] == "测试精灵"
     assert snapshot.items_for("pet_skin")[0].change_kind == "modified"
@@ -125,166 +107,12 @@ def test_reads_embedded_release_index_and_payload(
 
 
 def test_new_content_order_places_skills_before_mintmarks() -> None:
-    assert NEW_CONTENT_CATEGORIES[:6] == (
+    assert NEW_CONTENT_CATEGORIES[:5] == (
         "pet",
         "pet_skin",
         "skill",
         "mintmark",
         "suit",
-        "equip",
-    )
-    pool_index = NEW_CONTENT_CATEGORIES.index("peak_pool")
-    assert NEW_CONTENT_CATEGORIES[pool_index - 1 : pool_index + 4] == (
-        "achievement",
-        "peak_pool",
-        "peak_expert_pool",
-        "peak_master_pool",
-        "autocard_card",
-    )
-
-
-def test_peak_pool_change_description_distinguishes_zero_from_unlimited() -> None:
-    change = NewContentItem(
-        "peak_pool",
-        5000,
-        "圣灵谱尼",
-        5000,
-        {"previous_limit": 0, "current_limit": None},
-        "modified",
-    )
-
-    assert format_new_content_item_description(change) == "修改｜5000｜限0 → 不限"
-
-    expert_change = NewContentItem(
-        "peak_expert_pool",
-        5001,
-        "测试精灵",
-        5001,
-        {"previous_limit": None, "current_limit": 0},
-        "modified",
-    )
-    assert format_new_content_item_description(expert_change) == (
-        "修改｜5001｜不限 → 限0"
-    )
-
-
-def test_modified_item_exposes_publisher_change_summary() -> None:
-    change = NewContentItem(
-        "skill",
-        5002,
-        "测试技能",
-        5002,
-        {"change_summary": ["威力：120 → 130", "技能说明已更新"]},
-        "modified",
-    )
-
-    assert format_new_content_change_summary(change) == (
-        "威力：120 → 130、技能说明已更新"
-    )
-    assert format_new_content_item_description(change).endswith(
-        "修改：威力：120 → 130、技能说明已更新"
-    )
-
-
-def test_category_count_separates_additions_and_modifications() -> None:
-    items = (
-        NewContentItem("skill", 1, "新增技能", 1, {}, "added"),
-        NewContentItem("skill", 2, "修改技能一", 2, {}, "modified"),
-        NewContentItem("skill", 3, "修改技能二", 3, {}, "modified"),
-    )
-
-    assert format_new_content_category_count(items) == "1 项新增｜2 项修改"
-    assert format_new_content_category_count(items[:1]) == "1 项新增"
-    assert format_new_content_category_count(items[1:]) == "2 项修改"
-
-
-def test_root_category_preview_includes_only_actual_additions() -> None:
-    additions_and_corrections = (
-        NewContentItem("pet", 1, "新增精灵一", 1, {}, "added"),
-        NewContentItem("pet", 2, "修改精灵", 2, {}, "modified"),
-        NewContentItem("pet", 3, "新增精灵二", 3, {}, "added"),
-        NewContentItem("pet", 4, "修改精灵二", 4, {}, "modified"),
-    )
-    snapshot = NewContentSnapshot(
-        baseline_established=True,
-        config_version="20260814",
-        weekly_cycle="2026-08-14",
-        items=additions_and_corrections,
-    )
-
-    assert new_content_category_preview_items(snapshot, "pet", 5) == (
-        additions_and_corrections[0],
-        additions_and_corrections[2],
-    )
-
-
-def test_skill_preview_only_includes_skills_for_existing_pets() -> None:
-    new_pet = NewContentItem("pet", 100, "本周精灵", 100, {}, "added")
-    new_pet_skill = NewContentItem(
-        "skill",
-        1,
-        "本周精灵自带技能",
-        1,
-        {"pets": [{"id": 100, "name": "本周精灵"}]},
-        "added",
-    )
-    existing_pet_skill = NewContentItem(
-        "skill",
-        2,
-        "旧精灵新增技能",
-        2,
-        {"pets": [{"id": 200, "name": "旧精灵"}]},
-        "added",
-    )
-    shared_skill = NewContentItem(
-        "skill",
-        3,
-        "新旧精灵共用技能",
-        3,
-        {
-            "pets": [
-                {"id": 100, "name": "本周精灵"},
-                {"id": 200, "name": "旧精灵"},
-            ]
-        },
-        "added",
-    )
-    unknown_pet_skill = NewContentItem(
-        "skill",
-        4,
-        "关联信息缺失技能",
-        4,
-        {},
-        "added",
-    )
-    modified_skill = NewContentItem(
-        "skill",
-        5,
-        "修改技能",
-        5,
-        {"pets": [{"id": 200, "name": "旧精灵"}]},
-        "modified",
-    )
-    snapshot = NewContentSnapshot(
-        baseline_established=True,
-        config_version="20260911",
-        weekly_cycle="2026-09-11",
-        items=(
-            new_pet,
-            new_pet_skill,
-            existing_pet_skill,
-            shared_skill,
-            unknown_pet_skill,
-            modified_skill,
-        ),
-    )
-
-    assert new_content_category_preview_items(snapshot, "skill", 3) == (
-        existing_pet_skill,
-        shared_skill,
-    )
-    assert new_content_category_preview_items(snapshot, "skill", 1) == (
-        existing_pet_skill,
     )
 
 
@@ -292,61 +120,6 @@ def test_current_content_version_uses_shanghai_date_not_baseline() -> None:
     from ironsbot.services.seer.new_content import _current_content_date
 
     assert _current_content_date("20260730210447", "2026-07-24") == "2026-07-31"
-
-
-def test_content_week_starts_at_friday_midnight_in_shanghai() -> None:
-    assert current_new_content_weekly_cycle(
-        datetime(2026, 9, 3, 15, 59, tzinfo=timezone.utc)
-    ) == "2026-08-28"
-    assert current_new_content_weekly_cycle(
-        datetime(2026, 9, 3, 16, 0, tzinfo=timezone.utc)
-    ) == "2026-09-04"
-
-
-def test_hides_previous_week_release_items(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = tmp_path / "seer.sqlite"
-    with Session(create_engine(f"sqlite:///{path}")) as session:
-        session.connection().exec_driver_sql(
-            """
-            CREATE TABLE new_content_release (
-                id INTEGER PRIMARY KEY, current_config_version TEXT,
-                weekly_cycle TEXT, baseline_established INTEGER
-            )
-            """
-        )
-        session.connection().exec_driver_sql(
-            """
-            CREATE TABLE new_content_item (
-                category TEXT, entity_id INTEGER, name TEXT, sort_value INTEGER,
-                payload_json TEXT, change_kind TEXT
-            )
-            """
-        )
-        session.connection().exec_driver_sql(
-            "INSERT INTO new_content_release VALUES "
-            "(1, '20260828154058', '2026-08-28', 1)"
-        )
-        session.connection().exec_driver_sql(
-            "INSERT INTO new_content_item VALUES "
-            "('pet', 4939, '上周精灵', 4939, '{}', 'added')"
-        )
-        session.commit()
-    monkeypatch.setattr(
-        "ironsbot.services.seer.new_content.current_new_content_weekly_cycle",
-        lambda: "2026-09-04",
-    )
-
-    snapshot = _service(path).snapshot()
-
-    assert snapshot.is_current_week is False
-    assert snapshot.source_weekly_cycle == "2026-08-28"
-    assert snapshot.items == ()
-    assert new_content_stale_week_message(snapshot) == (
-        "当前数据版本仍为 2026-08-28 周期，本周暂未获得可验证的新增或修改内容。"
-    )
 
 
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:

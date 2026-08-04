@@ -40,7 +40,7 @@ class ScheduledPushTask(Protocol):
     def feature(self) -> str: ...
 
     @property
-    def messages(self) -> list[str]: ...
+    def message(self) -> str: ...
 
     @property
     def time(self) -> str: ...
@@ -156,7 +156,6 @@ class PushSubscriptionOption:
     label: str
     feature: str
     unsubscribed: bool = False
-    submenu_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,20 +173,10 @@ BUILTIN_PUSH_OPTIONS: tuple[PushSubscriptionOption, ...] = (
     PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
     PushSubscriptionOption("startup_docker_update", "启动镜像检查通知", "admin_notice"),
     PushSubscriptionOption("startup_data_sync", "启动数据同步通知", "admin_notice"),
-    PushSubscriptionOption(
-        "startup_ai_api_check",
-        "启动AI接口检查通知",
-        "admin_notice",
-    ),
-    PushSubscriptionOption(
-        "startup_clock_check",
-        "启动时钟偏差检查通知",
-        "admin_notice",
-    ),
     PushSubscriptionOption("ai_chat_error_notice", "AI聊天异常通知", "admin_notice"),
     PushSubscriptionOption("bili_login_notice", "B站登录通知", "admin_notice"),
     PushSubscriptionOption("headless_seer_notice", "无头赛尔号通知", "admin_notice"),
-    PushSubscriptionOption("render_crash_notice", "精灵渲染异常通知", "admin_notice"),
+    PushSubscriptionOption("render_crash_notice", "精灵渲染崩溃通知", "admin_notice"),
     PushSubscriptionOption("red_packet_notice", "红包提醒", "admin_notice"),
     PushSubscriptionOption("admin_notice", "其他管理通知", "admin_notice"),
 )

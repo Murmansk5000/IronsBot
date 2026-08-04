@@ -14,7 +14,6 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 
-from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
@@ -24,9 +23,10 @@ from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
     DISABLED_BARE_ADMIN_COMMAND,
+    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMANDS,
+    NORMAL_SERVER_STATUS_COMMAND,
 )
 from .commands import handle_admin_status, handle_normal_status
 
@@ -35,71 +35,6 @@ if TYPE_CHECKING:
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
-
-DOCKER_MAINTENANCE_NAMESPACE = "docker_maintenance"
-DOCKER_MAINTENANCE_MENU = """请选择机器人维护操作：
-1. 仅重启机器人
-2. 更新镜像并重启机器人
-0.【退出】
-
-输入序号后会立即执行。"""
-
-
-def _is_docker_maintenance_reply(event: MessageEvent) -> bool:
-    return event.get_plaintext().strip() in {"0", "1", "2"}
-
-
-async def _handle_docker_maintenance_action(
-    matcher: Matcher,
-    event: MessageEvent,
-    *,
-    docker_service: DockerUpdateService,
-) -> None:
-    choice = event.get_plaintext().strip()
-    if choice == "0":
-        await finish_event_reply(matcher, event, "已退出机器人维护。")
-        return
-    if choice == "1":
-        message, restart_action = await docker_service.prepare_restart_only()
-    elif choice == "2":
-        message, restart_action = await docker_service.prepare_update_and_restart()
-    else:
-        await finish_event_reply(
-            matcher,
-            event,
-            "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
-        )
-        return
-    await send_event_reply(matcher, event, message)
-    await docker_service.execute_restart(restart_action)
-
-
-async def _open_docker_maintenance_menu(
-    matcher: Matcher,
-    event: MessageEvent,
-    *,
-    docker_service: DockerUpdateService,
-    check_image: bool = False,
-) -> None:
-    check_message = await docker_service.check_image_update() if check_image else ""
-    prompt = (
-        f"{check_message}\n\n{DOCKER_MAINTENANCE_MENU}"
-        if check_message
-        else DOCKER_MAINTENANCE_MENU
-    )
-    await enter_event_reply_conversation(
-        matcher,
-        event,
-        namespace=DOCKER_MAINTENANCE_NAMESPACE,
-        handlers=[
-            bind_async(
-                _handle_docker_maintenance_action,
-                docker_service=docker_service,
-            )
-        ],
-        reply_check=_is_docker_maintenance_reply,
-        prompt=prompt,
-    )
 
 
 async def handle_disabled_bare_admin_status(
@@ -117,18 +52,17 @@ async def handle_disabled_bare_admin_status(
     await finish_event_reply(
         matcher,
         event,
-        f"“开服查询”仅限超级管理员，且必须带 / 前缀。\n{command_help}",
+        "“开服查询”仅限超级管理员，且必须带 / 前缀。"
+        f"\n{command_help}",
     )
 
 
-def install(  # noqa: PLR0913 - plugin dependencies and configured command vocabulary
+def install(
     registry: MatcherRegistry,
     docker_service: DockerUpdateService,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
-    *,
-    normal_commands: tuple[str, ...] = NORMAL_SERVER_STATUS_COMMANDS,
 ) -> None:
     async def handle_normal_server_status(
         matcher: Matcher,
@@ -151,6 +85,11 @@ def install(  # noqa: PLR0913 - plugin dependencies and configured command vocab
             server_status,
         )
 
+    async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
+        message, restart_action = await docker_service.prepare_manual_restart()
+        await send_event_reply(matcher, event, message)
+        await docker_service.execute_restart(restart_action)
+
     async def handle_headless_instance_status(
         matcher: Matcher,
         event: MessageEvent,
@@ -161,8 +100,18 @@ def install(  # noqa: PLR0913 - plugin dependencies and configured command vocab
             (await server_status.query_headless_instances()).message,
         )
 
+    async def handle_check_image_update(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await finish_event_reply(
+            matcher,
+            event,
+            await docker_service.check_image_update(),
+        )
+
     normal_matcher = registry.on_fullmatch(
-        normal_commands,
+        NORMAL_SERVER_STATUS_COMMAND,
         policy=CommandPolicy.command(
             "server_status_query",
             help_ids=("server_status.query",),
@@ -228,12 +177,7 @@ def install(  # noqa: PLR0913 - plugin dependencies and configured command vocab
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    restart_matcher.append_handler(
-        bind_async(
-            _open_docker_maintenance_menu,
-            docker_service=docker_service,
-        )
-    )
+    restart_matcher.append_handler(handle_restart)
 
     update_matcher = registry.on_fullmatch(
         DOCKER_UPDATE_COMMANDS,
@@ -246,10 +190,17 @@ def install(  # noqa: PLR0913 - plugin dependencies and configured command vocab
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    update_matcher.append_handler(
-        bind_async(
-            _open_docker_maintenance_menu,
-            docker_service=docker_service,
-            check_image=True,
-        )
+    update_matcher.append_handler(handle_restart)
+
+    check_update_matcher = registry.on_fullmatch(
+        DOCKER_CHECK_UPDATE_COMMANDS,
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("docker_update.image_check",),
+        ),
+        rule=explicit_command(),
+        permission=SUPERUSER,
+        priority=registry.priority("server_status_admin"),
+        block=True,
     )
+    check_update_matcher.append_handler(handle_check_image_update)

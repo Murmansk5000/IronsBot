@@ -4,12 +4,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol
 
 from ironsbot.core.commands import command_text_matches
-from ironsbot.core.messaging import DeliveryReceipt, MessageTarget
-from ironsbot.core.time import scheduled_clock_time
+from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -20,14 +19,9 @@ from ironsbot.services.seer.ids import (
     is_valid_team_id,
 )
 from ironsbot.services.seer.team import format_team_info
-from ironsbot.services.team.overview import (
-    TeamOverviewItem,
-    format_team_overview,
-    load_team_overview,
-)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sequence
+    from collections.abc import Iterable, Sequence
 
     from ironsbot.config.models.seer import TeamResourceConfig
     from ironsbot.core.features import FeatureService
@@ -51,7 +45,6 @@ class TeamResourceResult(NamedTuple):
     team_name: str
     message: str
     resource: int
-    member_count: int | None = None
 
 
 class TeamResourceSubscriptionTarget(NamedTuple):
@@ -205,13 +198,6 @@ class TeamResourceService:
     _references: OneBotReferenceResolver
     _features: FeatureService
     _delivery: MessageDelivery
-    notice_observers: list[
-        Callable[[DeliveryReceipt, tuple[TeamOverviewItem, ...]], None]
-    ] = field(
-        default_factory=list,
-        compare=False,
-        repr=False,
-    )
 
     @property
     def enabled(self) -> bool:
@@ -314,9 +300,9 @@ class TeamResourceService:
         )
         label = f"{team_name}（{team_id}）" if team_name else str(team_id)
         return (
-            f"可以订阅战队 {label} 的资源提醒。\n"
+            f"本群可以订阅战队 {label} 的资源提醒。\n"
             "是否订阅这个战队？回复“是”或“y”订阅，回复“否”或“n”跳过。\n"
-            "仅提示一次；之后群主/管理员仍可发送"
+            "本群只提示一次；之后群主/管理员仍可发送"
             "“订阅战队123456”添加更多战队。"
         )
 
@@ -325,7 +311,7 @@ class TeamResourceService:
         if not subscriptions:
             return self._empty_subscriptions_message(target)
 
-        lines = ["战队资源订阅："]
+        lines = ["本群战队订阅：" if target.is_group else "你的战队资源订阅："]
         for index, subscription in enumerate(subscriptions, start=1):
             label = (
                 f"{subscription.team_name}（{subscription.team_id}）"
@@ -349,8 +335,10 @@ class TeamResourceService:
             return TEAM_ID_ERROR_MESSAGE
         deleted = self._delete_subscription(target, team_id)
         if deleted:
-            return f"已取消战队订阅：{team_id}。"
-        return f"没有订阅战队：{team_id}。"
+            prefix = "已取消本群战队订阅" if target.is_group else "已取消战队订阅"
+            return f"{prefix}：{team_id}。"
+        prefix = "本群没有订阅战队" if target.is_group else "你没有订阅战队"
+        return f"{prefix}：{team_id}。"
 
     async def add_target_subscription(
         self,
@@ -383,7 +371,7 @@ class TeamResourceService:
             threshold=effective_threshold,
             operator_id=operator_id,
         )
-        prefix = "已订阅战队"
+        prefix = "已订阅本群战队" if target.is_group else "已订阅战队"
         reminder = _format_user_ids(effective_users) if target.is_group else "你"
         return (
             f"{prefix}：{result.team_name}（{result.team_id}）。\n"
@@ -408,11 +396,11 @@ class TeamResourceService:
         )
         if not accepted:
             return (
-                "已跳过战队订阅提示。以后需要时，群主/管理员仍可发送"
+                "已跳过本群战队订阅提示。以后需要时，群主/管理员仍可发送"
                 "“订阅战队123456”添加。"
             )
 
-        at_user_ids = (user_id,)
+        at_user_ids = self.default_at_user_ids
         result = TeamResourceResult(
             prompt.team_id,
             prompt.team_name,
@@ -431,32 +419,22 @@ class TeamResourceService:
         )
         label = prompt.team_name or str(prompt.team_id)
         return (
-            f"已订阅战队：{label}（{prompt.team_id}）。\n"
+            f"已订阅本群战队：{label}（{prompt.team_id}）。\n"
             f"资源阈值：{self._config.default_threshold}\n"
             f"提醒对象：{_format_user_ids(at_user_ids)}\n"
             "还可以继续发送“订阅战队123456”添加更多战队。"
         )
 
-    async def query_overview(
+    async def query_target_messages(
         self,
         target: TeamResourceSubscriptionTarget,
-        *,
-        first_team_id: int | None = None,
-    ) -> tuple[TeamOverviewItem, ...]:
-        subscriptions = self._subscriptions_for_target(target)
-
-        async def load(team_id: int, fallback_name: str) -> TeamOverviewItem:
-            try:
-                return TeamOverviewItem.from_result(
-                    await self.query(team_id, group_id=target.group_id)
-                )
-            except TeamResourceQueryError as error:
-                return TeamOverviewItem(team_id, fallback_name, error=str(error))
-
-        return await load_team_overview(
-            [(item.team_id, item.team_name) for item in subscriptions],
-            load,
-            first_team_id=first_team_id,
+    ) -> list[str]:
+        return await self.query_messages(
+            (
+                subscription.team_id
+                for subscription in self._subscriptions_for_target(target)
+            ),
+            group_id=target.group_id,
         )
 
     async def query_messages(
@@ -496,11 +474,8 @@ class TeamResourceService:
     async def scan(self) -> None:
         if not self.enabled:
             return
-        grouped: dict[
-            tuple[str, int], list[tuple[TeamOverviewItem, tuple[int, ...], str]]
-        ] = {}
         for target, subscription in self._all_subscriptions():
-            if not self.target_has_feature(target):
+            if not self._target_has_feature(target):
                 continue
             try:
                 result = await self.query(
@@ -517,44 +492,11 @@ class TeamResourceService:
             )
             if result.resource >= subscription.threshold:
                 continue
-            grouped.setdefault((target.kind, target.target_id), []).append(
-                (
-                    TeamOverviewItem.from_result(result),
-                    target.at_user_ids,
-                    self._resource_notice(result, subscription),
-                )
-            )
-        notices: list[tuple[MessageTarget, str]] = []
-        snapshots: dict[tuple[str, int], tuple[TeamOverviewItem, ...]] = {}
-        for (kind, target_id), entries in grouped.items():
-            items = tuple(entry[0] for entry in entries)
-            snapshots[(kind, target_id)] = items
-            mentions = tuple(
-                dict.fromkeys(user for _, users, _ in entries for user in users)
-            )
-            target = MessageTarget(
-                "group" if kind == "group" else "private", target_id, mentions
-            )
-            notices.append(
-                (
-                    target,
-                    format_team_overview(items)
-                    + "\n\n"
-                    + "\n".join(entry[2] for entry in entries),
-                )
-            )
-
-        def received(receipt: DeliveryReceipt) -> None:
-            items = snapshots[(receipt.target.target_type, receipt.target.target_id)]
-            for observer in self.notice_observers:
-                observer(receipt, items)
-
-        if notices:
-            await self._delivery.send_target_messages(
-                notices,
+            await self._delivery.send_targets(
+                [MessageTarget(target.kind, target.target_id, target.at_user_ids)],
+                self._resource_notice(result, subscription),
                 action_name="team resource subscription notice",
-                subscription_key=TEAM_RESOURCE_FEATURE,
-                receipt_handler=received,
+                interval_seconds=0,
             )
 
     def register_jobs(self, scheduler: Scheduler) -> None:
@@ -563,16 +505,13 @@ class TeamResourceService:
         jobs = JobRegistry(scheduler, prefix=TEAM_RESOURCE_JOB_PREFIX)
         scan = self.scan
         for time_text in self._config.times:
-            clock_time = scheduled_clock_time(
-                time_text,
-                error_message=(
-                    "seer.team_resource.times must contain daily HH:MM:SS times"
-                ),
-            )
-            jobs.add_daily(
+            hour_text, minute_text = time_text.split(":", maxsplit=1)
+            jobs.add(
                 scan,
-                clock_time=clock_time,
-                job_id=str(clock_time).replace(":", ""),
+                "cron",
+                hour=int(hour_text),
+                minute=int(minute_text),
+                job_id=time_text.replace(":", ""),
             )
 
     async def _fetch(
@@ -604,7 +543,6 @@ class TeamResourceService:
             info.name,
             format_team_info(info, {"basic", "resource"}),
             info.score,
-            info.member_count,
         )
 
     async def _query_message(
@@ -662,13 +600,13 @@ class TeamResourceService:
                 subscription,
             )
 
-    def target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
+    def _target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
         if target.is_group:
-            return self.enabled and self._features.group_has_feature(
+            return self._features.group_has_feature(
                 target.target_id,
                 TEAM_RESOURCE_FEATURE,
             )
-        return self.enabled and self._features.user_has_feature(
+        return self._features.user_has_feature(
             target.target_id,
             TEAM_RESOURCE_FEATURE,
         )
@@ -736,7 +674,7 @@ class TeamResourceService:
     ) -> str:
         if target.is_group:
             return (
-                "还没有订阅战队。\n"
+                "本群还没有订阅战队。\n"
                 "群主/管理员可发送：订阅战队123456\n"
                 "也可发送：订阅战队123456 1000 @提醒人"
             )

@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from nonebot import logger
 
-from ironsbot.core.time import scheduled_clock_time
+from ironsbot.core.time import daily_time_parts
 from ironsbot.services.operations.scheduler import JobRegistry
 
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 JOB_ID = "scheduled_bot_restart"
 
 if TYPE_CHECKING:
@@ -44,15 +46,16 @@ def register_restart_jobs(
 
     registry = JobRegistry(scheduler, prefix=f"{JOB_ID}:")
     for scheduled_time in restart_times:
-        clock_time = scheduled_clock_time(
-            scheduled_time,
-            error_message="operations.restart.times must contain daily HH:MM:SS times",
-        )
-        registry.add_daily(
+        hour, minute = daily_time_parts(scheduled_time)
+        registry.add(
             _scheduled_restart,
-            job_id=str(clock_time),
+            "cron",
+            job_id=scheduled_time,
             args=[scheduled_time, grace_seconds, restart_process],
-            clock_time=clock_time,
+            hour=hour,
+            minute=minute,
+            second=0,
+            timezone=LOCAL_TZ,
         )
 
     logger.info(

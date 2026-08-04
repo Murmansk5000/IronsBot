@@ -15,6 +15,7 @@ PLUGIN_PACKAGES = frozenset(
         "help",
         "messaging",
         "operations",
+        "onebot",
         "seer",
         "sendpic",
         "team",

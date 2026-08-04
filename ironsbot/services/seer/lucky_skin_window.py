@@ -1,74 +1,76 @@
 # SPDX-License-Identifier: MIT
 """Public lucky skin window lookup backed by an authenticated game session."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, datetime
 from functools import partial
-from time import monotonic
+from struct import unpack
 from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
 
 from seerapi_models import PetSkinORM
 from sqlmodel import Session, col, select
 
-from ironsbot.core.messaging import DeliveryReceipt, MessageTarget
+from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
-from ironsbot.services.seer.lucky_skin_window_formatting import (
-    format_offer_price as _format_offer_price,
-)
-from ironsbot.services.seer.lucky_skin_window_protocol import (
-    LuckySkinWindowBindingError,
-    LuckySkinWindowError,  # noqa: F401 - compatibility export
-    LuckySkinWindowNotConfiguredError,
-    LuckySkinWindowPayloadError,  # noqa: F401 - compatibility export
-)
-from ironsbot.services.seer.lucky_skin_window_protocol import (
-    fetch_skin_ids as _fetch_skin_ids,
-)
-from ironsbot.services.seer.lucky_skin_window_protocol import (
-    parse_skin_ids as _parse_skin_ids,  # noqa: F401 - compatibility export
-)
-from ironsbot.services.seer.lucky_skin_window_protocol import (
-    required_password as _required_password,
-)
-from ironsbot.services.seer.skin_price import (
-    SkinStorePrice,
-    load_active_skin_store_prices,
-)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ironsbot.config.models.seer import LuckySkinWindowConfig
     from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
     from ironsbot.core.features import FeatureService
     from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
+    from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
 logger = logging.getLogger(__name__)
 
-LuckySkinWindowRenderer = Callable[
-    ["LuckySkinWindowResult", tuple["LuckySkinWindowOffer", ...]],
-    Awaitable[bytes],
-]
-PlayerProfileLookup = Callable[[int], Awaitable[object]]
-
-
-class LuckySkinWindowMessageFormatter(Protocol):
-    async def __call__(
-        self,
-        result: LuckySkinWindowResult,
-        *,
-        user_id: int,
-    ) -> object: ...
-
 LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY = "lucky_skin_window"
+_GET_LUCKY_SKIN_WINDOW = 45866
+_REQUEST = (
+    # The official-client capture includes 668 in the packet head's result
+    # field. SeerGame derives that value from its connection state, so it must
+    # not be copied into this request body.
+    0,
+    0,
+    18,
+    203247,
+    31101,
+    31102,
+    31103,
+    31104,
+    108937,
+    108938,
+    108939,
+    108940,
+    108941,
+    108942,
+    108943,
+    401009,
+    401010,
+    401007,
+    401008,
+    351005,
+    351004,
+)
+_SKIN_OFFSET = 9
+_SKIN_COUNT = 4
+
+
+def _onebot_actor(user_id: int) -> ActorRef:
+    """Adapt the current OneBot-only service input at its outer boundary."""
+
+    return ActorRef(Platform.ONEBOT, str(int(user_id)))
 
 
 class LuckySkinWindowCache(Protocol):
@@ -90,13 +92,40 @@ class LuckySkinWatchPreferenceStore(Protocol):
     def set(self, qq_user_id: int, skin_ids: tuple[int, ...]) -> None: ...
 
 
+class LuckySkinWindowError(RuntimeError):
+    @classmethod
+    def packet_request_failed(cls) -> LuckySkinWindowError:
+        return cls("lucky skin window packet request failed")
+
+
+class LuckySkinWindowNotConfiguredError(LuckySkinWindowError):
+    pass
+
+
+class LuckySkinWindowBindingError(LuckySkinWindowError):
+    pass
+
+
+class LuckySkinWindowPayloadError(LuckySkinWindowError):
+    @classmethod
+    def unaligned(cls) -> LuckySkinWindowPayloadError:
+        return cls("skin window payload is not uint32 aligned")
+
+    @classmethod
+    def truncated(cls) -> LuckySkinWindowPayloadError:
+        return cls("skin window payload is truncated")
+
+    @classmethod
+    def invalid_skin_ids(cls) -> LuckySkinWindowPayloadError:
+        return cls("skin window payload has invalid skin IDs")
+
+
 @dataclass(frozen=True, slots=True)
 class LuckySkinWindowOffer:
     skin_id: int
     resource_id: int
     name: str
     watched: bool
-    store_price: SkinStorePrice | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,12 +158,9 @@ class LuckySkinWindowService:
         cache: LuckySkinWindowCache,
         *,
         today: Callable[[], date] | None = None,
-        renderer: LuckySkinWindowRenderer | None = None,
-        player_profile_lookup: PlayerProfileLookup | None = None,
     ) -> None:
         self._config = config
         self._features = features
-        self._player_accounts = player_accounts
         self._headless_sessions = headless_sessions
         self._data = data
         self._bindings = bindings
@@ -142,8 +168,6 @@ class LuckySkinWindowService:
         self._watch_preferences = watch_preferences
         self._cache = cache
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
-        self._renderer = renderer
-        self._player_profile_lookup = player_profile_lookup
         self._accounts = {
             references.resolve_user(
                 account.user,
@@ -156,9 +180,6 @@ class LuckySkinWindowService:
                 ),
             )
             for index, account in enumerate(config.accounts)
-        }
-        self._accounts_by_player_id = {
-            account.player_id for _subscription, account in self._accounts.values()
         }
         self._query_lock = asyncio.Lock()
         self._memory: dict[int, tuple[int, ...]] = {}
@@ -182,63 +203,11 @@ class LuckySkinWindowService:
         configured = self._accounts.get(user_id)
         return configured[1] if configured is not None else None
 
-    @property
-    def player_accounts(self) -> PlayerAccountRegistry:
-        return self._player_accounts
-
-    def default_player_id(self, user_id: int) -> int | None:
-        return self._bindings.get(user_id).player_id
-
-    def account_for_player_id(self, player_id: int) -> PlayerAccount | None:
-        if player_id not in self._accounts_by_player_id:
-            return None
-        return self._player_accounts.account_for_player_id(player_id)
-
-    def can_login_account(self, user_id: int, player_id: int) -> bool:
-        """Return whether this QQ user owns and still binds the login account."""
-
-        account = self.account_for_user(user_id)
-        return (
-            account is not None
-            and account.player_id == player_id
-            and self.default_player_id(user_id) == player_id
-        )
-
     def is_eligible_user(self, user_id: int) -> bool:
         account = self.account_for_user(user_id)
         if not self.enabled or account is None:
             return False
-        return self._bindings.get(user_id).player_id == account.player_id
-
-    async def lookup_player_nicks(
-        self,
-        player_ids: Iterable[int],
-    ) -> dict[int, str]:
-        unique_ids = tuple(dict.fromkeys(player_ids))
-        profile_lookup = self._player_profile_lookup
-        if profile_lookup is None:
-            return {}
-
-        async def lookup(player_id: int) -> tuple[int, str]:
-            try:
-                profile = await asyncio.wait_for(
-                    profile_lookup(player_id),
-                    timeout=self._config.timeout_seconds,
-                )
-            except Exception as error:  # noqa: BLE001 - keep the menu usable
-                logger.warning(
-                    "lucky skin window alias nickname lookup failed: "
-                    "player_id=%s error=%s",
-                    player_id,
-                    type(error).__name__,
-                )
-                return player_id, ""
-            nickname = str(getattr(profile, "nick", "") or "").strip()
-            return player_id, nickname
-
-        return dict(
-            await asyncio.gather(*(lookup(player_id) for player_id in unique_ids))
-        )
+        return self._bindings.get(_onebot_actor(user_id)).player_id == account.player_id
 
     def subscription_options(
         self,
@@ -333,24 +302,7 @@ class LuckySkinWindowService:
         account = self._validated_account_for_user(user_id)
         return self._cached_result(account.player_id)
 
-    def cached_for_account(self, player_id: int) -> LuckySkinWindowResult | None:
-        account = self.account_for_player_id(player_id)
-        if account is None:
-            raise LuckySkinWindowNotConfiguredError
-        return self._cached_result(account.player_id)
-
-    async def check_for_account(self, player_id: int) -> LuckySkinWindowResult:
-        account = self.account_for_player_id(player_id)
-        if account is None:
-            raise LuckySkinWindowNotConfiguredError
-        return await self._check(account, background=False)
-
-    async def send_daily_notifications(
-        self,
-        delivery: MessageDelivery,
-        *,
-        format_message: LuckySkinWindowMessageFormatter | None = None,
-    ) -> None:
+    async def send_daily_notifications(self, delivery: MessageDelivery) -> None:
         if not self.enabled:
             return
         target_ids = self._subscriptions.filter_subscribed_user_ids(
@@ -367,100 +319,38 @@ class LuckySkinWindowService:
         )
         if not target_ids:
             return
-        day = self.day_key()
-        logger.info(
-            "lucky skin window daily task started: day=%s targets=%s",
-            day,
-            len(target_ids),
-        )
-        notices: list[tuple[MessageTarget, object]] = []
-        audit_contexts: dict[MessageTarget, tuple[int, tuple[int, ...]]] = {}
         for user_id in target_ids:
             _subscription, account = self._accounts[user_id]
-            started_at = monotonic()
-            skin_ids: tuple[int, ...] = ()
-            logger.info(
-                "lucky skin window daily query started: day=%s player_id=%s "
-                "target_id=%s",
-                day,
-                account.player_id,
-                user_id,
-            )
             try:
                 result = await self._check(account, background=True)
-                skin_ids = tuple(offer.skin_id for offer in result.offers)
-                logger.info(
-                    "lucky skin window daily query succeeded: day=%s player_id=%s "
-                    "target_id=%s source=%s skin_ids=%s elapsed=%.3fs",
-                    result.day,
-                    account.player_id,
-                    user_id,
-                    "cache" if result.from_cache else "live",
-                    skin_ids,
-                    monotonic() - started_at,
-                )
-                message = (
-                    await format_message(result, user_id=user_id)
-                    if format_message is not None
-                    else self.format_result(result, user_id=user_id)
-                )
+                message = self.format_result(result, user_id=user_id)
             except Exception:
                 logger.exception(
                     "lucky skin window scheduled check failed: player_id=%s",
                     account.player_id,
                 )
                 message = "❌ 幸运橱窗数据暂时不可用，请稍后使用“橱窗”查询。"
-            if self._subscriptions.mark_daily_hint_sent(
-                "private",
-                user_id,
-                "lucky_skin_window_delivery",
-                today=self.day_key(),
-            ):
-                target = MessageTarget("private", user_id)
-                notices.append((target, message))
-                audit_contexts[target] = (account.player_id, skin_ids)
-        if notices:
-            await delivery.send_target_messages(
-                notices,
-                action_name="lucky skin window daily notice",
-                subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
-                receipt_handler=partial(
-                    self._log_daily_delivery_receipt,
-                    day=day,
-                    contexts=audit_contexts,
-                ),
-                verify_history=True,
-            )
+            await self._send_daily_notice(delivery, user_id, message)
 
-    @staticmethod
-    def _log_daily_delivery_receipt(
-        receipt: DeliveryReceipt,
-        *,
-        day: str,
-        contexts: dict[MessageTarget, tuple[int, tuple[int, ...]]],
+    async def _send_daily_notice(
+        self,
+        delivery: MessageDelivery,
+        user_id: int,
+        message: str,
     ) -> None:
-        player_id, skin_ids = contexts.get(receipt.target, (None, ()))
-        details = (
-            "lucky skin window daily delivery receipt: day=%s player_id=%s "
-            "target_id=%s bot_id=%s skin_ids=%s message_id=%s "
-            "history_status=%s"
-        )
-        values = (
-            day,
-            player_id,
-            receipt.target.target_id,
-            receipt.bot_id,
-            skin_ids,
-            receipt.message_id,
-            receipt.history_status,
-        )
-        if receipt.history_status == "confirmed":
-            logger.info(details, *values)
+        if not self._subscriptions.mark_daily_hint_sent(
+            "private",
+            user_id,
+            "lucky_skin_window_delivery",
+            today=self.day_key(),
+        ):
             return
-        logger.error(
-            details + " history_error=%s",
-            *values,
-            receipt.history_error,
+        await delivery.send_targets(
+            [MessageTarget("private", user_id)],
+            message,
+            action_name="lucky skin window daily notice",
+            interval_seconds=0,
+            subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
         )
 
     def _validated_account_for_user(
@@ -470,7 +360,7 @@ class LuckySkinWindowService:
         account = self.account_for_user(user_id)
         if not self.enabled or account is None:
             raise LuckySkinWindowNotConfiguredError
-        if self._bindings.get(user_id).player_id != account.player_id:
+        if self._bindings.get(_onebot_actor(user_id)).player_id != account.player_id:
             raise LuckySkinWindowBindingError(account.player_id)
         return account
 
@@ -556,81 +446,26 @@ class LuckySkinWindowService:
         from_cache: bool,
     ) -> LuckySkinWindowResult:
         resolved = self._skin_items_by_reference(skin_ids)
-        with self._data.query(
-            partial(load_active_skin_store_prices, skin_ids=skin_ids)
-        ) as store_prices:
-            for reference in skin_ids:
-                item = resolved.get(reference)
-                skin_id = item.skin_id if item is not None else reference
-                if skin_id not in store_prices:
-                    logger.warning(
-                        "lucky skin window store price missing: day=%s skin_id=%s "
-                        "resource_id=%s",
-                        day,
-                        skin_id,
-                        item.resource_id if item is not None else 0,
-                    )
-            offers = tuple(
-                LuckySkinWindowOffer(
-                    skin_id=(item.skin_id if item is not None else reference),
-                    resource_id=(item.resource_id if item is not None else 0),
-                    name=(item.name if item is not None else f"皮肤 {reference}"),
-                    watched=False,
-                    store_price=store_prices.get(
-                        item.skin_id if item is not None else reference
-                    ),
-                )
-                for reference in skin_ids
-                for item in (resolved.get(reference),)
+        offers = tuple(
+            LuckySkinWindowOffer(
+                skin_id=(item.skin_id if item is not None else reference),
+                resource_id=(item.resource_id if item is not None else 0),
+                name=(item.name if item is not None else f"皮肤 {reference}"),
+                watched=False,
             )
+            for reference in skin_ids
+            for item in (resolved.get(reference),)
+        )
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
     def format_result(self, result: LuckySkinWindowResult, *, user_id: int) -> str:
-        offers = self._offers_for_user(result, user_id=user_id)
+        watched_ids = frozenset(self._watched_skin_ids(user_id))
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
-        for index, offer in enumerate(offers, start=1):
-            marker = " ★ 关注" if offer.watched else ""
+        for index, offer in enumerate(result.offers, start=1):
+            marker = " ★ 关注" if offer.skin_id in watched_ids else ""
             identifiers = _skin_identifiers(offer.skin_id, offer.resource_id)
             lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
-            if offer.store_price is None:
-                lines.append("   橱窗价格数据异常")
-            else:
-                lines.extend(_format_offer_price(offer.store_price))
-        lines.append("发送 1-4 查看对应皮肤详情 · 0 退出")
         return "\n".join(lines)
-
-    async def render_result(
-        self,
-        result: LuckySkinWindowResult,
-        *,
-        user_id: int,
-    ) -> bytes | None:
-        if self._renderer is None:
-            return None
-        try:
-            return await self._renderer(
-                result,
-                self._offers_for_user(result, user_id=user_id),
-            )
-        except Exception:
-            logger.exception(
-                "lucky skin window render failed: player_id=%s day=%s",
-                result.player_id,
-                result.day,
-            )
-            return None
-
-    def _offers_for_user(
-        self,
-        result: LuckySkinWindowResult,
-        *,
-        user_id: int,
-    ) -> tuple[LuckySkinWindowOffer, ...]:
-        watched_ids = frozenset(self._watched_skin_ids(user_id))
-        return tuple(
-            replace(offer, watched=offer.skin_id in watched_ids)
-            for offer in result.offers
-        )
 
     def _watched_skin_ids(self, user_id: int) -> tuple[int, ...]:
         self._validated_account_for_user(user_id)
@@ -703,6 +538,47 @@ class LuckySkinWindowService:
                 }
             )
         return resolved
+
+
+async def _fetch_skin_ids(
+    game: HeadlessGame,
+    *,
+    timeout_seconds: float,
+    background: bool,
+) -> tuple[int, ...]:
+    try:
+        with game.operations.track(
+            "幸运橱窗检查",
+            source="幸运橱窗专用会话",
+            background=background,
+        ):
+            _head, payload = await game.send_and_wait(
+                _GET_LUCKY_SKIN_WINDOW,
+                *_REQUEST,
+                timeout=timeout_seconds,
+            )
+    except (ConnectionError, TimeoutError) as error:
+        raise LuckySkinWindowError.packet_request_failed() from error
+    return _parse_skin_ids(payload)
+
+
+def _parse_skin_ids(payload: bytes | bytearray | memoryview) -> tuple[int, ...]:
+    data = bytes(payload)
+    if len(data) % 4:
+        raise LuckySkinWindowPayloadError.unaligned()
+    values = unpack(f"!{len(data) // 4}I", data)
+    if len(values) < _SKIN_OFFSET + _SKIN_COUNT:
+        raise LuckySkinWindowPayloadError.truncated()
+    skin_ids = tuple(values[_SKIN_OFFSET : _SKIN_OFFSET + _SKIN_COUNT])
+    if len(skin_ids) != _SKIN_COUNT or any(skin_id <= 0 for skin_id in skin_ids):
+        raise LuckySkinWindowPayloadError.invalid_skin_ids()
+    return skin_ids
+
+
+def _required_password(account: PlayerAccount) -> str:
+    if account.password is None:
+        raise LuckySkinWindowNotConfiguredError
+    return account.password
 
 
 def _load_skin_records_by_resource_id(

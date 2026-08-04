@@ -52,14 +52,13 @@ async def send_private_schedule(
             user_id for user_id in target_user_ids if user_id in allowed_user_ids
         ]
 
-    for message in task.messages:
-        await messaging._delivery.broadcast(
-            message,
-            private_user_ids=private_user_ids,
-            action_name=f"private scheduled message {task.id or '<unnamed>'}",
-            message_limiter=messaging._push_message_limiter,
-            subscription_key=schedule_key(index, task),
-        )
+    await messaging._delivery.broadcast(
+        task.message,
+        private_user_ids=private_user_ids,
+        action_name=f"private scheduled message {task.id or '<unnamed>'}",
+        message_limiter=messaging._push_message_limiter,
+        subscription_key=schedule_key(index, task),
+    )
 
 
 async def send_group_schedule(
@@ -85,15 +84,16 @@ async def send_group_schedule(
             group_id for group_id in target_group_ids if group_id in allowed_group_ids
         ]
 
-    for message in task.messages:
-        await messaging._delivery.broadcast(
-            message,
-            group_ids=group_ids,
-            group_at_user_ids=messaging._features.resolve_user_refs(task.at_user_ids),
-            action_name=f"group scheduled message {task.id or '<unnamed>'}",
-            message_limiter=messaging._push_message_limiter,
-            subscription_key=schedule_key(index, task),
-        )
+    await messaging._delivery.broadcast(
+        task.message,
+        group_ids=group_ids,
+        group_at_user_ids=messaging._features.resolve_user_refs(
+            task.at_user_ids
+        ),
+        action_name=f"group scheduled message {task.id or '<unnamed>'}",
+        message_limiter=messaging._push_message_limiter,
+        subscription_key=schedule_key(index, task),
+    )
 
 
 async def send_schedule(
@@ -134,11 +134,10 @@ def schedule_override_trigger_kwargs(
     task: MessageScheduledAction,
     value: str,
 ) -> dict[str, Any]:
-    hour, minute, second = daily_time_parts_for_push(value)
+    hour, minute = daily_time_parts_for_push(value)
     trigger_kwargs = build_schedule_trigger_kwargs(task)
     trigger_kwargs["hour"] = hour
     trigger_kwargs["minute"] = minute
-    trigger_kwargs["second"] = second
     return trigger_kwargs
 
 

@@ -11,14 +11,11 @@ from enum import IntEnum
 from time import monotonic
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
 
-from ironsbot.core.request_coordination import (
-    RequestExecutionFeedback,
-    send_request_response,
-)
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -91,7 +88,6 @@ class HeadlessWorkflowState:
     label: str
     user_id: int | None
     priority_state: HeadlessRequestPriorityState
-    feedback: RequestExecutionFeedback | None = None
     queued_at: float = field(default_factory=monotonic)
     first_packet_at: float | None = None
     queued_packet_count: int = 0
@@ -141,7 +137,6 @@ class HeadlessWorkerSlot:
     user_id: int
     client: HeadlessPoolClient
     active: bool = False
-    active_label: str | None = None
     assignments: int = 0
     available_since: float = field(default_factory=monotonic)
 
@@ -186,6 +181,7 @@ class HeadlessRequestDispatcher:
         self._spawn = spawn
         self._pending: deque[_PacketRequest] = deque()
         self._sequence = 0
+        self._active_background = 0
         self._dispatch_scheduled = False
 
     @property
@@ -201,16 +197,6 @@ class HeadlessRequestDispatcher:
         return sum(
             not worker.active and worker.game() is not None
             for worker in self._workers
-        )
-
-    @property
-    def active_request_summaries(self) -> tuple[str, ...]:
-        """Human-readable active packet labels for administrator diagnostics."""
-
-        return tuple(
-            f"{worker.name}: {worker.active_label}"
-            for worker in self._workers
-            if worker.active and worker.active_label
         )
 
     @property
@@ -256,10 +242,7 @@ class HeadlessRequestDispatcher:
         self._sequence += 1
         self._pending.append(request)
         self.dispatch()
-        await send_request_response(
-            queued=request.active_worker is None,
-            feedback=None if workflow is None else workflow.feedback,
-        )
+        await send_request_feedback(queued=request.active_worker is None)
         try:
             outcome = await asyncio.shield(request.future)
         except asyncio.CancelledError:
@@ -284,13 +267,14 @@ class HeadlessRequestDispatcher:
                 self._pending.appendleft(request)
                 return
             worker.active = True
-            worker.active_label = request.label
             worker.assignments += 1
             request.active_worker = worker.name
             request.attempts += 1
             priority = request.priority_state.priority
             if request.workflow is not None:
                 request.workflow.mark_packet_dispatched()
+            if priority is HeadlessRequestPriority.BACKGROUND:
+                self._active_background += 1
             wait_seconds = monotonic() - request.queued_at
             logger.info(
                 "headless packet scheduled: workflow=%s ticket=%s label=%s "
@@ -303,7 +287,7 @@ class HeadlessRequestDispatcher:
                 wait_seconds,
                 request.attempts,
             )
-            coroutine = self._execute(worker, request)
+            coroutine = self._execute(worker, request, priority)
             request.context.run(
                 self._spawn,
                 coroutine,
@@ -352,10 +336,16 @@ class HeadlessRequestDispatcher:
         healthy_count = self.healthy_worker_count
         if healthy_count <= 0:
             return None
+        background_limit = max(1, healthy_count - 1)
         candidates = [
             item
             for item in self._pending
             if not item.future.cancelled()
+            and (
+                item.priority_state.priority
+                is not HeadlessRequestPriority.BACKGROUND
+                or self._active_background < background_limit
+            )
             and self._has_worker_for(item)
         ]
         if not candidates:
@@ -381,10 +371,11 @@ class HeadlessRequestDispatcher:
             for worker in self._workers
         )
 
-    async def _execute(
+    async def _execute(  # noqa: C901 - retry and task completion are coupled
         self,
         worker: HeadlessWorkerSlot,
         request: _PacketRequest,
+        started_priority: HeadlessRequestPriority,
     ) -> None:
         retry = False
         try:
@@ -394,7 +385,7 @@ class HeadlessRequestDispatcher:
             result = await request.operation(game)
         except asyncio.CancelledError:
             raise
-        except (DisconnectedError, NotLoggedInError, asyncio.TimeoutError) as error:
+        except (DisconnectedError, NotLoggedInError) as error:
             request.excluded_workers.add(worker.name)
             retry = (
                 request.attempts < MAX_PACKET_ATTEMPTS
@@ -419,9 +410,10 @@ class HeadlessRequestDispatcher:
                 )
         finally:
             worker.active = False
-            worker.active_label = None
             worker.available_since = monotonic()
             request.active_worker = None
+            if started_priority is HeadlessRequestPriority.BACKGROUND:
+                self._active_background = max(0, self._active_background - 1)
             if retry and not request.future.done():
                 request.queued_at = monotonic()
                 self._pending.appendleft(request)
@@ -469,12 +461,6 @@ class PooledHeadlessGame:
     @property
     def is_logged_in(self) -> bool:
         return self._dispatcher.healthy_worker_count > 0
-
-    @property
-    def idle_worker_count(self) -> int:
-        """Current spare packet capacity, used to size one rank probe batch."""
-
-        return self._dispatcher.idle_worker_count
 
     @property
     def user_id(self) -> int:

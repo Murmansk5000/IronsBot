@@ -11,7 +11,6 @@ from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
     DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS,
-    DEFAULT_SEER_MUTED_CATEGORIES,
     BiliConfig,
     BiliStorageConfig,
 )
@@ -27,13 +26,7 @@ from ironsbot.plugins.bilibili.command_rules import (
     parse_bili_push_mode_command,
 )
 from ironsbot.services.bilibili import accounts
-from ironsbot.services.bilibili.categories import (
-    SEER_CATEGORY_LABELS,
-    seer_category_option_key,
-    seer_category_submenu_key,
-)
 from ironsbot.services.bilibili.preferences import (
-    bili_push_media_subscription_key,
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.targets import BiliTargetService
@@ -100,26 +93,20 @@ def test_bili_login_notice_cooldown_lives_in_bili_config() -> None:
 def test_bili_config_defaults_to_official_account() -> None:
     config = BiliConfig()
 
-    assert config.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid == (DEFAULT_BILI_ACCOUNT_UID)
+    assert config.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid == (
+        DEFAULT_BILI_ACCOUNT_UID
+    )
     assert config.push.mode == "full"
     assert config.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
     assert config.push.modes == {}
     assert config.push.content_max_chars == DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS
     assert config.push.summary_max_chars == DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS
     assert config.push.summary_use_ai
-    assert config.push.combine_images
-    assert config.seer_categories.default_muted_categories == list(
-        DEFAULT_SEER_MUTED_CATEGORIES
-    )
 
 
 def test_bili_config_rejects_removed_default_mode() -> None:
     with pytest.raises(ValueError, match="default_mode"):
         _bili_config(push={"default_mode": "full"})
-
-
-def test_bili_config_can_disable_image_collages() -> None:
-    assert not _bili_config(push={"combine_images": False}).push.combine_images
 
 
 def test_bili_config_accepts_alias_group_accounts() -> None:
@@ -135,41 +122,12 @@ def test_bili_config_accepts_alias_group_accounts() -> None:
         },
     )
 
-    assert config.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid == (DEFAULT_BILI_ACCOUNT_UID)
+    assert config.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid == (
+        DEFAULT_BILI_ACCOUNT_UID
+    )
     assert config.accounts[FIRE_BILI_ALIAS].uid == FIRE_BILI_UID
     assert config.push.groups["main"].accounts == [FIRE_BILI_ALIAS]
     assert config.push.groups["main"].modes == {FIRE_BILI_ALIAS: "link"}
-
-
-@pytest.mark.parametrize(
-    ("seer_categories", "error_text"),
-    [
-        ({"account": "missing"}, "bilibili.seer_categories.account"),
-        (
-            {
-                "preview_windows": [
-                    {
-                        "weekdays": ["weekday"],
-                        "start": "17:00",
-                        "end": "18:00",
-                    }
-                ]
-            },
-            "preview_windows weekdays",
-        ),
-        ({"lottery_patterns": ["["]}, "lottery_patterns has invalid regex"),
-        (
-            {"default_muted_categories": ["unknown"]},
-            "default_muted_categories contains unknown categories",
-        ),
-    ],
-)
-def test_bili_config_validates_seer_category_configuration(
-    seer_categories: dict[str, object],
-    error_text: str,
-) -> None:
-    with pytest.raises(ValueError, match=error_text):
-        _bili_config(seer_categories=seer_categories)
 
 
 def test_bili_config_rejects_removed_account_nickname() -> None:
@@ -189,19 +147,25 @@ def test_bili_account_names_resolve_only_public_account_name() -> None:
         names={FIRE_BILI_UID: FIRE_BILI_ACCOUNT_NAME}
     )
 
-    assert account_names.name_for_uid(FIRE_BILI_UID) == FIRE_BILI_ACCOUNT_NAME
     assert (
-        account_names.resolve(FIRE_BILI_ACCOUNT_NAME, [FIRE_BILI_UID]) == FIRE_BILI_UID
+        account_names.name_for_uid(FIRE_BILI_UID)
+        == FIRE_BILI_ACCOUNT_NAME
     )
-    assert account_names.resolve(str(FIRE_BILI_UID), [FIRE_BILI_UID]) == FIRE_BILI_UID
+    assert (
+        account_names.resolve(FIRE_BILI_ACCOUNT_NAME, [FIRE_BILI_UID])
+        == FIRE_BILI_UID
+    )
+    assert (
+        account_names.resolve(str(FIRE_BILI_UID), [FIRE_BILI_UID])
+        == FIRE_BILI_UID
+    )
     assert account_names.resolve("火火", [FIRE_BILI_UID]) is None
 
 
 def test_bili_push_mode_command_accepts_spaces_in_public_account_name() -> None:
-    assert parse_bili_push_mode_command("B站推送模式 赛尔号 官号 链接") == (
-        "赛尔号 官号",
-        "链接",
-    )
+    assert parse_bili_push_mode_command(
+        "B站推送模式 赛尔号 官号 链接"
+    ) == ("赛尔号 官号", "链接")
 
 
 def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
@@ -223,7 +187,9 @@ def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
 
 def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:
     command = next(
-        item for item in bilibili_commands() if item.id == "bilibili.private_push_mode"
+        item
+        for item in bilibili_commands()
+        if item.id == "bilibili.private_push_mode"
     )
 
     assert command.section == "私聊管理"
@@ -258,13 +224,10 @@ def test_group_query_falls_back_to_global_uids_when_feature_enabled() -> None:
 
 
 def test_group_query_still_requires_bili_feature() -> None:
-    assert (
-        _target_service(BiliConfig(), _features()).query_uids_for_group(
-            user_id=1,
-            group_id=987654321,
-        )
-        == []
-    )
+    assert _target_service(BiliConfig(), _features()).query_uids_for_group(
+        user_id=1,
+        group_id=987654321,
+    ) == []
 
 
 def test_history_hint_requires_target_query_feature() -> None:
@@ -515,156 +478,6 @@ def test_bili_push_subscription_options_use_public_account_names(
     ]
 
 
-def test_bili_push_subscription_options_fall_back_to_uid(
-    tmp_path: Path,
-) -> None:
-    service = _target_service(
-        _bili_config(
-            accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},
-            push={
-                "groups": {
-                    "987654321": {
-                        "accounts": [FIRE_BILI_ALIAS],
-                    }
-                }
-            },
-        ),
-        _features({"987654321": ["bili_push"]}),
-        tmp_path,
-    )
-
-    options = service.subscription_options("group", 987654321)
-
-    assert [option.label for option in options] == [
-        f"B站动态（UID：{FIRE_BILI_UID}）",
-        f"B站动态（UID：{DEFAULT_BILI_ACCOUNT_UID}）",
-    ]
-
-
-def test_seer_category_subscription_submenu_and_target_filtering(
-    tmp_path: Path,
-) -> None:
-    group_id = 987654321
-    service = _target_service(
-        BiliConfig(),
-        _features({str(group_id): ["bili_push"]}),
-        tmp_path,
-        account_names={DEFAULT_BILI_ACCOUNT_UID: DEFAULT_BILI_ACCOUNT_NAME},
-    )
-    option = next(
-        option
-        for option in service.subscription_options("group", group_id)
-        if option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
-    )
-
-    assert option.label == f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}"
-    assert option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
-
-    submenu = service.subscription_submenu("group", group_id, option)
-    assert submenu is not None
-    children, prompt = submenu
-    assert children[0].label == "赛尔号动态总开关"
-    assert "请选择要切换" in prompt
-    assert "总开关为 ❌ 时" in prompt
-    assert "仅影响赛尔号官方 B站动态" in prompt
-    assert "链接后的对应消息" in prompt
-    media_options = {
-        child.label: child
-        for child in children
-        if child.label in {"动态正文", "动态图片"}
-    }
-    assert [child.label for child in children[:3]] == [
-        "赛尔号动态总开关",
-        "动态正文",
-        "动态图片",
-    ]
-    assert [child.label for child in children[3:]] == [
-        SEER_CATEGORY_LABELS[category] for category in SEER_CATEGORY_LABELS
-    ]
-    lottery_option = next(
-        child for child in children if child.label == SEER_CATEGORY_LABELS["lottery"]
-    )
-    assert lottery_option.unsubscribed
-
-    assert service.toggle_subscription_option(
-        "group",
-        group_id,
-        media_options["动态正文"],
-    ) == (
-        "已 TD：赛尔号动态 - 动态正文。"
-    )
-    assert media_options["动态正文"].key == bili_push_media_subscription_key(
-        DEFAULT_BILI_ACCOUNT_UID,
-        "text",
-    )
-
-    lottery_targets = service.push_targets_for_uid(
-        DEFAULT_BILI_ACCOUNT_UID,
-        categories=("lottery",),
-    )
-    pet_targets = service.push_targets_for_uid(
-        DEFAULT_BILI_ACCOUNT_UID,
-        categories=("pet",),
-    )
-    mixed_targets = service.push_targets_for_uid(
-        DEFAULT_BILI_ACCOUNT_UID,
-        categories=("lottery", "pet"),
-    )
-    assert lottery_targets.full_group_ids == []
-    assert pet_targets.full_group_ids == [group_id]
-    assert mixed_targets.full_group_ids == [group_id]
-
-    service.toggle_subscription_option(
-        "group",
-        group_id,
-        next(
-            child
-            for child in children
-            if child.label == SEER_CATEGORY_LABELS["pet"]
-        ),
-    )
-    assert (
-        service.push_targets_for_uid(
-            DEFAULT_BILI_ACCOUNT_UID,
-            categories=("lottery", "pet"),
-        ).full_group_ids
-        == []
-    )
-    assert (
-        seer_category_option_key(DEFAULT_BILI_ACCOUNT_UID, "pet")
-        == next(
-            child
-            for child in children
-            if child.label == SEER_CATEGORY_LABELS["pet"]
-        ).key
-    )
-
-    cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
-        "group",
-        group_id,
-        bili_push_subscription_key(DEFAULT_BILI_ACCOUNT_UID),
-        "bili_push",
-    )
-    preserved_submenu = service.subscription_submenu("group", group_id, option)
-    assert preserved_submenu is not None
-    preserved_children, _preserved_prompt = preserved_submenu
-    assert preserved_children[0].unsubscribed
-    assert next(
-        child
-        for child in preserved_children
-        if child.label == SEER_CATEGORY_LABELS["pet"]
-    ).unsubscribed
-
-    readonly_submenu = service.subscription_submenu(
-        "group",
-        group_id,
-        option,
-        read_only=True,
-    )
-    assert readonly_submenu is not None
-    assert "状态" in readonly_submenu[1]
-
-
 @pytest.mark.asyncio
 async def test_bili_account_summary_and_push_mode_update_use_target_service(
     tmp_path: Path,
@@ -699,7 +512,7 @@ async def test_bili_account_summary_and_push_mode_update_use_target_service(
     assert str(FIRE_BILI_UID) not in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
     assert str(unused_uid) not in summary
-    assert "已订阅：" in summary
+    assert "当前群订阅：" in summary
     assert "默认（内容）" in summary
     assert "账号库：" not in summary
 
@@ -752,7 +565,7 @@ async def test_bili_mode_display_distinguishes_default_config_and_runtime(
         DEFAULT_BILI_ACCOUNT_ALIAS,
         "默认",
     )
-    assert "已恢复 B站账号" in result
+    assert "已恢复当前群" in result
     assert "当前生效模式：配置（链接）" in result
 
 
@@ -828,7 +641,7 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
 
     summary = await service.account_summary("private", user_id)
 
-    assert "已订阅：" in summary
+    assert "当前私聊订阅：" in summary
     assert DEFAULT_BILI_ACCOUNT_NAME in summary
     assert FIRE_BILI_ACCOUNT_NAME in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
@@ -843,7 +656,7 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
         "内容",
     )
 
-    assert "已设置 B站账号" in result
+    assert "已设置当前私聊" in result
     assert service.mode_for_uid("private", user_id, FIRE_BILI_UID) == "full"
 
 

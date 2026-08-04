@@ -9,23 +9,19 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.runtime.conversations import (
-    begin_event_reply_conversation,
-    enter_event_reply_conversation,
-)
+from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import bind_async
 from ironsbot.runtime.replies import (
     finish_event_reply,
     message_event_target,
     send_event_reply,
 )
-from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
 from ironsbot.services.bilibili.menu import DYNAMIC_IDS_STATE_KEY
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 
 from .command_rules import is_dynamic_select_reply
-from .delivery import build_dynamic_detail_messages
+from .delivery import build_dynamic_content_message
 
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 
@@ -43,27 +39,6 @@ async def wait_dynamic_select(
         reply_check=is_dynamic_select_reply,
     )
 
-
-async def _send_dynamic_detail(
-    matcher: Matcher,
-    event: MessageEvent,
-    record: DynamicHistoryRecord,
-    service: BilibiliService,
-) -> bool:
-    content_override = await service.history_content_override(record)
-    messages = await build_dynamic_detail_messages(
-        record.item,
-        content_override=content_override,
-        image_collage=service.image_collage,
-        combine_images=service.config.push.combine_images,
-    )
-    if not messages:
-        return False
-    for message in messages:
-        await send_event_reply(matcher, event, message)
-    return True
-
-
 async def handle_dynamic_menu_action(
     matcher: Matcher,
     event: MessageEvent,
@@ -72,14 +47,6 @@ async def handle_dynamic_menu_action(
     monitor: BilibiliMonitorService,
 ) -> None:
     try:
-        await begin_event_reply_conversation(
-            matcher,
-            event,
-            namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-            handlers=[bind_async(handle_dynamic_select_action, service=service)],
-            pending_reply_check=is_dynamic_select_reply,
-            reply_check=is_dynamic_select_reply,
-        )
         target_type, target_id, _ = message_event_target(event)
         result = await service.query_dynamic_menu(
             target_type,
@@ -103,7 +70,7 @@ async def handle_dynamic_menu_action(
             await finish_event_reply(
                 matcher,
                 event,
-                service.history_reference_message("📭 没有可展示的历史动态。"),
+                "📭 没有可展示的历史动态。",
             )
 
         state[DYNAMIC_IDS_STATE_KEY] = list(result.dynamic_ids)
@@ -125,7 +92,6 @@ async def handle_dynamic_menu_action(
             event,
             "❌ 获取动态列表失败。",
         )
-
 
 async def handle_dynamic_select_action(
     matcher: Matcher,
@@ -174,18 +140,20 @@ async def handle_dynamic_select_action(
                 "❌ 没找到这条历史动态，请重新发送“动态”。",
             )
 
-        if selection.record is not None and not await _send_dynamic_detail(
-            matcher,
-            event,
-            selection.record,
-            service,
-        ):
-            await finish_event_reply(
+        if selection.record is not None:
+            message = build_dynamic_content_message(selection.record.item)
+            if message is None:
+                await finish_event_reply(
+                    matcher,
+                    event,
+                    "❌ 动态详情解析失败。",
+                )
+                return
+            await send_event_reply(
                 matcher,
                 event,
-                "❌ 动态详情解析失败。",
+                message,
             )
-            return
 
         await wait_dynamic_select(matcher, event, service)
 

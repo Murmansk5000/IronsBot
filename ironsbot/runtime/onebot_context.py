@@ -3,15 +3,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.core.onebot_group_identity import (
-    format_group_label,
-    resolve_group_name,
-)
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
+
 from ironsbot.runtime.commands import CommandContext
 from ironsbot.runtime.message_input import message_input_context
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
 NOTICE_MESSAGE_MAX_CHARS = 300
 
@@ -19,13 +17,6 @@ NOTICE_MESSAGE_MAX_CHARS = 300
 def event_group_id(event: MessageEvent) -> int | None:
     group_id = getattr(event, "group_id", None)
     return int(group_id) if group_id is not None else None
-
-
-def event_request_scope(event: MessageEvent) -> str:
-    """Keep duplicate user actions isolated to the current OneBot conversation."""
-
-    group_id = event_group_id(event)
-    return "private" if group_id is None else f"group:{group_id}"
 
 
 def command_context(event: MessageEvent) -> CommandContext:
@@ -48,6 +39,7 @@ def mentions_bot(event: GroupMessageEvent) -> bool:
 async def build_notice_source(
     event: MessageEvent,
     prompt: str,
+    group_aliases: Mapping[str, int],
     *,
     bot: Bot | None = None,
 ) -> str:
@@ -56,10 +48,17 @@ async def build_notice_source(
         lines = ["会话：私聊"]
     else:
         group_id = int(group_id)
-        group_label = format_group_label(
-            group_id,
-            await resolve_group_name(bot, group_id),
+        group_name = await _group_name(bot, group_id)
+        alias = next(
+            (
+                name
+                for name, alias_id in group_aliases.items()
+                if int(alias_id) == group_id
+            ),
+            "",
         )
+        label = group_name or alias
+        group_label = f"{label}（{group_id}）" if label else str(group_id)
         lines = [f"群：{group_label}"]
 
     sender = getattr(event, "sender", None)
@@ -80,3 +79,17 @@ async def build_notice_source(
         text = text[:NOTICE_MESSAGE_MAX_CHARS].rstrip() + "..."
     lines.append(f"消息：{text or '（空）'}")
     return "\n".join(lines)
+
+
+async def _group_name(bot: Bot | None, group_id: int) -> str:
+    if bot is None:
+        return ""
+    try:
+        info = await bot.get_group_info(group_id=group_id, no_cache=False)
+    except Exception:  # noqa: BLE001
+        return ""
+    return str(
+        info.get("group_name", "")
+        if isinstance(info, dict)
+        else getattr(info, "group_name", "")
+    ).strip()

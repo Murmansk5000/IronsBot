@@ -18,13 +18,9 @@ from ironsbot.config.models.operations import (
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
-from ironsbot.integrations.db_sync.models import SyncStatus, VersionInfo
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.runtime.cache_paths import CachePaths
-from ironsbot.services.operations.data_sync import (
-    DataSyncService,
-    ManualDataSyncAction,
-)
+from ironsbot.services.operations.data_sync import DataSyncService
 
 CONNECT_ERROR_MESSAGE = "connection failed"
 
@@ -117,14 +113,13 @@ def _config(
     on_startup: bool = True,
     startup_trigger_remote_build: bool = False,
     interval_enabled: bool = True,
-    sources: dict[str, DataSourceConfig] | None = None,
 ) -> DataSyncConfig:
     return DataSyncConfig(
         github_token=github_token,
         on_startup=on_startup,
         startup_trigger_remote_build=startup_trigger_remote_build,
         interval_enabled=interval_enabled,
-        sources={} if sources is None else sources,
+        sources={},
     )
 
 
@@ -139,7 +134,6 @@ def _remote_build_config() -> RemoteBuildConfig:
 def _remote_build_pipeline_config() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
-        downstream_publication_pending=True,
         steps=[
             RemoteBuildStepConfig(
                 name="refresh_official_sources",
@@ -166,6 +160,11 @@ def _remote_build_pipeline_config() -> RemoteBuildConfig:
                 repository="Murmansk-Seer/api-data",
                 workflow_id="main.yml",
             ),
+            RemoteBuildStepConfig(
+                name="build_ironsbot_data",
+                repository="Murmansk-Seer/seerapi",
+                workflow_id="build-seerapi-data-db.yml",
+            ),
         ],
     )
 
@@ -180,7 +179,7 @@ def test_registration_defers_database_engine_creation() -> None:
     assert databases.get_engine("unit") is None
 
 
-def _legacy_manual_sync_shows_current_local_data_versions(tmp_path: Path) -> None:
+def test_manual_sync_shows_current_local_data_versions(tmp_path: Path) -> None:
     cache_path = tmp_path / "seerapi.sqlite"
     cache_path.write_bytes(b"seerapi cache")
     sync = DatabaseSync(DatabaseManager())
@@ -195,7 +194,7 @@ def _legacy_manual_sync_shows_current_local_data_versions(tmp_path: Path) -> Non
     sync.fingerprints["seerapi"] = "0123456789abcdef"
     service = DataSyncService(_config(), sync)
 
-    message, should_run = asyncio.run(service.prepare_manual(force=False))
+    message, should_run = service.prepare_manual(force=False)
 
     assert should_run
     assert (
@@ -206,62 +205,6 @@ def _legacy_manual_sync_shows_current_local_data_versions(tmp_path: Path) -> Non
     assert "seerapi：" in message
     assert "sha256=0123456789ab" in message
     assert "aliases：未安装" in message
-
-
-def test_manual_sync_checks_remote_versions_before_action_selection(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    sync = DatabaseSync(DatabaseManager())
-    sync.register(
-        "seerapi",
-        _source(
-            local_path=str(tmp_path / "seerapi.sqlite"),
-            remote_build=_remote_build_config(),
-        ),
-    )
-    sync.register("aliases", _source(local_path=str(tmp_path / "aliases.sqlite")))
-
-    async def check_all(_self: DatabaseSync) -> tuple[bool, dict[str, SyncStatus]]:
-        return True, {
-            "seerapi": SyncStatus(
-                ok=True,
-                local_before=VersionInfo("0123456789abcdef"),
-                remote=VersionInfo("fedcba9876543210"),
-                message="远端已发布新数据",
-            ),
-            "aliases": SyncStatus(
-                ok=True,
-                skipped=True,
-                local_before=VersionInfo(),
-                remote=VersionInfo("0123456789abcdef"),
-                message="本地缓存与已发布数据一致",
-            ),
-        }
-
-    monkeypatch.setattr(DatabaseSync, "check_all_databases", check_all)
-    service = DataSyncService(_config(), sync)
-
-    message, should_run = asyncio.run(service.prepare_manual(force=False))
-
-    assert should_run
-    assert "数据更新检查完成。检测到已发布的新数据：seerapi" in message
-    assert "aliases：无需更新" in message
-    assert "1. 同步已发布数据" in message
-    assert "2. 检查上游并构建后同步数据" in message
-    assert "0. 退出" in message
-    assert (
-        service.manual_action_for_choice("1", force=False)
-        is ManualDataSyncAction.SYNC_PUBLISHED
-    )
-    assert (
-        service.manual_action_for_choice("2", force=False)
-        is ManualDataSyncAction.UPDATE_UPSTREAM
-    )
-    assert service.manual_action_for_choice("3", force=False) is None
-    force_message, force_should_run = asyncio.run(service.prepare_manual(force=True))
-    assert force_should_run
-    assert "2. 强制检查上游并重建后同步数据" in force_message
 
 
 def test_startup_prepares_database_and_interval_job() -> None:
@@ -280,12 +223,11 @@ def test_startup_prepares_database_and_interval_job() -> None:
         assert scheduler.jobs == [
             {
                 "func": sync.run_sync_database,
-                "trigger": "cron",
+                "trigger": "interval",
                 "args": ["unit"],
+                "minutes": 15,
                 "id": "db_sync_unit",
                 "replace_existing": True,
-                "minute": "*/15",
-                "second": 0,
             }
         ]
     finally:
@@ -378,77 +320,9 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
         "build:refresh_unity_config:token",
         "build:sync_config_sources:token",
         "build:build_api_data:token",
+        "build:build_ironsbot_data:token",
         "sync:seerapi",
     ]
-
-
-def test_manual_sync_reports_async_downstream_publication(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    source = _source(remote_build=_remote_build_pipeline_config())
-    sync = DatabaseSync(DatabaseManager())
-    sync.register("seerapi", source)
-
-    async def run_all(
-        _self: DatabaseSync,
-        **_kwargs: object,
-    ) -> tuple[bool, dict[str, bool]]:
-        return True, {"seerapi": True}
-
-    monkeypatch.setattr(DatabaseSync, "run_sync_all_databases", run_all)
-    service = DataSyncService(_config(sources={"seerapi": source}), sync)
-
-    message = asyncio.run(
-        service.run_manual(
-            action=ManualDataSyncAction.UPDATE_UPSTREAM,
-            force=False,
-        )
-    )
-
-    assert "api-data" in message
-    assert "SeerAPI" in message
-    assert "5 分钟" in message
-
-
-def test_manual_sync_action_controls_remote_build(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    source = _source(remote_build=_remote_build_config())
-    sync = DatabaseSync(DatabaseManager())
-    sync.register("seerapi", source)
-    calls: list[tuple[bool, bool]] = []
-
-    async def run_all(
-        _self: DatabaseSync,
-        *,
-        github_token: str,
-        trigger_remote_build: bool = False,
-        force_remote_build: bool = False,
-    ) -> tuple[bool, dict[str, bool]]:
-        assert github_token == "token"
-        calls.append((trigger_remote_build, force_remote_build))
-        return True, {"seerapi": True}
-
-    monkeypatch.setattr(DatabaseSync, "run_sync_all_databases", run_all)
-    service = DataSyncService(
-        _config(github_token="token", sources={"seerapi": source}),
-        sync,
-    )
-
-    asyncio.run(
-        service.run_manual(
-            action=ManualDataSyncAction.SYNC_PUBLISHED,
-            force=True,
-        )
-    )
-    asyncio.run(
-        service.run_manual(
-            action=ManualDataSyncAction.UPDATE_UPSTREAM,
-            force=True,
-        )
-    )
-
-    assert calls == [(False, False), (True, True)]
 
 
 def test_force_remote_build_overrides_supported_inputs(
@@ -497,6 +371,7 @@ def test_force_remote_build_overrides_supported_inputs(
         "refresh_unity_config": {},
         "sync_config_sources": {"force": True},
         "build_api_data": {"force": True},
+        "build_ironsbot_data": {"force": True},
     }
 
 

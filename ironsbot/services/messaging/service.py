@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches, normalize_command_text
-from ironsbot.core.time import scheduled_clock_time
+from ironsbot.core.time import daily_time_parts
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
         MessageConfig,
-        MessageMentionReplyAction,
         MessageReplyAction,
     )
     from ironsbot.core.features import FeatureService
@@ -42,25 +41,6 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.scheduler import Scheduler
 
     from .push_time import PushTimeOption
-
-
-class PushSubscriptionSubmenuProvider(Protocol):
-    def subscription_submenu(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        option: PushSubscriptionOption,
-        *,
-        read_only: bool = False,
-    ) -> tuple[list[PushSubscriptionOption], str] | None: ...
-
-    def toggle_subscription_option(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        option: PushSubscriptionOption,
-    ) -> str | None: ...
-
 
 ActionT = TypeVar("ActionT", bound="CommandAction")
 KeywordActionT = TypeVar("KeywordActionT", bound="KeywordReplyAction")
@@ -85,7 +65,6 @@ class MessagingService:
     _prepare_extra_push_options: (
         Callable[[PushTargetType, int], Awaitable[str | None]] | None
     ) = None
-    _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
 
     def match_private_action(
         self,
@@ -115,21 +94,6 @@ class MessagingService:
                 action.feature,
             ),
         )
-
-    def match_group_mention_reply(
-        self,
-        *,
-        user_id: int,
-        group_id: int,
-    ) -> MessageMentionReplyAction | None:
-        if self._features.is_conversation_blocked(user_id, group_id):
-            return None
-        for action in self._config.mention_replies:
-            if action.enabled and user_id in self._features.resolve_user_refs(
-                action.user_ids
-            ):
-                return action
-        return None
 
     def _find_action(
         self,
@@ -191,26 +155,6 @@ class MessagingService:
             return None
         return await self._prepare_extra_push_options(target_type, target_id)
 
-    async def prepared_subscription_menu(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        *,
-        read_only: bool = False,
-    ) -> tuple[list[PushSubscriptionOption], str]:
-        preparation_warning = await self.prepare_subscription_options(
-            target_type,
-            target_id,
-        )
-        options, prompt = self.subscription_menu(
-            target_type,
-            target_id,
-            read_only=read_only,
-        )
-        if preparation_warning:
-            prompt = f"{preparation_warning}\n\n{prompt}"
-        return options, prompt
-
     def subscription_menu(
         self,
         target_type: PushTargetType,
@@ -220,7 +164,10 @@ class MessagingService:
     ) -> tuple[list[PushSubscriptionOption], str]:
         options = self.subscription_options(target_type, target_id)
         return options, build_push_subscription_menu(
-            title=_push_subscription_menu_title(read_only=read_only),
+            title=_push_subscription_menu_title(
+                target_type,
+                read_only=read_only,
+            ),
             options=options,
             read_only=read_only,
         )
@@ -231,13 +178,6 @@ class MessagingService:
         target_id: int,
         option: PushSubscriptionOption,
     ) -> str:
-        for provider in self._subscription_submenu_providers:
-            if result := provider.toggle_subscription_option(
-                target_type,
-                target_id,
-                option,
-            ):
-                return result
         if self._store.is_target_unsubscribed(target_type, target_id, option.key):
             self._store.restore_target(target_type, target_id, option.key)
             return f"已恢复订阅：{option.label}。"
@@ -248,25 +188,6 @@ class MessagingService:
             option.feature,
         )
         return f"已退订：{option.label}。"
-
-    def subscription_submenu(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        option: PushSubscriptionOption,
-        *,
-        read_only: bool = False,
-    ) -> tuple[list[PushSubscriptionOption], str] | None:
-        for provider in self._subscription_submenu_providers:
-            submenu = provider.subscription_submenu(
-                target_type,
-                target_id,
-                option,
-                read_only=read_only,
-            )
-            if submenu is not None:
-                return submenu
-        return None
 
     def push_time_options(
         self,
@@ -444,10 +365,12 @@ def build_schedule_job_id(prefix: str, index: int, raw_id: str) -> str:
 
 
 def build_schedule_trigger_kwargs(task: ScheduledAction) -> dict[str, Any]:
-    trigger_kwargs: dict[str, Any] = scheduled_clock_time(
-        task.time,
-        error_message="messaging.schedules.time must use HH:MM:SS",
-    ).cron_kwargs()
+    hour, minute = daily_time_parts(task.time)
+    trigger_kwargs: dict[str, Any] = {
+        "hour": hour,
+        "minute": minute,
+        "second": 0,
+    }
     if task.day_of_week:
         trigger_kwargs["day_of_week"] = task.day_of_week
     return trigger_kwargs
@@ -488,9 +411,11 @@ def find_keyword_reply_action(
 
 
 def _push_subscription_menu_title(
+    target_type: PushTargetType,
     *,
     read_only: bool,
 ) -> str:
-    if read_only:
-        return "推送订阅状态："
-    return "请选择要切换的推送订阅："
+    if target_type == "group" and read_only:
+        return "本群推送订阅状态："
+    scope = "本群" if target_type == "group" else "私聊"
+    return f"请选择要切换的{scope}推送订阅："

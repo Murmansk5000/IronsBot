@@ -5,15 +5,14 @@
 # See README.md "Feature 对照表" for every feature key and its meaning.
 #
 # 快速阅读顺序：
-# 1. [bot]、[paths]、[runtime.*]：监听、日志、可删除缓存目录与运行并发。
-# 2. [features.*]：先定义 QQ/群别名和功能包，再为群与用户授予功能。
-# 3. [ai]、[messaging.*]、[activity]、[bilibili.*]、[pet_config]：对话、推送和本地图片回复。
-# 4. 赛尔实时无头查询：账号库、[operations.headless]、玩家、橱窗、战队、翻榜、预热与私有阵容。
-# 5. 赛尔本地资料：[seer.mintmark]、[seer.new_content]、[seer.season]、[seer.render] 与结果附链。
-# 6. [operations.data_sync]、启动通知、Docker 更新与重启：数据同步和机器人生命周期。
-#
-# 新增配置的放置规则见 docs/configuration-layout.md：按用户可见功能和运行依赖归类，
-# 不按 Python 模块名或“最后追加一段”决定位置。
+# 1. [features.group_aliases] / [features.user_aliases]
+#    先给群号、QQ 号起短名字，后面策略里都用这些短名字。
+# 2. [features.bundles]
+#    可选：把经常重复的功能清单定义成 standard、lite 等自定义组合。
+# 3. [features.group_policy] / [features.user_policy]
+#    决定每个群、每个私聊用户能使用哪些功能。
+# 4. [bilibili]、[messaging]、[pet_config]、[seer.*]、[operations.*]
+#    分别配置 B 站推送、固定文本/退订/红包提醒、精灵配置图、赛尔查询、运行时同步/日志/重启等行为。
 #
 # 常用 feature key：
 # - seer：开启全部赛尔查询子功能。
@@ -32,10 +31,6 @@
 # - team_audit：战队审核群入群提示；team_resource_subscription：战队资源订阅。
 # - admin_notice：管理通知目标权限。注意：all 不包含 admin_notice，要单独写。
 
-# =============================================================================
-# Runtime, logging, and paths
-# 运行基础、日志与路径
-# =============================================================================
 [bot]
 # Default: "prod"
 # EN: Runtime environment label.
@@ -61,6 +56,11 @@ log_level = "INFO"
 # EN: Command prefixes. Empty string enables direct keyword commands.
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
+# Default: "full"
+# EN: Bundled NoneBot plugin profile. Normal deployments use full; core is a
+#     named migration profile and currently loads the same bridge.
+# ZH: 内置 NoneBot 插件配置；正常部署使用 full。core 仍处于迁移阶段。
+plugin_manifest = "full"
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
@@ -68,42 +68,41 @@ superusers = []
 
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
-# ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认按功能分段并预留插入空间，同一优先级不要重复使用。
+# ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
 help_hint = 0
-mention_reply = -21
-ai_group_at = -20
-bot_mention_block = -19
-server_status = 10
-server_status_admin = 11
-bilibili = 20
-sendpic = 30
-red_packet_notice = 40
-seer_player = 50
-seer_team = 51
-seer_rank = 52
-seer_rank_help = 53
-seer_autocard = 54
-lucky_skin_window = 55
-seer_type = 56
-seer_equipment = 57
-seer_peak = 58
-seer_data = 59
-team_resource_subscription = 60
-help = 70
-about = 71
-message_commands = 80
-ai_intent = 81
-meeting = 82
-activity = 83
-db_sync = 84
-team_audit = 85
+ai_group_at = -10
+bot_mention_block = -5
+server_status = 1
+server_status_admin = 2
+bilibili = 3
+sendpic = 4
+red_packet_notice = 5
+seer_player = 10
+seer_team = 11
+seer_rank = 12
+seer_rank_help = 13
+seer_autocard = 14
+lucky_skin_window = 15
+seer_type = 20
+seer_equipment = 21
+seer_peak = 22
+seer_data = 23
+team_resource_subscription = 24
+help = 30
+about = 31
+message_commands = 40
+ai_intent = 50
+meeting = 60
+activity = 70
+db_sync = 80
+team_audit = 90
 # EN: Broad fuzzy Seer matchers are intentionally late.
 # ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢“技能石”等固定图片/文本指令。
-seer_mintmark = 90
-pet_config = 91
-seer_pet = 92
-seer_query = 93
-ai_chat = 100
+seer_mintmark = 100
+pet_config = 109
+seer_pet = 110
+seer_query = 120
+ai_chat = 200
 
 [bot.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
@@ -112,9 +111,8 @@ file_enabled = false
 file_level = "INFO"
 # Default: false; EN: Also write ERROR/CRITICAL logs to a separate file. ZH: 额外写入独立错误日志文件；只包含 ERROR/CRITICAL，便于排查崩溃。
 error_file_enabled = false
-# Default: "00:00:00"; EN: Rotate at local midnight. Clock values support HH:MM:SS; Loguru size and interval syntax also remains valid.
-# ZH: 每天本地时间 00:00:00 轮转；钟表时间支持 HH:MM:SS，Loguru 原有大小/周期语法仍可用。
-rotation = "00:00:00"
+# Default: "00:00"; EN: Rotate at local midnight, producing one file per day. ZH: 每天本地时间 00:00 轮转，便于按日期查日志。
+rotation = "00:00"
 # Default: "30 days"; EN: Keep daily logs for this duration. ZH: 每日日志保留时间。
 retention = "30 days"
 # Default: null; EN: Do not compress old daily logs. Set "zip" to save space. ZH: 默认不压缩旧日志；磁盘空间紧张时可改为 "zip"。
@@ -144,35 +142,6 @@ runtime_state = "data/state/runtime_state.sqlite"
 # Existing deployments must migrate the old small state databases while the
 # bot is stopped. See README "状态库迁移"; do not move files by hand.
 
-[runtime.self_commands]
-# Enable prefixed commands manually sent by the bot QQ in groups.
-# 还需开启 NapCat 对应连接的 reportSelfMessage；默认使用机器人 QQ 自己的权限。
-enabled = false
-# Default: false; EN: Let valid prefixed self commands use superuser permissions.
-# ZH: 是否让通过前缀校验的机器人自发指令使用超级管理员权限。
-superuser = false
-# One prefix or a list; overlapping prefixes use the longest match.
-# 可填写单个字符串或多个前缀；空格保留，重叠时优先匹配最长前缀。
-prefix = ["演示 ", "示范 "]
-
-[runtime.menu]
-# Default: 3
-# EN: Minutes available after the root menu is successfully sent.
-# ZH: 根菜单发送成功后可操作的分钟数。
-root_timeout_minutes = 3
-# Default: 1
-# EN: Minutes added when navigating to a different menu page.
-# ZH: 每次切换到不同菜单页时追加的分钟数。
-page_extension_minutes = 1
-# Default: 5
-# EN: Maximum total minutes from the root menu; page changes never reset it.
-# ZH: 从根菜单开始计算的最长分钟数；切换页面不会重新开始计时。
-max_timeout_minutes = 5
-
-# =============================================================================
-# Feature aliases, bundles, and access policies
-# 功能别名、组合与授权策略
-# =============================================================================
 [features]
 # Default: true
 # EN: Let NoneBot superusers bypass feature restrictions.
@@ -182,10 +151,8 @@ superuser_bypass = true
 
 [features.group_aliases]
 # Default: empty table
-# EN: Named QQ group IDs used by policies. Table order is also push priority:
-# earlier aliases are submitted first; unlisted groups follow by numeric ID.
-# ZH: 群别名，把易读名称映射到 QQ 群号。本表顺序同时是推送优先级：
-# 越靠前越先提交；未定义别名的群排在其后并按群号排序。
+# EN: Named QQ group IDs used by policies.
+# ZH: 群别名，把易读名称映射到 QQ 群号。
 group_a = 987654321
 group_b = 876543210
 
@@ -284,30 +251,45 @@ qq_group_manager = ["blacklist"]
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
 ignored_plugins = []
 
-# =============================================================================
-# Conversational features and proactive messaging
-# 对话功能与主动消息
-# =============================================================================
+# Default: 60.0
+# EN: Rate-limit window for poke help hints.
+# ZH: 戳一戳帮助提示的限流窗口秒数。
+hint_window_seconds = 60.0
+
+# Default: 3
+# EN: Maximum poke hint count per group and window.
+# ZH: 每个群在一个窗口内最多发送的戳一戳提示次数。
+hint_max_per_window = 3
+
+# EN: Optional per-group poke replies. Keys may be group aliases or numeric group IDs.
+# Configured text replaces the default help hint when someone pokes the bot in that group.
+# ZH: 可选的群聊戳一戳回复。key 可写群别名或群号；用户专属回复优先，命中后覆盖默认的随机短指令提示。
+# 推荐使用下面的行内写法，避免后续 features.help 字段误进入子表。
+# poke_replies = { example = "你戳了戳机器人。" }
+
+# EN: Optional per-user poke replies. Keys may be user aliases or numeric QQ IDs.
+# User replies take priority over group replies. Quote Chinese aliases in TOML.
+# ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
+# poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
+
 [runtime.concurrency]
 # Default: 1; EN: Maximum concurrent HTMLKit image render tasks.
 # ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
 render_max_concurrent = 1
 
-[runtime.scheduler]
-# Default: "Asia/Shanghai"; EN: Timezone used by first-party recurring jobs.
-# ZH: 第一方循环定时任务统一使用的时区。
-timezone = "Asia/Shanghai"
-# Default: true; EN: Read HTTPS Date headers at startup to check host-clock drift; never changes system time.
-# ZH: 启动时读取 HTTPS Date 响应头检查主机时钟偏差；不会修改系统时间。
-clock_check_on_startup = true
-# Default: 3.0; EN: Add an admin startup warning only when absolute clock drift exceeds this many seconds.
-# ZH: 仅当绝对时钟偏差超过此秒数时加入管理启动告警。
-clock_warning_threshold_seconds = 3.0
-# Default: 3.0; EN: Per-source timeout for the read-only clock check.
-# ZH: 只读时钟检查的每个来源超时秒数。
-clock_check_timeout_seconds = 3.0
-
 [ai]
+# Default: "https://api.deepseek.com"
+# EN: OpenAI-compatible AI API base URL.
+# ZH: OpenAI 兼容 AI 接口地址。
+# Example: "https://api.openai.com/v1"
+base_url = "https://api.deepseek.com"
+
+# Default: "deepseek-v4-pro"
+# EN: AI chat model name.
+# ZH: AI 聊天模型名称。
+# Example: "deepseek-chat"
+model = "deepseek-v4-pro"
+
 # Default: built-in IronsBot prompt.
 # EN: System prompt used for AI chat.
 # ZH: AI 聊天系统提示词。
@@ -393,18 +375,6 @@ admin_notice_cooldown_seconds = 600.0
 # Example: false
 intent_actions_enabled = true
 
-# OpenAI-compatible endpoints are tried in TOML order. Keys must be set only
-# in the environment as AI_KEY_<UPPERCASE_ENDPOINT_NAME>, never in this file.
-# EN: Each endpoint tries models in list order before moving to the next endpoint.
-# ZH: 按端点和模型列表顺序回退；密钥只放 Unraid/Docker 环境变量。
-
-[[ai.endpoints]]
-# EN: Stable endpoint name; only letters, digits, and underscores are allowed.
-# ZH: 稳定端点名；仅允许字母、数字和下划线，对应 AI_KEY_DEEPSEEK。
-name = "deepseek"
-base_url = "https://api.deepseek.com"
-models = ["deepseek-v4-pro"]
-
 # EN: Intent actions are configured by ID under [ai.intent_actions.<id>].
 # Omitted fields inherit built-in defaults for known actions.
 # ZH: AI 意图动作按 [ai.intent_actions.<id>] 配置；已知动作未写字段会继承内置默认值。
@@ -425,6 +395,149 @@ enabled = true
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
 enabled = true
 
+[activity]
+# Default: true
+# EN: Enable activity reminders.
+# ZH: 是否启用活动结束提醒。
+# Example: false
+enabled = true
+
+# Default: [11, 1]
+# EN: Lead hours for ending reminders.
+# ZH: 活动结束前提前多少小时提醒。
+# Example: [24, 1]
+lead_hours = [11, 1]
+
+# Default: 15
+# EN: Grace minutes for missed reminder scheduling.
+# ZH: 错过计划提醒时间后的补发宽限分钟。
+# Example: 10
+grace_minutes = 15
+
+# Default: true
+# EN: Only include activities marked as visible.
+# ZH: 是否只读取活动中心展示的活动。
+# Example: true
+only_shown = true
+
+# Default: built-in reminder template.
+# EN: Reminder message template.
+# ZH: 活动提醒消息模板。
+# Available fields: {lead_hours}, {activity_count}, {activity_list}
+message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
+
+# Default: 8.0
+# EN: Timeout for fetching official activity notices.
+# ZH: 获取官方活动公告的超时秒数。
+# Example: 10.0
+notice_timeout_seconds = 8.0
+
+[bilibili]
+# B 站配置分三层：
+# 1. [bilibili.accounts.<别名>] 定义稳定账号别名和 UID，不代表一定监控或推送。
+# 2. [bilibili.push].accounts 是默认推送别名，所有开启 bili_push 的群/用户都会收到。
+# 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号别名。
+# 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
+# QQ 展示使用 B 站接口返回的公开昵称，不在 TOML 中配置 nickname。
+# 模式命令支持账号别名、公开昵称或 UID。
+# Default: 300.0
+# EN: Cooldown for Bilibili login QR notices.
+# ZH: B 站登录二维码提醒冷却秒数。
+# Example: 600.0
+login_notice_cooldown_seconds = 300.0
+
+[bilibili.accounts.seer]
+# Default: 1310714247
+# EN: Bilibili UID referenced by the stable alias `seer`.
+# ZH: 稳定别名 `seer` 对应的 B 站 UID。
+uid = 1310714247
+
+# Add more accounts with unique aliases:
+# [bilibili.accounts.fire]
+# uid = 527589079
+
+[bilibili.storage]
+# Default: "data/bilibili_monitor"
+# EN: Directory for Bilibili history and cookie state.
+# ZH: B 站历史与 Cookie 状态目录。
+# Example: "data/bili"
+data_dir = "data/bilibili_monitor"
+
+# Default: 1000
+# EN: Max dynamic history items retained.
+# ZH: 动态历史最多保留条数。
+# Example: 2000
+history_max_items = 1000
+
+[bilibili.polling]
+# Default: 30
+# EN: Default polling interval in minutes.
+# ZH: 默认轮询间隔分钟数。
+# Example: 20
+default_minutes = 30
+
+# Default: [{ start = "07:00", end = "23:00", minutes = 5 }]
+# EN: Time windows with custom polling interval.
+# ZH: 分时轮询窗口。
+# Example: [{ start = "07:00", end = "23:00", minutes = 5 }]
+windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
+
+[bilibili.push]
+# Default: "full"
+# EN: Default push mode for accounts without an explicit mode.
+# ZH: 未单独指定模式的账号默认推送方式，可选 full 或 link。
+# Example: "full"
+mode = "full"
+
+# Default: ["seer"]
+# EN: Account aliases pushed to every target that enables bili_push.
+# ZH: 所有开启 bili_push 的群/私聊默认推送的账号别名。
+# Example: ["seer"]
+accounts = ["seer"]
+
+# EN: Optional per-account push mode overrides. Runtime admin overrides take priority.
+# ZH: 可选的全局按账号别名推送模式覆盖；未填写时继承上面的 mode，当前会话的运行时设置优先级更高。
+# Example: { fire = "link" }
+
+# EN: Group owners/admins can override one account at runtime with:
+#     B站推送模式 <alias|public name|UID> <full|link|default>
+# ZH: 群主/管理员或私聊用户可用别名、公开昵称或 UID 修改推送模式：
+#     B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>
+
+# Default: 400
+# EN: Full pushes longer than this are sent as a link followed by a summary.
+# ZH: 全文动态超过此字符数时，先发送链接，再发送摘要。
+content_max_chars = 400
+
+# Default: 250
+# EN: Maximum characters in a long dynamic summary.
+# ZH: 长动态摘要最大字符数。
+summary_max_chars = 250
+
+# Default: true
+# EN: Use AI to summarize long full-text dynamic pushes. When false, send an original text excerpt instead.
+# ZH: 长动态全文推送是否调用 AI 摘要；关闭后改为发送原文节选。
+summary_use_ai = true
+
+# Default: {}
+# EN: Group push targets keyed by feature group alias or group ID.
+# ZH: 群推送目标，键可以是群别名或群号。
+# Example: { main = { accounts = ["fire"], modes = { fire = "full" } } }
+groups = {}
+
+# Default: {}
+# EN: Private push targets keyed by user alias or user ID.
+# ZH: 私聊推送目标，键可以是用户别名或 QQ 号。
+# Example: { owner = { accounts = ["fire"], mode = "link" } }
+users = {}
+
+[bilibili.filters]
+# Default: built-in lottery/result suppression patterns.
+# EN: Regex patterns that suppress automatic pushes.
+# ZH: 抑制自动推送的正则表达式。
+# Example: ["恭喜", "中奖", "抽奖结果"]
+suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信通知", "中奖", "抽奖结果"]
+
 [messaging]
 # Default: []
 # EN: Fixed command replies. Each action is available in both private and group
@@ -432,11 +545,7 @@ enabled = true
 # ZH: 固定文本回复动作默认同时适用于私聊和群聊；实际在哪些位置回复由 feature 的用户/群策略决定。
 # `at_user_ids` accepts user aliases or QQ IDs, only applies to group replies,
 # and is ignored in private chats.
-# 群内可发送“口令 @群成员”，回复会 @ 指定成员而不是发起人；配置的 at_user_ids 仍追加并去重。
-# 此用法仅适用于完整匹配的固定口令，不适用于关键词回复，不支持 @全体成员。
-# Example action fields: id, enabled, feature, messages, commands, at_user_ids.
-# EN: Commands, keyword replies, mention replies and schedules use messages only.
-# ZH: 固定口令、关键词回复、AT 专属回复和定时消息统一使用 messages；旧 message 字段已移除。
+# Example action fields: id, enabled, feature, message, commands, at_user_ids.
 # `id` uniquely identifies the action. `feature` declares its permission key;
 # that key may then be referenced by features.bundles/group_policy/user_policy.
 # `id` 唯一标识这条动作；`feature` 同时声明它的权限名，随后可在
@@ -446,16 +555,8 @@ enabled = true
 # [[messaging.commands]]
 # id = "seerinfo_page"
 # commands = ["xm", "xrym", "雷小伊", "重聚"]
-# messages = ["https://seerinfo.yuyuqaq.cn/"]
+# message = "https://seerinfo.yuyuqaq.cn/"
 # feature = "seerinfo_link"
-
-# EN: Each messages item is sent separately in order, including repeated items.
-# ZH: 单条也写成数组；每项单独发送，保持顺序，可重复，不可为空。
-# [[messaging.commands]]
-# id = "triple_reply"
-# commands = ["出出三连"]
-# messages = ["星皇穿了", "咤克斯瞬了", "机盖弹了"]
-# feature = "text"
 
 # Default: []
 # EN: Keyword replies use literal contains matching. They only reply when the
@@ -464,31 +565,14 @@ enabled = true
 # Like command actions, the feature key must be enabled for the current group
 # or private user. Keywords are not regular commands and are shown as automatic
 # replies in help.
-# 与口令动作相同，feature 必须在对应会话权限中启用；关键词不是普通指令，
+# 与口令动作相同，feature 必须在当前群或私聊权限中启用；关键词不是普通指令，
 # 帮助中会显示为自动回复。
 #
 # [[messaging.keyword_replies]]
 # id = "chuchu_reply"
 # keywords = ["出出"]
-# messages = ["出出是蛆"]
+# message = "出出是蛆"
 # feature = "chuchu_reply"
-
-# Default: []
-# EN: User-specific replies triggered only when the configured user @-mentions
-# the bot in a group. This also accepts a current-message @ after replying to
-# another message. It does not affect private messages or ordinary @ replies.
-# ZH: 用户专属 AT 回复。仅当指定用户在群聊中 AT 机器人时触发；回复其它消息后
-# 再 AT 机器人也会触发。私聊和未 AT 的普通消息不会触发。
-# `user_ids` accepts user aliases or QQ IDs. No feature or group policy is needed.
-# This reply runs before AI @ handling and still respects conversation blacklists.
-# `user_ids` 可写用户别名或 QQ 号；无需配置 feature 或群策略。
-# 默认在所有群生效，优先于 AI 的 AT 处理，仍遵守黑名单；enabled = false 可关闭。
-#
-# [[messaging.mention_replies]]
-# id = "example_user_mention"
-# name = "示例用户 AT 回复"
-# user_ids = ["example_user"]
-# messages = ["123"]
 
 # Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its
@@ -502,45 +586,20 @@ enabled = true
 # resets TD and push-time preferences for that schedule.
 # `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-# Example task fields: id, name, enabled, feature, messages, time,
+# Example task fields: id, name, enabled, feature, message, time,
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
-
-[messaging.poke]
-# EN: Poke replies need no feature switch. User reply > group reply > permitted
-# random command > generic hint. Blacklists and existing permissions still apply.
-# ZH: 戳一戳无需单独开启 feature。用户回复优先于群回复；未命中时随机推荐当前用户
-# 有权限的指令，无候选时使用通用提示。仍遵守黑名单，features.help.ignored_plugins
-# 继续同时隐藏帮助菜单和戳一戳推荐中的插件。
-# Default: 60.0; EN: Per-group rate-limit window. ZH: 每群限流窗口秒数。
-window_seconds = 60.0
-# Default: 3; EN: Maximum replies per group/window. ZH: 每群每个窗口最多回复次数。
-max_per_window = 3
-# Default: 5.0; EN: Initial weight of new commands. ZH: 新命令初始推荐权重。
-new_command_initial_weight = 5.0
-# Default: 5.0; EN: Half-life of extra weight in days. ZH: 额外推荐权重的半衰期天数。
-new_command_half_life_days = 5.0
-
-# EN: Optional group alias/ID replies; user-specific replies take priority.
-# ZH: 可选群别名/群号回复，优先级低于用户专属回复。数字 ID 和中文别名作为 key 时加引号。
-# [messaging.poke.group_replies]
-# example_group = "你戳了戳机器人。"
-
-# EN: Optional user alias/QQ ID replies. This is independent of mention_replies.
-# ZH: 可选用户别名/QQ 号专属回复，与 AT 专属回复 mention_replies 独立。
-# [messaging.poke.user_replies]
-# example_user = "这是给该用户的专属回复。"
 
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]
 # EN: Commands that open the unsubscribe menu. Matching is case-insensitive.
 # ZH: 打开退订菜单的口令；大小写不敏感，所以 TD 自动生效。
 # Built-in push categories include startup_notice, startup_docker_update,
-# startup_data_sync, startup_ai_api_check, startup_clock_check, ai_chat_error_notice, bili_login_notice,
+# startup_data_sync, ai_chat_error_notice, bili_login_notice,
 # headless_seer_notice, render_crash_notice, red_packet_notice, admin_notice,
 # per-account Bilibili dynamic pushes and seer_activity_push.
-# 内置推送项包括机器人启动、启动镜像检查、启动数据同步、启动AI接口检查、启动时钟偏差检查、AI 聊天异常、
-# B站登录、无头赛尔号、当前进程捕获的精灵渲染异常、红包提醒、其它管理通知、
+# 内置推送项包括机器人启动、启动镜像检查、启动数据同步、AI 聊天异常、
+# B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、其它管理通知、
 # 按账号拆分的 B站动态和活动结束提醒。
 commands = ["td", "退订"]
 # Default: ["订阅", "恢复订阅", "推送管理"]
@@ -554,30 +613,7 @@ hint = "回复 TD 可管理推送订阅。"
 # Default: built-in group hint.
 # EN: Hint appended to group pushes.
 # ZH: 追加到群推送末尾的退订提示。
-group_hint = "发送 TD、订阅 或 推送管理 可查看推送订阅；群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
-
-[messaging.push_delivery]
-# Default: 3
-# EN: Total attempts for a background push; the first bounded fan-out counts.
-# ZH: 主动推送的总发送轮数，首次有限并发发送也计入。
-max_attempts = 3
-# Default: 3
-# EN: Divide the next retry batch capacity by this value, rounded up.
-# ZH: 每轮失败后，下一轮批次容量除以此数并向上取整。
-retry_batch_divisor = 3
-# Default: 5
-# EN: Maximum targets submitted concurrently to one QQ transport.
-# ZH: 同一个 QQ 连接同时提交的最多目标数；明确断线后停止剩余目标。
-max_parallel_targets = 5
-# Default: 60.0
-# EN: Pause background submissions after a clear QQ transport failure.
-# ZH: 检测到 1006514 等明确 QQ 连接故障后暂停后台发送的秒数。
-transport_failure_cooldown_seconds = 60.0
-# Default: 2.0 / 5.0
-# EN: Random delay range before retry batches and between later batches.
-# ZH: 缩小批次后的首次重试，以及后续批次之间的随机等待秒数范围。
-batch_delay_min_seconds = 2.0
-batch_delay_max_seconds = 5.0
+group_hint = "发送 TD、订阅 或 推送管理 可查看本群推送订阅；群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
 
 [messaging.red_packet_notice]
 # Default: true
@@ -610,7 +646,7 @@ windows = [
 # Default: built-in cooldown notice.
 # EN: Appended to the last allowed message when a window reaches its limit.
 # ZH: 某个窗口达到上限时，附加在最后一条允许消息末尾的提示。
-cooldown_message = "机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
+cooldown_message = "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
 
 [messaging.meeting]
 # Default: ""
@@ -697,21 +733,6 @@ configs = []
 # Example: ["meme"]
 enabled_ids = []
 
-# =============================================================================
-# Local reply assets
-# 本地回复素材
-# =============================================================================
-[pet_config]
-# Default: true; EN: Enable local pet configuration image replies. ZH: 启用本地精灵配置图查询。
-enabled = true
-# Default: "data/pet_configs"
-# EN: Directory for manually maintained config images. It is created automatically
-# when missing. Name each file with the pet ID, for example 4923.png. PNG, WEBP,
-# JPG, and JPEG are supported.
-# ZH: 手动维护的精灵配置图目录；不存在时启动会自动创建。图片文件名写精灵序号，
-# 例如 4923.png；支持 PNG、WEBP、JPG、JPEG。
-image_dir = "data/pet_configs"
-
 # EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
 # Incoming command replies use the receiving bot; proactive pushes use these routes.
 # ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
@@ -773,226 +794,6 @@ mention_initial_max_responses = 3
 # player_lineup_private = [{ window_seconds = 60.0, max_requests = 3 }, { window_seconds = 300.0, max_requests = 5 }]
 # seer_rank_score = []
 
-[activity]
-# Default: true
-# EN: Enable activity reminders.
-# ZH: 是否启用活动结束提醒。
-# Example: false
-enabled = true
-
-# Default: [11, 1]
-# EN: Lead hours for ending reminders.
-# ZH: 活动结束前提前多少小时提醒。
-# Example: [24, 1]
-lead_hours = [11, 1]
-
-# Default: 15
-# EN: Grace minutes for missed reminder scheduling.
-# ZH: 错过计划提醒时间后的补发宽限分钟。
-# Example: 10
-grace_minutes = 15
-
-# Default: true
-# EN: Only include activities marked as visible.
-# ZH: 是否只读取活动中心展示的活动。
-# Example: true
-only_shown = true
-
-# Default: built-in reminder template.
-# EN: Reminder message template.
-# ZH: 活动提醒消息模板。
-# Available fields: {lead_hours}, {activity_count}, {activity_list}
-message = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
-
-# Default: 8.0
-# EN: Timeout for fetching official activity notices.
-# ZH: 获取官方活动公告的超时秒数。
-# Example: 10.0
-notice_timeout_seconds = 8.0
-
-[bilibili]
-# B 站配置分三层：
-# 1. [bilibili.accounts.<别名>] 定义稳定账号别名和 UID，不代表一定监控或推送。
-# 2. [bilibili.push].accounts 是默认推送别名，所有开启 bili_push 的群/用户都会收到。
-# 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号别名。
-# 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
-# QQ 展示使用 B 站接口返回的公开昵称，不在 TOML 中配置 nickname。
-# 模式命令支持账号别名、公开昵称或 UID。
-# Default: 300.0
-# EN: Cooldown for Bilibili login QR notices.
-# ZH: B 站登录二维码提醒冷却秒数。
-# Example: 600.0
-login_notice_cooldown_seconds = 300.0
-
-[bilibili.accounts.seer]
-# Default: 1310714247
-# EN: Bilibili UID referenced by the stable alias `seer`.
-# ZH: 稳定别名 `seer` 对应的 B 站 UID。
-uid = 1310714247
-
-# Add more accounts with unique aliases:
-# [bilibili.accounts.fire]
-# uid = 527589079
-
-[bilibili.storage]
-# Default: "data/bilibili_monitor"
-# EN: Directory for Bilibili history and cookie state.
-# ZH: B 站历史与 Cookie 状态目录。
-# Example: "data/bili"
-data_dir = "data/bilibili_monitor"
-
-# Default: 1000
-# EN: Max dynamic history items retained.
-# ZH: 动态历史最多保留条数。
-# Example: 2000
-history_max_items = 1000
-
-# Default: 10
-# EN: Recent dynamic items shown in history and checked during startup backfill.
-# ZH: 历史动态菜单展示条数，也是启动时正文与摘要回填的检查条数。
-# Example: 20
-history_query_limit = 10
-
-[bilibili.polling]
-# The scheduler wakes on every exact wall-clock minute at check_second,
-# independent of the bot startup second. The intervals below decide whether that regular
-# wake-up performs a network request and are anchored to each window start.
-# 调度器固定在墙钟每分钟指定秒数唤醒，不继承机器人启动时的秒数；
-# 下方间隔决定该次常规唤醒是否真正请求 B站，并以各窗口起点作为时间槽锚点。
-# Default: 30
-# EN: Default polling interval in minutes.
-# ZH: 默认轮询间隔分钟数。
-# Example: 20
-default_minutes = 30
-
-# Default: 5; EN: Wall-clock second used for the once-per-minute scheduler wake-up.
-# ZH: 每分钟轮询唤醒使用的墙钟秒数；设为 5 可给平台同步整点动态留出短暂缓冲。
-check_second = 5
-
-# Default: [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
-# EN: Time windows with custom polling interval. Boundaries support HH:MM:SS.
-# ZH: 分时轮询窗口；边界支持 HH:MM:SS。
-# Example: [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
-windows = [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
-
-# EN: Extra short polling bursts around recurring release times. Each slot checks
-# at every offset below until a monitored account has a new dynamic; remaining
-# offsets for that slot are then skipped. Regular polling above remains enabled.
-# ZH: 高频发布时间点的额外秒级冲刺。每个发布点依次按下方秒偏移检查；
-# 任一受监控账号发现新动态后，该发布点剩余秒点自动跳过；上方常规轮询继续生效。
-# start/end use [start, end) wall-clock semantics, including midnight wrap.
-# Default: the observed 10:00-18:00 hourly and 14:30-18:30 half-hour Seer slots.
-[[bilibili.polling.boost_windows]]
-start = "10:00:00"
-end = "19:00:00"
-interval_minutes = 60
-offset_seconds = [0, 5, 10, 15]
-
-[[bilibili.polling.boost_windows]]
-start = "14:30:00"
-end = "19:30:00"
-interval_minutes = 60
-offset_seconds = [0, 5, 10, 15]
-
-[bilibili.push]
-# Default: "full"
-# EN: Default push mode for accounts without an explicit mode.
-# ZH: 未单独指定模式的账号默认推送方式，可选 full 或 link。
-# Example: "full"
-mode = "full"
-
-# Default: ["seer"]
-# EN: Account aliases pushed to every target that enables bili_push.
-# ZH: 所有开启 bili_push 的群/私聊默认推送的账号别名。
-# Example: ["seer"]
-accounts = ["seer"]
-
-# EN: Optional per-account push mode overrides. Runtime admin overrides take priority.
-# ZH: 可选的全局按账号别名推送模式覆盖；未填写时继承上面的 mode，当前会话的运行时设置优先级更高。
-# Example: { fire = "link" }
-
-# EN: Group owners/admins can override one account at runtime with:
-#     B站推送模式 <alias|public name|UID> <full|link|default>
-# ZH: 群主/管理员或私聊用户可用别名、公开昵称或 UID 修改推送模式：
-#     B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>
-
-# Default: 800
-# EN: Full pushes longer than this use an AI summary for their text-only final message.
-# ZH: 全文动态超过此字符数时，最后一条文本消息发送 AI 摘要；不超过时发送完整原文。
-content_max_chars = 800
-
-# Default: 500
-# EN: Maximum characters in the text-only AI summary or failed-summary excerpt.
-# ZH: 超长动态最后一条文本消息中的 AI 摘要或原文节选最大字符数。
-summary_max_chars = 500
-
-# Default: true
-# EN: Use AI to summarize long full-text dynamic pushes. When false, send an original text excerpt instead.
-# ZH: 长动态全文推送是否调用 AI 摘要；关闭后改为发送原文节选。
-summary_use_ai = true
-
-# Default: true
-# EN: Combine multiple static images from one dynamic into an adaptive PNG collage.
-#     Animated images and composition failures fall back to the original images.
-# ZH: 将同一条动态的多张静态图片合成为自适应 PNG 拼图；动态图或合成失败时回退原图。
-combine_images = true
-
-# Default: {}
-# EN: Group push targets keyed by feature group alias or group ID.
-# ZH: 群推送目标，键可以是群别名或群号。
-# Example: { main = { accounts = ["fire"], modes = { fire = "full" } } }
-groups = {}
-
-# Default: {}
-# EN: Private push targets keyed by user alias or user ID.
-# ZH: 私聊推送目标，键可以是用户别名或 QQ 号。
-# Example: { owner = { accounts = ["fire"], mode = "link" } }
-users = {}
-
-[bilibili.filters]
-# Default: built-in lottery/result suppression patterns.
-# EN: Regex patterns that suppress automatic pushes for non-Seer accounts.
-# ZH: 非赛尔号官号自动推送的全局抑制正则；赛尔号官号改由下方分类订阅控制。
-# Example: ["恭喜", "中奖", "抽奖结果"]
-suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信通知", "中奖", "抽奖结果"]
-
-[bilibili.seer_categories]
-# The official account receives target-level category subscriptions through TD.
-# 赛尔号官号动态按不同会话分别分类订阅；发送 TD 后进入“赛尔号动态订阅”管理。
-# Default: true
-enabled = true
-# Default: "seer"; EN: Account alias defined above. ZH: 上方定义的赛尔号官号账号别名。
-account = "seer"
-# Default: "Asia/Shanghai"; EN: Timezone used by preview schedule matching. ZH: 预告发布时间判断使用的时区。
-timezone = "Asia/Shanghai"
-# New targets mute lottery and winning pushes by default. All other categories subscribe by default.
-# 新群/私聊默认 TD 抽奖和中奖，其余分类默认订阅；TD 菜单中的设置会单独保存。
-default_muted_categories = ["lottery", "winning"]
-# Monday/Wednesday afternoon is only an extra hint. A preview still needs a text match.
-# 周一、周三 17:00-18:00 仅辅助识别预告，不能单独将动态判为预告。
-preview_windows = [{ weekdays = ["mon", "wed"], start = "17:00:00", end = "18:00:00" }]
-# Text patterns used together with preview_windows.
-preview_window_patterns = ["新版本", "即将到来", "长图"]
-# The thirteen TD categories are lottery, winning, version_preview, version_guide, pet, skin,
-# skill_showcase, autocard, competition, story (main storyline), event, interaction, other.
-# 下列正则可按官方文案变化自行增减；other 只在没有命中其他分类时自动使用。
-lottery_patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
-winning_patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
-version_preview_patterns = ["新版本.*即将到来", "查看下方长图"]
-version_guide_patterns = ["一图掌握", "版本更新指引", "版本福利"]
-pet_patterns = ["全新精灵", "精灵觉醒", "精灵.*即将登场"]
-skin_patterns = ["全新皮肤", "限定皮肤", "皮肤.*返场", "皮肤.*即将登场"]
-skill_showcase_patterns = ["技能特效抢先看"]
-autocard_patterns = ["群星牌", "元素王座", "卡牌", "小小精灵"]
-competition_patterns = ["大师赛", "小师赛", "赛事", "比赛", "赛程", "直播", "总决赛"]
-story_patterns = ["灵渊", "玄武复活", "全新剧情", "主线故事"]
-event_patterns = ["联动", "主题站", "通行证", "限时活动", "活动福利"]
-interaction_patterns = ["投票", "应援", "报名", "问卷", "创作激励", "征集"]
-
-# =============================================================================
-# Seer real-time headless queries
-# 赛尔号实时无头查询
-# =============================================================================
 # Seer account library. Set the plain password in SEER_PASSWORD_<player_id>;
 # IronsBot converts it to the legacy login MD5 in memory. `public = true` makes
 # an account's `name` and `aliases` usable in every conversation. Private accounts
@@ -1024,47 +825,6 @@ interaction_patterns = ["投票", "应援", "报名", "问卷", "创作激励", 
 # group_a = ["sample_worker"]
 # group_b = ["all"]
 
-[operations.server_status]
-# Ordinary status commands; replaces the entire default list when specified.
-# 普通开服状态口令；配置后整体替换默认列表，不影响管理员命令。
-commands = ["开服了吗", "开服了嘛", "开服了没", "开服没", "关服了吗", "关服了嘛", "开了吗", "关了吗"]
-
-[operations.headless]
-# EN: Connection, heartbeat, timeout, and reconnect parameters for every public
-# query worker. References accept an account name, alias, numeric string, or player ID.
-# ZH: 所有公共无头查询账号共用的连接、心跳、超时与重连参数；账号身份在
-# [[seer.player_accounts]] 中配置。这里可填写账号 name、alias、数字字符串或数字米米号。
-# Default: []; EN: Public headless query pool account references.
-# ZH: 公共无头查询池账号；按最终米米号去重，空列表表示不启用公共无头查询。
-accounts = []
-# Default: login server URL; EN: Seer login server source URL. ZH: 赛尔号登录服务器地址来源。
-login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
-# Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。
-heartbeat_interval = 300.0
-# Default: 20.0; EN: Single game-server request timeout. A timeout reconnects to prevent a late packet from matching the next query. ZH: 单个游戏服务器请求的超时秒数；超时后会重连，避免迟到封包错配到下一次查询。
-request_timeout_seconds = 20.0
-# Default: -1; EN: Reconnect attempts, -1 means forever. ZH: 重连次数，-1 表示无限。
-reconnect_retries = -1
-# Default: 5.0; EN: Initial reconnect delay seconds. ZH: 初始重连延迟秒数。
-reconnect_delay = 5.0
-# Default: 120.0; EN: Max reconnect delay seconds. ZH: 最大重连延迟秒数。
-reconnect_delay_max = 120.0
-[operations.headless_notice]
-# EN: Notices are sent to superusers and admin_notice groups.
-# ZH: 这些通知会发送给超级管理员和 admin_notice 管理群。
-# Default: true; EN: Send startup login failure notice. ZH: 启动时发送无头登录失败通知。
-login_notice = true
-# Default: built-in; EN: Startup login failure notice template. ZH: 启动登录失败通知模板。
-login_notice_message = "无头米米号登录未成功。\n米米号：{user_id}\n状态：{reason}\n依赖米米号登录的功能可能不可用；请检查账号、MD5密码、网络或赛尔号服务器状态。"
-# Default: true; EN: Send online/offline state notices. ZH: 发送在线/离线状态通知。
-state_notice = true
-# Default: built-in; EN: Offline state notice template. ZH: 掉线通知模板。
-state_offline_message = "无头米米号已掉线。\n米米号：{user_id}\n状态：{reason}\n来源：{source}"
-# Default: built-in; EN: Online state notice template. ZH: 恢复在线通知模板。
-state_online_message = "无头米米号已恢复登录。\n米米号：{user_id}\n离线时长：{offline_duration}\n来源：{source}"
-# Default: "00:05"; EN: Daily reconnect check times. ZH: 每日重连检查时间。
-reconnect_check_times = "00:05:00"
-
 [seer.player]
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
 timeout_seconds = 30.0
@@ -1078,29 +838,23 @@ sections = ["all"]
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
 # ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
 change_cooldown_days = 3
-# Default: false; EN: Prevent non-owners from using an administrator-bound player ID through aliases, @member, or no-target shortcuts. Full numeric IDs still work.
-# ZH: 开启后，非绑定超级管理员不能通过别名、@成员或无目标快捷指令查询其绑定米米号；完整数字米米号仍可查询。
-protect_superuser_bound_shortcuts = false
 
 [seer.player.query_limits]
-# EN: Persistent daily budgets for foreground logical headless operations, reset by Beijing date.
-# ZH: 用户触发的无头逻辑服务器操作每日额度，按北京时间自然日重置；缓存、预热与后台刷新不计入。
-# ZH: 每条指令只要当天还剩至少 1 项即可完整执行；结果成功发送后，按实际成功获取的数据项目结算，
-#     因此收集、巅峰和榜单查询一次可能计入多项。基础资料和阵容每次最多计 1 项。
+# EN: Persistent daily budgets for live player-related queries, reset by Beijing date.
+# ZH: 玩家相关实时查询的每日额度，按北京时间自然日重置。
 enabled = true
-# EN: Daily logical-operation budget for the user's current default player ID.
-# ZH: 查询当前默认米米号时的每日逻辑操作额度。
-bound_default_daily_limit = 60
-# EN: Daily logical-operation budget for all non-default player IDs combined.
-# ZH: 查询其他米米号时共享的每日逻辑操作额度。
-bound_other_daily_limit = 60
-# EN: Daily logical-operation budget before a default player ID is bound.
-# ZH: 尚未绑定默认米米号时的每日逻辑操作额度。
-unbound_daily_limit = 30
+# EN: Total daily live queries for a user's current default player ID. Complete cache hits remain available after exhaustion.
+# ZH: 查询当前默认米米号实时数据的每日总次数；额度耗尽后仍可读取已有完整缓存。
+bound_default_daily_limit = 10
+# EN: Daily live queries for one other player ID and one query type.
+# ZH: 实时查询同一个其他米米号的同一种数据，每日最多次数。
+other_target_action_daily_limit = 1
+# EN: Total daily live player-related queries before a default player ID is bound.
+# ZH: 尚未绑定默认米米号时，玩家相关实时查询的每日总次数。
+unbound_daily_limit = 1
 # EN: Whether superusers bypass these daily budgets.
 # ZH: 超级管理员是否绕过每日额度。
 superuser_bypass = true
-
 [seer.player.request_protection]
 # Default: true. EN: Serialize live player-related requests to one workflow at a time.
 # ZH: 默认开启。所有玩家相关实时请求同时只执行一个，避免无头客户端并发封包。
@@ -1149,9 +903,8 @@ cache_ttl_seconds = 300.0
 # worker。不同橱窗账号严格串行登录和查询；每个账号当天首次成功结果会落盘缓存，
 # 机器人重启后也不会重复登录。
 enabled = false
-# Default: "00:01:05"; EN: Daily check time in HH:MM:SS. Legacy HH:MM is accepted as :00.
-# ZH: 每日检查时间，使用 HH:MM:SS；旧 HH:MM 会自动视为 :00。
-time = "00:01:05"
+# Default: "00:02"; EN: Daily check time in HH:MM. ZH: 每日检查时间，格式 HH:MM。
+time = "00:02"
 # Default: "Asia/Shanghai"; EN: Timezone for the daily window. ZH: 每日橱窗的时区。
 timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
@@ -1190,42 +943,18 @@ timeout_seconds = 15.0
 [seer.team]
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
-# Default: ["basic", "resource", "text"]; EN: Enabled team sections. ZH: 战队展示区块。
-sections = ["basic", "resource", "text"]
+# Default: ["basic", "resource"]; EN: Enabled team sections. ZH: 战队展示区块。
+sections = ["basic", "resource"]
 
-[seer.team_resource]
-# Default: true; EN: Enable subscribed team query and resource notices. ZH: 启用战队订阅查询与资源提醒。
-enabled = true
-# Default: []; EN: Daily low-resource scan times in HH:MM:SS. Empty disables scheduled notices.
-# ZH: 每日资源扫描时间，支持 HH:MM:SS；为空时不定时提醒，只保留群内“战队”订阅查询。
-times = []
-# Default: ["战队"]; EN: Subscribed team query commands. ZH: 已订阅战队查询口令。
-commands = ["战队"]
-# Default: 1000; EN: Default low-resource threshold for new QQ-managed subscriptions.
-# ZH: 群里新增订阅时的默认资源阈值；命令里可追加数字覆盖。
-default_threshold = 1000
-# Default: []; EN: Default users to mention when the subscription command has no @.
-# ZH: 订阅命令没有 @ 用户时默认提醒的人；可填 user_aliases 或 QQ 号。
-default_at_users = []
-# Default: 20; EN: Team subscription query timeout seconds. ZH: 战队订阅查询超时秒数。
-query_timeout_seconds = 20
-# Default: built-in line; EN: Resource notice status line. ZH: 战队资源提醒状态行。
-resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
-# Default: built-in message; EN: Resource notice extra message. ZH: 战队资源提醒附加文案。
-resource_message = "出来买资源，别逼我求你😡"
-
-# EN: QQ commands in enabled groups:
-#   战队                 -> query all subscribed teams in this group.
-#   战队订阅             -> list current group subscriptions.
-#   订阅战队123456       -> subscribe a team with default threshold.
-#   订阅战队123456 1000 @user -> subscribe with threshold and mention target.
-#   取消订阅战队123456   -> remove a subscription.
-# ZH: 订阅战队不再使用 [[seer.team_resource.subscriptions]] TOML 表。
+[seer.mintmark]
+# Default: true
+# EN: Merge connected mintmark records into one result and display every related ID.
+# ZH: 将关联刻印合并为一条并展示全部 ID；false 保留原记录并标注关联 ID，便于排查数据。
+merge_connected = true
 
 [seer.rank]
 # 这里有三种“范围”不要混：
 # - limit：已知分数时，二分查找最多认为前多少名是可搜索范围。
-# - superuser_score_limit_multiplier：超级管理员按分数查询时放大上述范围。
 # - online_limit：不知道分数时，在线从前往后扫的最大范围。
 # - page_refresh.target_limit：后台定时预热缓存到前多少名，见 [seer.rank.page_refresh]。
 # Default: 10000
@@ -1236,17 +965,6 @@ limit = 10000
 # EN: Score-unknown linear online scan limit.
 # ZH: 未知分数时允许从前往后线性扫描的在线查询范围。
 online_limit = 2000
-# Default: {}. EN: Optional per-global-rank lookup caps. A configured rank uses
-# this value for both score-based binary lookup and score-unknown page scans.
-# ZH: 可选的按全服榜单查询上限覆盖；已配置榜单会同时覆盖按分数二分和未知分数翻页。
-# 可选键：图鉴积分、成就点数、精灵图鉴、皮肤图鉴、套装图鉴、部件图鉴、座驾图鉴、
-# 刻印图鉴、群星牌、竞技段位、狂野段位、专家段位。
-# Example: lookup_limits = { "群星牌" = 10000 }
-lookup_limits = {}
-# Default: 2
-# EN: Multiplier applied to score-known lookup limits for superusers only.
-# ZH: 超级管理员按指定分数反查用户时的搜索范围倍数；可独立调整。
-superuser_score_limit_multiplier = 2
 # Default: 100; EN: Rank page size. ZH: 榜单分页大小。
 page_size = 100
 # Default: true; EN: Enable rank page cache. ZH: 启用榜单分页缓存。
@@ -1324,15 +1042,6 @@ total_timeout_seconds = 60
 # Default: 1; EN: Retries for a timed-out page after other boards get a turn.
 # ZH: 单页超时后让出轮次，其他榜轮完后最多重试次数。
 page_retry_count = 1
-# Default: 600
-# EN: A confirmed player rank newer than this uses the fast online anchor path.
-# ZH: 上次确认名次在此秒数内时，优先走快速联网锚点确认。
-recent_cache_max_age_seconds = 600
-# Default: 5
-# EN: Maximum wait for a recent cached rank's online anchor page. On timeout,
-#     keep the cached result without retrying or expanding the search.
-# ZH: 近期缓存锚点页最多联网等待秒数；超时后直接保留缓存，不重试或扩圈。
-recent_cache_anchor_timeout_seconds = 5.0
 # Default: omitted/null.
 # EN: Leave unset to follow the official peak season automatically.
 #     Set only as a temporary diagnostic override.
@@ -1377,13 +1086,13 @@ stale_age_max_multiplier = 5.0
 # ZH: 每页榜单请求人数。
 page_size = 100
 # Default: 10
-# EN: Total rank pages refreshed by the whole worker pool in one run.
-# ZH: 每轮由整个无头池合计最多刷新多少页，不会随账号数倍增。
-pages_per_run = 20
+# EN: Maximum rank pages refreshed per scheduled/manual run.
+# ZH: 每轮最多刷新多少页，也就是最多多少次榜单请求。
+pages_per_run = 3
 # Default: 0
 # EN: If > 0, each run refreshes a random number of pages between this value and pages_per_run.
-# ZH: 如果大于 0，每轮随机刷新 pages_per_run_min 到 pages_per_run 页，避免每轮固定请求数；总页数仍由整个无头池分摊。
-pages_per_run_min = 10
+# ZH: 如果大于 0，每轮随机刷新 pages_per_run_min 到 pages_per_run 页，避免每轮固定请求数。
+pages_per_run_min = 1
 # Default: 0
 # EN: Interval-based refresh in minutes. 0 disables interval scheduling.
 # ZH: 按间隔刷榜，0 表示关闭；例如 10 表示每 10 分钟一轮。
@@ -1393,26 +1102,23 @@ interval_minutes = 15
 # the bot schedules at :04, :19, :34, :49 before jitter is applied.
 # ZH: 间隔刷榜的分钟偏移；例如 interval_minutes=15、offset=4 时，每小时 04/19/34/49 分调度，之后再叠加随机抖动。
 interval_offset_minutes = 4
-# Default: 0; EN: Second offset paired with interval_offset_minutes. With 15/4/5, slots are :04:05, :19:05, :34:05, :49:05.
-# ZH: 与分钟偏移配套的秒偏移；15/4/5 时槽位为 :04:05、:19:05、:34:05、:49:05。
-interval_offset_seconds = 5
 # Default: 0
-# EN: Random scheduler delay after the nominal configured second. A nonzero value intentionally disables strict on-the-second execution.
-# ZH: 名义配置秒数后的随机延迟；非零时会刻意放弃严格整秒执行。
+# EN: Random scheduler delay in seconds. Keeps refresh jobs away from exact clock ticks.
+# ZH: 每轮调度额外随机延后秒数，避免总在整点/固定秒触发。
 schedule_jitter_seconds = 240
 # Default: 0.0
-# EN: Minimum seconds between scheduled rank-page slots. Scheduled runs also spread the selected batch across their interval.
-# ZH: 定时刷榜页槽位的最小间隔秒数；定时任务还会把本轮页面均匀铺在整个调度间隔内。
-request_interval_seconds = 8.0
+# EN: Seconds to wait between page requests in one refresh run.
+# ZH: 同一轮刷榜中，每个榜单页请求之间的固定等待秒数。
+request_interval_seconds = 3.0
 # Default: 0.0
-# EN: Maximum random offset applied to scheduled page slots; manual runs add up to this delay.
-# ZH: 定时页槽位的最大随机偏移秒数；手动刷新则额外延后不超过该值，用于避免固定频率。
-request_jitter_seconds = 12.0
+# EN: Random extra seconds added to each inter-page wait.
+# ZH: 每个榜单页请求之间额外增加的随机等待秒数，降低固定频率特征。
+request_jitter_seconds = 3.0
 # Default: ""; EN: Optional active refresh window start. ZH: 可选的刷榜活跃时间起点。
-active_start = "07:30:00"
+active_start = "07:30"
 # Default: ""; EN: Optional active refresh window end; may cross midnight.
 # ZH: 可选的刷榜活跃时间终点；允许跨过午夜，比如 07:30 到 01:30。
-active_end = "01:30:00"
+active_end = "01:30"
 # Default: 01:15 through 04:45 every half hour.
 # EN: Additional fixed daily refresh times. Keep empty when interval_minutes is used.
 # ZH: 额外的每日固定刷榜时间；使用 interval_minutes 时通常保持为空。
@@ -1425,97 +1131,6 @@ rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "�
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
 refresh_stale_after_hours = 336
-
-[seer.local_rank]
-# Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。
-enabled = true
-# Default: 5000; EN: Max local players. ZH: 本地样本最大玩家数。
-max_players = 5000
-# Default: 100; EN: Batch query limit. ZH: 批量查询大小。
-batch_limit = 100
-# Default: true; EN: Enable scheduled refresh. ZH: 启用定时刷新。
-auto_refresh = true
-# Default: "03:30:00"; EN: Daily refresh time in HH:MM:SS. ZH: 每日刷新时间，支持 HH:MM:SS。
-time = "03:30:00"
-# Default: 300; EN: Refresh count limit. ZH: 单次刷新数量上限。
-refresh_limit = 300
-# Default: 24; EN: Refresh entries older than this many hours. ZH: 刷新超过多少小时的样本。
-refresh_max_age_hours = 24
-# Default: 0.5; EN: Delay between refresh queries. ZH: 刷新请求间隔秒数。
-refresh_interval_seconds = 0.5
-# Default: "data/seer/player_query_cache.sqlite"
-# EN: Local rank SQLite path.
-# ZH: 本地样本榜数据库。
-path = "data/seer/player_query_cache.sqlite"
-
-[operations.private_extensions]
-# The currently supported private lineup extension reuses the public headless
-# pool, so its package and settings stay in this real-time-query chapter. A
-# future extension should place its feature-specific settings with its primary
-# user flow, rather than treating this package loader as its only config home.
-# ZH: 当前支持的私有阵容扩展复用公共无头池，因此其包与设置放在本实时查询章节。
-# 未来私有扩展的功能设置应跟随主要用户流程放置，不应只因使用此包加载器就全部堆在这里。
-# Optional private extension package. The main Unraid/Docker image remains
-# murmansk5000/ironsbot:latest; when enabled, startup pulls this package through
-# the mounted Docker socket, validates its manifest, and installs it under /app/data.
-# Default: false; EN: Enable the private extension package. ZH: 启用私有扩展包。
-enabled = false
-# Default: "murmansk5000/ironsbot-private:latest"; EN: Private extension package image.
-# ZH: 私有扩展包镜像，不是机器人主镜像。
-image = "murmansk5000/ironsbot-private:latest"
-# Default: "/ironsbot_extensions"; EN: Read-only package directory inside that image.
-# ZH: 私有镜像内的只读扩展包目录。
-archive_path = "/ironsbot_extensions"
-# Default: "data/private_extensions"; EN: Installed package cache under /app/data.
-# ZH: 解包后的扩展缓存目录，会保留最后一次校验成功的版本。
-data_path = "data/private_extensions"
-# Default: 60.0; EN: Startup pull and archive-read timeout seconds.
-# ZH: 启动时拉取和读取扩展包的超时秒数；失败不会阻止机器人启动。
-timeout_seconds = 60.0
-
-# Private-only values are passed through without public schema knowledge.
-[operations.private_extensions.settings.player_lineup]
-timeout_seconds = 15.0
-cache_path = "data/seer/player_lineup_cache.sqlite"
-
-# Set DOCKER_REGISTRY_USERNAME and DOCKER_REGISTRY_TOKEN as Unraid/Docker
-# environment variables when the extension image is private. Do not put those
-# registry credentials in TOML. The same credentials are reused for Docker
-# image updates and private extension pulls.
-
-# -----------------------------------------------------------------------------
-# Seer local data, rendering, and companion links
-# 赛尔号本地数据、渲染与结果附链
-# -----------------------------------------------------------------------------
-
-[seer.mintmark]
-# Default: true
-# EN: Merge connected mintmark records into one result and display every related ID.
-# ZH: 将关联刻印合并为一条并展示全部 ID；false 保留原记录并标注关联 ID，便于排查数据。
-merge_connected = true
-
-[seer.new_content]
-# Default: []
-# EN: Weekly-content categories that show a bounded item preview in the root menu.
-# Categories not listed remain folded regardless of their item count.
-# ZH: 仅以下分类在新增内容总菜单预览条目；未配置分类始终折叠。
-# Available: achievement, pet, pet_skin, skill, mintmark, suit, equip, mount,
-# autocard_card, autocard_role, autocard_sanctuary_effect.
-# 可选值：achievement、pet、pet_skin、skill、mintmark、suit、equip、mount、
-# autocard_card、autocard_role、autocard_sanctuary_effect。
-# EN: Root-menu categories whose genuinely new entries may be previewed.
-#     Modified entries always stay folded until the category submenu is opened.
-#     Skill previews only include new skills belonging to pets not added that week.
-# ZH: 根菜单中可展开预览“真正新增”项目的分类；修改项始终折叠，进入分类子菜单后查看。
-#     技能预览只展示非本周新增精灵获得的新技能。
-# Example: ["skill"]
-expanded_categories = []
-# Default: 5; EN: Maximum items rendered for each configured root-menu preview.
-# Set 0 to disable ordinary previews. Focused category menus still show all items.
-# ZH: 每个已配置分类在总菜单最多预览的条目数；设为 0 关闭普通条目预览，子菜单仍显示全部。
-# EN: Maximum genuinely new entries previewed per expanded root category.
-# ZH: 每个根菜单展开分类最多预览多少项真正新增内容；修改项不占用此数量。
-auto_expand_max_items = 5
 
 [seer.season]
 # Default: "群星牌赛季"
@@ -1531,51 +1146,77 @@ autocard_name = "群星牌赛季"
 # ZH: 可选的群星牌赛季结束时间；填写后“赛季倒计时”会显示群星牌剩余时间。
 # autocard_end_time = 2026-07-17T10:00:00+08:00
 
+[seer.local_rank]
+# Default: true; EN: Enable local sample rank. ZH: 启用本地样本榜。
+enabled = true
+# Default: 5000; EN: Max local players. ZH: 本地样本最大玩家数。
+max_players = 5000
+# Default: 100; EN: Batch query limit. ZH: 批量查询大小。
+batch_limit = 100
+# Default: true; EN: Enable scheduled refresh. ZH: 启用定时刷新。
+auto_refresh = true
+# Default: "03:30"; EN: Daily refresh time. ZH: 每日刷新时间。
+time = "03:30"
+# Default: 300; EN: Refresh count limit. ZH: 单次刷新数量上限。
+refresh_limit = 300
+# Default: 24; EN: Refresh entries older than this many hours. ZH: 刷新超过多少小时的样本。
+refresh_max_age_hours = 24
+# Default: 0.5; EN: Delay between refresh queries. ZH: 刷新请求间隔秒数。
+refresh_interval_seconds = 0.5
+# Default: "data/seer/player_query_cache.sqlite"
+# EN: Local rank SQLite path.
+# ZH: 本地样本榜数据库。
+path = "data/seer/player_query_cache.sqlite"
+
+[seer.team_resource]
+# Default: true; EN: Enable subscribed team query and resource notices. ZH: 启用战队订阅查询与资源提醒。
+enabled = true
+# Default: []; EN: Daily low-resource scan times. Empty disables scheduled notices.
+# ZH: 每日资源扫描时间；为空时不定时提醒，只保留群内“战队”订阅查询。
+times = []
+# Default: ["战队"]; EN: Subscribed team query commands. ZH: 本群订阅战队查询口令。
+commands = ["战队"]
+# Default: 1000; EN: Default low-resource threshold for new QQ-managed subscriptions.
+# ZH: 群里新增订阅时的默认资源阈值；命令里可追加数字覆盖。
+default_threshold = 1000
+# Default: []; EN: Default users to mention when the subscription command has no @.
+# ZH: 订阅命令没有 @ 用户时默认提醒的人；可填 user_aliases 或 QQ 号。
+default_at_users = []
+# Default: 20; EN: Team subscription query timeout seconds. ZH: 战队订阅查询超时秒数。
+query_timeout_seconds = 20
+# Default: built-in line; EN: Resource notice status line. ZH: 战队资源提醒状态行。
+resource_line = "查到了战队 {team_name}（{team_id}）资源是 {resource}，低于阈值 {threshold}。"
+# Default: built-in message; EN: Resource notice extra message. ZH: 战队资源提醒附加文案。
+resource_message = "出来买资源，别逼我求你😡"
+
+# EN: QQ commands in enabled groups:
+#   战队                 -> query all subscribed teams in this group.
+#   战队订阅             -> list current group subscriptions.
+#   订阅战队123456       -> subscribe a team with default threshold.
+#   订阅战队123456 1000 @user -> subscribe with threshold and mention target.
+#   取消订阅战队123456   -> remove a subscription.
+# ZH: 订阅战队不再使用 [[seer.team_resource.subscriptions]] TOML 表。
+
 [seer.render]
 # Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
 cache_max_size_mb = 200
 
-[seer.external_references]
-# Default: true for every option below.
-# EN: Append the matching SeerInfo companion page to successful query replies.
-# ZH: 在对应查询成功回复末尾附加 SeerInfo 查询页面；每项可单独关闭。
-# These links are only attached to matching commands, never to unrelated replies.
-# 这些链接只会附在语义对应的结果上，不会附加到无关命令。
-# player_query: 米米号/查询玩家信息与无头额度用尽提示。
-# team_query: 战队查询。
-# server_status: 开服查询与 /开服查询。
-# weekly_preview: 下周预告。
-# bilibili_history: “动态”历史菜单和无历史提示；单条动态仍只保留原文链接。
-# peak_pool: 竞技池和专家池。
-# peak_master_pool: 大师池。
-# peak_vote: 巅峰投票。
-# peak_player_rank: 竞技/狂野/专家全服段位榜。
-# peak_suit_rank: 竞技/狂野/专家套装榜。
-# peak_title_rank: 竞技/狂野/专家称号榜。
-# peak_pet_rank: 竞技/狂野/专家精灵月榜和总榜。
-player_query = true
-team_query = true
-server_status = true
-weekly_preview = true
-bilibili_history = true
-peak_pool = true
-peak_master_pool = true
-peak_vote = true
-peak_player_rank = true
-peak_suit_rank = true
-peak_title_rank = true
-peak_pet_rank = true
+[pet_config]
+# Default: true; EN: Enable local pet configuration image replies. ZH: 启用本地精灵配置图查询。
+enabled = true
+# Default: "data/pet_configs"
+# EN: Directory for manually maintained config images. It is created automatically
+# when missing. Name each file with the pet ID, for example 4923.png. PNG, WEBP,
+# JPG, and JPEG are supported.
+# ZH: 手动维护的精灵配置图目录；不存在时启动会自动创建。图片文件名写精灵序号，
+# 例如 4923.png；支持 PNG、WEBP、JPG、JPEG。
+image_dir = "data/pet_configs"
 
-# =============================================================================
-# Database synchronization and bot lifecycle
-# 数据同步与机器人生命周期
-# =============================================================================
 [operations.data_sync]
 # 数据同步分两层：
 # - 普通启动/定时同步默认只下载 GitHub Release 里已经构建好的 SQLite。
-# - /更新数据 会先只读检查当前发布数据，再显示操作菜单：1 只同步已发布数据；2 检查官方/上游并构建后同步。
-#   选择 1 或 2 后立即执行。api-data 发布后自动派发 SeerAPI，下游完成后由 5 分钟轮询热同步。
-# - /强制更新数据 的第 2 项会传 force=true，强制上游 Actions 重建；新周一致性闸门仍不会发布旧 api-data 生成的空索引。
+# - /更新数据 会先让 Actions 检查官方/上游是否有变化，有变化才重建；随后下载新库。
+# - /强制更新数据 会传 force=true，强制 Actions 重建，用于排查或 parser 修复后重跑。
 # 如果只是想避免开机慢，改 on_startup=false；如果想开机也检查远程构建，改 startup_trigger_remote_build=true。
 # Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。
 on_startup = true
@@ -1589,22 +1230,16 @@ interval_enabled = true
 url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite"
 # Default: SeerAPI data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
 fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite.sha256"
-# Default: 5; EN: Sync interval minutes. ZH: 同步间隔分钟。
-interval_minutes = 5
-# Default: 0; EN: Wall-clock second used by this source's interval sync.
-# ZH: 此数据源间隔同步使用的墙钟秒数。
-interval_second = 5
+# Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
+interval_minutes = 60
 # Default: "data/seerapi-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
 local_path = "data/seerapi-data.sqlite"
 
 [operations.data_sync.sources.seerapi.remote_build]
-# Default: false; EN: Allow the build action selected from manual /更新数据. ZH: 允许手动 /更新数据 选择第 2 项后触发 GitHub Actions 构建。
+# Default: false; EN: Trigger GitHub Actions before manual /更新数据. ZH: 手动 /更新数据 前先触发 GitHub Actions 构建。
 # EN: Each step reuses a recent queued/running workflow by default to avoid duplicate builds.
 # ZH: 每个步骤默认会复用最近正在排队/运行的同 workflow，避免重复触发导致排队变慢。
 enabled = true
-# Default: false; EN: api-data publishes and dispatches the downstream SeerAPI build asynchronously.
-# ZH: api-data 发布后会异步派发 SeerAPI 构建；机器人随后按 5 分钟轮询热同步，不再重复强制构建。
-downstream_publication_pending = true
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "refresh_official_sources"
@@ -1643,12 +1278,56 @@ timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { debug_enabled = false, force = false }
 
+[[operations.data_sync.sources.seerapi.remote_build.steps]]
+name = "build_ironsbot_data"
+repository = "Murmansk-Seer/seerapi"
+workflow_id = "build-seerapi-data-db.yml"
+ref = "main"
+timeout_seconds = 1800
+poll_interval_seconds = 10
+inputs = { force = false }
+
 [operations.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
 fingerprint_url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
 interval_minutes = 60
-interval_second = 0
 local_path = "data/aliases-data.sqlite"
+
+[operations.headless]
+# EN: Connection, heartbeat, timeout, and reconnect parameters for every public
+# query worker. References accept an account name, alias, numeric string, or player ID.
+# ZH: 所有公共无头查询账号共用的连接、心跳、超时与重连参数；账号身份在
+# [[seer.player_accounts]] 中配置。这里可填写账号 name、alias、数字字符串或数字米米号。
+# Default: []; EN: Public headless query pool account references.
+# ZH: 公共无头查询池账号；按最终米米号去重，空列表表示不启用公共无头查询。
+accounts = []
+# Default: login server URL; EN: Seer login server source URL. ZH: 赛尔号登录服务器地址来源。
+login_server_addr = "https://seer-login-ip.61.com/unity-ip.txt"
+# Default: 300; EN: Headless heartbeat seconds. ZH: 无头客户端心跳秒数。
+heartbeat_interval = 300.0
+# Default: 20.0; EN: Single game-server request timeout. A timeout reconnects to prevent a late packet from matching the next query. ZH: 单个游戏服务器请求的超时秒数；超时后会重连，避免迟到封包错配到下一次查询。
+request_timeout_seconds = 20.0
+# Default: -1; EN: Reconnect attempts, -1 means forever. ZH: 重连次数，-1 表示无限。
+reconnect_retries = -1
+# Default: 5.0; EN: Initial reconnect delay seconds. ZH: 初始重连延迟秒数。
+reconnect_delay = 5.0
+# Default: 120.0; EN: Max reconnect delay seconds. ZH: 最大重连延迟秒数。
+reconnect_delay_max = 120.0
+[operations.headless_notice]
+# EN: Notices are sent to superusers and admin_notice groups.
+# ZH: 这些通知会发送给超级管理员和 admin_notice 管理群。
+# Default: true; EN: Send startup login failure notice. ZH: 启动时发送无头登录失败通知。
+login_notice = true
+# Default: built-in; EN: Startup login failure notice template. ZH: 启动登录失败通知模板。
+login_notice_message = "无头米米号登录未成功。\n米米号：{user_id}\n状态：{reason}\n依赖米米号登录的功能可能不可用；请检查账号、MD5密码、网络或赛尔号服务器状态。"
+# Default: true; EN: Send online/offline state notices. ZH: 发送在线/离线状态通知。
+state_notice = true
+# Default: built-in; EN: Offline state notice template. ZH: 掉线通知模板。
+state_offline_message = "无头米米号已掉线。\n米米号：{user_id}\n状态：{reason}\n来源：{source}"
+# Default: built-in; EN: Online state notice template. ZH: 恢复在线通知模板。
+state_online_message = "无头米米号已恢复登录。\n米米号：{user_id}\n离线时长：{offline_duration}\n来源：{source}"
+# Default: "00:05"; EN: Daily reconnect check times. ZH: 每日重连检查时间。
+reconnect_check_times = "00:05"
 
 [operations.startup_notice]
 # Default: true; EN: Enable startup notice. ZH: 启用启动通知。
@@ -1659,11 +1338,14 @@ message = "机器人已开启。"
 delay = 0.0
 
 [operations.docker_update]
-# Docker 更新依赖 Docker socket；Windows 源码运行建议关闭启动检查。
-# /重启机器人、/机器人重启直接打开维护菜单；/更新镜像、/更新Docker、
-# /更新docker 会先只读检查镜像，再打开同一菜单：1 仅重启；2 检查/更新镜像后重启。
+# Docker 更新也分两层：
+# - check_on_startup：容器自然启动时是否先检查镜像。
+# - check_on_restart：发送 /重启机器人 或 /更新镜像 时是否先检查镜像。
+# 两个开关都依赖 Docker socket；Windows 源码运行建议设为 false。
 # Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
 check_on_startup = true
+# Default: true; EN: Check Docker image before manual restart/update commands. ZH: 手动 /重启机器人、/更新镜像 前先检查 Docker 镜像；不需要可改为 false。
+check_on_restart = true
 # Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。
 image = "murmansk5000/ironsbot:latest"
 # Default: "ironsbot"; EN: Container name to update. ZH: 要更新的容器名。
@@ -1676,16 +1358,41 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
-# Default: 90.0; EN: Maximum seconds to wait for a Watchtower image handoff. ZH: Watchtower 镜像交接最多等待秒数；超过后按下方开关处理。
-handoff_timeout_seconds = 90.0
-# Default: true; EN: When Watchtower cannot finish the handoff, stop the stale updater and continue booting the current image. This does not roll back a target image that has already started successfully. ZH: Watchtower 无法完成交接时，停止残留更新器并继续启动当前镜像；不回滚已经成功启动的目标镜像。
-fallback_to_current_image_on_handoff_failure = true
+
+[operations.private_extensions]
+# Optional private extension package. The main Unraid/Docker image remains
+# murmansk5000/ironsbot:latest; when enabled, startup pulls this package through
+# the mounted Docker socket, validates its manifest, and installs it under /app/data.
+# Default: false; EN: Enable the private extension package. ZH: 启用私有扩展包。
+enabled = false
+# Default: "murmansk5000/ironsbot-private:latest"; EN: Private extension package image.
+# ZH: 私有扩展包镜像，不是机器人主镜像。
+image = "murmansk5000/ironsbot-private:latest"
+# Default: "/ironsbot_extensions"; EN: Read-only package directory inside that image.
+# ZH: 私有镜像内的只读扩展包目录。
+archive_path = "/ironsbot_extensions"
+# Default: "data/private_extensions"; EN: Installed package cache under /app/data.
+# ZH: 解包后的扩展缓存目录，会保留最后一次校验成功的版本。
+data_path = "data/private_extensions"
+# Default: 60.0; EN: Startup pull and archive-read timeout seconds.
+# ZH: 启动时拉取和读取扩展包的超时秒数；失败不会阻止机器人启动。
+timeout_seconds = 60.0
+
+# Private-only values are passed through without public schema knowledge.
+[operations.private_extensions.settings.player_lineup]
+timeout_seconds = 15.0
+cache_path = "data/seer/player_lineup_cache.sqlite"
+
+# Set DOCKER_REGISTRY_USERNAME and DOCKER_REGISTRY_TOKEN as Unraid/Docker
+# environment variables when the extension image is private. Do not put those
+# registry credentials in TOML. The same credentials are reused for Docker
+# image updates and private extension pulls.
 
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
 enabled = false
-# Default: "04:30:00"; EN: Daily restart times in HH:MM:SS. ZH: 每日重启时间，支持 HH:MM:SS。
-times = "04:30:00"
+# Default: "04:30"; EN: Daily restart times. ZH: 每日重启时间。
+times = "04:30"
 # Default: 10.0; EN: Grace seconds before signaling. ZH: 发信号前宽限秒数。
 grace_seconds = 10.0
 # Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。

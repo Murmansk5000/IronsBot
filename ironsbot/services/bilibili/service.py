@@ -3,67 +3,30 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
-from ironsbot.services.bilibili.dynamic_history import (
-    CompactedDynamicContent,
-    format_compacted_dynamic_content,
-    save_target_dynamics,
-)
-from ironsbot.services.bilibili.hydration import (
-    DynamicDetailFetcher,
-    hydrate_dynamic_item,
-)
+from ironsbot.services.bilibili.dynamic_history import save_target_dynamics
 from ironsbot.services.bilibili.menu import (
+    DYNAMIC_MENU_DEFAULT_LIMIT,
     DynamicDetailSelection,
     DynamicMenuResult,
     build_dynamic_detail_for_selection,
     build_dynamic_menu_text,
     dynamic_record_ids,
 )
-from ironsbot.services.bilibili.parser import (
-    dynamic_body_hydration_reason,
-    dynamic_content,
-    dynamic_id,
-    item_author_mid,
-    target_dynamics_from_response,
-)
-from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
-from ironsbot.services.bilibili.schedule import AutoCheckState, BoostSlot
-from ironsbot.services.seer.external_references import (
-    SeerInfoReference,
-    SeerInfoReferences,
-)
+from ironsbot.services.bilibili.parser import target_dynamics_from_response
+from ironsbot.services.bilibili.schedule import AutoCheckState
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine
+    from collections.abc import Awaitable, Callable
 
     from ironsbot.core.bilibili import BiliConfig
-    from ironsbot.core.tasks import TaskSpawner
-    from ironsbot.services.bilibili.dynamic_history import (
-        BiliDynamicHistoryStore,
-        DynamicHistoryRecord,
-    )
-    from ironsbot.services.bilibili.image_delivery_retries import (
-        BiliImageDeliveryRetryStore,
-    )
+    from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
     from ironsbot.services.bilibili.targets import BiliTargetService
-    from ironsbot.services.messaging.image_collage import ImageCollageService
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
 logger = logging.getLogger(__name__)
-
-
-class HistoryContentCompactor(Protocol):
-    async def __call__(
-        self,
-        item: dict[str, Any],
-        author_mid: int,
-        content: str,
-        *,
-        notify_failure: bool = True,
-    ) -> CompactedDynamicContent: ...
 
 
 class BiliCookieStore(Protocol):
@@ -85,187 +48,8 @@ class BilibiliService:
     cookie_store: BiliCookieStore
     history: BiliDynamicHistoryStore
     fetch_feed: Callable[[str], Awaitable[BiliFeedResponse]]
-    fetch_detail: DynamicDetailFetcher
-    spawn: TaskSpawner
-    image_collage: ImageCollageService | None = None
-    external_references: SeerInfoReferences | None = None
-    image_delivery_retries: BiliImageDeliveryRetryStore | None = None
-    history_content_compactor: HistoryContentCompactor | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
-    pending_check: bool = field(default=False, init=False)
-    pending_regular_check: bool = field(default=False, init=False)
-    pending_boost_slots: dict[str, BoostSlot] = field(default_factory=dict, init=False)
-    _detail_tasks: dict[str, asyncio.Task[dict[str, Any]]] = field(
-        default_factory=dict,
-        init=False,
-        repr=False,
-    )
-    _delivery_tasks: dict[str, asyncio.Task[None]] = field(
-        default_factory=dict,
-        init=False,
-        repr=False,
-    )
-    _history_backfill_attempted: bool = field(default=False, init=False, repr=False)
-    _history_summary_backfill_attempted: bool = field(
-        default=False,
-        init=False,
-        repr=False,
-    )
-
-    async def resolve_dynamic_item(
-        self,
-        item: dict[str, Any],
-        *,
-        cookie: str | None = None,
-    ) -> dict[str, Any]:
-        typed_item = dict(item)
-        item_id = dynamic_id(typed_item)
-        if not item_id or dynamic_body_hydration_reason(typed_item) is None:
-            return typed_item
-
-        task = self._detail_tasks.get(item_id)
-        if task is None:
-            task = self.spawn(
-                hydrate_dynamic_item(
-                    typed_item,
-                    cookie=self.cookie_store.load() if cookie is None else cookie,
-                    fetch_detail=self.fetch_detail,
-                ),
-                name=f"bilibili-dynamic-detail-{item_id}",
-            )
-            self._detail_tasks[item_id] = task
-        try:
-            return await asyncio.shield(task)
-        finally:
-            if task.done() and self._detail_tasks.get(item_id) is task:
-                self._detail_tasks.pop(item_id, None)
-
-    def delivery_in_progress(self, item_id: str) -> bool:
-        task = self._delivery_tasks.get(item_id)
-        return task is not None and not task.done()
-
-    async def history_content_override(
-        self,
-        record: DynamicHistoryRecord,
-    ) -> str | None:
-        content = dynamic_content(record.item)
-        if len(content) <= self.config.push.content_max_chars:
-            return None
-        if record.summary and record.summary_generated_by_ai:
-            return format_compacted_dynamic_content(
-                CompactedDynamicContent(record.summary, generated_by_ai=True)
-            )
-        if self.history_content_compactor is None:
-            return record.summary or None
-
-        compact = await self.history_content_compactor(
-            record.item,
-            record.uid,
-            content,
-            notify_failure=False,
-        )
-        if compact.text is not None:
-            self.history.save_summary(
-                record.dynamic_id,
-                compact.text,
-                generated_by_ai=compact.generated_by_ai,
-            )
-        if compact.text is not None:
-            return format_compacted_dynamic_content(compact)
-        return record.summary or None
-
-    def spawn_delivery(
-        self,
-        item_id: str,
-        coroutine: Coroutine[Any, Any, None],
-    ) -> asyncio.Task[None]:
-        task = self.spawn(coroutine, name=f"bilibili-delivery-{item_id}")
-        self._delivery_tasks[item_id] = task
-        task.add_done_callback(
-            lambda finished: self._remove_delivery_task(item_id, finished)
-        )
-        return task
-
-    def _remove_delivery_task(
-        self,
-        item_id: str,
-        task: asyncio.Task[None],
-    ) -> None:
-        if self._delivery_tasks.get(item_id) is task:
-            self._delivery_tasks.pop(item_id, None)
-
-    async def backfill_recent_empty_bodies(
-        self,
-    ) -> int:
-        """Backfill missing bodies among the items exposed by history query."""
-
-        if self._history_backfill_attempted:
-            return 0
-
-        updated = 0
-        cookie = self.cookie_store.load()
-        if not cookie:
-            return 0
-        self._history_backfill_attempted = True
-        for record in self.history.list(
-            limit=self.config.storage.history_query_limit,
-        ):
-            if dynamic_body_hydration_reason(record.item) is None:
-                continue
-            resolved = await self.resolve_dynamic_item(record.item, cookie=cookie)
-            if dynamic_body_hydration_reason(resolved) is not None:
-                continue
-            snapshot = build_dynamic_history_snapshot(
-                resolved,
-                pub_ts=record.pub_ts,
-                author_mid=record.uid,
-                suppression_reason=record.suppression_reason,
-                pushed=record.pushed,
-            )
-            self.history.save_snapshot(snapshot)
-            updated += 1
-        if updated:
-            logger.info("Bilibili dynamic history bodies backfilled: %s", updated)
-        return updated
-
-    async def backfill_recent_summaries(self) -> int:
-        if self._history_summary_backfill_attempted:
-            return 0
-        if self.history_content_compactor is None:
-            return 0
-        self._history_summary_backfill_attempted = True
-
-        updated = 0
-        records = self.history.list(limit=self.config.storage.history_query_limit)
-        for record in reversed(records):
-            if (
-                record.summary_generated_by_ai
-                or len(dynamic_content(record.item))
-                <= self.config.push.content_max_chars
-            ):
-                continue
-            compact = await self.history_content_compactor(
-                record.item,
-                record.uid,
-                dynamic_content(record.item),
-                notify_failure=False,
-            )
-            if compact.text is None:
-                continue
-            self.history.save_summary(
-                record.dynamic_id,
-                compact.text,
-                generated_by_ai=compact.generated_by_ai,
-            )
-            updated += 1
-        if updated:
-            logger.info("Bilibili dynamic history summaries backfilled: %s", updated)
-        return updated
-
-    async def backfill_recent_history(self) -> None:
-        await self.backfill_recent_empty_bodies()
-        await self.backfill_recent_summaries()
 
     async def query_dynamic_menu(
         self,
@@ -296,34 +80,14 @@ class BilibiliService:
             newest_first=True,
         )
         if target_dynamics:
-            cookie = self.cookie_store.load()
-            target_dynamics = [
-                (pub_ts, await self.resolve_dynamic_item(item, cookie=cookie))
-                for pub_ts, item in target_dynamics
-            ]
-            official_dynamics = [
-                (pub_ts, item)
-                for pub_ts, item in target_dynamics
-                if self.targets.is_seer_category_uid(item_author_mid(item))
-            ]
-            other_dynamics = [
-                (pub_ts, item)
-                for pub_ts, item in target_dynamics
-                if not self.targets.is_seer_category_uid(item_author_mid(item))
-            ]
             save_target_dynamics(
                 self.history,
-                other_dynamics,
+                target_dynamics,
                 suppress_patterns=self.config.filters.suppress_push_patterns,
-            )
-            save_target_dynamics(
-                self.history,
-                official_dynamics,
-                suppress_patterns=[],
             )
 
         records = self.history.list(
-            limit=self.config.storage.history_query_limit,
+            limit=DYNAMIC_MENU_DEFAULT_LIMIT,
             uids=query_uids,
         )
         if not records:
@@ -337,15 +101,7 @@ class BilibiliService:
         return DynamicMenuResult(
             status="ok",
             dynamic_ids=tuple(dynamic_record_ids(records)),
-            prompt=self.history_reference_message(build_dynamic_menu_text(records)),
-        )
-
-    def history_reference_message(self, message: str) -> str:
-        if self.external_references is None:
-            return message
-        return self.external_references.append(
-            message,
-            SeerInfoReference.BILIBILI_HISTORY,
+            prompt=build_dynamic_menu_text(records),
         )
 
     def select_dynamic(

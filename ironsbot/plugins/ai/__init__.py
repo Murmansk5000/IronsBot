@@ -17,6 +17,8 @@ from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import bot_mention
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
@@ -38,7 +40,6 @@ RESERVED_PRIVATE_COMMANDS = {
     "活动",
     "链接",
 }
-PRIVATE_MENU_CHOICES = {"y", "n", "是", "否", "上一页", "下一页", "返回"}
 
 
 def _group_id(event: MessageEvent) -> int | None:
@@ -46,16 +47,9 @@ def _group_id(event: MessageEvent) -> int | None:
 
 
 def _is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return False
-    command = normalize_command_text(prompt).lstrip("/")
-    is_index_choice = command.isdecimal() or (
-        len(command) > 1 and command[0].isalpha() and command[1:].isdecimal()
-    )
     return (
-        command in RESERVED_PRIVATE_COMMANDS
-        or command.lower() in PRIVATE_MENU_CHOICES
-        or is_index_choice
+        not isinstance(event, GroupMessageEvent)
+        and normalize_command_text(prompt).lstrip("/") in RESERVED_PRIVATE_COMMANDS
     )
 
 
@@ -109,6 +103,7 @@ def install(
     registry: MatcherRegistry,
     service: AiService,
     features: FeatureService,
+    group_aliases: Mapping[str, int],
     bot_mention_block_service: BotMentionBlockService,
 ) -> None:
     async def run_ai_chat(
@@ -135,6 +130,7 @@ def install(
             source_context=await build_notice_source(
                 event,
                 prompt,
+                group_aliases,
                 bot=bot,
             ),
         )
@@ -143,11 +139,7 @@ def install(
         await finish_event_reply(matcher, event, reply)
 
     direct_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            "ai_chat",
-            help_ids=("ai_chat.private",),
-            closes_active_conversation=False,
-        ),
+        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.private",)),
         rule=Rule(bind(_capture_ai_prompt, features=features)),
         priority=registry.priority("ai_chat"),
         block=True,
@@ -155,11 +147,7 @@ def install(
     direct_matcher.append_handler(run_ai_chat)
 
     group_at_matcher = registry.on_message(
-        policy=CommandPolicy.command(
-            "ai_chat",
-            help_ids=("ai_chat.group",),
-            closes_active_conversation=False,
-        ),
+        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.group",)),
         rule=bot_mention()
         & Rule(bind(_capture_group_ai_prompt, features=features)),
         priority=registry.pre_command_priority("ai_group_at"),

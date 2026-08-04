@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -13,11 +13,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.config.player_accounts import PlayerAccountRegistry
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
-from ironsbot.runtime.matchers import (
-    QUEUED_CONVERSATION_RESERVATION_PRIORITY,
-    CommandPolicy,
-    bind_async,
-)
+from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
@@ -26,14 +22,9 @@ from ironsbot.runtime.rules import (
     explicit_command,
     member_target_command,
 )
-from ironsbot.services.seer.external_references import (
-    SeerInfoReference,
-    SeerInfoReferences,
-)
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
-from ironsbot.services.seer.player_admin_binding import bind_player_for_user
 from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -53,25 +44,12 @@ from .player_context import (
     PLAYER_ID_KEY,
     PLAYER_QUERY_IS_EXPLICIT_KEY,
 )
-from .player_detail_conversation import (
-    begin_player_detail_conversation,
-    reserve_player_detail_conversation,
-    send_player_info_with_detail_prompt,
-)
-from .player_target import (
-    PlayerTargetResolution,
-    allows_private_player_aliases,
-    default_player_id_for,
-    protected_shortcut_target_error,
-    resolve_event_player_reference_target,
-    resolve_event_player_target,
-)
-from .player_target_selection import enter_player_target_selection
+from .player_detail_conversation import send_player_info_with_detail_prompt
+from .player_target import resolve_event_player_reference, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.player_service import PlayerService
-    from ironsbot.services.seer.team import SeerTeamQueryService
 
 @dataclass(frozen=True, slots=True)
 class PlayerCommandDependencies:
@@ -83,26 +61,9 @@ class PlayerCommandDependencies:
     player_accounts: PlayerAccountRegistry = field(
         default_factory=lambda: PlayerAccountRegistry(())
     )
-    external_references: SeerInfoReferences | None = None
-    team_query: SeerTeamQueryService | None = None
-
-
-_PLAYER_TARGET_KEY = "_player_target"
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
-
-
-def _parse_pending_binding_event(
-    event: MessageEvent,
-    player_id: int,
-) -> bool | None:
-    """Accept confirmation tokens from the active owner's current message."""
-
-    context = message_input_context(event)
-    if context.has_member_mentions:
-        return None
-    return _parse_pending_binding_choice(context.text, player_id)
 
 
 async def prompt_for_unbound_player_id(
@@ -128,22 +89,13 @@ async def _is_player_id_query(
     if not arg:
         state[PLAYER_QUERY_IS_EXPLICIT_KEY] = False
         return True
-    target = resolve_event_player_target(
+    if not arg.isdecimal() and resolve_event_player_reference(
         dependencies.player_accounts,
         event,
         arg,
-        binding_for_user=lambda user_id: default_player_id_for(
-            dependencies.player, user_id
-        ),
-        allow_private=allows_private_player_aliases(
-            dependencies.features, int(event.get_user_id())
-        ),
-        allow_partial_reference=True,
-    )
-    if not target.recognized:
+    ) is None:
         return False
     state[BOT_COMMAND_ARG_KEY] = arg
-    state[_PLAYER_TARGET_KEY] = target
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
     return True
 
@@ -163,63 +115,23 @@ async def validate_player_id(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    player_reference = (
-        str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-        if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True)
-        else None
-    )
-    target = state.get(_PLAYER_TARGET_KEY)
-    if not isinstance(target, PlayerTargetResolution):
-        target = resolve_event_player_target(
+    numeric_player_id = None
+    if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
+        player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
+        numeric_player_id = resolve_event_player_reference(
             dependencies.player_accounts,
             event,
             player_reference,
-            binding_for_user=lambda user_id: default_player_id_for(
-                dependencies.player, user_id
-            ),
-            allow_private=allows_private_player_aliases(
-                dependencies.features, event.user_id
-            ),
-            allow_partial_reference=True,
         )
+        if numeric_player_id is None:
+            await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
+    target = resolve_player_target(
+        event,
+        numeric_player_id=numeric_player_id,
+        binding_for_user=dependencies.player.default_player_id,
+    )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
-        return
-    if access_error := protected_shortcut_target_error(
-        dependencies.player,
-        event.user_id,
-        target,
-    ):
-        await finish_event_reply(matcher, event, access_error)
-        return
-    if target.choices:
-        async def select_player_target(
-            player_id: int,
-            selection_matcher: Matcher,
-            selection_event: MessageEvent,
-        ) -> None:
-            selection_state = selection_matcher.state
-            selection_state[PLAYER_ID_KEY] = player_id
-            selection_state[_PLAYER_TARGET_KEY] = PlayerTargetResolution(
-                player_id,
-                offer_binding=True,
-                is_shortcut_target=target.is_shortcut_target,
-            )
-            selection_state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
-            await handle_player(
-                dependencies,
-                selection_matcher,
-                selection_event,
-                selection_state,
-            )
-
-        await enter_player_target_selection(
-            matcher,
-            event,
-            state,
-            target,
-            select_player_target,
-        )
         return
     if target.player_id is None:
         await prompt_for_unbound_player_id(dependencies, matcher, event)
@@ -235,16 +147,9 @@ async def handle_player(
     state: T_State,
 ) -> None:
     explicit = bool(state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True))
-    await begin_player_detail_conversation(
-        dependencies.player,
-        dependencies.detail_extensions,
-        dependencies.features,
-        matcher,
-        event,
-    )
     result = await dependencies.player.query(
         int(state[PLAYER_ID_KEY]),
-        qq_user_id=event.user_id,
+        actor=message_input_context(event).message.actor,
         explicit=explicit,
         group_id=event_group_id(event),
     )
@@ -257,117 +162,38 @@ async def handle_player(
     )
 
 
-async def handle_player_binding_command(  # noqa: PLR0911 - binding errors are user-facing
+async def handle_player_binding_command(
     dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
     player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    context = message_input_context(event)
-    target_qq_user_id: int | None = None
-    is_superuser = allows_private_player_aliases(dependencies.features, event.user_id)
-    if context.has_member_mentions:
-        if not isinstance(event, GroupMessageEvent):
-            await finish_event_reply(
-                matcher,
-                event,
-                "仅群聊可为成员绑定米米号。",
-            )
-            return
-        if not is_superuser:
-            await finish_event_reply(
-                matcher,
-                event,
-                "仅超级管理员可为其他成员绑定米米号。",
-            )
-            return
-        if len(context.member_user_ids) != 1:
-            await finish_event_reply(
-                matcher,
-                event,
-                "请一次只 @ 一名成员绑定米米号。",
-            )
-            return
-        target_qq_user_id = context.member_user_ids[0]
-
-    target = resolve_event_player_reference_target(
-        dependencies.player_accounts,
+    player_id = (
+        resolve_event_player_reference(
+            dependencies.player_accounts,
+            event,
+            player_reference,
+        )
+        if player_reference
+        else None
+    )
+    target = resolve_player_target(
         event,
-        player_reference,
-        allow_private=is_superuser,
-        allow_partial_reference=True,
+        numeric_player_id=player_id,
+        binding_for_user=dependencies.player.default_player_id,
+        allow_default_binding=False,
     )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
         return
-    if not target.recognized:
-        await finish_event_reply(
-            matcher,
-            event,
-            "未找到可绑定的米米号账号，请填写数字米米号或当前会话可见的账号别名。",
-        )
-        return
-    if target.choices:
-        async def select_player_binding_target(
-            player_id: int,
-            selection_matcher: Matcher,
-            selection_event: MessageEvent,
-        ) -> None:
-            await _handle_player_binding_target(
-                dependencies,
-                selection_matcher,
-                selection_event,
-                selection_matcher.state,
-                player_id,
-                target_qq_user_id=target_qq_user_id,
-            )
-
-        await enter_player_target_selection(
-            matcher,
-            event,
-            state,
-            target,
-            select_player_binding_target,
-            title="请选择要绑定的米米号：",
-        )
-        return
     if target.player_id is None:
-        await finish_event_reply(matcher, event, PLAYER_ID_ERROR_MESSAGE)
-        return
-    await _handle_player_binding_target(
-        dependencies,
-        matcher,
-        event,
-        state,
+        await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
+    result = await dependencies.player.bind_player(
         target.player_id,
-        target_qq_user_id=target_qq_user_id,
+        actor=message_input_context(event).message.actor,
+        group_id=event_group_id(event),
     )
-
-
-async def _handle_player_binding_target(  # noqa: PLR0913 - binding context is explicit
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-    player_id: int,
-    *,
-    target_qq_user_id: int | None,
-) -> None:
-    if target_qq_user_id is None:
-        result = await dependencies.player.bind_player(
-            player_id,
-            qq_user_id=event.user_id,
-            group_id=event_group_id(event),
-        )
-    else:
-        result = await bind_player_for_user(
-            dependencies.player,
-            player_id,
-            actor_qq_user_id=event.user_id,
-            target_qq_user_id=target_qq_user_id,
-            group_id=event_group_id(event),
-        )
     await _handle_player_query_result(
         dependencies,
         matcher,
@@ -402,24 +228,17 @@ async def _handle_player_query_result(
             namespace=PLAYER_BINDING_NAMESPACE,
             handlers=[bind_async(handle_player_binding_choice, dependencies)],
             reply_check=lambda reply: (
-                _parse_pending_binding_event(
-                    reply,
+                _parse_pending_binding_choice(
+                    reply.get_plaintext(),
                     pending.player_id,
                 )
-                is not None
-            ),
-            group_reply_check=lambda reply: (
-                reply.user_id == event.user_id
-                and _parse_pending_binding_event(reply, pending.player_id)
                 is not None
             ),
             prompt=dependencies.player.binding_offer(
                 pending,
                 replacement=result.binding_replacement,
             ),
-            page_id="player:binding",
         )
-        return
     await _send_pending_player_query(
         dependencies,
         matcher,
@@ -438,12 +257,15 @@ async def handle_player_binding_choice(
     pending = state.get(PLAYER_BINDING_PENDING_KEY)
     if not isinstance(pending, PendingPlayerQuery):
         return
-    choice = _parse_pending_binding_event(event, pending.player_id)
+    choice = _parse_pending_binding_choice(
+        event.get_plaintext(),
+        pending.player_id,
+    )
     if choice is None:
         return
     replacement = state.get(PLAYER_BINDING_REPLACEMENT_KEY)
     dependencies.player.save_binding_choice(
-        event.user_id,
+        message_input_context(event).message.actor,
         pending,
         accepted=choice,
         replacing_existing=isinstance(replacement, PlayerBindingState),
@@ -467,7 +289,10 @@ async def _send_pending_player_query(
     plan = pending.section_plan
 
     def after_initial_reply_sent() -> None:
-        dependencies.player.record_returned_query(event.user_id, pending)
+        dependencies.player.record_returned_query(
+            message_input_context(event).message.actor,
+            pending,
+        )
         dependencies.player.start_background_refresh(
             pending,
             group_id=event_group_id(event),
@@ -481,19 +306,10 @@ async def _send_pending_player_query(
         event,
         state,
         player_id=pending.player_id,
-        player_message=(
-            pending.player_message
-            if dependencies.external_references is None
-            else dependencies.external_references.append(
-                pending.player_message,
-                SeerInfoReference.PLAYER_QUERY,
-            )
-        ),
+        player_message=pending.player_message,
         has_collection=plan.has_collection,
         has_peak=plan.needs_peak_section,
         has_autocard=plan.has_autocard_rank,
-        base_snapshot=pending.base_snapshot,
-        team_query=dependencies.team_query,
         on_sent=after_initial_reply_sent,
     )
 
@@ -506,7 +322,7 @@ async def handle_player_unbind(
     await finish_event_reply(
         matcher,
         event,
-        service.unbind(event.user_id),
+        service.unbind(message_input_context(event).message.actor),
     )
 
 
@@ -517,26 +333,7 @@ def install(group: SeerMatcherGroup) -> None:
         group.features,
         group.resources.player_detail_extensions,
         group.player_accounts,
-        group.resources.external_references,
-        group.resources.team_query,
     )
-    reservation_matcher = group.on_message(
-        policy=CommandPolicy.exempt("pending player detail menu reservation"),
-        rule=seer_feature_rule(group.features, "seer_player")
-        & Rule(bind_async(_is_player_id_query, dependencies))
-        & member_target_command(),
-        priority=QUEUED_CONVERSATION_RESERVATION_PRIORITY,
-        block=False,
-    )
-    reservation_matcher.append_handler(
-        bind_async(
-            reserve_player_detail_conversation,
-            service,
-            group.resources.player_detail_extensions,
-            group.features,
-        )
-    )
-
     binding_matcher = group.on_message(
         policy=CommandPolicy.command(
             "seer_player_binding",
@@ -544,7 +341,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
-        & member_target_command(),
+        & explicit_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )

@@ -2,10 +2,27 @@
 from anyio import Path as AsyncPath
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
+from nonebot.plugin import PluginMetadata
 
+from ironsbot.core.features import Feature
+from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import explicit_command
+
+__plugin_meta__ = PluginMetadata(
+    name="关于",
+    description="显示 IronsBot 项目、版本与鸣谢信息。",
+    usage="发送“关于”。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
 ABOUT_MESSAGE = """
 🤖 IronsBot
@@ -53,3 +70,33 @@ def install(registry: MatcherRegistry) -> None:
         block=True,
     )
     matcher.append_handler(handle_about)
+
+
+def plugin_contribution() -> PluginContribution:
+    """Declare the complete runtime contribution owned by this top-level plugin."""
+
+    return PluginContribution(
+        id="about",
+        features=frozenset({Feature.ABOUT}),
+        help=HelpEntry(
+            name="关于",
+            description="IronsBot 项目信息与当前版本",
+            group="core",
+            order=20,
+        ),
+        commands=(
+            CommandDescriptor(
+                id="about",
+                plugin_id="about",
+                section="查看",
+                examples=("关于",),
+                description="查看项目、版本和主要能力",
+                features_any=("about",),
+            ),
+        ),
+        install=install,
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(__plugin_meta__, plugin_contribution())

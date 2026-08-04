@@ -16,6 +16,8 @@ class ExternalPluginLoadError(ValueError):
 
 
 def load_external_plugin(module: str) -> None:
+    if nonebot.get_plugin(module) is not None:
+        return
     if nonebot.load_plugin(module) is None:
         raise ExternalPluginLoadError(module)
 

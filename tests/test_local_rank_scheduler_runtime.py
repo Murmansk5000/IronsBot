@@ -58,8 +58,6 @@ class FakeScheduler:
 
 
 class FakeHeadless:
-    healthy_worker_count = 3
-
     def get_game(self) -> object:
         return object()
 
@@ -69,17 +67,9 @@ class FakeRefreshService:
         self.config = config
         self._result = result
         self.background_calls: list[bool] = []
-        self.parallelism_calls: list[int] = []
 
-    async def refresh(
-        self,
-        _game: object,
-        *,
-        background: bool = False,
-        max_parallelism: int = 1,
-    ) -> object:
+    async def refresh(self, _game: object, *, background: bool = False) -> object:
         self.background_calls.append(background)
-        self.parallelism_calls.append(max_parallelism)
         return self._result
 
 
@@ -109,7 +99,6 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
             "args": [HEADLESS, service],
             "hour": 3,
             "minute": 30,
-            "second": 0,
         }
     ]
 
@@ -123,7 +112,7 @@ def test_local_rank_refresh_migrates_legacy_hour_and_minute(tmp_path: Path) -> N
         }
     )
 
-    assert config.time == "03:30:00"
+    assert config.time == "03:30"
 
 
 def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
@@ -148,18 +137,16 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "replace_existing": True,
             "args": [HEADLESS, service],
             "minute": "4/15",
-            "second": 0,
             "jitter": 240,
         },
         {
             "func": seer_runtime._scheduled_rank_page_refresh,
             "trigger": "cron",
-            "id": "seer_rank_page_refresh_011500",
+            "id": "seer_rank_page_refresh_0115",
             "replace_existing": True,
             "args": [HEADLESS, service],
             "hour": 1,
             "minute": 15,
-            "second": 0,
             "jitter": 240,
         },
     ]
@@ -174,13 +161,7 @@ def test_scheduled_refreshes_use_background_priority() -> None:
         )
         pages = FakeRefreshService(
             SimpleNamespace(enabled=True, active_start="", active_end=""),
-            SimpleNamespace(
-                total=1,
-                success=1,
-                failed=0,
-                parallelism=3,
-                worker_page_counts={},
-            ),
+            SimpleNamespace(total=1, success=1, failed=0),
         )
 
         await seer_runtime._scheduled_local_rank_refresh(
@@ -194,7 +175,5 @@ def test_scheduled_refreshes_use_background_priority() -> None:
 
         assert local.background_calls == [True]
         assert pages.background_calls == [True]
-        assert local.parallelism_calls == [1]
-        assert pages.parallelism_calls == [3]
 
     asyncio.run(run())

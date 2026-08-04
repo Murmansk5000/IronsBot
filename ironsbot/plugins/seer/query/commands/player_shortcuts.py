@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
@@ -10,17 +10,13 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     MessageSegment,
 )
-from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.core.request_coordination import (
-    RequestDecision,
-    request_response_scope,
-)
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import member_target_command
@@ -28,6 +24,7 @@ from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_shortcuts import (
@@ -40,14 +37,7 @@ from ironsbot.services.seer.player_shortcuts import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player import PlayerCommandDependencies
-from .player_target import (
-    PlayerTargetResolution,
-    allows_private_player_aliases,
-    default_player_id_for,
-    protected_shortcut_target_error,
-    resolve_event_player_target,
-)
-from .player_target_selection import enter_player_target_selection
+from .player_target import resolve_event_player_reference, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
@@ -55,21 +45,17 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.query_result import QueryReply
-from ironsbot.services.seer.query_work import QueryWorkMeter, query_work_scope
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
 _EXTENSION_SHORTCUT_COMMAND_KEY = "_player_extension_shortcut_command"
-_SHORTCUT_TARGET_KEY = "_player_shortcut_target"
-_EXTENSION_SHORTCUT_TARGET_KEY = "_player_extension_shortcut_target"
 
 
 @dataclass(frozen=True, slots=True)
 class PlayerExtensionShortcutCommand:
-    """An extension action plus its normalized player target reference."""
+    """A public-resolved extension action plus an optional numeric target."""
 
     action: PlayerDetailExtensionAction
     player_id: int | None
-    player_reference: str | None = None
 
 
 def _build_shortcut_reply_message(reply: QueryReply) -> str | Message:
@@ -94,26 +80,20 @@ async def _is_player_shortcut(
     command = parse_player_shortcut_command(event.get_plaintext())
     if command is None:
         return False
-    target = resolve_event_player_target(
-        dependencies.player_accounts,
-        event,
-        command.player_reference
-        if command.player_reference is not None
-        else (str(command.player_id) if command.player_id is not None else None),
-        binding_for_user=lambda user_id: default_player_id_for(
-            dependencies.player, user_id
-        ),
-        allow_private=allows_private_player_aliases(
-            dependencies.features, int(event.get_user_id())
-        ),
-        allow_partial_reference=True,
-    )
-    if not target.recognized:
-        return False
-    if command.player_reference is not None and target.player_id is not None:
-        command = PlayerShortcutCommand(kind=command.kind, player_id=target.player_id)
+    if command.player_reference is not None:
+        player_reference = command.player_reference
+        player_id = resolve_event_player_reference(
+            dependencies.player_accounts,
+            event,
+            player_reference,
+        )
+        if player_id is None:
+            return False
+        command = PlayerShortcutCommand(
+            kind=command.kind,
+            player_id=player_id,
+        )
     state[_SHORTCUT_COMMAND_KEY] = command
-    state[_SHORTCUT_TARGET_KEY] = target
     return True
 
 
@@ -131,28 +111,19 @@ async def _is_player_extension_shortcut(
     action, player_reference = resolved
     if not event_is_feature_allowed(dependencies.features, event, action.feature):
         return False
-    target = resolve_event_player_target(
-        dependencies.player_accounts,
-        event,
-        player_reference or None,
-        binding_for_user=lambda user_id: default_player_id_for(
-            dependencies.player, user_id
-        ),
-        allow_private=allows_private_player_aliases(
-            dependencies.features, int(event.get_user_id())
-        ),
-        allow_partial_reference=True,
-    )
-    if not target.recognized:
-        return False
+    player_id = None
+    if player_reference:
+        player_id = resolve_event_player_reference(
+            dependencies.player_accounts,
+            event,
+            player_reference,
+        )
+        if player_id is None:
+            return False
     state[_EXTENSION_SHORTCUT_COMMAND_KEY] = PlayerExtensionShortcutCommand(
-        action=action,
-        player_id=target.player_id,
-        player_reference=(player_reference or None)
-        if target.player_id is None
-        else None,
+        action,
+        player_id,
     )
-    state[_EXTENSION_SHORTCUT_TARGET_KEY] = target
     return True
 
 
@@ -164,60 +135,13 @@ async def handle_player_shortcut(
 ) -> None:
     service = dependencies.player
     command: PlayerShortcutCommand = state[_SHORTCUT_COMMAND_KEY]
-    target = state.get(_SHORTCUT_TARGET_KEY)
-    if not isinstance(target, PlayerTargetResolution):
-        target = resolve_event_player_target(
-            dependencies.player_accounts,
-            event,
-            command.player_reference
-            if command.player_reference is not None
-            else (str(command.player_id) if command.player_id is not None else None),
-            binding_for_user=lambda user_id: default_player_id_for(service, user_id),
-            allow_private=allows_private_player_aliases(
-                dependencies.features, event.user_id
-            ),
-            allow_partial_reference=True,
-        )
+    target = resolve_player_target(
+        event,
+        numeric_player_id=command.player_id,
+        binding_for_user=service.default_player_id,
+    )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
-        return
-    if access_error := protected_shortcut_target_error(
-        service,
-        event.user_id,
-        target,
-    ):
-        await finish_event_reply(matcher, event, access_error)
-        return
-    if target.choices:
-        async def select_player_target(
-            player_id: int,
-            selection_matcher: Matcher,
-            selection_event: MessageEvent,
-        ) -> None:
-            selection_state = selection_matcher.state
-            selection_state[_SHORTCUT_COMMAND_KEY] = PlayerShortcutCommand(
-                kind=command.kind,
-                player_id=player_id,
-            )
-            selection_state[_SHORTCUT_TARGET_KEY] = PlayerTargetResolution(
-                player_id,
-                offer_binding=True,
-                is_shortcut_target=target.is_shortcut_target,
-            )
-            await handle_player_shortcut(
-                dependencies,
-                selection_matcher,
-                selection_event,
-                selection_state,
-            )
-
-        await enter_player_target_selection(
-            matcher,
-            event,
-            state,
-            target,
-            select_player_target,
-        )
         return
     command = PlayerShortcutCommand(kind=command.kind, player_id=target.player_id)
 
@@ -227,112 +151,14 @@ async def handle_player_shortcut(
     reply = await execute_player_shortcut(
         service,
         command,
-        event.user_id,
+        message_input_context(event).message.actor,
         group_id=event_group_id(event),
         send_status=send_status,
     )
-    await _finish_shortcut_reply(
-        service,
-        command,
+    await finish_event_reply(
         matcher,
         event,
-        reply,
-    )
-
-
-async def _finish_shortcut_reply(
-    service: PlayerService,
-    command: PlayerShortcutCommand,
-    matcher: Matcher,
-    event: MessageEvent,
-    reply: QueryReply,
-) -> None:
-    try:
-        await finish_event_reply(
-            matcher,
-            event,
-            _build_shortcut_reply_message(reply),
-        )
-    except FinishedException:
-        _record_shortcut_delivery(service, event.user_id, command, reply)
-        raise
-    else:
-        _record_shortcut_delivery(service, event.user_id, command, reply)
-
-
-def _record_shortcut_delivery(
-    service: PlayerService,
-    user_id: int,
-    command: PlayerShortcutCommand,
-    reply: QueryReply,
-) -> None:
-    record = getattr(service, "record_returned_shortcut", None)
-    if callable(record):
-        record(user_id, command, reply)
-
-
-async def _enter_extension_target_selection(  # noqa: PLR0913
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-    target: PlayerTargetResolution,
-    command: PlayerExtensionShortcutCommand,
-) -> None:
-    async def select_player_target(
-        player_id: int,
-        selection_matcher: Matcher,
-        selection_event: MessageEvent,
-    ) -> None:
-        selection_state = selection_matcher.state
-        selection_state[_EXTENSION_SHORTCUT_COMMAND_KEY] = (
-            PlayerExtensionShortcutCommand(
-                action=command.action,
-                player_id=player_id,
-            )
-        )
-        selection_state[_EXTENSION_SHORTCUT_TARGET_KEY] = PlayerTargetResolution(
-            player_id,
-            offer_binding=True,
-            is_shortcut_target=target.is_shortcut_target,
-        )
-        await handle_player_extension_shortcut(
-            dependencies,
-            selection_matcher,
-            selection_event,
-            selection_state,
-        )
-
-    await enter_player_target_selection(
-        matcher,
-        event,
-        state,
-        target,
-        select_player_target,
-    )
-
-
-def _resolve_extension_shortcut_target(
-    dependencies: PlayerCommandDependencies,
-    event: MessageEvent,
-    command: PlayerExtensionShortcutCommand,
-    target: object,
-) -> PlayerTargetResolution:
-    if isinstance(target, PlayerTargetResolution):
-        return target
-    return resolve_event_player_target(
-        dependencies.player_accounts,
-        event,
-        command.player_reference
-        if command.player_reference is not None
-        else (str(command.player_id) if command.player_id is not None else None),
-        binding_for_user=lambda user_id: default_player_id_for(
-            dependencies.player, user_id
-        ),
-        allow_private=allows_private_player_aliases(
-            dependencies.features, event.user_id
-        ),
-        allow_partial_reference=True,
+        _build_shortcut_reply_message(reply),
     )
 
 
@@ -345,79 +171,31 @@ async def handle_player_extension_shortcut(
     command = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
     if not isinstance(command, PlayerExtensionShortcutCommand):
         return
-    target = _resolve_extension_shortcut_target(
-        dependencies,
+    target = resolve_player_target(
         event,
-        command,
-        state.get(_EXTENSION_SHORTCUT_TARGET_KEY),
+        numeric_player_id=command.player_id,
+        binding_for_user=dependencies.player.default_player_id,
     )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
         return
-    if access_error := protected_shortcut_target_error(
-        dependencies.player,
-        event.user_id,
-        target,
-    ):
-        await finish_event_reply(matcher, event, access_error)
-        return
-    if target.choices:
-        await _enter_extension_target_selection(
-            dependencies,
-            matcher,
-            event,
-            state,
-            target,
-            command,
-        )
-        return
     if target.player_id is None:
         await finish_event_reply(matcher, event, unbound_player_shortcut_message())
         return
-
-    async def send_status(decision: RequestDecision) -> None:
+    async def send_status(label: str, *, queued: bool) -> None:
         await send_event_reply(
             matcher,
             event,
-            player_request_admission_message(
-                decision.label,
-                queued=decision.queued,
-            ),
+            player_request_admission_message(label, queued=queued),
         )
 
-    meter = QueryWorkMeter("foreground")
-    with (
-        request_response_scope(
-            command.action.action.label,
-            send_status,
-        ),
-        query_work_scope(meter),
-    ):
+    with request_feedback_scope(command.action.action.label, send_status):
         reply = await command.action.query(
             target.player_id,
             event.user_id,
             event_group_id(event),
         )
-    if reply.complete and (reply.text or reply.image is not None):
-        meter.succeeded(command.action.work_unit)
-    reply = replace(reply, query_work=meter.result())
-    try:
-        await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
-    except FinishedException:
-        dependencies.player.record_returned_detail_reply(
-            qq_user_id=event.user_id,
-            player_id=target.player_id,
-            action_key=command.action.action.id,
-            reply=reply,
-        )
-        raise
-    else:
-        dependencies.player.record_returned_detail_reply(
-            qq_user_id=event.user_id,
-            player_id=target.player_id,
-            action_key=command.action.action.id,
-            reply=reply,
-        )
+    await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
 
 
 def _shortcut_command_id(
@@ -430,17 +208,17 @@ def _shortcut_command_id(
 
 
 def _shortcut_semantic_request(
-    _service: PlayerService,
-    _event: MessageEvent,
+    service: PlayerService,
+    event: MessageEvent,
     state: T_State,
 ) -> SemanticRequest | None:
     command = state.get(_SHORTCUT_COMMAND_KEY)
-    target = state.get(_SHORTCUT_TARGET_KEY)
-    player_id = (
-        target.player_id
-        if isinstance(target, PlayerTargetResolution)
-        else default_player_id_for(_service, _event.user_id)
+    target = resolve_player_target(
+        event,
+        numeric_player_id=getattr(command, "player_id", None),
+        binding_for_user=service.default_player_id,
     )
+    player_id = target.player_id
     kind = getattr(command, "kind", None)
     if not isinstance(player_id, int) or not is_valid_player_id(player_id):
         return None
@@ -464,26 +242,28 @@ def _extension_shortcut_command_id(
 
 
 def _extension_shortcut_semantic_request(
-    _service: PlayerService,
-    _event: MessageEvent,
+    service: PlayerService,
+    event: MessageEvent,
     state: T_State,
 ) -> SemanticRequest | None:
     command = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
     if not isinstance(command, PlayerExtensionShortcutCommand):
         return None
-    target = state.get(_EXTENSION_SHORTCUT_TARGET_KEY)
-    player_id = (
-        target.player_id
-        if isinstance(target, PlayerTargetResolution)
-        else command.player_id
+    target = resolve_player_target(
+        event,
+        numeric_player_id=command.player_id,
+        binding_for_user=service.default_player_id,
     )
-    if not (isinstance(player_id, int) and is_valid_player_id(player_id)):
+    if not (
+        isinstance(target.player_id, int)
+        and is_valid_player_id(target.player_id)
+    ):
         return None
     return SemanticRequest(
         action=command.action.action,
         target=player_shortcut_semantic_request(
             kind="collection",
-            player_id=player_id,
+            player_id=target.player_id,
             source=SemanticRequestSource.DIRECT,
         ).target,
         source=SemanticRequestSource.EXTENSION,
@@ -527,7 +307,10 @@ def install(group: SeerMatcherGroup) -> None:
     extension_matcher = group.on_message(
         policy=CommandPolicy.command(
             _extension_shortcut_command_id,
-            help_ids=tuple(action.command_help_id for action in extension_actions),
+            help_ids=tuple(
+                action.command_help_id
+                for action in extension_actions
+            ),
             semantic_request=lambda event, state: _extension_shortcut_semantic_request(
                 group.resources.player,
                 event,

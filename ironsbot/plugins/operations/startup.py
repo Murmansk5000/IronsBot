@@ -23,6 +23,7 @@ async def _send_notice_part(
     return await service.admin_notices.send(
         Message(message_text),
         action_name=action_name,
+        interval_seconds=1.2,
         subscription_key=subscription_key,
     )
 

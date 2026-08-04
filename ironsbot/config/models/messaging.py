@@ -18,12 +18,7 @@ from ironsbot.core.time import normalize_daily_time
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
-ENABLED_MENTION_USERS_REQUIRED_ERROR = "已启用的 AT 专属回复必须配置 user_ids"
-POKE_REPLY_REQUIRED_ERROR = (
-    "messaging.poke replies require non-empty group/user refs and messages"
-)
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
-COMMAND_MESSAGES_EMPTY_ERROR = "messages 中的消息内容不能为空"
 COMMAND_ID_FORMAT_ERROR = (
     "command message action id may only contain letters, numbers, dots, "
     "underscores, and hyphens"
@@ -47,14 +42,10 @@ OUTBOUND_RATE_LIMIT_WINDOWS_DUPLICATE_ERROR = (
 PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
     "push_unsubscribe requires non-empty commands and restore_commands"
 )
-PUSH_DELIVERY_DELAY_RANGE_ERROR = (
-    "messaging.push_delivery.batch_delay_max_seconds must be greater than or equal "
-    "to batch_delay_min_seconds"
-)
 SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
 SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
 SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
-SCHEDULE_TIME_ERROR = "messaging.schedules.time must use HH:MM:SS"
+SCHEDULE_TIME_ERROR = "messaging.schedules.time must use HH:MM"
 _SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 BotReference = str | int
 COMMAND_COOLDOWN_MESSAGE_REQUIRED_ERROR = (
@@ -255,25 +246,14 @@ class BotRoutingConfig(BaseModel):
         return None
 
 
-class MessageContent(BaseModel):
+class BaseMessageAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    messages: list[str] = Field(min_length=1)
-
-    @field_validator("messages")
-    @classmethod
-    def validate_messages(cls, value: list[str]) -> list[str]:
-        messages = [message.strip() for message in value]
-        if any(not message for message in messages):
-            raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
-        return messages
-
-
-class BaseMessageAction(MessageContent):
     id: str = ""
     name: str = ""
     enabled: bool = True
     feature: str = "text"
+    message: str
 
     @field_validator("id", "name")
     @classmethod
@@ -285,6 +265,14 @@ class BaseMessageAction(MessageContent):
     def normalize_feature(cls, value: str) -> str:
         feature = value.strip()
         return feature or "text"
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError("消息内容不能为空")
+        return message
 
 
 class MessageReplyAction(BaseMessageAction):
@@ -316,28 +304,6 @@ class MessageKeywordReplyAction(MessageReplyAction):
             raise ValueError(COMMAND_ID_FORMAT_ERROR)
         if self.enabled and not self.keywords:
             raise ValueError(ENABLED_KEYWORDS_REQUIRED_ERROR)
-        return self
-
-
-class MessageMentionReplyAction(MessageContent):
-    id: str
-    name: str = ""
-    enabled: bool = True
-    user_ids: OneBotReferenceList = Field(default_factory=list)
-
-    @field_validator("id", "name")
-    @classmethod
-    def normalize_text(cls, value: str) -> str:
-        return value.strip()
-
-    @model_validator(mode="after")
-    def validate_enabled_mention_reply_action(self) -> Self:
-        if not self.id:
-            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
-        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
-            raise ValueError(COMMAND_ID_FORMAT_ERROR)
-        if self.enabled and not self.user_ids:
-            raise ValueError(ENABLED_MENTION_USERS_REQUIRED_ERROR)
         return self
 
 
@@ -403,7 +369,7 @@ class OutboundRateLimitConfig(BaseModel):
     windows: list[OutboundRateLimitWindowConfig] = Field(
         default_factory=_default_outbound_rate_limit_windows
     )
-    cooldown_message: str = "机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
+    cooldown_message: str = "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
 
     @field_validator("cooldown_message")
     @classmethod
@@ -438,7 +404,7 @@ class PushUnsubscribeConfig(BaseModel):
     )
     hint: str = "回复 TD 可管理推送订阅。"
     group_hint: str = (
-        "发送 TD、订阅 或 推送管理 可查看推送订阅；"
+        "发送 TD、订阅 或 推送管理 可查看本群推送订阅；"
         "群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
     )
 
@@ -454,25 +420,6 @@ class PushUnsubscribeConfig(BaseModel):
     def validate_commands(self) -> Self:
         if not self.commands or not self.restore_commands:
             raise ValueError(PUSH_UNSUBSCRIBE_REQUIRED_ERROR)
-        return self
-
-
-class PushDeliveryConfig(BaseModel):
-    """Adaptive batching for background fan-out messages."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    max_attempts: int = Field(default=3, ge=1)
-    retry_batch_divisor: int = Field(default=3, ge=2)
-    max_parallel_targets: int = Field(default=5, ge=1)
-    transport_failure_cooldown_seconds: float = Field(default=60.0, ge=0)
-    batch_delay_min_seconds: float = Field(default=2.0, ge=0)
-    batch_delay_max_seconds: float = Field(default=5.0, ge=0)
-
-    @model_validator(mode="after")
-    def validate_batch_delay_range(self) -> Self:
-        if self.batch_delay_max_seconds < self.batch_delay_min_seconds:
-            raise ValueError(PUSH_DELIVERY_DELAY_RANGE_ERROR)
         return self
 
 
@@ -540,34 +487,10 @@ class TeamAuditWelcomeConfig(BaseModel):
         return self
 
 
-class PokeConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    group_replies: dict[str, str] = Field(default_factory=dict)
-    user_replies: dict[str, str] = Field(default_factory=dict)
-    window_seconds: float = Field(default=60.0, gt=0)
-    max_per_window: int = Field(default=3, ge=1)
-    new_command_initial_weight: float = Field(default=5.0, ge=1.0)
-    new_command_half_life_days: float = Field(default=5.0, gt=0.0)
-
-    @field_validator("group_replies", "user_replies")
-    @classmethod
-    def normalize_replies(cls, value: dict[str, str]) -> dict[str, str]:
-        replies: dict[str, str] = {}
-        for raw_target, raw_message in value.items():
-            target = raw_target.strip()
-            message = raw_message.strip()
-            if not target or not message:
-                raise ValueError(POKE_REPLY_REQUIRED_ERROR)
-            replies[target] = message
-        return replies
-
-
 class MessageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bot_routing: BotRoutingConfig = Field(default_factory=BotRoutingConfig)
-    poke: PokeConfig = Field(default_factory=PokeConfig)
     command_cooldown: CommandCooldownConfig = Field(
         default_factory=CommandCooldownConfig
     )
@@ -577,13 +500,11 @@ class MessageConfig(BaseModel):
     push_unsubscribe: PushUnsubscribeConfig = Field(
         default_factory=PushUnsubscribeConfig
     )
-    push_delivery: PushDeliveryConfig = Field(default_factory=PushDeliveryConfig)
     red_packet_notice: RedPacketNoticeConfig = Field(
         default_factory=RedPacketNoticeConfig
     )
     commands: list[MessageCommandAction] = Field(default_factory=list)
     keyword_replies: list[MessageKeywordReplyAction] = Field(default_factory=list)
-    mention_replies: list[MessageMentionReplyAction] = Field(default_factory=list)
     schedules: list[MessageScheduledAction] = Field(default_factory=list)
     meeting: MeetingConfig = Field(default_factory=MeetingConfig)
     team_audit_welcome: TeamAuditWelcomeConfig = Field(
@@ -594,11 +515,7 @@ class MessageConfig(BaseModel):
     @property
     def command_feature_keys(self) -> frozenset[str]:
         return frozenset(
-            action.feature
-            for action in (
-                *self.commands,
-                *self.keyword_replies,
-            )
+            action.feature for action in (*self.commands, *self.keyword_replies)
         )
 
     @property

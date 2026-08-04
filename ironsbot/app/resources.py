@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.commands import CommandCatalog
+    from ironsbot.runtime.plugins import PluginContributionCatalog
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.login import BilibiliLoginService
@@ -66,6 +67,7 @@ class ApplicationResources:
     docker_update: DockerUpdateService
     startup_notice: StartupNoticeService
     commands: CommandCatalog
+    contribution_catalog: PluginContributionCatalog
     help_hint: HelpHintService
     private_extensions: PrivateExtensionCatalog
     private_extension_runtime: PrivateExtensionRuntime

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.runtime.plugins import PluginContribution
 
 HELP_ENTRIES_KEY = "_help_entries"
 HELP_GROUP_ORDER = (
@@ -59,7 +59,7 @@ class MissingHelpEntryError(ValueError):
         return cls(f"plugin has no help entry: {plugin_id}")
 
 
-def entry_from_definition(definition: PluginDefinition) -> HelpMenuEntry:
+def entry_from_definition(definition: PluginContribution) -> HelpMenuEntry:
     help_entry = definition.help
     if help_entry is None:
         raise MissingHelpEntryError.for_plugin(definition.id)
@@ -83,7 +83,7 @@ def entry_sort_key(entry: HelpMenuEntry) -> tuple[int, int, str]:
 
 
 def visible_help_entries(
-    definitions: tuple[PluginDefinition, ...],
+    definitions: tuple[PluginContribution, ...],
     event: MessageEvent,
     *,
     features: FeatureService,

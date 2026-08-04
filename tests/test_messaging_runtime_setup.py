@@ -22,7 +22,6 @@ from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageConfig,
     MessageKeywordReplyAction,
-    MessageMentionReplyAction,
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
@@ -51,7 +50,7 @@ from tests.helpers.onebot_events import (
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Sequence
+    from collections.abc import Callable, Sequence
 
     from pytest import MonkeyPatch
 
@@ -77,7 +76,7 @@ def _schedule(
 ) -> MessageScheduledAction:
     return MessageScheduledAction(
         id=schedule_id,
-        messages=[message],
+        message=message,
         at_user_ids=list(at_user_ids or []),
         time=time,
     )
@@ -105,7 +104,6 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     *,
     commands: list[MessageCommandAction] | None = None,
     keyword_replies: list[MessageKeywordReplyAction] | None = None,
-    mention_replies: list[MessageMentionReplyAction] | None = None,
     schedules: list[MessageScheduledAction] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
@@ -114,15 +112,11 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     extra_push_options: (
         Callable[[PushTargetType, int], list[PushSubscriptionOption]] | None
     ) = None,
-    prepare_extra_push_options: (
-        Callable[[PushTargetType, int], Awaitable[str | None]] | None
-    ) = None,
 ) -> MessagingService:
     config = MessageConfig(
         push_unsubscribe=PushUnsubscribeConfig(),
         commands=commands or [],
         keyword_replies=keyword_replies or [],
-        mention_replies=mention_replies or [],
         schedules=schedules or [],
     )
     resources = build_test_runtime(
@@ -131,7 +125,6 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
             user_policy=user_policy or {},
         ),
         superuser_ids=superusers,
-        command_features=config.command_feature_keys,
         state_path=data_path,
     )
     return MessagingService(
@@ -145,7 +138,6 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
             append_fire_manual_ad_for_target,
             resources.features,
         ),
-        _prepare_extra_push_options=prepare_extra_push_options,
     )
 
 
@@ -277,7 +269,7 @@ def test_push_subscription_menu_prompt_marks_current_state(tmp_path: Path) -> No
         1001,
     )
 
-    assert "请选择要切换的推送订阅：" in prompt
+    assert "请选择要切换的私聊推送订阅：" in prompt
     assert "1. ✅ 机器人启动通知" in prompt
     assert "2. ❌ 启动数据同步通知" in prompt
     assert "输入序号切换" in prompt
@@ -297,45 +289,10 @@ def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
         read_only=True,
     )
 
-    assert "推送订阅状态：" in prompt
+    assert "本群推送订阅状态" in prompt
     assert "1. ✅ 机器人启动通知" in prompt
     assert "普通群员仅可查看" in prompt
     assert "输入序号切换" not in prompt
-
-
-def test_push_subscription_menu_keeps_read_only_options_when_names_fail(
-    tmp_path: Path,
-) -> None:
-    warning = "⚠️ 暂时无法刷新公开昵称，使用 UID 显示。"
-
-    async def prepare(_target_type: PushTargetType, _target_id: int) -> str:
-        return warning
-
-    options = [
-        PushSubscriptionOption(
-            "bili_push:123",
-            "B站动态（UID：123）",
-            "bili_push",
-        ),
-    ]
-    messaging = _messaging_resources(
-        tmp_path / "unsubscribe.sqlite",
-        extra_push_options=lambda _target_type, _target_id: options,
-        prepare_extra_push_options=prepare,
-    )
-
-    resolved_options, prompt = asyncio.run(
-        messaging.prepared_subscription_menu(
-            "group",
-            1001,
-            read_only=True,
-        )
-    )
-
-    assert resolved_options == options
-    assert prompt.startswith(warning)
-    assert "1. ✅ B站动态（UID：123）" in prompt
-    assert "普通群员仅可查看" in prompt
 
 
 def test_group_push_subscription_command_allows_superuser_member(
@@ -378,7 +335,7 @@ def test_unified_command_action_uses_feature_policy_for_each_message_scope(
                 id="activity_link",
                 commands=["activity"],
                 feature="web_activity_link",
-                messages=["activity link"],
+                message="activity link",
                 at_user_ids=[3001],
             )
         ],
@@ -420,7 +377,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="exact_reply",
                 commands=["出出"],
                 feature="text",
-                messages=["精确回复"],
+                message="精确回复",
             )
         ],
         keyword_replies=[
@@ -428,7 +385,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="keyword_reply",
                 keywords=["出出"],
                 feature="text",
-                messages=["关键词回复"],
+                message="关键词回复",
             )
         ],
         group_policy={"1001": ["text"]},
@@ -456,38 +413,6 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
     )
     assert exact_action.id == "exact_reply"
     assert keyword_action.id == "keyword_reply"
-
-
-def test_group_mention_reply_requires_only_configured_user(
-    tmp_path: Path,
-) -> None:
-    messaging = _messaging_resources(
-        tmp_path / "unsubscribe.sqlite",
-        mention_replies=[
-            MessageMentionReplyAction(
-                id="example_user_mention",
-                user_ids=[2002],
-                messages=["123"],
-            )
-        ],
-    )
-    state: dict[str, object] = {}
-
-    assert matcher_rules.match_group_mention_reply(
-        group_member_message_event("", user_id=2002, group_id=1001),
-        state,
-        messaging=messaging,
-    )
-    assert not matcher_rules.match_group_mention_reply(
-        group_member_message_event("", user_id=2003, group_id=1001),
-        {},
-        messaging=messaging,
-    )
-    action = cast(
-        "MessageMentionReplyAction",
-        state[matcher_rules.MESSAGE_ACTION_KEY],
-    )
-    assert action.messages == ["123"]
 
 
 def test_unified_schedule_delivers_to_private_and_group_targets(
@@ -521,37 +446,6 @@ def test_unified_schedule_delivers_to_private_and_group_targets(
     assert sent[1]["group_ids"] == [1001]
     assert sent[1]["group_at_user_ids"] == [3001]
     assert sent[1]["subscription_key"] == "daily"
-
-
-def test_schedule_sends_each_part_with_same_targets_and_subscription(
-    monkeypatch: MonkeyPatch, tmp_path: Path,
-) -> None:
-    sent: list[tuple[str, dict[str, object]]] = []
-    messaging = _messaging_resources(
-        tmp_path / "subscriptions.sqlite",
-        user_policy={"2001": ["text_push"]},
-        group_policy={"1001": ["text_push"]},
-    )
-    task = MessageScheduledAction(
-        id="daily", time="23:00", messages=["first", "second", "second"],
-        at_user_ids=[3001],
-    )
-
-    async def fake_broadcast(
-        _delivery: object, message: str, **kwargs: object,
-    ) -> None:
-        sent.append((message, kwargs))
-
-    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_broadcast)
-    asyncio.run(message_schedules.send_schedule(task, messaging=messaging))
-    assert [message for message, _ in sent] == task.messages * 2
-    for _, kwargs in sent:
-        assert kwargs["subscription_key"] == "daily"
-        if "group_ids" in kwargs:
-            assert kwargs["group_ids"] == [1001]
-            assert kwargs["group_at_user_ids"] == [3001]
-        else:
-            assert kwargs["private_user_ids"] == [2001]
 
 
 def test_scheduled_messages_append_fire_manual_ad(
@@ -730,7 +624,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
     )
     task = MessageScheduledAction(
-        messages=["group push"],
+        message="group push",
         at_user_ids=[],
         id="daily",
         time="23:00",

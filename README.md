@@ -116,9 +116,9 @@ services:
 
 ## 常用赛尔查询
 
-- 首次成功查询指定米米号后，机器人会询问是否设为默认米米号；按提示回复 `是`/`y` 或 `否`/`n`。发送 `解绑米米号` 可解除绑定。绑定是快捷查询设置，不验证游戏账号所有权。
-- 绑定后，查询默认米米号的每日查询额度会提高。额度按成功获取的数据项目结算；缓存、后台预热、超时和发送失败不计入。基础资料与阵容每次最多计 1 项，收集、巅峰和榜单查询会按成功获取的对应数据项目计入。
-- 查询指定米米号后，回复数字查看收集、巅峰和群星牌，回复 `0` 退出；已绑定用户可直接发送 `米米号`、`收集`、`巅峰`、`群星牌`。未绑定时，可分别发送 `米米号123456`、`收集123456`、`巅峰123456` 或 `群星牌123456`。
+- 首次发送 `米米号123456` 并成功查到玩家后，按提示回复 `是`/`y` 或 `否`/`n`；完成选择后才会发送玩家详情。
+- 首次成功查询米米号后，按提示回复 `是`/`y` 可设为默认米米号；发送 `解绑米米号` 可解除绑定。绑定是快捷查询设置，不验证游戏账号所有权。
+- 查询指定米米号后，回复数字查看收集、巅峰和群星牌，回复 `0` 退出；已绑定用户可直接发送 `米米号`、`收集`、`巅峰`、`群星牌`。
 - 已安装私有阵容扩展时，详情菜单和快捷命令会额外出现 `阵容`；公共镜像不硬编码该命令。`米米号` 默认只读取基础资料；扩展内容只会在用户明确选择或发送对应口令时再请求。`[seer.player.background_refresh]` 默认关闭，按需开启后才会预热扩展数据。
 - `雷伊配置`、`配置雷伊` 或 `4923配置` 会按精灵名称、别名或序号发送本地配置图；将图片命名为 `data/pet_configs/<精灵序号>.png` 即可收录。该目录不存在时会在启动时自动创建。
 - `群星牌地葬` 按名称查询卡牌，`群星牌卡98` 按卡牌 ID 查询；玩家群星牌排名通过米米号详情菜单或已绑定用户发送 `群星牌` 查询。
@@ -129,10 +129,11 @@ services:
 ## 插件架构
 
 通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展位于
-`ironsbot/custom_plugins`。仓库不会扫描目录或维护平行 manifest；`python -m
-ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
-`ironsbot/app/registry.py` 中唯一的 `PluginDefinition` 注册表安装命令入口、
-外部依赖和生命周期钩子。
+`ironsbot/custom_plugins`。当前版本仍由 `python -m ironsbot` 经过
+`ironsbot/app/bootstrap.py` 启动，并使用
+`ironsbot/app/registry.py` 的 `PluginDefinition` 作为**过渡期启动桥**安装
+既有入口、外部依赖和生命周期钩子。它不是长期插件契约；后续迁移方向、
+责任边界与完成条件以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。
@@ -145,19 +146,15 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、按 AI 端点配置的 `AI_KEY_<端点名大写>`、按账号库配置的
+- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
   `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
-
-示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
-[配置布局与新增功能指南](docs/configuration-layout.md)，确认它应归入消息推送、赛尔实时无头查询、
-赛尔本地资料，还是数据同步与生命周期。
 
 示例环境变量：
 
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-AI_KEY_DEEPSEEK=
+AI_KEY=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=
@@ -238,7 +235,7 @@ blocked_user = ["blacklist"]
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym", "雷小伊", "重聚"]
-messages = ["https://seerinfo.yuyuqaq.cn/"]
+message = "https://seerinfo.yuyuqaq.cn/"
 feature = "seerinfo_link"
 
 [bilibili.accounts.seer]
@@ -270,9 +267,6 @@ default_at_users = ["owner"]
 # 取消订阅战队123456
 ```
 
-`[features.group_aliases]` 的书写顺序也是群推送优先级：越靠前越先提交；
-需要明确控制顺序的推送群都应定义别名，未定义别名的群排在后面并按群号排序。
-
 配置字段、默认值、中英文说明和示例集中维护在
 [config.example.toml](config.example.toml)。查询权限和推送权限是分开的功能名，
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在
@@ -301,11 +295,8 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
-群或用户；超级管理员也不会绕过黑名单。戳一戳回复、限流和推荐权重位于
-`[messaging.poke]`，用户/群专属回复分别使用其 `user_replies` / `group_replies` 子表。
-未命中专属回复时仍随机推荐有权限的命令；`[features.help]` 仅保留 `ignored_plugins`，
-同时过滤帮助菜单和戳一戳推荐。旧戳一戳字段不再读取，升级时需同步迁移 TOML。
-所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
+群或用户；超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于
+`[features.help]`。所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
 数字字符串或数字 ID；别名在 `[features.user_aliases]` 和
 `[features.group_aliases]` 中定义，纯数字别名不可用。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令
@@ -374,7 +365,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `ai_intent_team_recommend` | AI 判定用户想加入战队后发送战队推荐/审核群信息。 |
 | `fire_manual_ad` | 主动推送末尾追加火火手册链接。 |
 | `ai_intent_fire_manual` | 用户明确索要火火手册链接时的 AI 意图动作。 |
-| `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、当前进程捕获的渲染异常、红包提醒等具体推送可在 TD 菜单中单独退订。 |
+| `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
 
 ## 数据与缓存
 
@@ -437,14 +428,9 @@ docker start ironsbot
 主数据发布文件现使用 `data/seerapi-data.sqlite`。确认新版本已成功下载并能查询最新数据后，
 旧的 `data/ironsbot-data.sqlite` 可手动删除；状态库迁移命令不会自动删除主数据文件。
 
-超级管理员发送 `/更新数据` 时，IronsBot 会先只读比对当前已发布数据，再提供两个选项：
-
-1. 同步已发布数据：只下载当前 release 的 SQLite，不触发 GitHub Actions。
-2. 检查上游并构建后同步数据：选择后按
-   `[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
-   GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。
-
-默认示例流水线为：
+超级管理员发送 `/更新数据` 时，IronsBot 会先按
+`[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
+GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。默认示例流水线为：
 
 1. `Murmansk-Seer/data-update-workflows`：检查淘米官方资源包，更新 Unity 资源和完整配置源。
 2. `Murmansk-Seer/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出补充 JSON。
@@ -461,7 +447,7 @@ docker start ironsbot
 on_startup = false
 ```
 
-若希望开机时近似执行一次 `/更新数据` 第 2 项的实际更新流程，可同时设置：
+若希望开机时近似执行一次 `/更新数据`，可同时设置：
 
 ```toml
 [operations.data_sync]
@@ -473,20 +459,11 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员可以发送 `/重启机器人`、`/机器人重启` 打开维护菜单；发送
-`/更新镜像`、`/更新Docker` 或 `/更新docker` 时会先只读检查镜像，再在检查结果
-下方打开同一维护菜单：
-
-```text
-1. 仅重启机器人
-2. 更新镜像并重启机器人
-0.【退出】
-```
-
-从重启口令进入时，第 1 项不会访问镜像仓库；第 2 项会检查
-`murmansk5000/ironsbot:latest`，检测到
-新镜像时启动一次性 Watchtower 更新当前容器，镜像已是最新时则重启当前容器。
-挂载 Docker socket 时通过 Docker API 操作容器；没有 Docker socket 时退回普通进程重启。
+超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`、`/更新镜像`、`/更新Docker`）
+进入同一套重启流程。默认会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像；
+检测到新镜像时会启动一次性 Watchtower 更新当前容器。镜像已是最新时，如果挂载了
+Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket 时才退回普通
+进程重启。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -499,6 +476,7 @@ TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 ```toml
 [operations.docker_update]
 check_on_startup = true
+check_on_restart = true
 image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
@@ -551,6 +529,13 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 check_on_startup = false
 ```
 
+如果不想让手动 `/重启机器人` 或 `/更新镜像` 时检查镜像，可改为：
+
+```toml
+[operations.docker_update]
+check_on_restart = false
+```
+
 自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，
 本轮启动会被新容器替换。镜像通知会显示当前/最新镜像短号、北京时间构建时间，
 并在镜像带有 OCI revision label 时附上对应 Git commit 摘要。
@@ -560,9 +545,9 @@ check_on_startup = false
 `watchtower_docker_api_version = "1.40"` 即可。
 
 推送通知会按订阅项拆分，例如机器人启动、Docker 镜像检查、启动数据同步、
-AI 聊天异常、B站登录、无头赛尔号、当前进程捕获的精灵渲染异常、红包提醒、按账号拆分的 B站动态和活动结束提醒。
+AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、按账号拆分的 B站动态和活动结束提醒。
 私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
-这些推送；发送 `推送时间` 可修改可编辑推送的提醒时间。
+这些推送；发送 `推送时间` 可修改本群可编辑推送的提醒时间。
 
 `.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
@@ -594,16 +579,6 @@ GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不�
 - 上游结构性重构：默认不跟随，除非它修复了当前项目里的具体问题。
 
 也就是说，上游现在是参考源和补丁来源，不是可以直接同步的主线。
-
-## 机器人账号演示指令
-
-在 TOML 开启 `[runtime.self_commands] enabled = true`，并设置
-`prefix = "演示 "`。NapCat 对应 OneBot 连接也需开启 `reportSelfMessage`。
-在群内用机器人 QQ 手动发送 `演示 精灵雷伊`，即可走正常查询入口；
-菜单继续发送 `演示 1`、`演示 a1` 或 `演示 0`。
-权限和绑定关系均属于机器人 QQ，不继承操作者权限。
-不带前缀的自身消息不会触发，AI、关键词及 AT 自动回复不处理演示消息。
-程序自己发出的同内容前缀消息会在十分钟内被过滤，防止回流循环。
 
 ## 本地开发
 

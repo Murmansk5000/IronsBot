@@ -11,12 +11,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 # NoneBot resolves Rule callback annotations when creating temporary matchers.
 from nonebot.adapters import Event  # noqa: TC002
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
-from nonebot.log import logger
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.rule import Rule
-
-from ironsbot.runtime.message_input import is_self_command
-from ironsbot.runtime.onebot_reply import event_reply_message_id
 
 if TYPE_CHECKING:
     from asyncio import TimerHandle
@@ -25,18 +21,20 @@ if TYPE_CHECKING:
 
     from nonebot.typing import T_State
 
-    from ironsbot.core.request_coordination import RequestCoordinator
+    from ironsbot.runtime.in_flight_requests import InFlightRequestService
     from ironsbot.runtime.matcher_contracts import QueuedSemanticRequestResolver
 
 TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
 QUEUED_CONVERSATION_TOKEN_STATE_KEY = "_ironsbot_queued_conversation_token"
 QUEUED_CONVERSATION_TICKET_STATE_KEY = "_ironsbot_queued_conversation_ticket"
-QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY = "_ironsbot_queued_conversation_keep_open"
+QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY = (
+    "_ironsbot_queued_conversation_keep_open"
+)
 QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY = (
     "_ironsbot_queued_conversation_shared_reply"
 )
 COMMAND_COOLDOWN_TOKEN_STATE_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
-REQUEST_RESPONSE_TOKEN_STATE_KEY = "_ironsbot_request_response_token"  # nosec B105
+IN_FLIGHT_REQUEST_TOKEN_STATE_KEY = "_ironsbot_in_flight_request_token"  # nosec B105
 MAX_CLAIMED_MENU_INPUTS = 4096
 
 
@@ -59,45 +57,12 @@ def is_current_group_menu_reply(
         return False
     if event.group_id != anchor.group_id or event.self_id != anchor.bot_user_id:
         return False
-    if event.user_id == event.self_id and not is_self_command(event):
+    if event.user_id == event.self_id or event.reply is None:
         return False
     # The reply sender metadata is optional in OneBot events.  The tracked
     # message ID was obtained from the bot's own send result, so it is the
     # authoritative proof that this is a reply to the current bot menu.
-    return event_reply_message_id(event) == anchor.message_id
-
-
-def _normalize_textual_reply_mention(
-    event: Event,
-    reply_check: Callable[[Event], bool],
-) -> bool:
-    """Handle transports that render the bot mention as plain reply text."""
-
-    if not isinstance(event, GroupMessageEvent):
-        return False
-    text = event.get_plaintext().strip()
-    parts = text.split()
-    if not parts or not parts[0].startswith("@"):
-        return False
-    candidates = parts[1:]
-    if not candidates:
-        return False
-
-    original_message = event.message
-    non_text_segments = [
-        segment for segment in original_message if segment.type != "text"
-    ]
-    for index in range(len(candidates)):
-        candidate = " ".join(candidates[index:])
-        event.message = Message([*non_text_segments, MessageSegment.text(candidate)])
-        try:
-            if reply_check(event):
-                return True
-        except BaseException:
-            event.message = original_message
-            raise
-    event.message = original_message
-    return False
+    return getattr(event.reply, "message_id", None) == anchor.message_id
 
 
 @dataclass(slots=True)
@@ -117,26 +82,22 @@ class _QueuedConversation:
     reply_check: Callable[[Event], bool]
     group_reply_check: Callable[[Event], bool] | None
     handlers: list[Any]
-    current_page_id: str = "root"
     conversation_session_id: str | None = None
     menu_anchor: GroupMenuAnchor | None = None
     allow_group_reply_exit: bool = False
     semantic_request_resolver: QueuedSemanticRequestResolver | None = None
-    request_coordinator: RequestCoordinator | None = None
+    request_service: InFlightRequestService | None = None
     active: bool = True
     parallel: bool = False
-    pending_reply_check: Callable[[Event], bool] | None = None
-    pending: bool = False
-    root_menu_opened_at: float | None = None
-    deadline: float | None = None
-    _activation: Future[bool] | None = field(default=None, init=False, repr=False)
     _next_ticket: int = 0
     _active_ticket: int | None = None
     _active_request_token: object | None = None
     _parallel_request_tokens: dict[int, object | None] = field(default_factory=dict)
     _parallel_ready_ticket: int | None = None
     _parallel_dispatched: set[int] = field(default_factory=set)
-    _parallel_waiters: deque[tuple[int, Future[bool]]] = field(default_factory=deque)
+    _parallel_waiters: deque[tuple[int, Future[bool]]] = field(
+        default_factory=deque
+    )
     _waiters: deque[tuple[int, Future[bool], object | None]] = field(
         default_factory=deque
     )
@@ -148,16 +109,20 @@ class _QueuedConversation:
     def matches(self, event: Event) -> bool:
         if not self.active:
             return False
-        is_owner_session = event.get_session_id() == self.event_session_id
-        if self.pending:
-            return (
-                is_owner_session
-                and self.pending_reply_check is not None
-                and self.pending_reply_check(event)
-            )
-        if is_owner_session and self.reply_check(event):
+        if self.reply_check(event):
             return True
-        return self._matches_group_reply(event)
+        if (
+            self.owner_user_id is not None
+            and getattr(event, "user_id", None) != self.owner_user_id
+            and event.get_plaintext().strip() == "0"
+            and not self.allow_group_reply_exit
+        ):
+            return False
+        return (
+            self.group_reply_check is not None
+            and is_current_group_menu_reply(event, self.menu_anchor)
+            and self.group_reply_check(event)
+        )
 
     def is_shared_group_reply(self, event: Event) -> bool:
         """Return whether this event is a different member using this menu."""
@@ -165,18 +130,10 @@ class _QueuedConversation:
         return (
             self.owner_user_id is not None
             and getattr(event, "user_id", None) != self.owner_user_id
-            and self._matches_group_reply(event)
+            and self.group_reply_check is not None
+            and is_current_group_menu_reply(event, self.menu_anchor)
+            and self.group_reply_check(event)
         )
-
-    def _matches_group_reply(self, event: Event) -> bool:
-        if self.group_reply_check is None or not is_current_group_menu_reply(
-            event,
-            self.menu_anchor,
-        ):
-            return False
-        if self.group_reply_check(event):
-            return True
-        return _normalize_textual_reply_mention(event, self.group_reply_check)
 
     def update_reply_check(
         self,
@@ -197,46 +154,6 @@ class _QueuedConversation:
         resolver: QueuedSemanticRequestResolver | None,
     ) -> None:
         self.semantic_request_resolver = resolver
-
-    def update_handlers(self, handlers: list[Any]) -> None:
-        self.handlers = handlers
-
-    def update_parallel(self, *, parallel: bool) -> None:
-        self.parallel = parallel
-
-    def activate(  # noqa: PLR0913
-        self,
-        *,
-        state: T_State,
-        reply_check: Callable[[Event], bool],
-        group_reply_check: Callable[[Event], bool] | None,
-        menu_anchor: GroupMenuAnchor | None,
-        allow_group_reply_exit: bool,
-        semantic_request_resolver: QueuedSemanticRequestResolver | None,
-        handlers: list[Any] | None = None,
-        parallel: bool | None = None,
-    ) -> None:
-        """Make a pre-menu conversation ready after its prompt is sent."""
-
-        self.state = self._saved_state(state)
-        self.update_reply_check(reply_check, group_reply_check)
-        self.update_menu_anchor(menu_anchor)
-        self.update_allow_group_reply_exit(allowed=allow_group_reply_exit)
-        self.update_semantic_request_resolver(semantic_request_resolver)
-        if handlers is not None:
-            self.update_handlers(handlers)
-        if parallel is not None:
-            self.update_parallel(parallel=parallel)
-        self.pending = False
-        if self._activation is not None and not self._activation.done():
-            self._activation.set_result(self.active)
-
-    async def wait_until_active(self) -> bool:
-        if not self.pending:
-            return self.active
-        if self._activation is None:
-            self._activation = get_running_loop().create_future()
-        return await self._activation
 
     def reserve(
         self,
@@ -345,10 +262,10 @@ class _QueuedConversation:
 
     def close(self) -> None:
         self.active = False
-        if self._activation is not None and not self._activation.done():
-            self._activation.set_result(False)
         if self.parallel:
-            pending_tickets = {ticket for ticket, _future in self._parallel_waiters}
+            pending_tickets = {
+                ticket for ticket, _future in self._parallel_waiters
+            }
             if self._parallel_ready_ticket is not None:
                 pending_tickets.add(self._parallel_ready_ticket)
             for ticket in pending_tickets:
@@ -367,17 +284,8 @@ class _QueuedConversation:
         self._waiters.clear()
 
     def _release_request_token(self, token: object | None) -> None:
-        if token is not None and self.request_coordinator is not None:
-            self.request_coordinator.release(token)
-
-    @staticmethod
-    def _saved_state(state: T_State) -> T_State:
-        saved_state = dict(state)
-        saved_state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
-        saved_state.pop(REQUEST_RESPONSE_TOKEN_STATE_KEY, None)
-        saved_state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
-        saved_state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
-        return saved_state
+        if token is not None and self.request_service is not None:
+            self.request_service.release(token)
 
     def _advance_parallel_dispatch(self) -> None:
         while self.active and self._parallel_waiters:
@@ -395,16 +303,7 @@ class _QueuedConversation:
 class PromptSessionManager:
     _temporary_matcher_states: ClassVar[dict[str, _TemporaryMatcherState]] = {}
 
-    def __init__(
-        self,
-        *,
-        root_timeout_seconds: float = 180.0,
-        page_extension_seconds: float = 60.0,
-        max_timeout_seconds: float = 300.0,
-    ) -> None:
-        self._root_timeout_seconds = root_timeout_seconds
-        self._page_extension_seconds = page_extension_seconds
-        self._max_timeout_seconds = max_timeout_seconds
+    def __init__(self) -> None:
         self._versions: dict[str, int] = {}
         self._queued_by_key: dict[str, _QueuedConversation] = {}
         self._queued_by_token: dict[str, _QueuedConversation] = {}
@@ -422,14 +321,7 @@ class PromptSessionManager:
         self.acquire(session_id)
 
     def invalidate_event_conversations(self, event: Event) -> None:
-        self._cancel_queued_conversations_for_session(event.get_session_id())
-
-    def _cancel_queued_conversations_for_session(
-        self,
-        event_session_id: str,
-    ) -> None:
-        """Close every queued menu still open for one event session."""
-
+        event_session_id = event.get_session_id()
         for context in tuple(self._queued_by_token.values()):
             if context.event_session_id == event_session_id:
                 self._cancel_queued_conversation(context)
@@ -444,108 +336,39 @@ class PromptSessionManager:
         reply_check: Callable[[Event], bool],
         group_reply_check: Callable[[Event], bool] | None = None,
         handlers: list[Any],
-        page_id: str = "root",
         semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
-        request_coordinator: RequestCoordinator | None = None,
+        request_service: InFlightRequestService | None = None,
         conversation_session_id: str | None = None,
         menu_anchor: GroupMenuAnchor | None = None,
         allow_group_reply_exit: bool = False,
         parallel: bool = False,
-        pending_reply_check: Callable[[Event], bool] | None = None,
-        pending: bool = False,
     ) -> _QueuedConversation:
         key = f"{namespace}:{event_session_id}"
-        # A new menu takes over the whole event session: stale menus from
-        # other namespaces would otherwise compete for the same input.
-        self._cancel_queued_conversations_for_session(event_session_id)
+        if existing := self._queued_by_key.get(key):
+            self._cancel_queued_conversation(existing)
+        saved_state = dict(state)
+        saved_state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
+        saved_state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
         context = _QueuedConversation(
             token=token_urlsafe(18),
             key=key,
             namespace=namespace,
             event_session_id=event_session_id,
             owner_user_id=owner_user_id,
-            state=_QueuedConversation._saved_state(state),
+            state=saved_state,
             reply_check=reply_check,
             group_reply_check=group_reply_check,
             handlers=handlers,
-            current_page_id=page_id,
             conversation_session_id=conversation_session_id,
             menu_anchor=menu_anchor,
             allow_group_reply_exit=allow_group_reply_exit,
             parallel=parallel,
-            pending_reply_check=pending_reply_check,
-            pending=pending,
             semantic_request_resolver=semantic_request_resolver,
-            request_coordinator=request_coordinator,
+            request_service=request_service,
         )
         self._queued_by_key[key] = context
         self._queued_by_token[context.token] = context
         return context
-
-    def matching_queued_conversation(
-        self,
-        event: Event,
-    ) -> _QueuedConversation | None:
-        """Return the one active menu that owns this input event.
-
-        Menus are stored in creation order, so scanning backwards makes the
-        newest menu win whenever several coexist for the same session.
-        """
-
-        return next(
-            (
-                context
-                for context in reversed(self._queued_by_token.values())
-                if context.matches(event)
-            ),
-            None,
-        )
-
-    def queued_conversation_for(
-        self,
-        *,
-        namespace: str,
-        event_session_id: str,
-    ) -> _QueuedConversation | None:
-        context = self._queued_by_key.get(f"{namespace}:{event_session_id}")
-        return context if context is not None and context.active else None
-
-    def activate_queued_conversation(  # noqa: PLR0913
-        self,
-        context: _QueuedConversation,
-        *,
-        state: T_State,
-        reply_check: Callable[[Event], bool],
-        group_reply_check: Callable[[Event], bool] | None,
-        menu_anchor: GroupMenuAnchor | None,
-        allow_group_reply_exit: bool,
-        semantic_request_resolver: QueuedSemanticRequestResolver | None,
-        handlers: list[Any],
-        parallel: bool,
-        page_id: str,
-        menu_sent: bool,
-    ) -> None:
-        context.activate(
-            state=state,
-            reply_check=reply_check,
-            group_reply_check=group_reply_check,
-            menu_anchor=menu_anchor,
-            allow_group_reply_exit=allow_group_reply_exit,
-            semantic_request_resolver=semantic_request_resolver,
-            handlers=handlers,
-            parallel=parallel,
-        )
-        if menu_sent:
-            self.record_menu_page(context, page_id=page_id)
-            logger.info(
-                "queued conversation menu activated: namespace={} group={} "
-                "owner={} menu_message_id={} page={}",
-                context.namespace,
-                None if menu_anchor is None else menu_anchor.group_id,
-                context.owner_user_id,
-                None if menu_anchor is None else menu_anchor.message_id,
-                page_id,
-            )
 
     def queued_conversation(self, state: T_State) -> _QueuedConversation | None:
         token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
@@ -560,8 +383,6 @@ class PromptSessionManager:
         state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
         keep_open = bool(state.pop(QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY, False))
         if context is None or not isinstance(ticket, int):
-            if context is not None and context.pending and not keep_open:
-                self._cancel_queued_conversation(context)
             if isinstance(token, str) and isinstance(ticket, int):
                 self._finish_cancelled_ticket(token)
             return
@@ -574,16 +395,13 @@ class PromptSessionManager:
                 return
             self._close_queued_conversation(context)
             return
-        context.state = _QueuedConversation._saved_state(state)
+        context.state = dict(state)
+        context.state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
+        context.state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
 
     def cancel_queued_conversation(self, state: T_State) -> None:
         if context := self.queued_conversation(state):
             self._cancel_queued_conversation(context)
-
-    def cancel_queued_context(self, context: _QueuedConversation) -> None:
-        """Cancel a context retained before it is attached to matcher state."""
-
-        self._cancel_queued_conversation(context)
 
     def detach_queued_conversation(self, state: T_State) -> _QueuedConversation | None:
         """Release this matcher state without closing the retained conversation."""
@@ -595,19 +413,6 @@ class PromptSessionManager:
         if context is not None and isinstance(ticket, int):
             context.complete(ticket)
         return context
-
-    def close_queued_conversation_after_accepted_input(self, state: T_State) -> None:
-        """Close menu intake while preserving the current handler's final reply.
-
-        Some menu choices start work which can legitimately outlive the menu
-        deadline.  Once the input has been accepted, later menu expiry must
-        stop additional choices without suppressing that accepted handler's
-        result message.
-        """
-
-        context = self.detach_queued_conversation(state)
-        if context is not None:
-            self._close_queued_conversation(context)
 
     def claim_input(self, event: Event) -> bool:
         raw_message_id = getattr(event, "message_id", None)
@@ -634,30 +439,16 @@ class PromptSessionManager:
         token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
         return isinstance(token, str) and token in self._cancelled_queued_tokens
 
-    def record_menu_page(
+    def refresh_queued_conversation_expiry(
         self,
         context: _QueuedConversation,
         *,
-        page_id: str,
+        expires_after: timedelta,
     ) -> None:
-        """Start a root deadline or extend it for a real page transition."""
-
-        now = get_running_loop().time()
-        if context.root_menu_opened_at is None or context.deadline is None:
-            context.root_menu_opened_at = now
-            context.deadline = now + self._root_timeout_seconds
-        elif page_id != context.current_page_id:
-            context.deadline = min(
-                context.deadline + self._page_extension_seconds,
-                context.root_menu_opened_at + self._max_timeout_seconds,
-            )
-        context.current_page_id = page_id
         if previous := self._queued_expiry_handles.pop(context.token, None):
             previous.cancel()
-        if context.deadline is None:
-            return
         self._queued_expiry_handles[context.token] = get_running_loop().call_later(
-            max(context.deadline - now, 0),
+            max(expires_after.total_seconds(), 0),
             self._expire_queued_conversation,
             context.token,
         )
@@ -672,7 +463,9 @@ class PromptSessionManager:
     def _cancel_queued_conversation(self, context: _QueuedConversation) -> None:
         if context.active_ticket_count:
             self._cancelled_queued_tokens.add(context.token)
-            self._cancelled_active_tickets[context.token] = context.active_ticket_count
+            self._cancelled_active_tickets[context.token] = (
+                context.active_ticket_count
+            )
         self._close_queued_conversation(context)
 
     def _finish_cancelled_ticket(self, token: str) -> None:
@@ -695,7 +488,10 @@ class PromptSessionManager:
         content_check: Callable[[Event], bool],
     ) -> Rule:
         def check(event: Event) -> bool:
-            return self._versions.get(session_id) == version and content_check(event)
+            return (
+                self._versions.get(session_id) == version
+                and content_check(event)
+            )
 
         return Rule(check)
 

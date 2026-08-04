@@ -23,12 +23,6 @@ from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
-from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.external_references import (
-    SeerInfoReference,
-    peak_rank_reference,
-)
-from ironsbot.services.seer.new_content import NewContentIndexUnavailableError
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 
 if TYPE_CHECKING:
@@ -38,7 +32,6 @@ if TYPE_CHECKING:
 
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.data import SeerDataAccess
-    from ironsbot.services.seer.new_content import NewContentService
     from ironsbot.services.seer.rank_models import RankEntry
 
 
@@ -87,26 +80,6 @@ class PeakPoolSnapshot:
     start_time: datetime
     end_time: datetime
     pets: tuple[PeakPetSnapshot, ...]
-
-
-PeakPoolChangeState = Literal["changed", "unchanged", "unavailable"]
-
-
-@dataclass(frozen=True, slots=True)
-class PeakPoolTransitionSnapshot:
-    pet: PeakPetSnapshot
-    previous_limit: int | None
-    current_limit: int | None
-
-
-@dataclass(frozen=True, slots=True)
-class PeakPoolRenderSnapshot:
-    pools: tuple[PeakPoolSnapshot, ...]
-    transitions: tuple[PeakPoolTransitionSnapshot, ...]
-    change_state: PeakPoolChangeState
-    content_version: str
-    expert: bool
-    master: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,41 +146,6 @@ def active_peak_pool_limits(
     return limits
 
 
-def _current_peak_pool_limits(
-    pools: Iterable[PeakPoolSnapshot],
-    *,
-    expert: bool,
-) -> dict[int, int]:
-    limits: dict[int, int] = {}
-    for pool in pools:
-        limit = 0 if expert else pool.count
-        for pet in pool.pets:
-            previous = limits.get(pet.id)
-            if previous is None or limit < previous:
-                limits[pet.id] = limit
-    return limits
-
-
-def _new_content_pool_limit(value: object, *, expert: bool) -> int | None:
-    if value is None:
-        return None
-    if not isinstance(value, (int, str)):
-        return None
-    try:
-        limit = int(value)
-    except (TypeError, ValueError):
-        return None
-    return 0 if expert else limit
-
-
-def _pool_limit_sort_key(value: int | None, *, expert: bool) -> int:
-    order = (0, None) if expert else (0, 2, 3, None)
-    try:
-        return order.index(value)
-    except ValueError:
-        return len(order)
-
-
 def snapshot_peak_votes(
     votes: Iterable[PeakPoolVoteORM],
 ) -> tuple[PeakVoteSnapshot, ...]:
@@ -227,7 +165,10 @@ def snapshot_peak_votes(
 def snapshot_peak_pet_map(
     pets: dict[int, PetORM],
 ) -> dict[int, PeakPetSnapshot]:
-    return {int(pet_id): _snapshot_peak_pet(pet) for pet_id, pet in pets.items()}
+    return {
+        int(pet_id): _snapshot_peak_pet(pet)
+        for pet_id, pet in pets.items()
+    }
 
 
 def _snapshot_peak_pet(pet: PetORM) -> PeakPetSnapshot:
@@ -235,7 +176,7 @@ def _snapshot_peak_pet(pet: PetORM) -> PeakPetSnapshot:
         id=int(pet.id),
         name=str(pet.name),
         resource_id=int(pet.resource_id),
-        type_id=int(pet.type_id),
+        type_id=int(pet.type.id),
     )
 
 
@@ -319,7 +260,7 @@ SEMI_LIMIT_POOL_VOTE_COUNT = 3
 PEAK_VOTE_RENDER_TIMEOUT_SECONDS = 45.0
 ProgressReporter = Callable[[str], Awaitable[None]]
 PeakPoolRenderer = Callable[
-    [PeakPoolRenderSnapshot, str],
+    [tuple[PeakPoolSnapshot, ...], str],
     Awaitable[bytes],
 ]
 
@@ -327,7 +268,6 @@ PeakPoolRenderer = Callable[
 class PeakVoteRank(TypedDict):
     items: list[RankEntry]
     title: str
-    period: str
     pets: list[PeakPetSnapshot]
 
 
@@ -352,7 +292,6 @@ class PeakQueryResult:
     text: str = ""
     image: bytes | None = None
     message: str = ""
-    reference: SeerInfoReference | None = None
 
 
 def normalize_peak_vote_time(value: datetime) -> datetime:
@@ -387,186 +326,46 @@ def parse_peak_type(command: str) -> tuple[str, PeakType]:
 
 
 class PeakQueryService:
-    def __init__(  # noqa: PLR0913 - service dependencies are explicit
+    def __init__(
         self,
         data: SeerDataAccess,
         headless: HeadlessService,
         render_pool: PeakPoolRenderer,
         render_vote: PeakVoteRenderer,
         render_pet: PeakPetRenderer,
-        *,
-        new_content: NewContentService,
     ) -> None:
         self._data = data
         self._headless = headless
         self._render_pool = render_pool
         self._render_vote = render_vote
         self._render_pet = render_pet
-        self._new_content = new_content
 
     async def pool(
         self,
         *,
         expert: bool,
         progress: ProgressReporter,
-        master: bool = False,
     ) -> PeakQueryResult:
-        if master:
-            from ironsbot.services.seer.master_pool import (
-                MasterPoolUnavailableError,
-                load_master_pools,
-            )
-
-            try:
-                with self._data.query(load_master_pools) as master_pools:
-                    pools = master_pools
-            except MasterPoolUnavailableError:
-                return PeakQueryResult(
-                    message="当前数据版本尚未提供大师池，更新数据后再查询。"
-                )
-        else:
-            with self._data.query(
-                partial(load_peak_pools, expert=expert)
-            ) as database_pools:
-                pools = snapshot_peak_pools(database_pools)
-        label = "大师池" if master else ("专家禁用池" if expert else "竞技池")
+        with self._data.query(
+            partial(load_peak_pools, expert=expert)
+        ) as database_pools:
+            pools = snapshot_peak_pools(database_pools)
+        label = "专家禁用池" if expert else "竞技池"
         if not pools:
             return PeakQueryResult(
-                message=(f"❌找不到{label}数据。（这是一个bug，请反馈给开发者）")
+                message=(
+                    f"❌找不到{label}数据。"
+                    "（这是一个bug，请反馈给开发者）"
+                )
             )
         await progress("正在生成图片...")
         start_time = pools[0].start_time.strftime("%Y-%m-%d")
-        end_time = pools[0].end_time.strftime(
-            "%Y-%m-%d %H:%M" if master else "%Y-%m-%d"
-        )
-        render_snapshot = self._pool_render_snapshot(
-            pools, expert=expert, master=master
-        )
+        end_time = pools[0].end_time.strftime("%Y-%m-%d")
         image = await self._render_pool(
-            render_snapshot,
-            (
-                f"{label} / 精灵竞技点 / 有效期：{start_time} ~ {end_time}"
-                if master
-                else f"{label} / 有效期：{start_time} ~ {end_time}"
-            ),
+            pools,
+            f"{label} / {start_time} ~ {end_time}",
         )
-        return PeakQueryResult(
-            image=image,
-            reference=(
-                SeerInfoReference.PEAK_MASTER_POOL
-                if master
-                else SeerInfoReference.PEAK_POOL
-            ),
-        )
-
-    def _pool_render_snapshot(
-        self,
-        pools: tuple[PeakPoolSnapshot, ...],
-        *,
-        expert: bool,
-        master: bool = False,
-    ) -> PeakPoolRenderSnapshot:
-        category = (
-            "peak_master_pool"
-            if master
-            else ("peak_expert_pool" if expert else "peak_pool")
-        )
-        try:
-            snapshot = self._new_content.snapshot()
-        except (DataUnavailableError, NewContentIndexUnavailableError) as error:
-            logger.warning(
-                "peak pool weekly changes unavailable: category=%s error=%s",
-                category,
-                type(error).__name__,
-            )
-            return PeakPoolRenderSnapshot(
-                pools=pools,
-                transitions=(),
-                change_state="unavailable",
-                content_version="",
-                expert=expert,
-                master=master,
-            )
-        if not snapshot.is_category_comparable(category):
-            logger.info(
-                "peak pool weekly changes not comparable: category=%s reason=%s",
-                category,
-                snapshot.category_state(category).reason,
-            )
-            return PeakPoolRenderSnapshot(
-                pools=pools,
-                transitions=(),
-                change_state="unavailable",
-                content_version=(f"{snapshot.config_version}:{snapshot.weekly_cycle}"),
-                expert=expert,
-                master=master,
-            )
-
-        items = snapshot.items_for(category)
-        current_pets = {pet.id: pet for pool in pools for pet in pool.pets}
-        missing_ids = {item.entity_id for item in items} - set(current_pets)
-        changed_pets: dict[int, PeakPetSnapshot] = {}
-        if missing_ids:
-            with self._data.get_many(self._data.pet, missing_ids) as loaded:
-                changed_pets = snapshot_peak_pet_map(loaded)
-        current_limits = _current_peak_pool_limits(pools, expert=expert)
-        transitions: list[PeakPoolTransitionSnapshot] = []
-        for item in items:
-            previous_limit = _new_content_pool_limit(
-                item.payload.get("previous_limit"),
-                expert=expert,
-            )
-            declared_current = _new_content_pool_limit(
-                item.payload.get("current_limit"),
-                expert=expert,
-            )
-            current_limit = current_limits.get(item.entity_id)
-            if declared_current != current_limit:
-                logger.warning(
-                    "peak pool change target differs from current pool: "
-                    "category=%s pet_id=%s declared=%s current=%s",
-                    category,
-                    item.entity_id,
-                    declared_current,
-                    current_limit,
-                )
-            if previous_limit == current_limit:
-                continue
-            pet = current_pets.get(item.entity_id) or changed_pets.get(item.entity_id)
-            if pet is None:
-                logger.warning(
-                    "peak pool change pet metadata missing: category=%s pet_id=%s",
-                    category,
-                    item.entity_id,
-                )
-                pet = PeakPetSnapshot(
-                    id=item.entity_id,
-                    name=item.name,
-                    resource_id=item.entity_id,
-                    type_id=0,
-                )
-            transitions.append(
-                PeakPoolTransitionSnapshot(
-                    pet=pet,
-                    previous_limit=previous_limit,
-                    current_limit=current_limit,
-                )
-            )
-        transitions.sort(
-            key=lambda item: (
-                _pool_limit_sort_key(item.previous_limit, expert=expert),
-                _pool_limit_sort_key(item.current_limit, expert=expert),
-                item.pet.id,
-            )
-        )
-        return PeakPoolRenderSnapshot(
-            pools=pools,
-            transitions=tuple(transitions),
-            change_state="changed" if transitions else "unchanged",
-            content_version=f"{snapshot.config_version}:{snapshot.weekly_cycle}",
-            expert=expert,
-            master=master,
-        )
+        return PeakQueryResult(image=image)
 
     async def vote(
         self,
@@ -584,25 +383,19 @@ class PeakQueryService:
             end_time = normalize_peak_vote_time(vote.end_time)
             if not start_time <= now <= end_time:
                 continue
+            title = (
+                f"限{vote.count}池票选"
+                f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
+                f"{end_time:%Y-%m-%d}"
+            )
             if vote.count == LIMIT_POOL_VOTE_COUNT:
-                title = "限制级"
                 rank = await game.get_limit_pool_vote(vote.subkey)
             elif vote.count == SEMI_LIMIT_POOL_VOTE_COUNT:
-                title = "准限制级"
                 rank = await game.get_semi_limit_pool_vote(vote.subkey)
             else:
                 continue
-            period = (
-                f"{start_time.month}月{start_time.day}日{start_time.hour}点"
-                f" - {end_time.month}月{end_time.day}日{end_time.hour}点"
-            )
             pools.append(
-                {
-                    "items": rank,
-                    "title": title,
-                    "period": period,
-                    "pets": list(vote.pets),
-                }
+                {"items": rank, "title": title, "pets": list(vote.pets)}
             )
         if not pools:
             return PeakQueryResult(message="❌当前没有进行中的巅峰投票。")
@@ -618,11 +411,13 @@ class PeakQueryService:
                 len(pools),
                 PEAK_VOTE_RENDER_TIMEOUT_SECONDS,
             )
-            return PeakQueryResult(message="❌巅峰投票图片生成超时，请稍后再试。")
+            return PeakQueryResult(
+                message="❌巅峰投票图片生成超时，请稍后再试。"
+            )
         except Exception:
             logger.exception("peak vote render failed: pools=%s", len(pools))
             return PeakQueryResult(message="❌巅峰投票图片生成失败，请稍后再试。")
-        return PeakQueryResult(image=image, reference=SeerInfoReference.PEAK_VOTE)
+        return PeakQueryResult(image=image)
 
     async def item_rank(
         self,
@@ -672,11 +467,7 @@ class PeakQueryService:
                 )
         timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
         return PeakQueryResult(
-            text=f"{name}{kind}榜（截至{timestamp}）\n" + "\n".join(lines),
-            reference=peak_rank_reference(
-                peak_type=peak_type.value,
-                category="suit" if kind == "套装" else "title",
-            ),
+            text=f"{name}{kind}榜（截至{timestamp}）\n" + "\n".join(lines)
         )
 
     async def pet_rank(
@@ -696,7 +487,8 @@ class PeakQueryService:
         if period is None:
             return PeakQueryResult(
                 message=(
-                    "❌找不到专家禁用池数据。（这是一个bug，请反馈给开发者）"
+                    "❌找不到专家禁用池数据。"
+                    "（这是一个bug，请反馈给开发者）"
                     if monthly
                     else "❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
                 )
@@ -725,13 +517,7 @@ class PeakQueryService:
             ban_items=ban_rank,
             pet_map=pet_map,
         )
-        return PeakQueryResult(
-            image=image,
-            reference=peak_rank_reference(
-                peak_type=peak_type.value,
-                category="pet",
-            ),
-        )
+        return PeakQueryResult(image=image)
 
     def _game(self) -> tuple[PeakGame | None, str]:
         try:

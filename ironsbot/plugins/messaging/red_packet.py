@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import (
@@ -12,10 +13,14 @@ from nonebot.adapters.onebot.v11 import (
     NoticeEvent,
 )
 from nonebot.log import logger
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.onebot_group_identity import resolve_group_name
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.plugins import (
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.services.messaging.red_packet import (
     RedPacketNoticeLimiter,
     build_red_packet_notice_message,
@@ -43,6 +48,15 @@ RED_PACKET_RAW_MARKERS = (
     "QQ红包",
 )
 RED_PACKET_NOTICE_MARKERS = (*RED_PACKET_RAW_MARKERS, "红包")
+
+__plugin_meta__ = PluginMetadata(
+    name="红包提醒",
+    description="检测群红包并向管理通知目标发送提醒。",
+    usage="由 messaging.red_packet_notice 配置管理，无直接用户命令。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import RedPacketNoticeConfig
@@ -104,6 +118,19 @@ def summarize_red_packet_message(message: Message) -> str:
     return (plaintext or str(message).strip())[:80]
 
 
+async def _get_group_name(bot: Bot, group_id: int) -> str:
+    try:
+        info: dict[str, Any] = await bot.get_group_info(
+            group_id=group_id,
+            no_cache=True,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"red packet notice failed to get group info: {e}")
+        return ""
+
+    return str(info.get("group_name") or "").strip()
+
+
 async def _send_red_packet_notice(  # noqa: PLR0913
     *,
     bot: Bot,
@@ -118,7 +145,7 @@ async def _send_red_packet_notice(  # noqa: PLR0913
         return
 
     logger.info(f"red packet notice detected: group={group_id} sender={sender_id}")
-    group_name = await resolve_group_name(bot, group_id, no_cache=True)
+    group_name = await _get_group_name(bot, group_id)
     notice = build_red_packet_notice_message(
         group_id=group_id,
         group_name=group_name,
@@ -187,3 +214,30 @@ def install(
         block=False,
     )
     notice_matcher.append_handler(handle_payload)
+
+
+def plugin_contribution(
+    *,
+    config: RedPacketNoticeConfig,
+    admin_notices: AdminNoticeService,
+) -> PluginContribution:
+    """Declare passive red-packet detection and its admin delivery binding."""
+
+    return PluginContribution(
+        id="red_packet_notice",
+        install=partial(
+            install,
+            config=config,
+            admin_notices=admin_notices,
+        ),
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            config=context.settings.messaging.red_packet_notice,
+            admin_notices=context.resources.admin_notices,
+        ),
+    )

@@ -4,25 +4,22 @@ import asyncio
 from contextlib import suppress
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import ANY, AsyncMock
+from unittest.mock import AsyncMock
 
-import pytest
 from nonebot.exception import FinishedException
 
-from ironsbot.core.request_coordination import send_request_response
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.plugins.seer.query.commands import player_detail_conversation
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,
 )
-from ironsbot.plugins.seer.query.commands.player_team_detail import (
-    player_team_menu_text,
-)
 from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.runtime.semantic_requests import ActionDefinition
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -33,9 +30,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_COMMANDS_KEY,
     PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY,
     PLAYER_PEAK_KEY,
-    PLAYER_TEAM_KEY,
 )
-from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
@@ -97,178 +92,22 @@ def test_player_info_prompt_includes_visible_private_extension(
     assert state[PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY] == (
         ("1", PLAYER_COLLECTION_KEY),
     )
-    assert state[PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY] == (
-        ("2", "private_action"),
-    )
-
-
-def test_player_info_prompt_places_team_after_private_actions(
-    monkeypatch: Any,
-) -> None:
-    enter_conversation = AsyncMock(side_effect=FinishedException)
-    monkeypatch.setattr(
-        player_detail_conversation,
-        "enter_event_reply_conversation",
-        enter_conversation,
-    )
-    extensions = PlayerDetailExtensionRegistry()
-    extensions.register(
-        PlayerDetailExtensionAction(
-            id="lineup",
-            feature="private_feature",
-            label="阵容",
-            aliases=("阵容",),
-            command_help_id="private.lineup",
-            query=AsyncMock(return_value=QueryReply(text="lineup")),
-            action=ActionDefinition("lineup", "阵容"),
-        )
-    )
-    features = SimpleNamespace(
-        is_group_feature_allowed=lambda *_args: True,
-        is_superuser=lambda _user_id: False,
-    )
-    snapshot = PlayerBaseSnapshot(
-        player_id=PLAYER_ID,
-        user_info=SimpleNamespace(team_id=9_260_775),
-        more_info=SimpleNamespace(),
-        online_info=None,
-        team_name="星痕",
-    )
-
-    with suppress(FinishedException):
-        asyncio.run(
-            player_detail_conversation.send_player_info_with_detail_prompt(
-                cast("Any", object()),
-                cast("Any", features),
-                extensions,
-                cast("Any", object()),
-                group_message_event("米米号"),
-                {},
-                player_id=PLAYER_ID,
-                player_message="player",
-                has_collection=True,
-                has_peak=True,
-                has_autocard=True,
-                base_snapshot=snapshot,
-                team_query=cast("Any", object()),
-            )
-        )
-
-    call = enter_conversation.await_args
-    assert call is not None
-    prompt = call.kwargs["prompt"]
-    assert "4.【阵容】" in prompt
-    assert "5.【战队】星痕（战队ID：9260775）" in prompt
-
-
-@pytest.mark.parametrize(
-    ("team_id", "allowed"),
-    [
-        (0, True),
-        (9_260_775, False),
-    ],
-)
-def test_player_team_menu_is_hidden_without_team_or_permission(
-    team_id: int,
-    *,
-    allowed: bool,
-) -> None:
-    features = SimpleNamespace(
-        is_group_feature_allowed=lambda *_args: allowed,
-        is_superuser=lambda _user_id: False,
-    )
-    context = PlayerDetailMenuContext(
-        player_id=PLAYER_ID,
-        has_collection=True,
-        has_peak=True,
-        has_autocard=True,
-        base_snapshot=PlayerBaseSnapshot(
-            player_id=PLAYER_ID,
-            user_info=SimpleNamespace(team_id=team_id),
-            more_info=SimpleNamespace(),
-            online_info=None,
-            team_name="星痕",
-        ),
-        team_query=cast("Any", object()),
-    )
-
-    assert (
-        player_team_menu_text(
-            cast("Any", features),
-            group_message_event("米米号"),
-            context,
-        )
-        is None
-    )
-
-
-def test_player_detail_team_selection_reuses_team_query_service(
-    monkeypatch: Any,
-) -> None:
-    team_query = SimpleNamespace(query=AsyncMock(return_value="team detail"))
-    finish_result = AsyncMock()
-    monkeypatch.setattr(
-        player_detail_conversation,
-        "_finish_player_detail_result",
-        finish_result,
-    )
-    event = group_message_event("5")
-    features = SimpleNamespace(
-        is_superuser=lambda _user_id: False,
-        is_group_feature_allowed=lambda *_args: True,
-    )
-    snapshot = PlayerBaseSnapshot(
-        player_id=PLAYER_ID,
-        user_info=SimpleNamespace(team_id=9_260_775),
-        more_info=SimpleNamespace(),
-        online_info=None,
-        team_name="星痕",
-    )
-    state: dict[str, object] = {
-        PLAYER_ID_KEY: PLAYER_ID,
-        PLAYER_DETAIL_MENU_CONTEXT_KEY: PlayerDetailMenuContext(
-            player_id=PLAYER_ID,
-            has_collection=True,
-            has_peak=True,
-            has_autocard=True,
-            base_snapshot=snapshot,
-            team_query=cast("Any", team_query),
-        ),
-        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("5", PLAYER_TEAM_KEY),),
-    }
-
-    asyncio.run(
-        player_detail_conversation.handle_player_detail_reply(
-            cast("Any", object()),
-            PlayerDetailExtensionRegistry(),
-            cast("Any", features),
-            cast("Any", object()),
-            event,
-            cast("Any", state),
-        )
-    )
-
-    team_query.query.assert_awaited_once()
-    assert team_query.query.await_args.args[0] == (9_260_775,)
-    finish_result.assert_awaited_once()
-    finish_call = finish_result.await_args
-    assert finish_call is not None
-    assert finish_call.kwargs["prompt"] == "team detail"
+    assert state[PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY] == (("2", "private_action"),)
 
 
 def test_player_detail_uses_the_shared_shortcut_executor(
     monkeypatch: Any,
 ) -> None:
     async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
-        await send_request_response(queued=False)
+        await send_request_feedback(queued=False)
         return QueryReply(text="peak")
 
     service = SimpleNamespace(shortcut=AsyncMock(side_effect=shortcut))
-    finish_result = AsyncMock()
+    continue_conversation = AsyncMock()
     monkeypatch.setattr(
         player_detail_conversation,
-        "_finish_player_detail_result",
-        finish_result,
+        "_continue_player_detail_conversation",
+        continue_conversation,
     )
     send_status = AsyncMock()
     monkeypatch.setattr(player_detail_conversation, "send_event_reply", send_status)
@@ -291,7 +130,7 @@ def test_player_detail_uses_the_shared_shortcut_executor(
 
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="peak", player_id=PLAYER_ID),
-        event.user_id,
+        ActorRef(Platform.ONEBOT, str(event.user_id)),
         group_id=event.group_id,
     )
     asyncio.run(
@@ -306,63 +145,11 @@ def test_player_detail_uses_the_shared_shortcut_executor(
     )
 
     assert service.shortcut.await_count == EXPECTED_CONVERSATION_CONTINUES
-    assert finish_result.await_count == EXPECTED_CONVERSATION_CONTINUES
+    assert continue_conversation.await_count == EXPECTED_CONVERSATION_CONTINUES
     assert send_status.await_count == EXPECTED_CONVERSATION_CONTINUES
     assert all(
         call.args[2] == "⏳ 巅峰之战正在查询，完成后会直接发送结果。"
         for call in send_status.await_args_list
-    )
-
-
-def test_player_detail_reuses_the_base_snapshot(
-    monkeypatch: Any,
-) -> None:
-    service = SimpleNamespace(shortcut=AsyncMock(return_value=QueryReply(text="peak")))
-    monkeypatch.setattr(
-        player_detail_conversation,
-        "_finish_player_detail_result",
-        AsyncMock(),
-    )
-    monkeypatch.setattr(player_detail_conversation, "send_event_reply", AsyncMock())
-    event = group_message_event("2")
-    snapshot = PlayerBaseSnapshot(
-        player_id=PLAYER_ID,
-        user_info=SimpleNamespace(nick="already fetched"),
-        more_info=SimpleNamespace(reg_time=1_700_000_000),
-        online_info=None,
-        team_name="snapshot team",
-    )
-    state: dict[str, object] = {
-        PLAYER_ID_KEY: PLAYER_ID,
-        PLAYER_DETAIL_MENU_CONTEXT_KEY: PlayerDetailMenuContext(
-            player_id=PLAYER_ID,
-            has_collection=False,
-            has_peak=True,
-            has_autocard=False,
-            base_snapshot=snapshot,
-        ),
-        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("2", PLAYER_PEAK_KEY),),
-    }
-
-    asyncio.run(
-        player_detail_conversation.handle_player_detail_reply(
-            cast("Any", service),
-            PlayerDetailExtensionRegistry(),
-            cast("Any", object()),
-            cast("Any", object()),
-            event,
-            cast("Any", state),
-        )
-    )
-
-    service.shortcut.assert_awaited_once_with(
-        PlayerShortcutCommand(
-            kind="peak",
-            player_id=PLAYER_ID,
-            base_snapshot=snapshot,
-        ),
-        event.user_id,
-        group_id=event.group_id,
     )
 
 
@@ -374,7 +161,7 @@ def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
     )
     monkeypatch.setattr(
         player_detail_conversation,
-        "_finish_player_detail_result",
+        "_continue_player_detail_conversation",
         AsyncMock(),
     )
     monkeypatch.setattr(
@@ -401,7 +188,7 @@ def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
 
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
-        replying_member.user_id,
+        ActorRef(Platform.ONEBOT, str(replying_member.user_id)),
         group_id=replying_member.group_id,
     )
 
@@ -457,7 +244,7 @@ def test_shared_player_menu_reply_creates_the_replying_members_context(
 
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
-        event.user_id,
+        ActorRef(Platform.ONEBOT, str(event.user_id)),
         group_id=event.group_id,
     )
     assert state[PLAYER_ID_KEY] == PLAYER_ID
@@ -493,19 +280,22 @@ def test_shared_player_menu_exit_only_exits_the_replying_member(
         PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
     }
 
-    with pytest.raises(FinishedException):
-        asyncio.run(
-            player_detail_conversation.handle_player_detail_reply(
-                cast("Any", object()),
-                PlayerDetailExtensionRegistry(),
-                cast("Any", features),
-                matcher,
-                event,
-                cast("Any", state),
-            )
+    asyncio.run(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", object()),
+            PlayerDetailExtensionRegistry(),
+            cast("Any", features),
+            matcher,
+            event,
+            cast("Any", state),
         )
+    )
 
-    finish_reply.assert_not_awaited()
+    finish_reply.assert_awaited_once_with(
+        matcher,
+        event,
+        "已退出米米号详情查询。",
+    )
 
 
 def test_shared_player_menu_cannot_use_an_extension_hidden_from_the_replying_member(
@@ -573,7 +363,7 @@ def test_player_detail_delegates_a_registered_private_action(
     monkeypatch: Any,
 ) -> None:
     async def query(*_args: object) -> QueryReply:
-        await send_request_response(queued=True)
+        await send_request_feedback(queued=True)
         return QueryReply(text="private reply")
 
     action_query = AsyncMock(side_effect=query)
@@ -589,11 +379,11 @@ def test_player_detail_delegates_a_registered_private_action(
             action=ActionDefinition("private_action", "private action"),
         )
     )
-    finish_result = AsyncMock()
+    continue_conversation = AsyncMock()
     monkeypatch.setattr(
         player_detail_conversation,
-        "_finish_player_detail_result",
-        finish_result,
+        "_continue_player_detail_conversation",
+        continue_conversation,
     )
     send_status = AsyncMock()
     monkeypatch.setattr(player_detail_conversation, "send_event_reply", send_status)
@@ -615,7 +405,7 @@ def test_player_detail_delegates_a_registered_private_action(
     )
 
     action_query.assert_awaited_once_with(PLAYER_ID, event.user_id, event.group_id)
-    call = finish_result.await_args
+    call = continue_conversation.await_args
     assert call is not None
     assert call.kwargs["prompt"] == "private reply"
     send_status.assert_awaited_once()
@@ -624,49 +414,6 @@ def test_player_detail_delegates_a_registered_private_action(
     assert status_call.args[2] == (
         "⏳ 已收到：private action，已加入队列，完成后会直接发送结果。"
     )
-
-
-def test_player_detail_owner_result_does_not_reopen_the_menu(
-    monkeypatch: Any,
-) -> None:
-    finish_reply = AsyncMock(side_effect=FinishedException)
-    continue_conversation = AsyncMock()
-    monkeypatch.setattr(
-        player_detail_conversation,
-        "finish_event_reply",
-        finish_reply,
-    )
-    monkeypatch.setattr(
-        player_detail_conversation,
-        "_continue_player_detail_conversation",
-        continue_conversation,
-    )
-    event = group_message_event("1")
-    sent: list[bool] = []
-
-    with pytest.raises(FinishedException):
-        asyncio.run(
-            player_detail_conversation._deliver_player_detail_result(
-                cast("Any", object()),
-                PlayerDetailExtensionRegistry(),
-                cast("Any", object()),
-                cast("Any", object()),
-                event,
-                cast("Any", {}),
-                keep_menu_context=False,
-                action="collection",
-                prompt="collection result",
-                on_sent=lambda: sent.append(True),
-            )
-        )
-
-    finish_reply.assert_awaited_once_with(
-        ANY,
-        event,
-        "collection result",
-    )
-    continue_conversation.assert_not_awaited()
-    assert sent == [True]
 
 
 def test_player_detail_semantic_request_matches_direct_shortcuts() -> None:

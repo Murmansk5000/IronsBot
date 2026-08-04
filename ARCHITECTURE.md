@@ -2,11 +2,13 @@
 
 Status: current engineering requirements and long-term target
 
-This document defines the architectural rules that new code must follow and
-the direction in which existing code will be migrated. It is not permission to
-rewrite unrelated code in one change: every migration must be a small,
-independently verifiable change that preserves current OneBot behaviour unless
-an explicit product decision says otherwise.
+This document is the single normative source for architecture work. It
+separates the current transition state from the target state so a description
+of today's implementation is never permission to extend a design that the
+target removes. It is not permission to rewrite unrelated code in one change:
+every migration must be a small, independently verifiable change that
+preserves current OneBot behaviour unless an explicit product decision says
+otherwise.
 
 The current production shape is NoneBot2 + OneBot v11 + NapCat, usually in
 Docker/Unraid. The long-term target is to support three deployment shapes with
@@ -20,6 +22,68 @@ QQ Official Bot support is a future boundary, not a currently enabled
 integration. Do not add an empty official-bot plugin, fake adapters, official
 credentials, or speculative compatibility code before a concrete feature needs
 them.
+
+## Architecture Status
+
+The following distinctions are mandatory during the migration:
+
+- **Target contracts** are the designs all new cross-feature work must move
+  toward. New code must not create another competing contract for the same
+  responsibility.
+- **Transitional contracts** describe code that exists today only so it can be
+  safely migrated. They may be maintained for correctness, but must not gain
+  new feature ownership, optional fields, or another consumer when a target
+  contract is available.
+- **One-time migration tools** may read legacy data while transforming it, but
+  normal runtime code must use exactly one schema and one read path after that
+  migration succeeds.
+
+### Normative Reading Rules
+
+This document contains both a description of the running application and the
+architecture it is moving toward. They have different force:
+
+1. A **target** rule is mandatory for new cross-feature design, even when the
+   current application has not reached that state yet.
+2. A **transition** rule names an existing bridge only to constrain and remove
+   it. It never grants permission to extend that bridge with new ownership.
+3. A **baseline** rule freezes visible behaviour while its implementation is
+   moved. It does not prescribe the package, class, or registry that must own
+   that behaviour later.
+4. When a current implementation and a target rule appear to disagree, the
+   target rule decides new design. The current implementation may only receive
+   a minimal correctness fix or an explicitly scoped migration step.
+
+Every architecture change must label the contract it changes as **target**,
+**transition**, or **baseline** in its plan and commit description. A document
+or review must not call a transitional mechanism the "single" or "unique"
+contract without the qualifier "current bootstrap bridge". This specifically
+prevents the central application registry from being mistaken for the future
+plugin, command, or lifecycle contract.
+
+Current transition items are the central application plugin registry,
+`MatcherRegistry`, and the renderer data lookups listed in the Phase 0 guard
+below. They keep the current OneBot application runnable; they are not the
+architecture that new cross-feature work should target. Phase 2 has switched
+top-level discovery to the standard NoneBot manifest and uses
+`PluginContribution` as the runtime contract. Its remaining work moves each
+contribution out of the central registry and replaces `MatcherRegistry` with a
+matcher factory. Phase 4 removes renderer-owned persistence lookups. No new
+subsystem may be built on those transition items merely because they already
+exist.
+
+The authoritative long-term ownership is therefore:
+
+- `PluginMetadata` owns plugin identity and static metadata;
+- `PluginContribution` owns a plugin's explicit runtime contributions;
+- `CommandCatalog` and `CommandContract` own direct-command semantics;
+- the feature-policy service owns permission decisions; and
+- `ApplicationLifecycle` owns application lifecycle and background task
+  ownership.
+
+The central contribution bridge owns none of those target responsibilities. It
+only supplies existing OneBot contributions while Phase 2 moves them into their
+own manifest-loaded packages.
 
 ## Engineering Principles
 
@@ -50,6 +114,37 @@ The following rules are mandatory:
 - Preserve intentionally cohesive low-level modules such as binary/SWF
   parsers and protocol schedulers. Splitting files only to make a tree look
   symmetrical is not an architectural improvement.
+
+## Change Design Gate
+
+Before changing production code, the implementation plan must answer these
+questions in writing. A small bug fix may answer them in one short paragraph;
+a migration must answer each one explicitly.
+
+1. **Semantic owner:** What domain capability owns the behaviour? The answer
+   must not be "this plugin already handles something similar."
+2. **Reusable input/output:** Which existing typed value, port, resolver, or
+   repository is reused? If none exists, why is a new narrow interface the
+   correct boundary?
+3. **Adapter boundary:** Which code is transport adaptation, and which code is
+   platform-neutral policy? Adapter event types must stop at the plugin or
+   adapter boundary.
+4. **Persistence boundary:** Which lifecycle-owned store owns the data? State
+   must be keyed by the correct actor/conversation/entity identity rather than
+   by a feature-local convenience key.
+5. **Migration boundary:** Does the change replace an old path? If so, name
+   the one-time tool, rollback point, removal condition, and test. Runtime
+   dual-read or dual-write is not an acceptable default.
+6. **User contract:** Which existing command, reply, rate limit, permission,
+   or scheduled behaviour is preserved or intentionally changed?
+7. **Proof:** Which focused tests, architecture tests, static checks, and
+   smoke checks demonstrate the result?
+
+Do not solve a repeated need by adding a feature-specific parser, storage
+file, background loop, command keyword list, or renderer query. First look
+for the real shared abstraction. A new abstraction is justified only when it
+has a clear domain owner and removes meaningful duplication; it is not
+justified as a speculative framework.
 
 ## Code Size And Cohesion
 
@@ -101,6 +196,14 @@ Future services should receive typed input/output values such as
 delivery ports. They must not receive `GroupMessageEvent`, `Bot`, CQ segments,
 or adapter-specific session objects. Transport adapters own conversion in both
 directions.
+
+Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
+`ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
+`ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
+`OutboundMessenger`. They use opaque nonempty string IDs. The current
+OneBot-only `MessageTarget` remains a Phase 3 transition type until its full
+call chain can be replaced in one direction; no new platform-neutral service
+may depend on it.
 
 The eventual composition is:
 
@@ -187,10 +290,46 @@ reusable contracts rather than adding feature-local regexes:
 - Configuration-generated commands, selection menus, and fixed commands must
   use the same contract. Passive notices and scheduled jobs are not commands.
 
-The current `PluginDefinition` registry remains the OneBot-era installation
-contract until a tested migration replaces it. Do not create a second parallel
-manifest merely for the future target; when migration begins, the new manifest
-must become the one authority for the responsibilities it owns.
+The current central registry remains a frozen OneBot-era contribution bridge
+until each contribution is declared by its own top-level plugin package. It is
+only a temporary supplier to the standard NoneBot manifest path; it is not the
+long-term owner of command semantics, feature policy, help content, or
+lifecycle design. Do not create a second parallel manifest merely for the
+future target. Each migration moves one responsibility to the manifest-backed
+plugin and deletes it from this bridge in the same work item.
+
+## Contract Ownership During Migration
+
+Every responsibility has exactly one target authority. A transitional bridge
+may temporarily invoke that authority, but it must not redefine or duplicate
+its data. New work must extend the target authority in this table rather than
+adding fields or side registries to the central bootstrap bridge.
+
+| Responsibility | Current bridge | Target authority | Migration completion |
+| --- | --- | --- | --- |
+| Plugin discovery and loading | Standard TOML loads declared third-party prerequisites and a temporary local bootstrap module, which delegates to `app.registry` | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No application plugin registry remains. |
+| Plugin identity and static metadata | Bootstrap `PluginMetadata` only | `PluginMetadata` in each top-level plugin package | Metadata is loaded without importing application registry code. |
+| Matchers, command contracts, jobs, lifecycle contributions | `MatcherRegistry` + central contribution bridge | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
+| Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
+| Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
+
+The first verified migrations are `ironsbot.plugins.about`,
+`ironsbot.plugins.activity`,
+`ironsbot.plugins.help` / `.hint`, `ironsbot.plugins.sendpic`,
+`ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.seer.rank_help`,
+`ironsbot.plugins.team_audit`, `ironsbot.plugins.team.resource`, and the
+`ironsbot.plugins.headless_seer_notice`, and the messaging `blacklist`,
+`meeting`, `red_packet`, and `scheduled_restart` modules: the manifest loads
+them directly, and each package supplies its own metadata and contribution.
+`fire_manual_ad` owns its passive feature policy contribution; `sendpic`,
+`meeting`, `rank_help`, and `team.resource` also own the command descriptors
+for the matchers they install.
+Every subsequent plugin migration follows that pattern and removes its entry
+from the central bridge in the same change.
+
+The target system must not retain an adapter merely to keep the old registry
+alive. A phase may use a short-lived migration tool, but ordinary runtime must
+have one path and one authority after that phase is complete.
 
 ## Data, Rendering, And Storage Direction
 
@@ -212,6 +351,17 @@ Future data work follows these rules:
 - SQLite changes use explicit versions and transactional migrations. Shared
   state databases use namespaced migration records; large independent stores
   may use their own schema version.
+- Platform identity migrations are offline, one-time transformations. They use
+  independent platform/kind/id/scope columns, a temporary database, a
+  timestamped backup, integrity and cardinality checks, then atomic
+  replacement. The table-by-table contract is in
+  [docs/platform-state-migration.md](docs/platform-state-migration.md).
+- A normal runtime repository persists only `ActorRef` or `ConversationRef`
+  columns. OneBot integers may be adapted at a transport-facing wrapper while
+  Phase 1 is in progress, but they must not be a database column, a primary
+  key, or the persistence contract of a core service. Adding a second schema,
+  a lazy legacy import, or a dual-read branch is prohibited; use the offline
+  migration instead.
 - A downloaded data release is validated for schema version and required tables
   before atomic replacement. Incompatible data disables only the affected
   feature and notifies administrators without removing the data-update path.
@@ -238,7 +388,35 @@ Each phase must be independently reviewable, have migration/rollback guidance
 where persistent data changes, and avoid leaving an old and new runtime path
 active indefinitely.
 
-## Package Layout
+## Work Execution And Progress Reporting
+
+Architecture work is performed as a hierarchy of **program -> phase -> task**.
+The tracked plan is the source of execution status, not a substitute for code
+or tests. Every active implementation update must report both levels:
+
+```text
+Program  [████░░░░░░] 40%  estimated remaining: 6 h
+Phase 2  [███░░░░░░░] 30%  estimated remaining: 90 min
+Task     [██████░░░░] 60%  estimated remaining: 25 min
+```
+
+The percentages are estimates based on completed, verifiable tasks, not a
+claim of linear certainty. Re-estimate when investigation changes scope;
+state why the estimate changed. Do not hide a blocked task behind a broad
+percentage. Report the blocker, the affected phase, what was tried, and the
+next safe action.
+
+At the start of each task, record its target contract, touched repositories,
+acceptance checks, rollback strategy, and whether it changes public behaviour.
+At completion, report the changed files, tests actually run, remaining risks,
+and the next task. A task may be committed only when it leaves the branch
+coherent and independently testable; unrelated worktree changes remain
+unstaged.
+
+The practical checklist and review template live in
+[docs/engineering-workflow.md](docs/engineering-workflow.md).
+
+## Target Package Layout
 
 ```text
 ironsbot/
@@ -312,9 +490,13 @@ ironsbot/
     rules.py
 ```
 
-The final package has no `shared`, `utils`, `plugin_catalog`,
-`plugin_manifest`, or command cooldown manifest. Code currently owned by those
-locations moves to its actual owner:
+The target package has no `shared`, `utils`, `plugin_catalog`, custom
+reflection-based plugin-discovery module, or command cooldown manifest. This
+does not prohibit the standard NoneBot TOML plugin manifest, nor the
+configuration field that selects one declared manifest profile. The selector is
+declarative configuration only: it never becomes a second discovery list or a
+runtime registry. Code currently owned by those locations moves to its actual
+owner:
 
 - pure values and policy rules belong to `core`;
 - application use cases belong to `services`;
@@ -362,12 +544,16 @@ creates a process-wide infrastructure client.
 
 ## Application Composition
 
-`app.composition.build_application(settings)` is the only composition root. It:
+`app.composition.build_application(settings)` is the only composition root.
+Standard NoneBot TOML selects and loads the configured plugin profile first;
+scoped plugin contributions are then passed to composition. The currently
+loaded bridge contribution still supplies existing definitions from the central
+registry, but that bridge is not a second discovery path. Composition:
 
 1. creates infrastructure resources;
 2. creates repositories and service objects with explicit constructor
    dependencies;
-3. builds the immutable plugin registry;
+3. validates manifest contributions and freezes the command catalog;
 4. builds the application lifecycle;
 5. returns one `Application` object.
 
@@ -408,30 +594,51 @@ the lifecycle state machine.
 Background tasks are created through the lifecycle task owner. Every task has
 a name, an owner, cancellation on shutdown, and observable failure logging.
 
-## Plugin Contract
+## Frozen Plugin Contribution Bridge (Current Implementation)
 
-All internal plugins use one contract:
+`PluginContribution` is the runtime contribution contract. The current
+`app.registry.build_plugin_registry(...)` supplier is a frozen OneBot bootstrap
+bridge, not the plugin discovery contract for new design. Existing central
+definitions remain only until Phase 2 has one top-level manifest-loaded package
+per plugin with the same behaviour and tests. Do not add fields, new feature
+ownership, command metadata, help metadata, lifecycle concepts, or new plugin
+families to this bridge.
+
+The current bridge is:
 
 ```python
 @dataclass(frozen=True, slots=True)
-class PluginDefinition:
+class PluginContribution:
     id: str
     features: frozenset[Feature]
     help: HelpEntry | None
+    commands: tuple[CommandDescriptor, ...] = ()
     install: Callable[[MatcherRegistry], None] | None = None
     hooks: PluginHooks = PluginHooks()
 ```
 
-`app.registry.build_plugin_registry(...)` returns one ordered tuple of
-`PluginDefinition` values. The tuple is the authority for:
+`app.registry.build_plugin_registry(...)` currently returns one ordered tuple
+of remaining `PluginContribution` values. The standard manifest discovers a
+temporary bootstrap package plus any migrated top-level packages, which submit
+their contributions during the scoped loading window. Until Phase 2 removes
+the central supplier, that tuple is a temporary operational bridge, not the
+unique architectural contract. It must not become an additional authority over
+the target contracts:
 
 - plugin installation order;
 - feature ownership;
-- help grouping, ordering, and visibility;
-- lifecycle contributions.
+- legacy help grouping, ordering, and visibility;
+- legacy lifecycle contributions.
 
-There is no parallel module manifest, help layout map, feature-to-module map,
-runtime setup string list, or reflective `module:function` lookup.
+Those are not permissions to add a second source of truth. The migration must
+move each responsibility to the target authority in the ownership table and
+then delete it from this bridge.
+
+The standard NoneBot TOML manifest is the sole plugin discovery source after
+Phase 2. A configuration value may select a named, declared manifest profile
+such as `full` or `core`, but it cannot list modules itself. There is no
+parallel application manifest, help layout map, feature-to-module map, runtime
+setup string list, or reflective `module:function` lookup.
 
 Every message matcher is created through `runtime.matchers.MatcherRegistry`.
 Creation requires one explicit command policy:
@@ -445,10 +652,11 @@ There is no second pass that imports matcher objects by string reference.
 
 ## Message Input Routing
 
-`runtime.message_input.MessageInputContext` is the only interpreter for a
-newly received OneBot message. It records the new text, reply metadata, a bot
-mention, and ordinary member mentions once, then classifies the message in
-this fixed order:
+`core.message_input.MessageInputContext` is the platform-neutral record of a
+newly received message. The current `runtime.message_input` is its OneBot
+adapter: it converts current-message IDs and direct member mentions into
+`IncomingMessageRef` and `ActorRef` values before applying this fixed routing
+order:
 
 1. reply;
 2. direct bot mention;
@@ -474,10 +682,16 @@ framework identifies that input as a shared menu reply; business code may
 derive a new caller-owned conversation from the stored menu target, but never
 reassigns or closes the original owner's conversation.
 
-External NoneBot dependencies are represented by definitions in the same
-ordered registry. Their `install` callable may delegate to NoneBot's external
-plugin loader, but no other code loads plugins. Lifecycle-only definitions
-leave `install` unset instead of using a no-op callable.
+The Phase 2 replacement uses `[tool.nonebot.plugins]` and
+`nonebot.load_from_toml`, with one real top-level package per plugin. Every
+plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
+`PluginInstallContext` only while contributions are registered. It is not a
+service locator and must not be read by services or renderers. A
+`PluginContribution` explicitly owns matchers, command contracts, lifecycle
+callbacks, and scheduled jobs. `CommandCatalog` consumes the contributed
+contracts and is the only command-description authority. The replacement
+becomes the only authority; the bridge and its reflective discovery are then
+deleted instead of being kept as a compatibility path.
 
 ## Service Boundaries
 
@@ -644,13 +858,80 @@ aliases. Changes to public command text require an explicit product decision
 and characterization test update; architecture work alone is not such a
 decision.
 
+## Phase 0 Baseline Guards
+
+The Phase 0 guards deliberately protect behaviour while identifying the
+remaining target-state work:
+
+- `tests/test_layer_import_hygiene.py` enforces the existing dependency
+  direction, prohibits framework imports from services, and limits lifecycle,
+  task, SQLite, and scheduler ownership.
+- `tests/test_plugin_import_hygiene.py` proves plugin installation performs no
+  filesystem, network, task, or SQLite side effect.
+- `tests/test_structure_size_hygiene.py` enforces the 800-line production
+  module limit.
+- `tests/test_architecture_target_hygiene.py` prevents new renderer persistence
+  dependencies outside an explicit Phase 4 transition allowlist and forbids
+  adapter transport imports from `core` and `services`.
+
+The renderer allowlist is a debt register, not an exception to the target
+rule. It contains only the three existing Seer rendering data lookup modules
+and must shrink in Phase 4. Adding an item requires a product-approved
+migration plan; a new renderer must receive a view model and assets instead.
+
+## Current OneBot Behaviour Baseline
+
+This snapshot records what Phase 1 onward must preserve while changing its
+implementation. It is deliberately an ownership map, not a second command
+reference for users:
+
+- **Ingress and commands:** NoneBot + OneBot v11 events enter through
+  `MessageInputContext`; `CommandCatalog` and `CommandDescriptor` currently
+  drive help, poke candidates, access checks, and direct-command ownership.
+  `MatcherRegistry` constructs the current matchers and records their command
+  policy. Prompts and selection menus keep their own anchored session state.
+- **Permissions and identity:** the current feature policy resolves configured
+  group and user aliases, group/private feature access, group-manager roles,
+  and superuser bypass. OneBot user and group identifiers are still integers
+  at this boundary. Seer player IDs already use a shared resolver for numeric
+  IDs, aliases, one direct mention, and the caller's default binding.
+- **Replies and proactive delivery:** group and private replies, scheduled
+  pushes, activity notices, Bilibili delivery, team-resource notices, startup
+  notices, and admin notices use OneBot routing and outbound rate limiting.
+  Group cooldown and priority-queue behaviour are frozen by characterization
+  tests; a known timing-sensitive priority test is monitored rather than
+  hidden.
+- **State and subscriptions:** QQ user/group state is consolidated in
+  `data/state/qq_state.sqlite`; runtime task state is in
+  `data/state/runtime_state.sqlite`. `ironsbot.state_migration` is the
+  one-time tool that creates and validates these stores. Bindings, query
+  quotas, push preferences, display limits, and subscriptions stay logically
+  separate tables even when they share a file.
+- **Large content and caches:** Seer data, aliases, player samples, rank facts,
+  lineups, Bilibili history, and AI memory remain separate because their size,
+  retention, or contention is different. They are not candidates for the
+  platform-identity migration.
+- **Lifecycle:** `ApplicationLifecycle` owns startup, shutdown, OneBot
+  connect/disconnect hooks, scheduler registration, and background-task
+  cancellation. Plugins register contributions through the current bridge but
+  do not open infrastructure resources at import time.
+
+Phase 0 observations to resolve in later phases are also explicit: the
+current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
+uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
+migration. The source tree currently has renderer-owned SQL lookup debt and
+existing Bandit findings with no high-severity result; neither is silently
+suppressed by this phase.
+
 ## Enforcement
 
 The repository must include tests that prove:
 
 - the dependency graph above;
 - one settings loader and no global settings access;
-- one plugin registry and no reflective internal plugin/runtime references;
+- one current bootstrap registry until Phase 2, with no reflective internal
+  plugin/runtime references; the registry must not acquire target-contract
+  ownership;
 - all internal message matchers have an explicit command policy;
 - only bootstrap registers driver lifecycle hooks;
 - only `SqliteDatabase` calls `sqlite3.connect`;

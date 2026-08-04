@@ -6,13 +6,10 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.rule import Rule
 
-from ironsbot.runtime.message_input import (
-    MessageInputKind,
-    message_input_context,
-)
+from ironsbot.core.message_input import MessageInputKind
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.rules import (
     bot_mention,
-    bot_mention_including_reply,
     explicit_command,
     member_target_command,
     member_targets_command,
@@ -50,6 +47,7 @@ def test_message_input_context_uses_fixed_routing_precedence() -> None:
     assert message_input_context(member).kind is MessageInputKind.MEMBER_MENTION
     assert message_input_context(bot).kind is MessageInputKind.BOT_MENTION
     assert message_input_context(reply).kind is MessageInputKind.REPLY
+    assert message_input_context(member).member_mentions[0].id == "456"
 
 
 def test_private_to_me_is_direct_input_not_a_bot_mention() -> None:
@@ -124,18 +122,3 @@ def test_bot_mentions_and_natural_language_have_disjoint_routes() -> None:
     assert not _matches(natural_language(), reply_bot)
     assert _matches(bot_mention(), direct_bot)
     assert not _matches(bot_mention(), reply_bot)
-
-
-def test_bot_mention_including_reply_requires_a_current_message_at() -> None:
-    direct_bot = group_message_event(
-        message=Message([MessageSegment.at(1), MessageSegment.text("你好")])
-    )
-    reply_bot = group_message_event(
-        message=Message([MessageSegment.at(1), MessageSegment.text("你好")]),
-        reply_sender_user_id=789,
-    )
-    reply_without_at = group_message_event("你好", reply_sender_user_id=1)
-
-    assert _matches(bot_mention_including_reply(), direct_bot)
-    assert _matches(bot_mention_including_reply(), reply_bot)
-    assert not _matches(bot_mention_including_reply(), reply_without_at)

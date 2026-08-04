@@ -1,8 +1,15 @@
+# SPDX-License-Identifier: MIT
+"""Conversation-scoped Bilibili push preferences."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.storage.platform_identity import (
+    ConversationIdentityColumns,
+)
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 
 if TYPE_CHECKING:
@@ -11,46 +18,33 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.preferences import BiliRuntimePushMode
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
+
 _SCHEMA = (
-    "CREATE TABLE IF NOT EXISTS bili_push_preferences ("
-    "target_type TEXT NOT NULL, target_id INTEGER NOT NULL, "
-    "uid INTEGER NOT NULL, mode TEXT NOT NULL, updated_at TEXT NOT NULL, "
-    "PRIMARY KEY (target_type, target_id, uid)"
-    ")",
-    "CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid "
-    "ON bili_push_preferences (uid, target_type, target_id)",
+    """
+    CREATE TABLE IF NOT EXISTS bili_push_preferences (
+        conversation_platform TEXT NOT NULL,
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        uid INTEGER NOT NULL,
+        mode TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (conversation_platform, conversation_kind, conversation_id, uid)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_bili_push_preferences_uid
+    ON bili_push_preferences (
+        uid, conversation_platform, conversation_kind, conversation_id
+    )
+    """,
 )
-_MIGRATIONS = (
-    SqliteMigration(1, _SCHEMA),
-    SqliteMigration(
-        2,
-        (
-            "CREATE TABLE IF NOT EXISTS bili_push_category_preferences ("
-            "target_type TEXT NOT NULL, target_id INTEGER NOT NULL, "
-            "uid INTEGER NOT NULL, category TEXT NOT NULL, muted INTEGER NOT NULL, "
-            "updated_at TEXT NOT NULL, "
-            "PRIMARY KEY (target_type, target_id, uid, category)"
-            ")",
-            "CREATE INDEX IF NOT EXISTS idx_bili_push_category_preferences_uid "
-            "ON bili_push_category_preferences (uid, target_type, target_id)",
-        ),
-    ),
-    # The original lottery category covered both prize draws and results.
-    # Preserve every target's existing choice when those become independent.
-    SqliteMigration(
-        3,
-        (
-            "INSERT OR IGNORE INTO bili_push_category_preferences "
-            "(target_type, target_id, uid, category, muted, updated_at) "
-            "SELECT target_type, target_id, uid, 'winning', muted, updated_at "
-            "FROM bili_push_category_preferences WHERE category = 'lottery'",
-        ),
-    ),
-)
+_MIGRATIONS = (SqliteMigration(1, _SCHEMA),)
 MIGRATION_NAMESPACE = "bilibili_preferences"
 
 
 class SqliteBiliPushPreferenceStore:
+    """Persist modes by a neutral conversation identity."""
+
     def __init__(self, path: str | Path) -> None:
         self._database = SqliteDatabase(
             path,
@@ -66,9 +60,12 @@ class SqliteBiliPushPreferenceStore:
     ) -> BiliRuntimePushMode | None:
         with self._database.connect() as connection:
             row = connection.execute(
-                "SELECT mode FROM bili_push_preferences "
-                "WHERE target_type = ? AND target_id = ? AND uid = ?",
-                (target_type, target_id, uid),
+                """
+                SELECT mode FROM bili_push_preferences
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND uid = ?
+                """,
+                (*_conversation_values(target_type, target_id), uid),
             ).fetchone()
         mode = str(row[0]) if row is not None else ""
         if mode == "full":
@@ -86,12 +83,14 @@ class SqliteBiliPushPreferenceStore:
     ) -> None:
         with self._database.connect() as connection:
             connection.execute(
-                "INSERT OR REPLACE INTO bili_push_preferences "
-                "(target_type, target_id, uid, mode, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                """
+                INSERT OR REPLACE INTO bili_push_preferences (
+                    conversation_platform, conversation_kind, conversation_id,
+                    uid, mode, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
                 (
-                    target_type,
-                    target_id,
+                    *_conversation_values(target_type, target_id),
                     uid,
                     mode,
                     datetime.now(timezone.utc).isoformat(),
@@ -106,48 +105,22 @@ class SqliteBiliPushPreferenceStore:
     ) -> None:
         with self._database.connect() as connection:
             connection.execute(
-                "DELETE FROM bili_push_preferences "
-                "WHERE target_type = ? AND target_id = ? AND uid = ?",
-                (target_type, target_id, uid),
+                """
+                DELETE FROM bili_push_preferences
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND uid = ?
+                """,
+                (*_conversation_values(target_type, target_id), uid),
             )
 
-    def category_muted(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        uid: int,
-        category: str,
-    ) -> bool | None:
-        with self._database.connect() as connection:
-            row = connection.execute(
-                "SELECT muted FROM bili_push_category_preferences "
-                "WHERE target_type = ? AND target_id = ? AND uid = ? AND category = ?",
-                (target_type, target_id, uid, category),
-            ).fetchone()
-        return None if row is None else bool(row[0])
 
-    def set_category_muted(
-        self,
-        target_type: PushTargetType,
-        target_id: int,
-        uid: int,
-        category: str,
-        *,
-        muted: bool,
-    ) -> None:
-        with self._database.connect() as connection:
-            connection.execute(
-                "INSERT INTO bili_push_category_preferences "
-                "(target_type, target_id, uid, category, muted, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(target_type, target_id, uid, category) DO UPDATE SET "
-                "muted = excluded.muted, updated_at = excluded.updated_at",
-                (
-                    target_type,
-                    target_id,
-                    uid,
-                    category,
-                    int(muted),
-                    datetime.now(timezone.utc).isoformat(),
-                ),
-            )
+def _conversation_values(
+    target_type: PushTargetType,
+    target_id: int,
+) -> tuple[str, str, str]:
+    conversation = ConversationRef(
+        Platform.ONEBOT,
+        target_type,
+        str(int(target_id)),
+    )
+    return ConversationIdentityColumns.from_conversation(conversation).values()

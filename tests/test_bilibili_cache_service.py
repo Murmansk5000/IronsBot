@@ -58,32 +58,6 @@ def test_save_dynamic_history_snapshot_persists_fields(tmp_path: Path) -> None:
     assert saved.pushed
     assert saved.suppressed
     assert saved.suppression_reason == "test rule"
-    assert saved.summary == ""
-
-
-def test_dynamic_history_keeps_original_and_summary(tmp_path: Path) -> None:
-    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
-    item = _dynamic_item(text="完整原文" * 500)
-    snapshot = DynamicHistorySnapshot(
-        item=item,
-        pub_ts=PUB_TS,
-        author_mid=AUTHOR_UID,
-        author_name="Seer",
-        brief="test dynamic",
-    )
-    history.save_snapshot(snapshot)
-    history.save_summary(
-        "dynamic-1",
-        "摘要内容",
-        generated_by_ai=True,
-    )
-    history.save_snapshot(snapshot)
-
-    saved = history.get("dynamic-1")
-    assert saved is not None
-    assert saved.item == item
-    assert saved.summary == "摘要内容"
-    assert saved.summary_generated_by_ai
 
 
 def test_save_target_dynamic_history_builds_and_saves_snapshots(
@@ -107,27 +81,3 @@ def test_save_target_dynamic_history_builds_and_saves_snapshots(
     assert records[0].uid == AUTHOR_UID
     assert records[0].suppressed
     assert records[0].suppression_reason.endswith(pattern)
-
-
-def test_dynamic_delivery_claim_is_shared_between_history_store_instances(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "history.sqlite"
-    first = SqliteBiliDynamicHistoryStore(path, 10)
-    second = SqliteBiliDynamicHistoryStore(path, 10)
-    first.save_snapshot(
-        DynamicHistorySnapshot(
-            item={"id_str": "dynamic-1"},
-            pub_ts=PUB_TS,
-            author_mid=AUTHOR_UID,
-            author_name="Seer",
-            brief="test dynamic",
-        )
-    )
-
-    assert first.try_claim_delivery("dynamic-1")
-    assert not second.try_claim_delivery("dynamic-1")
-
-    first.release_delivery_claim("dynamic-1")
-
-    assert second.try_claim_delivery("dynamic-1")

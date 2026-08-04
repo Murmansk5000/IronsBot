@@ -1,18 +1,28 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
+from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.core.features import Feature
+from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.matchers import (
     CommandPolicy,
     enter_prompt_loop,
     get_prompt_session_manager,
     reject_with_rule,
+)
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    PluginContributionCatalog,
+    active_plugin_install_context,
 )
 from ironsbot.runtime.replies import (
     build_message,
@@ -30,13 +40,25 @@ from .menu import (
     visible_help_entries,
 )
 
+__plugin_meta__ = PluginMetadata(
+    name="帮助",
+    description="按当前会话权限显示可用功能与命令。",
+    usage="发送“帮助”。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
+
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import MatcherRegistry
-    from ironsbot.runtime.plugins import PluginDefinition
+
+
+def _always_visible_help(_event: Event) -> bool:
+    return True
 
 
 def _help_prompt_message(event: MessageEvent, text: str):
@@ -145,7 +167,7 @@ def _create_selection_handler(
 
 def install(
     registry: MatcherRegistry,
-    definitions: tuple[PluginDefinition, ...],
+    contribution_catalog: PluginContributionCatalog,
     features: FeatureService,
     commands: CommandCatalog,
     *,
@@ -165,7 +187,7 @@ def install(
         state: T_State,
     ) -> None:
         entries = visible_help_entries(
-            definitions,
+            contribution_catalog.contributions,
             event,
             features=features,
             commands=commands,
@@ -182,3 +204,55 @@ def install(
         )
 
     matcher.append_handler(_handle_help)
+
+
+def plugin_contribution(
+    *,
+    contribution_catalog: PluginContributionCatalog,
+    features: FeatureService,
+    commands: CommandCatalog,
+    ignored_plugins: tuple[str, ...],
+) -> PluginContribution:
+    """Declare the help menu against the frozen application contribution view."""
+
+    return PluginContribution(
+        id="help",
+        features=frozenset({Feature.HELP}),
+        help=HelpEntry(
+            name="帮助",
+            description="按当前群/私聊权限显示可用功能",
+            group="core",
+            order=10,
+            visible=_always_visible_help,
+        ),
+        commands=(
+            CommandDescriptor(
+                id="help",
+                plugin_id="help",
+                section="查看",
+                examples=("帮助",),
+                description="查看当前会话可用功能",
+                features_any=("help",),
+                show_in_poke=True,
+            ),
+        ),
+        install=partial(
+            install,
+            contribution_catalog=contribution_catalog,
+            features=features,
+            commands=commands,
+            ignored_plugins=ignored_plugins,
+        ),
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            contribution_catalog=context.resources.contribution_catalog,
+            features=context.resources.features,
+            commands=context.resources.commands,
+            ignored_plugins=tuple(context.settings.features.help.ignored_plugins),
+        ),
+    )

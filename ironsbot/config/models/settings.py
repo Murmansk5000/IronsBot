@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from typing import Literal
 
 from pydantic import (
     BaseModel,
@@ -34,7 +33,6 @@ from ironsbot.core.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
 )
-from ironsbot.core.time import normalize_daily_time
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -64,26 +62,15 @@ class SettingsReferenceError(ValueError):
         location: str = "seer.player_accounts",
     ) -> SettingsReferenceError:
         return cls(
-            f"{location} requires environment variable SEER_PASSWORD_{player_id}"
+            f"{location} "
+            f"requires environment variable SEER_PASSWORD_{player_id}"
         )
 
 
 class MatcherPriorityConfigError(ValueError):
     @classmethod
-    def mention_reply_order(cls) -> MatcherPriorityConfigError:
-        return cls("bot.matcher_priority.mention_reply must run before ai_group_at")
-
-    @classmethod
     def bot_mention_order(cls) -> MatcherPriorityConfigError:
         return cls("bot.matcher_priority.ai_group_at must run before bot_mention_block")
-
-
-class RuntimeMenuConfigError(ValueError):
-    @classmethod
-    def root_timeout_exceeds_maximum(cls) -> RuntimeMenuConfigError:
-        return cls(
-            "runtime.menu.root_timeout_minutes must not exceed max_timeout_minutes"
-        )
 
 
 def _command_starts(value: object) -> list[str]:
@@ -115,43 +102,40 @@ class MatcherPriorityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     help_hint: int = Field(default=0, ge=0)
-    mention_reply: int = Field(default=-21, ge=-100)
-    ai_group_at: int = Field(default=-20, ge=-100)
-    bot_mention_block: int = Field(default=-19, ge=-100)
-    server_status: int = Field(default=10, ge=0)
-    server_status_admin: int = Field(default=11, ge=0)
-    bilibili: int = Field(default=20, ge=0)
-    sendpic: int = Field(default=30, ge=0)
-    red_packet_notice: int = Field(default=40, ge=0)
-    seer_player: int = Field(default=50, ge=0)
-    seer_team: int = Field(default=51, ge=0)
-    seer_rank: int = Field(default=52, ge=0)
-    seer_rank_help: int = Field(default=53, ge=0)
-    seer_autocard: int = Field(default=54, ge=0)
-    lucky_skin_window: int = Field(default=55, ge=0)
-    seer_type: int = Field(default=56, ge=0)
-    seer_equipment: int = Field(default=57, ge=0)
-    seer_peak: int = Field(default=58, ge=0)
-    seer_data: int = Field(default=59, ge=0)
-    team_resource_subscription: int = Field(default=60, ge=0)
-    help: int = Field(default=70, ge=0)
-    about: int = Field(default=71, ge=0)
-    message_commands: int = Field(default=80, ge=0)
-    ai_intent: int = Field(default=81, ge=0)
-    meeting: int = Field(default=82, ge=0)
-    activity: int = Field(default=83, ge=0)
-    db_sync: int = Field(default=84, ge=0)
-    team_audit: int = Field(default=85, ge=0)
-    seer_mintmark: int = Field(default=90, ge=0)
-    pet_config: int = Field(default=91, ge=0)
-    seer_pet: int = Field(default=92, ge=0)
-    seer_query: int = Field(default=93, ge=0)
-    ai_chat: int = Field(default=100, ge=0)
+    ai_group_at: int = Field(default=-10, ge=-100)
+    bot_mention_block: int = Field(default=-5, ge=-100)
+    server_status: int = Field(default=1, ge=0)
+    server_status_admin: int = Field(default=2, ge=0)
+    bilibili: int = Field(default=3, ge=0)
+    sendpic: int = Field(default=4, ge=0)
+    red_packet_notice: int = Field(default=5, ge=0)
+    seer_player: int = Field(default=10, ge=0)
+    seer_team: int = Field(default=11, ge=0)
+    seer_rank: int = Field(default=12, ge=0)
+    seer_rank_help: int = Field(default=13, ge=0)
+    seer_autocard: int = Field(default=14, ge=0)
+    lucky_skin_window: int = Field(default=15, ge=0)
+    seer_type: int = Field(default=20, ge=0)
+    seer_equipment: int = Field(default=21, ge=0)
+    seer_peak: int = Field(default=22, ge=0)
+    seer_data: int = Field(default=23, ge=0)
+    team_resource_subscription: int = Field(default=24, ge=0)
+    help: int = Field(default=30, ge=0)
+    about: int = Field(default=31, ge=0)
+    message_commands: int = Field(default=40, ge=0)
+    ai_intent: int = Field(default=50, ge=0)
+    meeting: int = Field(default=60, ge=0)
+    activity: int = Field(default=70, ge=0)
+    db_sync: int = Field(default=80, ge=0)
+    team_audit: int = Field(default=90, ge=0)
+    seer_mintmark: int = Field(default=100, ge=0)
+    pet_config: int = Field(default=109, ge=0)
+    seer_pet: int = Field(default=110, ge=0)
+    seer_query: int = Field(default=120, ge=0)
+    ai_chat: int = Field(default=200, ge=0)
 
     @model_validator(mode="after")
     def validate_bot_mention_order(self) -> MatcherPriorityConfig:
-        if self.mention_reply >= self.ai_group_at:
-            raise MatcherPriorityConfigError.mention_reply_order()
         if self.ai_group_at >= self.bot_mention_block:
             raise MatcherPriorityConfigError.bot_mention_order()
         return self
@@ -163,7 +147,7 @@ class LoggingConfig(BaseModel):
     file_enabled: bool = False
     file_level: str = "INFO"
     error_file_enabled: bool = False
-    rotation: str = "00:00:00"
+    rotation: str = "00:00"
     retention: str = "30 days"
     compression: str | None = None
 
@@ -176,27 +160,13 @@ class LoggingConfig(BaseModel):
             raise ValueError(msg)
         return level
 
-    @field_validator("retention")
+    @field_validator("rotation", "retention")
     @classmethod
     def normalize_required_strings(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             msg = "bot.logging fields must not be empty"
             raise ValueError(msg)
-        return normalized
-
-    @field_validator("rotation")
-    @classmethod
-    def normalize_rotation(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            msg = "bot.logging.rotation must not be empty"
-            raise ValueError(msg)
-        if re.fullmatch(r"\d{1,2}:\d{1,2}(?::\d{1,2})?", normalized):
-            return normalize_daily_time(
-                normalized,
-                error_message="bot.logging.rotation clock time must use HH:MM:SS",
-            )
         return normalized
 
     @field_validator("compression", mode="before")
@@ -217,6 +187,7 @@ class BotConfig(BaseModel):
     port: int = Field(default=8080, gt=0)
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
+    plugin_manifest: Literal["full", "core"] = "full"
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
     matcher_priority: MatcherPriorityConfig = Field(
@@ -264,69 +235,12 @@ class RuntimeConcurrencyConfig(BaseModel):
     render_max_concurrent: int = Field(default=1, ge=1, le=4)
 
 
-class RuntimeSchedulerConfig(BaseModel):
-    """Wall-clock policy shared by all first-party recurring jobs."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    timezone: str = "Asia/Shanghai"
-    clock_check_on_startup: bool = True
-    clock_warning_threshold_seconds: float = Field(default=3.0, ge=0)
-    clock_check_timeout_seconds: float = Field(default=3.0, gt=0)
-
-    @field_validator("timezone")
-    @classmethod
-    def validate_timezone(cls, value: str) -> str:
-        try:
-            ZoneInfo(value)
-        except ZoneInfoNotFoundError as exc:
-            msg = f"runtime.scheduler.timezone is invalid: {value}"
-            raise ValueError(msg) from exc
-        return value
-
-
-class RuntimeMenuConfig(BaseModel):
-    """Lifetime policy for interactive multi-level menus, in minutes."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    root_timeout_minutes: int = Field(default=3, ge=1)
-    page_extension_minutes: int = Field(default=1, ge=1)
-    max_timeout_minutes: int = Field(default=5, ge=1)
-
-    @model_validator(mode="after")
-    def validate_timeouts(self) -> RuntimeMenuConfig:
-        if self.root_timeout_minutes > self.max_timeout_minutes:
-            raise RuntimeMenuConfigError.root_timeout_exceeds_maximum()
-        return self
-
-
-class SelfCommandsConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    superuser: bool = False
-    prefix: str | list[str] = "演示 "
-
-    @field_validator("prefix")
-    @classmethod
-    def validate_prefix(cls, value: str | list[str]) -> str | list[str]:
-        prefixes = [value] if isinstance(value, str) else value
-        if not prefixes or any(not prefix.strip() for prefix in prefixes):
-            message = "runtime.self_commands.prefix must contain nonblank prefixes"
-            raise ValueError(message)
-        return value
-
-
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     concurrency: RuntimeConcurrencyConfig = Field(
         default_factory=RuntimeConcurrencyConfig
     )
-    scheduler: RuntimeSchedulerConfig = Field(default_factory=RuntimeSchedulerConfig)
-    menu: RuntimeMenuConfig = Field(default_factory=RuntimeMenuConfig)
-    self_commands: SelfCommandsConfig = Field(default_factory=SelfCommandsConfig)
 
 
 class Settings(BaseModel):
@@ -435,14 +349,14 @@ class Settings(BaseModel):
             location="features.user_policy",
         )
         self._validate_mapping_refs(
-            self.messaging.poke.group_replies,
+            self.features.help.poke_replies,
             resolve=references.resolve_group,
-            location="messaging.poke.group_replies",
+            location="features.help.poke_replies",
         )
         self._validate_mapping_refs(
-            self.messaging.poke.user_replies,
+            self.features.help.poke_user_replies,
             resolve=references.resolve_user,
-            location="messaging.poke.user_replies",
+            location="features.help.poke_user_replies",
         )
         self._validate_mapping_refs(
             self.bilibili.push.groups,
@@ -506,11 +420,6 @@ class Settings(BaseModel):
             references.resolve_users(
                 action.at_user_ids,
                 location=f"messaging.keyword_replies[{index}].at_user_ids",
-            )
-        for index, action in enumerate(self.messaging.mention_replies):
-            references.resolve_users(
-                action.user_ids,
-                location=f"messaging.mention_replies[{index}].user_ids",
             )
         for index, action in enumerate(self.messaging.schedules):
             references.resolve_users(

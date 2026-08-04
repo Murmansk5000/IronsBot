@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.services.seer.formatting import format_datetime
 from ironsbot.services.seer.player_formatting_common import (
     format_login_timeline_lines,
+    format_team_text,
     format_vip,
 )
 from ironsbot.services.seer.player_peak_formatting import format_compact_peak_section
@@ -20,6 +21,7 @@ def format_compact_player_info(  # noqa: PLR0913
     user_info: Any,
     more_info: Any,
     *,
+    team_name: str,
     online_info: Any | None,
     unity_peak: UnityPeakInfo,
     peak_rank_summary: PeakSeasonRankSummary,
@@ -36,6 +38,8 @@ def format_compact_player_info(  # noqa: PLR0913
         f"VIP状态：{format_vip(user_info)}",
         f"注册时间：{format_datetime(getattr(more_info, 'reg_time', 0))}",
         *format_login_timeline_lines(user_info, online_info),
+        "",
+        f"战队：{format_team_text(user_info, team_name)}",
     ]
 
     if show_peak:
