@@ -9,7 +9,6 @@ import nonebot
 import tomli
 
 if TYPE_CHECKING:
-    import pytest
     from nonebot.internal.driver import Driver
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,9 +19,11 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.app.external_plugins import load_external_plugin
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
+from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature
+from ironsbot.plugins.ai import command_descriptors as ai_chat_commands
+from ironsbot.plugins.ai.intent import command_descriptors as ai_intent_commands
 from ironsbot.runtime.plugins import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
@@ -42,9 +43,7 @@ def test_plugin_registry_validates() -> None:
 
 def test_plugin_contributions_cover_feature_ownership() -> None:
     owned_features = {
-        feature
-        for definition in DEFINITIONS
-        for feature in definition.features
+        feature for definition in DEFINITIONS for feature in definition.features
     }
 
     assert owned_features | OPTIONAL_PRIVATE_FEATURES == set(Feature)
@@ -103,6 +102,13 @@ def test_manifest_rank_help_owns_its_command_descriptors() -> None:
     assert {command.plugin_id for command in contribution.commands} == {"rank_help"}
 
 
+def test_manifest_pet_config_owns_its_command_descriptor() -> None:
+    contribution = DEFINITIONS_BY_ID["pet_config"]
+
+    assert contribution.features == frozenset({Feature.PET_CONFIG})
+    assert {command.plugin_id for command in contribution.commands} == {"pet_config"}
+
+
 def test_manifest_team_audit_owns_its_feature_and_lifecycle() -> None:
     contribution = DEFINITIONS_BY_ID["team_audit"]
 
@@ -117,9 +123,7 @@ def test_manifest_team_resource_owns_its_commands_and_schedule() -> None:
     contribution = DEFINITIONS_BY_ID["team_resource"]
 
     assert contribution.features == frozenset({Feature.TEAM_RESOURCE_SUBSCRIPTION})
-    assert {command.plugin_id for command in contribution.commands} == {
-        "team_resource"
-    }
+    assert {command.plugin_id for command in contribution.commands} == {"team_resource"}
     assert [name for name, _hook in contribution.hooks.startup] == [
         "team_resource_jobs"
     ]
@@ -137,6 +141,99 @@ def test_manifest_activity_owns_its_commands_and_schedule() -> None:
     ]
 
 
+def test_manifest_data_sync_owns_its_commands_and_schedule() -> None:
+    contribution = DEFINITIONS_BY_ID["db_sync"]
+
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"db_sync"}
+    assert [name for name, _hook in contribution.hooks.startup] == ["db_sync"]
+
+
+def test_manifest_bilibili_owns_its_commands_and_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["bilibili"]
+
+    assert contribution.features == frozenset({Feature.BILI_QUERY, Feature.BILI_PUSH})
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"bilibili"}
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "bilibili_monitor_jobs"
+    ]
+    assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
+        "bilibili_check"
+    ]
+
+
+def test_manifest_messaging_owns_its_commands_and_schedule() -> None:
+    contribution = DEFINITIONS_BY_ID["messaging"]
+
+    assert contribution.features == frozenset(
+        {
+            Feature.TEXT,
+            Feature.TEXT_PUSH,
+            Feature.WEB_ACTIVITY_LINK,
+            Feature.WEB_ACTIVITY_PUSH,
+            Feature.SEERINFO,
+        }
+    )
+    assert {command.plugin_id for command in contribution.commands} == {"messaging"}
+    assert [name for name, _hook in contribution.hooks.startup] == ["messaging"]
+
+
+def test_manifest_ai_chat_owns_its_features_and_commands() -> None:
+    contribution = DEFINITIONS_BY_ID["ai_chat"]
+
+    assert contribution.features == frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE})
+    assert contribution.commands == ()
+    assert {command.plugin_id for command in ai_chat_commands(enabled=True)} == {
+        "ai_chat"
+    }
+
+
+def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
+    contribution = DEFINITIONS_BY_ID["ai_intent"]
+
+    assert contribution.features == frozenset(
+        {
+            Feature.AI_INTENT,
+            Feature.AI_INTENT_TEAM_RECOMMEND,
+            Feature.AI_INTENT_FIRE_MANUAL,
+        }
+    )
+    assert contribution.commands == ()
+    enabled_settings = Settings.model_validate({"ai": {"api_key": "test"}})
+    assert {command.plugin_id for command in ai_intent_commands(enabled_settings)} == {
+        "ai_intent"
+    }
+
+
+def test_manifest_server_status_owns_its_commands_and_feature() -> None:
+    contribution = DEFINITIONS_BY_ID["server_status"]
+
+    assert contribution.features == frozenset({Feature.SERVER_STATUS_QUERY})
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"server_status"}
+
+
+def test_manifest_docker_update_owns_its_commands_and_startup_hook() -> None:
+    contribution = DEFINITIONS_BY_ID["docker_update"]
+
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"docker_update"}
+    assert [name for name, _hook in contribution.hooks.startup] == ["docker_update"]
+
+
+def test_manifest_lucky_skin_window_owns_its_commands_and_schedule() -> None:
+    contribution = DEFINITIONS_BY_ID["lucky_skin_window"]
+
+    assert contribution.features == frozenset({Feature.LUCKY_SKIN_WINDOW})
+    assert {command.plugin_id for command in contribution.commands} == {
+        "lucky_skin_window"
+    }
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "lucky_skin_window_schedule"
+    ]
+
+
 def test_manifest_headless_notice_owns_its_lifecycle() -> None:
     contribution = DEFINITIONS_BY_ID["headless_notice"]
 
@@ -149,6 +246,23 @@ def test_manifest_headless_notice_owns_its_lifecycle() -> None:
     ]
 
 
+def test_manifest_startup_notice_owns_its_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["startup_notice"]
+
+    assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.first_bot_connect] == [
+        "startup_notice"
+    ]
+
+
+def test_manifest_headless_runtime_owns_its_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["headless_seer"]
+
+    assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.startup] == ["headless_seer"]
+    assert [name for name, _hook in contribution.hooks.shutdown] == ["headless_seer"]
+
+
 def test_manifest_scheduled_restart_owns_its_lifecycle() -> None:
     contribution = DEFINITIONS_BY_ID["scheduled_restart"]
 
@@ -158,34 +272,25 @@ def test_manifest_scheduled_restart_owns_its_lifecycle() -> None:
     ]
 
 
-def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
-    loaded: list[str] = []
+def test_manifest_scheduler_owns_its_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["scheduler"]
 
-    def get_plugin(_name: str) -> object:
-        return object()
-
-    def load_plugin(name: str) -> None:
-        loaded.append(name)
-
-    monkeypatch.setattr(
-        "ironsbot.app.external_plugins.nonebot.get_plugin",
-        get_plugin,
-    )
-    monkeypatch.setattr(
-        "ironsbot.app.external_plugins.nonebot.load_plugin",
-        load_plugin,
-    )
-
-    load_external_plugin("nonebot_plugin_saa")
-
-    assert loaded == []
+    assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.startup] == ["scheduler"]
+    assert [name for name, _hook in contribution.hooks.shutdown] == ["scheduler"]
 
 
-def test_registry_installs_foundation_before_dependents() -> None:
+def test_manifest_contributions_follow_the_legacy_bridge() -> None:
     plugin_ids = tuple(definition.id for definition in DEFINITIONS)
 
-    assert plugin_ids[:4] == ("apscheduler", "localstore", "htmlkit", "saa")
-    assert plugin_ids.index("db_sync") < plugin_ids.index("seer_query")
+    assert plugin_ids[0] == "scheduler"
+    assert plugin_ids.index("seer_query") < plugin_ids.index("bilibili")
+    assert plugin_ids.index("bilibili") < plugin_ids.index("messaging")
+    assert plugin_ids.index("messaging") < plugin_ids.index("ai_chat")
+    assert plugin_ids.index("ai_chat") < plugin_ids.index("ai_intent")
+    assert plugin_ids.index("ai_intent") < plugin_ids.index("server_status")
+    assert plugin_ids.index("server_status") < plugin_ids.index("docker_update")
+    assert plugin_ids.index("docker_update") < plugin_ids.index("db_sync")
 
 
 def test_contributions_define_the_lifecycle_order() -> None:
@@ -197,17 +302,17 @@ def test_contributions_define_the_lifecycle_order() -> None:
 
     assert [name for name, _hook in lifecycle.startup_hooks] == [
         "scheduler",
-        "docker_update",
-        "db_sync",
-        "headless_seer",
-        "messaging",
-        "bilibili_monitor_jobs",
         "local_rank_jobs",
         "rank_page_jobs",
+        "bilibili_monitor_jobs",
+        "messaging",
+        "docker_update",
+        "db_sync",
         "lucky_skin_window_schedule",
         "team_resource_jobs",
         "activity_reminder_jobs",
         "headless_reconnect_jobs",
+        "headless_seer",
         "scheduled_restart_jobs",
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
@@ -215,9 +320,9 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "headless_seer",
     ]
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
+        "render_crash_report",
         "bilibili_check",
         "startup_notice",
-        "render_crash_report",
         "headless_seer_check",
     ]
     assert [name for name, _hook in lifecycle.bot_connect_hooks] == [
@@ -254,8 +359,12 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "help" / "hint.py",
                     ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
+                    ROOT / "ironsbot" / "plugins" / "messaging" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
+                    ROOT / "ironsbot" / "plugins" / "bilibili" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "ai" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "ai" / "intent.py",
                     ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
                     ROOT
                     / "ironsbot"
@@ -263,9 +372,15 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "seer"
                     / "rank_help"
                     / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "seer" / "query" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "seer" / "lucky_skin_window.py",
                     ROOT / "ironsbot" / "plugins" / "team_audit" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "team" / "resource.py",
                     ROOT / "ironsbot" / "plugins" / "activity" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "operations" / "db_sync.py",
+                    ROOT / "ironsbot" / "plugins" / "operations" / "docker_update.py",
+                    ROOT / "ironsbot" / "plugins" / "operations" / "server_status.py",
+                    ROOT / "ironsbot" / "plugins" / "startup_notice" / "__init__.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
@@ -274,8 +389,10 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT
                     / "ironsbot"
                     / "plugins"
-                    / "scheduled_restart"
+                    / "headless_seer_runtime"
                     / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "scheduler" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

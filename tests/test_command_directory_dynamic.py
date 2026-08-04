@@ -1,5 +1,7 @@
-from ironsbot.app.command_directory.dynamic import configured_message_commands
 from ironsbot.config.models.messaging import MessageConfig, MessageScheduledAction
+from ironsbot.plugins.messaging import (
+    command_descriptors as configured_message_commands,
+)
 
 
 def test_message_schedule_is_documented_as_automatic_not_a_command() -> None:

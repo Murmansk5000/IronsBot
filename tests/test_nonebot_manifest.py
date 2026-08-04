@@ -26,8 +26,20 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
     assert document["tool"]["nonebot"]["plugin_dirs"] == []
     assert document["tool"]["nonebot"]["plugins"] == {
         "@local": [
+            "nonebot_plugin_apscheduler",
+            "nonebot_plugin_localstore",
+            "nonebot_plugin_htmlkit",
             "nonebot_plugin_saa",
+            "ironsbot.plugins.scheduler",
+            "ironsbot.plugins.seer.query",
             "ironsbot.plugins.onebot.bootstrap",
+            "ironsbot.plugins.bilibili",
+            "ironsbot.plugins.messaging",
+            "ironsbot.plugins.ai",
+            "ironsbot.plugins.ai.intent",
+            "ironsbot.plugins.operations.server_status",
+            "ironsbot.plugins.operations.docker_update",
+            "ironsbot.plugins.operations.db_sync",
             "ironsbot.plugins.about",
             "ironsbot.plugins.help",
             "ironsbot.plugins.help.hint",
@@ -37,10 +49,14 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.messaging.red_packet",
             "ironsbot.plugins.fire_manual_ad",
             "ironsbot.plugins.seer.rank_help",
+            "ironsbot.custom_plugins.pet_config",
+            "ironsbot.plugins.seer.lucky_skin_window",
             "ironsbot.plugins.team_audit",
             "ironsbot.plugins.team.resource",
             "ironsbot.plugins.activity",
+            "ironsbot.plugins.startup_notice",
             "ironsbot.plugins.headless_seer_notice",
+            "ironsbot.plugins.headless_seer_runtime",
             "ironsbot.plugins.scheduled_restart",
         ]
     }

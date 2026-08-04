@@ -4,7 +4,6 @@ from typing import Any, cast
 import nonebot
 import pytest
 
-from ironsbot.app.command_directory.plugins import bilibili_commands
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_ACCOUNT_ALIAS,
     DEFAULT_BILI_ACCOUNT_UID,
@@ -20,6 +19,7 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.plugins.bilibili import command_descriptors as bilibili_commands
 from ironsbot.plugins.bilibili.command_rules import (
     is_bili_account_command,
     is_bili_push_mode_command,

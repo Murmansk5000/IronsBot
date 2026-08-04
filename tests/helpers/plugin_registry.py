@@ -4,8 +4,10 @@ from functools import partial
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.settings import Settings
+from ironsbot.custom_plugins.pet_config import (
+    plugin_contribution as pet_config_plugin_contribution,
+)
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
@@ -14,15 +16,28 @@ from ironsbot.plugins.about import plugin_contribution as about_plugin_contribut
 from ironsbot.plugins.activity import (
     plugin_contribution as activity_plugin_contribution,
 )
+from ironsbot.plugins.ai import plugin_contribution as ai_chat_plugin_contribution
+from ironsbot.plugins.ai.intent import (
+    plugin_contribution as ai_intent_plugin_contribution,
+)
+from ironsbot.plugins.bilibili import (
+    plugin_contribution as bilibili_plugin_contribution,
+)
 from ironsbot.plugins.fire_manual_ad import (
     plugin_contribution as fire_manual_ad_plugin_contribution,
 )
 from ironsbot.plugins.headless_seer_notice import (
     plugin_contribution as headless_notice_plugin_contribution,
 )
+from ironsbot.plugins.headless_seer_runtime import (
+    plugin_contribution as headless_runtime_plugin_contribution,
+)
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
 from ironsbot.plugins.help.hint import (
     plugin_contribution as help_hint_plugin_contribution,
+)
+from ironsbot.plugins.messaging import (
+    plugin_contribution as messaging_plugin_contribution,
 )
 from ironsbot.plugins.messaging.blacklist import (
     plugin_contribution as blacklist_plugin_contribution,
@@ -33,13 +48,34 @@ from ironsbot.plugins.messaging.meeting import (
 from ironsbot.plugins.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.operations.db_sync import (
+    plugin_contribution as db_sync_plugin_contribution,
+)
+from ironsbot.plugins.operations.docker_update import (
+    plugin_contribution as docker_update_plugin_contribution,
+)
+from ironsbot.plugins.operations.server_status import (
+    plugin_contribution as server_status_plugin_contribution,
+)
 from ironsbot.plugins.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
+)
+from ironsbot.plugins.scheduler import (
+    plugin_contribution as scheduler_plugin_contribution,
+)
+from ironsbot.plugins.seer.lucky_skin_window import (
+    plugin_contribution as lucky_skin_window_plugin_contribution,
+)
+from ironsbot.plugins.seer.query import (
+    plugin_contribution as seer_query_plugin_contribution,
 )
 from ironsbot.plugins.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
+from ironsbot.plugins.startup_notice import (
+    plugin_contribution as startup_notice_plugin_contribution,
+)
 from ironsbot.plugins.team.resource import (
     plugin_contribution as team_resource_plugin_contribution,
 )
@@ -50,6 +86,7 @@ from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -119,6 +156,19 @@ def build_test_plugin_registry(
             terminate_bot_process,
             signal_parent=True,
             reason="admin requested bot restart",
+        ),
+    )
+    scheduled_restart = ScheduledRestartService(
+        restart_times=(
+            tuple(config.operations.restart.parsed_restart_times)
+            if config.operations.restart.enabled
+            else ()
+        ),
+        grace_seconds=config.operations.restart.grace_seconds,
+        restart_process=partial(
+            terminate_bot_process,
+            signal_parent=config.operations.restart.signal_parent,
+            reason="scheduled bot restart",
         ),
     )
     resources = cast(
@@ -246,6 +296,7 @@ def build_test_plugin_registry(
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
+            scheduled_restart=scheduled_restart,
             push_message_limiter=lambda message, _target: message,
             commands=CommandCatalog(),
             contribution_catalog=PluginContributionCatalog(),
@@ -257,9 +308,59 @@ def build_test_plugin_registry(
         ),
     )
     return (
-        *build_plugin_registry(
+        scheduler_plugin_contribution(scheduler=SchedulerFacade()),
+        seer_query_plugin_contribution(
             settings=config,
             resources=resources,
+            scheduler=SchedulerFacade(),
+        ),
+        *resources.private_extensions.load_plugin_contributions(
+            resources.private_extension_runtime,
+        ),
+        bilibili_plugin_contribution(
+            service=resources.bilibili,
+            login=resources.bilibili_login,
+            features=runtime.features,
+            config=config.bilibili,
+            delivery=resources.delivery,
+            subscriptions=resources.subscriptions,
+            admin_notices=resources.admin_notices,
+            message_limiter=resources.push_message_limiter,
+            ai_service=resources.ai,
+            scheduler=SchedulerFacade(),
+        ),
+        messaging_plugin_contribution(
+            config=config.messaging,
+            features=runtime.features,
+            service=resources.messaging,
+            activity_service=resources.activity,
+            scheduler=SchedulerFacade(),
+        ),
+        ai_chat_plugin_contribution(
+            settings=config,
+            service=resources.ai,
+            features=runtime.features,
+        ),
+        ai_intent_plugin_contribution(
+            settings=config,
+            service=resources.ai,
+            features=runtime.features,
+            team_resource=resources.team_resource,
+        ),
+        server_status_plugin_contribution(
+            service=resources.server_status,
+            features=runtime.features,
+            commands=resources.commands,
+        ),
+        docker_update_plugin_contribution(
+            service=resources.docker_update,
+            features=runtime.features,
+            startup_notice=resources.startup_notice,
+        ),
+        db_sync_plugin_contribution(
+            service=resources.data_sync,
+            features=runtime.features,
+            startup_notice=resources.startup_notice,
             scheduler=SchedulerFacade(),
         ),
         about_plugin_contribution(),
@@ -290,6 +391,17 @@ def build_test_plugin_registry(
             features=runtime.features,
             commands=resources.commands,
         ),
+        pet_config_plugin_contribution(
+            service=resources.pet_config,
+            features=runtime.features,
+            config=config.pet_config,
+        ),
+        lucky_skin_window_plugin_contribution(
+            resources.lucky_skin_window,
+            runtime.features,
+            resources.delivery,
+            SchedulerFacade(),
+        ),
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),
             service=resources.team_audit,
@@ -305,12 +417,17 @@ def build_test_plugin_registry(
             features=runtime.features,
             scheduler=SchedulerFacade(),
         ),
+        startup_notice_plugin_contribution(
+            service=resources.startup_notice,
+            config=config.operations.startup_notice,
+        ),
         headless_notice_plugin_contribution(
             scheduler=SchedulerFacade(),
             service=headless,
         ),
+        headless_runtime_plugin_contribution(service=headless),
         scheduled_restart_plugin_contribution(
-            config=config.operations.restart,
             scheduler=SchedulerFacade(),
+            service=resources.scheduled_restart,
         ),
     )

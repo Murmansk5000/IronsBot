@@ -1,16 +1,15 @@
 # SPDX-License-Identifier: MIT
-"""Temporary standard-NoneBot entrypoint for existing IronsBot contributions.
+"""Temporary standard-NoneBot entrypoint for configured private extensions.
 
-The TOML manifest discovers this module through NoneBot itself. The central
-registry remains only as a migration bridge while individual contribution
-modules move out of it; it must not become a second discovery system.
+The TOML manifest discovers this module through NoneBot itself. Built-in
+contributions are declared by their own manifest-loaded packages; this adapter
+must not become a second discovery system.
 """
 
 from __future__ import annotations
 
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.runtime.plugins import current_plugin_install_context
 
 __plugin_meta__ = PluginMetadata(
@@ -25,9 +24,7 @@ __plugin_meta__ = PluginMetadata(
 _context = current_plugin_install_context()
 _context.contribute(
     __plugin_meta__,
-    *build_plugin_registry(
-        settings=_context.settings,
-        resources=_context.resources,
-        scheduler=_context.scheduler,
+    *_context.resources.private_extensions.load_plugin_contributions(
+        _context.resources.private_extension_runtime,
     ),
 )

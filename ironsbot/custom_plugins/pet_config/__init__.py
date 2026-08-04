@@ -4,6 +4,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
+from nonebot.plugin import PluginMetadata
+
 from ironsbot.core.features import Feature
 from ironsbot.plugins.seer.query.commands.query_rules import (
     not_fixed_image_command,
@@ -15,9 +17,22 @@ from ironsbot.runtime.feature_policy import (
     feature_rule,
 )
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.runtime.plugins import HelpEntry, PluginContribution
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
+
+__plugin_meta__ = PluginMetadata(
+    name="精灵配置",
+    description="查询本地收录的精灵配置图。",
+    usage="发送“精灵名配置”或“配置精灵名”。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -27,7 +42,7 @@ if TYPE_CHECKING:
     from ironsbot.services.pet_config import PetConfigQueryService
 
 
-def plugin_definition(
+def plugin_contribution(
     *,
     service: PetConfigQueryService,
     features: FeatureService,
@@ -118,4 +133,15 @@ def install(
             "请问你想查询哪只精灵的配置？",
             ActionDefinition("pet_config", "精灵配置查询"),
         )
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            service=context.resources.pet_config,
+            features=context.resources.features,
+            config=context.settings.pet_config,
+        ),
     )

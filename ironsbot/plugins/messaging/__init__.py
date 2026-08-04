@@ -1,23 +1,49 @@
 # SPDX-License-Identifier: MIT
+"""OneBot configured-message commands, push management, and manifest wiring."""
+
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
+from nonebot.plugin import PluginMetadata
 
-from ironsbot.app.command_directory.rows import commands_from_rows
-from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
+from ironsbot.core.features import Feature
+from ironsbot.runtime.commands import (
+    CommandAccess,
+    CommandDescriptor,
+    commands_from_rows,
+)
 from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    PluginHooks,
+    active_plugin_install_context,
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.config.models.messaging import MessageConfig
-    from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.operations.scheduler import Scheduler
+
+__plugin_meta__ = PluginMetadata(
+    name="文本发送",
+    description="按配置回复文本或链接，并管理定时推送。",
+    usage="发送配置的口令，或发送“推送管理”管理当前会话的推送。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
 
-def messaging_help_visible(
+def help_visible(
     event: Event,
     *,
     features: FeatureService,
@@ -33,7 +59,7 @@ def messaging_help_visible(
     )
 
 
-def configured_message_commands(
+def command_descriptors(
     config: MessageConfig,
 ) -> tuple[CommandDescriptor, ...]:
     configured = tuple(
@@ -140,19 +166,82 @@ def _schedule_label(
     return f"{title}（{timing}）"
 
 
-def ai_intent_commands(config: Settings) -> tuple[CommandDescriptor, ...]:
-    if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
-        return ()
-    return tuple(
-        CommandDescriptor(
-            id=f"ai_intent.{action_id}",
-            plugin_id="ai_intent",
-            section="关键词意图",
-            examples=tuple(action.keywords),
-            description="机器人识别到相应意图后自动回复",
-            features_any=(action.feature,),
-            interaction="automatic",
-        )
-        for action_id, action in config.ai.intent_actions.items()
-        if action.enabled and action.keywords
+def _install(
+    registry: MatcherRegistry,
+    *,
+    messaging: MessagingService,
+    activity_service: ActivityService,
+    scheduler: Scheduler,
+    command_help_ids: tuple[str, ...],
+) -> None:
+    from .matchers import install
+
+    refresh_push_time_jobs = partial(
+        messaging.refresh_push_time_jobs,
+        scheduler=scheduler,
+        activity_service=activity_service,
+    )
+    install(
+        registry,
+        refresh_push_time_jobs=refresh_push_time_jobs,
+        messaging=messaging,
+        command_help_ids=command_help_ids,
+    )
+
+
+def plugin_contribution(
+    *,
+    config: MessageConfig,
+    features: FeatureService,
+    service: MessagingService,
+    activity_service: ActivityService,
+    scheduler: Scheduler,
+) -> PluginContribution:
+    """Declare configured message commands and scheduled push lifecycle."""
+
+    commands = command_descriptors(config)
+    return PluginContribution(
+        id="messaging",
+        features=frozenset(
+            {
+                Feature.TEXT,
+                Feature.TEXT_PUSH,
+                Feature.WEB_ACTIVITY_LINK,
+                Feature.WEB_ACTIVITY_PUSH,
+                Feature.SEERINFO,
+            }
+        ),
+        help=HelpEntry(
+            name="文本发送",
+            description="按配置回复固定文本/链接，也可定时向群或私聊发送文本",
+            group="message",
+            order=30,
+            visible=partial(help_visible, features=features, config=config),
+        ),
+        commands=commands,
+        install=partial(
+            _install,
+            messaging=service,
+            activity_service=activity_service,
+            scheduler=scheduler,
+            command_help_ids=tuple(
+                command.id for command in commands if command.interaction == "direct"
+            ),
+        ),
+        hooks=PluginHooks(
+            startup=(("messaging", partial(service.start, scheduler)),),
+        ),
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            config=context.settings.messaging,
+            features=context.resources.features,
+            service=context.resources.messaging,
+            activity_service=context.resources.activity,
+            scheduler=context.scheduler,
+        ),
     )

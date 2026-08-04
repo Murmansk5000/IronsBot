@@ -1,13 +1,5 @@
-from ironsbot.app.command_directory.operations import (
-    data_sync_commands,
-    docker_update_commands,
-    server_status_commands,
-)
-from ironsbot.app.command_directory.plugins import (
-    bilibili_commands,
-)
-from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.plugins.activity import command_descriptors as activity_commands
+from ironsbot.plugins.bilibili import command_descriptors as bilibili_commands
 from ironsbot.plugins.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,
@@ -18,12 +10,24 @@ from ironsbot.plugins.operations.db_sync import (
     FORCE_MANUAL_SYNC_COMMANDS,
     MANUAL_SYNC_COMMANDS,
 )
+from ironsbot.plugins.operations.db_sync import (
+    command_descriptors as data_sync_commands,
+)
+from ironsbot.plugins.operations.docker_update import (
+    command_descriptors as docker_update_commands,
+)
+from ironsbot.plugins.operations.server_status import (
+    command_descriptors as server_status_commands,
+)
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
+)
+from ironsbot.plugins.seer.query.command_catalog import (
+    command_descriptors as seer_commands,
 )
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.services.activity.commands import (
@@ -53,9 +57,7 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
     assert bilibili["bilibili.private_push_mode"].examples == (
         f"{BILI_PUSH_MODE_COMMANDS[0]} <账号> <内容|链接|默认>",
     )
-    assert bilibili["bilibili.refresh"].examples == (
-        f"/{DYNAMIC_UPDATE_COMMANDS[0]}",
-    )
+    assert bilibili["bilibili.refresh"].examples == (f"/{DYNAMIC_UPDATE_COMMANDS[0]}",)
     assert activity["activity.ending"].examples == SOON_ENDING_ACTIVITY_COMMANDS[:1]
     assert activity["activity.current"].examples == (
         f"/{CURRENT_ACTIVITY_COMMANDS[0]}",
@@ -83,6 +85,6 @@ def test_operation_examples_use_matcher_command_sources() -> None:
 
 
 def test_data_query_examples_use_matcher_command_sources() -> None:
-    seer = _by_id(seer_query_commands())
+    seer = _by_id(seer_commands())
 
     assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES

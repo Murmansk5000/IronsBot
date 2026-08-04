@@ -13,9 +13,12 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.core.features import Feature
-from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
+from ironsbot.runtime.commands import (
+    CommandAccess,
+    CommandDescriptor,
+    commands_from_rows,
+)
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import (
@@ -154,9 +157,7 @@ def plugin_contribution(
 
     return PluginContribution(
         id="activity",
-        features=frozenset(
-            {Feature.SEER_ACTIVITY_QUERY, Feature.SEER_ACTIVITY_PUSH}
-        ),
+        features=frozenset({Feature.SEER_ACTIVITY_QUERY, Feature.SEER_ACTIVITY_PUSH}),
         help=HelpEntry(
             name="活动结束提醒",
             description="读取活动结束时间并提前提醒即将结束的活动",

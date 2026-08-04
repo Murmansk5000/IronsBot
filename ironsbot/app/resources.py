@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.operations.startup import StartupNoticeService
     from ironsbot.services.pet_config import PetConfigQueryService
@@ -66,6 +67,7 @@ class ApplicationResources:
     data_sync: DataSyncService
     docker_update: DockerUpdateService
     startup_notice: StartupNoticeService
+    scheduled_restart: ScheduledRestartService
     commands: CommandCatalog
     contribution_catalog: PluginContributionCatalog
     help_hint: HelpHintService

@@ -8,12 +8,12 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.core.features import Feature, FeatureService
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandCatalog,
     CommandDescriptor,
+    commands_from_rows,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
@@ -187,8 +187,7 @@ async def handle_rank_help_entry(
     await finish_event_reply(
         matcher,
         event,
-        "📊【可用榜单】\n"
-        f"{format_rank_help(command_help)}",
+        f"📊【可用榜单】\n{format_rank_help(command_help)}",
     )
 
 
@@ -200,9 +199,7 @@ def install(
     matcher = registry.on_fullmatch(
         RANK_HELP_COMMANDS,
         policy=CommandPolicy.command("seer_rank_help", help_ids=("rank.help",)),
-        rule=Rule(
-            lambda event: event_is_feature_allowed(features, event, "seer_rank")
-        )
+        rule=Rule(lambda event: event_is_feature_allowed(features, event, "seer_rank"))
         & explicit_command(),
         priority=registry.priority("seer_rank_help"),
         block=True,

@@ -6,21 +6,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "ironsbot"
 PLUGINS = PACKAGE / "plugins"
 SERVICES = PACKAGE / "services"
-PLUGIN_PACKAGES = frozenset(
-    {
-        "about",
-        "activity",
-        "ai",
-        "bilibili",
-        "help",
-        "messaging",
-        "operations",
-        "onebot",
-        "seer",
-        "sendpic",
-        "team",
-    }
-)
 SERVICE_PACKAGES = frozenset(
     {"activity", "ai", "bilibili", "messaging", "operations", "seer", "team"}
 )
@@ -47,7 +32,7 @@ DRIVER_HOOKS = {
 LIFECYCLE_PATH = PACKAGE / "app" / "lifecycle.py"
 SQLITE_PATH = PACKAGE / "integrations" / "storage" / "sqlite.py"
 SCHEDULER_PATH = PACKAGE / "integrations" / "scheduler" / "facade.py"
-PLUGIN_REGISTRY_PATH = PACKAGE / "app" / "registry.py"
+SCHEDULER_PLUGIN_PATH = PACKAGE / "plugins" / "scheduler" / "__init__.py"
 
 
 def _files(root: Path = PACKAGE) -> list[Path]:
@@ -162,15 +147,6 @@ def test_plugins_do_not_import_concrete_integrations() -> None:
     assert offenders == []
 
 
-def test_plugins_use_target_packages() -> None:
-    packages = {
-        path.relative_to(PLUGINS).parts[0]
-        for path in _files(PLUGINS)
-        if path.parent != PLUGINS
-    }
-    assert packages == PLUGIN_PACKAGES
-
-
 def test_services_use_target_packages() -> None:
     packages = {
         path.relative_to(SERVICES).parts[0]
@@ -202,9 +178,7 @@ def test_production_has_no_star_imports_or_historical_modules() -> None:
         and any(alias.name == "*" for alias in node.names)
     ]
     historical = [
-        _relative(path)
-        for path in _files()
-        if path.stem.startswith("upstream_")
+        _relative(path) for path in _files() if path.stem.startswith("upstream_")
     ]
     explicit_exports = [
         f"{_relative(path)}:{node.lineno}"
@@ -260,7 +234,7 @@ def test_scheduler_changes_use_scheduler_facade() -> None:
     offenders = [
         f"{_relative(path)} imports {module}"
         for path in _files()
-        if path not in {SCHEDULER_PATH, PLUGIN_REGISTRY_PATH}
+        if path not in {SCHEDULER_PATH, SCHEDULER_PLUGIN_PATH}
         for module in _imports(path)
         if "apscheduler" in module
     ]

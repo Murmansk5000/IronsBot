@@ -27,6 +27,7 @@ from ironsbot.services.seer.rank_page_refresh_selection import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.core.platform import ConversationRef
     from ironsbot.services.operations.headless import (
         HeadlessGame,
         HeadlessService,
@@ -52,7 +53,7 @@ class RankAdminPolicy:
     refresh_limit: int
     refresh_max_age_hours: int
     page_cache_ttl_seconds: int
-    display_limit: Callable[[int | None], int]
+    display_limit: Callable[[ConversationRef | None], int]
 
 
 class RankAdminService:
@@ -173,7 +174,7 @@ class RankAdminService:
         )
         return build_rank_page_refresh_result_message(result)
 
-    def cache_status(self, group_id: int | None) -> str:
+    def cache_status(self, conversation: ConversationRef | None) -> str:
         policy = self._policy
         return build_local_rank_cache_status_message(
             self._local_rank.stats(),
@@ -181,7 +182,7 @@ class RankAdminService:
             batch_limit=policy.batch_limit,
             refresh_limit=policy.refresh_limit,
             refresh_max_age_hours=policy.refresh_max_age_hours,
-            display_limit=policy.display_limit(group_id),
+            display_limit=policy.display_limit(conversation),
         )
 
     async def cache_refresh(

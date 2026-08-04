@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 
@@ -58,9 +58,7 @@ class CommandCatalogError(ValueError):
 
     @classmethod
     def requires_description(cls, command_id: str) -> CommandCatalogError:
-        return cls(
-            f"invalid command descriptor: {command_id!r} requires a description"
-        )
+        return cls(f"invalid command descriptor: {command_id!r} requires a description")
 
     @classmethod
     def invalid_scope(cls, command_id: str) -> CommandCatalogError:
@@ -91,9 +89,7 @@ class CommandCatalogError(ValueError):
 
     @classmethod
     def invalid_help_level(cls, command_id: str) -> CommandCatalogError:
-        return cls(
-            f"invalid command descriptor: {command_id!r} has invalid help level"
-        )
+        return cls(f"invalid command descriptor: {command_id!r} has invalid help level")
 
     @classmethod
     def unknown_registered_help_ids(
@@ -151,8 +147,7 @@ class CommandAccess:
         if self.audience == "group_manager" and self.scope == "private":
             raise CommandCatalogError.private_group_manager("access")
         if any(
-            not feature.strip()
-            for feature in (*self.features_any, *self.features_all)
+            not feature.strip() for feature in (*self.features_any, *self.features_all)
         ):
             raise CommandCatalogError.empty_features_any("access")
 
@@ -211,8 +206,7 @@ class CommandDescriptor:
         if not self.description.strip():
             raise CommandCatalogError.requires_description(self.id)
         if any(
-            not feature.strip()
-            for feature in (*self.features_any, *self.features_all)
+            not feature.strip() for feature in (*self.features_any, *self.features_all)
         ):
             raise CommandCatalogError.empty_features_any(self.id)
         if not self.access:
@@ -243,6 +237,39 @@ class CommandDescriptor:
 
     def poke_text(self) -> str:
         return f"发送“{self.examples[0]}”{self.description}。"
+
+
+def commands_from_rows(
+    plugin_id: str,
+    section: str,
+    feature: str | None,
+    rows: tuple[tuple[str, tuple[str, ...], str, dict[str, Any]], ...],
+) -> tuple[CommandDescriptor, ...]:
+    """Build command contracts from concise plugin-owned command rows."""
+
+    descriptors = []
+    for command_id, examples, description, raw_options in rows:
+        options = dict(raw_options)
+        command_features = options.pop(
+            "features_any",
+            (feature,) if feature is not None else (),
+        )
+        command_features_all = options.pop("features_all", ())
+        access = options.pop("access", (CommandAccess(),))
+        descriptors.append(
+            CommandDescriptor(
+                id=command_id,
+                plugin_id=plugin_id,
+                section=section,
+                examples=examples,
+                description=description,
+                features_any=command_features,
+                features_all=command_features_all,
+                access=access,
+                **options,
+            )
+        )
+    return tuple(descriptors)
 
 
 def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
@@ -290,9 +317,7 @@ class CommandCatalog:
         definitions = tuple(definitions)
         plugin_ids = {definition.id for definition in definitions}
         commands = tuple(
-            command
-            for definition in definitions
-            for command in definition.commands
+            command for definition in definitions for command in definition.commands
         )
         duplicate_ids = sorted(
             {
@@ -366,9 +391,7 @@ class CommandCatalog:
     @property
     def direct_command_ids(self) -> frozenset[str]:
         return frozenset(
-            command.id
-            for command in self._commands
-            if command.interaction == "direct"
+            command.id for command in self._commands if command.interaction == "direct"
         )
 
     def validate_matcher_registrations(

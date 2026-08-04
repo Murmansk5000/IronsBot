@@ -1,27 +1,42 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.features import Feature
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.runtime.commands import (
+    CommandAccess,
+    CommandDescriptor,
+    commands_from_rows,
+)
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
 from ironsbot.runtime.onebot_context import build_notice_source, mentions_bot
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import bot_mention
+from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
-    from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 RESERVED_PRIVATE_COMMANDS = {
@@ -40,6 +55,48 @@ RESERVED_PRIVATE_COMMANDS = {
     "活动",
     "链接",
 }
+
+__plugin_meta__ = PluginMetadata(
+    name="AI聊天",
+    description="接入 OpenAI-compatible API 的自定义聊天插件。",
+    usage="群聊中 @机器人后输入问题，或在私聊中直接输入问题。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
+
+
+def command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
+    if not enabled:
+        return ()
+    return (
+        *commands_from_rows(
+            "ai_chat",
+            "群聊",
+            "ai_chat",
+            (
+                (
+                    "ai_chat.group",
+                    ("@机器人 <问题>",),
+                    "向 AI 聊天提问",
+                    {"access": (CommandAccess(scope="group"),)},
+                ),
+            ),
+        ),
+        *commands_from_rows(
+            "ai_chat",
+            "私聊",
+            "ai_chat",
+            (
+                (
+                    "ai_chat.private",
+                    ("<问题>",),
+                    "直接向 AI 聊天提问",
+                    {"access": (CommandAccess(scope="private"),)},
+                ),
+            ),
+        ),
+    )
 
 
 def _group_id(event: MessageEvent) -> int | None:
@@ -77,10 +134,7 @@ def _capture_ai_prompt(
     if (
         getattr(event, "reply", None) is not None
         or not event_is_feature_allowed(features, event, "ai_chat")
-        or (
-            isinstance(event, GroupMessageEvent)
-            and not mentions_bot(event)
-        )
+        or (isinstance(event, GroupMessageEvent) and not mentions_bot(event))
     ):
         return False
 
@@ -148,8 +202,7 @@ def install(
 
     group_at_matcher = registry.on_message(
         policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.group",)),
-        rule=bot_mention()
-        & Rule(bind(_capture_group_ai_prompt, features=features)),
+        rule=bot_mention() & Rule(bind(_capture_group_ai_prompt, features=features)),
         priority=registry.pre_command_priority("ai_group_at"),
         block=True,
     )
@@ -176,3 +229,55 @@ def install(
         block=True,
     )
     bot_mention_block_matcher.append_handler(handle_non_ai_group_at_bot)
+
+
+def plugin_contribution(
+    *,
+    settings: Settings,
+    service: AiService,
+    features: FeatureService,
+) -> PluginContribution:
+    """Declare AI-chat command visibility and OneBot matcher ownership."""
+
+    enabled = bool(settings.ai.api_key.strip())
+    return PluginContribution(
+        id="ai_chat",
+        features=frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE}),
+        help=HelpEntry(
+            name="AI聊天",
+            description="接入 OpenAI-compatible API 的自定义聊天插件",
+            group="ai",
+            order=10,
+            visible=partial(
+                feature_help_visible,
+                features=features,
+                feature="ai_chat",
+                enabled=enabled,
+            ),
+        ),
+        commands=command_descriptors(enabled=enabled),
+        install=(
+            partial(
+                install,
+                service=service,
+                features=features,
+                group_aliases=settings.features.group_aliases,
+                bot_mention_block_service=BotMentionBlockService(
+                    settings.messaging.command_cooldown
+                ),
+            )
+            if enabled
+            else None
+        ),
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            settings=context.settings,
+            service=context.resources.ai,
+            features=context.resources.features,
+        ),
+    )

@@ -13,6 +13,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 from nonebot.matcher import Matcher
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
@@ -28,7 +29,12 @@ from ironsbot.core.time import daily_time_parts
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
-from ironsbot.runtime.plugins import HelpEntry, PluginContribution, PluginHooks
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    PluginHooks,
+    active_plugin_install_context,
+)
 from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, explicit_command
@@ -93,8 +99,17 @@ _JOB_PREFIX = "lucky_skin_window:"
 _LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
 logger = logging.getLogger(__name__)
 
+__plugin_meta__ = PluginMetadata(
+    name="幸运橱窗",
+    description="查询和订阅绑定米米号的每日幸运橱窗皮肤。",
+    usage="发送“橱窗”查询；可用“关注橱窗”管理关注皮肤。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
-def plugin_definition(
+
+def plugin_contribution(
     service: LuckySkinWindowService,
     features: FeatureService,
     delivery: MessageDelivery,
@@ -228,9 +243,8 @@ async def _matches_watch_exact(
     features: FeatureService,
 ) -> bool:
     _ = state
-    return (
-        event.get_plaintext().strip() in commands
-        and _watch_feature_allowed(event, features=features)
+    return event.get_plaintext().strip() in commands and _watch_feature_allowed(
+        event, features=features
     )
 
 
@@ -321,8 +335,9 @@ async def _handle_query(
         event,
         namespace=_LOGIN_CONFIRMATION_NAMESPACE,
         handlers=[bind_async(_handle_login_confirmation, service)],
-        reply_check=lambda reply_event: parse_confirmation(reply_event.get_plaintext())
-        is not None,
+        reply_check=lambda reply_event: (
+            parse_confirmation(reply_event.get_plaintext()) is not None
+        ),
         prompt=(
             "今日幸运橱窗尚未获取，需要登录查询。\n"
             "是否继续？\n"
@@ -431,9 +446,7 @@ async def _handle_watch_change(
         state,
         Prompt(
             title="请问你想管理的皮肤是……",
-            action=(
-                _WATCH_ADD_ACTION if operation == "add" else _WATCH_REMOVE_ACTION
-            ),
+            action=(_WATCH_ADD_ACTION if operation == "add" else _WATCH_REMOVE_ACTION),
             items=[
                 PromptItem(
                     item.name,
@@ -547,8 +560,7 @@ def _install(
             help_ids=(_ACTION.id,),
             semantic_request=partial(_semantic_request, service),
         ),
-        rule=Rule(bind_async(_matches_query, features=features))
-        & explicit_command(),
+        rule=Rule(bind_async(_matches_query, features=features)) & explicit_command(),
         priority=priority,
         block=True,
     )
@@ -666,4 +678,16 @@ def _register_schedule(
         minute=daily_minute,
         second=0,
         timezone=config.timezone,
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            context.resources.lucky_skin_window,
+            context.resources.features,
+            context.resources.delivery,
+            context.scheduler,
+        ),
     )
