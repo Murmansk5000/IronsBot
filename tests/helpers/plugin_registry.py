@@ -33,6 +33,9 @@ from ironsbot.plugins.messaging.meeting import (
 from ironsbot.plugins.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.scheduled_restart import (
+    plugin_contribution as scheduled_restart_plugin_contribution,
+)
 from ironsbot.plugins.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
@@ -305,5 +308,9 @@ def build_test_plugin_registry(
         headless_notice_plugin_contribution(
             scheduler=SchedulerFacade(),
             service=headless,
+        ),
+        scheduled_restart_plugin_contribution(
+            config=config.operations.restart,
+            scheduler=SchedulerFacade(),
         ),
     )

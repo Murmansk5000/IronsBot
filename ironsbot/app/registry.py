@@ -22,7 +22,6 @@ from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.app.plugin_visibility import feature_help_visible, superuser_help_visible
 from ironsbot.core.features import Feature
-from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -64,7 +63,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     )
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.operations.db_sync import install as install_db_sync
-    from ironsbot.plugins.operations.restart import register_restart_jobs
     from ironsbot.plugins.operations.startup import send_startup_notice
     from ironsbot.plugins.operations.status.handlers import (
         install as install_server_status,
@@ -309,31 +307,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     (
                         "messaging",
                         partial(messaging.start, scheduler),
-                    ),
-                ),
-            ),
-        ),
-        PluginContribution(
-            id="scheduled_restart",
-            hooks=PluginHooks(
-                startup=(
-                    (
-                        "scheduled_restart_jobs",
-                        partial(
-                            register_restart_jobs,
-                            scheduler,
-                            restart_times=(
-                                tuple(config.operations.restart.parsed_restart_times)
-                                if config.operations.restart.enabled
-                                else ()
-                            ),
-                            grace_seconds=config.operations.restart.grace_seconds,
-                            restart_process=partial(
-                                terminate_bot_process,
-                                signal_parent=(config.operations.restart.signal_parent),
-                                reason="scheduled bot restart",
-                            ),
-                        ),
                     ),
                 ),
             ),

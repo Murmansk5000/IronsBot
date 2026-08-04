@@ -149,6 +149,15 @@ def test_manifest_headless_notice_owns_its_lifecycle() -> None:
     ]
 
 
+def test_manifest_scheduled_restart_owns_its_lifecycle() -> None:
+    contribution = DEFINITIONS_BY_ID["scheduled_restart"]
+
+    assert contribution.commands == ()
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "scheduled_restart_jobs"
+    ]
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -192,7 +201,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "db_sync",
         "headless_seer",
         "messaging",
-        "scheduled_restart_jobs",
         "bilibili_monitor_jobs",
         "local_rank_jobs",
         "rank_page_jobs",
@@ -200,6 +208,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "team_resource_jobs",
         "activity_reminder_jobs",
         "headless_reconnect_jobs",
+        "scheduled_restart_jobs",
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
         "scheduler",
@@ -261,6 +270,11 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "ironsbot"
                     / "plugins"
                     / "headless_seer_notice"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "scheduled_restart"
                     / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue

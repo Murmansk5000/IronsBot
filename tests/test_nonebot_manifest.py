@@ -41,5 +41,6 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.team.resource",
             "ironsbot.plugins.activity",
             "ironsbot.plugins.headless_seer_notice",
+            "ironsbot.plugins.scheduled_restart",
         ]
     }

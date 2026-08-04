@@ -319,11 +319,11 @@ The first verified migrations are `ironsbot.plugins.about`,
 `ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.seer.rank_help`,
 `ironsbot.plugins.team_audit`, `ironsbot.plugins.team.resource`, and the
 `ironsbot.plugins.headless_seer_notice`, and the messaging `blacklist`,
-`meeting`, and `red_packet` modules: the manifest loads them directly, and
-each package supplies its own metadata and contribution. `fire_manual_ad`
-owns its passive feature policy contribution; `sendpic`, `meeting`,
-`rank_help`, and `team.resource` also own the command descriptors for the
-matchers they install.
+`meeting`, `red_packet`, and `scheduled_restart` modules: the manifest loads
+them directly, and each package supplies its own metadata and contribution.
+`fire_manual_ad` owns its passive feature policy contribution; `sendpic`,
+`meeting`, `rank_help`, and `team.resource` also own the command descriptors
+for the matchers they install.
 Every subsequent plugin migration follows that pattern and removes its entry
 from the central bridge in the same change.
 
