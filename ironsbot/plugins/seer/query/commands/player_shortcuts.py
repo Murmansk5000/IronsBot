@@ -36,7 +36,7 @@ from ironsbot.services.seer.player_shortcuts import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player import PlayerCommandDependencies
-from .player_target import resolve_player_target
+from .player_target import resolve_event_player_reference, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
@@ -81,10 +81,10 @@ async def _is_player_shortcut(
         return False
     if command.player_reference is not None:
         player_reference = command.player_reference
-        group_id = getattr(event, "group_id", None)
-        player_id = dependencies.player_accounts.resolve_player_id(
+        player_id = resolve_event_player_reference(
+            dependencies.player_accounts,
+            event,
             player_reference,
-            group_id=group_id if isinstance(group_id, int) else None,
         )
         if player_id is None:
             return False
@@ -112,10 +112,10 @@ async def _is_player_extension_shortcut(
         return False
     player_id = None
     if player_reference:
-        group_id = getattr(event, "group_id", None)
-        player_id = dependencies.player_accounts.resolve_player_id(
+        player_id = resolve_event_player_reference(
+            dependencies.player_accounts,
+            event,
             player_reference,
-            group_id=group_id if isinstance(group_id, int) else None,
         )
         if player_id is None:
             return False

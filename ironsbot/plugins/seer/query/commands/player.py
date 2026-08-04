@@ -5,9 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import (
-    MessageEvent,
-)
+from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -46,7 +44,7 @@ from .player_context import (
     PLAYER_QUERY_IS_EXPLICIT_KEY,
 )
 from .player_detail_conversation import send_player_info_with_detail_prompt
-from .player_target import resolve_player_target
+from .player_target import resolve_event_player_reference, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -62,8 +60,6 @@ class PlayerCommandDependencies:
     player_accounts: PlayerAccountRegistry = field(
         default_factory=lambda: PlayerAccountRegistry(())
     )
-
-
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
@@ -92,9 +88,10 @@ async def _is_player_id_query(
     if not arg:
         state[PLAYER_QUERY_IS_EXPLICIT_KEY] = False
         return True
-    if not arg.isdecimal() and dependencies.player_accounts.resolve_player_id(
+    if not arg.isdecimal() and resolve_event_player_reference(
+        dependencies.player_accounts,
+        event,
         arg,
-        group_id=event_group_id(event) if isinstance(event, MessageEvent) else None,
     ) is None:
         return False
     state[BOT_COMMAND_ARG_KEY] = arg
@@ -120,9 +117,10 @@ async def validate_player_id(
     numeric_player_id = None
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
         player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-        numeric_player_id = dependencies.player_accounts.resolve_player_id(
+        numeric_player_id = resolve_event_player_reference(
+            dependencies.player_accounts,
+            event,
             player_reference,
-            group_id=event_group_id(event),
         )
         if numeric_player_id is None:
             await matcher.finish(PLAYER_ID_ERROR_MESSAGE)

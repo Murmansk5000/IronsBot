@@ -2,7 +2,9 @@
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.plugins.seer.query.commands.player_target import (
+    resolve_event_player_reference,
     resolve_player_target,
 )
 from tests.helpers.onebot_events import group_message_event
@@ -87,7 +89,7 @@ def test_player_target_rejects_ambiguous_member_target_forms() -> None:
     )
 
     assert multiple.error == "请一次只 @ 一名成员查询其已绑定的米米号。"
-    assert mixed.error == "米米号数字和 @成员 不能同时使用，请保留其中一种。"
+    assert mixed.error == "米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。"
 
 
 def test_player_target_reports_an_unbound_mentioned_member() -> None:
@@ -103,3 +105,44 @@ def test_player_target_reports_an_unbound_mentioned_member() -> None:
 
     assert target.player_id is None
     assert target.error == "该成员尚未绑定米米号。"
+
+
+def test_event_player_reference_respects_public_and_group_scoped_aliases() -> None:
+    private_group_id = 987654321
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=PLAYER_ID,
+                name="sample_player",
+                aliases=("示例玩家",),
+                password=None,
+                public=False,
+            ),
+        ),
+        private_alias_groups={private_group_id: ("sample_player",)},
+    )
+
+    assert (
+        resolve_event_player_reference(
+            accounts,
+            group_message_event("", group_id=private_group_id),
+            "示例玩家",
+        )
+        == PLAYER_ID
+    )
+    assert (
+        resolve_event_player_reference(
+            accounts,
+            group_message_event("", group_id=123456789),
+            "示例玩家",
+        )
+        is None
+    )
+    assert (
+        resolve_event_player_reference(
+            accounts,
+            group_message_event(""),
+            str(PLAYER_ID),
+        )
+        == PLAYER_ID
+    )

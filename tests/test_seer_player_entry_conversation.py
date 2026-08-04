@@ -234,6 +234,18 @@ def test_player_commands_resolve_configured_account_names() -> None:
         PlayerShortcutCommand("peak", _ACCOUNT_PLAYER_ID)
     )
 
+    autocard_state: dict[str, object] = {}
+    assert asyncio.run(
+        player_shortcuts._is_player_shortcut(
+            group_message_event("群星牌示例账号"),
+            autocard_state,
+            dependencies=dependencies,
+        )
+    )
+    assert autocard_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
+        PlayerShortcutCommand("autocard", _ACCOUNT_PLAYER_ID)
+    )
+
 
 def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
     dependencies = player.PlayerCommandDependencies(

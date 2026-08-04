@@ -780,8 +780,9 @@ mention_initial_max_responses = 3
 # ZH: 赛尔账号库。密码统一放在容器环境变量 SEER_PASSWORD_<player_id>；填写明文即可，
 # IronsBot 会在内存中转换为旧登录接口所需的 MD5。public=true 时，name 和 aliases 可在
 # 任意会话中用于查询；public=false 时，仅 [seer.player_account_aliases] 声明的群可用这些
-# 别名，其他位置仍可直接填写数字米米号。绑定米米号必须直接填写数字。账号用途由各功能
-# 自己的账号引用列表决定。
+# 别名。所有以米米号为目标的入口统一支持这些名称/别名，包括玩家基础资料、收集、巅峰、
+# 群星牌、阵容类扩展和全服榜玩家查询；其他位置仍可直接填写数字米米号。绑定米米号必须
+# 直接填写数字。账号用途由各功能自己的账号引用列表决定。
 #
 # [[seer.player_accounts]]
 # player_id = 123456789
