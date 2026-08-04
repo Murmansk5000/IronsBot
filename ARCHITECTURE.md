@@ -1101,8 +1101,13 @@ reference for users:
   and superuser bypass. The OneBot configuration boundary still owns numeric
   QQ values, but policy and new services expose `ActorRef` and
   `ConversationRef`; a second platform must not consume the numeric values.
-  Seer player IDs already use a shared resolver for numeric IDs, aliases, one
-  direct mention, and the caller's default binding.
+  Seer player IDs use a shared resolver for numeric IDs, aliases, one direct
+  mention, and the caller's default binding. The OneBot player-query and
+  binding adapters now forward their raw reference through that resolver with
+  a scoped alias-lookup port. Shortcut, detail-extension, and rank player
+  parsers still pre-resolve configured aliases during command admission; they
+  are transition consumers and must move to the same raw-reference contract
+  before another player-ID input form is added.
 - **Replies and proactive delivery:** group and private replies, scheduled
   pushes, activity notices, Bilibili delivery, team-resource notices, startup
   notices, and admin notices use OneBot routing and outbound rate limiting.
