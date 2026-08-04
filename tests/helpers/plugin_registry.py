@@ -4,7 +4,6 @@ from functools import partial
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
-from ironsbot.app.registry import build_plugin_registry
 from ironsbot.config.models.settings import Settings
 from ironsbot.custom_plugins.pet_config import (
     plugin_contribution as pet_config_plugin_contribution,
@@ -67,6 +66,9 @@ from ironsbot.plugins.scheduler import (
 from ironsbot.plugins.seer.lucky_skin_window import (
     plugin_contribution as lucky_skin_window_plugin_contribution,
 )
+from ironsbot.plugins.seer.query import (
+    plugin_contribution as seer_query_plugin_contribution,
+)
 from ironsbot.plugins.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
@@ -84,6 +86,7 @@ from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -153,6 +156,19 @@ def build_test_plugin_registry(
             terminate_bot_process,
             signal_parent=True,
             reason="admin requested bot restart",
+        ),
+    )
+    scheduled_restart = ScheduledRestartService(
+        restart_times=(
+            tuple(config.operations.restart.parsed_restart_times)
+            if config.operations.restart.enabled
+            else ()
+        ),
+        grace_seconds=config.operations.restart.grace_seconds,
+        restart_process=partial(
+            terminate_bot_process,
+            signal_parent=config.operations.restart.signal_parent,
+            reason="scheduled bot restart",
         ),
     )
     resources = cast(
@@ -280,6 +296,7 @@ def build_test_plugin_registry(
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
+            scheduled_restart=scheduled_restart,
             push_message_limiter=lambda message, _target: message,
             commands=CommandCatalog(),
             contribution_catalog=PluginContributionCatalog(),
@@ -292,10 +309,13 @@ def build_test_plugin_registry(
     )
     return (
         scheduler_plugin_contribution(scheduler=SchedulerFacade()),
-        *build_plugin_registry(
+        seer_query_plugin_contribution(
             settings=config,
             resources=resources,
             scheduler=SchedulerFacade(),
+        ),
+        *resources.private_extensions.load_plugin_contributions(
+            resources.private_extension_runtime,
         ),
         bilibili_plugin_contribution(
             service=resources.bilibili,
@@ -407,7 +427,7 @@ def build_test_plugin_registry(
         ),
         headless_runtime_plugin_contribution(service=headless),
         scheduled_restart_plugin_contribution(
-            config=config.operations.restart,
             scheduler=SchedulerFacade(),
+            service=resources.scheduled_restart,
         ),
     )

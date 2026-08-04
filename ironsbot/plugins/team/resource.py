@@ -14,11 +14,14 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
-from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
+from ironsbot.runtime.commands import (
+    CommandAccess,
+    CommandDescriptor,
+    commands_from_rows,
+)
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
@@ -285,9 +288,7 @@ def install(
     )
 
     prompt_matcher = registry.on_message(
-        policy=CommandPolicy.exempt(
-            "second-level team subscription confirmation"
-        ),
+        policy=CommandPolicy.exempt("second-level team subscription confirmation"),
         rule=Rule(is_prompt_choice) & explicit_command(),
         priority=priority,
         block=True,

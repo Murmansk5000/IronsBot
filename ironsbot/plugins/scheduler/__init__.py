@@ -24,18 +24,18 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.services.operations.scheduler import SchedulerLifecycle
 
 
-def _install(registry: MatcherRegistry, *, scheduler: SchedulerFacade) -> None:
+def _install(registry: MatcherRegistry, *, scheduler: SchedulerLifecycle) -> None:
     del registry
     from nonebot_plugin_apscheduler import scheduler as backend
 
     scheduler.bind(backend)
 
 
-def plugin_contribution(*, scheduler: SchedulerFacade) -> PluginContribution:
+def plugin_contribution(*, scheduler: SchedulerLifecycle) -> PluginContribution:
     return PluginContribution(
         id="scheduler",
         install=partial(_install, scheduler=scheduler),

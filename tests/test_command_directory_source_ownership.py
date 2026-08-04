@@ -1,4 +1,3 @@
-from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.plugins.activity import command_descriptors as activity_commands
 from ironsbot.plugins.bilibili import command_descriptors as bilibili_commands
 from ironsbot.plugins.bilibili.command_rules import (
@@ -26,6 +25,9 @@ from ironsbot.plugins.operations.status.command_text import (
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
+)
+from ironsbot.plugins.seer.query.command_catalog import (
+    command_descriptors as seer_commands,
 )
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.services.activity.commands import (
@@ -83,6 +85,6 @@ def test_operation_examples_use_matcher_command_sources() -> None:
 
 
 def test_data_query_examples_use_matcher_command_sources() -> None:
-    seer = _by_id(seer_query_commands())
+    seer = _by_id(seer_commands())
 
     assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES

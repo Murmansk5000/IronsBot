@@ -116,6 +116,7 @@ from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_session import HeadlessSessionFactory
+from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
 from ironsbot.services.pet_config import PetConfigQueryService
@@ -181,6 +182,8 @@ LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 SOON_ENDING_THRESHOLD = timedelta(days=7)
+
+
 def _build_activity_service(  # noqa: PLR0913 - composition root
     config: ActivityConfig,
     runtime_state_path: Path,
@@ -362,15 +365,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(
             settings.paths.runtime_state,
-            legacy_paths=(
-                cache_paths.root / "runtime" / "lucky_skin_window.sqlite",
-            ),
+            legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
         ),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
-    bili_cookie_store = FileBiliCookieStore(
-        bili_data_dir / "bili_cookie_cache.txt"
-    )
+    bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
     bilibili = BilibiliService(
         config=settings.bilibili,
         targets=BiliTargetService(
@@ -378,9 +377,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             features,
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
-            BiliAccountNames(
-                partial(fetch_bili_account_name, http_clients.origin)
-            ),
+            BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
         ),
         cookie_store=bili_cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -522,9 +519,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless,
         RankQueryPolicy(
             player_error=player.format_error,
-            player_timeout_seconds=(
-                settings.seer.player.detail_timeout_seconds
-            ),
+            player_timeout_seconds=(settings.seer.player.detail_timeout_seconds),
         ),
         player_query_quotas,
         player_requests,
@@ -534,12 +529,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             rank_limit=settings.seer.rank.limit,
             batch_limit=settings.seer.local_rank.batch_limit,
             refresh_limit=settings.seer.local_rank.refresh_limit,
-            refresh_max_age_hours=(
-                settings.seer.local_rank.refresh_max_age_hours
-            ),
-            page_cache_ttl_seconds=(
-                settings.seer.rank.page_cache_ttl_seconds
-            ),
+            refresh_max_age_hours=(settings.seer.local_rank.refresh_max_age_hours),
+            page_cache_ttl_seconds=(settings.seer.rank.page_cache_ttl_seconds),
             display_limit=rank_display.limit_for_group,
         ),
         rank,
@@ -665,6 +656,19 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         handoff_store=DockerStartupPreflightStore(),
     )
+    scheduled_restart = ScheduledRestartService(
+        restart_times=(
+            tuple(settings.operations.restart.parsed_restart_times)
+            if settings.operations.restart.enabled
+            else ()
+        ),
+        grace_seconds=settings.operations.restart.grace_seconds,
+        restart_process=partial(
+            terminate_bot_process,
+            signal_parent=settings.operations.restart.signal_parent,
+            reason="scheduled bot restart",
+        ),
+    )
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
 
@@ -713,6 +717,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         data_sync=data_sync,
         docker_update=docker_update,
         startup_notice=StartupNoticeService(admin_notices),
+        scheduled_restart=scheduled_restart,
         commands=command_catalog,
         contribution_catalog=contribution_catalog,
         help_hint=HelpHintService(

@@ -14,9 +14,12 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.core.commands import normalize_command_text
-from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
+from ironsbot.runtime.commands import (
+    CommandAccess,
+    CommandDescriptor,
+    commands_from_rows,
+)
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import (
     HelpEntry,

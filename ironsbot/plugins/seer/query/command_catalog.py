@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
+"""Command contracts owned by the Seer query plugin."""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from ironsbot.app.command_directory.rows import commands_from_rows
+from ironsbot.runtime.commands import CommandDescriptor, commands_from_rows
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
     NEW_ACHIEVEMENTS_COMMANDS,
@@ -20,11 +20,8 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_SUITS_COMMANDS,
 )
 
-if TYPE_CHECKING:
-    from ironsbot.runtime.commands import CommandDescriptor
 
-
-def seer_query_commands() -> tuple[CommandDescriptor, ...]:
+def command_descriptors() -> tuple[CommandDescriptor, ...]:
     return (
         *commands_from_rows(
             "seer_query",
@@ -40,7 +37,7 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                 (
                     "seer.player.default",
                     ("米米号", "收集", "巅峰", "群星牌"),
-                    ("查询已绑定默认米米号的对应数据；未绑定时使用“米米号+完整米米号”"),
+                    "查询已绑定默认米米号的对应数据；未绑定时使用“米米号+完整米米号”",
                     {},
                 ),
                 (

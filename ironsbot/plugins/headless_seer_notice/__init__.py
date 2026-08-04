@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.plugins.operations.headless import register_reconnect_jobs
 from ironsbot.runtime.plugins import (
     PluginContribution,
     PluginHooks,
@@ -46,7 +45,7 @@ def plugin_contribution(
             startup=(
                 (
                     "headless_reconnect_jobs",
-                    partial(register_reconnect_jobs, scheduler, service),
+                    partial(service.register_reconnect_jobs, scheduler),
                 ),
             ),
             first_bot_connect=(
