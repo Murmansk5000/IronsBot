@@ -373,7 +373,11 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "rank_help"
                     / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "seer" / "query" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "seer" / "lucky_skin_window.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "lucky_skin_window.py",
                         ROOT
                         / "ironsbot"
                         / "plugins"

@@ -48,6 +48,9 @@ from ironsbot.plugins.messaging.meeting import (
 from ironsbot.plugins.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.onebot.lucky_skin_window import (
+    plugin_contribution as lucky_skin_window_plugin_contribution,
+)
 from ironsbot.plugins.onebot.team_audit import (
     plugin_contribution as team_audit_plugin_contribution,
 )
@@ -68,9 +71,6 @@ from ironsbot.plugins.scheduled_restart import (
 )
 from ironsbot.plugins.scheduler import (
     plugin_contribution as scheduler_plugin_contribution,
-)
-from ironsbot.plugins.seer.lucky_skin_window import (
-    plugin_contribution as lucky_skin_window_plugin_contribution,
 )
 from ironsbot.plugins.seer.query import (
     plugin_contribution as seer_query_plugin_contribution,

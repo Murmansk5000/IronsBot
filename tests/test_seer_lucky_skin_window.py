@@ -28,7 +28,7 @@ from ironsbot.integrations.storage.lucky_skin_window import (
 )
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.seer import lucky_skin_window as lucky_skin_window_plugin
+from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugin
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.seer.lucky_skin_window import (
