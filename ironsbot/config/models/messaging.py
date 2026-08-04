@@ -17,6 +17,7 @@ from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves
 from ironsbot.core.time import normalize_daily_time
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
+ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
 COMMAND_ID_FORMAT_ERROR = (
     "command message action id may only contain letters, numbers, dots, "
@@ -274,9 +275,12 @@ class BaseMessageAction(BaseModel):
         return message
 
 
-class MessageCommandAction(BaseMessageAction):
-    commands: NormalizedStringList = Field(default_factory=list)
+class MessageReplyAction(BaseMessageAction):
     at_user_ids: OneBotReferenceList = Field(default_factory=list)
+
+
+class MessageCommandAction(MessageReplyAction):
+    commands: NormalizedStringList = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
@@ -286,6 +290,20 @@ class MessageCommandAction(BaseMessageAction):
             raise ValueError(COMMAND_ID_FORMAT_ERROR)
         if self.enabled and not self.commands:
             raise ValueError(ENABLED_COMMANDS_REQUIRED_ERROR)
+        return self
+
+
+class MessageKeywordReplyAction(MessageReplyAction):
+    keywords: NormalizedStringList = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_enabled_keyword_reply_action(self) -> Self:
+        if not self.id:
+            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
+        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
+            raise ValueError(COMMAND_ID_FORMAT_ERROR)
+        if self.enabled and not self.keywords:
+            raise ValueError(ENABLED_KEYWORDS_REQUIRED_ERROR)
         return self
 
 
@@ -486,6 +504,7 @@ class MessageConfig(BaseModel):
         default_factory=RedPacketNoticeConfig
     )
     commands: list[MessageCommandAction] = Field(default_factory=list)
+    keyword_replies: list[MessageKeywordReplyAction] = Field(default_factory=list)
     schedules: list[MessageScheduledAction] = Field(default_factory=list)
     meeting: MeetingConfig = Field(default_factory=MeetingConfig)
     team_audit_welcome: TeamAuditWelcomeConfig = Field(
@@ -495,7 +514,9 @@ class MessageConfig(BaseModel):
 
     @property
     def command_feature_keys(self) -> frozenset[str]:
-        return frozenset(action.feature for action in self.commands)
+        return frozenset(
+            action.feature for action in (*self.commands, *self.keyword_replies)
+        )
 
     @property
     def schedule_feature_keys(self) -> frozenset[str]:

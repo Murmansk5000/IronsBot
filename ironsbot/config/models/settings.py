@@ -414,6 +414,11 @@ class Settings(BaseModel):
                 action.at_user_ids,
                 location=f"messaging.commands[{index}].at_user_ids",
             )
+        for index, action in enumerate(self.messaging.keyword_replies):
+            references.resolve_users(
+                action.at_user_ids,
+                location=f"messaging.keyword_replies[{index}].at_user_ids",
+            )
         for index, action in enumerate(self.messaging.schedules):
             references.resolve_users(
                 action.at_user_ids,

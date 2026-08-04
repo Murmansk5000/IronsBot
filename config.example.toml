@@ -1372,3 +1372,34 @@ times = "04:30"
 grace_seconds = 10.0
 # Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。
 signal_parent = true
+
+# EN: Keyword replies use literal contains matching. They only reply when the
+# message contains a configured keyword; exact command actions above still win.
+# ZH: 关键词回复使用普通“包含”匹配；消息中出现关键词即可回复，且完整口令优先。
+# Like command actions, the feature key must be enabled for the current group
+# or private user. Keywords are not regular commands and are shown as automatic
+# replies in help.
+# 与口令动作相同，feature 必须在当前群或私聊权限中启用；关键词不是普通指令，
+# 帮助中会显示为自动回复。
+#
+# [[messaging.keyword_replies]]
+# id = "chuchu_reply"
+# keywords = ["出出"]
+# message = "出出是蛆"
+# feature = "chuchu_reply"
+
+# Default: []
+# EN: Scheduled text pushes. Each task delivers to users and groups where its
+# feature is enabled; `at_user_ids` accepts user aliases or QQ IDs and only
+# applies to group delivery.
+# ZH: 定时文本推送默认同时面向私聊和群聊；feature 在用户/群策略中启用后才会投递。
+# Like command actions, a schedule's feature is registered from TOML and may
+# be referenced by bundles and target policies.
+# 与命令动作相同，定时动作的 feature 会从 TOML 注册，可被组合和目标策略引用。
+# `id` is required, must stay stable, and must be globally unique. Renaming it
+# resets TD and push-time preferences for that schedule.
+# `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
+# `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
+# Example task fields: id, name, enabled, feature, message, time,
+# day_of_week, at_user_ids.
+# Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
