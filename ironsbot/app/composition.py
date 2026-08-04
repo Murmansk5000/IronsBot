@@ -63,6 +63,9 @@ from ironsbot.integrations.onebot.team_resource import (
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
+from ironsbot.integrations.seer_data.pet_info_renderer import (
+    render_published_pet_info,
+)
 from ironsbot.integrations.sendpic import SendpicBackendProvider
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
@@ -170,9 +173,6 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryService,
 )
 from ironsbot.services.seer.render_scheduler import RenderScheduler
-from ironsbot.services.seer.rendering.custom_pet_info import (
-    render_custom_pet_info,
-)
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
@@ -601,7 +601,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             seer_database,
             seer_images,
             partial(
-                render_custom_pet_info,
+                render_published_pet_info,
                 render_cache,
                 seer_images,
                 render_scheduler.render,

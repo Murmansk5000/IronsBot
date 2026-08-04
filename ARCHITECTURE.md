@@ -480,6 +480,30 @@ Future data work follows these rules:
   before atomic replacement. Incompatible data disables only the affected
   feature and notifies administrators without removing the data-update path.
 
+### Cross-Repository Data Publication Contract
+
+When a user-facing Seer capability depends on extracted official data, its
+truth must be produced and versioned by the data repository rather than
+reconstructed inside IronsBot. A change that crosses `seerapi`,
+`seerapi-models`, and IronsBot follows this fixed order:
+
+1. `seerapi` defines the normalized fact table, source provenance, ambiguity
+   record, schema version, and build-time validation.
+2. `seerapi-models` exposes the published fact through an ORM/repository
+   contract; it must not expose raw extraction tables as a shortcut for
+   renderers.
+3. A real data release is built and checked for required tables, deterministic
+   rows, assets, and integrity before a consumer is allowed to rely on it.
+4. IronsBot consumes the published view through `integrations.seer_data` and
+   passes a render-ready view model to its renderer.
+
+The consuming repository must not add a second association resolver, raw SWF
+conversion fallback, best-effort text guesser, or legacy-table read merely to
+cover a missing data release. Missing required facts are a release/schema
+failure with observable diagnostics and a recoverable `/更新数据` path. A
+one-time migration may transform old local data before deployment, but normal
+runtime reads one published schema only.
+
 ## Gradual Migration Plan
 
 The following order is directional. A phase starts only when it has a concrete
@@ -985,9 +1009,10 @@ remaining target-state work:
   adapter transport imports from `core` and `services`.
 
 The renderer allowlist is a debt register, not an exception to the target
-rule. It contains only the three existing Seer rendering data lookup modules
-and must shrink in Phase 4. Adding an item requires a product-approved
-migration plan; a new renderer must receive a view model and assets instead.
+rule. It contains only the remaining `custom_pet_info.py` transition module
+and must reach an empty set in Phase 4. Adding an item requires a
+product-approved migration plan; a new renderer must receive a view model and
+assets instead.
 
 ## Current OneBot Behaviour Baseline
 
