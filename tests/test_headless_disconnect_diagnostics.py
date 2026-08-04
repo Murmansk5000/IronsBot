@@ -241,7 +241,7 @@ def test_rank_page_refresh_enters_backoff_after_connection_failure(
         monkeypatch.setattr(
             rank_page_refresh.RankPageRefreshService,
             "preview",
-            lambda _self, _rank_keys=None: [target],
+            lambda _self, _rank_keys=None, *, limit=None: [target][:limit],
         )
         game = cast(
             "SeerGame",

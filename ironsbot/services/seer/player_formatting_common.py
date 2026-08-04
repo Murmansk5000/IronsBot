@@ -53,9 +53,12 @@ def format_team_text(user_info: Any, team_name: str) -> str:
 def format_player_identity(
     player_id: int,
     nick: str | None = None,
+    nick_error: str | None = None,
 ) -> str:
     if nick:
         return f"米米号：{player_id}（{nick}）"
+    if nick_error:
+        return f"米米号：{player_id}（昵称暂未获取：{nick_error}）"
     return f"米米号：{player_id}"
 
 

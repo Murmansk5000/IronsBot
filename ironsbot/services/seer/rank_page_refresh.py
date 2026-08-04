@@ -69,8 +69,15 @@ class RankPageRefreshService:
     def preview(
         self,
         rank_keys: Sequence[str] | None = None,
+        *,
+        limit: int | None = None,
     ) -> list[RankPageRefreshTarget]:
-        return preview_rank_page_refresh_targets(self.config, self.rank, rank_keys)
+        return preview_rank_page_refresh_targets(
+            self.config,
+            self.rank,
+            rank_keys,
+            limit=limit,
+        )
 
     def backoff_remaining(self) -> float:
         return max(self._backoff_until - time.monotonic(), 0.0)
@@ -82,6 +89,7 @@ class RankPageRefreshService:
         *,
         background: bool = False,
         user_id: int | None = None,
+        max_parallelism: int = 1,
     ) -> RankPageRefreshResult:
         if self._lock.locked():
             logger.info(
@@ -103,6 +111,7 @@ class RankPageRefreshService:
                 rank_keys,
                 background=background,
                 user_id=user_id,
+                max_parallelism=max_parallelism,
             )
 
     async def _refresh_unlocked(
@@ -112,49 +121,102 @@ class RankPageRefreshService:
         *,
         background: bool,
         user_id: int | None,
+        max_parallelism: int,
     ) -> RankPageRefreshResult:
-        targets = self.preview(rank_keys)
-        if self.config.pages_per_run_min > 0 and targets:
-            lower = min(self.config.pages_per_run_min, len(targets))
-            upper = min(self.config.pages_per_run, len(targets))
-            targets = targets[: random.randint(lower, upper)]  # nosec B311
-        result = RankPageRefreshResult(targets=targets)
+        page_budget = self._page_budget()
+        targets = self.preview(rank_keys, limit=page_budget)
+        parallelism = min(max(max_parallelism, 1), len(targets))
+        result = RankPageRefreshResult(
+            targets=targets,
+            parallelism=parallelism,
+        )
         if not targets:
             return result
 
-        for index, target in enumerate(targets):
-            if index > 0:
-                await self._sleep_between_requests()
-            try:
-                await self._refresh_target(
-                    game,
-                    target,
-                    background=background,
-                    user_id=user_id,
-                )
-            except Exception as error:  # noqa: BLE001
-                result.failures.append(
-                    RankPageRefreshFailure(
-                        target=target,
-                        reason=str(error) or type(error).__name__,
+        slot_times = self._page_slot_times(
+            target_count=len(targets),
+            background=background,
+        )
+
+        result_lock = asyncio.Lock()
+        stopped = asyncio.Event()
+        active_refreshes = asyncio.Semaphore(parallelism)
+        attempted = 0
+        connection_failures = 0
+
+        async def refresh_target(
+            target: RankPageRefreshTarget,
+            *,
+            slot_at: float,
+        ) -> None:
+            nonlocal attempted, connection_failures
+            await self._wait_for_slot(slot_at)
+            if stopped.is_set():
+                return
+            async with active_refreshes:
+                try:
+                    worker_id = await self._refresh_target(
+                        game,
+                        target,
+                        background=background,
+                        user_id=user_id,
                     )
-                )
-                if isinstance(error, PlayerRequestPausedError):
-                    logger.info(
-                        "rank page cache auto refresh stopped: player requests paused"
-                    )
-                    break
-                if _is_rank_page_refresh_connection_error(error):
-                    self._backoff_until = (
-                        time.monotonic() + RANK_PAGE_REFRESH_BACKOFF_SECONDS
-                    )
+                except Exception as error:  # noqa: BLE001
+                    connection_error = _is_rank_page_refresh_connection_error(error)
+                    async with result_lock:
+                        attempted += 1
+                        if connection_error:
+                            connection_failures += 1
+                        result.failures.append(
+                            RankPageRefreshFailure(
+                                target=target,
+                                reason=str(error) or type(error).__name__,
+                            )
+                        )
                     logger.warning(
-                        "rank page cache auto refresh enters backoff after failure: %s",
+                        "rank page cache refresh failed: target=%s %s-%s "
+                        "reason=%s",
+                        target.rank_key,
+                        target.start_rank,
+                        target.end_rank,
                         error or type(error).__name__,
                     )
-                    break
-                continue
-            result.refreshed.append(target)
+                    if isinstance(error, PlayerRequestPausedError):
+                        stopped.set()
+                        logger.info(
+                            "rank page cache auto refresh stopped: "
+                            "player requests paused"
+                        )
+                    return
+
+                async with result_lock:
+                    attempted += 1
+                    result.refreshed.append(target)
+                    if worker_id is not None:
+                        result.worker_page_counts[worker_id] = (
+                            result.worker_page_counts.get(worker_id, 0) + 1
+                        )
+                logger.info(
+                    "rank page cache refreshed: target=%s %s-%s worker=%s",
+                    target.rank_key,
+                    target.start_rank,
+                    target.end_rank,
+                    worker_id if worker_id is not None else "unknown",
+                )
+
+        await asyncio.gather(
+            *(
+                refresh_target(target, slot_at=slot_times[index])
+                for index, target in enumerate(targets)
+            )
+        )
+        if attempted > 0 and connection_failures == attempted:
+            self._backoff_until = time.monotonic() + RANK_PAGE_REFRESH_BACKOFF_SECONDS
+            logger.warning(
+                "rank page cache auto refresh enters backoff: all %s dispatched "
+                "pages failed with connection errors",
+                attempted,
+            )
         return result
 
     async def _refresh_target(
@@ -164,8 +226,8 @@ class RankPageRefreshService:
         *,
         background: bool,
         user_id: int | None,
-    ) -> None:
-        async def fetch() -> None:
+    ) -> int | None:
+        async def fetch() -> int | None:
             active_game = game() if callable(game) else game
             action_name = "后台刷榜缓存" if background else "手动刷新榜单缓存"
             with active_game.operations.track(
@@ -185,23 +247,53 @@ class RankPageRefreshService:
                     count=target.raw_end - target.raw_start + 1,
                     use_cache=False,
                 )
+            return getattr(active_game, "user_id", None)
 
         if self.requests is None:
-            await fetch()
-            return
-        await self.requests.run(
+            return await fetch()
+        return await self.requests.run(
             fetch,
             user_id=user_id,
             label="后台刷榜缓存" if background else "手动刷新榜单缓存",
             background=background,
         )
 
-    async def _sleep_between_requests(self) -> None:
-        delay = self.config.request_interval_seconds
-        if self.config.request_jitter_seconds > 0:
-            delay += random.uniform(  # nosec B311
+    def _page_slot_times(
+        self,
+        *,
+        target_count: int,
+        background: bool,
+    ) -> list[float]:
+        started_at = time.monotonic()
+        if target_count <= 0:
+            return []
+
+        minimum_gap = self.config.request_interval_seconds
+        if not background or self.config.interval_minutes <= 0:
+            spacing = minimum_gap + random.uniform(  # nosec B311
                 0,
                 self.config.request_jitter_seconds,
             )
+            return [started_at + index * spacing for index in range(target_count)]
+
+        nominal_spacing = self.config.interval_minutes * 60 / target_count
+        spacing = max(minimum_gap, nominal_spacing)
+        jitter_limit = min(self.config.request_jitter_seconds, spacing * 0.4)
+        slots = [started_at]
+        for index in range(1, target_count):
+            nominal_slot = started_at + index * spacing
+            jitter = random.uniform(-jitter_limit, jitter_limit)  # nosec B311
+            slots.append(max(nominal_slot + jitter, slots[-1] + minimum_gap))
+        return slots
+
+    def _page_budget(self) -> int:
+        minimum = self.config.pages_per_run_min
+        if minimum <= 0:
+            return self.config.pages_per_run
+        return random.randint(minimum, self.config.pages_per_run)  # nosec B311
+
+    @staticmethod
+    async def _wait_for_slot(slot_at: float) -> None:
+        delay = slot_at - time.monotonic()
         if delay > 0:
             await asyncio.sleep(delay)
