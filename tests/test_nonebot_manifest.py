@@ -36,5 +36,6 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.messaging.meeting",
             "ironsbot.plugins.messaging.red_packet",
             "ironsbot.plugins.fire_manual_ad",
+            "ironsbot.plugins.seer.rank_help",
         ]
     }

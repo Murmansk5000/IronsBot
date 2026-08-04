@@ -95,6 +95,14 @@ def test_manifest_help_hint_owns_its_passive_matcher() -> None:
     assert contribution.commands == ()
 
 
+def test_manifest_rank_help_owns_its_command_descriptors() -> None:
+    contribution = DEFINITIONS_BY_ID["rank_help"]
+
+    assert contribution.features == frozenset({Feature.SEER_RANK})
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"rank_help"}
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -194,6 +202,12 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
                     ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "seer"
+                    / "rank_help"
+                    / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

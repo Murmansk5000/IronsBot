@@ -1,4 +1,4 @@
-from ironsbot.app.command_directory.seer import rank_commands
+from ironsbot.plugins.seer.rank_help import command_descriptors
 from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.rank_list_models import (
     GLOBAL_RANKS,
@@ -29,7 +29,7 @@ def test_rank_help_documents_parseable_query_forms() -> None:
 
 
 def test_rank_command_examples_are_derived_from_rank_specs() -> None:
-    commands = {command.id: command for command in rank_commands()}
+    commands = {command.id: command for command in command_descriptors()}
 
     assert commands["rank.global_collection"].examples == tuple(
         spec.title

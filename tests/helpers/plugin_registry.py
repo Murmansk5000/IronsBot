@@ -27,6 +27,9 @@ from ironsbot.plugins.messaging.meeting import (
 from ironsbot.plugins.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.seer.rank_help import (
+    plugin_contribution as rank_help_plugin_contribution,
+)
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
@@ -268,4 +271,8 @@ def build_test_plugin_registry(
         ),
         fire_manual_ad_plugin_contribution(),
         help_hint_plugin_contribution(service=resources.help_hint),
+        rank_help_plugin_contribution(
+            features=runtime.features,
+            commands=resources.commands,
+        ),
     )

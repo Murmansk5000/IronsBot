@@ -20,7 +20,7 @@ from ironsbot.app.command_directory.plugins import (
     bilibili_commands,
     team_resource_commands,
 )
-from ironsbot.app.command_directory.seer import rank_commands, seer_query_commands
+from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.app.plugin_visibility import feature_help_visible, superuser_help_visible
 from ironsbot.core.features import Feature
@@ -76,7 +76,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     from ironsbot.plugins.seer.lucky_skin_window import (
         plugin_definition as lucky_skin_window_plugin,
     )
-    from ironsbot.plugins.seer.rank_help import install as install_rank_help
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
@@ -604,22 +603,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                 command_help_ids=tuple(
                     command.id for command in ai_intent_command_descriptors
                 ),
-            ),
-        ),
-        PluginContribution(
-            id="rank_help",
-            features=frozenset({Feature.SEER_RANK}),
-            help=HelpEntry(
-                name="榜单",
-                description="查看全服榜、机器人样本榜、巅峰样本榜和刻印数值榜",
-                group="seer",
-                order=20,
-            ),
-            commands=rank_commands(),
-            install=partial(
-                install_rank_help,
-                features=features,
-                commands=resources.commands,
             ),
         ),
         lucky_skin_window_plugin(
