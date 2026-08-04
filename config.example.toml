@@ -870,6 +870,8 @@ enabled = false
 # ZH: 后台预热结果在内存中的保留秒数。
 cache_ttl_seconds = 300.0
 
+# EN: watched_skin_ids seeds each user preference only once; commands may change it. Watching marks, never filters, the four offers.
+# ZH: watched_skin_ids 仅首次初始化；关注管理可修改、清空或重置，不过滤四个结果。
 [seer.lucky_skin_window]
 # Default: false; EN: Enable daily lucky skin window queries and subscribed private notices.
 # ZH: 启用当天幸运橱窗查询，以及向已订阅用户发送私聊提醒。手动查询当天无缓存时会先确认登录。

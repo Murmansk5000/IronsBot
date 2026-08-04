@@ -196,7 +196,7 @@ def test_state_migration_applies_and_archives_legacy_files(tmp_path: Path) -> No
                 "SELECT namespace FROM ironsbot_schema_migrations"
             )
         }
-        assert namespaces == {"activity_reminder", "team_audit"}
+        assert namespaces == {"activity_reminder", "skin_window", "team_audit"}
 
     repeated = migrate_state_databases(data_root=data_root, apply=True)
     assert repeated.already_migrated
