@@ -269,6 +269,11 @@ Future data work follows these rules:
 - SQLite changes use explicit versions and transactional migrations. Shared
   state databases use namespaced migration records; large independent stores
   may use their own schema version.
+- Platform identity migrations are offline, one-time transformations. They use
+  independent platform/kind/id/scope columns, a temporary database, a
+  timestamped backup, integrity and cardinality checks, then atomic
+  replacement. The table-by-table contract is in
+  [docs/platform-state-migration.md](docs/platform-state-migration.md).
 - A downloaded data release is validated for schema version and required tables
   before atomic replacement. Incompatible data disables only the affected
   feature and notifies administrators without removing the data-update path.
