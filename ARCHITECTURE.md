@@ -558,9 +558,9 @@ creates a process-wide infrastructure client.
 
 `app.composition.build_application(settings)` is the only composition root.
 Standard NoneBot TOML selects and loads the configured plugin profile first;
-scoped plugin contributions are then passed to composition. The currently
-loaded bridge contribution still supplies existing definitions from the central
-registry, but that bridge is not a second discovery path. Composition:
+scoped manifest-loaded built-in contributions are then passed to composition.
+The temporary private-extension adapter may add configured external
+contributions, but it is not a second discovery path. Composition:
 
 1. creates infrastructure resources;
 2. creates repositories and service objects with explicit constructor
