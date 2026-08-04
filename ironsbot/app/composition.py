@@ -171,7 +171,7 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
-from ironsbot.services.seer.render_scheduler import RenderScheduler
+from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
@@ -469,12 +469,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     render_cache = FileRenderCache(
         cache_paths.render_dir(),
-        settings.seer.render.cache_max_size_mb * 1024 * 1024,
+        settings.seer.render.final_cache_max_size_mb * 1024 * 1024,
         db_version_getter=seer_database.version,
     )
-    render_scheduler = RenderScheduler(
+    render_coordinator = RenderCoordinator(
         render_html_template,
-        settings.runtime.concurrency.render_max_concurrent,
+        settings.seer.render.native_timeout_seconds,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
@@ -596,7 +596,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_type_matchup,
                 render_cache,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
         ),
         BattleEffectQueryService(seer_database, seer_images),
@@ -608,7 +608,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_cache,
                 seer_database,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
         ),
         PeakQueryService(
@@ -618,17 +618,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_peak_pool,
                 render_cache,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
             partial(
                 render_peak_pool_vote,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
             partial(
                 render_peak_pet_rank,
                 images=seer_images,
-                render_html=render_scheduler.render,
+                render_html=render_coordinator.render,
             ),
         ),
         MintmarkQueryService(
@@ -646,7 +646,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             seer_database,
             seer_images,
             autocard,
-            render_scheduler.render,
+            render_coordinator.render,
         ),
     )
     ai = AiService(
@@ -668,7 +668,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
-        render_html=render_scheduler.render,
+        render_html=render_coordinator.render,
         error_message=seer_database.error_message,
         player_quotas=player_query_quotas,
         player_requests=player_requests,

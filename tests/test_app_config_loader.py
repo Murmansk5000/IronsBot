@@ -53,7 +53,8 @@ PRIVATE_ALIAS_PLAYER_ID = 34567890
 PLAYER_ALIAS_GROUP_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
-DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
+DEFAULT_FINAL_RENDER_CACHE_MAX_SIZE_MB = 500
+DEFAULT_RENDER_NATIVE_TIMEOUT_SECONDS = 45.0
 DEFAULT_ASSET_MEMORY_CACHE_MAX_SIZE_MB = 128
 DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB = 1000
 DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
@@ -1653,8 +1654,14 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.messaging.meeting.commands == ["开播", "会议"]
     assert "aliases" in app_config.operations.data_sync.sources
     assert app_config.paths.cache_root == Path("cache")
-    assert app_config.runtime.concurrency.render_max_concurrent == 1
-    assert app_config.seer.render.cache_max_size_mb == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
+    assert (
+        app_config.seer.render.final_cache_max_size_mb
+        == DEFAULT_FINAL_RENDER_CACHE_MAX_SIZE_MB
+    )
+    assert (
+        app_config.seer.render.native_timeout_seconds
+        == DEFAULT_RENDER_NATIVE_TIMEOUT_SECONDS
+    )
     assert (
         app_config.seer.render.asset_memory_max_size_mb
         == DEFAULT_ASSET_MEMORY_CACHE_MAX_SIZE_MB

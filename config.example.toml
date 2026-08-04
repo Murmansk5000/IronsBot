@@ -272,11 +272,6 @@ hint_max_per_window = 3
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
 
-[runtime.concurrency]
-# Default: 1; EN: Maximum concurrent HTMLKit image render tasks.
-# ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
-render_max_concurrent = 1
-
 [ai]
 # Default: "https://api.deepseek.com"
 # EN: OpenAI-compatible AI API base URL.
@@ -1198,8 +1193,13 @@ resource_message = "出来买资源，别逼我求你😡"
 # ZH: 订阅战队不再使用 [[seer.team_resource.subscriptions]] TOML 表。
 
 [seer.render]
-# Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
-cache_max_size_mb = 200
+# Default: 500; EN: Final rendered-image cache max size in MB.
+# ZH: 最终渲染图片三级缓存上限 MB；位于 cache/rendering/final。
+final_cache_max_size_mb = 500
+# Default: 45; EN: Native HTML image rendering timeout in seconds. Rendering is
+# always serialized to one native task.
+# ZH: 原生 HTML 图片渲染超时秒数；原生渲染固定单并发。
+native_timeout_seconds = 45
 # Default: 128; EN: In-memory Seer image asset LRU size in MB.
 # ZH: 赛尔图片素材一级内存 LRU 缓存上限 MB。
 asset_memory_max_size_mb = 128

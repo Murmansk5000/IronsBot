@@ -527,7 +527,8 @@ class TeamResourceConfig(BaseModel):
 class RenderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cache_max_size_mb: int = Field(default=200, gt=0)
+    final_cache_max_size_mb: int = Field(default=500, gt=0)
+    native_timeout_seconds: float = Field(default=45.0, gt=0)
     asset_memory_max_size_mb: int = Field(default=128, gt=0)
     asset_cache_max_size_mb: int = Field(default=1000, gt=0)
     asset_fetch_max_concurrent: int = Field(default=4, ge=1, le=16)

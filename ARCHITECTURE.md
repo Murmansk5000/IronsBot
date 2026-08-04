@@ -488,6 +488,9 @@ Future data work follows these rules:
   upstream concurrency, and short-lived negative caching only for 404/410.
   Renderer and query features use the same image port rather than creating
   feature-specific download caches.
+- Native HTML rendering passes through one `RenderCoordinator`. It is fixed at
+  one native render at a time and has an explicit timeout; callers cannot add
+  feature-local HTMLKit semaphores or background render tasks.
 - Official effect relationships retain provenance and ambiguity records. The
   runtime renderer uses a prepared `PetRenderViewModel` and never tries to
   infer a new association from free text.
