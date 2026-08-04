@@ -426,11 +426,13 @@ The first verified migrations are `ironsbot.plugins.onebot.about`,
 `ironsbot.plugins.onebot.team_resource`, and the
 `ironsbot.plugins.onebot.startup_notice`,
 `ironsbot.plugins.onebot.headless_seer_notice`,
-`ironsbot.plugins.onebot.headless_seer_runtime`, and the messaging `blacklist`,
-`meeting`, `red_packet`, and `onebot.scheduled_restart` modules: the manifest loads
-them directly, and each package supplies its own metadata and contribution.
-`ironsbot.plugins.scheduler` likewise owns scheduler lifecycle binding, while
-the standard manifest directly discovers the required third-party runtime
+`ironsbot.plugins.onebot.headless_seer_runtime`,
+`ironsbot.plugins.onebot.scheduler`, and the messaging `blacklist`, `meeting`,
+`red_packet`, and `onebot.scheduled_restart` modules: the manifest loads them
+directly, and each package supplies its own metadata and contribution. Seer rank
+refresh job registration is application service code in
+`services.seer.rank_refresh_scheduler`, not a OneBot event adapter. The standard
+manifest directly discovers the required third-party runtime
 plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
 `nonebot_plugin_htmlkit`, and `nonebot_plugin_saa`).
 `fire_manual_ad` owns its passive feature policy contribution; `onebot.sendpic`,

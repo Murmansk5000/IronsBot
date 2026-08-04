@@ -79,7 +79,7 @@ def plugin_contribution(
     resources: ApplicationResources,
     scheduler: Scheduler,
 ) -> PluginContribution:
-    from ironsbot.plugins.seer.runtime import (
+    from ironsbot.services.seer.rank_refresh_scheduler import (
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
     )

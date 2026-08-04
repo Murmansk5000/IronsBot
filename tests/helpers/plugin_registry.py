@@ -67,6 +67,9 @@ from ironsbot.plugins.onebot.pet_config import (
 from ironsbot.plugins.onebot.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
 )
+from ironsbot.plugins.onebot.scheduler import (
+    plugin_contribution as scheduler_plugin_contribution,
+)
 from ironsbot.plugins.onebot.seer.query import (
     plugin_contribution as seer_query_plugin_contribution,
 )
@@ -84,9 +87,6 @@ from ironsbot.plugins.onebot.team_audit import (
 )
 from ironsbot.plugins.onebot.team_resource import (
     plugin_contribution as team_resource_plugin_contribution,
-)
-from ironsbot.plugins.scheduler import (
-    plugin_contribution as scheduler_plugin_contribution,
 )
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog

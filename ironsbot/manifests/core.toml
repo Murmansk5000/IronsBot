@@ -7,7 +7,7 @@ plugin_dirs = []
   "nonebot_plugin_localstore",
   "nonebot_plugin_htmlkit",
   "nonebot_plugin_saa",
-  "ironsbot.plugins.scheduler",
+  "ironsbot.plugins.onebot.scheduler",
   "ironsbot.plugins.onebot.seer.query",
   "ironsbot.plugins.onebot.bootstrap",
   "ironsbot.plugins.onebot.bilibili",

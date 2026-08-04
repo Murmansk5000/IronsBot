@@ -509,7 +509,12 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "onebot"
                     / "scheduled_restart"
                     / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "scheduler" / "__init__.py",
+                        ROOT
+                        / "ironsbot"
+                        / "plugins"
+                        / "onebot"
+                        / "scheduler"
+                        / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

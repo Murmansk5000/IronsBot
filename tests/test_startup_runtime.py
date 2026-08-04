@@ -5,7 +5,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.operations import StartupConfig
 from ironsbot.core.messaging import MessageTarget, TargetSendSummary
-from ironsbot.plugins import startup_notice as startup_notice_runtime
+from ironsbot.plugins.onebot import startup_notice as startup_notice_runtime
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.operations.startup import StartupNoticeService
 from tests.helpers.runtime import build_test_runtime

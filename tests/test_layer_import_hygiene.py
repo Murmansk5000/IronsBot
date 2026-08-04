@@ -32,7 +32,7 @@ DRIVER_HOOKS = {
 LIFECYCLE_PATH = PACKAGE / "app" / "lifecycle.py"
 SQLITE_PATH = PACKAGE / "integrations" / "storage" / "sqlite.py"
 SCHEDULER_PATH = PACKAGE / "integrations" / "scheduler" / "facade.py"
-SCHEDULER_PLUGIN_PATH = PACKAGE / "plugins" / "scheduler" / "__init__.py"
+SCHEDULER_PLUGIN_PATH = PACKAGE / "plugins" / "onebot" / "scheduler" / "__init__.py"
 
 
 def _files(root: Path = PACKAGE) -> list[Path]:

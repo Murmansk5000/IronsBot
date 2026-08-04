@@ -30,7 +30,7 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "nonebot_plugin_localstore",
             "nonebot_plugin_htmlkit",
             "nonebot_plugin_saa",
-            "ironsbot.plugins.scheduler",
+            "ironsbot.plugins.onebot.scheduler",
             "ironsbot.plugins.onebot.seer.query",
             "ironsbot.plugins.onebot.bootstrap",
             "ironsbot.plugins.onebot.bilibili",
@@ -60,3 +60,19 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.onebot.scheduled_restart",
         ]
     }
+
+
+@pytest.mark.parametrize("profile", ("full", "core"))
+def test_bundled_nonebot_manifest_keeps_internal_plugins_in_onebot_adapter(
+    profile: PluginManifestProfile,
+) -> None:
+    document = tomllib.loads(nonebot_manifest_path(profile).read_text(encoding="utf-8"))
+    local_plugins = document["tool"]["nonebot"]["plugins"]["@local"]
+    internal_plugins = [
+        plugin for plugin in local_plugins if plugin.startswith("ironsbot.plugins.")
+    ]
+
+    assert internal_plugins
+    assert all(
+        plugin.startswith("ironsbot.plugins.onebot.") for plugin in internal_plugins
+    )
