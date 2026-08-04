@@ -62,7 +62,10 @@ _REQUEST = (
     351005,
     351004,
 )
-_SKIN_OFFSET = 9
+# The server returns the four refreshed skin IDs immediately after the eight
+# fixed response fields.  The following field is unrelated metadata, so using
+# offset 9 silently dropped the first offer and appended that metadata instead.
+_SKIN_OFFSET = 8
 _SKIN_COUNT = 4
 
 

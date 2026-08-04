@@ -53,6 +53,9 @@ _MIGRATIONS = (
             _STATE_SCHEMA,
         ),
     ),
+    # Version 3 cached values decoded with the old response offset.  They
+    # cannot be repaired because the dropped first skin ID was never stored.
+    SqliteMigration(4, ("DELETE FROM lucky_skin_window_cache",)),
 )
 _OFFER_COUNT = 4
 
