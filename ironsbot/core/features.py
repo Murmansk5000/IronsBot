@@ -21,7 +21,7 @@ from ironsbot.core.onebot_references import (
     OneBotReferenceResolver,
     normalize_alias_mapping,
 )
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -533,6 +533,78 @@ class FeatureService:
             return self.is_superuser(int(actor.id))
         except ValueError:
             return False
+
+    def actor_has_feature(self, actor: ActorRef, feature: str) -> bool:
+        """Return whether a configured platform actor owns a feature.
+
+        The current configuration syntax contains OneBot aliases and numeric
+        IDs. Other adapters therefore fail closed until their configuration
+        source is introduced instead of accidentally treating a matching
+        opaque string as a QQ number.
+        """
+
+        if actor.platform is not Platform.ONEBOT or actor.kind != "user":
+            return False
+        try:
+            return self.user_has_feature(int(actor.id), feature)
+        except ValueError:
+            return False
+
+    def conversation_has_feature(
+        self,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool:
+        """Return whether the configured conversation enables a feature."""
+
+        if conversation.platform is not Platform.ONEBOT or conversation.kind != "group":
+            return False
+        try:
+            return self.group_has_feature(int(conversation.id), feature)
+        except ValueError:
+            return False
+
+    def is_feature_allowed(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool:
+        """Check a feature policy without leaking platform-native IDs."""
+
+        if actor.platform is not conversation.platform:
+            return False
+        if conversation.kind == "group":
+            return self.conversation_has_feature(conversation, feature) or (
+                self.config.superuser_bypass and self.is_actor_superuser(actor)
+            )
+        if conversation.kind == "private":
+            return self.actor_has_feature(actor, feature) or (
+                self.config.superuser_bypass and self.is_actor_superuser(actor)
+            )
+        return False
+
+    def conversations_for_feature(self, feature: str) -> list[ConversationRef]:
+        """Return configured group targets as typed platform references."""
+
+        return [
+            ConversationRef(Platform.ONEBOT, "group", str(group_id))
+            for group_id in self.groups_for_feature(feature)
+        ]
+
+    def actors_for_feature(self, feature: str) -> list[ActorRef]:
+        """Return configured private targets as typed platform references."""
+
+        return [
+            ActorRef(Platform.ONEBOT, str(user_id))
+            for user_id in self.users_for_feature(feature)
+        ]
+
+    def superuser_actors(self) -> list[ActorRef]:
+        return [
+            ActorRef(Platform.ONEBOT, str(user_id))
+            for user_id in sorted(self.superuser_ids)
+        ]
 
     def is_conversation_blocked(
         self,

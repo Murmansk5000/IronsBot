@@ -9,6 +9,7 @@ from ironsbot.core.features import (
     FeatureConfig,
     FeatureService,
 )
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 
 
 def test_feature_service_reads_feature_config() -> None:
@@ -25,6 +26,32 @@ def test_feature_service_reads_feature_config() -> None:
     assert feature_service.users_for_feature("ai_chat") == [456]
     assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
     assert not feature_service.is_group_feature_allowed(999, 123, "text")
+
+
+def test_platform_feature_references_do_not_cross_platforms() -> None:
+    feature_service = FeatureService(
+        FeatureConfig(
+            group_policy={"123": ["seer"]},
+            user_policy={"456": ["ai_chat"]},
+            superuser_bypass=True,
+        ),
+        frozenset({456}),
+    )
+    onebot_actor = ActorRef(Platform.ONEBOT, "456")
+    onebot_group = ConversationRef(Platform.ONEBOT, "group", "123")
+    official_actor = ActorRef(Platform.QQ_OFFICIAL, "456")
+    official_group = ConversationRef(Platform.QQ_OFFICIAL, "group", "123")
+
+    assert feature_service.actor_has_feature(onebot_actor, "ai_chat")
+    assert feature_service.conversation_has_feature(onebot_group, "seer_pet")
+    assert feature_service.is_feature_allowed(onebot_actor, onebot_group, "seer_pet")
+    assert not feature_service.actor_has_feature(official_actor, "ai_chat")
+    assert not feature_service.conversation_has_feature(official_group, "seer_pet")
+    assert not feature_service.is_feature_allowed(
+        official_actor,
+        official_group,
+        "seer_pet",
+    )
 
 
 def test_feature_service_blocks_configured_users_and_groups() -> None:

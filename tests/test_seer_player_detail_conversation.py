@@ -326,7 +326,7 @@ def test_shared_player_menu_cannot_use_an_extension_hidden_from_the_replying_mem
     )
     monkeypatch.setattr(player_detail_conversation, "finish_event_reply", finish_reply)
     features = SimpleNamespace(
-        is_group_feature_allowed=lambda _user_id, _group_id, feature: (
+        is_feature_allowed=lambda _actor, _conversation, feature: (
             feature == "seer_player"
         )
     )
