@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
-from ironsbot.core.commands import command_text_matches
+from ironsbot.core.commands import command_text_matches, normalize_command_text
 from ironsbot.core.time import daily_time_parts
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
-        MessageCommandAction,
         MessageConfig,
+        MessageReplyAction,
     )
     from ironsbot.core.features import FeatureService
     from ironsbot.services.activity.service import ActivityService
@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from .push_time import PushTimeOption
 
 ActionT = TypeVar("ActionT", bound="CommandAction")
+KeywordActionT = TypeVar("KeywordActionT", bound="KeywordReplyAction")
 logger = logging.getLogger(__name__)
 
 PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS = ("推送管理",)
@@ -69,10 +70,9 @@ class MessagingService:
         self,
         text: str,
         user_id: int,
-    ) -> MessageCommandAction | None:
-        return find_command_action(
+    ) -> MessageReplyAction | None:
+        return self._find_action(
             text,
-            self._config.commands,
             is_allowed=lambda action: self._features.is_private_feature_allowed(
                 user_id,
                 action.feature,
@@ -85,15 +85,33 @@ class MessagingService:
         *,
         user_id: int,
         group_id: int,
-    ) -> MessageCommandAction | None:
-        return find_command_action(
+    ) -> MessageReplyAction | None:
+        return self._find_action(
             text,
-            self._config.commands,
             is_allowed=lambda action: self._features.is_group_feature_allowed(
                 user_id,
                 group_id,
                 action.feature,
             ),
+        )
+
+    def _find_action(
+        self,
+        text: str,
+        *,
+        is_allowed: Callable[[MessageReplyAction], bool],
+    ) -> MessageReplyAction | None:
+        command = find_command_action(
+            text,
+            self._config.commands,
+            is_allowed=is_allowed,
+        )
+        if command is not None:
+            return command
+        return find_keyword_reply_action(
+            text,
+            self._config.keyword_replies,
+            is_allowed=is_allowed,
         )
 
     def is_superuser(self, user_id: int) -> bool:
@@ -330,6 +348,11 @@ class CommandAction(Protocol):
     commands: list[str]
 
 
+class KeywordReplyAction(Protocol):
+    enabled: bool
+    keywords: list[str]
+
+
 class ScheduledAction(Protocol):
     time: str
     day_of_week: str | None
@@ -363,6 +386,26 @@ def find_command_action(
         if not action.enabled or not is_allowed(action):
             continue
         if command_text_matches(text, action.commands):
+            return action
+    return None
+
+
+def find_keyword_reply_action(
+    text: str,
+    actions: Iterable[KeywordActionT],
+    *,
+    is_allowed: Callable[[KeywordActionT], bool],
+) -> KeywordActionT | None:
+    normalized_text = normalize_command_text(text)
+    if not normalized_text:
+        return None
+    for action in actions:
+        if not action.enabled or not is_allowed(action):
+            continue
+        if any(
+            normalize_command_text(keyword) in normalized_text
+            for keyword in action.keywords
+        ):
             return action
     return None
 

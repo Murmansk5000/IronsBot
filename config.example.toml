@@ -554,6 +554,22 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 # feature = "seerinfo_link"
 
 # Default: []
+# EN: Keyword replies use literal contains matching. They only reply when the
+# message contains a configured keyword; exact command actions above still win.
+# ZH: 关键词回复使用普通“包含”匹配；消息中出现关键词即可回复，且完整口令优先。
+# Like command actions, the feature key must be enabled for the current group
+# or private user. Keywords are not regular commands and are shown as automatic
+# replies in help.
+# 与口令动作相同，feature 必须在当前群或私聊权限中启用；关键词不是普通指令，
+# 帮助中会显示为自动回复。
+#
+# [[messaging.keyword_replies]]
+# id = "chuchu_reply"
+# keywords = ["出出"]
+# message = "出出是蛆"
+# feature = "chuchu_reply"
+
+# Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its
 # feature is enabled; `at_user_ids` accepts user aliases or QQ IDs and only
 # applies to group delivery.
