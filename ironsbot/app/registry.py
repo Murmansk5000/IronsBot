@@ -5,7 +5,6 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.app.command_directory.seer import seer_query_commands
-from ironsbot.app.external_plugins import external_install, load_external_plugin
 from ironsbot.core.features import Feature
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -42,12 +41,6 @@ def build_plugin_registry(
     seer_resources = resources.seer
     definitions: tuple[PluginContribution, ...] = ()
 
-    def install_scheduler(_registry: MatcherRegistry) -> None:
-        load_external_plugin("nonebot_plugin_apscheduler")
-        from nonebot_plugin_apscheduler import scheduler as backend
-
-        scheduler.bind(backend)
-
     async def report_render_crash(_bot: Bot) -> None:
         from ironsbot.services.seer.render_crash_report import (
             report_previous_render_crash,
@@ -74,26 +67,6 @@ def build_plugin_registry(
         )
 
     definitions = (
-        PluginContribution(
-            id="apscheduler",
-            install=install_scheduler,
-            hooks=PluginHooks(
-                startup=(("scheduler", scheduler.start),),
-                shutdown=(("scheduler", scheduler.shutdown),),
-            ),
-        ),
-        PluginContribution(
-            id="localstore",
-            install=external_install("nonebot_plugin_localstore"),
-        ),
-        PluginContribution(
-            id="htmlkit",
-            install=external_install("nonebot_plugin_htmlkit"),
-        ),
-        PluginContribution(
-            id="saa",
-            install=external_install("nonebot_plugin_saa"),
-        ),
         PluginContribution(
             id="seer_query",
             features=frozenset(

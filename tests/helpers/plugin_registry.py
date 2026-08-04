@@ -61,6 +61,9 @@ from ironsbot.plugins.operations.server_status import (
 from ironsbot.plugins.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
 )
+from ironsbot.plugins.scheduler import (
+    plugin_contribution as scheduler_plugin_contribution,
+)
 from ironsbot.plugins.seer.lucky_skin_window import (
     plugin_contribution as lucky_skin_window_plugin_contribution,
 )
@@ -288,6 +291,7 @@ def build_test_plugin_registry(
         ),
     )
     return (
+        scheduler_plugin_contribution(scheduler=SchedulerFacade()),
         *build_plugin_registry(
             settings=config,
             resources=resources,

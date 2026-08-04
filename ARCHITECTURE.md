@@ -328,6 +328,10 @@ The first verified migrations are `ironsbot.plugins.about`,
 `ironsbot.plugins.headless_seer_runtime`, and the messaging `blacklist`,
 `meeting`, `red_packet`, and `scheduled_restart` modules: the manifest loads
 them directly, and each package supplies its own metadata and contribution.
+`ironsbot.plugins.scheduler` likewise owns scheduler lifecycle binding, while
+the standard manifest directly discovers the required third-party runtime
+plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
+`nonebot_plugin_htmlkit`, and `nonebot_plugin_saa`).
 `fire_manual_ad` owns its passive feature policy contribution; `sendpic`,
 `meeting`, `rank_help`, and `team.resource` also own the command descriptors
 for the matchers they install.
