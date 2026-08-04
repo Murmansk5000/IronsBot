@@ -30,6 +30,9 @@ from ironsbot.plugins.help import plugin_contribution as help_plugin_contributio
 from ironsbot.plugins.help.hint import (
     plugin_contribution as help_hint_plugin_contribution,
 )
+from ironsbot.plugins.messaging import (
+    plugin_contribution as messaging_plugin_contribution,
+)
 from ironsbot.plugins.messaging.blacklist import (
     plugin_contribution as blacklist_plugin_contribution,
 )
@@ -293,6 +296,13 @@ def build_test_plugin_registry(
             admin_notices=resources.admin_notices,
             message_limiter=resources.push_message_limiter,
             ai_service=resources.ai,
+            scheduler=SchedulerFacade(),
+        ),
+        messaging_plugin_contribution(
+            config=config.messaging,
+            features=runtime.features,
+            service=resources.messaging,
+            activity_service=resources.activity,
             scheduler=SchedulerFacade(),
         ),
         server_status_plugin_contribution(

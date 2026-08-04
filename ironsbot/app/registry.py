@@ -4,11 +4,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from ironsbot.app.command_directory.dynamic import (
-    ai_intent_commands,
-    configured_message_commands,
-    messaging_help_visible,
-)
+from ironsbot.app.command_directory.dynamic import ai_intent_commands
 from ironsbot.app.command_directory.plugins import ai_chat_commands
 from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
@@ -41,7 +37,6 @@ def build_plugin_registry(
     )
     from ironsbot.plugins.ai import install as install_ai
     from ironsbot.plugins.ai.intent import install as install_ai_intent
-    from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
@@ -50,9 +45,7 @@ def build_plugin_registry(
     config = settings
     features = resources.features
     admin_notices = resources.admin_notices
-    activity_service = resources.activity
     headless = resources.headless
-    messaging = resources.messaging
     team_resource_service = resources.team_resource
     local_rank_service = resources.local_rank
     rank_page_refresh_service = resources.rank_page_refresh
@@ -62,7 +55,6 @@ def build_plugin_registry(
     bot_mention_block_service = BotMentionBlockService(
         config.messaging.command_cooldown
     )
-    messaging_commands = configured_message_commands(config.messaging)
     ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginContribution, ...] = ()
 
@@ -82,12 +74,6 @@ def build_plugin_registry(
             config.bot.logging,
             config.paths.log_file,
         )
-
-    push_time_refresher = partial(
-        messaging.refresh_push_time_jobs,
-        scheduler=scheduler,
-        activity_service=activity_service,
-    )
 
     def install_seer_query(registry: MatcherRegistry) -> None:
         from ironsbot.plugins.seer.query.commands.install import install
@@ -123,48 +109,6 @@ def build_plugin_registry(
         PluginContribution(
             id="saa",
             install=external_install("nonebot_plugin_saa"),
-        ),
-        PluginContribution(
-            id="messaging",
-            features=frozenset(
-                {
-                    Feature.TEXT,
-                    Feature.TEXT_PUSH,
-                    Feature.WEB_ACTIVITY_LINK,
-                    Feature.WEB_ACTIVITY_PUSH,
-                    Feature.SEERINFO,
-                }
-            ),
-            help=HelpEntry(
-                name="文本发送",
-                description="按配置回复固定文本/链接，也可定时向群或私聊发送文本",
-                group="message",
-                order=30,
-                visible=partial(
-                    messaging_help_visible,
-                    features=features,
-                    config=config.messaging,
-                ),
-            ),
-            commands=messaging_commands,
-            install=partial(
-                install_messaging,
-                refresh_push_time_jobs=push_time_refresher,
-                messaging=messaging,
-                command_help_ids=tuple(
-                    command.id
-                    for command in messaging_commands
-                    if command.interaction == "direct"
-                ),
-            ),
-            hooks=PluginHooks(
-                startup=(
-                    (
-                        "messaging",
-                        partial(messaging.start, scheduler),
-                    ),
-                ),
-            ),
         ),
         pet_config_definition(
             service=pet_config_service,

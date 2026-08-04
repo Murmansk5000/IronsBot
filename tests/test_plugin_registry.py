@@ -155,6 +155,22 @@ def test_manifest_bilibili_owns_its_commands_and_lifecycle() -> None:
     ]
 
 
+def test_manifest_messaging_owns_its_commands_and_schedule() -> None:
+    contribution = DEFINITIONS_BY_ID["messaging"]
+
+    assert contribution.features == frozenset(
+        {
+            Feature.TEXT,
+            Feature.TEXT_PUSH,
+            Feature.WEB_ACTIVITY_LINK,
+            Feature.WEB_ACTIVITY_PUSH,
+            Feature.SEERINFO,
+        }
+    )
+    assert {command.plugin_id for command in contribution.commands} == {"messaging"}
+    assert [name for name, _hook in contribution.hooks.startup] == ["messaging"]
+
+
 def test_manifest_server_status_owns_its_commands_and_feature() -> None:
     contribution = DEFINITIONS_BY_ID["server_status"]
 
@@ -249,7 +265,8 @@ def test_manifest_contributions_follow_the_legacy_bridge() -> None:
 
     assert plugin_ids[:4] == ("apscheduler", "localstore", "htmlkit", "saa")
     assert plugin_ids.index("seer_query") < plugin_ids.index("bilibili")
-    assert plugin_ids.index("bilibili") < plugin_ids.index("server_status")
+    assert plugin_ids.index("bilibili") < plugin_ids.index("messaging")
+    assert plugin_ids.index("messaging") < plugin_ids.index("server_status")
     assert plugin_ids.index("server_status") < plugin_ids.index("docker_update")
     assert plugin_ids.index("docker_update") < plugin_ids.index("db_sync")
 
@@ -263,10 +280,10 @@ def test_contributions_define_the_lifecycle_order() -> None:
 
     assert [name for name, _hook in lifecycle.startup_hooks] == [
         "scheduler",
-        "messaging",
         "local_rank_jobs",
         "rank_page_jobs",
         "bilibili_monitor_jobs",
+        "messaging",
         "docker_update",
         "db_sync",
         "lucky_skin_window_schedule",
@@ -320,6 +337,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "help" / "hint.py",
                     ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
+                    ROOT / "ironsbot" / "plugins" / "messaging" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "red_packet.py",
                     ROOT / "ironsbot" / "plugins" / "bilibili" / "__init__.py",

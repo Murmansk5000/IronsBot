@@ -1,0 +1,244 @@
+# SPDX-License-Identifier: MIT
+"""OneBot configured-message commands, push management, and manifest wiring."""
+
+from __future__ import annotations
+
+from functools import partial
+from typing import TYPE_CHECKING
+
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
+from nonebot.plugin import PluginMetadata
+
+from ironsbot.app.command_directory.rows import commands_from_rows
+from ironsbot.core.features import Feature
+from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
+from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    PluginHooks,
+    active_plugin_install_context,
+)
+
+if TYPE_CHECKING:
+    from nonebot.adapters import Event
+
+    from ironsbot.config.models.messaging import MessageConfig
+    from ironsbot.core.features import FeatureService
+    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.operations.scheduler import Scheduler
+
+__plugin_meta__ = PluginMetadata(
+    name="文本发送",
+    description="按配置回复文本或链接，并管理定时推送。",
+    usage="发送配置的口令，或发送“推送管理”管理当前会话的推送。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
+
+
+def help_visible(
+    event: Event,
+    *,
+    features: FeatureService,
+    config: MessageConfig,
+) -> bool:
+    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
+        return False
+    actions = [*config.commands, *config.keyword_replies, *config.schedules]
+    return any(
+        action.enabled
+        and event_is_feature_visible_in_help(features, event, action.feature)
+        for action in actions
+    )
+
+
+def command_descriptors(
+    config: MessageConfig,
+) -> tuple[CommandDescriptor, ...]:
+    configured = tuple(
+        CommandDescriptor(
+            id=f"messaging.{action.id}",
+            plugin_id="messaging",
+            section="配置口令",
+            examples=tuple(action.commands),
+            description=action.name or "发送配置的文本或链接",
+            features_any=(action.feature,),
+            show_in_poke=True,
+        )
+        for action in config.commands
+        if action.enabled
+    )
+    keyword_replies = tuple(
+        CommandDescriptor(
+            id=f"messaging.keyword.{action.id}",
+            plugin_id="messaging",
+            section="关键词回复",
+            examples=tuple(action.keywords),
+            description=action.name or "消息包含关键词时自动回复",
+            features_any=(action.feature,),
+            interaction="automatic",
+        )
+        for action in config.keyword_replies
+        if action.enabled
+    )
+    schedules = tuple(
+        CommandDescriptor(
+            id=f"messaging.schedule.{action.id}",
+            plugin_id="messaging",
+            section="定时推送",
+            examples=(
+                _schedule_label(
+                    action.name,
+                    action.time,
+                    action.day_of_week,
+                ),
+            ),
+            description="按配置时间自动发送推送内容",
+            features_any=(action.feature,),
+            interaction="automatic",
+        )
+        for action in config.schedules
+        if action.enabled
+    )
+    subscription_commands = tuple(
+        dict.fromkeys(
+            (
+                "推送管理",
+                *config.push_unsubscribe.commands,
+                *config.push_unsubscribe.restore_commands,
+            )
+        )
+    )
+    return (
+        *configured,
+        *keyword_replies,
+        *schedules,
+        *commands_from_rows(
+            "messaging",
+            "推送管理",
+            None,
+            (
+                (
+                    "messaging.push_subscription",
+                    subscription_commands,
+                    "查看当前会话的推送订阅；群主和管理员可切换本群订阅",
+                    {
+                        "show_in_poke": True,
+                        "interaction": "conversation",
+                    },
+                ),
+            ),
+        ),
+        *commands_from_rows(
+            "messaging",
+            "本群管理",
+            None,
+            (
+                (
+                    "messaging.push_time",
+                    ("推送时间", "提醒时间"),
+                    "管理本群定时推送和活动提醒时间",
+                    {
+                        "access": (CommandAccess("group", "group_manager"),),
+                        "show_in_poke": True,
+                        "interaction": "conversation",
+                    },
+                ),
+            ),
+        ),
+    )
+
+
+def _schedule_label(
+    name: str,
+    time: str,
+    day_of_week: str | None,
+) -> str:
+    title = name or "定时推送"
+    timing = f"每天 {time}" if day_of_week is None else f"每周 {day_of_week} {time}"
+    return f"{title}（{timing}）"
+
+
+def _install(
+    registry: MatcherRegistry,
+    *,
+    messaging: MessagingService,
+    activity_service: ActivityService,
+    scheduler: Scheduler,
+    command_help_ids: tuple[str, ...],
+) -> None:
+    from .matchers import install
+
+    refresh_push_time_jobs = partial(
+        messaging.refresh_push_time_jobs,
+        scheduler=scheduler,
+        activity_service=activity_service,
+    )
+    install(
+        registry,
+        refresh_push_time_jobs=refresh_push_time_jobs,
+        messaging=messaging,
+        command_help_ids=command_help_ids,
+    )
+
+
+def plugin_contribution(
+    *,
+    config: MessageConfig,
+    features: FeatureService,
+    service: MessagingService,
+    activity_service: ActivityService,
+    scheduler: Scheduler,
+) -> PluginContribution:
+    """Declare configured message commands and scheduled push lifecycle."""
+
+    commands = command_descriptors(config)
+    return PluginContribution(
+        id="messaging",
+        features=frozenset(
+            {
+                Feature.TEXT,
+                Feature.TEXT_PUSH,
+                Feature.WEB_ACTIVITY_LINK,
+                Feature.WEB_ACTIVITY_PUSH,
+                Feature.SEERINFO,
+            }
+        ),
+        help=HelpEntry(
+            name="文本发送",
+            description="按配置回复固定文本/链接，也可定时向群或私聊发送文本",
+            group="message",
+            order=30,
+            visible=partial(help_visible, features=features, config=config),
+        ),
+        commands=commands,
+        install=partial(
+            _install,
+            messaging=service,
+            activity_service=activity_service,
+            scheduler=scheduler,
+            command_help_ids=tuple(
+                command.id for command in commands if command.interaction == "direct"
+            ),
+        ),
+        hooks=PluginHooks(
+            startup=(("messaging", partial(service.start, scheduler)),),
+        ),
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            config=context.settings.messaging,
+            features=context.resources.features,
+            service=context.resources.messaging,
+            activity_service=context.resources.activity,
+            scheduler=context.scheduler,
+        ),
+    )
