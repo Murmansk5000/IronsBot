@@ -73,6 +73,28 @@ keys, and missing required timestamps are migration errors. The tool must list
 the offending source table and primary key; it must not silently discard,
 coerce, or merge them.
 
+## Executable Command
+
+The tool is exposed through the existing offline migration module. It remains
+dry-run by default. Use the path visible **inside** the process that runs the
+command:
+
+```text
+# Docker container invocation: --data-root /app/data
+# Local source checkout:      --data-root data
+uv run python -m ironsbot.state_migration \
+  --data-root <data-root> \
+  --platform-identities
+```
+
+After a successful dry run, repeat the exact command with `--apply`. The
+optional `--qq-state`, `--runtime-state`, `--ai-memory`, and `--backup-root`
+arguments override their respective paths for test or recovery environments.
+
+Do not run this against a production data directory until the application
+release that reads the platform-neutral schema is deployed. The normal runtime
+never invokes this command.
+
 ## Required Migration Procedure
 
 1. Stop the container and copy the entire data directory at the filesystem
@@ -87,5 +109,5 @@ coerce, or merge them.
 5. Re-running the tool after success must report that the database is already
    migrated and must not duplicate rows or change timestamps.
 
-The executable command will be added with the storage implementation. Until
-then, no production data must be migrated manually by SQL snippets.
+Do not migrate production data manually with SQL snippets. The executable
+command is the only supported conversion path.
