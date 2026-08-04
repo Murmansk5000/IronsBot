@@ -31,7 +31,7 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "nonebot_plugin_htmlkit",
             "nonebot_plugin_saa",
             "ironsbot.plugins.scheduler",
-            "ironsbot.plugins.seer.query",
+            "ironsbot.plugins.onebot.seer.query",
             "ironsbot.plugins.onebot.bootstrap",
             "ironsbot.plugins.bilibili",
             "ironsbot.plugins.messaging",

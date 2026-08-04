@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock
 from nonebot.exception import FinishedException
 
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.plugins.seer.query.commands import player_detail_conversation
-from ironsbot.plugins.seer.query.commands.player_context import (
+from ironsbot.plugins.onebot.seer.query.commands import player_detail_conversation
+from ironsbot.plugins.onebot.seer.query.commands.player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,

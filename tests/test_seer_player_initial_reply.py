@@ -7,7 +7,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.plugins.seer.query.commands import player
+from ironsbot.plugins.onebot.seer.query.commands import player
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service import PendingPlayerQuery
 from tests.helpers.onebot_events import group_message_event
