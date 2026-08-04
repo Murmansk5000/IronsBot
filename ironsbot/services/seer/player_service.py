@@ -41,6 +41,7 @@ from ironsbot.services.seer.player_request_protection import (
 )
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
+    PlayerBaseSnapshot,
     PlayerQueryResult,
     _BackgroundRefresh,
     _CachedDetailReply,
@@ -123,6 +124,7 @@ class PlayerDetailService:
         refresh = _BackgroundRefresh(
             replies={kind: loop.create_future() for kind in kinds},
             started_at=monotonic(),
+            base_snapshot=pending.base_snapshot,
         )
         self._background_refreshes[pending.player_id] = refresh
         task = self._spawn(
@@ -236,25 +238,31 @@ class PlayerDetailService:
                     player_id=player_id,
                     kind=kind,
                     future=future,
+                    base_snapshot=refresh.base_snapshot,
                     group_id=group_id,
                 )
                 for kind, future in refresh.replies.items()
             )
         )
 
-    async def _run_background_refresh_item(
+    async def _run_background_refresh_item(  # noqa: PLR0913
         self,
         game: HeadlessGame,
         *,
         player_id: int,
         kind: PlayerShortcutKind,
         future: asyncio.Future[QueryReply | None],
+        base_snapshot: PlayerBaseSnapshot | None,
         group_id: int | None,
     ) -> None:
         if future.done():
             return
         try:
-            command = PlayerShortcutCommand(kind=kind, player_id=player_id)
+            command = PlayerShortcutCommand(
+                kind=kind,
+                player_id=player_id,
+                base_snapshot=base_snapshot,
+            )
             logger.info(
                 "米米号后台预热开始：player_id=%s section=%s",
                 player_id,
