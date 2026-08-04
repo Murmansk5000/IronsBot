@@ -126,7 +126,7 @@ feature, persistence schema, or policy decision.
 | OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
 | OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
-| Team-resource subscription delivery | migration queue | Existing behaviour is baseline only | Extract service ports and typed refs before adding delivery, subscription or identity features. |
+| Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
 | Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
 
@@ -291,13 +291,16 @@ conversion is confined to composition until the later identity-state migration.
 Lucky-skin-window notification delivery now follows this rule: its service
 owns `ActorRef`-scoped account, binding, cache and watch-preference policy;
 the OneBot adapter owns numeric QQ conversion, unsubscription, daily-hint
-deduplication and `OneBotDelivery`. The next delivery migrations are ordered
-by semantic overlap, not file size: team-resource subscription delivery, then
-the remaining messaging schedulers. Each task must extract a typed
-service-side port and move the corresponding OneBot `MessageTarget` call into
-`integrations.onebot`; it must not add another platform-neutral wrapper around
-`MessageTarget`. This order keeps current subscription, queue, rate-limit and
-failure semantics available while reducing the old chain one domain at a time.
+deduplication and `OneBotDelivery`. Team-resource subscriptions use the same
+shape: `TeamResourceService` owns typed conversations, actors, subscriptions
+and low-resource policy, while `OneBotTeamResourceNoticeSender` owns QQ number
+conversion, mentions and legacy delivery. The remaining messaging scheduler
+migrations are ordered by semantic overlap, not file size. Each task must
+extract a typed service-side port and move the corresponding OneBot
+`MessageTarget` call into `integrations.onebot`; it must not add another
+platform-neutral wrapper around `MessageTarget`. This keeps current
+subscription, queue, rate-limit and failure semantics available while reducing
+the old chain one domain at a time.
 
 The eventual composition is:
 

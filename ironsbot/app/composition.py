@@ -56,6 +56,10 @@ from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
     OneBotTeamAuditPolicy,
 )
+from ironsbot.integrations.onebot.team_resource import (
+    OneBotTeamResourceNoticeSender,
+    build_onebot_team_resource_default_mentions,
+)
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
@@ -434,9 +438,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.seer.team_resource,
         TeamResourceSubscriptionStore(settings.paths.qq_state),
         headless,
-        settings.onebot_references,
         features,
-        delivery,
+        OneBotTeamResourceNoticeSender(delivery),
+        build_onebot_team_resource_default_mentions(
+            settings.seer.team_resource,
+            settings.onebot_references,
+        ),
     )
     team_audit = TeamAuditService(
         settings.messaging.team_audit_welcome,

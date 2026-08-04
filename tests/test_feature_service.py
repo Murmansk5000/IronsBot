@@ -54,6 +54,22 @@ def test_platform_feature_references_do_not_cross_platforms() -> None:
     )
 
 
+def test_actor_feature_policy_applies_superuser_bypass_without_onebot_ids() -> None:
+    feature_service = FeatureService(
+        FeatureConfig(superuser_bypass=True),
+        frozenset({456}),
+    )
+
+    assert feature_service.is_actor_feature_allowed(
+        ActorRef(Platform.ONEBOT, "456"),
+        "team_resource_subscription",
+    )
+    assert not feature_service.is_actor_feature_allowed(
+        ActorRef(Platform.QQ_OFFICIAL, "456"),
+        "team_resource_subscription",
+    )
+
+
 def test_feature_service_blocks_configured_users_and_groups() -> None:
     feature_service = FeatureService(
         FeatureConfig(

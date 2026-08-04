@@ -550,6 +550,13 @@ class FeatureService:
         except ValueError:
             return False
 
+    def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
+        """Apply actor-scoped feature policy without exposing OneBot IDs."""
+
+        return self.actor_has_feature(actor, feature) or (
+            self.config.superuser_bypass and self.is_actor_superuser(actor)
+        )
+
     def conversation_has_feature(
         self,
         conversation: ConversationRef,
@@ -579,9 +586,7 @@ class FeatureService:
                 self.config.superuser_bypass and self.is_actor_superuser(actor)
             )
         if conversation.kind == "private":
-            return self.actor_has_feature(actor, feature) or (
-                self.config.superuser_bypass and self.is_actor_superuser(actor)
-            )
+            return self.is_actor_feature_allowed(actor, feature)
         return False
 
     def conversations_for_feature(self, feature: str) -> list[ConversationRef]:

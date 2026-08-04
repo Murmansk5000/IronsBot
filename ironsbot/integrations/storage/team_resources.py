@@ -1,17 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Platform-neutral persistence for team resource subscriptions.
-
-The service still exposes the current OneBot-shaped subscription objects while
-the repository persists platform identities.  The service boundary will adopt
-``ActorRef`` and ``ConversationRef`` directly before another adapter is added.
-"""
+"""Platform-neutral persistence for team resource subscriptions."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
@@ -28,6 +22,8 @@ from ironsbot.services.team.resource import (
 if TYPE_CHECKING:
     from pathlib import Path
     from typing import Any
+
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 
 _SCHEMA = (
@@ -122,31 +118,20 @@ class TeamResourceSubscriptionStore:
     def list_all(self) -> list[TeamResourceSubscription]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
-                SELECT conversation_platform, conversation_kind, conversation_id,
-                       team_id, team_name, threshold,
-                       created_by_platform, created_by_kind, created_by_id,
-                       created_by_scope_id, updated_by_platform, updated_by_kind,
-                       updated_by_id, updated_by_scope_id, created_at, updated_at
-                FROM team_resource_subscriptions
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                ORDER BY conversation_id, team_id
-                """,
-                (Platform.ONEBOT.value, "group"),
+                _GROUP_SUBSCRIPTION_SELECT
+                + " ORDER BY conversation_platform, conversation_kind, "
+                "conversation_id, team_id"
             ).fetchall()
             return [_subscription_from_row(conn, row) for row in rows]
 
-    def list_group(self, group_id: int) -> list[TeamResourceSubscription]:
-        conversation = _group_conversation(group_id)
+    def list_conversation(
+        self,
+        conversation: ConversationRef,
+    ) -> list[TeamResourceSubscription]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
-                SELECT conversation_platform, conversation_kind, conversation_id,
-                       team_id, team_name, threshold,
-                       created_by_platform, created_by_kind, created_by_id,
-                       created_by_scope_id, updated_by_platform, updated_by_kind,
-                       updated_by_id, updated_by_scope_id, created_at, updated_at
-                FROM team_resource_subscriptions
+                _GROUP_SUBSCRIPTION_SELECT
+                + """
                 WHERE conversation_platform = ? AND conversation_kind = ?
                   AND conversation_id = ?
                 ORDER BY team_id
@@ -156,10 +141,8 @@ class TeamResourceSubscriptionStore:
             return [_subscription_from_row(conn, row) for row in rows]
 
     def upsert(self, update: TeamResourceSubscriptionUpdate) -> None:
-        conversation = _group_conversation(update.group_id)
-        operator = _onebot_actor(update.operator_id)
-        conversation_values = _conversation_values(conversation)
-        operator_values = _actor_values(operator)
+        conversation_values = _conversation_values(update.conversation)
+        operator_values = _actor_values(update.operator)
         now = _now_text()
         with self._connect() as conn:
             conn.execute(
@@ -203,9 +186,9 @@ class TeamResourceSubscriptionStore:
             )
             _insert_mentions(
                 conn,
-                conversation,
+                update.conversation,
                 update.team_id,
-                update.at_user_ids,
+                update.mention_actors,
             )
 
     def list_all_private(self) -> list[TeamResourcePrivateSubscription]:
@@ -215,14 +198,12 @@ class TeamResourceSubscriptionStore:
                 SELECT actor_platform, actor_kind, actor_id, actor_scope_id,
                        team_id, team_name, threshold, created_at, updated_at
                 FROM team_resource_private_subscriptions
-                WHERE actor_platform = ? AND actor_kind = ?
-                ORDER BY actor_id, team_id
-                """,
-                (Platform.ONEBOT.value, "user"),
+                ORDER BY actor_platform, actor_kind, actor_id, actor_scope_id, team_id
+                """
             ).fetchall()
         return [_private_subscription_from_row(row) for row in rows]
 
-    def list_user(self, user_id: int) -> list[TeamResourcePrivateSubscription]:
+    def list_actor(self, actor: ActorRef) -> list[TeamResourcePrivateSubscription]:
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -233,12 +214,11 @@ class TeamResourceSubscriptionStore:
                   AND actor_scope_id = ?
                 ORDER BY team_id
                 """,
-                _actor_values(_onebot_actor(user_id)),
+                _actor_values(actor),
             ).fetchall()
         return [_private_subscription_from_row(row) for row in rows]
 
     def upsert_private(self, update: TeamResourcePrivateSubscriptionUpdate) -> None:
-        actor = _onebot_actor(update.user_id)
         now = _now_text()
         with self._connect() as conn:
             conn.execute(
@@ -249,14 +229,13 @@ class TeamResourceSubscriptionStore:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(
                     actor_platform, actor_kind, actor_id, actor_scope_id, team_id
-                )
-                DO UPDATE SET
+                ) DO UPDATE SET
                     team_name = excluded.team_name,
                     threshold = excluded.threshold,
                     updated_at = excluded.updated_at
                 """,
                 (
-                    *_actor_values(actor),
+                    *_actor_values(update.actor),
                     update.team_id,
                     update.team_name.strip(),
                     update.threshold,
@@ -265,8 +244,7 @@ class TeamResourceSubscriptionStore:
                 ),
             )
 
-    def has_prompted_group(self, group_id: int) -> bool:
-        conversation = _group_conversation(group_id)
+    def has_prompted_conversation(self, conversation: ConversationRef) -> bool:
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -280,9 +258,8 @@ class TeamResourceSubscriptionStore:
 
     def get_pending_prompt(
         self,
-        group_id: int,
+        conversation: ConversationRef,
     ) -> TeamResourceSubscriptionPrompt | None:
-        conversation = _group_conversation(group_id)
         with self._connect() as conn:
             row = conn.execute(
                 """
@@ -299,16 +276,14 @@ class TeamResourceSubscriptionStore:
             ).fetchone()
         return _prompt_from_row(row) if row is not None else None
 
-    def mark_group_prompted(
+    def mark_conversation_prompted(
         self,
         *,
-        group_id: int,
+        conversation: ConversationRef,
         team_id: int,
         team_name: str,
-        prompted_by: int,
+        prompted_by: ActorRef,
     ) -> None:
-        conversation = _group_conversation(group_id)
-        actor = _onebot_actor(prompted_by)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -322,7 +297,7 @@ class TeamResourceSubscriptionStore:
                     *_conversation_values(conversation),
                     team_id,
                     team_name.strip(),
-                    *_actor_values(actor),
+                    *_actor_values(prompted_by),
                     _now_text(),
                 ),
             )
@@ -330,12 +305,10 @@ class TeamResourceSubscriptionStore:
     def mark_prompt_handled(
         self,
         *,
-        group_id: int,
-        handled_by: int,
+        conversation: ConversationRef,
+        handled_by: ActorRef,
         accepted: bool,
     ) -> None:
-        conversation = _group_conversation(group_id)
-        actor = _onebot_actor(handled_by)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -346,7 +319,7 @@ class TeamResourceSubscriptionStore:
                   AND conversation_id = ? AND handled_at IS NULL
                 """,
                 (
-                    *_actor_values(actor),
+                    *_actor_values(handled_by),
                     _now_text(),
                     int(accepted),
                     *_conversation_values(conversation),
@@ -356,7 +329,7 @@ class TeamResourceSubscriptionStore:
     def update_team_name(
         self,
         *,
-        group_id: int,
+        conversation: ConversationRef,
         team_id: int,
         team_name: str,
     ) -> None:
@@ -373,13 +346,12 @@ class TeamResourceSubscriptionStore:
                 (
                     team_name.strip(),
                     _now_text(),
-                    *_conversation_values(_group_conversation(group_id)),
+                    *_conversation_values(conversation),
                     team_id,
                 ),
             )
 
-    def delete(self, *, group_id: int, team_id: int) -> bool:
-        conversation = _group_conversation(group_id)
+    def delete(self, *, conversation: ConversationRef, team_id: int) -> bool:
         with self._connect() as conn:
             cursor = conn.execute(
                 """
@@ -402,7 +374,7 @@ class TeamResourceSubscriptionStore:
     def update_private_team_name(
         self,
         *,
-        user_id: int,
+        actor: ActorRef,
         team_id: int,
         team_name: str,
     ) -> None:
@@ -419,12 +391,12 @@ class TeamResourceSubscriptionStore:
                 (
                     team_name.strip(),
                     _now_text(),
-                    *_actor_values(_onebot_actor(user_id)),
+                    *_actor_values(actor),
                     team_id,
                 ),
             )
 
-    def delete_private(self, *, user_id: int, team_id: int) -> bool:
+    def delete_private(self, *, actor: ActorRef, team_id: int) -> bool:
         with self._connect() as conn:
             cursor = conn.execute(
                 """
@@ -432,12 +404,22 @@ class TeamResourceSubscriptionStore:
                 WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
                   AND actor_scope_id = ? AND team_id = ?
                 """,
-                (*_actor_values(_onebot_actor(user_id)), team_id),
+                (*_actor_values(actor), team_id),
             )
             return cursor.rowcount > 0
 
     def _connect(self):
         return self._database.connect()
+
+
+_GROUP_SUBSCRIPTION_SELECT = """
+    SELECT conversation_platform, conversation_kind, conversation_id,
+           team_id, team_name, threshold,
+           created_by_platform, created_by_kind, created_by_id,
+           created_by_scope_id, updated_by_platform, updated_by_kind,
+           updated_by_id, updated_by_scope_id, created_at, updated_at
+    FROM team_resource_subscriptions
+"""
 
 
 def _subscription_from_row(
@@ -448,13 +430,13 @@ def _subscription_from_row(
     created_by = ActorIdentityColumns(*row[6:10]).to_actor()
     updated_by = ActorIdentityColumns(*row[10:14]).to_actor()
     return TeamResourceSubscription(
-        group_id=_onebot_group_id(conversation),
+        conversation=conversation,
         team_id=int(row[3]),
         team_name=str(row[4] or ""),
         threshold=int(row[5]),
-        at_user_ids=_mention_ids(connection, conversation, int(row[3])),
-        created_by=_onebot_user_id(created_by),
-        updated_by=_onebot_user_id(updated_by),
+        mention_actors=_mention_actors(connection, conversation, int(row[3])),
+        created_by=created_by,
+        updated_by=updated_by,
         created_at=str(row[14]),
         updated_at=str(row[15]),
     )
@@ -463,9 +445,8 @@ def _subscription_from_row(
 def _private_subscription_from_row(
     row: tuple[Any, ...],
 ) -> TeamResourcePrivateSubscription:
-    actor = ActorIdentityColumns(*row[:4]).to_actor()
     return TeamResourcePrivateSubscription(
-        user_id=_onebot_user_id(actor),
+        actor=ActorIdentityColumns(*row[:4]).to_actor(),
         team_id=int(row[4]),
         team_name=str(row[5] or ""),
         threshold=int(row[6]),
@@ -475,16 +456,14 @@ def _private_subscription_from_row(
 
 
 def _prompt_from_row(row: tuple[Any, ...]) -> TeamResourceSubscriptionPrompt:
-    conversation = ConversationIdentityColumns(*row[:3]).to_conversation()
-    prompted_by = ActorIdentityColumns(*row[5:9]).to_actor()
     handled_by = _optional_actor(row[10:14])
     return TeamResourceSubscriptionPrompt(
-        group_id=_onebot_group_id(conversation),
+        conversation=ConversationIdentityColumns(*row[:3]).to_conversation(),
         team_id=int(row[3]),
         team_name=str(row[4] or ""),
-        prompted_by=_onebot_user_id(prompted_by),
+        prompted_by=ActorIdentityColumns(*row[5:9]).to_actor(),
         prompted_at=str(row[9]),
-        handled_by=None if handled_by is None else _onebot_user_id(handled_by),
+        handled_by=handled_by,
         handled_at=None if row[14] is None else str(row[14]),
         accepted=None if row[15] is None else bool(row[15]),
     )
@@ -494,35 +473,34 @@ def _insert_mentions(
     connection: Any,
     conversation: ConversationRef,
     team_id: int,
-    user_ids: tuple[int, ...],
+    actors: tuple[ActorRef, ...],
 ) -> None:
     values = [
         (
             *_conversation_values(conversation),
             team_id,
-            *_actor_values(_onebot_actor(user_id)),
+            *_actor_values(actor),
             position,
         )
-        for position, user_id in enumerate(dict.fromkeys(user_ids))
+        for position, actor in enumerate(dict.fromkeys(actors))
     ]
-    if not values:
-        return
-    connection.executemany(
-        """
-        INSERT INTO team_resource_subscription_mentions (
-            conversation_platform, conversation_kind, conversation_id, team_id,
-            actor_platform, actor_kind, actor_id, actor_scope_id, position
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        values,
-    )
+    if values:
+        connection.executemany(
+            """
+            INSERT INTO team_resource_subscription_mentions (
+                conversation_platform, conversation_kind, conversation_id, team_id,
+                actor_platform, actor_kind, actor_id, actor_scope_id, position
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            values,
+        )
 
 
-def _mention_ids(
+def _mention_actors(
     connection: Any,
     conversation: ConversationRef,
     team_id: int,
-) -> tuple[int, ...]:
+) -> tuple[ActorRef, ...]:
     rows = connection.execute(
         """
         SELECT actor_platform, actor_kind, actor_id, actor_scope_id
@@ -533,15 +511,7 @@ def _mention_ids(
         """,
         (*_conversation_values(conversation), team_id),
     ).fetchall()
-    return tuple(_onebot_user_id(ActorIdentityColumns(*row).to_actor()) for row in rows)
-
-
-def _group_conversation(group_id: int) -> ConversationRef:
-    return ConversationRef(Platform.ONEBOT, "group", str(int(group_id)))
-
-
-def _onebot_actor(user_id: int) -> ActorRef:
-    return ActorRef(Platform.ONEBOT, str(int(user_id)))
+    return tuple(ActorIdentityColumns(*row).to_actor() for row in rows)
 
 
 def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str]:
@@ -556,18 +526,6 @@ def _optional_actor(values: tuple[Any, ...]) -> ActorRef | None:
     if all(value is None for value in values):
         return None
     return ActorIdentityColumns(*values).to_actor()
-
-
-def _onebot_group_id(conversation: ConversationRef) -> int:
-    if conversation.platform is not Platform.ONEBOT or conversation.kind != "group":
-        raise ValueError
-    return int(conversation.id)
-
-
-def _onebot_user_id(actor: ActorRef) -> int:
-    if actor.platform is not Platform.ONEBOT or actor.kind != "user":
-        raise ValueError
-    return int(actor.id)
 
 
 def _now_text() -> str:
