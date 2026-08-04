@@ -22,8 +22,8 @@ except ValueError:
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature
-from ironsbot.plugins.ai import command_descriptors as ai_chat_commands
-from ironsbot.plugins.ai.intent import command_descriptors as ai_intent_commands
+from ironsbot.plugins.onebot.ai import command_descriptors as ai_chat_commands
+from ironsbot.plugins.onebot.ai.intent import command_descriptors as ai_intent_commands
 from ironsbot.runtime.plugins import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
@@ -403,8 +403,18 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "messaging"
                     / "red_packet.py",
                     ROOT / "ironsbot" / "plugins" / "bilibili" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "ai" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "ai" / "intent.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "ai"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "ai"
+                    / "intent.py",
                     ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
                     ROOT
                     / "ironsbot"

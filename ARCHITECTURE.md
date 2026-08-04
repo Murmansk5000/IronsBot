@@ -414,7 +414,7 @@ adding fields or side registries to a temporary bootstrap adapter.
 The first verified migrations are `ironsbot.plugins.onebot.about`,
 `ironsbot.plugins.activity`, `ironsbot.plugins.bilibili`,
 `ironsbot.plugins.onebot.messaging`,
-`ironsbot.plugins.ai` / `.intent`,
+`ironsbot.plugins.onebot.ai` / `.intent`,
 `ironsbot.plugins.operations.server_status`,
 `ironsbot.plugins.operations.docker_update`, `ironsbot.plugins.operations.db_sync`,
 `ironsbot.plugins.onebot.help` / `.hint`, `ironsbot.plugins.onebot.sendpic`,
