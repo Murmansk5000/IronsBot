@@ -66,7 +66,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         build_dynamic_link_message,
     )
     from ironsbot.plugins.help.hint import install as install_help_hint
-    from ironsbot.plugins.messaging.blacklist import install as install_blacklist
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.messaging.red_packet import (
         install as install_red_packet_notice,
@@ -219,11 +218,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         PluginContribution(
             id="saa",
             install=external_install("nonebot_plugin_saa"),
-        ),
-        PluginContribution(
-            id="conversation_blacklist",
-            features=frozenset({Feature.BLACKLIST}),
-            install=partial(install_blacklist, features=features),
         ),
         PluginContribution(
             id="server_status",

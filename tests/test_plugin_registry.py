@@ -67,6 +67,13 @@ def test_manifest_meeting_owns_its_command_descriptor() -> None:
     assert {command.plugin_id for command in contribution.commands} == {"meeting"}
 
 
+def test_manifest_blacklist_owns_its_feature() -> None:
+    contribution = DEFINITIONS_BY_ID["conversation_blacklist"]
+
+    assert contribution.features == frozenset({Feature.BLACKLIST})
+    assert contribution.commands == ()
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -161,6 +168,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "help" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                 } and imported == {"PluginMetadata"}:
                     continue

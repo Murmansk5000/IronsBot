@@ -8,5 +8,6 @@ plugin_dirs = []
   "ironsbot.plugins.about",
   "ironsbot.plugins.help",
   "ironsbot.plugins.sendpic",
+  "ironsbot.plugins.messaging.blacklist",
   "ironsbot.plugins.messaging.meeting",
 ]

@@ -12,6 +12,9 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
+from ironsbot.plugins.messaging.blacklist import (
+    plugin_contribution as blacklist_plugin_contribution,
+)
 from ironsbot.plugins.messaging.meeting import (
     plugin_contribution as meeting_plugin_contribution,
 )
@@ -249,4 +252,5 @@ def build_test_plugin_registry(
             template=config.messaging.meeting.template,
             features=runtime.features,
         ),
+        blacklist_plugin_contribution(features=runtime.features),
     )
