@@ -45,7 +45,11 @@ from .player_context import (
     PLAYER_QUERY_IS_EXPLICIT_KEY,
 )
 from .player_detail_conversation import send_player_info_with_detail_prompt
-from .player_target import resolve_event_player_reference, resolve_player_target
+from .player_target import (
+    event_player_reference_lookup,
+    resolve_event_player_reference,
+    resolve_player_target,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -115,19 +119,16 @@ async def validate_player_id(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    numeric_player_id = None
+    player_reference = None
     if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
         player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-        numeric_player_id = resolve_event_player_reference(
-            dependencies.player_accounts,
-            event,
-            player_reference,
-        )
-        if numeric_player_id is None:
-            await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
     target = resolve_player_target(
         event,
-        numeric_player_id=numeric_player_id,
+        player_reference=player_reference,
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
         binding_for_user=dependencies.player.default_player_id,
     )
     if target.error is not None:
@@ -169,18 +170,13 @@ async def handle_player_binding_command(
     state: T_State,
 ) -> None:
     player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    player_id = (
-        resolve_event_player_reference(
-            dependencies.player_accounts,
-            event,
-            player_reference,
-        )
-        if player_reference
-        else None
-    )
     target = resolve_player_target(
         event,
-        numeric_player_id=player_id,
+        player_reference=player_reference or None,
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
         binding_for_user=dependencies.player.default_player_id,
         allow_default_binding=False,
     )
