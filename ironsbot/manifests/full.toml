@@ -7,6 +7,7 @@ plugin_dirs = []
   "ironsbot.plugins.onebot.bootstrap",
   "ironsbot.plugins.about",
   "ironsbot.plugins.help",
+  "ironsbot.plugins.help.hint",
   "ironsbot.plugins.sendpic",
   "ironsbot.plugins.messaging.blacklist",
   "ironsbot.plugins.messaging.meeting",

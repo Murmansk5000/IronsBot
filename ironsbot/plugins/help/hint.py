@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
@@ -11,10 +12,24 @@ from nonebot.adapters.onebot.v11 import (
     PokeNotifyEvent,
 )
 from nonebot.matcher import Matcher  # noqa: TC002
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.runtime.plugins import (
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.services.messaging.help_hint import HelpHintService, is_poke_at_bot
+
+__plugin_meta__ = PluginMetadata(
+    name="戳一戳提示",
+    description="机器人被戳一戳时按会话权限给出可用指令提示。",
+    usage="由机器人戳一戳事件触发，无直接用户命令。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
 if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
@@ -76,3 +91,19 @@ def install(registry: MatcherRegistry, service: HelpHintService) -> None:
         block=True,
     )
     matcher.append_handler(handle_poke_help)
+
+
+def plugin_contribution(*, service: HelpHintService) -> PluginContribution:
+    """Declare the passive poke-hint matcher and its service dependency."""
+
+    return PluginContribution(
+        id="help_hint",
+        install=partial(install, service=service),
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(service=context.resources.help_hint),
+    )

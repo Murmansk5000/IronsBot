@@ -30,6 +30,7 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.onebot.bootstrap",
             "ironsbot.plugins.about",
             "ironsbot.plugins.help",
+            "ironsbot.plugins.help.hint",
             "ironsbot.plugins.sendpic",
             "ironsbot.plugins.messaging.blacklist",
             "ironsbot.plugins.messaging.meeting",

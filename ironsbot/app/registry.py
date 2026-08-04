@@ -65,7 +65,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         build_dynamic_content_message,
         build_dynamic_link_message,
     )
-    from ironsbot.plugins.help.hint import install as install_help_hint
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.operations.db_sync import install as install_db_sync
     from ironsbot.plugins.operations.headless import register_reconnect_jobs
@@ -106,7 +105,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     data_sync_service = resources.data_sync
     docker_update_service = resources.docker_update
     startup_notice_service = resources.startup_notice
-    help_hint_service = resources.help_hint
     bot_mention_block_service = BotMentionBlockService(
         config.messaging.command_cooldown
     )
@@ -606,13 +604,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                 command_help_ids=tuple(
                     command.id for command in ai_intent_command_descriptors
                 ),
-            ),
-        ),
-        PluginContribution(
-            id="help_hint",
-            install=partial(
-                install_help_hint,
-                service=help_hint_service,
             ),
         ),
         PluginContribution(

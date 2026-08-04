@@ -88,6 +88,13 @@ def test_manifest_fire_manual_ad_owns_its_feature() -> None:
     assert contribution.commands == ()
 
 
+def test_manifest_help_hint_owns_its_passive_matcher() -> None:
+    contribution = DEFINITIONS_BY_ID["help_hint"]
+
+    assert contribution.features == frozenset()
+    assert contribution.commands == ()
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -181,6 +188,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
                     ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "help" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "help" / "hint.py",
                     ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "blacklist.py",
                     ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",

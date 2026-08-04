@@ -15,6 +15,9 @@ from ironsbot.plugins.fire_manual_ad import (
     plugin_contribution as fire_manual_ad_plugin_contribution,
 )
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
+from ironsbot.plugins.help.hint import (
+    plugin_contribution as help_hint_plugin_contribution,
+)
 from ironsbot.plugins.messaging.blacklist import (
     plugin_contribution as blacklist_plugin_contribution,
 )
@@ -264,4 +267,5 @@ def build_test_plugin_registry(
             admin_notices=runtime.admin_notices,
         ),
         fire_manual_ad_plugin_contribution(),
+        help_hint_plugin_contribution(service=resources.help_hint),
     )
