@@ -747,6 +747,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             *features.command_features,
             *features.schedule_features,
         ),
+        required_plugin_features=frozenset(Feature),
         resource_shutdown_hooks=(
             ("file_logging", file_logging.close),
             ("http_clients", http_clients.close),

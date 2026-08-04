@@ -50,6 +50,7 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
         matchers=cast("Any", Matchers()),
         task_owner=cast("Any", object()),
         known_features=(),
+        required_plugin_features=frozenset(),
         contributions=(),
     )
 

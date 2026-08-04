@@ -313,6 +313,11 @@ adding fields or side registries to the central bootstrap bridge.
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
+The first verified migration is `ironsbot.plugins.about`: the manifest loads it
+directly, and the package supplies its own metadata and contribution. Every
+subsequent plugin migration follows that pattern and removes its entry from the
+central bridge in the same change.
+
 The target system must not retain an adapter merely to keep the old registry
 alive. A phase may use a short-lived migration tool, but ordinary runtime must
 have one path and one authority after that phase is complete.
@@ -604,11 +609,12 @@ class PluginContribution:
 ```
 
 `app.registry.build_plugin_registry(...)` currently returns one ordered tuple
-of `PluginContribution` values. The standard manifest discovers one temporary
-bootstrap package, which contributes this tuple during the scoped loading
-window. Until Phase 2 removes the central supplier, that tuple is a temporary
-operational bridge, not the unique architectural contract. It must not become
-an additional authority over the target contracts:
+of remaining `PluginContribution` values. The standard manifest discovers a
+temporary bootstrap package plus any migrated top-level packages, which submit
+their contributions during the scoped loading window. Until Phase 2 removes
+the central supplier, that tuple is a temporary operational bridge, not the
+unique architectural contract. It must not become an additional authority over
+the target contracts:
 
 - plugin installation order;
 - feature ownership;

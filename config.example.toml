@@ -57,8 +57,9 @@ log_level = "INFO"
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
 # Default: "full"
-# EN: Bundled NoneBot plugin profile. Normal deployments use full.
-# ZH: 内置 NoneBot 插件配置；正常部署使用 full。
+# EN: Bundled NoneBot plugin profile. Normal deployments use full; core is a
+#     named migration profile and currently loads the same bridge.
+# ZH: 内置 NoneBot 插件配置；正常部署使用 full。core 仍处于迁移阶段。
 plugin_manifest = "full"
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.

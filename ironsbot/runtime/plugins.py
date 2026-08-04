@@ -7,12 +7,13 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeAlias
 
+from ironsbot.core.features import Feature
+
 if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.adapters.onebot.v11 import Bot
     from nonebot.plugin import PluginMetadata
 
-    from ironsbot.core.features import Feature
     from ironsbot.runtime.commands import CommandDescriptor
     from ironsbot.runtime.matchers import MatcherRegistry
 
@@ -86,6 +87,19 @@ class PluginContributionError(ValueError):
     def duplicate_ids(cls, plugin_ids: tuple[str, ...]) -> PluginContributionError:
         return cls("duplicate plugin contribution ids: " + ", ".join(plugin_ids))
 
+    @classmethod
+    def missing_feature_owners(
+        cls,
+        features: tuple[Feature, ...],
+    ) -> PluginContributionError:
+        return cls(
+            "features have no owning plugin contribution: "
+            + ", ".join(feature.value for feature in features)
+        )
+
+
+OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
+
 
 _INSTALL_CONTEXT: ContextVar[PluginInstallContext | None] = ContextVar(
     "ironsbot_plugin_install_context",
@@ -157,8 +171,16 @@ def current_plugin_install_context() -> PluginInstallContext:
     return context
 
 
+def active_plugin_install_context() -> PluginInstallContext | None:
+    """Return the scoped install context when a top-level plugin is loading."""
+
+    return _INSTALL_CONTEXT.get()
+
+
 def validate_plugin_contributions(
     contributions: tuple[PluginContribution, ...],
+    *,
+    required_features: frozenset[Feature] | None = None,
 ) -> tuple[PluginContribution, ...]:
     """Validate the minimal invariants shared by every plugin-loading path."""
 
@@ -166,4 +188,17 @@ def validate_plugin_contributions(
     duplicate_ids = tuple(sorted({item for item in ids if ids.count(item) > 1}))
     if duplicate_ids:
         raise PluginContributionError.duplicate_ids(duplicate_ids)
+    if required_features is None:
+        return contributions
+    owned_features = {
+        feature for contribution in contributions for feature in contribution.features
+    }
+    missing_features = tuple(
+        sorted(
+            required_features - owned_features - OPTIONAL_PRIVATE_FEATURES,
+            key=lambda feature: feature.value,
+        )
+    )
+    if missing_features:
+        raise PluginContributionError.missing_feature_owners(missing_features)
     return contributions

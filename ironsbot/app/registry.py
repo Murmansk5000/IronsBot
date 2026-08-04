@@ -16,7 +16,6 @@ from ironsbot.app.command_directory.operations import (
     server_status_commands,
 )
 from ironsbot.app.command_directory.plugins import (
-    about_commands,
     activity_commands,
     ai_chat_commands,
     bilibili_commands,
@@ -55,18 +54,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
 
 
-class PluginRegistryError(ValueError):
-    pass
-
-
-OPTIONAL_PRIVATE_FEATURES = frozenset(
-    {
-        Feature.PLAYER_LINEUP_PRIVATE,
-    }
-)
-
-
-def build_plugin_registry(  # noqa: PLR0915 - declarative registry
+def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     *,
     settings: Settings,
     resources: ApplicationResources,
@@ -75,7 +63,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.custom_plugins.pet_config import (
         plugin_definition as pet_config_definition,
     )
-    from ironsbot.plugins.about import install as install_about
     from ironsbot.plugins.activity import install as install_activity
     from ironsbot.plugins.ai import install as install_ai
     from ironsbot.plugins.ai.intent import install as install_ai_intent
@@ -674,19 +661,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             ),
         ),
         PluginContribution(
-            id="about",
-            features=frozenset({Feature.ABOUT}),
-            help=HelpEntry(
-                name="关于",
-                description="IronsBot 项目信息与当前版本",
-                group="core",
-                order=20,
-                visible=always_help_visible,
-            ),
-            commands=about_commands(),
-            install=install_about,
-        ),
-        PluginContribution(
             id="help",
             features=frozenset({Feature.HELP}),
             help=HelpEntry(
@@ -762,28 +736,4 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     private_contributions = resources.private_extensions.load_plugin_contributions(
         resources.private_extension_runtime
     )
-    definitions = (*definitions, *private_contributions)
-    validate_plugin_registry(definitions)
-    return definitions
-
-
-def validate_plugin_registry(
-    definitions: tuple[PluginContribution, ...],
-) -> None:
-    ids = [definition.id for definition in definitions]
-    duplicates = sorted({plugin_id for plugin_id in ids if ids.count(plugin_id) > 1})
-    if duplicates:
-        raise PluginRegistryError("duplicate plugin ids: " + ", ".join(duplicates))
-
-    owned_features = {
-        feature for definition in definitions for feature in definition.features
-    }
-    missing = sorted(
-        set(Feature) - owned_features - OPTIONAL_PRIVATE_FEATURES,
-        key=lambda feature: feature.value,
-    )
-    if missing:
-        raise PluginRegistryError(
-            "features have no owning plugin: "
-            + ", ".join(feature.value for feature in missing)
-        )
+    return (*definitions, *private_contributions)

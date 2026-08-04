@@ -20,8 +20,11 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
-from ironsbot.app.registry import OPTIONAL_PRIVATE_FEATURES, validate_plugin_registry
 from ironsbot.core.features import Feature
+from ironsbot.runtime.plugins import (
+    OPTIONAL_PRIVATE_FEATURES,
+    validate_plugin_contributions,
+)
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
 DEFINITIONS = build_test_plugin_registry()
@@ -29,10 +32,13 @@ DEFINITIONS_BY_ID = {definition.id: definition for definition in DEFINITIONS}
 
 
 def test_plugin_registry_validates() -> None:
-    validate_plugin_registry(DEFINITIONS)
+    validate_plugin_contributions(
+        DEFINITIONS,
+        required_features=frozenset(Feature),
+    )
 
 
-def test_plugin_registry_is_the_feature_authority() -> None:
+def test_plugin_contributions_cover_feature_ownership() -> None:
     owned_features = {
         feature
         for definition in DEFINITIONS
@@ -109,10 +115,10 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                 imported = forbidden_imports.intersection(
                     alias.name for alias in node.names
                 )
-                if (
-                    path == ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py"
-                    and imported == {"PluginMetadata"}
-                ):
+                if path in {
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
+                    ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
+                } and imported == {"PluginMetadata"}:
                     continue
                 if imported:
                     violations.append(

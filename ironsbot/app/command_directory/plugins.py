@@ -231,15 +231,6 @@ def ai_chat_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
     )
 
 
-def about_commands() -> tuple[CommandDescriptor, ...]:
-    return commands_from_rows(
-        "about",
-        "查看",
-        "about",
-        (("about", ("关于",), "查看项目、版本和主要能力", {}),),
-    )
-
-
 def help_commands() -> tuple[CommandDescriptor, ...]:
     return commands_from_rows(
         "help",

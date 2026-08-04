@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ironsbot.app.file_logging import FileLogging
     from ironsbot.app.resources import ApplicationResources
     from ironsbot.config.models.settings import Settings
+    from ironsbot.core.features import Feature
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
@@ -37,6 +38,7 @@ class Application:
     matchers: MatcherRegistry
     task_owner: TaskOwner
     known_features: tuple[str, ...]
+    required_plugin_features: frozenset[Feature]
     contributions: tuple[PluginContribution, ...] = ()
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
     lifecycle: ApplicationLifecycle | None = None
@@ -52,7 +54,10 @@ class Application:
 
         from ironsbot.runtime.plugins import validate_plugin_contributions
 
-        self.contributions = validate_plugin_contributions(contributions)
+        self.contributions = validate_plugin_contributions(
+            contributions,
+            required_features=self.required_plugin_features,
+        )
         self.resources.commands.load(
             self.contributions,
             known_features=self.known_features,

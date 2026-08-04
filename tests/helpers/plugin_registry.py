@@ -10,6 +10,7 @@ from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
+from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
@@ -218,8 +219,11 @@ def build_test_plugin_registry(
             private_extension_runtime=object(),
         ),
     )
-    return build_plugin_registry(
-        settings=config,
-        resources=resources,
-        scheduler=SchedulerFacade(),
+    return (
+        *build_plugin_registry(
+            settings=config,
+            resources=resources,
+            scheduler=SchedulerFacade(),
+        ),
+        about_plugin_contribution(),
     )
