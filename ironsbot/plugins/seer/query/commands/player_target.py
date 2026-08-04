@@ -61,13 +61,13 @@ def resolve_player_target(  # noqa: PLR0911
                 offer_binding=False,
                 error="米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。",
             )
-        if len(context.member_user_ids) != 1:
+        if len(context.member_mentions) != 1:
             return PlayerTargetResolution(
                 None,
                 offer_binding=False,
                 error="请一次只 @ 一名成员查询其已绑定的米米号。",
             )
-        player_id = binding_for_user(context.member_user_ids[0])
+        player_id = binding_for_user(int(context.member_mentions[0].id))
         if player_id is None:
             return PlayerTargetResolution(
                 None,

@@ -8,7 +8,8 @@ from nonebot.consts import ENDSWITH_KEY, STARTSWITH_KEY
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.runtime.message_input import MessageInputKind, message_input_context
+from ironsbot.core.message_input import MessageInputKind
+from ironsbot.runtime.message_input import message_input_context
 
 BOT_COMMAND_ARG_KEY: Literal["_irons_bot_command_arg"] = "_irons_bot_command_arg"
 

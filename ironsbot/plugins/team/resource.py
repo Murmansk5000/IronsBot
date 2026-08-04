@@ -222,7 +222,9 @@ def install(
 
 
 def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:
-    return message_input_context(event).member_user_ids
+    return tuple(
+        int(member.id) for member in message_input_context(event).member_mentions
+    )
 
 
 def _subscription_target(

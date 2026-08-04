@@ -485,10 +485,11 @@ There is no second pass that imports matcher objects by string reference.
 
 ## Message Input Routing
 
-`runtime.message_input.MessageInputContext` is the only interpreter for a
-newly received OneBot message. It records the new text, reply metadata, a bot
-mention, and ordinary member mentions once, then classifies the message in
-this fixed order:
+`core.message_input.MessageInputContext` is the platform-neutral record of a
+newly received message. The current `runtime.message_input` is its OneBot
+adapter: it converts current-message IDs and direct member mentions into
+`IncomingMessageRef` and `ActorRef` values before applying this fixed routing
+order:
 
 1. reply;
 2. direct bot mention;
