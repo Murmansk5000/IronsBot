@@ -181,7 +181,6 @@ class HeadlessRequestDispatcher:
         self._spawn = spawn
         self._pending: deque[_PacketRequest] = deque()
         self._sequence = 0
-        self._active_background = 0
         self._dispatch_scheduled = False
 
     @property
@@ -273,8 +272,6 @@ class HeadlessRequestDispatcher:
             priority = request.priority_state.priority
             if request.workflow is not None:
                 request.workflow.mark_packet_dispatched()
-            if priority is HeadlessRequestPriority.BACKGROUND:
-                self._active_background += 1
             wait_seconds = monotonic() - request.queued_at
             logger.info(
                 "headless packet scheduled: workflow=%s ticket=%s label=%s "
@@ -287,7 +284,7 @@ class HeadlessRequestDispatcher:
                 wait_seconds,
                 request.attempts,
             )
-            coroutine = self._execute(worker, request, priority)
+            coroutine = self._execute(worker, request)
             request.context.run(
                 self._spawn,
                 coroutine,
@@ -336,16 +333,10 @@ class HeadlessRequestDispatcher:
         healthy_count = self.healthy_worker_count
         if healthy_count <= 0:
             return None
-        background_limit = max(1, healthy_count - 1)
         candidates = [
             item
             for item in self._pending
             if not item.future.cancelled()
-            and (
-                item.priority_state.priority
-                is not HeadlessRequestPriority.BACKGROUND
-                or self._active_background < background_limit
-            )
             and self._has_worker_for(item)
         ]
         if not candidates:
@@ -371,11 +362,10 @@ class HeadlessRequestDispatcher:
             for worker in self._workers
         )
 
-    async def _execute(  # noqa: C901 - retry and task completion are coupled
+    async def _execute(
         self,
         worker: HeadlessWorkerSlot,
         request: _PacketRequest,
-        started_priority: HeadlessRequestPriority,
     ) -> None:
         retry = False
         try:
@@ -412,8 +402,6 @@ class HeadlessRequestDispatcher:
             worker.active = False
             worker.available_since = monotonic()
             request.active_worker = None
-            if started_priority is HeadlessRequestPriority.BACKGROUND:
-                self._active_background = max(0, self._active_background - 1)
             if retry and not request.future.done():
                 request.queued_at = monotonic()
                 self._pending.appendleft(request)
