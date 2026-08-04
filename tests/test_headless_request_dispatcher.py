@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -141,12 +142,12 @@ async def test_single_worker_yields_after_each_background_packet() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("worker_count", [1, 2, 3, 4])
-async def test_background_parallelism_reserves_foreground_capacity(
+async def test_background_fills_workers_then_yields_to_queued_foreground(
     worker_count: int,
 ) -> None:
     game, events, _started = _pool(worker_count)
     release = asyncio.Event()
-    expected_background = max(1, worker_count - 1)
+    expected_background = worker_count
 
     async def background(index: int) -> None:
         with headless_request_priority_scope(HeadlessRequestPriority.BACKGROUND):
@@ -165,16 +166,29 @@ async def test_background_parallelism_reserves_foreground_capacity(
 
     basic_task = asyncio.create_task(basic())
     await asyncio.sleep(0)
-    if worker_count == 1:
-        assert all(label != "basic" for _worker, label in events)
-    else:
-        await _wait_for_event_count(events, expected_background + 1)
-        assert events[-1][1] == "basic"
+    assert all(label != "basic" for _worker, label in events)
 
     release.set()
     await asyncio.gather(*background_tasks, basic_task)
-    if worker_count == 1:
-        assert events[1][1] == "basic"
+    assert events[expected_background][1] == "basic"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("worker_count", [1, 2, 3, 4])
+async def test_background_work_is_evenly_distributed_across_workers(
+    worker_count: int,
+) -> None:
+    game, events, _started = _pool(worker_count)
+
+    async def background(index: int) -> None:
+        with headless_request_priority_scope(HeadlessRequestPriority.BACKGROUND):
+            await game.step(f"background-{index}")
+
+    await asyncio.gather(*(background(index) for index in range(12)))
+
+    assignments = Counter(worker_id for worker_id, _label in events)
+    assert len(assignments) == worker_count
+    assert max(assignments.values()) - min(assignments.values()) <= 1
 
 
 @pytest.mark.asyncio
