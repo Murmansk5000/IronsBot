@@ -201,7 +201,7 @@ def test_player_detail_reuses_the_base_snapshot(
             player_id=PLAYER_ID,
             base_snapshot=snapshot,
         ),
-        event.user_id,
+        ActorRef(Platform.ONEBOT, str(event.user_id)),
         group_id=event.group_id,
     )
 
