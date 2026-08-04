@@ -10,13 +10,7 @@ CORE = PACKAGE / "core"
 SERVICES = PACKAGE / "services"
 RENDERING = SERVICES / "seer" / "rendering"
 
-# Phase 4 removes these lookup modules by passing prepared view models into
-# renderers. This register prevents the known debt from spreading beforehand.
-TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset(
-    {
-        "custom_pet_info.py",
-    }
-)
+TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()
 FORBIDDEN_TRANSPORT_IMPORT_PREFIXES = (
     "nonebot",
     "onebot",

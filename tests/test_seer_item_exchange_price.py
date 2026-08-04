@@ -2,7 +2,9 @@
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
-from ironsbot.services.seer.item_exchange_price import load_item_exchange_prices
+from ironsbot.integrations.seer_data.pet_info_repository import (
+    _load_item_exchange_prices,
+)
 
 ACTIVATION_ITEM_ID = 1728296
 CURRENCY_ITEM_ID = 1726710
@@ -86,7 +88,7 @@ def _session_with_exchange_prices() -> Session:
 
 def test_load_item_exchange_prices_reads_currency_name_and_limit() -> None:
     with _session_with_exchange_prices() as session:
-        prices = load_item_exchange_prices(session, [ACTIVATION_ITEM_ID])
+        prices = _load_item_exchange_prices(session, [ACTIVATION_ITEM_ID])
 
     assert prices[ACTIVATION_ITEM_ID][0].source_name == "战令商店"
     assert prices[ACTIVATION_ITEM_ID][0].item_name == "双源魂蒂"
@@ -134,7 +136,7 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
             )
         )
 
-        prices = load_item_exchange_prices(session, [ACTIVATION_ITEM_ID])
+        prices = _load_item_exchange_prices(session, [ACTIVATION_ITEM_ID])
 
     assert len(prices[ACTIVATION_ITEM_ID]) == 1
     assert prices[ACTIVATION_ITEM_ID][0].source_name == "战令商店"
@@ -142,7 +144,7 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
 
 def test_load_item_exchange_prices_allows_an_older_database_without_table() -> None:
     with Session(create_engine("sqlite://")) as session:
-        assert load_item_exchange_prices(session, [ACTIVATION_ITEM_ID]) == {}
+        assert _load_item_exchange_prices(session, [ACTIVATION_ITEM_ID]) == {}
 
 
 def test_load_item_exchange_prices_names_legacy_special_skill_currency() -> None:
@@ -192,7 +194,7 @@ def test_load_item_exchange_prices_names_legacy_special_skill_currency() -> None
         )
 
     with Session(engine) as session:
-        prices = load_item_exchange_prices(session, [1727009])
+        prices = _load_item_exchange_prices(session, [1727009])
 
     assert prices[1727009][0].source_name == "微光秘境"
     assert prices[1727009][0].currency_name == "共振晶体"

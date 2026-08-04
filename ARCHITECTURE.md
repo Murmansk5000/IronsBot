@@ -1028,15 +1028,12 @@ remaining target-state work:
   filesystem, network, task, or SQLite side effect.
 - `tests/test_structure_size_hygiene.py` enforces the 800-line production
   module limit.
-- `tests/test_architecture_target_hygiene.py` prevents new renderer persistence
-  dependencies outside an explicit Phase 4 transition allowlist and forbids
-  adapter transport imports from `core` and `services`.
+- `tests/test_architecture_target_hygiene.py` forbids renderer persistence
+  dependencies and adapter transport imports from `core` and `services`.
 
-The renderer allowlist is a debt register, not an exception to the target
-rule. It contains only the remaining `custom_pet_info.py` transition module
-and must reach an empty set in Phase 4. Adding an item requires a
-product-approved migration plan; a new renderer must receive a view model and
-assets instead.
+The Phase 4 renderer persistence allowlist is empty. A new renderer must
+receive a detached view model and its assets; it cannot acquire a new database
+or transport exception.
 
 ## Current OneBot Behaviour Baseline
 
@@ -1081,9 +1078,11 @@ reference for users:
 Phase 0 observations to resolve in later phases are also explicit: the
 current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
 uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
-migration. The source tree currently has renderer-owned SQL lookup debt and
-existing Bandit findings with no high-severity result; neither is silently
-suppressed by this phase.
+migration. The completed Phase 4 pet-info path now loads a detached snapshot in
+`integrations.seer_data`, prepares a render document in a pure presenter, and
+renders without ORM, SQL, HTTP, filesystem, or association inference. Existing
+Bandit findings with no high-severity result remain tracked rather than silently
+suppressed.
 
 ## Enforcement
 

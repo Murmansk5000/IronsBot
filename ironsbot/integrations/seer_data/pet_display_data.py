@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ironsbot.services.seer.rendering.pet_effect_presentation import (
+from ironsbot.services.seer.rendering.pet_info_models import (
     PetDerivedDisplayData,
     PetSpecialEffectView,
     SoulmarkIconAsset,
@@ -34,8 +34,12 @@ def load_pet_derived_display_data(
     source_rows = _load_effect_source_rows(session, pet_id)
     return PetDerivedDisplayData(
         special_effects=_build_effect_views(effect_rows, source_rows),
-        soulmark_display_order=_load_soulmark_display_order(session, pet_id),
-        soulmark_icons=_load_soulmark_icons(session, pet_id, soulmark_ids),
+        soulmark_display_order=tuple(
+            _load_soulmark_display_order(session, pet_id).items()
+        ),
+        soulmark_icons=tuple(
+            _load_soulmark_icons(session, pet_id, soulmark_ids).items()
+        ),
     )
 
 
