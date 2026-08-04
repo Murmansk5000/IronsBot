@@ -607,6 +607,10 @@ def test_shortcut_cache_hit_does_not_send_loading_reply(
 
 def test_shortcut_semantic_request_uses_the_bound_player() -> None:
     service = SimpleNamespace(default_player_id=lambda _user_id: 712_345_678)
+    dependencies = player_shortcuts.PlayerCommandDependencies(
+        player=cast("Any", service),
+        features=cast("Any", SimpleNamespace()),
+    )
     event = group_message_event("收集")
     state: dict[str, object] = {
         player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
@@ -616,7 +620,7 @@ def test_shortcut_semantic_request_uses_the_bound_player() -> None:
     }
 
     request = player_shortcuts._shortcut_semantic_request(
-        cast("Any", service),
+        dependencies,
         event,
         cast("Any", state),
     )
