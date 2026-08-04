@@ -56,6 +56,11 @@ log_level = "INFO"
 # EN: Command prefixes. Empty string enables direct keyword commands.
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
+# Default: "full"
+# EN: Bundled NoneBot plugin profile. Normal deployments use full; core is a
+#     named migration profile and currently loads the same bridge.
+# ZH: 内置 NoneBot 插件配置；正常部署使用 full。core 仍处于迁移阶段。
+plugin_manifest = "full"
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
@@ -113,8 +118,6 @@ retention = "30 days"
 # Default: null; EN: Do not compress old daily logs. Set "zip" to save space. ZH: 默认不压缩旧日志；磁盘空间紧张时可改为 "zip"。
 compression = ""
 
-# EN: Upgrading legacy identity state requires the offline platform migration and matching new readers; startup does not migrate.
-# ZH: 旧身份状态升级须停机备份并运行匹配的离线迁移；启动不自动迁移。
 [paths]
 # Default: "logs/ironsbot.log"
 # EN: Main rotating log path.

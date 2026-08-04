@@ -128,10 +128,18 @@ services:
 
 ## 插件架构
 
-通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展由独立扩展清单加载。
-`python -m ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动。私有扩展从配置的数据目录读取
-`manifest.json`，调用清单指定的工厂并传入 `PrivateExtensionRuntime`；
-OneBot bootstrap 通过当前安装上下文收集其返回的 `PluginContribution`，由应用安装。
+通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展从配置的数据目录读取
+`manifest.json`；清单指定的工厂接收 `PrivateExtensionRuntime`，返回的
+`PluginContribution` 由当前安装上下文收集并交给应用安装。
+当前版本仍由 `python -m ironsbot` 经过
+`ironsbot/app/bootstrap.py` 启动。内置插件由标准 NoneBot TOML 清单直接发现；
+每个插件通过 `PluginMetadata` 声明身份，并以 `PluginContribution` 注册运行时
+贡献。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
+命令认领的唯一语义来源。
+
+`MatcherRegistry` 与私有扩展 bootstrap 仍是过渡组件：前者会迁移为更窄的 matcher
+工厂，后者只适配配置化的私有扩展，不能重新成为内置插件发现或命令注册入口。
+后续迁移方向、责任边界与完成条件以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。
@@ -364,28 +372,6 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `fire_manual_ad` | 主动推送末尾追加火火手册链接。 |
 | `ai_intent_fire_manual` | 用户明确索要火火手册链接时的 AI 意图动作。 |
 | `admin_notice` | 管理通知目标权限；启动、AI异常、B站登录、无头赛尔号、渲染崩溃、红包提醒等具体推送可在 TD 菜单中单独退订。 |
-
-### 平台身份状态升级
-
-此阶段开始以 `ActorRef` / `ConversationRef` 的平台、类别和作用域字段保存状态。
-已有旧状态库应停机并完整备份，再按 [平台状态迁移](docs/platform-state-migration.md)
-执行原工具 dry-run，确认后才 `--apply`；验证成功后再启动新读取方。
-该迁移不会把 OneBot QQ 身份隐式转换为官方 OpenID，普通启动也不会自动迁移。
-
-### 渲染预算与素材缓存
-
-此阶段 `seer.render.final_cache_max_size_mb` 控制最终图片缓存；原 `cache_max_size_mb`
-和 `runtime.concurrency.render_max_concurrent` 已不再是有效旋钮。
-原生 HTML 渲染固定单并发，`native_timeout_seconds` 单位为秒；素材内存/磁盘预算和
-获取并发分别由同表的 `asset_*` 字段控制。example 给出当时模型支持的字段，
-不改变模型默认值，不把旧显式预算或示例值称为新的运行默认值。
-
-### 强制构建的步骤参数
-
-每个 `remote_build.steps` 可配置 `force_inputs`。强制模式将其覆盖到该步骤的 `inputs`，
-普通模式不合并；模型默认空表，不自动添加上游强制参数。
-正式 example 迁移了旧硬编码流水线已有的强制参数，并非选择新的上游任务或授权。
-管理员入口及其权限不变；是否成功构建仍取决于上游 workflow，不因配置存在而保证成功。
 
 ## 数据与缓存
 
