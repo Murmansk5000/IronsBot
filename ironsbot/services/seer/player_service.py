@@ -26,7 +26,6 @@ from ironsbot.services.seer.ids import (
 )
 from ironsbot.services.seer.player_account_policy import PlayerAccountPolicyMixin
 from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
-from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_profile_cache import NullPlayerProfileCache
 from ironsbot.services.seer.player_query import (
     player_query_failure_message,
@@ -62,6 +61,7 @@ from ironsbot.services.seer.query_result import QueryReply
 
 _BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
 _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
+PlayerError = SocketRecvError | NotLoggedInError | DisconnectedError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -613,9 +613,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         *,
         group_id: int | None = None,
     ) -> QueryReply:
-        player_id = command.player_id or self.default_player_id(actor)
-        if player_id is None:
-            return QueryReply(text=unbound_player_shortcut_message())
+        player_id = command.player_id
         if not is_valid_player_id(player_id):
             return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
         cached = await self._details.cached_or_inflight_reply(
@@ -711,16 +709,8 @@ class PlayerService(PlayerAccountPolicyMixin):
         )
         return message
 
-    def format_error(
-        self,
-        player_id: int,
-        error: SocketRecvError | NotLoggedInError | DisconnectedError,
-    ) -> str:
-        return format_player_query_error(
-            player_id,
-            error,
-            self._error_message,
-        )
+    def format_error(self, player_id: int, error: PlayerError) -> str:
+        return format_player_query_error(player_id, error, self._error_message)
 
     async def _query(
         self,

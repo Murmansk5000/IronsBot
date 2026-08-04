@@ -77,6 +77,9 @@
    和 AI 认领都从同一描述查询。
 7. 所有需要赛尔玩家 ID 的位置复用 `PlayerIdResolver`；实体别名复用统一别名
    解析契约，实体自己的规范化与存储仍归实体所有。
+   输入层的 `*TargetCommand` 可以保留原始引用；传入 service 的业务命令必须只
+   携带已验证的数字 ID。解析器在平台边界执行一次，service 不得再次解析别名、
+   `@` 成员或默认绑定。
 8. 平台身份使用不透明字符串 `ActorRef`/`ConversationRef`；OneBot QQ 号与
    QQ Official OpenID 不隐式互转。
 9. 正常运行路径只读写一种 schema；旧数据仅由停机的一次性迁移工具处理。
