@@ -122,13 +122,14 @@ def _service(
         rendered["pool_session_open"] = data.query_open
         return b"pool"
 
-    async def render_vote(pools: Any) -> bytes:
+    async def render_vote(pools: Any, generated_at: str) -> bytes:
         rendered["vote"] = pools
+        rendered["vote_generated_at"] = generated_at
         rendered["vote_session_open"] = data.query_open
         return b"vote"
 
-    async def render_pet(**kwargs: Any) -> bytes:
-        rendered["pet"] = kwargs
+    async def render_pet(input_: Any) -> bytes:
+        rendered["pet"] = input_
         return b"pet"
 
     return PeakQueryService(
@@ -213,14 +214,14 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
 
     assert result.image == b"pet"
     assert data.get_many_open is False
-    assert rendered["pet"]["pet_map"] == {
-        7: PeakPetSnapshot(
+    assert rendered["pet"].pets == (
+        PeakPetSnapshot(
             id=7,
             name="雷伊",
             resource_id=1007,
             type_id=4,
-        )
-    }
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -260,14 +261,14 @@ async def test_peak_vote_snapshots_pets_before_headless_requests(
 
     assert result.image == b"vote"
     assert rendered["vote_session_open"] is False
-    assert rendered["vote"][0]["pets"] == [
+    assert rendered["vote"][0].pets == (
         PeakPetSnapshot(
             id=7,
             name="雷伊",
             resource_id=1007,
             type_id=4,
-        )
-    ]
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -346,14 +347,14 @@ async def test_peak_vote_reports_render_timeout(
         async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
             return []
 
-    async def render_vote(_pools: list[Any]) -> bytes:
+    async def render_vote(_pools: tuple[Any, ...], _generated_at: str) -> bytes:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
     async def render_pool(_pools: Any, _title: str) -> bytes:
         return b"pool"
 
-    async def render_pet(**_kwargs: Any) -> bytes:
+    async def render_pet(_input: Any) -> bytes:
         return b"pet"
 
     async def report(_message: str) -> None:
