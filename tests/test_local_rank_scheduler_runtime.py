@@ -29,8 +29,8 @@ from ironsbot.config.models.seer import (
     RankPageRefreshConfig,
 )
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
-from ironsbot.plugins.seer import runtime as seer_runtime
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.seer import rank_refresh_scheduler as seer_runtime
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from tests.helpers.runtime import build_test_runtime

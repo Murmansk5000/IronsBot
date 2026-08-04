@@ -6,10 +6,8 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.rule import Rule
 
-from ironsbot.runtime.message_input import (
-    MessageInputKind,
-    message_input_context,
-)
+from ironsbot.core.message_input import MessageInputKind
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.rules import (
     bot_mention,
     explicit_command,
@@ -49,6 +47,7 @@ def test_message_input_context_uses_fixed_routing_precedence() -> None:
     assert message_input_context(member).kind is MessageInputKind.MEMBER_MENTION
     assert message_input_context(bot).kind is MessageInputKind.BOT_MENTION
     assert message_input_context(reply).kind is MessageInputKind.REPLY
+    assert message_input_context(member).member_mentions[0].id == "456"
 
 
 def test_private_to_me_is_direct_input_not_a_bot_mention() -> None:

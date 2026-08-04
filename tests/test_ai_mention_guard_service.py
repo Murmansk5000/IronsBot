@@ -2,8 +2,8 @@ from pytest import MonkeyPatch
 
 from ironsbot.core.features import FeatureConfig, FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
-from ironsbot.plugins import ai
-from ironsbot.plugins.ai import (
+from ironsbot.plugins.onebot import ai
+from ironsbot.plugins.onebot.ai import (
     _build_guard_message,
     _should_guard_non_ai_group_mention,
 )

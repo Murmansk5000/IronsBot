@@ -1,0 +1,129 @@
+# SPDX-License-Identifier: MIT
+"""OneBot adapters for lucky-skin-window notifications and subscriptions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.integrations.onebot.target_refs import is_onebot_private_actor
+from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
+from ironsbot.services.seer.lucky_skin_window import (
+    LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+    LuckySkinWindowAccount,
+)
+
+if TYPE_CHECKING:
+    from ironsbot.config.models.seer import LuckySkinWindowConfig
+    from ironsbot.config.player_accounts import PlayerAccountRegistry
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.integrations.onebot.delivery import OneBotDelivery
+    from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
+    from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
+
+
+@dataclass(frozen=True, slots=True)
+class OneBotLuckySkinWindowNotificationSender:
+    """Preserve the existing OneBot delivery and unsubscribe behaviour."""
+
+    delivery: OneBotDelivery
+    subscriptions: PushSubscriptionRepository
+
+    async def send_daily_notice(
+        self,
+        actor: ActorRef,
+        message: str,
+        *,
+        day: str,
+    ) -> bool:
+        if not is_onebot_private_actor(actor):
+            return False
+        user_id = int(actor.id)
+        if self.subscriptions.is_target_unsubscribed(
+            "private",
+            user_id,
+            LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+        ):
+            return False
+        if not self.subscriptions.mark_daily_hint_sent(
+            "private",
+            user_id,
+            "lucky_skin_window_delivery",
+            today=day,
+        ):
+            return False
+        summary = await self.delivery.send_targets(
+            [MessageTarget("private", user_id)],
+            message,
+            action_name="lucky skin window daily notice",
+            interval_seconds=0,
+            subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+        )
+        return bool(summary.succeeded)
+
+
+@dataclass(frozen=True, slots=True)
+class OneBotLuckySkinWindowSubscriptionOptions:
+    """Expose legacy messaging settings from typed OneBot actor references."""
+
+    service: LuckySkinWindowService
+    subscriptions: PushSubscriptionRepository
+
+    def subscription_options(
+        self,
+        target_type: str,
+        target_id: int,
+    ) -> list[PushSubscriptionOption]:
+        if target_type != "private":
+            return []
+        actor = ActorRef(Platform.ONEBOT, str(target_id))
+        if not self.service.is_eligible_actor(actor):
+            return []
+        return [
+            PushSubscriptionOption(
+                key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+                label="幸运橱窗提醒",
+                feature="lucky_skin_window",
+                unsubscribed=self.subscriptions.is_target_unsubscribed(
+                    "private",
+                    target_id,
+                    LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+                ),
+            )
+        ]
+
+
+def build_onebot_lucky_skin_window_accounts(
+    config: LuckySkinWindowConfig,
+    references: OneBotReferenceResolver,
+    player_accounts: PlayerAccountRegistry,
+) -> tuple[LuckySkinWindowAccount, ...]:
+    """Resolve OneBot-only TOML references before the service is composed."""
+
+    return tuple(
+        LuckySkinWindowAccount(
+            actor=ActorRef(
+                Platform.ONEBOT,
+                str(
+                    references.resolve_user(
+                        configured.user,
+                        location=(
+                            "seer.lucky_skin_window.accounts"
+                            f"[{index}].user"
+                        ),
+                    )
+                ),
+            ),
+            player_account=player_accounts.resolve(
+                configured.account,
+                location=(
+                    "seer.lucky_skin_window.accounts"
+                    f"[{index}].account"
+                ),
+            ),
+            watched_skin_ids=tuple(configured.watched_skin_ids),
+        )
+        for index, configured in enumerate(config.accounts)
+    )

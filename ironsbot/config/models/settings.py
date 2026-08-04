@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
+from typing import Literal
 
 from pydantic import (
     BaseModel,
@@ -186,6 +187,7 @@ class BotConfig(BaseModel):
     port: int = Field(default=8080, gt=0)
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
+    plugin_manifest: Literal["full", "core"] = "full"
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
     matcher_priority: MatcherPriorityConfig = Field(

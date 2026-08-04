@@ -67,6 +67,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ironsbot.config.models.seer import SeerConfig
+    from ironsbot.core.platform import ActorRef
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.operations.headless import HeadlessGame, HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
@@ -439,26 +440,26 @@ class PlayerService(PlayerAccountPolicyMixin):
         self._now = now or utc_now
         self._query_cache = PlayerQueryCache.from_config(config)
 
-    def default_player_id(self, qq_user_id: int) -> int | None:
-        return self._bindings.get(qq_user_id).player_id
+    def default_player_id(self, actor: ActorRef) -> int | None:
+        return self._bindings.get(actor).player_id
 
     async def query(
         self,
         player_id: int,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         explicit: bool,
         group_id: int | None = None,
     ) -> PlayerQueryResult:
         if not is_valid_player_id(player_id):
             return PlayerQueryResult(message=PLAYER_ID_ERROR_MESSAGE)
-        binding = self._bindings.get(qq_user_id)
+        binding = self._bindings.get(actor)
         cached = self._query_cache.result(
             player_id,
             offer_binding=explicit and not binding.choice_completed,
         )
         quota_message = self._check_quota(
-            qq_user_id=qq_user_id,
+            actor=actor,
             player_id=player_id,
             action_key="player",
         )
@@ -471,7 +472,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     source="米米号查询",
                     group_id=group_id,
                 ),
-                user_id=qq_user_id,
+                actor=actor,
                 label="米米号基础资料",
                 quota_player_id=player_id,
                 quota_action_key="player",
@@ -498,7 +499,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         if result.pending is None:
             return cached or result
         self._query_cache.put(result.pending)
-        binding = self._bindings.get(qq_user_id)
+        binding = self._bindings.get(actor)
         return PlayerQueryResult(
             pending=result.pending,
             offer_binding=explicit and not binding.choice_completed,
@@ -508,23 +509,23 @@ class PlayerService(PlayerAccountPolicyMixin):
         self,
         player_id: int,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         group_id: int | None = None,
     ) -> PlayerQueryResult:
         """Validate a player ID, save it as default, and return its info."""
-        binding = self._bindings.get(qq_user_id)
+        binding = self._bindings.get(actor)
         if binding.player_id == player_id:
             nick = f"（{binding.player_nick}）" if binding.player_nick else ""
             return PlayerQueryResult(
                 message=f"当前已绑定该米米号：{player_id}{nick}。"
             )
         if binding.player_id is not None:
-            change_error = self._binding_change_error(qq_user_id)
+            change_error = self._binding_change_error(actor)
             if change_error:
                 return PlayerQueryResult(message=change_error)
         result = await self.query(
             player_id,
-            qq_user_id=qq_user_id,
+            actor=actor,
             explicit=True,
             group_id=group_id,
         )
@@ -538,13 +539,13 @@ class PlayerService(PlayerAccountPolicyMixin):
                 offer_binding=True,
                 binding_replacement=binding,
             )
-        status = self._save_binding(qq_user_id, pending)
+        status = self._save_binding(actor, pending)
         pending.player_message = f"{status}\n\n{pending.player_message}"
         return PlayerQueryResult(pending=pending)
 
     def record_returned_query(
         self,
-        qq_user_id: int,
+        actor: ActorRef,
         pending: PendingPlayerQuery,
     ) -> None:
         if pending.quota_recorded:
@@ -552,14 +553,14 @@ class PlayerService(PlayerAccountPolicyMixin):
         pending.quota_recorded = True
         try:
             self._record_successful_quota(
-                qq_user_id=qq_user_id,
+                actor=actor,
                 player_id=pending.player_id,
                 action_key="player",
             )
         except Exception:
             logger.exception(
                 "记录已返回的米米号查询额度失败：user=%s player=%s",
-                qq_user_id,
+                actor.id,
                 pending.player_id,
             )
 
@@ -584,15 +585,15 @@ class PlayerService(PlayerAccountPolicyMixin):
             group_id=group_id,
         )
 
-    def unbind(self, qq_user_id: int) -> str:
-        binding = self._bindings.get(qq_user_id)
+    def unbind(self, actor: ActorRef) -> str:
+        binding = self._bindings.get(actor)
         if binding.player_id is None:
             return "当前没有已绑定的米米号。"
-        change_error = self._binding_change_error(qq_user_id)
+        change_error = self._binding_change_error(actor)
         if change_error:
             return change_error
         removed = self._bindings.unbind(
-            qq_user_id=qq_user_id,
+            actor=actor,
             changed_at=self._now(),
         )
         return "已解除默认米米号。" if removed else "当前没有已绑定的米米号。"
@@ -600,11 +601,11 @@ class PlayerService(PlayerAccountPolicyMixin):
     async def shortcut(  # noqa: C901, PLR0911 - distinct query failure replies
         self,
         command: PlayerShortcutCommand,
-        qq_user_id: int,
+        actor: ActorRef,
         *,
         group_id: int | None = None,
     ) -> QueryReply:
-        player_id = command.player_id or self.default_player_id(qq_user_id)
+        player_id = command.player_id or self.default_player_id(actor)
         if player_id is None:
             return QueryReply(text=unbound_player_shortcut_message())
         if not is_valid_player_id(player_id):
@@ -617,7 +618,7 @@ class PlayerService(PlayerAccountPolicyMixin):
             return cached
         try:
             quota_message = self._check_quota(
-                qq_user_id=qq_user_id,
+                actor=actor,
                 player_id=player_id,
                 action_key=command.kind,
             )
@@ -629,7 +630,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     group_id=group_id,
                     anchor_only=anchor_only,
                 ),
-                user_id=qq_user_id,
+                actor=actor,
                 label=shortcut_operation_label(command.kind),
                 quota_player_id=player_id,
                 quota_action_key=command.kind,
@@ -658,7 +659,7 @@ class PlayerService(PlayerAccountPolicyMixin):
             return message
         if message.rank_lookup_should_charge_quota:
             self._record_successful_quota(
-                qq_user_id=qq_user_id,
+                actor=actor,
                 player_id=player_id,
                 action_key=command.kind,
             )
@@ -759,7 +760,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         self,
         operation: Callable[[], Awaitable[Any]],
         *,
-        user_id: int,
+        actor: ActorRef,
         label: str,
         quota_player_id: int | None = None,
         quota_action_key: str | None = None,
@@ -770,7 +771,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         async def guarded_operation() -> Any:
             if quota_player_id is not None and quota_action_key is not None:
                 quota_message = self._check_quota(
-                    qq_user_id=user_id,
+                    actor=actor,
                     player_id=quota_player_id,
                     action_key=quota_action_key,
                 )
@@ -782,8 +783,17 @@ class PlayerService(PlayerAccountPolicyMixin):
             return await guarded_operation()
         return await self._requests.run(
             guarded_operation,
-            user_id=user_id,
+            user_id=_request_actor_id(actor),
             label=label,
             semantic_request=semantic_request,
             priority=priority,
         )
+
+
+def _request_actor_id(actor: ActorRef) -> int | None:
+    """Adapt current OneBot request telemetry until it owns ActorRef values."""
+
+    try:
+        return int(actor.id)
+    except ValueError:
+        return None

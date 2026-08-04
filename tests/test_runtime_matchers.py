@@ -15,6 +15,7 @@ from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
@@ -172,8 +173,9 @@ async def test_queued_conversation_serializes_inputs_in_arrival_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_parallel_queued_conversation_reserves_fifo_tickets_without_waiting(
-) -> None:
+async def test_parallel_queued_conversation_reserves_fifo_tickets_without_waiting() -> (
+    None
+):
     second_ticket_number = 2
     manager = PromptSessionManager()
     context = manager.start_queued_conversation(
@@ -203,9 +205,7 @@ def test_queued_conversation_claims_each_onebot_message_once() -> None:
     assert manager.claim_input(event)
     assert not manager.claim_input(event)
     assert manager.claim_input(group_message_event("2", message_id=43))
-    assert manager.claim_input(
-        group_message_event("1", self_id=2, message_id=42)
-    )
+    assert manager.claim_input(group_message_event("1", self_id=2, message_id=42))
 
 
 def test_group_menu_reply_accepts_only_the_current_bot_menu() -> None:
@@ -225,9 +225,11 @@ def test_group_menu_reply_accepts_only_the_current_bot_menu() -> None:
         event_session_id=owner.get_session_id(),
         owner_user_id=owner.user_id,
         state={},
-        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
-        and getattr(event, "reply", None) is None
-        and event.get_plaintext().strip().lower() == "a",
+        reply_check=lambda event: (
+            event.get_session_id() == owner.get_session_id()
+            and getattr(event, "reply", None) is None
+            and event.get_plaintext().strip().lower() == "a"
+        ),
         group_reply_check=lambda event: event.get_plaintext().strip().lower() == "a",
         handlers=[],
         menu_anchor=anchor,
@@ -257,9 +259,11 @@ def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:
         event_session_id=owner.get_session_id(),
         owner_user_id=owner.user_id,
         state={},
-        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
-        and getattr(event, "reply", None) is None
-        and event.get_plaintext().strip() in {"1", "0"},
+        reply_check=lambda event: (
+            event.get_session_id() == owner.get_session_id()
+            and getattr(event, "reply", None) is None
+            and event.get_plaintext().strip() in {"1", "0"}
+        ),
         group_reply_check=lambda event: event.get_plaintext().strip() in {"1", "0"},
         handlers=[],
         menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
@@ -364,9 +368,11 @@ def test_group_menu_reply_uses_only_the_latest_menu_anchor() -> None:
         namespace="test",
         event_session_id=owner.get_session_id(),
         state={},
-        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
-        and getattr(event, "reply", None) is None
-        and event.get_plaintext().strip().lower() == "a",
+        reply_check=lambda event: (
+            event.get_session_id() == owner.get_session_id()
+            and getattr(event, "reply", None) is None
+            and event.get_plaintext().strip().lower() == "a"
+        ),
         group_reply_check=lambda event: event.get_plaintext().strip().lower() == "a",
         handlers=[],
         menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
@@ -518,8 +524,8 @@ async def test_parallel_cancellation_suppresses_every_active_ticket() -> None:
 @pytest.mark.asyncio
 async def test_queued_conversation_releases_cancelled_pending_reservations() -> None:
     class Features:
-        def is_superuser(self, user_id: int) -> bool:
-            del user_id
+        def is_actor_superuser(self, actor: ActorRef) -> bool:
+            del actor
             return False
 
     requests = InFlightRequestService(Features(), CommandCooldownConfig())
@@ -533,11 +539,11 @@ async def test_queued_conversation_releases_cancelled_pending_reservations() -> 
         request_service=requests,
     )
     active = requests.admit(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         request=_semantic_request("1"),
     )
     pending = requests.admit(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         request=_semantic_request("2"),
     )
     assert active.token is not None
@@ -554,11 +560,11 @@ async def test_queued_conversation_releases_cancelled_pending_reservations() -> 
     with pytest.raises(asyncio.CancelledError):
         await waiting
     assert requests.admit(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         request=_semantic_request("2"),
     ).allowed
     assert not requests.admit(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         request=_semantic_request("1"),
     ).allowed
 

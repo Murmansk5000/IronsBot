@@ -113,6 +113,8 @@ retention = "30 days"
 # Default: null; EN: Do not compress old daily logs. Set "zip" to save space. ZH: 默认不压缩旧日志；磁盘空间紧张时可改为 "zip"。
 compression = ""
 
+# EN: Upgrading legacy identity state requires the offline platform migration and matching new readers; startup does not migrate.
+# ZH: 旧身份状态升级须停机备份并运行匹配的离线迁移；启动不自动迁移。
 [paths]
 # Default: "logs/ironsbot.log"
 # EN: Main rotating log path.

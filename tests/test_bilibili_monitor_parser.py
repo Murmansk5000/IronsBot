@@ -2,7 +2,7 @@ import nonebot
 
 nonebot.init()
 
-from ironsbot.plugins.bilibili.delivery import build_dynamic_link_message
+from ironsbot.plugins.onebot.bilibili.delivery import build_dynamic_link_message
 from ironsbot.services.bilibili.parser import (
     dynamic_content,
     dynamic_items_from_response,

@@ -1,5 +1,5 @@
 from ironsbot.core.features import FeatureConfig, FeatureService
-from ironsbot.plugins.messaging.blacklist import event_is_blacklisted
+from ironsbot.plugins.onebot.messaging.blacklist import event_is_blacklisted
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 

@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ironsbot.plugins.seer.rank_help import RANK_HELP_COMMANDS, handle_rank_help_entry
+from ironsbot.plugins.onebot.seer.rank_help import (
+    RANK_HELP_COMMANDS,
+    handle_rank_help_entry,
+)
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
@@ -36,7 +39,7 @@ async def test_rank_help_replies_to_group_sender(
         sent.append((matcher, event, message))
 
     monkeypatch.setattr(
-        "ironsbot.plugins.seer.rank_help.finish_event_reply",
+        "ironsbot.plugins.onebot.seer.rank_help.finish_event_reply",
         capture,
     )
     event = group_message_event("榜单", user_id=123456)
@@ -69,7 +72,7 @@ async def test_rank_help_uses_same_reply_path_in_private(
         sent.append((matcher, event, message))
 
     monkeypatch.setattr(
-        "ironsbot.plugins.seer.rank_help.finish_event_reply",
+        "ironsbot.plugins.onebot.seer.rank_help.finish_event_reply",
         capture,
     )
     event = private_message_event("排行榜")

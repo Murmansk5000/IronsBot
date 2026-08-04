@@ -11,7 +11,7 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.help.menu import HELP_GROUP_TITLES
+from ironsbot.plugins.onebot.help.menu import HELP_GROUP_TITLES
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
 DEFINITIONS = {

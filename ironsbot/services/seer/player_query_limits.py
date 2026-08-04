@@ -10,6 +10,7 @@ from ironsbot.core.time import TZ_CN
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
 PlayerQueryQuotaScope = Literal["bound_default", "other_target_action", "unbound"]
@@ -33,7 +34,7 @@ class PlayerQueryLimitStore(Protocol):
         self,
         *,
         local_date: date,
-        qq_user_id: int,
+        actor: ActorRef,
         scope: PlayerQueryQuotaScope,
         player_id: int,
         action_key: str,
@@ -44,7 +45,7 @@ class PlayerQueryLimitStore(Protocol):
         self,
         *,
         local_date: date,
-        qq_user_id: int,
+        actor: ActorRef,
         scope: PlayerQueryQuotaScope,
         player_id: int,
         action_key: str,
@@ -53,7 +54,7 @@ class PlayerQueryLimitStore(Protocol):
 
 
 class SuperuserLookup(Protocol):
-    def is_superuser(self, user_id: int) -> bool: ...
+    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
 
 
 class PlayerQueryLimitsConfig(Protocol):
@@ -91,7 +92,7 @@ class PlayerQueryQuotaService:
     def check(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> PlayerQueryQuotaDecision:
@@ -99,18 +100,18 @@ class PlayerQueryQuotaService:
             return PlayerQueryQuotaDecision(allowed=True)
         if (
             self._config.superuser_bypass
-            and self._features.is_superuser(qq_user_id)
+            and self._features.is_actor_superuser(actor)
         ):
             return PlayerQueryQuotaDecision(allowed=True)
 
         scope, storage_player_id, storage_action_key, limit = self._quota_key(
-            qq_user_id=qq_user_id,
+            actor=actor,
             player_id=player_id,
             action_key=action_key,
         )
         usage = self._store.status(
             local_date=self._now().date(),
-            qq_user_id=qq_user_id,
+            actor=actor,
             scope=scope,
             player_id=storage_player_id,
             action_key=storage_action_key,
@@ -133,7 +134,7 @@ class PlayerQueryQuotaService:
     def consume(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> PlayerQueryQuotaDecision:
@@ -141,18 +142,18 @@ class PlayerQueryQuotaService:
             return PlayerQueryQuotaDecision(allowed=True)
         if (
             self._config.superuser_bypass
-            and self._features.is_superuser(qq_user_id)
+            and self._features.is_actor_superuser(actor)
         ):
             return PlayerQueryQuotaDecision(allowed=True)
 
         scope, storage_player_id, storage_action_key, limit = self._quota_key(
-            qq_user_id=qq_user_id,
+            actor=actor,
             player_id=player_id,
             action_key=action_key,
         )
         usage = self._store.consume(
             local_date=self._now().date(),
-            qq_user_id=qq_user_id,
+            actor=actor,
             scope=scope,
             player_id=storage_player_id,
             action_key=storage_action_key,
@@ -175,11 +176,11 @@ class PlayerQueryQuotaService:
     def _quota_key(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> tuple[PlayerQueryQuotaScope, int, str, int]:
-        binding = self._bindings.get(qq_user_id)
+        binding = self._bindings.get(actor)
         if binding.player_id is None:
             return (
                 "unbound",

@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
+from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.activity.delivery import (
     ActivityReminderTargets,
     build_reminder_delivery,
@@ -13,6 +15,8 @@ from ironsbot.services.activity.models import ActivityInfo, ActivityReminder
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 GROUP_ID = 987654321
 USER_ID = 1234567890
+GROUP = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
+USER = ActorRef(Platform.ONEBOT, str(USER_ID))
 
 
 def dt(
@@ -73,7 +77,7 @@ def test_build_reminder_delivery_skips_empty_or_targetless_payload() -> None:
         build_reminder_delivery(
             1,
             [],
-            ActivityReminderTargets(group_ids=(GROUP_ID,)),
+            ActivityReminderTargets(group_conversations=(GROUP,)),
             template="{activity_list}",
         ).status
         == "skip_empty"
@@ -94,17 +98,19 @@ def test_build_reminder_delivery_builds_send_payload() -> None:
         1,
         [_reminder()],
         ActivityReminderTargets(
-            group_ids=(GROUP_ID,),
-            private_user_ids=(USER_ID,),
+            group_conversations=(GROUP,),
+            private_actors=(USER,),
         ),
         template="{activity_count} 个活动：\n{activity_list}",
     )
 
     assert delivery.should_send
-    assert delivery.message.startswith("1 个活动：")
-    assert FIRE_MANUAL_LINK_MESSAGE not in delivery.message
-    assert delivery.group_ids == (GROUP_ID,)
-    assert delivery.private_user_ids == (USER_ID,)
+    assert isinstance(delivery.message, OutboundMessage)
+    assert isinstance(delivery.message.parts[0], TextPart)
+    assert delivery.message.parts[0].text.startswith("1 个活动：")
+    assert FIRE_MANUAL_LINK_MESSAGE not in delivery.message.parts[0].text
+    assert delivery.group_conversations == (GROUP,)
+    assert delivery.private_actors == (USER,)
     assert delivery.action_name == "activity ending reminder 1h"
 
 
@@ -121,10 +127,13 @@ def test_filter_reminders_before_send_keeps_current_valid_reminders() -> None:
 
 
 def test_filter_reminders_before_send_drops_stale_or_missing_activity() -> None:
-    assert filter_reminders_before_send(
-        [_reminder()],
-        now=dt(2026, 6, 12, 9, 2),
-        current_activities=[],
-        dispatch_tolerance=timedelta(minutes=1),
-        soon_ending_threshold=timedelta(days=7),
-    ) == []
+    assert (
+        filter_reminders_before_send(
+            [_reminder()],
+            now=dt(2026, 6, 12, 9, 2),
+            current_activities=[],
+            dispatch_tolerance=timedelta(minutes=1),
+            soon_ending_threshold=timedelta(days=7),
+        )
+        == []
+    )

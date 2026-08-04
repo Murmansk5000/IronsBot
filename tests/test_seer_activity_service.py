@@ -60,7 +60,7 @@ def _service(
         filter_unsent=lambda reminders: reminders,
         mark_sent=lambda _reminders, _sent_at: None,
         preference_values=tuple,
-        preference_for_target=lambda _target_type, _target_id: None,
+        preference_for_target=lambda _target: None,
         targets=ActivityReminderTargets,
         broadcast=broadcast,
         now=lambda: now,
@@ -69,6 +69,7 @@ def _service(
 
 def test_active_activity_infos_reuses_cache_and_filters_against_now() -> None:
     calls = 0
+
     def load_rows() -> list[Mapping[str, Any]]:
         nonlocal calls
         calls += 1

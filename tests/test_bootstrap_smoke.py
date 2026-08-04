@@ -63,10 +63,10 @@ from ironsbot.app.bootstrap import bootstrap
 state = bootstrap()
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
-assert len(state.plugins) > 0
+assert len(state.contributions) > 0
 assert len(state.matchers.message_matchers) > 0
 assert len(state.matchers.notice_matchers) > 0
-assert len({plugin.id for plugin in state.plugins}) == len(state.plugins)
+assert len({plugin.id for plugin in state.contributions}) == len(state.contributions)
 
 for matcher in (
     *state.matchers.message_matchers,

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.core.messaging import AiIntentAction
-from ironsbot.plugins.ai import team_actions
+from ironsbot.plugins.onebot.ai import team_actions
 from tests.helpers.onebot_events import group_message_event
 
 
