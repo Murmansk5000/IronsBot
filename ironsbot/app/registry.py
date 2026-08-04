@@ -63,7 +63,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     )
     from ironsbot.plugins.messaging.matchers import install as install_messaging
     from ironsbot.plugins.operations.db_sync import install as install_db_sync
-    from ironsbot.plugins.operations.startup import send_startup_notice
     from ironsbot.plugins.operations.status.handlers import (
         install as install_server_status,
     )
@@ -332,21 +331,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     (
                         "bilibili_check",
                         check_bilibili_on_connect,
-                    ),
-                ),
-            ),
-        ),
-        PluginContribution(
-            id="startup_notice",
-            hooks=PluginHooks(
-                first_bot_connect=(
-                    (
-                        "startup_notice",
-                        partial(
-                            send_startup_notice,
-                            service=startup_notice_service,
-                            config=config.operations.startup_notice,
-                        ),
                     ),
                 ),
             ),

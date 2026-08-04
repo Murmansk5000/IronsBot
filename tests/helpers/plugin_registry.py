@@ -43,6 +43,9 @@ from ironsbot.plugins.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
+from ironsbot.plugins.startup_notice import (
+    plugin_contribution as startup_notice_plugin_contribution,
+)
 from ironsbot.plugins.team.resource import (
     plugin_contribution as team_resource_plugin_contribution,
 )
@@ -307,6 +310,10 @@ def build_test_plugin_registry(
             service=resources.activity,
             features=runtime.features,
             scheduler=SchedulerFacade(),
+        ),
+        startup_notice_plugin_contribution(
+            service=resources.startup_notice,
+            config=config.operations.startup_notice,
         ),
         headless_notice_plugin_contribution(
             scheduler=SchedulerFacade(),
