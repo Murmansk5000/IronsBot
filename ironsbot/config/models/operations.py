@@ -37,6 +37,7 @@ class RemoteBuildStepConfig(BaseModel):
     reuse_existing_run: bool = True
     reuse_existing_run_max_age_seconds: float = Field(default=3600.0, gt=0)
     inputs: dict[str, WorkflowInputValue] = Field(default_factory=dict)
+    force_inputs: dict[str, WorkflowInputValue] = Field(default_factory=dict)
 
     @property
     def display_name(self) -> str:
@@ -69,6 +70,7 @@ class RemoteBuildConfig(RemoteBuildStepConfig):
                     self.reuse_existing_run_max_age_seconds
                 ),
                 inputs=dict(self.inputs),
+                force_inputs=dict(self.force_inputs),
             )
         ]
 
