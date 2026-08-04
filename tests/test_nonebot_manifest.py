@@ -31,5 +31,6 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.about",
             "ironsbot.plugins.help",
             "ironsbot.plugins.sendpic",
+            "ironsbot.plugins.messaging.meeting",
         ]
     }

@@ -59,6 +59,14 @@ def test_manifest_sendpic_owns_its_command_descriptors() -> None:
     assert {command.plugin_id for command in contribution.commands} == {"sendpic"}
 
 
+def test_manifest_meeting_owns_its_command_descriptor() -> None:
+    contribution = DEFINITIONS_BY_ID["meeting"]
+
+    assert contribution.features == frozenset({Feature.MEETING})
+    assert contribution.commands
+    assert {command.plugin_id for command in contribution.commands} == {"meeting"}
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -153,6 +161,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "help" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "sendpic" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "messaging" / "meeting.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

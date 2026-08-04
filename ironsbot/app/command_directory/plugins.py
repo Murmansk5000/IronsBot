@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.plugins.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
@@ -15,9 +13,6 @@ from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
 )
-
-if TYPE_CHECKING:
-    from ironsbot.config.models.settings import Settings
 
 
 def bilibili_commands() -> tuple[CommandDescriptor, ...]:
@@ -100,8 +95,6 @@ def bilibili_commands() -> tuple[CommandDescriptor, ...]:
             ),
         ),
     )
-
-
 def activity_commands() -> tuple[CommandDescriptor, ...]:
     return (
         *commands_from_rows(
@@ -226,22 +219,6 @@ def ai_chat_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
                     "直接向 AI 聊天提问",
                     {"access": (CommandAccess(scope="private"),)},
                 ),
-            ),
-        ),
-    )
-
-
-def meeting_commands(config: Settings) -> tuple[CommandDescriptor, ...]:
-    return commands_from_rows(
-        "meeting",
-        "查询",
-        "meeting",
-        (
-            (
-                "meeting",
-                tuple(config.messaging.meeting.commands),
-                "获取配置的腾讯会议信息",
-                {"show_in_poke": True},
             ),
         ),
     )

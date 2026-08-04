@@ -18,7 +18,6 @@ from ironsbot.app.command_directory.plugins import (
     activity_commands,
     ai_chat_commands,
     bilibili_commands,
-    meeting_commands,
     team_resource_commands,
 )
 from ironsbot.app.command_directory.seer import rank_commands, seer_query_commands
@@ -69,7 +68,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     from ironsbot.plugins.help.hint import install as install_help_hint
     from ironsbot.plugins.messaging.blacklist import install as install_blacklist
     from ironsbot.plugins.messaging.matchers import install as install_messaging
-    from ironsbot.plugins.messaging.meeting import install as install_meeting
     from ironsbot.plugins.messaging.red_packet import (
         install as install_red_packet_notice,
     )
@@ -636,24 +634,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
             install=partial(
                 install_help_hint,
                 service=help_hint_service,
-            ),
-        ),
-        PluginContribution(
-            id="meeting",
-            features=frozenset({Feature.MEETING}),
-            help=HelpEntry(
-                name="会议回复",
-                description="按配置回复腾讯会议信息",
-                group="message",
-                order=40,
-            ),
-            commands=meeting_commands(config),
-            install=partial(
-                install_meeting,
-                commands=tuple(config.messaging.meeting.commands),
-                number=config.messaging.meeting.number,
-                template=config.messaging.meeting.template,
-                features=features,
             ),
         ),
         PluginContribution(

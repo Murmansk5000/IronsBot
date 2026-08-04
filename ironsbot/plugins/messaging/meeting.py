@@ -1,15 +1,33 @@
+from functools import partial
+
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.log import logger
 from nonebot.matcher import Matcher
+from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.commands import command_text_matches
-from ironsbot.core.features import FeatureService
+from ironsbot.core.features import Feature, FeatureService
+from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.messaging.meeting import build_meeting_reply
+
+__plugin_meta__ = PluginMetadata(
+    name="会议回复",
+    description="按配置回复腾讯会议信息。",
+    usage="发送已配置的会议口令。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
 
 def install(
@@ -50,3 +68,59 @@ def install(
         block=True,
     )
     matcher.append_handler(handle_meeting_reply)
+
+
+def command_descriptors(commands: tuple[str, ...]) -> tuple[CommandDescriptor, ...]:
+    return (
+        CommandDescriptor(
+            id="meeting",
+            plugin_id="meeting",
+            section="查询",
+            examples=commands,
+            description="获取配置的腾讯会议信息",
+            features_any=("meeting",),
+            show_in_poke=True,
+        ),
+    )
+
+
+def plugin_contribution(
+    *,
+    commands: tuple[str, ...],
+    number: str,
+    template: str,
+    features: FeatureService,
+) -> PluginContribution:
+    """Declare the meeting command and its configured matcher installer."""
+
+    return PluginContribution(
+        id="meeting",
+        features=frozenset({Feature.MEETING}),
+        help=HelpEntry(
+            name="会议回复",
+            description="按配置回复腾讯会议信息",
+            group="message",
+            order=40,
+        ),
+        commands=command_descriptors(commands),
+        install=partial(
+            install,
+            commands=commands,
+            number=number,
+            template=template,
+            features=features,
+        ),
+    )
+
+
+if (context := active_plugin_install_context()) is not None:
+    meeting = context.settings.messaging.meeting
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            commands=tuple(meeting.commands),
+            number=meeting.number,
+            template=meeting.template,
+            features=context.resources.features,
+        ),
+    )

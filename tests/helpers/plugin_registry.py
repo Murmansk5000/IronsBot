@@ -12,6 +12,9 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
 from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
+from ironsbot.plugins.messaging.meeting import (
+    plugin_contribution as meeting_plugin_contribution,
+)
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
@@ -238,6 +241,12 @@ def build_test_plugin_registry(
         ),
         sendpic_plugin_contribution(
             service=resources.sendpic,
+            features=runtime.features,
+        ),
+        meeting_plugin_contribution(
+            commands=tuple(config.messaging.meeting.commands),
+            number=config.messaging.meeting.number,
+            template=config.messaging.meeting.template,
             features=runtime.features,
         ),
     )

@@ -314,9 +314,10 @@ adding fields or side registries to the central bootstrap bridge.
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
 The first verified migrations are `ironsbot.plugins.about`,
-`ironsbot.plugins.help`, and `ironsbot.plugins.sendpic`: the manifest loads
-them directly, and each package supplies its own metadata and contribution.
-`sendpic` also owns the command descriptors for the matchers it installs.
+`ironsbot.plugins.help`, `ironsbot.plugins.sendpic`, and
+`ironsbot.plugins.messaging.meeting`: the manifest loads them directly, and
+each package supplies its own metadata and contribution. `sendpic` and
+`meeting` also own the command descriptors for the matchers they install.
 Every subsequent plugin migration follows that pattern and removes its entry
 from the central bridge in the same change.
 
