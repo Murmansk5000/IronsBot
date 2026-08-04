@@ -40,10 +40,12 @@ The following distinctions are mandatory during the migration:
 
 Current transition items are `PluginDefinition`, the application plugin
 registry, `MatcherRegistry`, and the renderer data lookups listed in the
-Phase 0 guard below. Phase 2 replaces the first three with the standard
-NoneBot manifest, `PluginMetadata`, `PluginContribution`, and a matcher
-factory. Phase 4 removes renderer-owned persistence lookups. No new subsystem
-may be built on those transition items merely because they already exist.
+Phase 0 guard below. They keep the current OneBot application runnable; they
+are not the architecture that new cross-feature work should target. Phase 2
+replaces the first three with the standard NoneBot manifest, `PluginMetadata`,
+`PluginContribution`, `CommandCatalog`, and a matcher factory. Phase 4 removes
+renderer-owned persistence lookups. No new subsystem may be built on those
+transition items merely because they already exist.
 
 ## Engineering Principles
 
@@ -219,10 +221,33 @@ reusable contracts rather than adding feature-local regexes:
 - Configuration-generated commands, selection menus, and fixed commands must
   use the same contract. Passive notices and scheduled jobs are not commands.
 
-The current `PluginDefinition` registry remains the OneBot-era installation
-contract until a tested migration replaces it. Do not create a second parallel
-manifest merely for the future target; when migration begins, the new manifest
-must become the one authority for the responsibilities it owns.
+The current `PluginDefinition` registry remains a frozen OneBot-era bootstrap
+bridge until a tested migration replaces it. It is only the current mechanism
+for loading existing plugins; it is not the long-term owner of command
+semantics, feature policy, help content, or lifecycle design. Do not create a
+second parallel manifest merely for the future target. When migration begins,
+the new manifest must become the one authority for the responsibilities it
+owns, and the corresponding responsibility must be removed from the bridge in
+the same migration.
+
+## Contract Ownership During Migration
+
+Every responsibility has exactly one target authority. A transitional bridge
+may temporarily invoke that authority, but it must not redefine or duplicate
+its data. New work must extend the target authority in this table rather than
+adding fields or side registries to `PluginDefinition`.
+
+| Responsibility | Current bridge | Target authority | Migration completion |
+| --- | --- | --- | --- |
+| Plugin discovery and loading | `app.registry` + `PluginDefinition` | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` | No application plugin registry remains. |
+| Plugin identity and static metadata | `PluginDefinition` fields | `PluginMetadata` in each top-level plugin package | Metadata is loaded without importing application registry code. |
+| Matchers, command contracts, jobs, lifecycle contributions | `MatcherRegistry` + plugin install callback | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
+| Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
+| Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
+
+The target system must not retain an adapter merely to keep the old registry
+alive. A phase may use a short-lived migration tool, but ordinary runtime must
+have one path and one authority after that phase is complete.
 
 ## Data, Rendering, And Storage Direction
 
@@ -442,12 +467,13 @@ the lifecycle state machine.
 Background tasks are created through the lifecycle task owner. Every task has
 a name, an owner, cancellation on shutdown, and observable failure logging.
 
-## Transitional Plugin Contract (Current Implementation)
+## Frozen Plugin Bootstrap Bridge (Current Implementation)
 
-`PluginDefinition` is the current OneBot installation bridge, not the target
-plugin architecture. Existing definitions remain in place until Phase 2 has
-an end-to-end migration with the same behaviour and tests. Do not add fields,
-new feature ownership, or new plugin families to this bridge.
+`PluginDefinition` is a frozen OneBot bootstrap bridge, not a plugin contract
+for new design. Existing definitions remain only until Phase 2 has an
+end-to-end replacement with the same behaviour and tests. Do not add fields,
+new feature ownership, command metadata, help metadata, lifecycle concepts, or
+new plugin families to this bridge.
 
 The current bridge is:
 
@@ -462,13 +488,18 @@ class PluginDefinition:
 ```
 
 `app.registry.build_plugin_registry(...)` currently returns one ordered tuple
-of `PluginDefinition` values. Until it is removed, that tuple remains the
-authority for:
+of `PluginDefinition` values. Until Phase 2 removes it, that tuple is only the
+operational loading source for the existing application. It must not become an
+additional authority over the target contracts:
 
 - plugin installation order;
 - feature ownership;
-- help grouping, ordering, and visibility;
-- lifecycle contributions.
+- legacy help grouping, ordering, and visibility;
+- legacy lifecycle contributions.
+
+Those are not permissions to add a second source of truth. The migration must
+move each responsibility to the target authority in the ownership table and
+then delete it from this bridge.
 
 There is no parallel module manifest, help layout map, feature-to-module map,
 runtime setup string list, or reflective `module:function` lookup.
@@ -517,13 +548,14 @@ reassigns or closes the original owner's conversation.
 
 The Phase 2 replacement uses `[tool.nonebot.plugins]` and
 `nonebot.load_from_toml`, with one real top-level package per plugin. Every
-plugin will expose `PluginMetadata`; plugin-side loading creates a scoped
+plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
 `PluginInstallContext` only while contributions are registered. It is not a
 service locator and must not be read by services or renderers. A
 `PluginContribution` explicitly owns matchers, command contracts, lifecycle
-callbacks, and scheduled jobs. The replacement becomes the only authority;
-the bridge and its reflective discovery are then deleted instead of being kept
-as a compatibility path.
+callbacks, and scheduled jobs. `CommandCatalog` consumes the contributed
+contracts and is the only command-description authority. The replacement
+becomes the only authority; the bridge and its reflective discovery are then
+deleted instead of being kept as a compatibility path.
 
 ## Service Boundaries
 

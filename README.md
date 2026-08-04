@@ -129,10 +129,11 @@ services:
 ## 插件架构
 
 通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展位于
-`ironsbot/custom_plugins`。仓库不会扫描目录或维护平行 manifest；`python -m
-ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
-`ironsbot/app/registry.py` 中唯一的 `PluginDefinition` 注册表安装命令入口、
-外部依赖和生命周期钩子。
+`ironsbot/custom_plugins`。当前版本仍由 `python -m ironsbot` 经过
+`ironsbot/app/bootstrap.py` 启动，并使用
+`ironsbot/app/registry.py` 的 `PluginDefinition` 作为**过渡期启动桥**安装
+既有入口、外部依赖和生命周期钩子。它不是长期插件契约；后续迁移方向、
+责任边界与完成条件以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。
