@@ -5,6 +5,7 @@ import re
 
 from ironsbot.core.commands import normalize_command_text, strip_command_prefix
 from ironsbot.services.seer.rank_catalog import RANK_COMMAND_MAP
+from ironsbot.services.seer.rank_command_text import normalize_rank_command_text
 from ironsbot.services.seer.rank_list_models import (
     BATCH_CACHE_PREFIXES,
     GLOBAL_RANKS,
@@ -33,7 +34,7 @@ def parse_rank_list_command(
     default_limit: int = RANK_LIST_SIZE,
     max_limit: int = RANK_LIST_MAX_SIZE,
 ) -> RankListCommand | None:
-    command = normalize_command_text(text)
+    command = normalize_rank_command_text(text)
     parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
@@ -57,7 +58,7 @@ def parse_rank_list_command(
 
 
 def parse_rank_score_command(text: str) -> RankScoreCommand | None:
-    command = normalize_command_text(text)
+    command = normalize_rank_command_text(text)
     parsed = _match_rank_list_command(command)
     if parsed is None:
         return None
@@ -85,7 +86,7 @@ def parse_rank_score_command(text: str) -> RankScoreCommand | None:
 def parse_rank_player_target_command(text: str) -> RankPlayerTargetCommand | None:
     """Parse a global-rank player target without resolving platform input."""
 
-    command = normalize_command_text(text)
+    command = normalize_rank_command_text(text)
     parsed = _match_rank_list_command(command)
     if parsed is None:
         return None

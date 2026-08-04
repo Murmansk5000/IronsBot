@@ -166,6 +166,10 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         start_rank=20,
         limit=1,
     )
+    assert parse_rank_list_command("皮肤排行榜") == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+    )
     assert parse_rank_list_command("竞技段位榜50名") == RankListCommand(
         kind="global",
         rank_key="竞技段位",
