@@ -67,9 +67,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     )
     from ironsbot.plugins.help.hint import install as install_help_hint
     from ironsbot.plugins.messaging.matchers import install as install_messaging
-    from ironsbot.plugins.messaging.red_packet import (
-        install as install_red_packet_notice,
-    )
     from ironsbot.plugins.operations.db_sync import install as install_db_sync
     from ironsbot.plugins.operations.headless import register_reconnect_jobs
     from ironsbot.plugins.operations.restart import register_restart_jobs
@@ -551,14 +548,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         PluginContribution(
             id="fire_manual_ad",
             features=frozenset({Feature.FIRE_MANUAL_AD}),
-        ),
-        PluginContribution(
-            id="red_packet_notice",
-            install=partial(
-                install_red_packet_notice,
-                config=config.messaging.red_packet_notice,
-                admin_notices=admin_notices,
-            ),
         ),
         PluginContribution(
             id="ai_chat",

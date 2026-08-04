@@ -33,5 +33,6 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.sendpic",
             "ironsbot.plugins.messaging.blacklist",
             "ironsbot.plugins.messaging.meeting",
+            "ironsbot.plugins.messaging.red_packet",
         ]
     }

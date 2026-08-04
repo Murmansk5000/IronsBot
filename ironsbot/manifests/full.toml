@@ -10,4 +10,5 @@ plugin_dirs = []
   "ironsbot.plugins.sendpic",
   "ironsbot.plugins.messaging.blacklist",
   "ironsbot.plugins.messaging.meeting",
+  "ironsbot.plugins.messaging.red_packet",
 ]

@@ -18,6 +18,9 @@ from ironsbot.plugins.messaging.blacklist import (
 from ironsbot.plugins.messaging.meeting import (
     plugin_contribution as meeting_plugin_contribution,
 )
+from ironsbot.plugins.messaging.red_packet import (
+    plugin_contribution as red_packet_plugin_contribution,
+)
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
@@ -253,4 +256,8 @@ def build_test_plugin_registry(
             features=runtime.features,
         ),
         blacklist_plugin_contribution(features=runtime.features),
+        red_packet_plugin_contribution(
+            config=config.messaging.red_packet_notice,
+            admin_notices=runtime.admin_notices,
+        ),
     )
