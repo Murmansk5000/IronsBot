@@ -420,7 +420,7 @@ The first verified migrations are `ironsbot.plugins.onebot.about`,
 `ironsbot.plugins.onebot.operations.db_sync`,
 `ironsbot.plugins.onebot.help` / `.hint`, `ironsbot.plugins.onebot.sendpic`,
 `ironsbot.plugins.onebot.fire_manual_ad`, `ironsbot.plugins.onebot.seer.rank_help`,
-`ironsbot.custom_plugins.pet_config`,
+`ironsbot.plugins.onebot.pet_config`,
 `ironsbot.plugins.onebot.seer.query`,
 `ironsbot.plugins.onebot.lucky_skin_window`, `ironsbot.plugins.onebot.team_audit`,
 `ironsbot.plugins.onebot.team_resource`, and the

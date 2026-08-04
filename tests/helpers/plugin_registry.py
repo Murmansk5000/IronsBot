@@ -5,9 +5,6 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.settings import Settings
-from ironsbot.custom_plugins.pet_config import (
-    plugin_contribution as pet_config_plugin_contribution,
-)
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
@@ -63,6 +60,9 @@ from ironsbot.plugins.onebot.operations.docker_update import (
 )
 from ironsbot.plugins.onebot.operations.server_status import (
     plugin_contribution as server_status_plugin_contribution,
+)
+from ironsbot.plugins.onebot.pet_config import (
+    plugin_contribution as pet_config_plugin_contribution,
 )
 from ironsbot.plugins.onebot.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
