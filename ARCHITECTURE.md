@@ -477,6 +477,39 @@ rank facts, player samples, line-up blobs, AI history, and Bilibili history
 stay isolated when their contention, retention, or size differs. Small QQ
 user/group state belongs to shared state stores with namespaced migrations.
 
+### Renderer Boundary
+
+**Target contract.** Every image renderer follows one direction only:
+
+```text
+repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
+                                      ^                ^              ^
+                                      |                |              |
+                               prepared assets     final cache    HTML/native port
+```
+
+- A repository obtains and detaches domain data while its database session is
+  open. A snapshot is complete enough to survive after that session closes.
+- An integration loads reusable image assets through the shared `SeerImageSource`
+  and `SeerAssetStore`, then combines the snapshot and assets in a pure
+  presenter.
+- A presenter returns an immutable `RenderDocument`. It performs no ORM, SQL,
+  HTTP, filesystem access, current-time lookup, association inference, cache
+  lookup, or transport operation.
+- A renderer receives only the document and an HTML/native render port. Native
+  work passes through the single `RenderCoordinator`; feature modules must not
+  create their own semaphore, task, or timeout policy.
+- The integration owns final-image cache lookup and write. Final-cache keys
+  include the complete rendered snapshot, category, published data version,
+  renderer/template fingerprint, and all asset content versions that affect
+  pixels.
+
+The current Phase 4 transition has this target shape for published pet info,
+type matchup, and peak-pool images. Peak-vote, peak-pet-rank, rank, lineup,
+and other renderer paths remain **transition** work. They may receive narrow
+correctness fixes, but new rendering features must start from the target
+pipeline above instead of copying their older data-loading patterns.
+
 Future data work follows these rules:
 
 - `seerapi` performs data extraction, normalization, schema validation, SWF to
@@ -1091,12 +1124,12 @@ reference for users:
 Phase 0 observations to resolve in later phases are also explicit: the
 current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
 uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
-migration. The completed Phase 4 pet-info path loads a detached snapshot in
-`integrations.seer_data`, while the type-matchup path loads shared image assets
-there; both prepare immutable render documents in pure presenters before HTML
+migration. The Phase 4 pet-info, type-matchup, and peak-pool paths use detached
+snapshots, shared image assets, immutable render documents, and pure HTML
 rendering. Their renderer modules do not perform ORM, SQL, HTTP, filesystem,
-or association inference. Existing Bandit findings with no high-severity result
-remain tracked rather than silently suppressed.
+or association inference. Remaining render paths are explicitly transitional,
+not alternative patterns to copy. Existing Bandit findings with no high-severity
+result remain tracked rather than silently suppressed.
 
 ## Enforcement
 

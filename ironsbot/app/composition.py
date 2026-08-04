@@ -62,6 +62,7 @@ from ironsbot.integrations.onebot.team_resource import (
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
+from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.sendpic import SendpicBackendProvider
@@ -171,7 +172,6 @@ from ironsbot.services.seer.rank_queries import (
 )
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
-from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
