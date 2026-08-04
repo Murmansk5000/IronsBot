@@ -4,10 +4,10 @@ from ironsbot.app.command_directory.operations import (
     server_status_commands,
 )
 from ironsbot.app.command_directory.plugins import (
-    activity_commands,
     bilibili_commands,
 )
 from ironsbot.app.command_directory.seer import seer_query_commands
+from ironsbot.plugins.activity import command_descriptors as activity_commands
 from ironsbot.plugins.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,

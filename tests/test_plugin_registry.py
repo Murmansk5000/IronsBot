@@ -125,6 +125,18 @@ def test_manifest_team_resource_owns_its_commands_and_schedule() -> None:
     ]
 
 
+def test_manifest_activity_owns_its_commands_and_schedule() -> None:
+    contribution = DEFINITIONS_BY_ID["activity"]
+
+    assert contribution.features == frozenset(
+        {Feature.SEER_ACTIVITY_QUERY, Feature.SEER_ACTIVITY_PUSH}
+    )
+    assert {command.plugin_id for command in contribution.commands} == {"activity"}
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "activity_reminder_jobs"
+    ]
+
+
 def test_external_plugin_loading_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     loaded: list[str] = []
 
@@ -171,11 +183,11 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "headless_reconnect_jobs",
         "scheduled_restart_jobs",
         "bilibili_monitor_jobs",
-        "activity_reminder_jobs",
         "local_rank_jobs",
         "rank_page_jobs",
         "lucky_skin_window_schedule",
         "team_resource_jobs",
+        "activity_reminder_jobs",
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
         "scheduler",
@@ -232,6 +244,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "team_audit" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "team" / "resource.py",
+                    ROOT / "ironsbot" / "plugins" / "activity" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

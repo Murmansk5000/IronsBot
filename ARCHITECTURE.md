@@ -314,6 +314,7 @@ adding fields or side registries to the central bootstrap bridge.
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
 The first verified migrations are `ironsbot.plugins.about`,
+`ironsbot.plugins.activity`,
 `ironsbot.plugins.help` / `.hint`, `ironsbot.plugins.sendpic`,
 `ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.seer.rank_help`,
 `ironsbot.plugins.team_audit`, `ironsbot.plugins.team.resource`, and the

@@ -11,6 +11,9 @@ from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
+from ironsbot.plugins.activity import (
+    plugin_contribution as activity_plugin_contribution,
+)
 from ironsbot.plugins.fire_manual_ad import (
     plugin_contribution as fire_manual_ad_plugin_contribution,
 )
@@ -290,5 +293,10 @@ def build_test_plugin_registry(
             features=runtime.features,
             scheduler=SchedulerFacade(),
             service=resources.team_resource,
+        ),
+        activity_plugin_contribution(
+            service=resources.activity,
+            features=runtime.features,
+            scheduler=SchedulerFacade(),
         ),
     )

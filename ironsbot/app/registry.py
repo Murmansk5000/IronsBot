@@ -15,7 +15,6 @@ from ironsbot.app.command_directory.operations import (
     server_status_commands,
 )
 from ironsbot.app.command_directory.plugins import (
-    activity_commands,
     ai_chat_commands,
     bilibili_commands,
 )
@@ -55,7 +54,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     from ironsbot.custom_plugins.pet_config import (
         plugin_definition as pet_config_definition,
     )
-    from ironsbot.plugins.activity import install as install_activity
     from ironsbot.plugins.ai import install as install_ai
     from ironsbot.plugins.ai.intent import install as install_ai_intent
     from ironsbot.plugins.bilibili.auth import send_bili_login_notice
@@ -389,33 +387,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     (
                         "bilibili_check",
                         check_bilibili_on_connect,
-                    ),
-                ),
-            ),
-        ),
-        PluginContribution(
-            id="activity",
-            features=frozenset(
-                {Feature.SEER_ACTIVITY_QUERY, Feature.SEER_ACTIVITY_PUSH}
-            ),
-            help=HelpEntry(
-                name="活动结束提醒",
-                description="读取活动结束时间并提前提醒即将结束的活动",
-                group="message",
-                order=10,
-                notes=("自动提醒时间由 activity.lead_hours 配置。",),
-            ),
-            commands=activity_commands(),
-            install=partial(
-                install_activity,
-                service=activity_service,
-                features=features,
-            ),
-            hooks=PluginHooks(
-                startup=(
-                    (
-                        "activity_reminder_jobs",
-                        partial(activity_service.register_jobs, scheduler),
                     ),
                 ),
             ),
