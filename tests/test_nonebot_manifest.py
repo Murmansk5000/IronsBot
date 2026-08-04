@@ -48,7 +48,7 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
             "ironsbot.plugins.messaging.meeting",
             "ironsbot.plugins.messaging.red_packet",
             "ironsbot.plugins.fire_manual_ad",
-            "ironsbot.plugins.seer.rank_help",
+            "ironsbot.plugins.onebot.seer.rank_help",
             "ironsbot.custom_plugins.pet_config",
             "ironsbot.plugins.onebot.lucky_skin_window",
             "ironsbot.plugins.onebot.team_audit",

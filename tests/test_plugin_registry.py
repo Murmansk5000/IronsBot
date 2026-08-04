@@ -369,6 +369,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     ROOT
                     / "ironsbot"
                     / "plugins"
+                    / "onebot"
                     / "seer"
                     / "rank_help"
                     / "__init__.py",

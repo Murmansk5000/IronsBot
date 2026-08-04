@@ -54,6 +54,9 @@ from ironsbot.plugins.onebot.lucky_skin_window import (
 from ironsbot.plugins.onebot.seer.query import (
     plugin_contribution as seer_query_plugin_contribution,
 )
+from ironsbot.plugins.onebot.seer.rank_help import (
+    plugin_contribution as rank_help_plugin_contribution,
+)
 from ironsbot.plugins.onebot.team_audit import (
     plugin_contribution as team_audit_plugin_contribution,
 )
@@ -74,9 +77,6 @@ from ironsbot.plugins.scheduled_restart import (
 )
 from ironsbot.plugins.scheduler import (
     plugin_contribution as scheduler_plugin_contribution,
-)
-from ironsbot.plugins.seer.rank_help import (
-    plugin_contribution as rank_help_plugin_contribution,
 )
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
 from ironsbot.plugins.startup_notice import (
