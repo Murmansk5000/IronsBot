@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 
 from ironsbot.core.commands import command_text_matches
 from ironsbot.runtime.matchers import (
+    begin_queued_conversation,
     enter_prompt_loop,
     get_prompt_session_manager,
     get_queued_conversation,
@@ -40,6 +41,69 @@ def command_reply_check(commands: tuple[str, ...] | list[str]) -> EventReplyChec
     return _check
 
 
+def _owner_reply_check(
+    owner_event_session_id: str,
+    reply_check: EventReplyCheck,
+) -> Callable[[Event], bool]:
+    def _check(next_event: Event) -> bool:
+        if not isinstance(next_event, MessageEvent):
+            return False
+        if next_event.get_session_id() != owner_event_session_id:
+            return False
+        if is_self_message_event(next_event):
+            return False
+        if getattr(next_event, "reply", None) is not None:
+            return False
+        return reply_check(next_event)
+
+    return _check
+
+
+async def begin_event_reply_conversation(  # noqa: PLR0913
+    matcher: Any,
+    event: MessageEvent,
+    *,
+    namespace: str,
+    handlers: list[Callable[..., object]],
+    pending_reply_check: EventReplyCheck,
+    reply_check: EventReplyCheck,
+    queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
+    group_reply_check: EventReplyCheck | None = None,
+    allow_group_reply_exit: bool = False,
+    parallel: bool = False,
+) -> None:
+    """Reserve direct menu input while an asynchronous first-level command runs."""
+
+    session_id = event_conversation_session_id(namespace, event)
+    owner_event_session_id = event.get_session_id()
+
+    def _group_reply(next_event: Event) -> bool:
+        return (
+            group_reply_check is not None
+            and isinstance(next_event, MessageEvent)
+            and group_reply_check(next_event)
+        )
+
+    await begin_queued_conversation(
+        matcher,
+        handlers,
+        namespace=namespace,
+        pending_reply_check=_owner_reply_check(
+            owner_event_session_id,
+            pending_reply_check,
+        ),
+        queue_reply_check=_owner_reply_check(owner_event_session_id, reply_check),
+        queue_group_reply_check=(
+            _group_reply if group_reply_check is not None else None
+        ),
+        queue_allow_group_reply_exit=allow_group_reply_exit,
+        queue_parallel=parallel,
+        queue_semantic_request_resolver=queue_semantic_request_resolver,
+        queue_event_session_id=owner_event_session_id,
+        queue_conversation_session_id=session_id,
+    )
+
+
 async def enter_event_reply_conversation(  # noqa: PLR0913
     matcher: Any,
     event: MessageEvent,
@@ -65,20 +129,10 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
     prompt_sessions = get_prompt_session_manager(matcher)
     version = prompt_sessions.acquire(session_id)
 
-    def _is_same_conversation_reply(next_event: Event) -> bool:
-        if not isinstance(next_event, MessageEvent):
-            return False
-
-        if next_event.get_session_id() != owner_event_session_id:
-            return False
-
-        if is_self_message_event(next_event):
-            return False
-
-        if getattr(next_event, "reply", None) is not None:
-            return False
-
-        return reply_check(next_event)
+    _is_same_conversation_reply = _owner_reply_check(
+        owner_event_session_id,
+        reply_check,
+    )
 
     prompt_message = (
         None

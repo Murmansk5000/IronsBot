@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -11,6 +13,7 @@ from ironsbot.services.bilibili.targets import BiliPushTargets
 
 if TYPE_CHECKING:
     from ironsbot.core.messaging import MessageTarget
+    from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.delivery import (
         MessageDelivery,
         MessageLimiter,
@@ -29,10 +32,17 @@ BILI_PUSH_ADMIN_HINT = (
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
+# The first send counts toward the total.  Failed rich-media delivery therefore
+# receives at most two retries before a single administrator notice is sent.
+FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
+FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
+FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
+FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
 DynamicSummarizer = Callable[[str, int], Awaitable[str | None]]
 HintAppender = Callable[[Any, str], Any]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +58,7 @@ class BilibiliPushDeliveryService:
     summary_max_chars: int = 250
     summary_use_ai: bool = True
     can_query_history: Callable[[MessageTarget], bool] | None = None
+    admin_notices: AdminNoticeService | None = None
 
     async def send(
         self,
@@ -81,12 +92,100 @@ class BilibiliPushDeliveryService:
         content_message = self.render_content(item, content_override)
         if content_message is None:
             return
-        await self.delivery.broadcast(
+        await self._send_content_with_retries(
+            item,
+            author_mid,
             content_message,
-            group_ids=full_targets.full_group_ids,
-            private_user_ids=full_targets.full_user_ids,
-            action_name=FULL_DYNAMIC_PUSH_ACTION,
-            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            full_targets,
+        )
+
+    async def _send_content_with_retries(
+        self,
+        item: dict[str, Any],
+        author_mid: int,
+        content_message: Any,
+        targets: BiliPushTargets,
+    ) -> None:
+        remaining_group_ids = targets.full_group_ids
+        remaining_user_ids = targets.full_user_ids
+        for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
+            action_name = (
+                FULL_DYNAMIC_PUSH_ACTION
+                if attempt == 1
+                else f"{FULL_DYNAMIC_PUSH_ACTION} retry {attempt}/"
+                f"{FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS}"
+            )
+            summary = await self.delivery.broadcast(
+                content_message,
+                group_ids=remaining_group_ids,
+                private_user_ids=remaining_user_ids,
+                action_name=action_name,
+                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+            )
+            remaining_group_ids = [
+                target.target_id
+                for target in summary.failed
+                if target.target_type == "group"
+            ]
+            remaining_user_ids = [
+                target.target_id
+                for target in summary.failed
+                if target.target_type == "private"
+            ]
+            if not remaining_group_ids and not remaining_user_ids:
+                return
+            if attempt < FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS:
+                logger.warning(
+                    "%s failed for %s group and %s private targets; retrying "
+                    "attempt %s/%s",
+                    FULL_DYNAMIC_PUSH_ACTION,
+                    len(remaining_group_ids),
+                    len(remaining_user_ids),
+                    attempt + 1,
+                    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
+                )
+                await asyncio.sleep(FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS)
+
+        await self._notify_content_delivery_failure(
+            item,
+            author_mid,
+            remaining_group_ids,
+            remaining_user_ids,
+        )
+
+    async def _notify_content_delivery_failure(
+        self,
+        item: dict[str, Any],
+        author_mid: int,
+        failed_group_ids: list[int],
+        failed_user_ids: list[int],
+    ) -> None:
+        if self.admin_notices is None:
+            logger.error(
+                "%s exhausted %s attempts without an admin notice service: "
+                "author=%s dynamic=%s groups=%s users=%s",
+                FULL_DYNAMIC_PUSH_ACTION,
+                FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
+                author_mid,
+                item.get("id_str", "unknown"),
+                failed_group_ids,
+                failed_user_ids,
+            )
+            return
+
+        target_lines = [
+            *(f"群：{group_id}" for group_id in failed_group_ids),
+            *(f"私聊：{user_id}" for user_id in failed_user_ids),
+        ]
+        await self.admin_notices.send_private_to_superusers(
+            "⚠️ B站动态正文/图片发送失败\n"
+            f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次，仍未完成。\n"
+            f"UID：{author_mid}\n"
+            f"动态ID：{item.get('id_str', '未知')}\n"
+            f"失败目标：{'；'.join(target_lines)}\n"
+            "请检查 QQ / OneBot 富媒体上传通道。",
+            subscription_key=FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY,
+            action_name=FULL_DYNAMIC_CONTENT_FAILURE_ACTION,
         )
 
     async def _send_link_only_targets(

@@ -6,7 +6,11 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.core.features import FeatureConfig
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
+from ironsbot.core.messaging import (
+    FIRE_MANUAL_LINK_MESSAGE,
+    MessageTarget,
+    TargetSendSummary,
+)
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import (
@@ -17,6 +21,7 @@ from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
     DYNAMIC_HISTORY_HINT,
+    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliPushDeliveryService,
@@ -36,6 +41,7 @@ if TYPE_CHECKING:
 
 PUB_TS = 1781004683
 EXPECTED_FULL_PUSH_COUNT = 2
+EXPECTED_RETRIED_CONTENT_PUSH_COUNT = 2
 QUERY_ENABLED_GROUP_ID = 1001
 
 
@@ -151,8 +157,13 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
     summaries: list[tuple[str, int]] = []
 
     class RecordingDelivery:
-        async def broadcast(self, message: object, **kwargs: object) -> None:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
             sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
 
     async def summarize(content: str, max_chars: int) -> str:
         summaries.append((content, max_chars))
@@ -209,8 +220,13 @@ async def test_short_full_dynamic_does_not_call_ai(
     sent: list[dict[str, Any]] = []
 
     class RecordingDelivery:
-        async def broadcast(self, message: object, **kwargs: object) -> None:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
             sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
 
     async def unexpected_summary(_content: str, _max_chars: int) -> str:
         raise AssertionError
@@ -245,8 +261,13 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
     sent: list[dict[str, Any]] = []
 
     class RecordingDelivery:
-        async def broadcast(self, message: object, **kwargs: object) -> None:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
             sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
 
     subscriptions = PushUnsubscribeStore(
         tmp_path / "push_unsubscriptions.sqlite"
@@ -303,7 +324,7 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
             group_ids: list[int],
             private_user_ids: list[int],
             **kwargs: object,
-        ) -> None:
+        ) -> TargetSendSummary:
             limiter = kwargs.get("message_limiter")
             for group_id in group_ids:
                 target = MessageTarget("group", group_id)
@@ -315,6 +336,7 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
                 sent.append(
                     limiter(message, target) if callable(limiter) else message
                 )
+            return TargetSendSummary([], [])
 
     runtime = build_test_runtime(
         feature_config=FeatureConfig(group_policy={"1001": ["fire_manual_ad"]})
@@ -344,6 +366,127 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
     assert "传送门：" not in str(sent[1])
     assert FIRE_MANUAL_LINK_MESSAGE not in str(sent[1])
     assert BILI_PUSH_ADMIN_HINT not in str(sent[1])
+
+
+@pytest.mark.asyncio
+async def test_full_dynamic_retries_only_failed_content_targets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, object]] = []
+
+    class PartiallyFailingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            if kwargs["action_name"] == FULL_DYNAMIC_PUSH_ACTION:
+                return TargetSendSummary(
+                    [MessageTarget("group", 1001)],
+                    [MessageTarget("private", 2001)],
+                )
+            return TargetSendSummary([], [])
+
+    async def no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "ironsbot.services.bilibili.delivery.asyncio.sleep",
+        no_sleep,
+    )
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", PartiallyFailingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [2001], []),
+    )
+
+    content_attempts = [
+        entry
+        for entry in sent
+        if str(entry["action_name"]) == FULL_DYNAMIC_PUSH_ACTION
+        or str(entry["action_name"]).startswith(
+            f"{FULL_DYNAMIC_PUSH_ACTION} retry "
+        )
+    ]
+    assert len(content_attempts) == EXPECTED_RETRIED_CONTENT_PUSH_COUNT
+    assert content_attempts[1]["group_ids"] == []
+    assert content_attempts[1]["private_user_ids"] == [2001]
+
+
+@pytest.mark.asyncio
+async def test_full_dynamic_notifies_superusers_once_after_three_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    content_attempts: list[dict[str, object]] = []
+    admin_notices: list[dict[str, object]] = []
+
+    class AlwaysFailingDelivery:
+        async def broadcast(
+            self,
+            _message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            action_name = str(kwargs["action_name"])
+            if action_name == FULL_DYNAMIC_PUSH_ACTION or action_name.startswith(
+                f"{FULL_DYNAMIC_PUSH_ACTION} retry "
+            ):
+                content_attempts.append(kwargs)
+                return TargetSendSummary(
+                    [],
+                    [MessageTarget("group", 1001), MessageTarget("private", 2001)],
+                )
+            return TargetSendSummary([], [])
+
+    class RecordingAdminNotices:
+        async def send_private_to_superusers(
+            self,
+            message: str,
+            **kwargs: object,
+        ) -> None:
+            admin_notices.append({"message": message, **kwargs})
+
+    async def no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "ironsbot.services.bilibili.delivery.asyncio.sleep",
+        no_sleep,
+    )
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", AlwaysFailingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        admin_notices=cast("Any", RecordingAdminNotices()),
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [2001], []),
+    )
+
+    assert len(content_attempts) == FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS
+    assert len(admin_notices) == 1
+    assert f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次" in str(
+        admin_notices[0]["message"]
+    )
+    assert "群：1001" in str(admin_notices[0]["message"])
+    assert "私聊：2001" in str(admin_notices[0]["message"])
 
 
 def test_content_message_for_image_only_dynamic_omits_synthetic_notice() -> None:
