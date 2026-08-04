@@ -100,13 +100,22 @@ def extract_player_query_arg(text_value: str) -> str | None:
     return None
 
 
-def calculate_player_peak_scores(unity_peak: object) -> PlayerPeakScores:
+def calculate_player_peak_scores(
+    unity_peak: object,
+    *,
+    available_modes: frozenset[str] | None = None,
+) -> PlayerPeakScores:
+    modes = (
+        available_modes
+        if available_modes is not None
+        else frozenset(("standard", "wild", "expert"))
+    )
     standard_score = (
         build_peak_rating_score(
             int(getattr(unity_peak, "current_j_rank", 0)),
             int(getattr(unity_peak, "current_j_star", 0)),
         )
-        if int(getattr(unity_peak, "current_j_all", 0)) > 0
+        if "standard" in modes and int(getattr(unity_peak, "current_j_all", 0)) > 0
         else None
     )
     wild_score = (
@@ -114,12 +123,12 @@ def calculate_player_peak_scores(unity_peak: object) -> PlayerPeakScores:
             int(getattr(unity_peak, "current_k_rank", 0)),
             int(getattr(unity_peak, "current_k_star", 0)),
         )
-        if int(getattr(unity_peak, "current_k_all", 0)) > 0
+        if "wild" in modes and int(getattr(unity_peak, "current_k_all", 0)) > 0
         else None
     )
     expert_score = (
         int(getattr(unity_peak, "current_z_score", 0))
-        if int(getattr(unity_peak, "current_z_all", 0)) > 0
+        if "expert" in modes and int(getattr(unity_peak, "current_z_all", 0)) > 0
         else None
     )
     return PlayerPeakScores(
@@ -133,11 +142,18 @@ def validate_player_peak_season(
     unity_peak: UnityPeakInfo,
     candidate_scores: PlayerPeakScores,
     rank_summary: PeakSeasonRankSummary,
+    *,
+    available_modes: frozenset[str] | None = None,
 ) -> ValidatedPlayerPeak:
     scores: dict[str, int | None] = {}
     peak_updates: dict[str, int] = {}
     clear_metric_keys: set[str] = set()
     invalidates_total_matches = False
+    modes = (
+        available_modes
+        if available_modes is not None
+        else frozenset(("standard", "wild", "expert"))
+    )
     mode_specs = (
         (
             "standard",
@@ -176,6 +192,9 @@ def validate_player_peak_season(
         total_field,
         metric_keys,
     ) in mode_specs:
+        if mode not in modes:
+            scores[mode] = None
+            continue
         confirmed_score = (
             int(result.score)
             if result.rank is not None and result.score is not None

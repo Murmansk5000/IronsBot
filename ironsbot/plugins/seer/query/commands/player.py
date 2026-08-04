@@ -296,6 +296,7 @@ async def _send_pending_player_query(
         has_collection=plan.has_collection,
         has_peak=plan.needs_peak_section,
         has_autocard=plan.has_autocard_rank,
+        base_snapshot=pending.base_snapshot,
         on_sent=after_initial_reply_sent,
     )
 

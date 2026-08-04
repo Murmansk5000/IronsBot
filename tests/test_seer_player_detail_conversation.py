@@ -30,6 +30,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY,
     PLAYER_PEAK_KEY,
 )
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
@@ -151,6 +152,58 @@ def test_player_detail_uses_the_shared_shortcut_executor(
     assert all(
         call.args[2] == "⏳ 巅峰之战正在查询，完成后会直接发送结果。"
         for call in send_status.await_args_list
+    )
+
+
+def test_player_detail_reuses_the_base_snapshot(
+    monkeypatch: Any,
+) -> None:
+    service = SimpleNamespace(shortcut=AsyncMock(return_value=QueryReply(text="peak")))
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "_continue_player_detail_conversation",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(player_detail_conversation, "send_event_reply", AsyncMock())
+    event = group_message_event("2")
+    snapshot = PlayerBaseSnapshot(
+        player_id=PLAYER_ID,
+        user_info=SimpleNamespace(nick="already fetched"),
+        more_info=SimpleNamespace(reg_time=1_700_000_000),
+        online_info=None,
+        team_name="snapshot team",
+    )
+    state: dict[str, object] = {
+        PLAYER_ID_KEY: PLAYER_ID,
+        PLAYER_DETAIL_MENU_CONTEXT_KEY: PlayerDetailMenuContext(
+            player_id=PLAYER_ID,
+            has_collection=False,
+            has_peak=True,
+            has_autocard=False,
+            base_snapshot=snapshot,
+        ),
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("2", PLAYER_PEAK_KEY),),
+    }
+
+    asyncio.run(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", service),
+            PlayerDetailExtensionRegistry(),
+            cast("Any", object()),
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    service.shortcut.assert_awaited_once_with(
+        PlayerShortcutCommand(
+            kind="peak",
+            player_id=PLAYER_ID,
+            base_snapshot=snapshot,
+        ),
+        event.user_id,
+        group_id=event.group_id,
     )
 
 
