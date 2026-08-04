@@ -39,7 +39,6 @@ def build_service(
                 player_id=USER_ID,
                 name="test_worker",
                 aliases=(),
-                query_worker=True,
                 password="md5",
             ),
         ),

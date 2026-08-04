@@ -30,8 +30,7 @@ class FakeSchedule:
     feature: str
     name: str = ""
     message: str = "消息"
-    hour: int = 23
-    minute: int = 0
+    time: str = "23:00"
     day_of_week: str | None = None
     enabled: bool = True
 

@@ -280,6 +280,36 @@ def test_parse_rank_player_command_can_resolve_configured_account_alias() -> Non
 
 
 @pytest.mark.parametrize(
+    "alias",
+    (
+        "图鉴榜",
+        "成就榜",
+        "精灵榜",
+        "皮肤榜",
+        "套装榜",
+        "部件榜",
+        "座驾榜",
+        "刻印榜",
+        "群星榜",
+        "竞技榜",
+        "狂野榜",
+        "专家榜",
+    ),
+)
+def test_all_global_rank_families_resolve_player_aliases(alias: str) -> None:
+    expected_player_id = 712345678
+    command = parse_rank_player_command(
+        f"{alias}示例账号",
+        resolve_player_id=lambda reference: (
+            expected_player_id if reference == "示例账号" else None
+        ),
+    )
+
+    assert command is not None
+    assert command.player_id == expected_player_id
+
+
+@pytest.mark.parametrize(
     ("alias", "rank_key"),
     [
         ("图鉴榜", "图鉴积分"),

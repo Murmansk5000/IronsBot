@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Cooperative page scheduling for one player's multi-leaderboard lookup."""
+"""Concurrent page scheduling for one player's independent leaderboards."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, NoReturn, TypeVar
 
 from anyio import create_task_group
 
@@ -63,22 +63,21 @@ class _PageRequest(Generic[T]):
 @dataclass(slots=True)
 class _LookupStats:
     page_requests: int = 0
-    turns: int = 0
     retries: int = 0
 
 
 class PlayerRankPageScheduler:
-    """Serialize online rank pages while rotating fairly between lookup jobs."""
+    """Run independent boards in parallel while keeping every board ordered."""
 
     def __init__(self, config: PlayerRankLookupConfig) -> None:
         self._config = config
-        self._deadline = time.monotonic() + config.total_timeout_seconds
+        self._deadline: float | None = None
         self._queue: deque[_PageRequest[Any]] = deque()
         self._queue_ready = asyncio.Event()
         self._closed = False
         self._stats: dict[str, _LookupStats] = {}
-        self._active_lookup_id: str | None = None
-        self._active_turn_pages = 0
+        self._active_lookup_ids: set[str] = set()
+        self._active_pages = 0
 
     @contextmanager
     def lookup_context(self, lookup_id: str) -> Generator[None, None, None]:
@@ -89,7 +88,7 @@ class PlayerRankPageScheduler:
             _CURRENT_LOOKUP_ID.reset(token)
 
     async def fetch_page(self, title: str, operation: Callable[[], Awaitable[T]]) -> T:
-        if self._closed or time.monotonic() >= self._deadline:
+        if self._closed or self._timed_out():
             raise TimeoutError("玩家榜单查询总时间已到")
         lookup_id = _CURRENT_LOOKUP_ID.get()
         if not lookup_id:
@@ -112,44 +111,64 @@ class PlayerRankPageScheduler:
 
     async def close(self) -> None:
         self._closed = True
-        while self._queue:
-            request = self._queue.popleft()
-            if not request.future.done():
-                request.future.set_exception(TimeoutError("玩家榜单查询已结束"))
+        self._expire_pending_requests()
         self._queue_ready.set()
 
     async def run(self) -> None:
-        """Process page requests for the lifetime of one lookup batch."""
+        """Dispatch every ready board page; the shared worker pool caps I/O."""
 
-        while not self._closed:
-            await self._queue_ready.wait()
-            while self._queue and not self._closed:
-                await self._process_next_request()
-            self._queue_ready.clear()
+        async with create_task_group() as task_group:
+            while not self._closed or self._active_pages:
+                await self._queue_ready.wait()
+                self._queue_ready.clear()
+                if self._closed:
+                    continue
+                if self._timed_out():
+                    self._expire_pending_requests()
+                    continue
+                while request := self._next_ready_request():
+                    self._active_lookup_ids.add(request.lookup_id)
+                    self._active_pages += 1
+                    task_group.start_soon(
+                        self._process_request,
+                        request,
+                        name=(
+                            "player-rank-page:"
+                            f"{request.lookup_id}:{request.title}"
+                        ),
+                    )
 
-    async def _process_next_request(self) -> None:
-        request = self._next_request()
-        if request.future.done():
-            return
-        if time.monotonic() >= self._deadline:
-            request.future.set_exception(TimeoutError("玩家榜单查询总时间已到"))
-            self._expire_pending_requests()
-            return
+    def _next_ready_request(self) -> _PageRequest[Any] | None:
+        for index, request in enumerate(self._queue):
+            if request.lookup_id not in self._active_lookup_ids:
+                del self._queue[index]
+                return request
+        return None
 
-        timeout_token = rank_page_request_timeout.set(self._config.page_timeout_seconds)
+    async def _process_request(self, request: _PageRequest[Any]) -> None:
         stats = self._stats.setdefault(request.lookup_id, _LookupStats())
         stats.page_requests += 1
-        stats.turns += 1
+        if self._deadline is None:
+            self._deadline = time.monotonic() + self._config.total_timeout_seconds
+        timeout_token = rank_page_request_timeout.set(self._config.page_timeout_seconds)
         try:
-            result = await request.operation()
-        except TimeoutError as error:
-            if request.attempt < self._config.page_retry_count:
+            remaining_seconds = self._deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                self._raise_total_timeout()
+            result = await asyncio.wait_for(
+                request.operation(),
+                timeout=remaining_seconds,
+            )
+        except (TimeoutError, asyncio.TimeoutError) as error:
+            timeout_error = TimeoutError(str(error) or "玩家榜单页查询超时")
+            if (
+                request.attempt < self._config.page_retry_count
+                and not self._closed
+                and not self._timed_out()
+            ):
                 request.attempt += 1
                 stats.retries += 1
                 self._queue.append(request)
-                # A slow page never consumes the rest of its board's turn.
-                # Its retry stays at the tail so another board can progress.
-                self._end_active_turn()
                 _LOGGER.info(
                     "player rank page timed out; retry queued: lookup=%s title=%s "
                     "attempt=%s",
@@ -157,8 +176,8 @@ class PlayerRankPageScheduler:
                     request.title,
                     request.attempt,
                 )
-            else:
-                request.future.set_exception(error)
+            elif not request.future.done():
+                request.future.set_exception(timeout_error)
                 _LOGGER.warning(
                     "player rank page timed out permanently: lookup=%s title=%s "
                     "attempts=%s",
@@ -167,42 +186,29 @@ class PlayerRankPageScheduler:
                     request.attempt + 1,
                 )
         except Exception as error:  # noqa: BLE001
-            request.future.set_exception(error)
+            if not request.future.done():
+                request.future.set_exception(error)
         else:
-            request.future.set_result(result)
+            if not request.future.done():
+                request.future.set_result(result)
         finally:
             rank_page_request_timeout.reset(timeout_token)
+            self._active_lookup_ids.discard(request.lookup_id)
+            self._active_pages = max(0, self._active_pages - 1)
+            self._queue_ready.set()
 
-        # Let the lookup continue until it either queues its next page or
-        # completes. This is what makes pages_per_turn a real consecutive
-        # turn instead of merely a queue preference.
-        await asyncio.sleep(0)
+    def _timed_out(self) -> bool:
+        return self._deadline is not None and time.monotonic() >= self._deadline
 
-    def _next_request(self) -> _PageRequest[Any]:
-        if (
-            self._active_lookup_id is not None
-            and self._active_turn_pages < self._config.pages_per_turn
-        ):
-            for index, request in enumerate(self._queue):
-                if request.lookup_id == self._active_lookup_id:
-                    del self._queue[index]
-                    self._active_turn_pages += 1
-                    return request
-
-        request = self._queue.popleft()
-        self._active_lookup_id = request.lookup_id
-        self._active_turn_pages = 1
-        return request
-
-    def _end_active_turn(self) -> None:
-        self._active_lookup_id = None
-        self._active_turn_pages = 0
+    @staticmethod
+    def _raise_total_timeout() -> NoReturn:
+        raise TimeoutError("玩家榜单查询总时间已到")
 
     def _expire_pending_requests(self) -> None:
         while self._queue:
             request = self._queue.popleft()
             if not request.future.done():
-                request.future.set_exception(TimeoutError("玩家榜单查询总时间已到"))
+                request.future.set_exception(TimeoutError("玩家榜单查询已结束"))
 
 
 def current_player_rank_page_scheduler() -> PlayerRankPageScheduler | None:
@@ -213,7 +219,7 @@ async def run_player_rank_lookup_jobs(
     jobs: Sequence[PlayerRankLookupJob],
     config: PlayerRankLookupConfig,
 ) -> dict[str, RankLookupResult]:
-    """Run independent lookups concurrently, sharing one fair page queue."""
+    """Run independent lookups together; each board remains page-ordered."""
 
     if not jobs:
         return {}
@@ -239,14 +245,13 @@ async def run_player_rank_lookup_jobs(
         stats = scheduler.lookup_stats(job.id)
         _LOGGER.info(
             "player rank lookup completed: id=%s title=%s rank=%s failure=%s "
-            "online_pages=%s scheduler_pages=%s turns=%s retries=%s",
+            "online_pages=%s scheduler_pages=%s retries=%s",
             job.id,
             job.title,
             result.rank,
             result.failure,
             result.cost.online_page_fetches,
             stats.page_requests,
-            stats.turns,
             stats.retries,
         )
         return job.id, result

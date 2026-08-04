@@ -67,10 +67,6 @@ class NewContentMenuItemDict(TypedDict):
     friend_skill: SkillDict | None
 
 
-
-
-
-
 _EQUIP_PART_TYPE_NAMES = {
     0: "头部",
     1: "眼部",
@@ -90,80 +86,74 @@ async def render_new_content_menu(  # noqa: PLR0913
     render_html: HtmlTemplateRenderer,
     snapshot: NewContentSnapshot,
     display_categories: tuple[NewContentCategory, ...],
-    root_categories: tuple[NewContentCategory, ...],
-    expanded_categories: frozenset[NewContentCategory],
+    focused_category: NewContentCategory | None,
 ) -> bytes:
     """Render the active categories and items without requiring every asset."""
 
     content_key = _cache_key(
         snapshot,
         display_categories,
-        root_categories,
-        expanded_categories,
+        focused_category,
     )
     if cached := cache.get("new_content", content_key):
         return cached
 
-    root_positions = {
-        category: position for position, category in enumerate(root_categories)
-    }
     rows: list[NewContentMenuItemDict] = []
     item_rows: list[tuple[int, NewContentItem, _ItemDetails]] = []
-    for category in display_categories:
-        code = chr(ord("a") + root_positions[category])
-        items = snapshot.items_for(category)
-        expanded = category in expanded_categories
-        rows.append(
-            {
-                "code": code,
-                "name": CATEGORY_NAMES[category],
-                "description": f"{len(items)} 项",
-                "metadata": "",
-                "side_title": "",
-                "side_description": "",
-                "stats": (),
-                "stats_layout": "inline",
-                "stats_total": "",
-                "type_name": "",
-                "gender_name": "",
-                "type_icon": None,
-                "gender_icon": None,
-                "image_layout": "square",
-                "is_category": True,
-                "expanded": expanded,
-                "image": None,
-                "skill": None,
-                "friend_skill": None,
-            }
-        )
-        if expanded:
-            for index, item in enumerate(items, start=1):
-                row_index = len(rows)
-                details = _item_details(data, autocard, item)
-                rows.append(
-                    {
-                        "code": f"{code}{index}",
-                        "name": item.name,
-                        "description": details.description,
-                        "metadata": details.metadata,
-                        "side_title": details.side_title,
-                        "side_description": details.side_description,
-                        "stats": details.stats,
-                        "stats_layout": details.stats_layout,
-                        "stats_total": details.stats_total,
-                        "type_name": details.type_name,
-                        "gender_name": details.gender_name,
-                        "type_icon": None,
-                        "gender_icon": _gender_icon_data_uri(details.gender_id),
-                        "image_layout": _item_image_layout(item),
-                        "is_category": False,
-                        "expanded": False,
-                        "image": None,
-                        "skill": details.skill,
-                        "friend_skill": details.friend_skill,
-                    }
-                )
-                item_rows.append((row_index, item, details))
+    if focused_category is not None:
+        for index, item in enumerate(snapshot.items_for(focused_category), start=1):
+            details = _item_details(data, autocard, item)
+            rows.append(
+                {
+                    "code": str(index),
+                    "name": item.name,
+                    "description": details.description,
+                    "metadata": details.metadata,
+                    "side_title": details.side_title,
+                    "side_description": details.side_description,
+                    "stats": details.stats,
+                    "stats_layout": details.stats_layout,
+                    "stats_total": details.stats_total,
+                    "type_name": details.type_name,
+                    "gender_name": details.gender_name,
+                    "type_icon": None,
+                    "gender_icon": _gender_icon_data_uri(details.gender_id),
+                    "image_layout": _item_image_layout(item),
+                    "is_category": False,
+                    "expanded": False,
+                    "image": None,
+                    "skill": details.skill,
+                    "friend_skill": details.friend_skill,
+                }
+            )
+            item_rows.append((len(rows) - 1, item, details))
+    else:
+        for index, category in enumerate(display_categories):
+            code = chr(ord("a") + index)
+            items = snapshot.items_for(category)
+            rows.append(
+                {
+                    "code": code,
+                    "name": CATEGORY_NAMES[category],
+                    "description": f"{len(items)} 项",
+                    "metadata": "",
+                    "side_title": "",
+                    "side_description": "",
+                    "stats": (),
+                    "stats_layout": "inline",
+                    "stats_total": "",
+                    "type_name": "",
+                    "gender_name": "",
+                    "type_icon": None,
+                    "gender_icon": None,
+                    "image_layout": "square",
+                    "is_category": True,
+                    "expanded": False,
+                    "image": None,
+                    "skill": None,
+                    "friend_skill": None,
+                }
+            )
 
     image_results = await asyncio.gather(
         *(
@@ -330,16 +320,6 @@ def _skin_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
         )
 
 
-
-
-
-
-
-
-
-
-
-
 def _mintmark_details(data: SeerDataAccess, item: NewContentItem) -> _ItemDetails:
     with data.get(data.mintmark, item.entity_id) as mintmark:
         if mintmark is None:
@@ -476,12 +456,6 @@ def _six_stats(attributes: object) -> tuple[tuple[str, str], ...]:
     )
 
 
-
-
-
-
-
-
 def _two_column_stats(attributes: object) -> tuple[tuple[str, str], ...]:
     """Pair physical/special stats into the right-side 3x2 mintmark table."""
 
@@ -541,15 +515,13 @@ def _gender_name(value: str) -> str:
 def _cache_key(
     snapshot: NewContentSnapshot,
     categories: tuple[NewContentCategory, ...],
-    root_categories: tuple[NewContentCategory, ...],
-    expanded: frozenset[NewContentCategory],
+    focused_category: NewContentCategory | None,
 ) -> str:
     raw = "|".join(
         (
             snapshot.config_version,
             ",".join(categories),
-            ",".join(root_categories),
-            ",".join(sorted(expanded)),
+            focused_category or "root",
         )
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

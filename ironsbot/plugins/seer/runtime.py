@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot import logger
 
+from ironsbot.core.time import daily_time_parts
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
@@ -58,12 +59,13 @@ def register_local_rank_refresh_job(
     service: LocalRankService,
 ) -> None:
     config = service.config
+    hour, minute = daily_time_parts(config.time)
     JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add(
         _scheduled_local_rank_refresh,
         "cron",
         args=[headless, service],
-        hour=config.refresh_hour,
-        minute=config.refresh_minute,
+        hour=hour,
+        minute=minute,
         job_id="local_rank_refresh",
     )
 

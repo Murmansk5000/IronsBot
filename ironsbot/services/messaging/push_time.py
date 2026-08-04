@@ -124,7 +124,7 @@ def _schedule_time_options(
             continue
 
         key = schedule_key(index, task)
-        default_value = f"{task.hour:02d}:{task.minute:02d}"
+        default_value = task.time
         override = store.get_time_preference(
             target_type,
             target_id,

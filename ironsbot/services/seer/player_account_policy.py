@@ -6,12 +6,19 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.core.time import TZ_CN
+from ironsbot.services.seer.player_binding import (
+    player_binding_offer_message,
+    player_binding_replacement_offer_message,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.seer import SeerConfig
-    from ironsbot.services.seer.player_binding import PlayerBindingStore
+    from ironsbot.services.seer.player_binding import (
+        PlayerBindingState,
+        PlayerBindingStore,
+    )
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_service_models import PendingPlayerQuery
 
@@ -31,6 +38,9 @@ class PlayerAccountPolicyMixin:
         qq_user_id: int,
         pending: PendingPlayerQuery,
     ) -> str:
+        current = self._bindings.get(qq_user_id)
+        if current.player_id == pending.player_id:
+            return f"当前已绑定该米米号：{pending.player_id}。"
         change_error = self._binding_change_error(
             qq_user_id,
             target_player_id=pending.player_id,
@@ -48,6 +58,53 @@ class PlayerAccountPolicyMixin:
             logger.exception("保存米米号绑定失败")
             return f"⚠️ 默认米米号设置保存失败：{error}"
         return f"已设置默认米米号：{pending.player_id}。"
+
+    def save_binding_choice(
+        self,
+        qq_user_id: int,
+        pending: PendingPlayerQuery,
+        *,
+        accepted: bool,
+        replacing_existing: bool = False,
+    ) -> str:
+        if accepted:
+            status = self._save_binding(qq_user_id, pending)
+        elif replacing_existing:
+            status = "已保留当前默认米米号。"
+        else:
+            try:
+                self._bindings.decline(qq_user_id=qq_user_id)
+                status = "已跳过默认米米号设置。"
+            except Exception as error:
+                logger.exception("保存米米号绑定选择失败")
+                status = f"⚠️ 默认米米号设置保存失败：{error}"
+        pending.player_message = f"{status}\n\n{pending.player_message}"
+        return status
+
+    def binding_offer(
+        self,
+        pending: PendingPlayerQuery,
+        *,
+        replacement: PlayerBindingState | None = None,
+    ) -> str:
+        if replacement is not None and replacement.player_id is not None:
+            return player_binding_replacement_offer_message(
+                replacement.player_id,
+                replacement.player_nick,
+                pending.player_id,
+                str(pending.user_info.nick),
+            )
+        limits = self._config.player.query_limits
+        return player_binding_offer_message(
+            pending.player_id,
+            str(pending.user_info.nick),
+            unbound_daily_limit=(
+                limits.unbound_daily_limit if limits.enabled else None
+            ),
+            bound_default_daily_limit=(
+                limits.bound_default_daily_limit if limits.enabled else None
+            ),
+        )
 
     def _check_quota(
         self,

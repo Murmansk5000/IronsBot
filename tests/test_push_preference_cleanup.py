@@ -68,8 +68,7 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
                 MessageScheduledAction(
                     id="daily",
                     message="每日提醒",
-                    hour=23,
-                    minute=0,
+                    time="23:00",
                 )
             ],
         ),

@@ -182,7 +182,7 @@ def build_test_plugin_registry(
                     query=_noop_query,
                     bind_player=_noop_query,
                     save_binding_choice=lambda *_args, **_kwargs: "",
-                    binding_offer=lambda _pending: "",
+                    binding_offer=lambda _pending, **_kwargs: "",
                     unbind=lambda _user_id: "",
                     shortcut=_noop_query,
                     format_error=lambda _player_id, error: str(error),

@@ -4,6 +4,11 @@ from typing import Any, cast
 
 import pytest
 
+from ironsbot.services.operations.headless_pool import (
+    HeadlessRequestPriority,
+    current_headless_request_priority,
+    current_headless_workflow,
+)
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestPausedError,
     PlayerRequestProtectionService,
@@ -309,5 +314,39 @@ def test_superuser_waits_for_reconnect_during_pause() -> None:
             == "done"
         )
         assert headless.wait_calls == [60.0]
+
+    asyncio.run(run())
+
+
+def test_superuser_basic_and_detail_use_distinct_workflow_priorities() -> None:
+    async def run() -> None:
+        service, _headless = _service()
+
+        async def priority() -> tuple[HeadlessRequestPriority, int]:
+            workflow = current_headless_workflow()
+            assert workflow is not None
+            return current_headless_request_priority().priority, workflow.sequence
+
+        admin_basic = await service.run(
+            priority,
+            user_id=ADMIN_ID,
+            label="basic",
+            priority=HeadlessRequestPriority.BASIC,
+        )
+        admin_detail = await service.run(
+            priority,
+            user_id=ADMIN_ID,
+            label="detail",
+        )
+        normal_basic = await service.run(
+            priority,
+            user_id=USER_ID,
+            label="normal-basic",
+            priority=HeadlessRequestPriority.BASIC,
+        )
+
+        assert admin_basic == (HeadlessRequestPriority.SUPERUSER_BASIC, 0)
+        assert admin_detail == (HeadlessRequestPriority.SUPERUSER_DETAIL, 1)
+        assert normal_basic == (HeadlessRequestPriority.BASIC, 2)
 
     asyncio.run(run())

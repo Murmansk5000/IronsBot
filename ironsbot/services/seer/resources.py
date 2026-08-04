@@ -33,8 +33,7 @@ class NewContentMenuRenderer(Protocol):
         self,
         snapshot: NewContentSnapshot,
         display_categories: tuple[NewContentCategory, ...],
-        root_categories: tuple[NewContentCategory, ...],
-        expanded_categories: frozenset[NewContentCategory],
+        focused_category: NewContentCategory | None,
     ) -> bytes: ...
 
 
