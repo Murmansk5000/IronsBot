@@ -28,5 +28,6 @@ def test_bundled_nonebot_manifest_declares_local_bootstrap(
         "@local": [
             "ironsbot.plugins.onebot.bootstrap",
             "ironsbot.plugins.about",
+            "ironsbot.plugins.help",
         ]
     }

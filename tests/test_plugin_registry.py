@@ -118,6 +118,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                 if path in {
                     ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
                     ROOT / "ironsbot" / "plugins" / "about" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "help" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

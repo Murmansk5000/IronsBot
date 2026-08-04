@@ -11,7 +11,9 @@ from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.plugins.about import plugin_contribution as about_plugin_contribution
+from ironsbot.plugins.help import plugin_contribution as help_plugin_contribution
 from ironsbot.runtime.commands import CommandCatalog
+from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.seer.player_detail_extensions import (
@@ -212,6 +214,7 @@ def build_test_plugin_registry(
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             push_message_limiter=lambda message, _target: message,
             commands=CommandCatalog(),
+            contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),
             private_extensions=SimpleNamespace(
                 load_plugin_contributions=lambda _runtime: ()
@@ -226,4 +229,10 @@ def build_test_plugin_registry(
             scheduler=SchedulerFacade(),
         ),
         about_plugin_contribution(),
+        help_plugin_contribution(
+            contribution_catalog=resources.contribution_catalog,
+            features=runtime.features,
+            commands=resources.commands,
+            ignored_plugins=tuple(config.features.help.ignored_plugins),
+        ),
     )

@@ -313,10 +313,11 @@ adding fields or side registries to the central bootstrap bridge.
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
-The first verified migration is `ironsbot.plugins.about`: the manifest loads it
-directly, and the package supplies its own metadata and contribution. Every
-subsequent plugin migration follows that pattern and removes its entry from the
-central bridge in the same change.
+The first verified migrations are `ironsbot.plugins.about` and
+`ironsbot.plugins.help`: the manifest loads them directly, and each package
+supplies its own metadata and contribution. Every subsequent plugin migration
+follows that pattern and removes its entry from the central bridge in the same
+change.
 
 The target system must not retain an adapter merely to keep the old registry
 alive. A phase may use a short-lived migration tool, but ordinary runtime must

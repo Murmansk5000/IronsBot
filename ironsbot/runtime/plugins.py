@@ -98,7 +98,31 @@ class PluginContributionError(ValueError):
         )
 
 
+class PluginContributionCatalogError(RuntimeError):
+    @classmethod
+    def already_loaded(cls) -> PluginContributionCatalogError:
+        return cls("plugin contribution catalog is already loaded")
+
+
 OPTIONAL_PRIVATE_FEATURES = frozenset({Feature.PLAYER_LINEUP_PRIVATE})
+
+
+class PluginContributionCatalog:
+    """Read-only view of the contributions frozen by application configuration."""
+
+    def __init__(self) -> None:
+        self._contributions: tuple[PluginContribution, ...] = ()
+        self._loaded = False
+
+    def load(self, contributions: tuple[PluginContribution, ...]) -> None:
+        if self._loaded:
+            raise PluginContributionCatalogError.already_loaded()
+        self._contributions = contributions
+        self._loaded = True
+
+    @property
+    def contributions(self) -> tuple[PluginContribution, ...]:
+        return self._contributions
 
 
 _INSTALL_CONTEXT: ContextVar[PluginInstallContext | None] = ContextVar(

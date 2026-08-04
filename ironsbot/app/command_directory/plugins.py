@@ -231,15 +231,6 @@ def ai_chat_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
     )
 
 
-def help_commands() -> tuple[CommandDescriptor, ...]:
-    return commands_from_rows(
-        "help",
-        "查看",
-        "help",
-        (("help", ("帮助",), "查看当前会话可用功能", {"show_in_poke": True}),),
-    )
-
-
 def meeting_commands(config: Settings) -> tuple[CommandDescriptor, ...]:
     return commands_from_rows(
         "meeting",

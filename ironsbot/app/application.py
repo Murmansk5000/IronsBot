@@ -58,6 +58,7 @@ class Application:
             contributions,
             required_features=self.required_plugin_features,
         )
+        self.resources.contribution_catalog.load(self.contributions)
         self.resources.commands.load(
             self.contributions,
             known_features=self.known_features,

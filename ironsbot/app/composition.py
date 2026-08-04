@@ -86,6 +86,7 @@ from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
+from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.activity.delivery import (
     ActivityReminderDelivery,
     ActivityReminderTargets,
@@ -665,6 +666,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         handoff_store=DockerStartupPreflightStore(),
     )
     command_catalog = CommandCatalog()
+    contribution_catalog = PluginContributionCatalog()
 
     def poke_hint_candidates(
         group_id: int | None,
@@ -712,6 +714,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         docker_update=docker_update,
         startup_notice=StartupNoticeService(admin_notices),
         commands=command_catalog,
+        contribution_catalog=contribution_catalog,
         help_hint=HelpHintService(
             settings.features.help,
             settings.onebot_references,

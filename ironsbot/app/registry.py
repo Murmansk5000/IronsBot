@@ -19,17 +19,12 @@ from ironsbot.app.command_directory.plugins import (
     activity_commands,
     ai_chat_commands,
     bilibili_commands,
-    help_commands,
     meeting_commands,
     team_resource_commands,
 )
 from ironsbot.app.command_directory.seer import rank_commands, seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
-from ironsbot.app.plugin_visibility import (
-    always_help_visible,
-    feature_help_visible,
-    superuser_help_visible,
-)
+from ironsbot.app.plugin_visibility import feature_help_visible, superuser_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.runtime.plugins import (
@@ -217,17 +212,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
             "startup_data_sync",
             "startup data sync notice",
             await data_sync_service.startup(scheduler),
-        )
-
-    def install_help(registry: MatcherRegistry) -> None:
-        from ironsbot.plugins import help as help_plugin
-
-        help_plugin.install(
-            registry,
-            definitions,
-            features,
-            resources.commands,
-            ignored_plugins=tuple(config.features.help.ignored_plugins),
         )
 
     definitions = (
@@ -659,19 +643,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     command.id for command in ai_intent_command_descriptors
                 ),
             ),
-        ),
-        PluginContribution(
-            id="help",
-            features=frozenset({Feature.HELP}),
-            help=HelpEntry(
-                name="帮助",
-                description="按当前群/私聊权限显示可用功能",
-                group="core",
-                order=10,
-                visible=always_help_visible,
-            ),
-            commands=help_commands(),
-            install=install_help,
         ),
         PluginContribution(
             id="help_hint",
