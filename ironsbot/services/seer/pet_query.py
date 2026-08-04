@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
-from seerapi_models import PetORM, PetSkinORM
-
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.query_result import (
     QueryChoice,
@@ -20,12 +18,14 @@ from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolut
 from ironsbot.services.seer.skin_price import load_skin_details
 
 if TYPE_CHECKING:
+    from seerapi_models import PetORM, PetSkinORM
+
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.images import SeerImageSource
 
 logger = logging.getLogger(__name__)
 PET_PROMPT_MAX_ITEMS = 20
-PetInfoRenderer = Callable[[PetORM], Awaitable[bytes]]
+PetInfoRenderer = Callable[[int], Awaitable[bytes]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,10 +88,8 @@ class PetQueryService:
             if not arg.strip() or not pets:
                 return QueryResult()
             if len(pets) == 1:
-                return QueryResult(
-                    reply=await self._build_info_reply(pets[0])
-                )
-            if len(pets) > PET_PROMPT_MAX_ITEMS:
+                selected = (int(pets[0].id), str(pets[0].name))
+            elif len(pets) > PET_PROMPT_MAX_ITEMS:
                 exact = next(
                     (
                         pet
@@ -101,20 +99,21 @@ class PetQueryService:
                     None,
                 )
                 if exact is not None:
+                    selected = (int(exact.id), str(exact.name))
+                else:
                     return QueryResult(
-                        reply=await self._build_info_reply(exact)
+                        message=(
+                            f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
+                        )
                     )
+            else:
                 return QueryResult(
-                    message=(
-                        f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
+                    choices=tuple(
+                        QueryChoice(str(pet.name), str(pet.id), int(pet.id))
+                        for pet in pets
                     )
                 )
-            return QueryResult(
-                choices=tuple(
-                    QueryChoice(str(pet.name), str(pet.id), int(pet.id))
-                    for pet in pets
-                )
-            )
+        return QueryResult(reply=await self._build_info_reply(*selected))
 
     async def select_info(self, pet_id: int) -> QueryResult[object]:
         with self._data.get(self._data.pet, pet_id) as pet:
@@ -125,7 +124,8 @@ class PetQueryService:
                         "（这是一个bug，请反馈给开发者）"
                     )
                 )
-            return QueryResult(reply=await self._build_info_reply(pet))
+            selected = (int(pet.id), str(pet.name))
+        return QueryResult(reply=await self._build_info_reply(*selected))
 
     async def _build_image_reply(
         self,
@@ -173,23 +173,19 @@ class PetQueryService:
             image_error=image_error,
         )
 
-    async def _build_info_reply(self, pet: PetORM) -> QueryReply:
-        pet_id = int(pet.id)
-        pet_name = str(pet.name)
-        resource_id = int(pet.resource_id)
+    async def _build_info_reply(self, pet_id: int, pet_name: str) -> QueryReply:
         logger.info(
-            "rendering pet info image: pet_id=%s pet_name=%s resource_id=%s",
+            "rendering pet info image: pet_id=%s pet_name=%s",
             pet_id,
             pet_name,
-            resource_id,
         )
         with render_crash_marker(
             operation="pet_info_render",
             pet_id=pet_id,
             pet_name=pet_name,
-            resource_id=resource_id,
+            resource_id=pet_id,
         ):
-            image = await self._render_info(pet)
+            image = await self._render_info(pet_id)
         logger.info(
             "rendered pet info image: pet_id=%s pet_name=%s bytes=%s",
             pet_id,

@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
+    from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
     from ironsbot.services.seer.resources import SeerQueryResources
 
@@ -83,6 +84,7 @@ class PrivateExtensionRuntime:
     headless_sessions: HeadlessSessionFactory
     data: SeerDataAccess
     images: SeerImageSource
+    render_cache: RenderCache
     render_html: HtmlTemplateRenderer
     error_message: ErrorMessageLookup
     player_quotas: PlayerQueryQuotaService

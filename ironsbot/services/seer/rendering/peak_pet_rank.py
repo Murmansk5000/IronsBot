@@ -1,25 +1,37 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import asyncio
-from typing import TYPE_CHECKING, TypedDict
+"""Pure presentation and HTML rendering for peak pet-rank documents."""
 
-from ironsbot.core import time
-from ironsbot.services.seer.images import SeerImageSource, to_data_uri
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import TYPE_CHECKING
+
 from ironsbot.services.seer.render_paths import (
     PEAK_PET_RANK_TEMPLATE_PATH,
     SHARED_TEMPLATE_PATH,
 )
 
-from . import HtmlTemplateRenderer
-
 if TYPE_CHECKING:
-    from ironsbot.services.seer.peak import PeakItemData, PeakPetSnapshot
-    from ironsbot.services.seer.rank_models import RankEntry
+    from collections.abc import Mapping
+
+    from ironsbot.services.seer.peak import (
+        PeakPetBanSnapshot,
+        PeakPetPickSnapshot,
+        PeakPetRankRenderInput,
+        PeakPetSnapshot,
+    )
+
+    from . import HtmlTemplateRenderer
+    from .pet_image_assets import PetImageAssets
 
 TABLE_WIDTH = 580
 CONTAINER_PADDING = 20 * 2
 
 
-class PickRankDict(TypedDict):
+@dataclass(frozen=True, slots=True)
+class PeakPetPickDocument:
     rank: int
     pet_id: int
     name: str
@@ -30,7 +42,8 @@ class PickRankDict(TypedDict):
     type_icon: str
 
 
-class BanRankDict(TypedDict):
+@dataclass(frozen=True, slots=True)
+class PeakPetBanDocument:
     rank: int
     pet_id: int
     name: str
@@ -39,104 +52,144 @@ class BanRankDict(TypedDict):
     type_icon: str
 
 
-def _get_pet_info(
-    pet: "PeakPetSnapshot | None",
-    fallback_name: str,
-    head_data_uris: dict[str, str],
-    type_data_uris: dict[int, str],
-) -> tuple[str, str, str]:
-    """返回 (name, head_img, type_icon)"""
-    if pet is not None:
-        return (
-            pet.name,
-            head_data_uris.get(str(pet.resource_id), ""),
-            type_data_uris.get(pet.type_id, ""),
+@dataclass(frozen=True, slots=True)
+class PeakPetRankRenderDocument:
+    title: str
+    pick_ranks: tuple[PeakPetPickDocument, ...]
+    ban_ranks: tuple[PeakPetBanDocument, ...]
+
+    @property
+    def templates(self) -> Mapping[str, object]:
+        return MappingProxyType(
+            {
+                "title": self.title,
+                "pick_ranks": self.pick_ranks,
+                "ban_ranks": self.ban_ranks,
+            },
         )
-    return fallback_name, "", ""
 
 
-async def render_peak_pet_rank(  # noqa: PLR0913
-    images: SeerImageSource,
-    render_html: HtmlTemplateRenderer,
-    title: str,
-    pick_items: "list[PeakItemData]",
-    ban_items: "list[RankEntry]",
-    pet_map: "dict[int, PeakPetSnapshot]",
-) -> bytes:
-    """渲染巅峰精灵榜图片，返回 PNG 图片字节"""
-    unique_rids: dict[str, None] = {}
-    unique_type_ids: dict[int, None] = {}
+def peak_pet_rank_cache_key(input_: PeakPetRankRenderInput) -> str:
+    """Fingerprint every domain field that changes a pet-rank image."""
+    values = (
+        input_.title,
+        tuple((item.id, item.count, item.win) for item in input_.pick_items),
+        tuple((item.id, item.name, item.score) for item in input_.ban_items),
+        tuple(
+            (pet.id, pet.name, pet.resource_id, pet.type_id)
+            for pet in input_.pets
+        ),
+    )
+    return hashlib.sha256(repr(values).encode()).hexdigest()
 
-    all_ids = {item.id for item in pick_items} | {item.id for item in ban_items}
-    for pet_id in all_ids:
-        pet = pet_map.get(pet_id)
-        if pet is not None:
-            unique_rids.setdefault(str(pet.resource_id), None)
-            unique_type_ids.setdefault(pet.type_id, None)
 
-    rid_list = list(unique_rids)
-    type_id_list = list(unique_type_ids)
-
-    results = await asyncio.gather(
-        *(images.fetch("pet_head", rid) for rid in rid_list),
-        *(images.fetch("element_type", str(tid)) for tid in type_id_list),
+def present_peak_pet_rank(
+    input_: PeakPetRankRenderInput,
+    assets: PetImageAssets,
+) -> PeakPetRankRenderDocument:
+    """Prepare a deterministic pet-rank document without I/O or clock access."""
+    pet_map = {pet.id: pet for pet in input_.pets}
+    head_icons = assets.pet_head_by_resource_id
+    type_icons = assets.type_icon_by_id
+    return PeakPetRankRenderDocument(
+        title=input_.title,
+        pick_ranks=tuple(
+            _present_pick_rank(
+                rank=index,
+                item=item,
+                pet=pet_map.get(item.id),
+                head_icons=head_icons,
+                type_icons=type_icons,
+            )
+            for index, item in enumerate(input_.pick_items, 1)
+        ),
+        ban_ranks=tuple(
+            _present_ban_rank(
+                rank=index,
+                item=item,
+                pet=pet_map.get(item.id),
+                head_icons=head_icons,
+                type_icons=type_icons,
+            )
+            for index, item in enumerate(input_.ban_items, 1)
+        ),
     )
 
-    head_bytes_list = results[: len(rid_list)]
-    type_bytes_list = results[len(rid_list) :]
 
-    head_data_uris: dict[str, str] = {
-        rid: to_data_uri(data)
-        for rid, data in zip(rid_list, head_bytes_list, strict=True)
-    }
-    type_data_uris: dict[int, str] = {
-        tid: to_data_uri(data)
-        for tid, data in zip(type_id_list, type_bytes_list, strict=True)
-    }
+def _present_pick_rank(
+    *,
+    rank: int,
+    item: PeakPetPickSnapshot,
+    pet: PeakPetSnapshot | None,
+    head_icons: Mapping[int, str],
+    type_icons: Mapping[int, str],
+) -> PeakPetPickDocument:
+    name, head_img, type_icon = _pet_display(
+        pet,
+        str(item.id),
+        head_icons,
+        type_icons,
+    )
+    return PeakPetPickDocument(
+        rank=rank,
+        pet_id=item.id,
+        name=name,
+        count=item.count,
+        win=item.win,
+        win_rate=item.win_rate,
+        head_img=head_img,
+        type_icon=type_icon,
+    )
 
-    pick_ranks: list[PickRankDict] = []
-    for i, item in enumerate(pick_items, 1):
-        name, head_img, type_icon = _get_pet_info(
-            pet_map.get(item.id), str(item.id), head_data_uris, type_data_uris
-        )
-        pick_ranks.append(
-            {
-                "rank": i,
-                "pet_id": item.id,
-                "name": name,
-                "count": item.count,
-                "win": item.win,
-                "win_rate": item.win_rate,
-                "head_img": head_img,
-                "type_icon": type_icon,
-            }
-        )
 
-    ban_ranks: list[BanRankDict] = []
-    for i, item in enumerate(ban_items, 1):
-        name, head_img, type_icon = _get_pet_info(
-            pet_map.get(item.id), item.nick, head_data_uris, type_data_uris
-        )
-        ban_ranks.append(
-            {
-                "rank": i,
-                "pet_id": item.id,
-                "name": name,
-                "score": item.score,
-                "head_img": head_img,
-                "type_icon": type_icon,
-            }
-        )
+def _present_ban_rank(
+    *,
+    rank: int,
+    item: PeakPetBanSnapshot,
+    pet: PeakPetSnapshot | None,
+    head_icons: Mapping[int, str],
+    type_icons: Mapping[int, str],
+) -> PeakPetBanDocument:
+    name, head_img, type_icon = _pet_display(
+        pet,
+        item.name,
+        head_icons,
+        type_icons,
+    )
+    return PeakPetBanDocument(
+        rank=rank,
+        pet_id=item.id,
+        name=name,
+        score=item.score,
+        head_img=head_img,
+        type_icon=type_icon,
+    )
 
+
+def _pet_display(
+    pet: PeakPetSnapshot | None,
+    fallback_name: str,
+    head_icons: Mapping[int, str],
+    type_icons: Mapping[int, str],
+) -> tuple[str, str, str]:
+    if pet is None:
+        return fallback_name, "", ""
+    return (
+        pet.name,
+        head_icons[pet.resource_id],
+        type_icons[pet.type_id],
+    )
+
+
+async def render_peak_pet_rank_document(
+    render_html: HtmlTemplateRenderer,
+    document: PeakPetRankRenderDocument,
+) -> bytes:
+    """Render one prepared pet-rank document without loading data or assets."""
     return await render_html(
         template_path=[PEAK_PET_RANK_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         template_name="template.html.j2",
-        templates={
-            "title": title,
-            "pick_ranks": pick_ranks,
-            "ban_ranks": ban_ranks,
-            "generated_at": time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M"),
-        },
+        templates=document.templates,
         max_width=TABLE_WIDTH + CONTAINER_PADDING + 20,
         allow_refit=False,
     )

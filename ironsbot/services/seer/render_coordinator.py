@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+"""Serialize bounded native HTML rendering behind one application port."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,15 +15,16 @@ if TYPE_CHECKING:
 
 
 @dataclass(slots=True)
-class RenderScheduler:
-    """Bound concurrent HTMLKit renders without blocking unrelated work."""
+class RenderCoordinator:
+    """Run native HTML rendering one at a time with an explicit deadline."""
 
     renderer: HtmlTemplateRenderer
-    max_concurrent: int
-    _semaphore: asyncio.Semaphore = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._semaphore = asyncio.Semaphore(self.max_concurrent)
+    timeout_seconds: float
+    _semaphore: asyncio.Semaphore = field(
+        default_factory=lambda: asyncio.Semaphore(1),
+        init=False,
+        repr=False,
+    )
 
     async def render(
         self,
@@ -33,10 +36,13 @@ class RenderScheduler:
         allow_refit: bool = True,
     ) -> bytes:
         async with self._semaphore:
-            return await self.renderer(
-                template_path,
-                template_name,
-                templates,
-                max_width=max_width,
-                allow_refit=allow_refit,
+            return await asyncio.wait_for(
+                self.renderer(
+                    template_path,
+                    template_name,
+                    templates,
+                    max_width=max_width,
+                    allow_refit=allow_refit,
+                ),
+                timeout=self.timeout_seconds,
             )

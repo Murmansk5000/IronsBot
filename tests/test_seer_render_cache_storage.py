@@ -16,7 +16,7 @@ def _test_cache(
     return FileRenderCache(
         cache_dir,
         max_size_bytes,
-        db_version_getter=lambda: version,
+        version_getter=lambda: version,
     )
 
 
@@ -27,10 +27,8 @@ def test_render_cache_get_and_put_are_scoped_by_db_version(tmp_path: Path) -> No
 
     assert cache.get("pet_info", "25") == b"png-data"
     assert cache.get("pet_info", "26") is None
-    cache_files = list(tmp_path.iterdir())
-    assert len(cache_files) == 1
-    assert cache_files[0].name.startswith("pet_info_25_")
-    assert cache_files[0].name.endswith(".png")
+    assert len(list(tmp_path.glob("*.bin"))) == 1
+    assert len(list(tmp_path.glob("*.json"))) == 1
 
 
 def test_render_cache_skips_unknown_db_version(tmp_path: Path) -> None:
@@ -43,16 +41,21 @@ def test_render_cache_skips_unknown_db_version(tmp_path: Path) -> None:
     assert not cache_dir.exists()
 
 
-def test_render_cache_cleanup_removes_oldest_files_first(tmp_path: Path) -> None:
-    old_file = tmp_path / "old.png"
-    new_file = tmp_path / "new.png"
-    old_file.write_bytes(b"old")
-    new_file.write_bytes(b"new")
-    os.utime(old_file, (1, 1))
-    os.utime(new_file, (2, 2))
+def test_render_cache_cleanup_removes_least_recently_used_entry(tmp_path: Path) -> None:
     cache = _test_cache(tmp_path, max_size_bytes=5)
 
-    cache.cleanup()
+    cache.put("pet_info", "old", b"old")
+    old_asset = next(tmp_path.glob("*.bin"))
+    os.utime(old_asset, (1, 1))
+    cache.put("pet_info", "new", b"new")
 
-    assert not old_file.exists()
-    assert new_file.exists()
+    assert cache.get("pet_info", "old") is None
+    assert cache.get("pet_info", "new") == b"new"
+
+
+def test_render_cache_discards_corrupt_entry(tmp_path: Path) -> None:
+    cache = _test_cache(tmp_path)
+    cache.put("pet_info", "25", b"png-data")
+    next(tmp_path.glob("*.bin")).write_bytes(b"corrupt")
+
+    assert cache.get("pet_info", "25") is None
