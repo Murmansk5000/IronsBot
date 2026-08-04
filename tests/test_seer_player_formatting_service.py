@@ -239,6 +239,64 @@ def test_format_peak_does_not_report_unqueried_mode_as_unranked() -> None:
     assert "赛季榜未上榜" not in expert_line
 
 
+def test_format_peak_keeps_successful_mode_when_another_mode_times_out() -> None:
+    peak = UnityPeak(
+        current_z_score=1209,
+        history_z_score=1437,
+        current_z_win=8,
+        current_z_all=9,
+    )
+    summary = PeakSeasonRankSummary.empty()
+    summary.expert.rank = 143
+    summary.expert.score = 1209
+    summary.expert.queried = True
+
+    message = format_compact_peak_section(
+        _as_any(peak),
+        summary,
+        _as_any(_LocalSummary()),
+        available_modes=frozenset(("expert",)),
+        mode_errors={"standard": "查询超时", "wild": "查询未完成"},
+    )
+
+    standard_line = next(
+        line for line in message.splitlines() if line.startswith("竞技：")
+    )
+    wild_line = next(
+        line for line in message.splitlines() if line.startswith("狂野：")
+    )
+    expert_line = next(
+        line for line in message.splitlines() if line.startswith("专家：")
+    )
+    assert "当前暂未获取（查询超时）" in standard_line
+    assert "历史暂未获取（查询超时）" in standard_line
+    assert "学徒0星" not in standard_line
+    assert "当前暂未获取（查询未完成）" in wild_line
+    assert "专家：1209分" in expert_line
+    assert "历史1437分" in expert_line
+    assert "赛季榜第143" in expert_line
+
+
+def test_format_peak_does_not_turn_a_first_packet_timeout_into_zero_values() -> None:
+    message = format_compact_peak_section(
+        _as_any(UnityPeak()),
+        PeakSeasonRankSummary.empty(),
+        _as_any(_LocalSummary()),
+        available_modes=frozenset(),
+        mode_errors={
+            "standard": "查询超时",
+            "wild": "查询未完成",
+            "expert": "查询未完成",
+        },
+    )
+
+    assert "竞技：当前暂未获取（查询超时）" in message
+    assert "狂野：当前暂未获取（查询未完成）" in message
+    assert "专家：当前暂未获取（查询未完成）" in message
+    assert "学徒0星" not in message
+    assert "历史0分" not in message
+
+
 def test_format_autocard_rank_starts_with_fetch_time() -> None:
     message = format_autocard_rank_info(
         RankLookupResult(
