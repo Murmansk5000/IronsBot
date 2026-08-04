@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import nonebot
 
-from ironsbot.app.composition import Application, build_application
+from ironsbot.app.composition import build_application
+from ironsbot.app.nonebot_manifest import nonebot_manifest_path
 from ironsbot.config.loader import load_settings
+from ironsbot.runtime.plugins import scoped_plugin_install_context
+
+if TYPE_CHECKING:
+    from ironsbot.app.application import Application
 
 
 def configure_third_party_logging() -> None:
@@ -30,5 +36,12 @@ def bootstrap() -> Application:
         apscheduler_autostart=False,
     )
     application = build_application(settings)
+    with scoped_plugin_install_context(
+        settings=settings,
+        resources=application.resources,
+        scheduler=application.scheduler,
+    ) as context:
+        nonebot.load_from_toml(str(nonebot_manifest_path(settings.bot.plugin_manifest)))
+    application.configure(context.contributions)
     application.install()
     return application

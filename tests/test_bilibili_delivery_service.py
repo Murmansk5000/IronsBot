@@ -9,7 +9,7 @@ from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.bilibili.delivery import (
+from ironsbot.plugins.onebot.bilibili.delivery import (
     build_dynamic_content_message,
     build_dynamic_link_message,
 )

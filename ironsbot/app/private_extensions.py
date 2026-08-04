@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.cache_paths import CachePaths
-    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.runtime.plugins import PluginContribution
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.operations.docker_models import DockerImageArchive
     from ironsbot.services.operations.headless import HeadlessService
@@ -156,19 +156,19 @@ class PrivateExtensionCatalog:
     def extension_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._entries))
 
-    def load_plugin_definitions(
+    def load_plugin_contributions(
         self,
         runtime: PrivateExtensionRuntime,
-    ) -> tuple[PluginDefinition, ...]:
-        """Load definitions from the installed, validated extension package."""
+    ) -> tuple[PluginContribution, ...]:
+        """Load contributions from the installed, validated extension package."""
 
-        definitions: list[PluginDefinition] = []
+        contributions: list[PluginContribution] = []
         for entry in self._entries.values():
             factory = self._load_factory(entry)
             if factory is None:
                 continue
             try:
-                definition = factory(runtime)
+                contribution = factory(runtime)
             except Exception:  # noqa: BLE001 - optional code must not stop boot
                 logger.warning(
                     "private extension factory failed: id=%s",
@@ -176,16 +176,16 @@ class PrivateExtensionCatalog:
                     exc_info=True,
                 )
                 continue
-            from ironsbot.runtime.plugins import PluginDefinition
+            from ironsbot.runtime.plugins import PluginContribution
 
-            if not isinstance(definition, PluginDefinition):
+            if not isinstance(contribution, PluginContribution):
                 logger.warning(
                     "private extension factory returned an invalid plugin: id=%s",
                     entry.id,
                 )
                 continue
-            definitions.append(definition)
-        return tuple(definitions)
+            contributions.append(contribution)
+        return tuple(contributions)
 
     def _load_factory(
         self,

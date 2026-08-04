@@ -1,61 +1,100 @@
 # SPDX-License-Identifier: MIT
+"""Platform-neutral operational notices for configured administrators."""
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, TypeAlias
 
-from ironsbot.core.messaging import TargetSendSummary
+from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.platform import ActorRef, ConversationRef
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
 
-    from .delivery import MessageDelivery
-
 ADMIN_NOTICE_FEATURE = "admin_notice"
 logger = logging.getLogger(__name__)
+
+AdminNoticeRecipient: TypeAlias = ActorRef | ConversationRef
+
+
+@dataclass(frozen=True, slots=True)
+class AdminNoticeSendSummary:
+    succeeded: tuple[AdminNoticeRecipient, ...]
+    failed: tuple[AdminNoticeRecipient, ...]
+
+
+class AdminNoticeSender(Protocol):
+    """Adapter-owned delivery port preserving each platform's push semantics."""
+
+    async def send_admin_notice(  # noqa: PLR0913
+        self,
+        message: OutboundMessage,
+        *,
+        private_actors: tuple[ActorRef, ...],
+        group_conversations: tuple[ConversationRef, ...],
+        subscription_key: str,
+        action_name: str,
+        interval_seconds: float,
+    ) -> AdminNoticeSendSummary: ...
 
 
 @dataclass(frozen=True, slots=True)
 class AdminNoticeTargets:
-    private_user_ids: list[int]
-    group_ids: list[int]
+    private_actors: tuple[ActorRef, ...]
+    group_conversations: tuple[ConversationRef, ...]
 
     @property
     def is_empty(self) -> bool:
-        return not self.private_user_ids and not self.group_ids
+        return not self.private_actors and not self.group_conversations
 
 
 @dataclass(frozen=True, slots=True)
 class AdminNoticeService:
     features: FeatureService
-    delivery: MessageDelivery
+    sender: AdminNoticeSender
 
     def targets(self) -> AdminNoticeTargets:
         return AdminNoticeTargets(
-            private_user_ids=sorted(self.features.superuser_ids),
-            group_ids=self.features.groups_for_feature(ADMIN_NOTICE_FEATURE),
+            private_actors=tuple(self.features.superuser_actors()),
+            group_conversations=tuple(
+                self.features.conversations_for_feature(ADMIN_NOTICE_FEATURE)
+            ),
         )
 
     async def send(
         self,
-        message: Any,
+        text: str,
         *,
         subscription_key: str,
         action_name: str,
-        bot: Any | None = None,
         interval_seconds: float = 1.5,
-    ) -> TargetSendSummary:
+    ) -> AdminNoticeSendSummary:
+        return await self.send_message(
+            OutboundMessage((TextPart(text),)),
+            subscription_key=subscription_key,
+            action_name=action_name,
+            interval_seconds=interval_seconds,
+        )
+
+    async def send_message(
+        self,
+        message: OutboundMessage,
+        *,
+        subscription_key: str,
+        action_name: str,
+        interval_seconds: float = 1.5,
+    ) -> AdminNoticeSendSummary:
         targets = self.targets()
         if targets.is_empty:
-            logger.warning(f"{action_name} has no admin notice targets")
-            return TargetSendSummary([], [])
+            logger.warning("%s has no admin notice targets", action_name)
+            return AdminNoticeSendSummary((), ())
 
-        return await self.delivery.broadcast(
+        return await self.sender.send_admin_notice(
             message,
-            private_user_ids=targets.private_user_ids,
-            group_ids=targets.group_ids,
-            bot=bot,
+            private_actors=targets.private_actors,
+            group_conversations=targets.group_conversations,
             action_name=action_name,
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,
@@ -63,25 +102,23 @@ class AdminNoticeService:
 
     async def send_private_to_superusers(
         self,
-        message: Any,
+        text: str,
         *,
         subscription_key: str,
         action_name: str,
-        bot: Any | None = None,
         interval_seconds: float = 1.5,
-    ) -> TargetSendSummary:
+    ) -> AdminNoticeSendSummary:
         """Send an operational notice only to configured superusers in private."""
 
-        private_user_ids = sorted(self.features.superuser_ids)
-        if not private_user_ids:
-            logger.warning(f"{action_name} has no superuser private targets")
-            return TargetSendSummary([], [])
+        private_actors = tuple(self.features.superuser_actors())
+        if not private_actors:
+            logger.warning("%s has no superuser private targets", action_name)
+            return AdminNoticeSendSummary((), ())
 
-        return await self.delivery.broadcast(
-            message,
-            private_user_ids=private_user_ids,
-            group_ids=(),
-            bot=bot,
+        return await self.sender.send_admin_notice(
+            OutboundMessage((TextPart(text),)),
+            private_actors=private_actors,
+            group_conversations=(),
             action_name=action_name,
             interval_seconds=interval_seconds,
             subscription_key=subscription_key,

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.seer import SeerConfig
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.seer.player_binding import (
         PlayerBindingState,
         PlayerBindingStore,
@@ -35,21 +36,21 @@ class PlayerAccountPolicyMixin:
 
     def _save_binding(
         self,
-        qq_user_id: int,
+        actor: ActorRef,
         pending: PendingPlayerQuery,
     ) -> str:
-        current = self._bindings.get(qq_user_id)
+        current = self._bindings.get(actor)
         if current.player_id == pending.player_id:
             return f"当前已绑定该米米号：{pending.player_id}。"
         change_error = self._binding_change_error(
-            qq_user_id,
+            actor,
             target_player_id=pending.player_id,
         )
         if change_error:
             return change_error
         try:
             self._bindings.bind(
-                qq_user_id=qq_user_id,
+                actor=actor,
                 player_id=pending.player_id,
                 player_nick=str(pending.user_info.nick),
                 changed_at=self._now(),
@@ -61,19 +62,19 @@ class PlayerAccountPolicyMixin:
 
     def save_binding_choice(
         self,
-        qq_user_id: int,
+        actor: ActorRef,
         pending: PendingPlayerQuery,
         *,
         accepted: bool,
         replacing_existing: bool = False,
     ) -> str:
         if accepted:
-            status = self._save_binding(qq_user_id, pending)
+            status = self._save_binding(actor, pending)
         elif replacing_existing:
             status = "已保留当前默认米米号。"
         else:
             try:
-                self._bindings.decline(qq_user_id=qq_user_id)
+                self._bindings.decline(actor=actor)
                 status = "已跳过默认米米号设置。"
             except Exception as error:
                 logger.exception("保存米米号绑定选择失败")
@@ -109,14 +110,14 @@ class PlayerAccountPolicyMixin:
     def _check_quota(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> str:
         if self._quotas is None:
             return ""
         decision = self._quotas.check(
-            qq_user_id=qq_user_id,
+            actor=actor,
             player_id=player_id,
             action_key=action_key,
         )
@@ -125,14 +126,14 @@ class PlayerAccountPolicyMixin:
     def _record_quota(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> str:
         if self._quotas is None:
             return ""
         decision = self._quotas.consume(
-            qq_user_id=qq_user_id,
+            actor=actor,
             player_id=player_id,
             action_key=action_key,
         )
@@ -141,12 +142,12 @@ class PlayerAccountPolicyMixin:
     def _record_successful_quota(
         self,
         *,
-        qq_user_id: int,
+        actor: ActorRef,
         player_id: int,
         action_key: str,
     ) -> None:
         quota_message = self._record_quota(
-            qq_user_id=qq_user_id,
+            actor=actor,
             player_id=player_id,
             action_key=action_key,
         )
@@ -154,18 +155,18 @@ class PlayerAccountPolicyMixin:
             logger.warning(
                 "player query quota changed before successful record: "
                 "user=%s player=%s action=%s",
-                qq_user_id,
+                actor.id,
                 player_id,
                 action_key,
             )
 
     def _binding_change_error(
         self,
-        qq_user_id: int,
+        actor: ActorRef,
         *,
         target_player_id: int | None = None,
     ) -> str:
-        binding = self._bindings.get(qq_user_id)
+        binding = self._bindings.get(actor)
         if target_player_id is not None and binding.player_id == target_player_id:
             return ""
         changed_at = binding.last_changed_at

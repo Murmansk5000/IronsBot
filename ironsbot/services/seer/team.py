@@ -16,6 +16,7 @@ from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamQueryConfig
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.team.resource import TeamResourceService
@@ -24,8 +25,8 @@ MAX_TEAM_QUERY_IDS = 3
 
 @dataclass(frozen=True, slots=True)
 class TeamQueryActor:
-    user_id: int
-    group_id: int | None
+    actor: ActorRef
+    conversation: ConversationRef | None
     can_manage: bool
 
 
@@ -60,10 +61,7 @@ class SeerTeamQueryService:
                 messages.append(TEAM_ID_ERROR_MESSAGE)
                 continue
             try:
-                message, team_info = await self._query_one(
-                    team_id,
-                    group_id=actor.group_id,
-                )
+                message, team_info = await self._query_one(team_id)
             except (NotLoggedInError, DisconnectedError) as error:
                 await self._headless.mark_unavailable(
                     str(error),
@@ -96,15 +94,12 @@ class SeerTeamQueryService:
     async def _query_one(
         self,
         team_id: int,
-        *,
-        group_id: int | None,
     ) -> tuple[str, Any]:
         game = self._headless.get_game()
         with game.operations.track(
             "战队查询",
             f"战队 {team_id}",
             source="战队查询",
-            group_id=group_id,
         ):
             team_info = await asyncio.wait_for(
                 game.get_team_info(team_id),
@@ -124,11 +119,11 @@ class SeerTeamQueryService:
         actor: TeamQueryActor,
         team_info: Any,
     ) -> str | None:
-        if actor.group_id is None:
+        if actor.conversation is None or actor.conversation.kind != "group":
             return None
         return self._team_resource.offer_subscription(
-            group_id=actor.group_id,
-            user_id=actor.user_id,
+            conversation=actor.conversation,
+            actor=actor.actor,
             team_id=int(team_info.team_id),
             team_name=str(team_info.name or ""),
             can_manage=actor.can_manage,

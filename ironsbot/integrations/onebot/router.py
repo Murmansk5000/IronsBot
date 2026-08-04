@@ -8,9 +8,11 @@ from nonebot import get_bots
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
+from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ConversationRef, Platform
+
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import BotRoutingConfig
-    from ironsbot.core.messaging import MessageTarget
     from ironsbot.core.onebot_references import OneBotReferenceResolver
 
 
@@ -100,3 +102,20 @@ class BotRouter:
                 default_bot_id,
             )
         return next(iter(connected.values()), None)
+
+    def for_conversation(self, conversation: ConversationRef) -> Bot | None:
+        """Route a platform-neutral OneBot conversation at the adapter edge."""
+
+        if (
+            conversation.platform is not Platform.ONEBOT
+            or not conversation.id.isdecimal()
+        ):
+            return None
+        target_id = int(conversation.id)
+        if target_id <= 0:
+            return None
+        if conversation.kind == "private":
+            return self.for_target(MessageTarget("private", target_id))
+        if conversation.kind == "group":
+            return self.for_target(MessageTarget("group", target_id))
+        return None

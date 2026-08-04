@@ -9,7 +9,7 @@ from ironsbot.runtime.commands import (
     CommandContext,
     CommandDescriptor,
 )
-from ironsbot.runtime.plugins import PluginDefinition
+from ironsbot.runtime.plugins import PluginContribution
 
 
 @dataclass(slots=True)
@@ -39,7 +39,7 @@ class FakeFeatures:
 def _catalog(*commands: CommandDescriptor) -> CommandCatalog:
     catalog = CommandCatalog()
     catalog.load(
-        (PluginDefinition(id="example", commands=commands),),
+        (PluginContribution(id="example", commands=commands),),
         known_features={"example_feature", "fallback_feature"},
     )
     return catalog
@@ -223,7 +223,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
     catalog = CommandCatalog()
     with pytest.raises(CommandCatalogError, match="duplicate"):
         catalog.load(
-            (PluginDefinition(id="example", commands=(duplicate, duplicate)),),
+            (PluginContribution(id="example", commands=(duplicate, duplicate)),),
         )
 
     unknown_plugin = CommandDescriptor(
@@ -234,7 +234,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
         description="查询资料",
     )
     with pytest.raises(CommandCatalogError, match="unknown plugins"):
-        catalog.load((PluginDefinition(id="example", commands=(unknown_plugin,)),))
+        catalog.load((PluginContribution(id="example", commands=(unknown_plugin,)),))
 
     unknown_feature = CommandDescriptor(
         id="unknown_feature",
@@ -245,7 +245,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
         features_any=("missing_feature",),
     )
     with pytest.raises(CommandCatalogError, match="unknown features"):
-        catalog.load((PluginDefinition(id="example", commands=(unknown_feature,)),))
+        catalog.load((PluginContribution(id="example", commands=(unknown_feature,)),))
 
 
 def test_group_manager_command_cannot_be_private_only() -> None:

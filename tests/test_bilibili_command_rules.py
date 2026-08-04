@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from ironsbot.plugins.bilibili.command_rules import is_dynamic_select_reply
+from ironsbot.plugins.onebot.bilibili.command_rules import is_dynamic_select_reply
 from tests.helpers.onebot_events import private_message_event
 
 

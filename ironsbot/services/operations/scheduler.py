@@ -27,6 +27,16 @@ class Scheduler(Protocol):
     def remove_job(self, job_id: str) -> None: ...
 
 
+class SchedulerLifecycle(Scheduler, Protocol):
+    """Application-owned scheduler operations needed by the OneBot adapter."""
+
+    def bind(self, backend: Any) -> None: ...
+
+    def start(self) -> None: ...
+
+    def shutdown(self) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class JobRegistry:
     scheduler: Scheduler

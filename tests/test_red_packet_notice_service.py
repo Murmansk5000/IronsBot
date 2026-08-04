@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any, cast
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
-from ironsbot.plugins.messaging import red_packet as red_packet_notice_plugin
-from ironsbot.plugins.messaging.red_packet import (
+from ironsbot.plugins.onebot.messaging import red_packet as red_packet_notice_plugin
+from ironsbot.plugins.onebot.messaging.red_packet import (
     is_red_packet_message,
     is_red_packet_payload,
     summarize_red_packet_message,
