@@ -317,18 +317,20 @@ def test_example_config_parses() -> None:
     ]
     assert remote_build_steps[-1].repository == "Murmansk-Seer/seerapi"
     assert remote_build_steps[-1].workflow_id == "build-seerapi-data-db.yml"
-    assert remote_build_steps[0].inputs == {
-        "force-update-assets": False,
-        "force-update-config": False,
-        "dispatch-api-data": False,
-    }
-    assert remote_build_steps[1].inputs == {}
-    assert remote_build_steps[2].inputs == {"force": False}
-    assert remote_build_steps[3].inputs == {
-        "debug_enabled": False,
-        "force": False,
-    }
-    assert remote_build_steps[4].inputs == {"force": False}
+    assert [(step.inputs, step.force_inputs) for step in remote_build_steps] == [
+        (
+            {
+                "force-update-assets": False,
+                "force-update-config": False,
+                "dispatch-api-data": False,
+            },
+            {"force-update-assets": True, "force-update-config": True},
+        ),
+        ({}, {}),
+        ({"force": False}, {"force": True}),
+        ({"debug_enabled": False, "force": False}, {"force": True}),
+        ({"force": False}, {"force": True}),
+    ]
 
 
 def test_example_config_pet_config_defaults() -> None:
