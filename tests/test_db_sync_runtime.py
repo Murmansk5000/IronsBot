@@ -144,6 +144,10 @@ def _remote_build_pipeline_config() -> RemoteBuildConfig:
                     "force-update-config": False,
                     "dispatch-api-data": False,
                 },
+                force_inputs={
+                    "force-update-assets": True,
+                    "force-update-config": True,
+                },
             ),
             RemoteBuildStepConfig(
                 name="refresh_unity_config",
@@ -154,16 +158,19 @@ def _remote_build_pipeline_config() -> RemoteBuildConfig:
                 name="sync_config_sources",
                 repository="Murmansk-Seer/config-sources",
                 workflow_id="sync-upstream.yml",
+                force_inputs={"force": True},
             ),
             RemoteBuildStepConfig(
                 name="build_api_data",
                 repository="Murmansk-Seer/api-data",
                 workflow_id="main.yml",
+                force_inputs={"force": True},
             ),
             RemoteBuildStepConfig(
                 name="build_ironsbot_data",
                 repository="Murmansk-Seer/seerapi",
                 workflow_id="build-seerapi-data-db.yml",
+                force_inputs={"force": True},
             ),
         ],
     )

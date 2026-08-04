@@ -7,15 +7,6 @@ from collections.abc import Awaitable, Callable, MutableMapping
 from ironsbot.config.models.operations import RemoteBuildConfig, RemoteBuildStepConfig
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
 
-FORCE_INPUT_OVERRIDES = {
-    ("Murmansk-Seer/data-update-workflows", "update.yml"): {
-        "force-update-assets": True,
-        "force-update-config": True,
-    },
-    ("Murmansk-Seer/config-sources", "sync-upstream.yml"): {"force": True},
-    ("Murmansk-Seer/api-data", "main.yml"): {"force": True},
-    ("Murmansk-Seer/seerapi", "build-seerapi-data-db.yml"): {"force": True},
-}
 logger = logging.getLogger(__name__)
 
 TriggerWorkflowFn = Callable[
@@ -68,12 +59,7 @@ def configured_remote_build_steps(
     forced_steps: list[RemoteBuildStepConfig] = []
     for step in steps:
         inputs = dict(step.inputs)
-        inputs.update(
-            FORCE_INPUT_OVERRIDES.get(
-                (step.repository, step.workflow_id),
-                {},
-            )
-        )
+        inputs.update(step.force_inputs)
         forced_steps.append(step.model_copy(update={"inputs": inputs}))
     return forced_steps
 

@@ -1258,6 +1258,7 @@ ref = "main"
 timeout_seconds = 3600
 poll_interval_seconds = 10
 inputs = { force-update-assets = false, force-update-config = false, dispatch-api-data = false }
+force_inputs = { force-update-assets = true, force-update-config = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "refresh_unity_config"
@@ -1277,6 +1278,7 @@ ref = "main"
 timeout_seconds = 600
 poll_interval_seconds = 10
 inputs = { force = false }
+force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_api_data"
@@ -1286,6 +1288,7 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { debug_enabled = false, force = false }
+force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"
@@ -1295,6 +1298,7 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { force = false }
+force_inputs = { force = true }
 
 [operations.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
