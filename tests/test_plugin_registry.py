@@ -133,6 +133,18 @@ def test_manifest_activity_owns_its_commands_and_schedule() -> None:
     ]
 
 
+def test_manifest_lucky_skin_window_owns_its_commands_and_schedule() -> None:
+    contribution = DEFINITIONS_BY_ID["lucky_skin_window"]
+
+    assert contribution.features == frozenset({Feature.LUCKY_SKIN_WINDOW})
+    assert {command.plugin_id for command in contribution.commands} == {
+        "lucky_skin_window"
+    }
+    assert [name for name, _hook in contribution.hooks.startup] == [
+        "lucky_skin_window_schedule"
+    ]
+
+
 def test_manifest_headless_notice_owns_its_lifecycle() -> None:
     contribution = DEFINITIONS_BY_ID["headless_notice"]
 
@@ -276,6 +288,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "seer"
                     / "rank_help"
                     / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "seer" / "lucky_skin_window.py",
                     ROOT / "ironsbot" / "plugins" / "team_audit" / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "team" / "resource.py",
                     ROOT / "ironsbot" / "plugins" / "activity" / "__init__.py",

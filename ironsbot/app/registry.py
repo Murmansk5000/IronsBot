@@ -66,9 +66,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     from ironsbot.plugins.operations.status.handlers import (
         install as install_server_status,
     )
-    from ironsbot.plugins.seer.lucky_skin_window import (
-        plugin_definition as lucky_skin_window_plugin,
-    )
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
@@ -87,7 +84,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     team_resource_service = resources.team_resource
     local_rank_service = resources.local_rank
     rank_page_refresh_service = resources.rank_page_refresh
-    lucky_skin_window_service = resources.lucky_skin_window
     seer_resources = resources.seer
     pet_config_service = resources.pet_config
     ai_service = resources.ai
@@ -451,12 +447,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     command.id for command in ai_intent_command_descriptors
                 ),
             ),
-        ),
-        lucky_skin_window_plugin(
-            lucky_skin_window_service,
-            features,
-            delivery,
-            scheduler,
         ),
     )
     private_contributions = resources.private_extensions.load_plugin_contributions(

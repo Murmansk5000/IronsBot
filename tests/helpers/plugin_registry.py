@@ -39,6 +39,9 @@ from ironsbot.plugins.messaging.red_packet import (
 from ironsbot.plugins.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
 )
+from ironsbot.plugins.seer.lucky_skin_window import (
+    plugin_contribution as lucky_skin_window_plugin_contribution,
+)
 from ironsbot.plugins.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
@@ -295,6 +298,12 @@ def build_test_plugin_registry(
         rank_help_plugin_contribution(
             features=runtime.features,
             commands=resources.commands,
+        ),
+        lucky_skin_window_plugin_contribution(
+            resources.lucky_skin_window,
+            runtime.features,
+            resources.delivery,
+            SchedulerFacade(),
         ),
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),
