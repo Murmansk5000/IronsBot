@@ -31,6 +31,9 @@ from ironsbot.plugins.seer.rank_help import (
     plugin_contribution as rank_help_plugin_contribution,
 )
 from ironsbot.plugins.sendpic import plugin_contribution as sendpic_plugin_contribution
+from ironsbot.plugins.team.resource import (
+    plugin_contribution as team_resource_plugin_contribution,
+)
 from ironsbot.plugins.team_audit import (
     plugin_contribution as team_audit_plugin_contribution,
 )
@@ -281,5 +284,11 @@ def build_test_plugin_registry(
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),
             service=resources.team_audit,
+        ),
+        team_resource_plugin_contribution(
+            config=config.seer.team_resource,
+            features=runtime.features,
+            scheduler=SchedulerFacade(),
+            service=resources.team_resource,
         ),
     )

@@ -18,7 +18,6 @@ from ironsbot.app.command_directory.plugins import (
     activity_commands,
     ai_chat_commands,
     bilibili_commands,
-    team_resource_commands,
 )
 from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
@@ -80,7 +79,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
     )
-    from ironsbot.plugins.team.resource import install as install_team_resource
 
     config = settings
     features = resources.features
@@ -418,35 +416,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
                     (
                         "activity_reminder_jobs",
                         partial(activity_service.register_jobs, scheduler),
-                    ),
-                ),
-            ),
-        ),
-        PluginContribution(
-            id="team_resource",
-            features=frozenset({Feature.TEAM_RESOURCE_SUBSCRIPTION}),
-            help=HelpEntry(
-                name="战队资源订阅",
-                description="订阅战队，并在资源不足时定时提醒当前会话。",
-                group="seer",
-                order=50,
-                visible=partial(
-                    feature_help_visible,
-                    features=features,
-                    feature="team_resource_subscription",
-                    enabled=config.seer.team_resource.enabled,
-                ),
-            ),
-            commands=team_resource_commands(enabled=config.seer.team_resource.enabled),
-            install=partial(
-                install_team_resource,
-                service=team_resource_service,
-            ),
-            hooks=PluginHooks(
-                startup=(
-                    (
-                        "team_resource_jobs",
-                        partial(team_resource_service.register_jobs, scheduler),
                     ),
                 ),
             ),
