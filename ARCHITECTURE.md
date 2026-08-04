@@ -412,20 +412,21 @@ adding fields or side registries to a temporary bootstrap adapter.
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
 The first verified migrations are `ironsbot.plugins.onebot.about`,
-`ironsbot.plugins.activity`, `ironsbot.plugins.onebot.bilibili`,
+`ironsbot.plugins.onebot.activity`, `ironsbot.plugins.onebot.bilibili`,
 `ironsbot.plugins.onebot.messaging`,
 `ironsbot.plugins.onebot.ai` / `.intent`,
 `ironsbot.plugins.operations.server_status`,
 `ironsbot.plugins.operations.docker_update`, `ironsbot.plugins.operations.db_sync`,
 `ironsbot.plugins.onebot.help` / `.hint`, `ironsbot.plugins.onebot.sendpic`,
-`ironsbot.plugins.fire_manual_ad`, `ironsbot.plugins.onebot.seer.rank_help`,
+`ironsbot.plugins.onebot.fire_manual_ad`, `ironsbot.plugins.onebot.seer.rank_help`,
 `ironsbot.custom_plugins.pet_config`,
 `ironsbot.plugins.onebot.seer.query`,
 `ironsbot.plugins.onebot.lucky_skin_window`, `ironsbot.plugins.onebot.team_audit`,
 `ironsbot.plugins.onebot.team_resource`, and the
-`ironsbot.plugins.startup_notice`, `ironsbot.plugins.headless_seer_notice`,
-`ironsbot.plugins.headless_seer_runtime`, and the messaging `blacklist`,
-`meeting`, `red_packet`, and `scheduled_restart` modules: the manifest loads
+`ironsbot.plugins.onebot.startup_notice`,
+`ironsbot.plugins.onebot.headless_seer_notice`,
+`ironsbot.plugins.onebot.headless_seer_runtime`, and the messaging `blacklist`,
+`meeting`, `red_packet`, and `onebot.scheduled_restart` modules: the manifest loads
 them directly, and each package supplies its own metadata and contribution.
 `ironsbot.plugins.scheduler` likewise owns scheduler lifecycle binding, while
 the standard manifest directly discovers the required third-party runtime

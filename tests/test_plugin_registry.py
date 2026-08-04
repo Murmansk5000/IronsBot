@@ -420,7 +420,12 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "onebot"
                     / "ai"
                     / "intent.py",
-                    ROOT / "ironsbot" / "plugins" / "fire_manual_ad" / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "fire_manual_ad"
+                    / "__init__.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
@@ -450,22 +455,39 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "plugins"
                     / "onebot"
                     / "team_resource.py",
-                    ROOT / "ironsbot" / "plugins" / "activity" / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "db_sync.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "docker_update.py",
-                    ROOT / "ironsbot" / "plugins" / "operations" / "server_status.py",
-                    ROOT / "ironsbot" / "plugins" / "startup_notice" / "__init__.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
+                    / "onebot"
+                    / "activity"
+                    / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "operations" / "db_sync.py",
+                    ROOT / "ironsbot" / "plugins" / "operations" / "docker_update.py",
+                    ROOT / "ironsbot" / "plugins" / "operations" / "server_status.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "startup_notice"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
                     / "headless_seer_notice"
                     / "__init__.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
+                    / "onebot"
                     / "headless_seer_runtime"
                     / "__init__.py",
-                    ROOT / "ironsbot" / "plugins" / "scheduled_restart" / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "scheduled_restart"
+                    / "__init__.py",
                     ROOT / "ironsbot" / "plugins" / "scheduler" / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue

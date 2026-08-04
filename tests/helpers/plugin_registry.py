@@ -12,20 +12,11 @@ from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
-from ironsbot.plugins.activity import (
-    plugin_contribution as activity_plugin_contribution,
-)
-from ironsbot.plugins.fire_manual_ad import (
-    plugin_contribution as fire_manual_ad_plugin_contribution,
-)
-from ironsbot.plugins.headless_seer_notice import (
-    plugin_contribution as headless_notice_plugin_contribution,
-)
-from ironsbot.plugins.headless_seer_runtime import (
-    plugin_contribution as headless_runtime_plugin_contribution,
-)
 from ironsbot.plugins.onebot.about import (
     plugin_contribution as about_plugin_contribution,
+)
+from ironsbot.plugins.onebot.activity import (
+    plugin_contribution as activity_plugin_contribution,
 )
 from ironsbot.plugins.onebot.ai import (
     plugin_contribution as ai_chat_plugin_contribution,
@@ -35,6 +26,15 @@ from ironsbot.plugins.onebot.ai.intent import (
 )
 from ironsbot.plugins.onebot.bilibili import (
     plugin_contribution as bilibili_plugin_contribution,
+)
+from ironsbot.plugins.onebot.fire_manual_ad import (
+    plugin_contribution as fire_manual_ad_plugin_contribution,
+)
+from ironsbot.plugins.onebot.headless_seer_notice import (
+    plugin_contribution as headless_notice_plugin_contribution,
+)
+from ironsbot.plugins.onebot.headless_seer_runtime import (
+    plugin_contribution as headless_runtime_plugin_contribution,
 )
 from ironsbot.plugins.onebot.help import plugin_contribution as help_plugin_contribution
 from ironsbot.plugins.onebot.help.hint import (
@@ -55,6 +55,9 @@ from ironsbot.plugins.onebot.messaging.meeting import (
 from ironsbot.plugins.onebot.messaging.red_packet import (
     plugin_contribution as red_packet_plugin_contribution,
 )
+from ironsbot.plugins.onebot.scheduled_restart import (
+    plugin_contribution as scheduled_restart_plugin_contribution,
+)
 from ironsbot.plugins.onebot.seer.query import (
     plugin_contribution as seer_query_plugin_contribution,
 )
@@ -63,6 +66,9 @@ from ironsbot.plugins.onebot.seer.rank_help import (
 )
 from ironsbot.plugins.onebot.sendpic import (
     plugin_contribution as sendpic_plugin_contribution,
+)
+from ironsbot.plugins.onebot.startup_notice import (
+    plugin_contribution as startup_notice_plugin_contribution,
 )
 from ironsbot.plugins.onebot.team_audit import (
     plugin_contribution as team_audit_plugin_contribution,
@@ -79,14 +85,8 @@ from ironsbot.plugins.operations.docker_update import (
 from ironsbot.plugins.operations.server_status import (
     plugin_contribution as server_status_plugin_contribution,
 )
-from ironsbot.plugins.scheduled_restart import (
-    plugin_contribution as scheduled_restart_plugin_contribution,
-)
 from ironsbot.plugins.scheduler import (
     plugin_contribution as scheduler_plugin_contribution,
-)
-from ironsbot.plugins.startup_notice import (
-    plugin_contribution as startup_notice_plugin_contribution,
 )
 from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
