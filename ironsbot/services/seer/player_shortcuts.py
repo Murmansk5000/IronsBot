@@ -15,7 +15,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.services.seer.ids import is_valid_player_id
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_collection_formatting import (
@@ -57,11 +57,6 @@ _KIND_BY_COMMAND: dict[str, PlayerShortcutKind] = {
     "收集": "collection",
     "巅峰": "peak",
     "群星牌": "autocard",
-}
-_SHORTCUT_LOADING_LABELS: dict[PlayerShortcutKind, str] = {
-    "collection": "收集与排行",
-    "peak": "巅峰之战",
-    "autocard": "群星牌排名",
 }
 PLAYER_SHORTCUT_ACTIONS: dict[PlayerShortcutKind, ActionDefinition] = {
     "collection": ActionDefinition(
@@ -169,12 +164,10 @@ def parse_player_shortcut_command(text: str) -> PlayerShortcutCommand | None:
     )
 
 
-def player_shortcut_loading_message(kind: PlayerShortcutKind) -> str:
-    label = _SHORTCUT_LOADING_LABELS[kind]
-    return (
-        f"⏳ {label}正在查询，完成后会直接发送结果。\n"
-        "数据较多时可能需要排队，请稍候。"
-    )
+def player_request_admission_message(label: str, *, queued: bool) -> str:
+    if queued:
+        return f"⏳ 已收到：{label}，已加入队列，完成后会直接发送结果。"
+    return f"⏳ {label}正在查询，完成后会直接发送结果。"
 
 
 async def execute_player_shortcut(
@@ -187,18 +180,21 @@ async def execute_player_shortcut(
 ) -> QueryReply:
     """Run numeric-menu and text shortcuts through the same query path."""
 
-    player_id = command.player_id or service.default_player_id(qq_user_id)
-    if (
-        send_status is not None
-        and isinstance(player_id, int)
-        and is_valid_player_id(player_id)
+    async def send_admission(label: str, *, queued: bool) -> None:
+        if send_status is not None:
+            await send_status(
+                player_request_admission_message(label, queued=queued)
+            )
+
+    with request_feedback_scope(
+        PLAYER_SHORTCUT_ACTIONS[command.kind].label,
+        send_admission if send_status is not None else None,
     ):
-        await send_status(player_shortcut_loading_message(command.kind))
-    return await service.shortcut(
-        command,
-        qq_user_id,
-        group_id=group_id,
-    )
+        return await service.shortcut(
+            command,
+            qq_user_id,
+            group_id=group_id,
+        )
 
 
 def player_shortcut_semantic_request(

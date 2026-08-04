@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, Protocol, TypeAlias
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.typing import T_State
 
-from ironsbot.runtime.semantic_requests import SemanticRequest, normalized_text_target
+from ironsbot.runtime.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    normalized_text_target,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.semantic_requests import SemanticTarget
@@ -34,6 +39,29 @@ def default_semantic_target(
     _state: T_State,
 ) -> SemanticTarget | None:
     return normalized_text_target(event.get_plaintext())
+
+
+def default_semantic_request(
+    *,
+    command_id: str,
+    label: str,
+    event: MessageEvent,
+    state: T_State,
+) -> SemanticRequest | None:
+    """Build the default identity for commands without a custom resolver."""
+
+    target = default_semantic_target(event, state)
+    if target is None:
+        return None
+    return SemanticRequest(
+        action=ActionDefinition(
+            id=command_id,
+            label=label,
+            cooldown_key=command_id,
+        ),
+        target=target,
+        source=SemanticRequestSource.DIRECT,
+    )
 
 
 class CooldownDecision(Protocol):
