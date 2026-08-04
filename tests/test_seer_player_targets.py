@@ -6,7 +6,6 @@ from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.seer.query.commands.player_target import (
     event_player_reference_lookup,
-    resolve_event_player_reference,
     resolve_player_target,
 )
 from tests.helpers.onebot_events import group_message_event
@@ -161,7 +160,7 @@ def test_player_target_resolves_a_group_scoped_alias_once() -> None:
     assert target.error is None
 
 
-def test_event_player_reference_respects_public_and_group_scoped_aliases() -> None:
+def test_event_player_reference_lookup_respects_scoped_aliases() -> None:
     private_group_id = 987654321
     accounts = PlayerAccountRegistry(
         (
@@ -176,15 +175,6 @@ def test_event_player_reference_respects_public_and_group_scoped_aliases() -> No
         private_alias_groups={private_group_id: ("sample_player",)},
     )
 
-    assert (
-        resolve_event_player_reference(
-            accounts,
-            group_message_event("", group_id=private_group_id),
-            "示例玩家",
-        )
-        == PLAYER_ID
-    )
-
     lookup = event_player_reference_lookup(
         accounts,
         group_message_event("", group_id=private_group_id),
@@ -196,19 +186,22 @@ def test_event_player_reference_respects_public_and_group_scoped_aliases() -> No
         )
         == PLAYER_ID
     )
+    other_group_lookup = event_player_reference_lookup(
+        accounts,
+        group_message_event("", group_id=123456789),
+    )
     assert (
-        resolve_event_player_reference(
-            accounts,
-            group_message_event("", group_id=123456789),
+        other_group_lookup(
             "示例玩家",
+            ConversationRef(Platform.ONEBOT, "group", "123456789"),
         )
         is None
     )
+    private_lookup = event_player_reference_lookup(accounts, group_message_event(""))
     assert (
-        resolve_event_player_reference(
-            accounts,
-            group_message_event(""),
+        private_lookup(
             str(PLAYER_ID),
+            ConversationRef(Platform.ONEBOT, "private", "123"),
         )
         == PLAYER_ID
     )

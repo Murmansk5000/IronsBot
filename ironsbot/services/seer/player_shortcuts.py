@@ -119,10 +119,19 @@ _PEAK_METRIC_KEYS_BY_MODE: dict[str, frozenset[str]] = {
 
 @dataclass(frozen=True, slots=True)
 class PlayerShortcutCommand:
+    """A validated player shortcut ready for the player service."""
+
     kind: PlayerShortcutKind
-    player_id: int | None
-    player_reference: str | None = None
+    player_id: int
     base_snapshot: PlayerBaseSnapshot | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerShortcutTargetCommand:
+    """A parsed player shortcut before its target reference is resolved."""
+
+    kind: PlayerShortcutKind
+    player_reference: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,21 +167,16 @@ def _rank_summary_timeout_seconds(rank: RankService, fallback: float) -> float:
         return fallback
 
 
-def parse_player_shortcut_command(text: str) -> PlayerShortcutCommand | None:
+def parse_player_shortcut_command(text: str) -> PlayerShortcutTargetCommand | None:
     normalized = "".join(text.split())
     match = _SHORTCUT_RE.fullmatch(normalized)
     if match is None:
         return None
     command, player_reference = match.groups()
     player_reference = player_reference.strip()
-    return PlayerShortcutCommand(
+    return PlayerShortcutTargetCommand(
         kind=_KIND_BY_COMMAND[command],
-        player_id=int(player_reference) if player_reference.isdecimal() else None,
-        player_reference=(
-            player_reference
-            if player_reference and not player_reference.isdecimal()
-            else None
-        ),
+        player_reference=player_reference or None,
     )
 
 

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -18,20 +19,20 @@ from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import explicit_command
+from ironsbot.runtime.rules import explicit_command, member_target_command
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
-    parse_rank_player_command,
+    parse_rank_player_target_command,
     parse_rank_score_command,
     with_admin_prefix,
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player_target import resolve_event_player_reference
+from .player_target import event_player_reference_lookup, resolve_player_target
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
@@ -48,7 +49,14 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.rank_admin import RankAdminService
+    from ironsbot.services.seer.rank_list_models import RankPlayerCommand
     from ironsbot.services.seer.rank_queries import RankQueryService
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedRankPlayerCommand:
+    command: RankPlayerCommand | None
+    error: str | None = None
 
 def _is_rank_list_command(
     service: RankQueryService,
@@ -82,22 +90,35 @@ def _store_command(
 
 def _is_rank_player_command(
     group: SeerMatcherGroup,
-    event: Event,
+    event: MessageEvent,
     state: T_State,
 ) -> bool:
-    return _store_command(
-        partial(
-            parse_rank_player_command,
-            resolve_player_id=partial(
-                resolve_event_player_reference,
-                group.player_accounts,
-                event,
-            ),
-        ),
-        RANK_PLAYER_COMMAND_KEY,
+    requested = parse_rank_player_target_command(event.get_plaintext())
+    if requested is None:
+        return False
+    context = message_input_context(event)
+    if requested.player_reference is None and not context.has_member_mentions:
+        return False
+    target = resolve_player_target(
         event,
-        state,
+        player_reference=requested.player_reference,
+        reference_lookup=event_player_reference_lookup(group.player_accounts, event),
+        binding_for_user=group.resources.player.default_player_id,
+        allow_default_binding=False,
     )
+    if target.player_id is None and target.error is None:
+        return False
+    from ironsbot.services.seer.rank_list_models import RankPlayerCommand
+
+    state[RANK_PLAYER_COMMAND_KEY] = _ResolvedRankPlayerCommand(
+        command=(
+            RankPlayerCommand(requested.rank_key, target.player_id)
+            if target.player_id is not None
+            else None
+        ),
+        error=target.error,
+    )
+    return True
 
 
 async def _handle_list(
@@ -135,8 +156,16 @@ async def _handle_player(
     event: MessageEvent,
     state: T_State,
 ) -> None:
+    resolved = state[RANK_PLAYER_COMMAND_KEY]
+    if not isinstance(resolved, _ResolvedRankPlayerCommand):
+        return
+    if resolved.error is not None:
+        await finish_event_reply(matcher, event, resolved.error)
+        return
+    if resolved.command is None:
+        return
     message = await service.player(
-        state[RANK_PLAYER_COMMAND_KEY],
+        resolved.command,
         qq_user_id=event.user_id,
         group_id=event_group_id(event),
     )
@@ -247,6 +276,9 @@ def install(group: SeerMatcherGroup) -> None:
     query = group.resources.rank_queries
     admin = group.resources.rank_admin
     feature_rule = seer_feature_rule(group.features, "seer_rank") & explicit_command()
+    player_feature_rule = (
+        seer_feature_rule(group.features, "seer_rank") & member_target_command()
+    )
     priority = group.matcher_priority("seer_rank")
 
     list_matcher = group.on_message(
@@ -270,7 +302,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_player",
             help_ids=("rank.global_collection", "rank.global_peak"),
         ),
-        rule=feature_rule
+        rule=player_feature_rule
         & Rule(bind(_is_rank_player_command, group)),
         priority=priority,
     )
