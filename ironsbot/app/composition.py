@@ -662,6 +662,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
+        render_cache=render_cache,
         render_html=render_coordinator.render,
         error_message=seer_database.error_message,
         player_quotas=player_query_quotas,
