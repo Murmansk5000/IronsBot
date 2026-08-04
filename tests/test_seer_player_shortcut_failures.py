@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
@@ -172,3 +173,89 @@ async def test_successful_collection_shortcut_adds_player_to_local_sample(
     assert call["nick"] == "decial"
     metrics = cast("dict[str, object]", call["current_metrics"])
     assert {"achievement_score", "achievement_count", "pet_total_count"} <= set(metrics)
+
+
+@pytest.mark.asyncio
+async def test_collection_menu_snapshot_reuses_confirmed_nick_and_more_info(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Game:
+        async def get_user_info(self, _player_id: int) -> SimpleNamespace:
+            raise AssertionError
+
+        async def get_more_user_info(self, _player_id: int) -> SimpleNamespace:
+            raise AssertionError
+
+    async def fetch_unity_part_one(
+        _game: object,
+        player_id: int,
+    ) -> UnityPartOneInfo:
+        assert player_id == PLAYER_ID
+        return UnityPartOneInfo(achievement_num=372, pet_kind_num=1326, skin_num=79)
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcuts.fetch_unity_part_one",
+        fetch_unity_part_one,
+    )
+    snapshot = PlayerBaseSnapshot(
+        player_id=PLAYER_ID,
+        user_info=SimpleNamespace(nick="already fetched"),
+        more_info=SimpleNamespace(total_achieve=5760, pet_all_num=1231),
+        online_info=None,
+        team_name="snapshot team",
+    )
+
+    reply = await fetch_player_shortcut_reply(
+        PlayerShortcutDependencies(
+            rank=cast("Any", _RankWithoutData()),
+            local_rank=cast("Any", _LocalRank()),
+        ),
+        Game(),
+        command=PlayerShortcutCommand(
+            kind="collection",
+            player_id=PLAYER_ID,
+            base_snapshot=snapshot,
+        ),
+        player_id=PLAYER_ID,
+    )
+
+    assert f"米米号：{PLAYER_ID}（already fetched）" in reply.text
+    assert "精灵数量：1231" in reply.text
+
+
+@pytest.mark.asyncio
+async def test_direct_collection_inlines_nickname_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Game:
+        async def get_user_info(self, _player_id: int) -> SimpleNamespace:
+            await asyncio.Event().wait()
+            raise AssertionError
+
+        async def get_more_user_info(self, _player_id: int) -> SimpleNamespace:
+            return SimpleNamespace(total_achieve=5760, pet_all_num=1231)
+
+    async def fetch_unity_part_one(
+        _game: object,
+        player_id: int,
+    ) -> UnityPartOneInfo:
+        assert player_id == PLAYER_ID
+        return UnityPartOneInfo(achievement_num=372, pet_kind_num=1326, skin_num=79)
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcuts.fetch_unity_part_one",
+        fetch_unity_part_one,
+    )
+    reply = await fetch_player_shortcut_reply(
+        PlayerShortcutDependencies(
+            rank=cast("Any", _RankWithoutData()),
+            local_rank=cast("Any", _LocalRank()),
+            timeout_seconds=_TEST_STAGE_TIMEOUT_SECONDS,
+        ),
+        Game(),
+        command=PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
+        player_id=PLAYER_ID,
+    )
+
+    assert f"米米号：{PLAYER_ID}（昵称暂未获取：查询超时）" in reply.text
+    assert "玩家昵称失败" not in reply.text
