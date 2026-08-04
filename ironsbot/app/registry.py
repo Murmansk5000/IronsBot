@@ -9,17 +9,13 @@ from ironsbot.app.command_directory.dynamic import (
     configured_message_commands,
     messaging_help_visible,
 )
-from ironsbot.app.command_directory.operations import (
-    docker_update_commands,
-    server_status_commands,
-)
 from ironsbot.app.command_directory.plugins import (
     ai_chat_commands,
     bilibili_commands,
 )
 from ironsbot.app.command_directory.seer import seer_query_commands
 from ironsbot.app.external_plugins import external_install, load_external_plugin
-from ironsbot.app.plugin_visibility import feature_help_visible, superuser_help_visible
+from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -30,9 +26,6 @@ from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
-from ironsbot.services.operations.docker_preflight import (
-    consume_docker_startup_preflight_notice,
-)
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
@@ -43,7 +36,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.matchers import MatcherRegistry
 
 
-def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
+def build_plugin_registry(
     *,
     settings: Settings,
     resources: ApplicationResources,
@@ -61,9 +54,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         build_dynamic_link_message,
     )
     from ironsbot.plugins.messaging.matchers import install as install_messaging
-    from ironsbot.plugins.operations.status.handlers import (
-        install as install_server_status,
-    )
     from ironsbot.plugins.seer.runtime import (
         register_local_rank_refresh_job,
         register_rank_page_refresh_jobs,
@@ -75,7 +65,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     admin_notices = resources.admin_notices
     activity_service = resources.activity
     headless = resources.headless
-    server_status = resources.server_status
     bilibili_service = resources.bilibili
     bilibili_login = resources.bilibili_login
     messaging = resources.messaging
@@ -85,8 +74,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
     seer_resources = resources.seer
     pet_config_service = resources.pet_config
     ai_service = resources.ai
-    docker_update_service = resources.docker_update
-    startup_notice_service = resources.startup_notice
     bot_mention_block_service = BotMentionBlockService(
         config.messaging.command_cooldown
     )
@@ -158,13 +145,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
             )
         )
 
-    def start_docker_update() -> None:
-        startup_notice_service.add(
-            "startup_docker_update",
-            "startup docker update notice",
-            consume_docker_startup_preflight_notice(),
-        )
-
     definitions = (
         PluginContribution(
             id="apscheduler",
@@ -185,46 +165,6 @@ def build_plugin_registry(  # noqa: PLR0915 - temporary contribution bridge
         PluginContribution(
             id="saa",
             install=external_install("nonebot_plugin_saa"),
-        ),
-        PluginContribution(
-            id="server_status",
-            features=frozenset({Feature.SERVER_STATUS_QUERY}),
-            help=HelpEntry(
-                name="开服查询",
-                description=(
-                    "查询赛尔号维护公告，并结合无头客户端连接状态判断是否已开服"
-                ),
-                group="seer",
-                order=70,
-                notes=(
-                    "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
-                ),
-            ),
-            commands=server_status_commands(),
-            install=partial(
-                install_server_status,
-                docker_service=docker_update_service,
-                server_status=server_status,
-                features=features,
-                commands=resources.commands,
-            ),
-            hooks=PluginHooks(
-                startup=(("docker_update", start_docker_update),),
-            ),
-        ),
-        PluginContribution(
-            id="docker_update",
-            help=HelpEntry(
-                name="镜像维护",
-                description="检查 Docker 镜像、更新镜像或重启机器人",
-                group="admin",
-                order=10,
-                visible=partial(
-                    superuser_help_visible,
-                    features=features,
-                ),
-            ),
-            commands=docker_update_commands(),
         ),
         PluginContribution(
             id="messaging",

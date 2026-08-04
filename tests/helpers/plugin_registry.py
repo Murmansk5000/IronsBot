@@ -39,6 +39,12 @@ from ironsbot.plugins.messaging.red_packet import (
 from ironsbot.plugins.operations.db_sync import (
     plugin_contribution as db_sync_plugin_contribution,
 )
+from ironsbot.plugins.operations.docker_update import (
+    plugin_contribution as docker_update_plugin_contribution,
+)
+from ironsbot.plugins.operations.server_status import (
+    plugin_contribution as server_status_plugin_contribution,
+)
 from ironsbot.plugins.scheduled_restart import (
     plugin_contribution as scheduled_restart_plugin_contribution,
 )
@@ -273,6 +279,16 @@ def build_test_plugin_registry(
             settings=config,
             resources=resources,
             scheduler=SchedulerFacade(),
+        ),
+        server_status_plugin_contribution(
+            service=resources.server_status,
+            features=runtime.features,
+            commands=resources.commands,
+        ),
+        docker_update_plugin_contribution(
+            service=resources.docker_update,
+            features=runtime.features,
+            startup_notice=resources.startup_notice,
         ),
         db_sync_plugin_contribution(
             service=resources.data_sync,

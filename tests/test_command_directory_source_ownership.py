@@ -1,7 +1,3 @@
-from ironsbot.app.command_directory.operations import (
-    docker_update_commands,
-    server_status_commands,
-)
 from ironsbot.app.command_directory.plugins import (
     bilibili_commands,
 )
@@ -19,6 +15,12 @@ from ironsbot.plugins.operations.db_sync import (
 )
 from ironsbot.plugins.operations.db_sync import (
     command_descriptors as data_sync_commands,
+)
+from ironsbot.plugins.operations.docker_update import (
+    command_descriptors as docker_update_commands,
+)
+from ironsbot.plugins.operations.server_status import (
+    command_descriptors as server_status_commands,
 )
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,

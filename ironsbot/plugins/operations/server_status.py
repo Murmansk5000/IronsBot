@@ -1,43 +1,94 @@
 # SPDX-License-Identifier: MIT
 # ruff: noqa: TC002
-"""NoneBot handlers for server status commands.
-
-NoneBot resolves handler annotations at registration time, so these annotation
-imports must stay available at runtime.
-"""
+"""OneBot handlers and manifest contribution for server-status commands."""
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
+from nonebot.plugin import PluginMetadata
 
+from ironsbot.app.command_directory.rows import commands_from_rows
+from ironsbot.core.features import Feature
+from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.onebot_context import command_context
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
+from ironsbot.runtime.plugins import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
+from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import explicit_command
 
-from .command_text import (
+from .status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
-    BOT_RESTART_COMMANDS,
     DISABLED_BARE_ADMIN_COMMAND,
-    DOCKER_CHECK_UPDATE_COMMANDS,
-    DOCKER_UPDATE_COMMANDS,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
 )
-from .commands import handle_admin_status, handle_normal_status
+from .status.commands import handle_admin_status, handle_normal_status
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
 
+__plugin_meta__ = PluginMetadata(
+    name="开服查询",
+    description="查询维护公告与无头客户端游戏连接状态。",
+    usage="发送“开服了吗”查询；超级管理员可发送“/开服查询”。",
+    type="application",
+    homepage="https://github.com/Murmansk5000/IronsBot",
+    supported_adapters={"~onebot.v11"},
+)
 
-async def handle_disabled_bare_admin_status(
+
+def command_descriptors() -> tuple[CommandDescriptor, ...]:
+    return (
+        *commands_from_rows(
+            "server_status",
+            "查询",
+            "server_status_query",
+            (
+                (
+                    "server_status.query",
+                    (NORMAL_SERVER_STATUS_COMMAND,),
+                    "查询当前维护和开服状态",
+                    {"show_in_poke": True},
+                ),
+            ),
+        ),
+        *commands_from_rows(
+            "server_status",
+            "超级管理员",
+            None,
+            (
+                (
+                    "server_status.admin_query",
+                    (ADMIN_SERVER_STATUS_COMMAND,),
+                    "查询开服状态，并在无头未登录时尝试重连",
+                    {
+                        "features_any": ("server_status_query",),
+                        "access": (CommandAccess(audience="superuser"),),
+                    },
+                ),
+                (
+                    "server_status.headless_instances",
+                    HEADLESS_INSTANCE_STATUS_COMMANDS,
+                    "查看公共查询池与临时专用会话的当前在线实例数",
+                    {"access": (CommandAccess(scope="private", audience="superuser"),)},
+                ),
+            ),
+        ),
+    )
+
+
+async def _handle_disabled_bare_admin_status(
     matcher: Matcher,
     event: MessageEvent,
     *,
@@ -52,14 +103,12 @@ async def handle_disabled_bare_admin_status(
     await finish_event_reply(
         matcher,
         event,
-        "“开服查询”仅限超级管理员，且必须带 / 前缀。"
-        f"\n{command_help}",
+        f"“开服查询”仅限超级管理员，且必须带 / 前缀。\n{command_help}",
     )
 
 
-def install(
+def _install(
     registry: MatcherRegistry,
-    docker_service: DockerUpdateService,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
@@ -85,11 +134,6 @@ def install(
             server_status,
         )
 
-    async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
-        message, restart_action = await docker_service.prepare_manual_restart()
-        await send_event_reply(matcher, event, message)
-        await docker_service.execute_restart(restart_action)
-
     async def handle_headless_instance_status(
         matcher: Matcher,
         event: MessageEvent,
@@ -98,16 +142,6 @@ def install(
             matcher,
             event,
             (await server_status.query_headless_instances()).message,
-        )
-
-    async def handle_check_image_update(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await finish_event_reply(
-            matcher,
-            event,
-            await docker_service.check_image_update(),
         )
 
     normal_matcher = registry.on_fullmatch(
@@ -134,7 +168,7 @@ def install(
     )
     disabled_matcher.append_handler(
         bind_async(
-            handle_disabled_bare_admin_status,
+            _handle_disabled_bare_admin_status,
             commands=commands,
             features=features,
         )
@@ -166,41 +200,43 @@ def install(
     )
     headless_status_matcher.append_handler(handle_headless_instance_status)
 
-    restart_matcher = registry.on_fullmatch(
-        BOT_RESTART_COMMANDS,
-        policy=CommandPolicy.command(
-            "bot_restart",
-            help_ids=("docker_update.restart",),
-        ),
-        rule=explicit_command(),
-        permission=SUPERUSER,
-        priority=registry.priority("server_status_admin"),
-        block=True,
-    )
-    restart_matcher.append_handler(handle_restart)
 
-    update_matcher = registry.on_fullmatch(
-        DOCKER_UPDATE_COMMANDS,
-        policy=CommandPolicy.command(
-            "bot_restart",
-            help_ids=("docker_update.image_update",),
-        ),
-        rule=explicit_command(),
-        permission=SUPERUSER,
-        priority=registry.priority("server_status_admin"),
-        block=True,
-    )
-    update_matcher.append_handler(handle_restart)
+def plugin_contribution(
+    *,
+    service: ServerStatusService,
+    features: FeatureService,
+    commands: CommandCatalog,
+) -> PluginContribution:
+    """Declare server-status commands and feature ownership."""
 
-    check_update_matcher = registry.on_fullmatch(
-        DOCKER_CHECK_UPDATE_COMMANDS,
-        policy=CommandPolicy.command(
-            "bot_restart",
-            help_ids=("docker_update.image_check",),
+    return PluginContribution(
+        id="server_status",
+        features=frozenset({Feature.SERVER_STATUS_QUERY}),
+        help=HelpEntry(
+            name="开服查询",
+            description="查询赛尔号维护公告，并结合无头客户端连接状态判断是否已开服",
+            group="seer",
+            order=70,
+            notes=(
+                "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
+            ),
         ),
-        rule=explicit_command(),
-        permission=SUPERUSER,
-        priority=registry.priority("server_status_admin"),
-        block=True,
+        commands=command_descriptors(),
+        install=partial(
+            _install,
+            server_status=service,
+            features=features,
+            commands=commands,
+        ),
     )
-    check_update_matcher.append_handler(handle_check_image_update)
+
+
+if (context := active_plugin_install_context()) is not None:
+    context.contribute(
+        __plugin_meta__,
+        plugin_contribution(
+            service=context.resources.server_status,
+            features=context.resources.features,
+            commands=context.resources.commands,
+        ),
+    )
