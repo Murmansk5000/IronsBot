@@ -108,6 +108,30 @@ contract. When a responsibility needs an authority, name the narrow authority
 from the table rather than saying that a plugin, manifest, or contribution
 object owns everything.
 
+### Architecture Documentation Merge Rule
+
+Architecture-document merge conflicts are resolved by responsibility, not by
+choosing whichever wording is easiest to merge. A conflict is not evidence
+that both designs must survive in the running application.
+
+When resolving a conflict, preserve these parts in order:
+
+1. the current normative target and its named authority;
+2. the verified current bridge, explicitly marked `transition` when it still
+   exists; and
+3. the completion condition that deletes the bridge.
+
+Discard an older unqualified claim that a retired registry, a bootstrap
+adapter, or `PluginDefinition` is the application's single plugin contract.
+Do not recreate an old code type, compatibility wrapper, or second registry
+merely to make prose from two branches agree. If both branches contain useful
+facts, rewrite them into the target/transition/completion form above and add
+or update the matching transition-inventory row in the same change.
+
+Git reports a text conflict because two branches touched nearby lines; it does
+not establish an architectural conflict. The verified code state and this
+document's target authority decide the resolution.
+
 ### Transition Inventory And Admission Rule
 
 The following table is the working inventory for architecture tasks. It
