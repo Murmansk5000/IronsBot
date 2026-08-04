@@ -203,7 +203,12 @@ Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `OutboundMessenger`. They use opaque nonempty string IDs. The current
 OneBot-only `MessageTarget` remains a Phase 3 transition type until its full
 call chain can be replaced in one direction; no new platform-neutral service
-may depend on it.
+may depend on it. `integrations.onebot.outbound_messenger.OneBotOutboundMessenger`
+is the Phase 1 edge adapter for the new port: it translates text, images,
+mentions and reply contexts only after a `ConversationRef` has been routed to
+a OneBot bot. Existing `OneBotDelivery` callers still use `MessageTarget`
+until the Phase 3 one-direction migration; new services must use the
+platform-neutral port instead.
 
 The eventual composition is:
 
