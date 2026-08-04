@@ -126,6 +126,14 @@ delivery ports. They must not receive `GroupMessageEvent`, `Bot`, CQ segments,
 or adapter-specific session objects. Transport adapters own conversion in both
 directions.
 
+Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
+`ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
+`ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
+`OutboundMessenger`. They use opaque nonempty string IDs. The current
+OneBot-only `MessageTarget` remains a Phase 3 transition type until its full
+call chain can be replaced in one direction; no new platform-neutral service
+may depend on it.
+
 The eventual composition is:
 
 ```text
