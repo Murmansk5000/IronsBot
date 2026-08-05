@@ -213,7 +213,10 @@ def build_test_plugin_registry(
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,
             ),
-            sendpic=SimpleNamespace(commands=default_sendpic_configs()),
+            sendpic=SimpleNamespace(
+                commands=default_sendpic_configs(),
+                exact_command_texts=frozenset(),
+            ),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
                 register_jobs=lambda _scheduler: None,
