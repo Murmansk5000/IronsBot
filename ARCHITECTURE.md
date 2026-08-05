@@ -942,6 +942,12 @@ contains the remaining OneBot delivery wiring so domain builders receive typed
 dependencies instead of constructing them. This is a transition boundary, not
 a claim that the common layer itself is platform-neutral.
 
+`app.messaging_composition.MessagingComponents` owns configuration-backed
+message schedules, fixed-image delivery, and team-audit notification assembly.
+It accepts delivery, routing, rate-limit, subscription, and feature ports from
+`CommonComponents`; it must not recreate them or reach into the composition
+root. Other domain builders follow the same dependency direction.
+
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
 

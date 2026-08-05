@@ -13,6 +13,7 @@ from ironsbot.app.bilibili_composition import build_onebot_bilibili_monitor
 from ironsbot.app.common_composition import build_common_components
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.app.messaging_composition import build_messaging_components
 from ironsbot.app.operations_composition import build_operations_components
 from ironsbot.app.private_extensions import (
     load_private_extension_catalog,
@@ -41,7 +42,6 @@ from ironsbot.integrations.onebot.bilibili_rendering import (
 from ironsbot.integrations.onebot.bilibili_targets import (
     build_onebot_bili_configured_targets,
 )
-from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
@@ -49,21 +49,9 @@ from ironsbot.integrations.onebot.identity import (
 )
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
-    OneBotLuckySkinWindowSubscriptionOptions,
     build_onebot_lucky_skin_window_accounts,
 )
 from ironsbot.integrations.onebot.matchers import MatcherFactory
-from ironsbot.integrations.onebot.messaging_config import (
-    build_onebot_message_schedule_targets,
-)
-from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.scheduled_delivery import (
-    OneBotScheduledMessageSender,
-)
-from ironsbot.integrations.onebot.team_audit import (
-    OneBotTeamAuditMembershipProbe,
-    OneBotTeamAuditPolicy,
-)
 from ironsbot.integrations.onebot.team_resource import (
     OneBotTeamResourceNoticeSender,
     build_onebot_team_resource_default_mentions,
@@ -81,7 +69,6 @@ from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
 )
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
-from ironsbot.integrations.sendpic import SendpicBackendProvider
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
@@ -108,7 +95,6 @@ from ironsbot.integrations.storage.player_query_limits import (
 )
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
-from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
@@ -121,7 +107,6 @@ from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
-from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
@@ -160,7 +145,6 @@ from ironsbot.services.seer.rank_queries import (
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
 from ironsbot.services.seer.type_query import TypeQueryService
-from ironsbot.services.team.audit import TeamAuditService
 from ironsbot.services.team.resource import TeamResourceService
 
 if TYPE_CHECKING:
@@ -170,8 +154,6 @@ SEERAPI_DB_NAME = "seerapi"
 
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
-    from ironsbot.services.messaging.service import MessagingService
-
     driver = nonebot.get_driver()
     driver.register_adapter(OneBotV11Adapter)
     scheduler = SchedulerFacade()
@@ -271,34 +253,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         poll_qr=partial(poll_bili_login_qr, http_clients.origin),
         spawn=task_owner.create,
     )
-    messaging = MessagingService(
-        settings.messaging,
-        settings.activity,
-        subscriptions,
-        features,
-        OneBotScheduledMessageSender(delivery, push_message_limiter),
-        build_onebot_message_schedule_targets(
-            settings.messaging,
-            settings.onebot_references,
-        ),
-        (
-            bilibili.targets.subscription_options,
-            OneBotLuckySkinWindowSubscriptionOptions(
-                lucky_skin_window,
-                subscriptions,
-            ).subscription_options,
-        ),
-        _prepare_extra_push_options=bilibili.targets.prepare_account_names,
-    )
-    sendpic = SendpicService(
-        settings.messaging.sendpic,
-        SendpicBackendProvider(
-            http_clients.cache,
-            cnb_token=settings.messaging.sendpic.cnb_token,
-            cnb_repo=settings.messaging.sendpic.cnb_repo,
-            local_root=settings.messaging.sendpic.local_root,
-        ),
-    )
     team_resource = TeamResourceService(
         settings.seer.team_resource,
         TeamResourceSubscriptionStore(settings.paths.qq_state),
@@ -310,13 +264,21 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.onebot_references,
         ),
     )
-    team_audit = TeamAuditService(
-        settings.messaging.team_audit_welcome,
-        SqliteTeamAuditReminderStore(settings.paths.runtime_state),
-        OneBotTeamAuditPolicy(features),
-        OneBotOutboundMessenger(bot_router, outbound),
-        OneBotTeamAuditMembershipProbe(bot_router, OneBotGroupProbe()),
+    messaging_components = build_messaging_components(
+        settings,
+        http_clients,
+        features,
+        delivery,
+        subscriptions,
+        bot_router,
+        outbound,
+        push_message_limiter,
+        bilibili.targets,
+        lucky_skin_window,
     )
+    messaging = messaging_components.messaging
+    sendpic = messaging_components.sendpic
+    team_audit = messaging_components.team_audit
     rank = RankService(
         settings.seer.rank,
         SqliteRankPageCache(
