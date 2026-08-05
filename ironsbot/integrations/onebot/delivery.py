@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.log import logger
@@ -24,6 +24,7 @@ from .outbound import (
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import PushUnsubscribeConfig
+    from ironsbot.integrations.onebot.outbound_messenger import OneBotMessageSender
     from ironsbot.services.messaging.subscriptions import (
         PushDeliverySubscriptions,
     )
@@ -72,12 +73,6 @@ def _append_unsubscribe_hint(
         return message
     text = message.rstrip()
     return text if hint in text else hint if not text else f"{text}\n\n{hint}"
-
-
-class OneBotMessageSender(Protocol):
-    async def send_private_msg(self, *, user_id: int, message: Message) -> object: ...
-
-    async def send_group_msg(self, *, group_id: int, message: Message) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
