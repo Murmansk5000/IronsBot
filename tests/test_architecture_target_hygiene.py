@@ -80,6 +80,7 @@ FORBIDDEN_RENDERER_PERSISTENCE_PREFIXES = (
     "sqlmodel",
     "sqlite3",
 )
+FORBIDDEN_RENDERER_INFERENCE_IMPORT_PREFIXES = ("difflib",)
 RETIRED_RUNTIME_NAMES = (
     "PluginDefinition",
     "MatcherRegistry",
@@ -235,6 +236,19 @@ def test_renderer_transition_allowlist_is_exact_and_documented() -> None:
     }
 
     assert current == TRANSITIONAL_RENDERER_PERSISTENCE_MODULES
+
+
+def test_renderers_do_not_import_entity_resolution_heuristics() -> None:
+    """Snapshots, not presenters, own data-association decisions."""
+
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} imports {module}"
+        for path in _python_files(RENDERING)
+        for module in _imports(path)
+        if module.startswith(FORBIDDEN_RENDERER_INFERENCE_IMPORT_PREFIXES)
+    ]
+
+    assert offenders == []
 
 
 def test_seer_request_services_use_actor_refs_not_onebot_user_ids() -> None:
