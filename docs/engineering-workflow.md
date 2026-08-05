@@ -202,6 +202,10 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
    目标、`MessageTarget`、`OneBotDelivery` 和 CQ 消息只能留在 OneBot 适配层。
     迁移中的适配器可以复用旧投递链以保留队列、退订和限流，但不得把这些类型
     重新传回 service。
+16. 扩展动作回调同样只能接收领域 ID 与类型化平台上下文。例如玩家详情扩展
+    使用 `PlayerDetailActionRequest(player_id, actor, conversation)`；不得重新
+    定义 `(player_id, qq_user_id, group_id)` 这类整数参数，也不得把 NoneBot
+    `Event` 传入私有扩展 service。
 
 ## 插件术语与权威边界
 

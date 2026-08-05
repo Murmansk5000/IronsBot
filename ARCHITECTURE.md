@@ -181,6 +181,7 @@ feature, persistence schema, or policy decision.
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
 | Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
 | Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |
+| Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. |
 | Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
@@ -315,6 +316,14 @@ Future services should receive typed input/output values such as
 delivery ports. They must not receive `GroupMessageEvent`, `Bot`, CQ segments,
 or adapter-specific session objects. Transport adapters own conversion in both
 directions.
+
+Extension callbacks follow the same boundary. A player-detail extension
+receives `PlayerDetailActionRequest(player_id, actor, conversation)`, not a
+tuple of numeric player, QQ-user and group IDs. The public player-command
+adapter resolves the player target and platform message once; quota checks,
+request scheduling and operation tracing then use the request's typed actor
+and conversation. An extension that needs a platform-native value must expose
+a narrow platform integration port rather than widening this callback.
 
 Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
