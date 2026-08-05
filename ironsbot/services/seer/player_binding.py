@@ -6,10 +6,8 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from ironsbot.core.platform import ActorRef
-
 class PlayerBindingState(NamedTuple):
-    actor: ActorRef
+    qq_user_id: int
     player_id: int | None = None
     player_nick: str = ""
     choice_completed: bool = False
@@ -21,23 +19,23 @@ class PlayerBindingState(NamedTuple):
 
 
 class PlayerBindingStore(Protocol):
-    def get(self, actor: ActorRef) -> PlayerBindingState: ...
+    def get(self, qq_user_id: int) -> PlayerBindingState: ...
 
     def bind(
         self,
         *,
-        actor: ActorRef,
+        qq_user_id: int,
         player_id: int,
         player_nick: str,
         changed_at: datetime | None = None,
     ) -> None: ...
 
-    def decline(self, *, actor: ActorRef) -> None: ...
+    def decline(self, *, qq_user_id: int) -> None: ...
 
     def unbind(
         self,
         *,
-        actor: ActorRef,
+        qq_user_id: int,
         changed_at: datetime | None = None,
     ) -> bool: ...
 

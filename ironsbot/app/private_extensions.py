@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.cache_paths import CachePaths
-    from ironsbot.runtime.plugins import PluginContribution
+    from ironsbot.runtime.plugins import PluginDefinition
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.operations.docker_models import DockerImageArchive
     from ironsbot.services.operations.headless import HeadlessService
@@ -47,7 +47,6 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
     from ironsbot.services.seer.resources import SeerQueryResources
 
@@ -84,7 +83,6 @@ class PrivateExtensionRuntime:
     headless_sessions: HeadlessSessionFactory
     data: SeerDataAccess
     images: SeerImageSource
-    render_cache: RenderCache
     render_html: HtmlTemplateRenderer
     error_message: ErrorMessageLookup
     player_quotas: PlayerQueryQuotaService
@@ -158,19 +156,19 @@ class PrivateExtensionCatalog:
     def extension_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._entries))
 
-    def load_plugin_contributions(
+    def load_plugin_definitions(
         self,
         runtime: PrivateExtensionRuntime,
-    ) -> tuple[PluginContribution, ...]:
-        """Load contributions from the installed, validated extension package."""
+    ) -> tuple[PluginDefinition, ...]:
+        """Load definitions from the installed, validated extension package."""
 
-        contributions: list[PluginContribution] = []
+        definitions: list[PluginDefinition] = []
         for entry in self._entries.values():
             factory = self._load_factory(entry)
             if factory is None:
                 continue
             try:
-                contribution = factory(runtime)
+                definition = factory(runtime)
             except Exception:  # noqa: BLE001 - optional code must not stop boot
                 logger.warning(
                     "private extension factory failed: id=%s",
@@ -178,16 +176,16 @@ class PrivateExtensionCatalog:
                     exc_info=True,
                 )
                 continue
-            from ironsbot.runtime.plugins import PluginContribution
+            from ironsbot.runtime.plugins import PluginDefinition
 
-            if not isinstance(contribution, PluginContribution):
+            if not isinstance(definition, PluginDefinition):
                 logger.warning(
                     "private extension factory returned an invalid plugin: id=%s",
                     entry.id,
                 )
                 continue
-            contributions.append(contribution)
-        return tuple(contributions)
+            definitions.append(definition)
+        return tuple(definitions)
 
     def _load_factory(
         self,

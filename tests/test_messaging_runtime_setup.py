@@ -17,8 +17,6 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.onebot.messaging import matcher_rules
-
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
     MessageCommandAction,
@@ -35,6 +33,7 @@ from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
 )
+from ironsbot.plugins.messaging import matcher_rules
 from ironsbot.services.messaging import schedules as message_schedules
 from ironsbot.services.messaging.push_time import PushTimeOption
 from ironsbot.services.messaging.service import MessagingService

@@ -6,8 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
-from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.plugins.onebot.seer.query.commands import player
+from ironsbot.plugins.seer.query.commands import player
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service import PendingPlayerQuery
 from tests.helpers.onebot_events import group_message_event
@@ -63,10 +62,7 @@ def test_initial_player_reply_precedes_background_refresh(
     callback = sent_call.kwargs["on_sent"]
     callback()
 
-    service.record_returned_query.assert_called_once_with(
-        ActorRef(Platform.ONEBOT, str(event.user_id)),
-        pending,
-    )
+    service.record_returned_query.assert_called_once_with(event.user_id, pending)
     service.start_background_refresh.assert_called_once_with(
         pending,
         group_id=event.group_id,

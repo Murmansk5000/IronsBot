@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Any
 from zoneinfo import ZoneInfo
 
 from pytest import MonkeyPatch
@@ -8,6 +7,7 @@ from pytest import MonkeyPatch
 from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.config.player_accounts import PlayerAccount
 from ironsbot.integrations.headless_seer.client import ClientManager
+from ironsbot.plugins.operations.headless import register_reconnect_jobs
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.operations.headless import HeadlessService
 from tests.helpers.runtime import build_test_runtime
@@ -15,23 +15,12 @@ from tests.helpers.runtime import build_test_runtime
 USER_ID = 123456
 
 
-class FakeJob:
-    id = "fake"
-
-
 class FakeScheduler:
     def __init__(self) -> None:
         self.jobs: list[dict[str, object]] = []
 
-    def add_job(self, func: Any, trigger: str, **kwargs: Any) -> FakeJob:
+    def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
         self.jobs.append({"func": func, "trigger": trigger, **kwargs})
-        return FakeJob()
-
-    def get_jobs(self) -> list[FakeJob]:
-        return []
-
-    def remove_job(self, job_id: str) -> None:
-        del job_id
 
 
 def build_service(
@@ -59,8 +48,10 @@ def build_service(
 
 def test_register_reconnect_checks_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
-    service = build_service(notices=HeadlessNoticeConfig(reconnect_check_times="00:05"))
-    service.register_reconnect_jobs(scheduler)
+    service = build_service(
+        notices=HeadlessNoticeConfig(reconnect_check_times="00:05")
+    )
+    register_reconnect_jobs(scheduler, service)
 
     assert scheduler.jobs == [
         {

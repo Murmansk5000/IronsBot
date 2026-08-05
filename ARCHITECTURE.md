@@ -61,18 +61,7 @@ contract without the qualifier "current bootstrap bridge". This specifically
 prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
-Current transition items are `MatcherRegistry`, the private-extension bootstrap
-adapter, the legacy OneBot `MessageTarget` / `OneBotDelivery` send chain, and
-the renderer data lookups listed in the Phase 0 guard below. They keep the
-current OneBot application runnable; they are not the architecture that new
-cross-feature work should target. Phase 2 has completed built-in plugin
-discovery through the standard NoneBot manifest. `PluginContribution` is the
-current plugin-local way to submit explicit runtime contributions; it is not an
-application registry or a catch-all authority for every plugin concern. The
-remaining Phase 2 work replaces `MatcherRegistry` with a matcher factory and
-removes the temporary private-extension adapter. Phase 4 removes
-renderer-owned persistence lookups. No new subsystem may be built on those
-transition items merely because they already exist.
+In this snapshot the current bootstrap bridge is app.registry.build_plugin_registry: built-ins and configured private factories return PluginDefinition records. app.bootstrap calls the composed Application.install directly, not nonebot.load_from_toml. Standard manifest discovery and plugin-local PluginContribution remain the required migration target, not a completed step in this snapshot. MatcherRegistry, legacy OneBot delivery and renderer-owned persistence are also transition items; none may acquire new cross-feature authority.
 
 The authoritative long-term ownership is therefore:
 
@@ -102,12 +91,7 @@ architecture work:
 | Feature-policy service | Whether an actor or conversation may use a feature | Plugin discovery or command parsing |
 | `ApplicationLifecycle` | Process lifecycle, owned tasks, and startup/shutdown ordering | Plugin metadata or user-command semantics |
 
-`PluginDefinition` is a retired historical type. It may be mentioned only when
-documenting a completed migration or inspecting old Git history; new code,
-interfaces, tests, and diagrams must not introduce it or treat it as a current
-contract. When a responsibility needs an authority, name the narrow authority
-from the table rather than saying that a plugin, manifest, or contribution
-object owns everything.
+`PluginDefinition` is still used by the current bootstrap bridge in this snapshot. It must retire together with all built-in and private consumers when the standard-manifest contribution migration is complete. It is not the long-term command, permission or lifecycle authority; do not add new responsibilities to it.
 
 ### Current Command-Contract Bridge
 
@@ -125,10 +109,10 @@ precise wording:
 
 | Subject | Correct status | Required wording |
 | --- | --- | --- |
-| `PluginDefinition` | retired | Historical only; never a current contract. |
-| `PluginContribution` | target, currently implemented | Plugin-local runtime contribution only. |
+| `PluginDefinition` | transition in this snapshot | Current bootstrap record; retire with the complete manifest/contribution migration. |
+| `PluginContribution` | target for this snapshot | Plugin-local runtime contribution after the complete migration; not the current installation path here. |
 | `CommandDescriptor` | transition carrier | Current representation of part of the target command contract. |
-| `CommandCatalog` | target, currently implemented | The only command metadata/catalog authority. |
+| `CommandCatalog` | current directory, transition consumers | Current help/poke directory; matcher-local and AI recognition still require the complete contract migration. |
 | `CommandContract` | target type | The final command representation; do not claim it already exists as a separate runtime class. |
 
 Completion requires one explicit command-contract type, every direct command
@@ -169,7 +153,7 @@ feature, persistence schema, or policy decision.
 
 | Responsibility | Status | Current safe boundary | Required direction before new ownership |
 | --- | --- | --- | --- |
-| Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
+| Plugin runtime contribution submission | transition | app.registry builds PluginDefinition records in this snapshot | Migrate all consumers to plugin-local PluginContribution; add no new registry duties. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
@@ -438,14 +422,7 @@ reusable contracts rather than adding feature-local regexes:
 - Configuration-generated commands, selection menus, and fixed commands must
   use the same contract. Passive notices and scheduled jobs are not commands.
 
-The retired central registry is a migration-history concern, not a runtime
-bridge. All built-in contributions now come from their own manifest-loaded
-plugin packages. The remaining private-extension bootstrap adapter is not the
-long-term owner of command semantics, feature policy, help content, or
-lifecycle design. Do not create a second parallel manifest merely for the
-future target. Each private-extension migration moves one responsibility to
-its declarative replacement and deletes it from this adapter in the same work
-item.
+The central registry is still an executable bootstrap bridge in this snapshot: it composes built-ins and configured private factories. The target replaces that installation path with manifest-loaded plugin-local contributions. Command semantics remain with CommandCatalog; the bridge must not become a second command or permission catalogue.
 
 ## Contract Ownership During Migration
 
@@ -456,9 +433,9 @@ adding fields or side registries to a temporary bootstrap adapter.
 
 | Responsibility | Current bridge | Target authority | Migration completion |
 | --- | --- | --- | --- |
-| Plugin discovery and loading | Standard TOML loads declared third-party prerequisites and every built-in local package; a temporary bootstrap adapts configured private extensions only | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No private extension bootstrap adapter remains. |
-| Plugin identity and static metadata | `PluginMetadata` in each built-in top-level plugin package | `PluginMetadata` in each top-level plugin package | Private extensions expose equivalent declarative metadata without importing application composition code. |
-| Matchers, command contracts, jobs, lifecycle contributions | `MatcherRegistry` + plugin-local `PluginContribution` | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
+| Plugin discovery and loading | app.registry explicitly composes built-ins and private factories in this snapshot | Standard TOML manifest discovery | Complete the migration before claiming discovery is manifest-owned. |
+| Plugin identity and static metadata | Current bootstrap definition records | PluginMetadata in manifest-loaded packages | Move all consumers together; do not claim current static metadata coverage. |
+| Matchers, command contracts, jobs, lifecycle contributions | PluginDefinition and current registry/bootstrap | Plugin-local PluginContribution in a scoped install context | CommandCatalog remains the command authority. |
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
@@ -531,15 +508,7 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
   renderer/template fingerprint, and all asset content versions that affect
   pixels.
 
-The current Phase 4 transition has this target shape for published pet info,
-type matchup, peak-pool, peak-vote, peak-pet-rank, and the private player
-lineup image. The new-content menu follows the same split: its Seer-data
-adapter prepares details and images, while the renderer consumes an immutable
-menu document. The private lineup keeps its own presentation module, but its
-adapter alone owns asset loading, final-cache access, and the HTML render port.
-Rank and any later renderer paths remain **transition** work. They may receive
-narrow correctness fixes, but new rendering features must start from the
-target pipeline above instead of copying their older data-loading patterns.
+Phase 4 has not completed at this snapshot. Renderers still acquire data and assets through their existing service paths; the detached view-model/document/asset split described above is the required target. Do not describe RenderCoordinator or verified shared asset caches as already installed here.
 
 Future data work follows these rules:
 
@@ -791,7 +760,7 @@ contributions, but it is not a second discovery path. Composition:
 1. creates infrastructure resources;
 2. creates repositories and service objects with explicit constructor
    dependencies;
-3. validates manifest contributions and freezes the command catalog;
+3. collects current registry definition records and freezes the command catalog; the target replaces that collection with scoped manifest contributions;
 4. builds the application lifecycle;
 5. returns one `Application` object.
 
@@ -834,13 +803,7 @@ a name, an owner, cancellation on shutdown, and observable failure logging.
 
 ## Temporary Private Extension Bootstrap
 
-`PluginContribution` is the runtime contribution contract. Every built-in
-plugin is a top-level manifest-loaded package and contributes itself during the
-scoped loading window. `ironsbot.plugins.onebot.bootstrap` is now limited to
-adapting configured private extensions; it is not a built-in plugin registry,
-command directory, or second discovery mechanism. Do not add built-in feature
-ownership, command metadata, help metadata, lifecycle concepts, or plugin
-families to this adapter.
+The standard-manifest phase must make each built-in a top-level package contributing during a scoped loading window. At this snapshot app.registry still owns that bootstrap installation; it is not a completed manifest phase. Private extension discovery remains explicit and must not become a new service locator or command catalogue.
 
 The runtime contribution contract is:
 
@@ -1108,9 +1071,7 @@ remaining target-state work:
 - `tests/test_architecture_target_hygiene.py` forbids renderer persistence
   dependencies and adapter transport imports from `core` and `services`.
 
-The Phase 4 renderer persistence allowlist is empty. A new renderer must
-receive a detached view model and its assets; it cannot acquire a new database
-or transport exception.
+The renderer persistence allowlist must become empty when Phase 4 is complete. Existing renderer-owned data lookups in this snapshot are constrained transition consumers, not permission for new persistence or transport exceptions. New renderer work must receive detached view models and assets.
 
 ## Current OneBot Behaviour Baseline
 
@@ -1118,56 +1079,23 @@ This snapshot records what Phase 1 onward must preserve while changing its
 implementation. It is deliberately an ownership map, not a second command
 reference for users:
 
-- **Ingress and commands:** NoneBot + OneBot v11 events enter through
-  `MessageInputContext`; `CommandCatalog` and `CommandDescriptor` currently
-  drive help, poke candidates, access checks, and direct-command ownership.
-  `MatcherRegistry` constructs the current matchers and records their command
-  policy. Prompts and selection menus keep their own anchored session state.
-- **Permissions and identity:** the current feature policy resolves configured
-  group and user aliases, group/private feature access, group-manager roles,
-  and superuser bypass. The OneBot configuration boundary still owns numeric
-  QQ values, but policy and new services expose `ActorRef` and
-  `ConversationRef`; a second platform must not consume the numeric values.
-  Seer player IDs use a shared resolver for numeric IDs, aliases, one direct
-  mention, and the caller's default binding. The OneBot player-query and
-  binding adapters, global-rank player queries, and shortcut/detail-extension
-  commands forward their raw reference through that resolver with a scoped
-  alias-lookup port. Matcher admission retains the one resolution result for
-  its handler; it does not resolve an alias once to decide admission and a
-  second time to execute the service command.
+- **Ingress and commands:** NoneBot/OneBot events are adapted by runtime.message_input. app.registry installs the current PluginDefinition records. CommandCatalog/CommandDescriptor remain the current command carrier and directory; menus use anchored session state. Standard manifest loading is not the active bootstrap at this snapshot.
+- **Permissions and identity:** configured feature rules and scoped account aliases are current. OneBot adapters and repositories still use numeric QQ identity in this snapshot; ActorRef/ConversationRef ports and platform-qualified persistence belong to the complete platform migration target. QQ identities are never implicitly converted to official OpenIDs.
 - **Replies and proactive delivery:** group and private replies, scheduled
   pushes, activity notices, Bilibili delivery, team-resource notices, startup
   notices, and admin notices use OneBot routing and outbound rate limiting.
   Group cooldown and priority-queue behaviour are frozen by characterization
   tests; a known timing-sensitive priority test is monitored rather than
   hidden.
-- **State and subscriptions:** QQ user/group state is consolidated in
-  `data/state/qq_state.sqlite`; runtime task state is in
-  `data/state/runtime_state.sqlite`. `ironsbot.state_migration` is the
-  one-time tool that creates and validates these stores. Bindings, query
-  quotas, push preferences, display limits, and subscriptions stay logically
-  separate tables even when they share a file.
+- **State and subscriptions:** this snapshot keeps the legacy numeric OneBot state repositories and their current TD/subscription behavior. Platform-qualified identity columns are a later complete migration, not the schema installed here; no lazy conversion or dual-read path is added.
 - **Large content and caches:** Seer data, aliases, player samples, rank facts,
   lineups, Bilibili history, and AI memory remain separate because their size,
   retention, or contention is different. They are not candidates for the
   platform-identity migration.
-- **Lifecycle:** `ApplicationLifecycle` owns startup, shutdown, OneBot
-  connect/disconnect hooks, scheduler registration, and background-task
-  cancellation. Built-in plugins register contributions through the scoped
-  manifest-loading context and do not open infrastructure resources at import
-  time.
+- **Rendering:** this snapshot uses the legacy cache_max_size_mb render setting. Detached snapshots, the verified asset store and a fixed native-render coordinator belong to the later complete rendering migration, not the current installed controls.
+- **Lifecycle:** ApplicationLifecycle owns the existing driver hooks, scheduler registration and task cancellation. Built-ins currently supply PluginDefinition records through the registry/bootstrap bridge, not a scoped manifest contribution window.
 
-Phase 0 observations to resolve in later phases are also explicit: the
-current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
-uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
-migration. The Phase 4 pet-info, type-matchup, peak-pool, peak-vote,
-peak-pet-rank, and private player-lineup paths use detached snapshots, shared
-image assets, immutable render documents, and pure HTML rendering. The
-new-content adapter similarly prepares its data before rendering an immutable
-menu document. Their renderer modules do not perform ORM, SQL, HTTP,
-filesystem, or association inference. Remaining render paths are explicitly
-transitional, not alternative patterns to copy. Existing Bandit findings with
-no high-severity result remain tracked rather than silently suppressed.
+Phase 0 observations remain unresolved in this snapshot: the adapter metadata and OneBot runtime need the standard-manifest migration; pet-info, type-matchup, peak-pool, peak-vote, peak-pet-rank and private-lineup rendering still need the detached snapshot and asset ownership migration. Preserve current behavior while moving those owners; neither declaration nor an old report proves completion.
 
 ## Enforcement
 

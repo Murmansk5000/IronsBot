@@ -11,9 +11,7 @@ def test_rank_query_text_matches_rank_commands() -> None:
     assert is_rank_query_text("六角双攻榜")
     assert is_rank_query_text("刻印攻击榜")
     assert is_rank_query_text("群星之巅榜")
-    assert is_rank_query_text("群星之巅排行")
-    assert is_rank_query_text("皮肤排行榜")
-    assert is_rank_query_text("五角刻印速度排行")
+    assert is_rank_query_text("群星牌排行")
 
 
 def test_rank_query_text_does_not_block_pet_names_containing_rank_char() -> None:

@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
 from ironsbot.services.seer.rank_admin import (
     RankAdminPolicy,
@@ -53,19 +52,19 @@ class FakeDisplay:
     config = SimpleNamespace(max_display_limit=50)
 
     def __init__(self) -> None:
-        self.saved: tuple[ConversationRef, ActorRef, int] | None = None
+        self.saved: tuple[int, int, int] | None = None
 
     @staticmethod
-    def limit_for_conversation(_conversation: ConversationRef | None) -> int:
+    def limit_for_group(_group_id: int | None) -> int:
         return 20
 
-    def set_conversation_limit(
+    def set_group_limit(
         self,
-        conversation: ConversationRef,
-        actor: ActorRef,
+        group_id: int,
+        user_id: int,
         limit: int,
     ) -> None:
-        self.saved = conversation, actor, limit
+        self.saved = group_id, user_id, limit
 
 
 class NoHeadlessAccess:
@@ -124,17 +123,13 @@ def test_rank_display_limit_is_validated_and_saved_by_service() -> None:
     display = FakeDisplay()
 
     message = _query_service(FakeLocalRank(), display).set_display_limit(
-        conversation=ConversationRef(Platform.ONEBOT, "group", "123"),
-        actor=ActorRef(Platform.ONEBOT, "456"),
+        group_id=123,
+        user_id=456,
         can_manage=True,
         limit=30,
     )
 
-    assert display.saved == (
-        ConversationRef(Platform.ONEBOT, "group", "123"),
-        ActorRef(Platform.ONEBOT, "456"),
-        30,
-    )
+    assert display.saved == (123, 456, 30)
     assert message.startswith("✅ 本群榜单默认显示条数已设置为 30 名")
 
 

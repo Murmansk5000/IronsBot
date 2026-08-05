@@ -17,7 +17,7 @@ class CachePaths:
     root: Path
 
     def render_dir(self) -> Path:
-        return self._directory("rendering/final")
+        return self._directory("render")
 
     def downloads_dir(self) -> Path:
         return self._directory("downloads")
@@ -26,7 +26,7 @@ class CachePaths:
         return self._directory("http")
 
     def assets_dir(self) -> Path:
-        return self._directory("rendering/assets")
+        return self._directory("assets")
 
     def _directory(self, name: str) -> Path:
         return self.root / name
