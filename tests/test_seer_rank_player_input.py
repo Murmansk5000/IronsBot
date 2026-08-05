@@ -4,8 +4,11 @@ from typing import Any, cast
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.plugins.onebot.seer.query.commands import rank_list
+from ironsbot.services.identity.player_accounts import (
+    PlayerAccount,
+    PlayerAccountRegistry,
+)
 from tests.helpers.onebot_events import group_message_event
 
 PLAYER_ID = 712_345_678

@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ironsbot.core.platform import ActorRef
+
 
 class SemanticRequestError(ValueError):
     @classmethod
@@ -91,7 +93,7 @@ class SemanticRequestTrace:
     """Request metadata carried into low-level operation tracing."""
 
     request: SemanticRequest
-    user_id: int | None
+    actor: ActorRef | None
 
 
 _CURRENT_TRACE: ContextVar[SemanticRequestTrace | None] = ContextVar(
@@ -104,12 +106,12 @@ _CURRENT_TRACE: ContextVar[SemanticRequestTrace | None] = ContextVar(
 def semantic_request_scope(
     request: SemanticRequest | None,
     *,
-    user_id: int | None,
+    actor: ActorRef | None,
 ) -> Iterator[None]:
     if request is None:
         yield
         return
-    token = _CURRENT_TRACE.set(SemanticRequestTrace(request, user_id))
+    token = _CURRENT_TRACE.set(SemanticRequestTrace(request, actor))
     try:
         yield
     finally:

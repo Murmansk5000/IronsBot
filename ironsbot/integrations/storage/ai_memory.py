@@ -7,7 +7,6 @@ import sqlite3
 import time
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
@@ -17,6 +16,7 @@ from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.ai.history import HistoryMessage
     from ironsbot.services.ai.memory import AiMemoryTurn
 
@@ -60,12 +60,10 @@ class SqliteAiMemoryStore:
 
     def append(self, turn: AiMemoryTurn) -> None:
         now = time.time()
-        actor = _onebot_actor(turn.user_id)
-        conversation = _conversation_for_turn(turn)
         identity = (
-            *_actor_values(actor),
+            *_actor_values(turn.actor),
             turn.session_key,
-            *_conversation_values(conversation),
+            *_conversation_values(turn.conversation),
         )
         rows = (
             (*identity, "user", turn.prompt, now),
@@ -85,12 +83,12 @@ class SqliteAiMemoryStore:
                     rows,
                 )
         except sqlite3.Error:
-            _LOGGER.warning("failed to write AI memory for %s", turn.user_id)
+            _LOGGER.warning("failed to write AI memory for %s", turn.actor)
 
     def load(
         self,
         *,
-        user_id: int,
+        actor: ActorRef,
         current_session_key: str,
         exclude_current_session: bool,
         limit: int,
@@ -100,7 +98,7 @@ class SqliteAiMemoryStore:
         WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
           AND actor_scope_id = ?
         """
-        params: list[object] = list(_actor_values(_onebot_actor(user_id)))
+        params: list[object] = list(_actor_values(actor))
         if exclude_current_session:
             sql += "AND session_key != ? "
             params.append(current_session_key)
@@ -110,21 +108,12 @@ class SqliteAiMemoryStore:
             with self._database.connect() as conn:
                 rows = conn.execute(sql, params).fetchall()
         except sqlite3.Error:
-            _LOGGER.warning("failed to read AI memory for %s", user_id)
+            _LOGGER.warning("failed to read AI memory for %s", actor)
             return []
         return [
             {"role": str(role), "content": str(content)}
             for role, content in reversed(rows)
         ]
-
-
-def _onebot_actor(user_id: int) -> ActorRef:
-    return ActorRef(Platform.ONEBOT, str(int(user_id)))
-
-
-def _conversation_for_turn(turn: AiMemoryTurn) -> ConversationRef:
-    kind = "group" if turn.chat_scope == "group" else "private"
-    return ConversationRef(Platform.ONEBOT, kind, str(int(turn.chat_id)))
 
 
 def _actor_values(actor: ActorRef) -> tuple[str, str, str, str]:

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.core.messaging import AiIntentAction
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 FIRE_MANUAL_ANNOUNCEMENT_MARKERS = (
     "发布",
@@ -64,10 +65,7 @@ class TemplateContext(dict[str, str]):
 
 def contains_any_keyword(text: str, keywords: list[str]) -> bool:
     normalized = normalize_command_text(text)
-    return any(
-        normalize_command_text(keyword) in normalized
-        for keyword in keywords
-    )
+    return any(normalize_command_text(keyword) in normalized for keyword in keywords)
 
 
 def _contains_any_normalized(text: str, markers: tuple[str, ...]) -> bool:
@@ -126,33 +124,19 @@ def excluded_by_context(text: str, action: AiIntentAction) -> bool:
 
 def is_action_allowed(
     features: FeatureService,
-    user_id: int,
-    group_id: int | None,
+    actor: ActorRef,
+    conversation: ConversationRef,
     action: AiIntentAction,
 ) -> bool:
-    if group_id is not None:
-        return features.is_group_feature_allowed(
-            user_id,
-            group_id,
-            action.feature,
-        )
-
-    return features.is_private_feature_allowed(user_id, action.feature)
+    return features.is_feature_allowed(actor, conversation, action.feature)
 
 
 def is_ai_intent_allowed(
     features: FeatureService,
-    user_id: int,
-    group_id: int | None,
+    actor: ActorRef,
+    conversation: ConversationRef,
 ) -> bool:
-    if group_id is not None:
-        return features.is_group_feature_allowed(
-            user_id,
-            group_id,
-            "ai_intent",
-        )
-
-    return features.is_private_feature_allowed(user_id, "ai_intent")
+    return features.is_feature_allowed(actor, conversation, "ai_intent")
 
 
 def format_action_template(action: AiIntentAction, template: str, text: str) -> str:

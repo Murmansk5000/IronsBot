@@ -22,9 +22,9 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from ironsbot.core.bilibili import BiliConfig
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
     from ironsbot.services.bilibili.targets import BiliTargetService
-    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +53,15 @@ class BilibiliService:
 
     async def query_dynamic_menu(
         self,
-        target_type: PushTargetType,
-        target_id: int,
-        user_id: int,
+        *,
+        actor: ActorRef,
+        conversation: ConversationRef,
     ) -> DynamicMenuResult:
-        query_uids = (
-            self.targets.query_uids_for_group(user_id, target_id)
-            if target_type == "group"
-            else self.targets.query_uids_for_private(user_id)
-        )
+        query_uids = self.targets.query_uids(actor, conversation)
         logger.info(
-            "Bilibili dynamic menu query: user=%s uids=%s",
-            user_id,
+            "Bilibili dynamic menu query: actor=%s conversation=%s uids=%s",
+            actor,
+            conversation,
             query_uids,
         )
         if not query_uids:
@@ -94,8 +91,8 @@ class BilibiliService:
             return DynamicMenuResult(status="no_history")
 
         logger.info(
-            "user %s fetched Bilibili dynamic menu for %s",
-            user_id,
+            "actor %s fetched Bilibili dynamic menu for %s",
+            actor,
             query_uids,
         )
         return DynamicMenuResult(

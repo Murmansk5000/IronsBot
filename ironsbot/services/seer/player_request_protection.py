@@ -21,6 +21,7 @@ from ironsbot.services.operations.request_feedback import send_request_feedback
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from ironsbot.core.platform import ActorRef
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.operations.headless import HeadlessService
 
@@ -45,7 +46,7 @@ class PlayerRequestReconnectError(RuntimeError):
 
 
 class SuperuserLookup(Protocol):
-    def is_superuser(self, user_id: int) -> bool: ...
+    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
 
 
 class PlayerRequestProtectionConfig(Protocol):
@@ -63,7 +64,7 @@ class _QueuedRequest:
     label: str
     operation: Callable[[], Awaitable[Any]]
     future: asyncio.Future[Any]
-    user_id: int | None
+    actor: ActorRef | None
     bypass_pause: bool
     background: bool
     timeout_seconds: float | None
@@ -100,7 +101,7 @@ class PlayerRequestProtectionService:
         self,
         operation: Callable[[], Awaitable[T]],
         *,
-        user_id: int | None,
+        actor: ActorRef | None,
         label: str,
         background: bool = False,
         priority: HeadlessRequestPriority | None = None,
@@ -109,7 +110,7 @@ class PlayerRequestProtectionService:
         _retry_after_background_failure: bool = True,
     ) -> T:
         is_superuser = (
-            user_id is not None and self._features.is_superuser(user_id)
+            actor is not None and self._features.is_actor_superuser(actor)
         )
         request_priority = self._request_priority(
             is_superuser=is_superuser,
@@ -119,7 +120,7 @@ class PlayerRequestProtectionService:
         if not self._config.enabled:
             await send_request_feedback(queued=False)
             with (
-                semantic_request_scope(semantic_request, user_id=user_id),
+                semantic_request_scope(semantic_request, actor=actor),
                 headless_request_priority_scope(request_priority),
             ):
                 return await operation()
@@ -149,7 +150,7 @@ class PlayerRequestProtectionService:
                     ):
                         return await self.run(
                             operation,
-                            user_id=user_id,
+                            actor=actor,
                             label=label,
                             background=False,
                             timeout_seconds=timeout_seconds,
@@ -162,7 +163,7 @@ class PlayerRequestProtectionService:
         workflow = HeadlessWorkflowState(
             sequence=self._workflow_sequence,
             label=label,
-            user_id=user_id,
+            actor=actor,
             priority_state=priority_state,
         )
         self._workflow_sequence += 1
@@ -170,7 +171,7 @@ class PlayerRequestProtectionService:
             label=label,
             operation=cast("Callable[[], Awaitable[Any]]", operation),
             future=asyncio.get_running_loop().create_future(),
-            user_id=user_id,
+            actor=actor,
             bypass_pause=bypass_pause,
             background=background,
             timeout_seconds=timeout_seconds,
@@ -184,11 +185,11 @@ class PlayerRequestProtectionService:
         self._active.append(item)
         logger.info(
             "player workflow admitted: ticket=%s label=%s priority=%s "
-            "user=%s background=%s",
+            "actor=%s background=%s",
             workflow.sequence,
             label,
             request_priority.name.lower(),
-            user_id,
+            _actor_log_label(actor),
             background,
         )
         item.task = self._spawn(
@@ -311,7 +312,7 @@ class PlayerRequestProtectionService:
             with (
                 semantic_request_scope(
                     item.semantic_request,
-                    user_id=item.user_id,
+                    actor=item.actor,
                 ),
                 headless_request_priority_scope(
                     priority_state.priority,
@@ -322,7 +323,7 @@ class PlayerRequestProtectionService:
                     or HeadlessWorkflowState(
                         sequence=-1,
                         label=item.label,
-                        user_id=item.user_id,
+                        actor=item.actor,
                         priority_state=priority_state,
                     ),
                 ),
@@ -354,11 +355,11 @@ class PlayerRequestProtectionService:
             if workflow is not None:
                 logger.info(
                     "player workflow finished: ticket=%s label=%s priority=%s "
-                    "user=%s packets=%s queued_packets=%s elapsed=%.3fs outcome=%s",
+                    "actor=%s packets=%s queued_packets=%s elapsed=%.3fs outcome=%s",
                     workflow.sequence,
                     workflow.label,
                     workflow.priority_state.priority.name.lower(),
-                    workflow.user_id,
+                    _actor_log_label(workflow.actor),
                     workflow.packet_count,
                     workflow.queued_packet_count,
                     monotonic() - workflow.queued_at,
@@ -460,6 +461,12 @@ def _semantic_request_key(
     if request is None:
         return None
     return request.action.id, request.target.key
+
+
+def _actor_log_label(actor: ActorRef | None) -> str:
+    if actor is None:
+        return "background"
+    return f"{actor.platform.value}:{actor.id}"
 
 
 def player_request_protection_message(error: Exception) -> str:

@@ -4,6 +4,14 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from ironsbot.integrations.onebot.bilibili_push import (
+    BILI_PUSH_ADMIN_HINT,
+    DYNAMIC_HISTORY_HINT,
+    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
+    FULL_DYNAMIC_PUSH_ACTION,
+    LINK_DYNAMIC_PUSH_ACTION,
+    OneBotBilibiliPushSender,
+)
 from ironsbot.plugins.onebot.bilibili.delivery import (
     build_dynamic_content_message,
     build_dynamic_link_message,
@@ -18,14 +26,6 @@ from ironsbot.core.messaging import (
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import (
-    BILI_PUSH_ADMIN_HINT,
-    DYNAMIC_HISTORY_HINT,
-    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
-    FULL_DYNAMIC_PUSH_ACTION,
-    LINK_DYNAMIC_PUSH_ACTION,
-    BilibiliPushDeliveryService,
-)
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.runtime import build_test_runtime
@@ -74,8 +74,8 @@ def _item(
 def _delivery_service(
     features: FeatureService,
     subscriptions: PushSubscriptionRepository | None = None,
-) -> BilibiliPushDeliveryService:
-    return BilibiliPushDeliveryService(
+) -> OneBotBilibiliPushSender:
+    return OneBotBilibiliPushSender(
         cast("MessageDelivery", object()),
         subscriptions or cast("PushSubscriptionRepository", object()),
         build_dynamic_link_message,
@@ -129,13 +129,15 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
 def test_delivery_service_only_appends_history_hint_for_query_targets(
     tmp_path: Path,
 ) -> None:
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         cast("MessageDelivery", object()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
         build_dynamic_content_message,
         append_text_hint,
-        can_query_history=lambda target: target.target_id == QUERY_ENABLED_GROUP_ID,
+        can_query_history=lambda conversation: (
+            conversation.id == str(QUERY_ENABLED_GROUP_ID)
+        ),
     )
 
     assert DYNAMIC_HISTORY_HINT in str(
@@ -165,11 +167,11 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
             sent.append({"message": message, **kwargs})
             return TargetSendSummary([], [])
 
-    async def summarize(text: str, *, max_chars: int) -> str:
-        summaries.append((text, max_chars))
+    async def summarize(content: str, max_chars: int) -> str:
+        summaries.append((content, max_chars))
         return "这是忠实摘要。"
 
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         cast("MessageDelivery", RecordingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
@@ -228,11 +230,10 @@ async def test_short_full_dynamic_does_not_call_ai(
             sent.append({"message": message, **kwargs})
             return TargetSendSummary([], [])
 
-    async def unexpected_summary(text: str, *, max_chars: int) -> str:
-        del text, max_chars
+    async def unexpected_summary(_content: str, _max_chars: int) -> str:
         raise AssertionError
 
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         cast("MessageDelivery", RecordingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
@@ -286,7 +287,7 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
         subscription_key,
         "bili_push",
     )
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         cast("MessageDelivery", RecordingDelivery()),
         subscriptions,
         build_dynamic_link_message,
@@ -342,7 +343,7 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
     runtime = build_test_runtime(
         feature_config=FeatureConfig(group_policy={"1001": ["fire_manual_ad"]})
     )
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         cast("MessageDelivery", ApplyingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
@@ -394,10 +395,10 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         return None
 
     monkeypatch.setattr(
-        "ironsbot.services.bilibili.delivery.asyncio.sleep",
+        "ironsbot.integrations.onebot.bilibili_push.asyncio.sleep",
         no_sleep,
     )
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         cast("MessageDelivery", PartiallyFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
@@ -462,10 +463,10 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         return None
 
     monkeypatch.setattr(
-        "ironsbot.services.bilibili.delivery.asyncio.sleep",
+        "ironsbot.integrations.onebot.bilibili_push.asyncio.sleep",
         no_sleep,
     )
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         cast("MessageDelivery", AlwaysFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
@@ -520,33 +521,3 @@ def test_delivery_service_appends_admin_hint_once_per_day(
     assert second == "正文2"
     assert other_group == f"正文3\n\n{BILI_PUSH_ADMIN_HINT}"
     assert private == "正文4"
-
-
-@pytest.mark.asyncio
-async def test_summary_callback_respects_keyword_only_max_chars() -> None:
-    # Only this pure callback method is exercised; no delivery or state store is opened.
-    calls: list[tuple[str, int]] = []
-
-    async def summarize(text: str, *, max_chars: int) -> str | None:
-        calls.append((text, max_chars))
-        return "ok"
-
-    def component_instance(*, use_ai: bool) -> BilibiliPushDeliveryService:
-        instance = object.__new__(BilibiliPushDeliveryService)
-        # Initialize this method's read set.
-        # Preserve the frozen class semantics.
-        for name, value in (
-            ("content_max_chars", 3), ("summary_max_chars", 2),
-            ("summary_use_ai", use_ai), ("summarize", summarize),
-        ):
-            object.__setattr__(instance, name, value)
-        return instance
-
-    service = component_instance(use_ai=True)
-    assert await service._content_override("long content") == "ok"
-    assert calls == [("long content", 2)]
-    assert await service._content_override("abc") is None
-    assert len(calls) == 1
-    disabled = component_instance(use_ai=False)
-    assert await disabled._content_override("long content") == "lo"
-    assert len(calls) == 1

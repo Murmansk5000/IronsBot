@@ -218,7 +218,7 @@ async def handle_player_shortcut(
         service,
         command,
         message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
         send_status=send_status,
     )
     await finish_event_reply(

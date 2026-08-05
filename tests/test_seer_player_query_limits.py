@@ -424,10 +424,10 @@ def test_player_detail_uses_valid_cache_without_quota_or_live_request(
             _command: PlayerShortcutCommand,
             _player_id: int,
             *,
-            group_id: int | None,
+            conversation: object | None,
             anchor_only: bool,
         ) -> QueryReply:
-            assert group_id is None
+            assert conversation is None
             assert not anchor_only
             nonlocal latest, live_calls
             live_calls += 1
@@ -492,10 +492,10 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
             _command: PlayerShortcutCommand,
             _player_id: int,
             *,
-            group_id: int | None,
+            conversation: object | None,
             _anchor_only: bool,
         ) -> QueryReply:
-            assert group_id is None
+            assert conversation is None
             nonlocal live_calls
             live_calls += 1
             return QueryReply(

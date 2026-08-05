@@ -12,6 +12,8 @@ from ironsbot.core.semantic_requests import current_semantic_request_trace
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ironsbot.core.platform import ActorRef, ConversationRef
+
 RECENT_OPERATION_WINDOW_SECONDS = 90.0
 
 
@@ -21,13 +23,13 @@ class HeadlessOperation:
     detail: str
     source: str
     background: bool
-    group_id: int | None
+    conversation: ConversationRef | None
     started_at: float
     semantic_action_id: str = ""
     semantic_action_label: str = ""
     semantic_target: str = ""
     semantic_source: str = ""
-    semantic_user_id: int | None = None
+    semantic_actor: ActorRef | None = None
     ended_at: float | None = None
 
 
@@ -48,7 +50,7 @@ class HeadlessOperationTracker:
         *,
         source: str = "",
         background: bool = False,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> Iterator[HeadlessOperation]:
         parent = self._current.get()
         semantic = current_semantic_request_trace()
@@ -57,7 +59,7 @@ class HeadlessOperationTracker:
             detail=detail.strip(),
             source=source.strip() or label.strip() or "无头请求",
             background=background,
-            group_id=group_id,
+            conversation=conversation,
             started_at=time.monotonic(),
             semantic_action_id=(
                 "" if semantic is None else semantic.request.action.id
@@ -71,7 +73,7 @@ class HeadlessOperationTracker:
             semantic_source=(
                 "" if semantic is None else semantic.request.source.value
             ),
-            semantic_user_id=(None if semantic is None else semantic.user_id),
+            semantic_actor=(None if semantic is None else semantic.actor),
         )
         token = self._current.set(operation)
         self._active[id(operation)] = operation
@@ -107,11 +109,8 @@ class HeadlessOperationTracker:
         )
         if operation is None or not operation.semantic_action_id:
             return ""
-        user = (
-            ""
-            if operation.semantic_user_id is None
-            else f"，QQ：{operation.semantic_user_id}"
-        )
+        actor = operation.semantic_actor
+        user = "" if actor is None else f"，用户：{actor.platform.value}/{actor.id}"
         return (
             f"{operation.semantic_action_label}"
             f"（{operation.semantic_action_id}）"
@@ -123,8 +122,11 @@ class HeadlessOperationTracker:
     def _format(operation: HeadlessOperation) -> str:
         detail = f"：{operation.detail}" if operation.detail else ""
         kind = "后台" if operation.background else "用户"
-        group = f"，群：{operation.group_id}" if operation.group_id is not None else ""
-        return f"{operation.label}{detail}（{kind}操作{group}）"
+        conversation = ""
+        if operation.conversation is not None:
+            ref = operation.conversation
+            conversation = f"，会话：{ref.platform.value}/{ref.kind}/{ref.id}"
+        return f"{operation.label}{detail}（{kind}操作{conversation}）"
 
     def _recent(
         self,

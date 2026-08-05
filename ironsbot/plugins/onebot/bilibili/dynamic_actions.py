@@ -14,9 +14,9 @@ from ironsbot.runtime.conversations import (
     enter_event_reply_conversation,
 )
 from ironsbot.runtime.matchers import bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.replies import (
     finish_event_reply,
-    message_event_target,
     send_event_reply,
 )
 from ironsbot.services.bilibili.menu import DYNAMIC_IDS_STATE_KEY
@@ -58,11 +58,10 @@ async def handle_dynamic_menu_action(
             pending_reply_check=is_dynamic_select_reply,
             reply_check=is_dynamic_select_reply,
         )
-        target_type, target_id, _ = message_event_target(event)
+        message = message_input_context(event).message
         result = await service.query_dynamic_menu(
-            target_type,
-            target_id,
-            event.user_id,
+            actor=message.actor,
+            conversation=message.conversation,
         )
         if result.status == "no_accounts":
             await finish_event_reply(

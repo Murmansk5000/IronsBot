@@ -10,18 +10,17 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.config.player_accounts import PlayerAccountRegistry
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import (
     BOT_COMMAND_ARG_KEY,
     explicit_command,
     member_target_command,
 )
+from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
@@ -56,6 +55,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.player_service import PlayerService
 
+
 @dataclass(frozen=True, slots=True)
 class PlayerCommandDependencies:
     player: PlayerService
@@ -66,6 +66,7 @@ class PlayerCommandDependencies:
     player_accounts: PlayerAccountRegistry = field(
         default_factory=lambda: PlayerAccountRegistry(())
     )
+
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
@@ -158,7 +159,7 @@ async def handle_player(
         int(state[PLAYER_ID_KEY]),
         actor=message_input_context(event).message.actor,
         explicit=explicit,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await _handle_player_query_result(
         dependencies,
@@ -194,7 +195,7 @@ async def handle_player_binding_command(
     result = await dependencies.player.bind_player(
         target.player_id,
         actor=message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await _handle_player_query_result(
         dependencies,
@@ -297,7 +298,7 @@ async def _send_pending_player_query(
         )
         dependencies.player.start_background_refresh(
             pending,
-            group_id=event_group_id(event),
+            conversation=message_input_context(event).message.conversation,
         )
 
     await send_player_info_with_detail_prompt(

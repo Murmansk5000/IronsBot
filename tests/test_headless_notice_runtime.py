@@ -6,8 +6,8 @@ from zoneinfo import ZoneInfo
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
-from ironsbot.config.player_accounts import PlayerAccount
 from ironsbot.integrations.headless_seer.client import ClientManager
+from ironsbot.services.identity.player_accounts import PlayerAccount
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.operations.headless import HeadlessService
 from tests.helpers.runtime import build_test_runtime
