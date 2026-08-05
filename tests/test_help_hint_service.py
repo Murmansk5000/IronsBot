@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from ironsbot.core.features import HelpConfig
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.integrations.onebot.help_hint import (
+    OneBotHelpHintService,
+    is_onebot_poke_at_bot,
+)
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandCatalog,
@@ -10,10 +14,6 @@ from ironsbot.runtime.commands import (
     CommandDescriptor,
 )
 from ironsbot.runtime.plugins import PluginContribution
-from ironsbot.services.messaging.help_hint import (
-    HelpHintService,
-    is_poke_at_bot,
-)
 
 
 @dataclass(slots=True)
@@ -169,7 +169,7 @@ def _service(
     group_aliases: dict[str, int] | None = None,
     user_aliases: dict[str, int] | None = None,
     features: FakeFeatures | None = None,
-) -> HelpHintService:
+) -> OneBotHelpHintService:
     catalog = _catalog()
 
     def candidates(
@@ -190,7 +190,7 @@ def _service(
             ignored_plugins=ignored_plugins,
         )
 
-    return HelpHintService(
+    return OneBotHelpHintService(
         config=config or HelpConfig(),
         references=OneBotReferenceResolver(
             group_aliases=group_aliases or {},
@@ -209,9 +209,9 @@ def test_help_hint_text_mentions_help_command() -> None:
     )
 
 
-def test_is_poke_at_bot_checks_poke_target() -> None:
-    assert is_poke_at_bot(FakePokeEvent(self_id=100, target_id=100))
-    assert not is_poke_at_bot(FakePokeEvent(self_id=100, target_id=200))
+def test_is_onebot_poke_at_bot_checks_poke_target() -> None:
+    assert is_onebot_poke_at_bot(FakePokeEvent(self_id=100, target_id=100))
+    assert not is_onebot_poke_at_bot(FakePokeEvent(self_id=100, target_id=200))
 
 
 def test_group_poke_reply_prefers_configured_group_alias() -> None:

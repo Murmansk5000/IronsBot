@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.delivery import OneBotDelivery
+    from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
     from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.commands import CommandCatalog
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.delivery import MessageLimiter
-    from ironsbot.services.messaging.help_hint import HelpHintService
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.data_sync import DataSyncService
@@ -72,6 +72,6 @@ class ApplicationResources:
     scheduled_restart: ScheduledRestartService
     commands: CommandCatalog
     contribution_catalog: PluginContributionCatalog
-    help_hint: HelpHintService
+    help_hint: OneBotHelpHintService
     private_extensions: PrivateExtensionCatalog
     private_extension_runtime: PrivateExtensionRuntime

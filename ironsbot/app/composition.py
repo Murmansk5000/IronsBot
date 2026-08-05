@@ -40,6 +40,7 @@ from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
+from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
     OneBotLuckySkinWindowSubscriptionOptions,
@@ -132,7 +133,6 @@ from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
-from ironsbot.services.messaging.help_hint import HelpHintService
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
@@ -759,7 +759,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         scheduled_restart=scheduled_restart,
         commands=command_catalog,
         contribution_catalog=contribution_catalog,
-        help_hint=HelpHintService(
+        help_hint=OneBotHelpHintService(
             settings.features.help,
             settings.onebot_references,
             poke_hint_candidates,

@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""OneBot-specific poke hints and their numeric target configuration."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -23,7 +25,7 @@ CommandHintCandidates = Callable[
 ]
 
 
-class PokeLikeEvent(Protocol):
+class OneBotPokeEvent(Protocol):
     self_id: int
     target_id: int
 
@@ -31,7 +33,7 @@ class PokeLikeEvent(Protocol):
 POKE_HINT_HELP_SUFFIX = "发送“帮助”可查看全部指令。"
 
 
-def is_poke_at_bot(event: PokeLikeEvent) -> bool:
+def is_onebot_poke_at_bot(event: OneBotPokeEvent) -> bool:
     return event.target_id == event.self_id
 
 
@@ -52,7 +54,9 @@ def _get_poke_reply(
 
 
 @dataclass(slots=True)
-class HelpHintService:
+class OneBotHelpHintService:
+    """Select and rate-limit OneBot poke hints without leaking into services."""
+
     config: HelpConfig
     references: OneBotReferenceResolver
     poke_hint_candidates: CommandHintCandidates | None = None
