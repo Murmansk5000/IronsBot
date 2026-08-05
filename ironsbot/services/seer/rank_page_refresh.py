@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from ironsbot.config.models.seer import RankPageRefreshConfig
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
@@ -88,7 +89,7 @@ class RankPageRefreshService:
         rank_keys: Sequence[str] | None = None,
         *,
         background: bool = False,
-        user_id: int | None = None,
+        actor: ActorRef | None = None,
         max_parallelism: int = 1,
     ) -> RankPageRefreshResult:
         if self._lock.locked():
@@ -110,7 +111,7 @@ class RankPageRefreshService:
                 game,
                 rank_keys,
                 background=background,
-                user_id=user_id,
+                actor=actor,
                 max_parallelism=max_parallelism,
             )
 
@@ -120,7 +121,7 @@ class RankPageRefreshService:
         rank_keys: Sequence[str] | None,
         *,
         background: bool,
-        user_id: int | None,
+        actor: ActorRef | None,
         max_parallelism: int,
     ) -> RankPageRefreshResult:
         page_budget = self._page_budget()
@@ -159,7 +160,7 @@ class RankPageRefreshService:
                         game,
                         target,
                         background=background,
-                        user_id=user_id,
+                        actor=actor,
                     )
                 except Exception as error:  # noqa: BLE001
                     connection_error = _is_rank_page_refresh_connection_error(error)
@@ -225,7 +226,7 @@ class RankPageRefreshService:
         target: RankPageRefreshTarget,
         *,
         background: bool,
-        user_id: int | None,
+        actor: ActorRef | None,
     ) -> int | None:
         async def fetch() -> int | None:
             active_game = game() if callable(game) else game
@@ -253,7 +254,7 @@ class RankPageRefreshService:
             return await fetch()
         return await self.requests.run(
             fetch,
-            user_id=user_id,
+            actor=actor,
             label="后台刷榜缓存" if background else "手动刷新榜单缓存",
             background=background,
         )

@@ -6,6 +6,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.seer import RankPageRefreshConfig
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -68,12 +69,15 @@ def test_headless_operation_context_captures_semantic_request() -> None:
     )
 
     with (
-        semantic_request_scope(request, user_id=123456),
+        semantic_request_scope(
+            request,
+            actor=ActorRef(Platform.ONEBOT, "123456"),
+        ),
         operations.track("收集查询", "米米号 712345678"),
     ):
         assert operations.format_recent_semantic() == (
             "收集与排行（seer.player.collection）：米米号 712345678"
-            "（来源：menu，QQ：123456）"
+            "（来源：menu，用户：onebot/123456）"
         )
 
 

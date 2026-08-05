@@ -129,7 +129,7 @@ async def _handle_list(
 ) -> None:
     message = await service.list(
         state[RANK_LIST_COMMAND_KEY],
-        qq_user_id=event.user_id,
+        actor=message_input_context(event).message.actor,
         group_id=event_group_id(event),
     )
     await finish_event_reply(matcher, event, message)
@@ -145,7 +145,7 @@ async def _handle_score(
         state[RANK_SCORE_COMMAND_KEY],
         conversation=message_input_context(event).message.conversation,
         group_id=event_group_id(event),
-        qq_user_id=event.user_id,
+        actor=message_input_context(event).message.actor,
     )
     await finish_event_reply(matcher, event, message)
 
@@ -166,7 +166,7 @@ async def _handle_player(
         return
     message = await service.player(
         resolved.command,
-        qq_user_id=event.user_id,
+        actor=message_input_context(event).message.actor,
         group_id=event_group_id(event),
     )
     await finish_event_reply(matcher, event, message)
@@ -188,7 +188,7 @@ async def _handle_cache_batch(
 ) -> None:
     message = await service.cache_batch(
         state[RANK_CACHE_BATCH_COMMAND_KEY],
-        user_id=int(event.user_id),
+        actor=message_input_context(event).message.actor,
         progress=partial(_progress, matcher, event),
     )
     await finish_event_reply(matcher, event, message)
@@ -223,7 +223,7 @@ async def _handle_page_refresh(
 ) -> None:
     message = await service.page_refresh(
         state[RANK_PAGE_CACHE_REFRESH_COMMAND_KEY],
-        user_id=int(event.user_id),
+        actor=message_input_context(event).message.actor,
         progress=partial(_progress, matcher, event),
     )
     await finish_event_reply(matcher, event, message)
@@ -247,7 +247,7 @@ async def _handle_cache_refresh(
     event: MessageEvent,
 ) -> None:
     message = await service.cache_refresh(
-        user_id=int(event.user_id),
+        actor=message_input_context(event).message.actor,
         progress=partial(_progress, matcher, event),
     )
     await finish_event_reply(matcher, event, message)

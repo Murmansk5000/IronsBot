@@ -384,7 +384,7 @@ class PlayerDetailService:
             return await asyncio.wait_for(fetch(), timeout=timeout_seconds)
         return await self._requests.run(
             fetch,
-            user_id=None,
+            actor=None,
             label=f"后台{shortcut_operation_label(command.kind)}",
             background=True,
             timeout_seconds=timeout_seconds,
@@ -781,17 +781,8 @@ class PlayerService(PlayerAccountPolicyMixin):
             return await guarded_operation()
         return await self._requests.run(
             guarded_operation,
-            user_id=_request_actor_id(actor),
+            actor=actor,
             label=label,
             semantic_request=semantic_request,
             priority=priority,
         )
-
-
-def _request_actor_id(actor: ActorRef) -> int | None:
-    """Adapt current OneBot request telemetry until it owns ActorRef values."""
-
-    try:
-        return int(actor.id)
-    except ValueError:
-        return None

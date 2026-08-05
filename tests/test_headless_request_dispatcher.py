@@ -246,7 +246,7 @@ async def test_earlier_workflow_resumes_before_backfilled_workflow() -> None:
     first_workflow = HeadlessWorkflowState(
         sequence=1,
         label="first",
-        user_id=1,
+        actor=None,
         priority_state=HeadlessRequestPriorityState(
             HeadlessRequestPriority.INTERACTIVE
         ),
@@ -254,7 +254,7 @@ async def test_earlier_workflow_resumes_before_backfilled_workflow() -> None:
     later_workflow = HeadlessWorkflowState(
         sequence=2,
         label="later",
-        user_id=2,
+        actor=None,
         priority_state=HeadlessRequestPriorityState(
             HeadlessRequestPriority.INTERACTIVE
         ),
@@ -302,7 +302,7 @@ async def test_idle_worker_backfills_a_later_workflow() -> None:
     first_workflow = HeadlessWorkflowState(
         sequence=1,
         label="first",
-        user_id=1,
+        actor=None,
         priority_state=HeadlessRequestPriorityState(
             HeadlessRequestPriority.INTERACTIVE
         ),
@@ -310,7 +310,7 @@ async def test_idle_worker_backfills_a_later_workflow() -> None:
     later_workflow = HeadlessWorkflowState(
         sequence=2,
         label="later",
-        user_id=2,
+        actor=None,
         priority_state=HeadlessRequestPriorityState(
             HeadlessRequestPriority.INTERACTIVE
         ),
@@ -358,7 +358,7 @@ async def test_ready_packets_follow_the_five_player_workflow_priorities() -> Non
         workflow = HeadlessWorkflowState(
             sequence=sequence,
             label=label,
-            user_id=sequence,
+            actor=None,
             priority_state=state,
         )
         with (
