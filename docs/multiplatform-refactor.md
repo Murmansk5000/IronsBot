@@ -137,6 +137,19 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 
 **删除条件：** 运行时 SWF 转换、renderer 数据库读取和文本关联猜测全部删除。
 
+**当前收口记录（2026-08）**
+
+- 精灵资料、属性克制、巅峰池、投票和精灵排行已经采用“快照/素材 ->
+  presenter -> `RenderDocument` -> HTML port”的单向链路；纯 presenter 不得
+  新增 SQLite、HTTP、文件读取或当前时间依赖。
+- 专属效果、魂印顺序和魂印 PNG 已由 SeerAPI 构建期事实提供。无法由原始包表达、
+  但需要展示的魂印必须写入 SeerAPI 的
+  `pet_soulmark_display_addition`，并附带 `source`，不得在 IronsBot presenter
+  中按精灵 ID 特判。
+- `new_content` 仍有数据详情和素材组装混在 Seer 数据适配器中。这是下一项迁移
+  的候选：先提取不可变快照和素材包，再删除适配器内的逐项展示推断；在此之前，
+  不得把新的业务规则加入 HTML 模板或纯 presenter。
+
 ### Phase 5 — 业务服务和通用解析
 
 **目标契约：** 领域服务、统一别名解析和 `PlayerIdResolver`。

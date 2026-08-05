@@ -102,6 +102,21 @@ class PetSoulmarkSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class PetSoulmarkDisplayAddition:
+    """A published soulmark display fact not represented by a raw soulmark row."""
+
+    id: int
+    desc: str
+    analyze_desc: str | None
+    formatting_adjustment: str | None
+    intensified: bool
+    intensified_to_id: int | None
+    is_adv: bool
+    pve_effective: bool | None
+    tags: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PetMintmarkSnapshot:
     id: int
     name: str
@@ -153,6 +168,7 @@ class PetDerivedDisplayData:
     special_effects: tuple[PetSpecialEffectView, ...]
     soulmark_display_order: tuple[tuple[int, int], ...]
     soulmark_icons: tuple[tuple[int, SoulmarkIconAsset], ...]
+    soulmark_display_additions: tuple[PetSoulmarkDisplayAddition, ...] = ()
 
     @property
     def soulmark_order_by_id(self) -> Mapping[int, int]:
