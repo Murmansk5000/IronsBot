@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, cast
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from pytest import MonkeyPatch
 
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.messaging import red_packet as red_packet_notice_plugin
 from ironsbot.plugins.onebot.messaging.red_packet import (
     is_red_packet_message,
@@ -76,9 +77,9 @@ def test_notice_payload_without_red_packet_marker_is_not_detected() -> None:
 
 def test_build_red_packet_notice_message_includes_group_and_sender() -> None:
     notice = build_red_packet_notice_message(
-        group_id=987654321,
-        group_name="示例群",
-        sender_id=1234567890,
+        conversation=ConversationRef(Platform.ONEBOT, "group", "987654321"),
+        conversation_name="示例群",
+        sender=ActorRef(Platform.ONEBOT, "1234567890"),
         summary="恭喜发财",
     )
 
@@ -90,11 +91,22 @@ def test_build_red_packet_notice_message_includes_group_and_sender() -> None:
 
 def test_red_packet_notice_limiter_uses_per_group_cooldown() -> None:
     limiter = RedPacketNoticeLimiter(cooldown_seconds=60.0)
+    first = ConversationRef(Platform.ONEBOT, "group", "1")
+    second = ConversationRef(Platform.ONEBOT, "group", "2")
 
-    assert limiter.can_send(1, now=100.0)
-    assert not limiter.can_send(1, now=120.0)
-    assert limiter.can_send(2, now=120.0)
-    assert limiter.can_send(1, now=161.0)
+    assert limiter.can_send(first, now=100.0)
+    assert not limiter.can_send(first, now=120.0)
+    assert limiter.can_send(second, now=120.0)
+    assert limiter.can_send(first, now=161.0)
+
+
+def test_red_packet_notice_limiter_keeps_same_id_on_different_platforms_separate() -> None:
+    limiter = RedPacketNoticeLimiter(cooldown_seconds=60.0)
+    onebot_group = ConversationRef(Platform.ONEBOT, "group", "1")
+    official_group = ConversationRef(Platform.QQ_OFFICIAL, "group", "1")
+
+    assert limiter.can_send(onebot_group, now=100.0)
+    assert limiter.can_send(official_group, now=101.0)
 
 
 def test_red_packet_notice_uses_admin_notice_delivery(

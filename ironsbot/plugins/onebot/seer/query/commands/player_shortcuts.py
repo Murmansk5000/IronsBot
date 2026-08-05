@@ -151,7 +151,6 @@ def _resolve_player_shortcut_command(
         player_reference=command.player_reference,
         reference_lookup=event_player_reference_lookup(
             dependencies.player_accounts,
-            event,
         ),
         binding_for_user=dependencies.player.default_player_id,
     )
@@ -177,7 +176,6 @@ def _resolve_extension_shortcut_command(
         player_reference=command.player_reference,
         reference_lookup=event_player_reference_lookup(
             dependencies.player_accounts,
-            event,
         ),
         binding_for_user=dependencies.player.default_player_id,
     )

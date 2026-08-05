@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.plugins.onebot.seer.query.commands import rank_list
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
@@ -26,7 +27,11 @@ def _group() -> SimpleNamespace:
                 public=False,
             ),
         ),
-        private_alias_groups={PRIVATE_GROUP_ID: ("sample_player",)},
+        private_alias_groups={
+            ConversationRef(Platform.ONEBOT, "group", str(PRIVATE_GROUP_ID)): (
+                "sample_player",
+            ),
+        },
     )
     return SimpleNamespace(
         player_accounts=accounts,

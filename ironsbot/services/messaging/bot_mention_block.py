@@ -5,10 +5,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.core.response_admission import FeedbackOnce, ResponseAdmissionDecision
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ActorRef
 
 
 @dataclass(slots=True)
@@ -30,17 +33,17 @@ class BotMentionBlockService:
 
     config: BotMentionBlockConfig
     limiter: SlidingWindowRateLimiter = field(default_factory=SlidingWindowRateLimiter)
-    _cycles: dict[int, _MentionCycle] = field(default_factory=dict)
+    _cycles: dict[ActorRef, _MentionCycle] = field(default_factory=dict)
 
     def admit(
         self,
-        user_id: int,
+        actor: ActorRef,
         *,
         now: float | None = None,
     ) -> ResponseAdmissionDecision:
         current_time = monotonic() if now is None else now
         self._prune_cycles(current_time)
-        if cycle := self._cycles.get(user_id):
+        if cycle := self._cycles.get(actor):
             return ResponseAdmissionDecision(
                 allowed=False,
                 feedback=cycle.feedback.take(self.config.duplicate_message),
@@ -48,7 +51,7 @@ class BotMentionBlockService:
 
         remaining = self.limiter.hit(
             "non_ai_bot_mention_block",
-            user_id,
+            actor,
             window_seconds=self.config.mention_initial_window_seconds,
             max_events=self.config.mention_initial_max_responses,
             now=current_time,
@@ -56,12 +59,12 @@ class BotMentionBlockService:
         if remaining < 0:
             return ResponseAdmissionDecision(allowed=False)
 
-        self._cycles[user_id] = _MentionCycle(started_at=current_time)
+        self._cycles[actor] = _MentionCycle(started_at=current_time)
         return ResponseAdmissionDecision(allowed=True)
 
     def _prune_cycles(self, now: float) -> None:
         self._cycles = {
-            user_id: cycle
-            for user_id, cycle in self._cycles.items()
+            actor: cycle
+            for actor, cycle in self._cycles.items()
             if now - cycle.started_at < self.config.duplicate_window_seconds
         }
