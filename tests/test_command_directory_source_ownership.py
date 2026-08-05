@@ -1,17 +1,19 @@
 from ironsbot.core.command_catalog import CommandContext, CommandContract
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.bilibili import command_contracts as bilibili_commands
-from ironsbot.plugins.onebot.bilibili.command_rules import (
-    BILI_ACCOUNT_COMMANDS,
-    BILI_PUSH_MODE_COMMANDS,
-    DYNAMIC_MENU_COMMANDS,
-    DYNAMIC_UPDATE_COMMANDS,
-)
+from ironsbot.services.about_commands import about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
 )
+from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
+from ironsbot.services.bilibili.commands import (
+    BILI_ACCOUNT_COMMANDS,
+    BILI_PUSH_MODE_COMMANDS,
+    DYNAMIC_MENU_COMMANDS,
+    DYNAMIC_UPDATE_COMMANDS,
+)
+from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
@@ -54,7 +56,7 @@ def _empty_player_id_resolver() -> PlayerIdResolver:
 
 
 def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
-    bilibili = _by_id(bilibili_commands())
+    bilibili = _by_id(bilibili_command_contracts())
     activity = _by_id(activity_command_contracts())
 
     assert bilibili["bilibili.dynamic"].examples == DYNAMIC_MENU_COMMANDS[:1]
@@ -70,6 +72,15 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
     assert activity["activity.current"].examples == (
         f"/{CURRENT_ACTIVITY_COMMANDS[0]}",
     )
+
+
+def test_about_and_help_contracts_are_owned_by_application_services() -> None:
+    about = _by_id(about_command_contracts())
+    help_commands = _by_id(help_command_contracts())
+
+    assert about["about"].examples == ("关于",)
+    assert help_commands["help"].examples == ("帮助",)
+    assert help_commands["help"].show_in_poke is True
 
 
 def test_operation_examples_use_matcher_command_sources() -> None:

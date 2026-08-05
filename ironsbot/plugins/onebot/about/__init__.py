@@ -4,7 +4,6 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.core.command_catalog import CommandContract
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.replies import finish_event_reply
@@ -14,6 +13,7 @@ from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.services.about_commands import about_command_contracts
 
 __plugin_meta__ = PluginMetadata(
     name="关于",
@@ -84,16 +84,7 @@ def plugin_contribution() -> PluginContribution:
             group="core",
             order=20,
         ),
-        commands=(
-            CommandContract(
-                id="about",
-                plugin_id="about",
-                section="查看",
-                examples=("关于",),
-                description="查看项目、版本和主要能力",
-                features_any=("about",),
-            ),
-        ),
+        commands=about_command_contracts(),
         install=install,
     )
 

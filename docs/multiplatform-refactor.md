@@ -241,6 +241,13 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 活动查询的用户命令描述位于
   `services.activity.command_contracts`；活动插件只保留 NoneBot 事件适配、权限
   matcher、回复和定时任务注册。
+- B 站的命令文字和纯文本解析位于 `services.bilibili.commands`，命令契约位于
+  `services.bilibili.command_contracts`；OneBot rule 只保留事件权限、消息 state 和
+  事件到纯文本解析器的适配。
+- 关于、帮助、战队资源和幸运橱窗分别由 `services.about_commands`、
+  `services.help_commands`、`services.team.resource_commands` 和
+  `services.seer.lucky_skin_commands` 提供命令契约；插件不再直接构造
+  `CommandContract`。
 - AI 长期记忆使用异步 `AiMemoryStore` port。SQLite 实现在 worker thread 中完成
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会
@@ -260,7 +267,11 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | AI 聊天与意图 | `services.ai.command_contracts` | 事件转换、AI 调用、回复和平台 notice 上下文 | 已迁移 |
 | 数据更新 | `services.operations.data_sync_commands` | 事件转换、异步执行、回复 | 已迁移 |
 | 开服与容器维护 | `services.operations.command_text`、`server_status_commands`、`docker_commands` | 事件转换、平台操作、回复 | 已迁移 |
-| B 站、战队、幸运橱窗与帮助 | 各插件内的过渡实现 | 仅在迁移完成前维护，新增字段必须同步进入目录 | 待迁移 |
+| B 站动态 | `services.bilibili.commands`、`bilibili.command_contracts` | 事件权限、state、回复和调度 | 已迁移 |
+| 战队资源订阅 | `services.team.resource_commands` | 事件转换、订阅执行和回复 | 已迁移 |
+| 幸运橱窗 | `services.seer.lucky_skin_commands` | 事件转换、登录确认、回复和调度 | 已迁移 |
+| 关于 | `services.about_commands` | 事件转换、版本读取和回复 | 已迁移 |
+| 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
 
 ### Phase 6 — 兜底、配置和错误语义
 
