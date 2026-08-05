@@ -9,15 +9,16 @@ from typing import TYPE_CHECKING
 from ironsbot.core.commands import normalize_command_text
 
 if TYPE_CHECKING:
-    from ironsbot.core.player_references import PlayerReferenceLookup
+    from ironsbot.core.platform import ConversationRef
     from ironsbot.runtime.commands import CommandContext
 
 PlayerReferenceInputMatcher = Callable[[str, "CommandContext"], bool]
+PlayerReferenceRecognizer = Callable[[str, "ConversationRef"], bool]
 
 
 def player_reference_input_matcher(
     prefixes: tuple[str, ...],
-    reference_lookup: PlayerReferenceLookup,
+    reference_is_known: PlayerReferenceRecognizer,
     *,
     accept_empty: bool = True,
 ) -> PlayerReferenceInputMatcher:
@@ -58,7 +59,7 @@ def player_reference_input_matcher(
         if not reference:
             return accept_empty
         return reference.isdecimal() or (
-            reference_lookup(reference, context.conversation) is not None
+            reference_is_known(reference, context.conversation)
         )
 
     return matches

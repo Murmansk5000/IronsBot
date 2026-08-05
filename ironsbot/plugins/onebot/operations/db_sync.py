@@ -14,21 +14,20 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.commands import normalize_command_text
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
+)
+from ironsbot.services.operations.data_sync_commands import (
+    data_sync_command_descriptors,
+    is_force_data_sync_command,
+    is_manual_data_sync_command,
 )
 
 if TYPE_CHECKING:
@@ -45,39 +44,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
-FORCE_MANUAL_SYNC_COMMANDS = ("强制更新数据", "强制数据更新")
-ADMIN_COMMAND_PREFIX = "/"
-NORMALIZED_MANUAL_SYNC_COMMANDS = {
-    normalize_command_text(command) for command in MANUAL_SYNC_COMMANDS
-}
-NORMALIZED_FORCE_MANUAL_SYNC_COMMANDS = {
-    normalize_command_text(command) for command in FORCE_MANUAL_SYNC_COMMANDS
-}
-
-
-def command_descriptors() -> tuple[CommandDescriptor, ...]:
-    return commands_from_rows(
-        "db_sync",
-        "超级管理员",
-        None,
-        (
-            (
-                "db_sync.update",
-                tuple(f"/{command}" for command in MANUAL_SYNC_COMMANDS),
-                "构建远程数据并同步到机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-            (
-                "db_sync.force_update",
-                tuple(f"/{command}" for command in FORCE_MANUAL_SYNC_COMMANDS),
-                "忽略本地指纹，强制同步数据",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-        ),
-    )
-
 
 def _help_visible(event: Event, *, features: FeatureService) -> bool:
     if isinstance(event, GroupMessageEvent):
@@ -102,21 +68,11 @@ async def _start_data_sync(
 
 
 async def _is_manual_sync_command(event: Event) -> bool:
-    text = event.get_plaintext().strip()
-    if not text.startswith(ADMIN_COMMAND_PREFIX):
-        return False
-
-    command = normalize_command_text(text[len(ADMIN_COMMAND_PREFIX) :])
-    return (
-        command in NORMALIZED_MANUAL_SYNC_COMMANDS
-        or command in NORMALIZED_FORCE_MANUAL_SYNC_COMMANDS
-    )
+    return is_manual_data_sync_command(event.get_plaintext())
 
 
 def _is_force_manual_sync_event(event: Event) -> bool:
-    text = event.get_plaintext().strip()
-    command = normalize_command_text(text[len(ADMIN_COMMAND_PREFIX) :])
-    return command in NORMALIZED_FORCE_MANUAL_SYNC_COMMANDS
+    return is_force_data_sync_command(event.get_plaintext())
 
 
 def _install(registry: MatcherFactory, service: DataSyncService) -> None:
@@ -167,7 +123,7 @@ def plugin_contribution(
             order=20,
             visible=partial(_help_visible, features=features),
         ),
-        commands=command_descriptors(),
+        commands=data_sync_command_descriptors(),
         install=partial(_install, service=service),
         hooks=PluginHooks(
             startup=(

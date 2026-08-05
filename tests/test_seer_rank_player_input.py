@@ -10,6 +10,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import group_message_event
 
 PLAYER_ID = 712_345_678
@@ -33,13 +34,18 @@ def _group() -> SimpleNamespace:
             ),
         },
     )
+    player = SimpleNamespace(
+        default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
+    )
     return SimpleNamespace(
-        player_accounts=accounts,
-        resources=SimpleNamespace(
-            player=SimpleNamespace(
-                default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
-            )
+        player_id_resolver=PlayerIdResolver(
+            lambda reference, conversation: accounts.resolve_player_id(
+                reference,
+                conversation=conversation,
+            ),
+            player.default_player_id,
         ),
+        resources=SimpleNamespace(player=player),
     )
 
 

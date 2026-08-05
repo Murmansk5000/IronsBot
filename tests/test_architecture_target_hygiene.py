@@ -10,6 +10,7 @@ CORE = PACKAGE / "core"
 SERVICES = PACKAGE / "services"
 RENDERING = SERVICES / "seer" / "rendering"
 RUNTIME = PACKAGE / "runtime"
+APPLICATION_RESOURCES = PACKAGE / "app" / "resources.py"
 SEER_REQUEST_ACTOR_METHODS = {
     "player_request_protection.py": {
         "PlayerRequestProtectionService": ("run",),
@@ -361,3 +362,12 @@ def test_runtime_does_not_reintroduce_retired_plugin_or_matcher_registries() -> 
     ]
 
     assert offenders == []
+
+
+def test_plugin_resources_do_not_expose_legacy_onebot_delivery() -> None:
+    fields = _class_field_names(
+        APPLICATION_RESOURCES,
+        class_name="ApplicationResources",
+    )
+
+    assert {"delivery", "outbound", "push_message_limiter"}.isdisjoint(fields)

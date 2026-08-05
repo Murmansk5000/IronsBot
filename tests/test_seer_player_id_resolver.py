@@ -54,6 +54,14 @@ def test_resolves_alias_in_the_current_conversation() -> None:
     assert result.error is None
 
 
+def test_recognizes_known_aliases_without_evaluating_message_targets() -> None:
+    resolver = _resolver()
+    conversation = ConversationRef(Platform.ONEBOT, "group", "200")
+
+    assert resolver.has_known_reference("alias", conversation)
+    assert not resolver.has_known_reference("unknown", conversation)
+
+
 def test_uses_current_actor_binding_when_no_reference_is_given() -> None:
     result = _resolver().resolve(_context(), None)
 
@@ -107,9 +115,7 @@ def test_member_mention_requires_group_conversation() -> None:
 def test_player_reference_input_matcher_claims_only_numeric_or_known_aliases() -> None:
     matcher = player_reference_input_matcher(
         ("米米号",),
-        lambda reference, _conversation: (
-            _ALIAS_PLAYER_ID if reference == "alias" else None
-        ),
+        lambda reference, _conversation: reference == "alias",
     )
     context = CommandContext(
         actor=ActorRef(Platform.ONEBOT, "100"),

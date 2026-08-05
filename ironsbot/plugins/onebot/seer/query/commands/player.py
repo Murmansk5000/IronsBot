@@ -20,7 +20,6 @@ from ironsbot.integrations.onebot.rules import (
     explicit_command,
     member_target_command,
 )
-from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
@@ -28,7 +27,11 @@ from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
-from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
+from ironsbot.services.seer.player_id_resolver import (
+    PLAYER_ID_RESOLVER_REQUIRED_ERROR,
+    PlayerIdResolution,
+    PlayerIdResolver,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import extract_player_query_arg
 from ironsbot.services.seer.player_service import (
@@ -49,7 +52,6 @@ from .player_detail_conversation import (
     begin_player_detail_conversation,
     send_player_info_with_detail_prompt,
 )
-from .player_target import event_player_reference_lookup, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -63,9 +65,7 @@ class PlayerCommandDependencies:
     detail_extensions: PlayerDetailExtensionRegistry = field(
         default_factory=PlayerDetailExtensionRegistry
     )
-    player_accounts: PlayerAccountRegistry = field(
-        default_factory=lambda: PlayerAccountRegistry(())
-    )
+    player_id_resolver: PlayerIdResolver | None = None
 
 
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
@@ -97,13 +97,9 @@ async def _is_player_id_query(
         return False
     player_reference = arg or None
 
-    target = resolve_player_target(
-        event,
-        player_reference=player_reference,
-        reference_lookup=event_player_reference_lookup(
-            dependencies.player_accounts,
-        ),
-        binding_for_user=dependencies.player.default_player_id,
+    target = _require_player_id_resolver(dependencies).resolve(
+        message_input_context(event),
+        player_reference,
     )
     if arg and not arg.isdecimal() and target.player_id is None:
         return False
@@ -177,13 +173,9 @@ async def handle_player_binding_command(
     state: T_State,
 ) -> None:
     player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    target = resolve_player_target(
-        event,
-        player_reference=player_reference or None,
-        reference_lookup=event_player_reference_lookup(
-            dependencies.player_accounts,
-        ),
-        binding_for_user=dependencies.player.default_player_id,
+    target = _require_player_id_resolver(dependencies).resolve(
+        message_input_context(event),
+        player_reference or None,
         allow_default_binding=False,
     )
     if target.error is not None:
@@ -329,13 +321,22 @@ async def handle_player_unbind(
     )
 
 
+def _require_player_id_resolver(
+    dependencies: PlayerCommandDependencies,
+) -> PlayerIdResolver:
+    resolver = dependencies.player_id_resolver
+    if resolver is None:
+        raise RuntimeError(PLAYER_ID_RESOLVER_REQUIRED_ERROR)
+    return resolver
+
+
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.player
     dependencies = PlayerCommandDependencies(
         service,
         group.features,
         group.resources.player_detail_extensions,
-        group.player_accounts,
+        group.player_id_resolver,
     )
     binding_matcher = group.on_message(
         policy=CommandPolicy.command(

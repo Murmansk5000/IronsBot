@@ -32,7 +32,7 @@ from ironsbot.services.seer.rank_list_parsing import (
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player_target import event_player_reference_lookup, resolve_player_target
+from .player_target import resolve_player_target
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
@@ -102,8 +102,7 @@ def _is_rank_player_command(
     target = resolve_player_target(
         event,
         player_reference=requested.player_reference,
-        reference_lookup=event_player_reference_lookup(group.player_accounts),
-        binding_for_user=group.resources.player.default_player_id,
+        resolver=group.player_id_resolver,
         allow_default_binding=False,
     )
     if target.player_id is None and target.error is None:

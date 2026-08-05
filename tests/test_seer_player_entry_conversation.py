@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.seer_ids import is_valid_player_id
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.plugins.onebot.seer.query.commands import player, player_shortcuts
 from ironsbot.plugins.onebot.seer.query.commands.player_context import (
@@ -21,7 +22,10 @@ from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
-from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
+from ironsbot.services.seer.player_id_resolver import (
+    PlayerIdResolution,
+    PlayerIdResolver,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import PendingPlayerQuery
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
@@ -37,6 +41,24 @@ def _actor(user_id: int) -> ActorRef:
 
 def _conversation(group_id: int) -> ConversationRef:
     return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _player_id_resolver(
+    service: Any,
+    accounts: PlayerAccountRegistry | None = None,
+) -> PlayerIdResolver:
+    def resolve_reference(
+        reference: str,
+        conversation: ConversationRef,
+    ) -> int | None:
+        if accounts is not None:
+            return accounts.resolve_player_id(reference, conversation=conversation)
+        if not reference.isdecimal():
+            return None
+        player_id = int(reference)
+        return player_id if is_valid_player_id(player_id) else None
+
+    return PlayerIdResolver(resolve_reference, service.default_player_id)
 
 
 def test_player_conversation_flows_share_one_session() -> None:
@@ -207,7 +229,7 @@ def test_player_commands_resolve_configured_account_names() -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
         cast("Any", object()),
-        player_accounts=registry,
+        player_id_resolver=_player_id_resolver(service, registry),
     )
     state: dict[str, object] = {}
     event = group_message_event("米米号示例账号")
@@ -266,15 +288,13 @@ def test_player_commands_resolve_configured_account_names() -> None:
     )
 
 
-def test_player_query_reuses_target_resolved_during_matcher_admission(
-    monkeypatch: Any,
-) -> None:
+def test_player_query_reuses_target_resolved_during_matcher_admission() -> None:
     resolved_target = PlayerIdResolution(_ACCOUNT_PLAYER_ID, offer_binding=True)
     resolve_target = Mock(return_value=resolved_target)
-    monkeypatch.setattr(player, "resolve_player_target", resolve_target)
     dependencies = player.PlayerCommandDependencies(
         cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
+        player_id_resolver=cast("Any", SimpleNamespace(resolve=resolve_target)),
     )
     state: dict[str, object] = {}
     event = group_message_event(f"米米号{_ACCOUNT_PLAYER_ID}")
@@ -294,9 +314,11 @@ def test_player_query_reuses_target_resolved_during_matcher_admission(
 
 
 def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
+    service = SimpleNamespace(default_player_id=lambda _actor: None)
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
+        cast("Any", service),
         cast("Any", object()),
+        player_id_resolver=_player_id_resolver(service),
     )
 
     assert not asyncio.run(
@@ -316,9 +338,11 @@ def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
 
 
 def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
+    service = SimpleNamespace(default_player_id=lambda _actor: None)
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
+        cast("Any", service),
         cast("Any", object()),
+        player_id_resolver=_player_id_resolver(service),
     )
     event = group_message_event(
         "米米号是多少",
@@ -332,9 +356,11 @@ def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
 
 
 def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> None:
+    service = SimpleNamespace(default_player_id=lambda _actor: None)
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
+        cast("Any", service),
         cast("Any", object()),
+        player_id_resolver=_player_id_resolver(service),
     )
     state: dict[str, object] = {}
 
@@ -352,9 +378,11 @@ def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> Non
 
 
 def test_player_shortcut_reports_an_unknown_account_suffix() -> None:
+    service = SimpleNamespace(default_player_id=lambda _actor: None)
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
+        cast("Any", service),
         cast("Any", object()),
+        player_id_resolver=_player_id_resolver(service),
     )
 
     state: dict[str, object] = {}
@@ -402,8 +430,11 @@ def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
     dependencies = player.PlayerCommandDependencies(
         cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
-        extensions,
-        accounts,
+        detail_extensions=extensions,
+        player_id_resolver=_player_id_resolver(
+            SimpleNamespace(default_player_id=lambda _actor: None),
+            accounts,
+        ),
     )
     monkeypatch.setattr(
         player_shortcuts,
@@ -450,7 +481,7 @@ def test_binding_command_resolves_account_aliases(monkeypatch: Any) -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
         cast("Any", object()),
-        player_accounts=registry,
+        player_id_resolver=_player_id_resolver(service, registry),
     )
     event = group_message_event("绑定米米号示例账号")
 
@@ -487,6 +518,7 @@ def test_binding_command_resolves_one_directly_mentioned_member(
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
         cast("Any", object()),
+        player_id_resolver=_player_id_resolver(service),
     )
     service.bind_player.return_value = cast("Any", object())
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Command contracts owned by the Seer query plugin."""
+"""Platform-neutral command contracts for the Seer query domain."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from ironsbot.runtime.commands import CommandDescriptor, commands_from_rows
 from ironsbot.runtime.player_reference_commands import player_reference_input_matcher
-from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
     NEW_ACHIEVEMENTS_COMMANDS,
@@ -25,34 +24,22 @@ from ironsbot.services.seer.data_query_commands import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
-
-def command_descriptors(
-    player_accounts: PlayerAccountRegistry | None = None,
+def seer_command_descriptors(
+    player_id_resolver: PlayerIdResolver,
 ) -> tuple[CommandDescriptor, ...]:
-    accounts = player_accounts or PlayerAccountRegistry(())
-
-    def reference_lookup(
-        reference: str,
-        conversation: ConversationRef,
-    ) -> int | None:
-        return accounts.resolve_player_id(
-            reference,
-            conversation=conversation,
-        )
-
     player_query_input = player_reference_input_matcher(
         ("米米号", "查询玩家信息"),
-        reference_lookup,
+        player_id_resolver.has_known_reference,
     )
     player_shortcut_input = player_reference_input_matcher(
         ("收集", "巅峰", "群星牌"),
-        reference_lookup,
+        player_id_resolver.has_known_reference,
     )
     player_binding_input = player_reference_input_matcher(
         ("绑定米米号",),
-        reference_lookup,
+        player_id_resolver.has_known_reference,
     )
     return (
         *commands_from_rows(

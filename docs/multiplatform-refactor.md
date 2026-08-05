@@ -43,6 +43,36 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 
 示例中的数字不是当前状态；实际状态由本次任务报告和提交证据决定。
 
+## 阶段账本与报告纪律
+
+阶段表不是“计划完成率”表。每一行必须同时标明已验证证据、下一道完成门和阻塞原因；
+没有已提交的验证证据时，不得把工作项计入百分比或进度条。跨仓库任务必须分别记录
+每个仓库的提交和验证，不能把一个仓库通过的测试写成整个阶段完成。
+
+| 阶段 | 当前状态 | 已验证范围 | 下一个完成门 | 不得误报为 |
+| --- | --- | --- | --- | --- |
+| Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
+| Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
+| Phase 2 | `in_progress` | 声明式贡献、`PluginContribution` 与命令目录已建立 | 所有插件均不再依赖旧桥接或第二份发现来源 | 插件迁移完全结束 |
+| Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现 | 删除剩余 integration 内旧投递调用并建立跨平台 sender 验收 | QQ Official 已接入 |
+| Phase 4 | `in_progress` | 资源准备、确定性渲染缓存和部分 SeerAPI 效果事实已验证 | 其余 renderer 与数据路径全部只消费视图模型/发布事实 | 所有渲染都已迁移 |
+| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 所有直接命令与米米号入口使用同一契约 | 业务服务重构完成 |
+| Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 清除剩余隐式 fallback、配置兼容和伪成功结果 | 错误语义收口完成 |
+| Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
+
+开始持续任务时，报告必须同时给出总任务、当前阶段和当前小任务的进度及预计剩余时间；
+估算只描述当前可见范围，遇到新增依赖、发布阻塞或验证失败时必须立即重新估算。推荐
+格式如下，百分比只使用已验证并提交的工作项计数：
+
+```text
+总任务  [████░░░░░░] 40%  已验证工作项 8/20  预计剩余 6-10 h
+当前阶段[██████░░░░] 60%  已验证工作项 3/5   预计剩余 1-2 h
+当前小任务[████████░░] 80%  剩余：边界测试与 smoke test  20-40 min
+```
+
+报告中无法可靠估算时，必须写“尚不能估算，原因：…”，不能用看似精确的数字掩盖未知
+依赖。完成报告还要把最终提交、验证命令、未完成项和回滚点写回阶段账本或任务记录。
+
 ## 阶段工作项
 
 ### Phase 0 — 基线、设计和防扩张检查
@@ -157,6 +187,10 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 私有阵容渲染也复用该内容键；私有模板和本地 Pillow 装饰源码以
   `renderer_fingerprint` 作为显式上下文参与键计算，不能维护第二套按阵容参数命中
   的最终缓存。
+- 2026-08-05 验证：SeerAPI 全量 pytest `218 passed`、Ruff 通过；本轮新增的
+  特殊效果 ORM 已可单独通过 BasedPyright。SeerAPI 仍有 38 条既有静态类型问题
+  （旧模型抽象基类、旧解析器和构建脚本），必须作为独立清债工作处理，不能靠降低
+  目标阶段的静态检查要求掩盖。
 
 ### Phase 5 — 业务服务和通用解析
 
@@ -180,10 +214,27 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   contract；精灵、刻印、刻印系列、宝石与玩家账户各自保存数据，但不再复制
   规范化与多结果语义。
 - `PlayerIdResolver` 统一处理数字、当前会话可见的玩家别名、一个直接 @ 已绑定
-  成员及默认绑定。公共 Seer 查询和私有阵容扩展均通过同一引用查找 port 接入。
+  成员及默认绑定。它由 application composition 只构造一次，经
+  `ApplicationResources` 注入公开 Seer 的玩家、快捷查询、榜单玩家查询和命令目录；
+  OneBot matcher 只能把事件转换为 `MessageInputContext`，不得临时拼接别名 lookup
+  或 resolver。私有阵容扩展也只通过该 resolver 的 `has_known_reference()` 进行命令
+  目录认领；真正的消息级解析仍由公开的详情扩展入口完成。
 - `CommandDescriptor.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
+- 公开赛尔查询的命令描述已从 OneBot 插件移入
+  `services.seer.command_contracts`；插件只把该领域 contract 提交给目录。后续命令
+  迁移必须复用同一模式，不得把领域输入说明重新写进 matcher。
+- 榜单帮助的用户口令、范围和权限同样位于
+  `services.seer.rank_command_contracts`；OneBot 侧只把事件转为上下文并渲染已筛选的
+  目录结果。
+- 数据更新的命令文字、语法解析和管理员目录描述位于
+  `services.operations.data_sync_commands`；OneBot matcher 只从事件取纯文本，并调用
+  同一个领域解析器。
+- 开服查询和镜像维护共用的操作口令位于
+  `services.operations.command_text`，其中开服查询的目录描述位于
+  `services.operations.server_status_commands`、镜像维护的目录描述位于
+  `services.operations.docker_commands`；插件不再拥有这份跨操作命令定义。
 - AI 长期记忆使用异步 `AiMemoryStore` port。SQLite 实现在 worker thread 中完成
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会

@@ -12,12 +12,7 @@ if TYPE_CHECKING:
     from ironsbot.app.private_extensions import PrivateExtensionCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
-    from ironsbot.integrations.onebot.delivery import (
-        MessageLimiter,
-        OneBotDelivery,
-    )
     from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
-    from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.plugins import PluginContributionCatalog
@@ -38,6 +33,7 @@ if TYPE_CHECKING:
     from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.team.audit import TeamAuditService
@@ -48,9 +44,6 @@ if TYPE_CHECKING:
 class ApplicationResources:
     features: FeatureService
     promotions: PromotionCatalog
-    outbound: GroupOutboundRateLimitService
-    delivery: OneBotDelivery
-    push_message_limiter: MessageLimiter
     admin_notices: AdminNoticeService
     activity: ActivityService
     headless: HeadlessService
@@ -67,6 +60,7 @@ class ApplicationResources:
     team_resource: TeamResourceService
     local_rank: LocalRankService
     rank_page_refresh: RankPageRefreshService
+    player_id_resolver: PlayerIdResolver
     seer: SeerQueryResources
     pet_config: PetConfigQueryService
     ai: AiService

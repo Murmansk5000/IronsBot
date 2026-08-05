@@ -15,6 +15,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
     PlayerShortcutTargetCommand,
@@ -27,29 +28,34 @@ GROUP_ID = 987_654_321
 
 
 def _dependencies() -> PlayerCommandDependencies:
-    return PlayerCommandDependencies(
-        player=cast(
-            "Any",
-            SimpleNamespace(
-                default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=PLAYER_ID,
+                name="sample_player",
+                aliases=("示例玩家",),
+                password=None,
+                public=False,
             ),
         ),
-        features=cast("Any", SimpleNamespace()),
-        player_accounts=PlayerAccountRegistry(
-            (
-                PlayerAccount(
-                    player_id=PLAYER_ID,
-                    name="sample_player",
-                    aliases=("示例玩家",),
-                    password=None,
-                    public=False,
-                ),
+        private_alias_groups={
+            ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)): (
+                "sample_player",
             ),
-            private_alias_groups={
-                ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)): (
-                    "sample_player",
-                ),
-            },
+        },
+    )
+    player = SimpleNamespace(
+        default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
+    )
+    return PlayerCommandDependencies(
+        player=cast("Any", player),
+        features=cast("Any", SimpleNamespace()),
+        player_id_resolver=PlayerIdResolver(
+            lambda reference, conversation: accounts.resolve_player_id(
+                reference,
+                conversation=conversation,
+            ),
+            player.default_player_id,
         ),
     )
 

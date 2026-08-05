@@ -98,6 +98,7 @@ from ironsbot.services.operations.scheduled_restart import ScheduledRestartServi
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -184,8 +185,6 @@ def build_test_plugin_registry(
         SimpleNamespace(
             features=runtime.features,
             promotions=PromotionCatalog(config.promotions),
-            outbound=object(),
-            delivery=runtime.delivery,
             admin_notices=runtime.admin_notices,
             activity=SimpleNamespace(register_jobs=lambda _scheduler: None),
             headless=headless,
@@ -223,6 +222,10 @@ def build_test_plugin_registry(
             ),
             local_rank=object(),
             rank_page_refresh=object(),
+            player_id_resolver=PlayerIdResolver(
+                lambda _reference, _conversation: None,
+                lambda _actor: None,
+            ),
             pet_config=SimpleNamespace(
                 search=_noop_query,
                 select=_noop_query,
@@ -314,7 +317,6 @@ def build_test_plugin_registry(
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             scheduled_restart=scheduled_restart,
-            push_message_limiter=lambda message, _target: message,
             commands=CommandCatalog(),
             contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),

@@ -15,8 +15,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
-
-from .command_catalog import command_descriptors
+from ironsbot.services.seer.command_contracts import seer_command_descriptors
 
 __plugin_meta__ = PluginMetadata(
     name="赛尔号查询",
@@ -42,6 +41,7 @@ def _install(
     settings: Settings,
     resources: ApplicationResources,
 ) -> None:
+    _ = settings
     from .commands.install import install
     from .group import SeerMatcherGroup
 
@@ -51,7 +51,7 @@ def _install(
             resources.seer,
             resources.features,
             resources.commands,
-            settings.player_accounts,
+            resources.player_id_resolver,
             resources.sendpic.exact_command_texts,
         )
     )
@@ -108,7 +108,7 @@ def plugin_contribution(
             group="seer",
             order=10,
         ),
-        commands=command_descriptors(settings.player_accounts),
+        commands=seer_command_descriptors(resources.player_id_resolver),
         install=partial(_install, settings=settings, resources=resources),
         hooks=PluginHooks(
             startup=(

@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.player_references import PlayerReferenceLookup
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.errors import ErrorMessageLookup
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionRegistry,
     )
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
@@ -44,6 +44,6 @@ class PlayerLineupExtensionContext(Protocol):
     player_quotas: PlayerQueryQuotaService
     player_requests: PlayerRequestProtectionService
     player_details: PlayerDetailExtensionRegistry
-    player_reference_lookup: PlayerReferenceLookup
+    player_id_resolver: PlayerIdResolver
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]: ...

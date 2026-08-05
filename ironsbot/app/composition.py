@@ -164,6 +164,7 @@ from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestProtectionService,
@@ -473,6 +474,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_requests,
         profile_cache=local_rank_repository,
     )
+    player_id_resolver = PlayerIdResolver(
+        resolve_configured_player_reference,
+        player.default_player_id,
+    )
     docker_client = DockerClient()
     private_extensions = load_private_extension_catalog(
         settings.operations.private_extensions
@@ -617,7 +622,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             player_quotas=player_query_quotas,
             player_requests=player_requests,
             player_details=player_detail_extensions,
-            player_reference_lookup=resolve_configured_player_reference,
+            player_id_resolver=player_id_resolver,
             settings=settings.operations.private_extensions.settings.get(
                 "player_lineup", {}
             ),
@@ -669,9 +674,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     resources = ApplicationResources(
         features=features,
         promotions=promotions,
-        outbound=outbound,
-        delivery=delivery,
-        push_message_limiter=push_message_limiter,
         admin_notices=admin_notices,
         activity=activity,
         headless=headless,
@@ -692,6 +694,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         team_resource=team_resource,
         local_rank=local_rank,
         rank_page_refresh=rank_page_refresh,
+        player_id_resolver=player_id_resolver,
         seer=seer,
         pet_config=pet_config,
         ai=ai,

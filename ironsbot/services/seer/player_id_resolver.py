@@ -11,6 +11,7 @@ from ironsbot.core.platform import ActorRef
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.platform import ConversationRef
     from ironsbot.core.player_references import PlayerReferenceLookup
 
 
@@ -24,6 +25,7 @@ class PlayerIdResolution:
 
 
 PlayerBindingLookup = Callable[[ActorRef], int | None]
+PLAYER_ID_RESOLVER_REQUIRED_ERROR = "player ID resolver is not configured"
 
 
 class PlayerIdResolver:
@@ -73,6 +75,20 @@ class PlayerIdResolver:
             offer_binding=False,
             error="请填写米米号、已开放的玩家别名，或直接 @ 一名已绑定成员。",
         )
+
+    def has_known_reference(
+        self,
+        reference: str,
+        conversation: ConversationRef,
+    ) -> bool:
+        """Return whether an explicit non-numeric player reference is visible.
+
+        CommandCatalog uses this narrow query to recognize a configured alias
+        without duplicating alias ownership or evaluating default bindings and
+        direct member mentions, which are message-level concerns.
+        """
+
+        return self._reference_lookup(reference, conversation) is not None
 
     def _resolve_member_mentions(
         self,
