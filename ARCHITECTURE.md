@@ -669,6 +669,12 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
   path's document, including actual asset bytes, matches the cache entry; it
   is not the normal lookup key. Missing asset-manifest data is a release
   contract failure, not permission to fetch assets before every L3 lookup.
+- `seerapi` must publish that manifest as deterministic facts keyed by
+  `(asset_kind, asset_key)`, with a content SHA-256 and release revision.
+  A global database timestamp or a few feature-specific asset checks do not
+  satisfy this contract. A consumer validates the manifest schema before it
+  enables request-keyed final-image caching; it never probes mutable HTTP
+  resources merely to decide whether an L3 entry is safe to use.
 
 The current Phase 4 transition has the snapshot/presenter direction for
 published pet info, type matchup, peak-pool, peak-vote, peak-pet-rank, and the
