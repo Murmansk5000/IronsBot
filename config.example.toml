@@ -373,6 +373,9 @@ intent_actions_enabled = true
 # EN: Intent actions are configured by ID under [ai.intent_actions.<id>].
 # Omitted fields inherit built-in defaults for known actions.
 # ZH: AI 意图动作按 [ai.intent_actions.<id>] 配置；已知动作未写字段会继承内置默认值。
+# EN: Delivery content and deployment targets never have built-in defaults. An
+# enabled team recommendation must explicitly declare messages.
+# ZH: 投递文案和部署目标没有内置默认值；启用战队推荐时必须显式填写 messages。
 
 [ai.intent_actions.team_recommend]
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
@@ -380,11 +383,10 @@ enabled = true
 # EN: The team recommendation sends every messages item as a separate QQ message
 # in order. Any number of items is supported.
 # ZH: 战队推荐会按顺序把 messages 中的每一项作为独立 QQ 消息发送，支持任意条数。
-# Example:
-# messages = [
-#   "点击链接加入战队审核群：https://example.com/team-review",
-#   "战队审核群号：123456789",
-# ]
+messages = [
+  "点击链接加入战队审核群：https://example.com/team-review",
+  "战队审核群号：123456789",
+]
 
 [ai.intent_actions.fire_manual]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。

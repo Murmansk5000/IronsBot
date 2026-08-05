@@ -1016,6 +1016,12 @@ the loader only reads and validates.
 Non-secret behavior and deployment values live in TOML. Environment variables
 are limited to the configuration location and secrets:
 
+An enabled action that delivers to a deployment-specific account, group, link,
+or invitation must declare its complete delivery content in TOML. It may have
+a reusable classifier and feature key in code, but it has no built-in
+recipient, URL, group number, or message fallback. Examples use non-production
+values only.
+
 ```text
 APP_CONFIG_PATH
 ONEBOT_ACCESS_TOKEN
