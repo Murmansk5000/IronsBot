@@ -393,6 +393,13 @@ messages = [
 [ai.intent_actions.fire_manual]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
 enabled = true
+feature = "ai_intent_fire_manual"
+keywords = [
+    "手册",
+]
+action = "promotion"
+promotion = "fire_manual"
+intent = "判断消息是否明确索要火火手册的入口、链接、地址或下载方式。\n只有用户确实在索要链接时回答 yes；仅讨论手册内容、分享或发布手册链接、\n引用手册、反馈手册问题时回答 no。\n"
 
 [activity]
 # Default: true
@@ -1417,3 +1424,11 @@ times = "04:30"
 grace_seconds = 10.0
 # Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。
 signal_parent = true
+
+# 部署时可填写经审核的公开资料地址；本示例只提示咨询管理员，不追加到主动推送。
+[promotions.fire_manual]
+enabled = true
+feature = "fire_manual_ad"
+url = ""
+text = "手册与相关资料，请向本群管理员咨询获取方式。"
+append_to_push = false

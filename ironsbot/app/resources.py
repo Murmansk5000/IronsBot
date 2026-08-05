@@ -12,6 +12,7 @@ if TYPE_CHECKING:
         PrivateExtensionRuntime,
     )
     from ironsbot.core.features import FeatureService
+    from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.delivery import OneBotDelivery
     from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class ApplicationResources:
     features: FeatureService
+    promotions: PromotionCatalog
     outbound: GroupOutboundRateLimitService
     delivery: OneBotDelivery
     push_message_limiter: MessageLimiter

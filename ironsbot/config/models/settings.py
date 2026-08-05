@@ -23,11 +23,12 @@ from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
-from ironsbot.core.features import FeatureConfig, validate_feature_config
+from ironsbot.core.features import FEATURE_KEYS, FeatureConfig, validate_feature_config
 from ironsbot.core.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
 )
+from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
@@ -235,6 +236,7 @@ class Settings(BaseModel):
     bot: BotConfig = Field(default_factory=BotConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
+    promotions: dict[str, PromotionConfig] = Field(default_factory=dict)
     ai: AiConfig = Field(default_factory=AiConfig)
     activity: ActivityConfig = Field(default_factory=ActivityConfig)
     bilibili: BiliConfig = Field(default_factory=BiliConfig)
@@ -252,6 +254,7 @@ class Settings(BaseModel):
                 schedule_features=self.messaging.schedule_feature_keys,
             )
             self._validate_onebot_references()
+            self._validate_promotions()
         except ValueError as exc:
             raise ValidationError.from_exception_data(
                 self.__class__.__name__,
@@ -268,6 +271,26 @@ class Settings(BaseModel):
                 ],
             ) from exc
         return self
+
+    def _validate_promotions(self) -> None:
+        catalog = PromotionCatalog(self.promotions)
+        for promotion_id, promotion in self.promotions.items():
+            if not promotion_id.strip():
+                raise ValueError("promotions contains an empty id")  # noqa: TRY003
+            if promotion.feature not in FEATURE_KEYS:
+                raise ValueError(  # noqa: TRY003
+                    f"promotions.{promotion_id}.feature={promotion.feature} "
+                    "is not registered"
+                )
+        for action_id, action in self.ai.intent_actions.items():
+            if not action.enabled or action.action != "promotion":
+                continue
+            promotion = catalog.get(action.promotion)
+            if promotion is None or not promotion.enabled:
+                raise ValueError(  # noqa: TRY003
+                    f"ai.intent_actions.{action_id}.promotion="
+                    f"{action.promotion} is not an enabled promotion"
+                )
 
     @property
     def onebot_references(self) -> OneBotReferenceResolver:

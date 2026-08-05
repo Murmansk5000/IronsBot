@@ -68,63 +68,6 @@ def _manual_action() -> AiIntentAction:
     )
 
 
-def test_fire_manual_announcement_or_share_is_not_request() -> None:
-    text = "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict"
-    action = _manual_action()
-
-    assert intent.contains_any_keyword(text, action.keywords)
-    assert intent.excluded_by_context(text, action)
-
-
-def test_fire_manual_request_is_not_context_excluded() -> None:
-    action = _manual_action()
-
-    assert not intent.excluded_by_context("手册在哪", action)
-    assert not intent.excluded_by_context("求火火手册链接", action)
-
-
-def test_fire_manual_strong_request_prefilter_accepts_explicit_requests() -> None:
-    accepted = [
-        "火火手册链接",
-        "手册在哪",
-        "求火火手册",
-        "发我手册链接",
-        "火火手册怎么下载",
-        "我要这个地球上最牛逼的赛尔号手册-火火手册",
-    ]
-
-    for text in accepted:
-        assert intent.has_fire_manual_strong_request(text), text
-
-
-def test_fire_manual_strong_request_prefilter_rejects_weak_mentions() -> None:
-    rejected = [
-        "火火手册",
-        "手册",
-        "我是抄火火手册里面说的。",
-        "我这周火火手册怎么更新不了",
-        "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict",
-    ]
-
-    for text in rejected:
-        assert not intent.has_fire_manual_strong_request(text), text
-
-
-def test_fire_manual_action_prefilter_is_feature_specific() -> None:
-    team_action = AiIntentAction(
-        id="team",
-        feature="ai_intent",
-        keywords=["战队"],
-        action="message",
-        message="ok",
-        intent="team",
-    )
-
-    assert not intent.passes_action_prefilter("火火手册", _manual_action())
-    assert intent.passes_action_prefilter("求火火手册", _manual_action())
-    assert intent.passes_action_prefilter("战队", team_action)
-
-
 def _runtime(
     action: AiIntentAction,
     *allowed_features: str,
@@ -188,7 +131,7 @@ def test_fire_manual_action_allows_superuser_bypass() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fire_manual_weak_intent_does_not_call_ai() -> None:
+async def test_keyword_action_delegates_context_decision_to_ai() -> None:
     called = False
 
     async def request_completion(
@@ -208,8 +151,8 @@ async def test_fire_manual_weak_intent_does_not_call_ai() -> None:
         conversation=_group(4),
     )
 
-    assert matched is None
-    assert not called
+    assert matched == _manual_action()
+    assert called
 
 
 @pytest.mark.asyncio
@@ -247,7 +190,7 @@ async def test_ai_intent_feature_gate_blocks_action_specific_feature() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fire_manual_strong_intent_calls_ai_and_matches() -> None:
+async def test_fire_manual_keyword_action_calls_ai_and_matches() -> None:
     prompts: list[str] = []
 
     async def request_completion(

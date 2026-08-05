@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Final, Literal, NamedTuple
+from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
@@ -12,8 +12,6 @@ from ironsbot.core.commands import (
     NormalizedStringSet,
 )
 
-FIRE_MANUAL_URL: Final = "https://seerinfo.yuyuqaq.cn/firedict"
-FIRE_MANUAL_LINK_MESSAGE: Final = f"火火手册链接：{FIRE_MANUAL_URL}"
 DEFAULT_CLASSIFIER_PROMPT = (
     "You are a strict intent classifier for a QQ bot.\n"
     "Only output one word: yes or no.\n"
@@ -43,11 +41,16 @@ class AiIntentAction(BaseModel):
     keywords: NormalizedStringList = Field(default_factory=list)
     intent: str = ""
     classifier_prompt: str = DEFAULT_CLASSIFIER_PROMPT
-    action: Literal["message", "team_recommend", "team_resource", "ai_reply"] = (
-        "message"
-    )
+    action: Literal[
+        "message",
+        "promotion",
+        "team_recommend",
+        "team_resource",
+        "ai_reply",
+    ] = "message"
     message: str = ""
     messages: NormalizedStringList = Field(default_factory=list)
+    promotion: str = ""
     reply_prompt: str = ""
     team_ids: NormalizedIntList = Field(default_factory=list)
     include_team_resource_notice: bool = False
@@ -194,12 +197,3 @@ def broadcast_targets(
         *group_targets(group_ids, at_user_ids=group_at_user_ids),
         *private_targets(private_user_ids),
     ]
-
-
-def append_fire_manual_ad_text(message: str) -> str:
-    text = message.rstrip()
-    if FIRE_MANUAL_URL in text:
-        return text
-    if not text:
-        return FIRE_MANUAL_LINK_MESSAGE
-    return f"{text}\n\n{FIRE_MANUAL_LINK_MESSAGE}"
