@@ -15,6 +15,7 @@ from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import build_notice_source
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -109,7 +110,7 @@ def install(
 
     async def match_action(event: MessageEvent, state: T_State) -> bool:
         text = event.get_plaintext().strip()
-        group_id = getattr(event, "group_id", None)
+        message = message_input_context(event).message
         source_context = await build_notice_source(
             event,
             text,
@@ -117,8 +118,8 @@ def install(
         )
         action = await service.classify_intent(
             text,
-            user_id=int(event.user_id),
-            group_id=int(group_id) if group_id is not None else None,
+            actor=message.actor,
+            conversation=message.conversation,
             source_context=source_context,
         )
         if action is None:

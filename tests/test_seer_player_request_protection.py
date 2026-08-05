@@ -4,6 +4,7 @@ from typing import Any, cast
 
 import pytest
 
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.services.operations.headless_pool import (
     HeadlessRequestPriority,
     current_headless_request_priority,
@@ -19,8 +20,8 @@ USER_ID = 10001
 
 
 class _Features:
-    def is_superuser(self, user_id: int) -> bool:
-        return user_id == ADMIN_ID
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        return actor == _actor(ADMIN_ID)
 
 
 class _Headless:
@@ -56,6 +57,10 @@ def _config(**overrides: object) -> SimpleNamespace:
 
 def _spawn(coroutine: Any, *, name: str) -> asyncio.Task[Any]:
     return asyncio.create_task(coroutine, name=name)
+
+
+def _actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(user_id))
 
 
 def _service(
@@ -94,11 +99,11 @@ def test_workflows_can_progress_concurrently_before_packet_scheduling() -> None:
             return "second"
 
         first_task = asyncio.create_task(
-            service.run(first, user_id=USER_ID, label="first")
+            service.run(first, actor=_actor(USER_ID), label="first")
         )
         await started.wait()
         second_task = asyncio.create_task(
-            service.run(second, user_id=USER_ID + 1, label="second")
+            service.run(second, actor=_actor(USER_ID + 1), label="second")
         )
         await asyncio.wait_for(second_started.wait(), timeout=1.0)
         assert events == ["first-start", "second"]
@@ -133,15 +138,15 @@ def test_superuser_bypasses_normal_workflow_capacity() -> None:
             return "admin"
 
         active_task = asyncio.create_task(
-            service.run(active, user_id=USER_ID, label="active")
+            service.run(active, actor=_actor(USER_ID), label="active")
         )
         await started.wait()
         normal_task = asyncio.create_task(
-            service.run(normal, user_id=USER_ID + 1, label="normal")
+            service.run(normal, actor=_actor(USER_ID + 1), label="normal")
         )
         await asyncio.sleep(0)
         admin_task = asyncio.create_task(
-            service.run(admin, user_id=ADMIN_ID, label="admin")
+            service.run(admin, actor=_actor(ADMIN_ID), label="admin")
         )
 
         assert await normal_task == "normal"
@@ -177,19 +182,19 @@ def test_priority_is_delegated_to_packet_scheduler_context() -> None:
             return "interactive"
 
         active_task = asyncio.create_task(
-            service.run(active, user_id=USER_ID, label="active")
+            service.run(active, actor=_actor(USER_ID), label="active")
         )
         await started.wait()
         background_task = asyncio.create_task(
             service.run(
                 background,
-                user_id=None,
+                actor=None,
                 label="background",
                 background=True,
             )
         )
         interactive_task = asyncio.create_task(
-            service.run(interactive, user_id=USER_ID + 1, label="interactive")
+            service.run(interactive, actor=_actor(USER_ID + 1), label="interactive")
         )
         await asyncio.sleep(0)
 
@@ -225,7 +230,7 @@ def test_background_request_timeout_releases_queue() -> None:
         background_task = asyncio.create_task(
             service.run(
                 stuck_background,
-                user_id=None,
+                actor=None,
                 label="background",
                 background=True,
                 timeout_seconds=0.01,
@@ -233,7 +238,7 @@ def test_background_request_timeout_releases_queue() -> None:
         )
         await started.wait()
         interactive_task = asyncio.create_task(
-            service.run(interactive, user_id=USER_ID, label="interactive")
+            service.run(interactive, actor=_actor(USER_ID), label="interactive")
         )
 
         with pytest.raises(asyncio.TimeoutError):
@@ -265,13 +270,13 @@ def test_disconnect_pauses_new_requests_and_cancels_background_work() -> None:
             return "queued"
 
         active_task = asyncio.create_task(
-            service.run(active, user_id=USER_ID, label="active")
+            service.run(active, actor=_actor(USER_ID), label="active")
         )
         await started.wait()
         background_task = asyncio.create_task(
             service.run(
                 background,
-                user_id=None,
+                actor=None,
                 label="background",
                 background=True,
             )
@@ -287,7 +292,7 @@ def test_disconnect_pauses_new_requests_and_cancels_background_work() -> None:
         with pytest.raises(asyncio.CancelledError):
             await background_task
         with pytest.raises(PlayerRequestPausedError):
-            await service.run(queued, user_id=USER_ID + 2, label="new")
+            await service.run(queued, actor=_actor(USER_ID + 2), label="new")
         assert len(_headless.cancelled_background_errors) == 1
 
         release.set()
@@ -310,7 +315,7 @@ def test_superuser_waits_for_reconnect_during_pause() -> None:
             return "done"
 
         assert (
-            await service.run(operation, user_id=ADMIN_ID, label="admin")
+            await service.run(operation, actor=_actor(ADMIN_ID), label="admin")
             == "done"
         )
         assert headless.wait_calls == [60.0]
@@ -329,18 +334,18 @@ def test_superuser_basic_and_detail_use_distinct_workflow_priorities() -> None:
 
         admin_basic = await service.run(
             priority,
-            user_id=ADMIN_ID,
+            actor=_actor(ADMIN_ID),
             label="basic",
             priority=HeadlessRequestPriority.BASIC,
         )
         admin_detail = await service.run(
             priority,
-            user_id=ADMIN_ID,
+            actor=_actor(ADMIN_ID),
             label="detail",
         )
         normal_basic = await service.run(
             priority,
-            user_id=USER_ID,
+            actor=_actor(USER_ID),
             label="normal-basic",
             priority=HeadlessRequestPriority.BASIC,
         )

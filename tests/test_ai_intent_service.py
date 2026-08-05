@@ -5,6 +5,7 @@ import pytest
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import AiIntentAction
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.ai import intent
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.responses import AiResponseResult
@@ -16,6 +17,14 @@ CompletionRequester = Callable[
     [AiConfig, list[HistoryMessage]],
     Awaitable[AiResponseResult],
 ]
+
+
+def _actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(user_id))
+
+
+def _group(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 def test_intent_reply_yes_parser_accepts_short_yes_forms() -> None:
@@ -163,7 +172,7 @@ def test_fire_manual_action_requires_group_feature() -> None:
     action = _manual_action()
     runtime = _runtime(action, "ai_intent")
 
-    assert not intent.is_action_allowed(runtime.features, 2, 4, action)
+    assert not intent.is_action_allowed(runtime.features, _actor(2), _group(4), action)
 
 
 def test_fire_manual_action_allows_superuser_bypass() -> None:
@@ -175,7 +184,7 @@ def test_fire_manual_action_allows_superuser_bypass() -> None:
         superuser_ids=(2,),
     )
 
-    assert intent.is_action_allowed(runtime.features, 2, 4, action)
+    assert intent.is_action_allowed(runtime.features, _actor(2), _group(4), action)
 
 
 @pytest.mark.asyncio
@@ -195,8 +204,8 @@ async def test_fire_manual_weak_intent_does_not_call_ai() -> None:
         request_completion=request_completion,
     ).classify_intent(
         "我是抄火火手册里面说的。",
-        user_id=2,
-        group_id=4,
+        actor=_actor(2),
+        conversation=_group(4),
     )
 
     assert matched is None
@@ -229,8 +238,8 @@ async def test_ai_intent_feature_gate_blocks_action_specific_feature() -> None:
         request_completion=request_completion,
     ).classify_intent(
         "战队",
-        user_id=2,
-        group_id=4,
+        actor=_actor(2),
+        conversation=_group(4),
     )
 
     assert matched is None
@@ -254,8 +263,8 @@ async def test_fire_manual_strong_intent_calls_ai_and_matches() -> None:
         request_completion=request_completion,
     ).classify_intent(
         "求火火手册链接",
-        user_id=2,
-        group_id=4,
+        actor=_actor(2),
+        conversation=_group(4),
     )
 
     assert matched == action
@@ -275,8 +284,8 @@ async def test_fire_manual_strong_intent_respects_ai_no() -> None:
         request_completion=request_completion,
     ).classify_intent(
         "求火火手册链接",
-        user_id=2,
-        group_id=4,
+        actor=_actor(2),
+        conversation=_group(4),
     )
 
     assert matched is None

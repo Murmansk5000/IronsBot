@@ -1,13 +1,13 @@
 from typing import NamedTuple, Protocol
 
+from ironsbot.core.platform import ActorRef, ConversationRef
 from ironsbot.services.ai.history import HistoryMessage
 
 
 class AiMemoryTurn(NamedTuple):
-    user_id: int
+    actor: ActorRef
     session_key: str
-    chat_scope: str
-    chat_id: int
+    conversation: ConversationRef
     prompt: str
     reply: str
 
@@ -18,7 +18,7 @@ class AiMemoryStore(Protocol):
     def load(
         self,
         *,
-        user_id: int,
+        actor: ActorRef,
         current_session_key: str,
         exclude_current_session: bool,
         limit: int,

@@ -16,7 +16,6 @@ from ironsbot.config.models.seer import (
     LuckySkinWindowConfig,
     PlayerAccountConfig,
 )
-from ironsbot.config.player_accounts import build_player_account_registry
 from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
@@ -30,6 +29,7 @@ from ironsbot.integrations.storage.lucky_skin_window import (
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugin
+from ironsbot.services.identity.player_accounts import build_player_account_registry
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.seer.lucky_skin_window import (

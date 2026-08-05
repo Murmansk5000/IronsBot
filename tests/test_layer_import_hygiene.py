@@ -7,7 +7,16 @@ PACKAGE = ROOT / "ironsbot"
 PLUGINS = PACKAGE / "plugins"
 SERVICES = PACKAGE / "services"
 SERVICE_PACKAGES = frozenset(
-    {"activity", "ai", "bilibili", "messaging", "operations", "seer", "team"}
+    {
+        "activity",
+        "ai",
+        "bilibili",
+        "identity",
+        "messaging",
+        "operations",
+        "seer",
+        "team",
+    }
 )
 FORBIDDEN_SERVICE_IMPORTS = (
     "httpx",
@@ -21,6 +30,9 @@ ALLOWED_LAYER_IMPORTS = {
     "core": frozenset({"core"}),
     "config": frozenset({"config", "core"}),
     "runtime": frozenset({"core", "runtime"}),
+}
+ALLOWED_CROSS_LAYER_IMPORTS = {
+    "config": frozenset({"ironsbot.services.identity.player_accounts"}),
 }
 LOWER_LAYERS = ("config", "integrations", "services")
 DRIVER_HOOKS = {
@@ -101,7 +113,9 @@ def test_layers_follow_dependency_direction() -> None:
         for owner, allowed in ALLOWED_LAYER_IMPORTS.items()
         for path in _files(PACKAGE / owner)
         for module in _imports(path)
-        if (layer := _layer(module)) is not None and layer not in allowed
+        if (layer := _layer(module)) is not None
+        and layer not in allowed
+        and module not in ALLOWED_CROSS_LAYER_IMPORTS.get(owner, ())
     ]
     assert offenders == []
 

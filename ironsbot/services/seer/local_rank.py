@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
     from ironsbot.config.models.seer import LocalRankConfig, PlayerQueryConfig
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.local_rank_metrics import MetricSpec
     from ironsbot.services.seer.player_request_protection import (
@@ -245,7 +246,7 @@ class LocalRankService:
         player_ids: Sequence[int] | None = None,
         *,
         background: bool = False,
-        user_id: int | None = None,
+        actor: ActorRef | None = None,
     ) -> LocalRankRefreshResult:
         if player_ids is None:
             player_ids = self.repository.refresh_candidate_ids(
@@ -269,7 +270,7 @@ class LocalRankService:
                     peak_sub_key=peak_sub_key,
                     player_id=player_id,
                     background=background,
-                    user_id=user_id,
+                    actor=actor,
                 )
             except asyncio.TimeoutError:
                 result.failures.append(
@@ -299,7 +300,7 @@ class LocalRankService:
         peak_sub_key: int | None,
         player_id: int,
         background: bool,
-        user_id: int | None,
+        actor: ActorRef | None,
     ) -> None:
         async def refresh_one() -> None:
             active_game = game() if callable(game) else game
@@ -324,7 +325,7 @@ class LocalRankService:
             return
         await self.requests.run(
             refresh_one,
-            user_id=user_id,
+            actor=actor,
             label="本地样本刷新" if background else "手动样本刷新",
             background=background,
         )

@@ -23,6 +23,7 @@ from ironsbot.services.seer.sequ_extra import UnityPeakInfo
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeerConfig
+    from ironsbot.core.platform import ConversationRef
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.player_profile_cache import PlayerProfileCache
 
@@ -46,7 +47,7 @@ async def fetch_pending_player_query(
     player_id: int,
     game: HeadlessGame,
     *,
-    group_id: int | None,
+    conversation: ConversationRef | None,
     profile_cache: PlayerProfileCache,
 ) -> PendingPlayerQuery:
     extra_errors: list[str] = []
@@ -60,7 +61,7 @@ async def fetch_pending_player_query(
             "基础资料",
             f"米米号 {player_id}",
             source="米米号查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             return await game.get_user_info(player_id)
 
@@ -81,7 +82,7 @@ async def fetch_pending_player_query(
             "补充资料",
             f"米米号 {player_id}",
             source="米米号查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             result = await game.get_more_user_info(player_id)
         profile_cache.upsert_registration_time(
@@ -98,7 +99,7 @@ async def fetch_pending_player_query(
             "在线状态",
             f"米米号 {player_id}",
             source="米米号查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             return await optional_player_extra(
                 label="在线状态",
@@ -117,7 +118,7 @@ async def fetch_pending_player_query(
                 "战队资料",
                 f"战队 {user_info.team_id}",
                 source="米米号查询",
-                group_id=group_id,
+                conversation=conversation,
             ):
                 team_info = await asyncio.wait_for(
                     game.get_team_info(user_info.team_id),

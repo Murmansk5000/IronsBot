@@ -25,6 +25,7 @@ from ironsbot.services.seer.player_shortcuts import (
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeerConfig
+    from ironsbot.core.platform import ConversationRef
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.seer.local_rank import LocalRankService
@@ -65,7 +66,7 @@ class PlayerDetailService:
         game: HeadlessGame,
         pending: PendingPlayerQuery,
         *,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> None:
         refresh_config = self._config.player.background_refresh
         if not refresh_config.enabled:
@@ -88,7 +89,7 @@ class PlayerDetailService:
                 game,
                 player_id=pending.player_id,
                 refresh=refresh,
-                group_id=group_id,
+                conversation=conversation,
             ),
             name=f"seer-player-background-refresh-{pending.player_id}",
         )
@@ -185,7 +186,7 @@ class PlayerDetailService:
         *,
         player_id: int,
         refresh: _BackgroundRefresh,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> None:
         await asyncio.gather(
             *(
@@ -195,7 +196,7 @@ class PlayerDetailService:
                     kind=kind,
                     future=future,
                     base_snapshot=refresh.base_snapshot,
-                    group_id=group_id,
+                    conversation=conversation,
                 )
                 for kind, future in refresh.replies.items()
             )
@@ -209,7 +210,7 @@ class PlayerDetailService:
         kind: PlayerShortcutKind,
         future: asyncio.Future[QueryReply | None],
         base_snapshot: PlayerBaseSnapshot | None,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> None:
         if future.done():
             return
@@ -228,7 +229,7 @@ class PlayerDetailService:
                 game,
                 command=command,
                 player_id=player_id,
-                group_id=group_id,
+                conversation=conversation,
             )
         except asyncio.CancelledError:
             raise
@@ -314,7 +315,7 @@ class PlayerDetailService:
         *,
         command: PlayerShortcutCommand,
         player_id: int,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> QueryReply:
         async def fetch() -> QueryReply:
             with game.operations.track(
@@ -322,7 +323,7 @@ class PlayerDetailService:
                 f"米米号 {player_id}",
                 source="米米号后台预热",
                 background=True,
-                group_id=group_id,
+                conversation=conversation,
             ):
                 return await asyncio.wait_for(
                     self._fetch_shortcut(
@@ -339,7 +340,7 @@ class PlayerDetailService:
             return await asyncio.wait_for(fetch(), timeout=timeout_seconds)
         return await self._requests.run(
             fetch,
-            user_id=None,
+            actor=None,
             label=f"后台{shortcut_operation_label(command.kind)}",
             background=True,
             timeout_seconds=timeout_seconds,

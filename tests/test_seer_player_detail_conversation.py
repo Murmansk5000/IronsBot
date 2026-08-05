@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 from nonebot.exception import FinishedException
 
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.seer.query.commands import player_detail_conversation
 from ironsbot.plugins.onebot.seer.query.commands.player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
@@ -38,6 +38,10 @@ from tests.helpers.onebot_events import group_message_event
 
 PLAYER_ID = 105_023_264
 EXPECTED_CONVERSATION_CONTINUES = 2
+
+
+def _conversation(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 def test_player_info_prompt_includes_visible_private_extension(
@@ -132,7 +136,7 @@ def test_player_detail_uses_the_shared_shortcut_executor(
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="peak", player_id=PLAYER_ID),
         ActorRef(Platform.ONEBOT, str(event.user_id)),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
     asyncio.run(
         player_detail_conversation.handle_player_detail_reply(
@@ -202,7 +206,7 @@ def test_player_detail_reuses_the_base_snapshot(
             base_snapshot=snapshot,
         ),
         ActorRef(Platform.ONEBOT, str(event.user_id)),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
 
 
@@ -242,7 +246,7 @@ def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
         ActorRef(Platform.ONEBOT, str(replying_member.user_id)),
-        group_id=replying_member.group_id,
+        conversation=_conversation(replying_member.group_id),
     )
 
 
@@ -298,7 +302,7 @@ def test_shared_player_menu_reply_creates_the_replying_members_context(
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
         ActorRef(Platform.ONEBOT, str(event.user_id)),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
     assert state[PLAYER_ID_KEY] == PLAYER_ID
     assert state[PLAYER_DETAIL_COMMANDS_KEY] == ("1", "0")

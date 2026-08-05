@@ -45,7 +45,7 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ActorRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
     from ironsbot.services.seer.player_service import PlayerService
@@ -191,7 +191,7 @@ async def execute_player_shortcut(
     command: PlayerShortcutCommand,
     actor: ActorRef,
     *,
-    group_id: int | None,
+    conversation: ConversationRef | None,
     send_status: PlayerShortcutStatusSender | None = None,
 ) -> QueryReply:
     """Run numeric-menu and text shortcuts through the same query path."""
@@ -209,7 +209,7 @@ async def execute_player_shortcut(
         return await service.shortcut(
             command,
             actor,
-            group_id=group_id,
+            conversation=conversation,
         )
 
 

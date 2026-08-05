@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
+from ironsbot.integrations.onebot.bilibili_push import OneBotBilibiliPushSender
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandDescriptor,
@@ -21,7 +22,6 @@ from ironsbot.runtime.plugins import (
     active_plugin_install_context,
 )
 from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 
 from .auth import send_bili_login_notice
@@ -157,7 +157,7 @@ def _build_monitor(  # noqa: PLR0913 - Bilibili integration dependencies
         send_notice=notice_sender,
         is_online=lambda: delivery.default_bot() is not None,
     )
-    push_delivery = BilibiliPushDeliveryService(
+    push_delivery = OneBotBilibiliPushSender(
         delivery,
         subscriptions,
         build_dynamic_link_message,
@@ -168,7 +168,7 @@ def _build_monitor(  # noqa: PLR0913 - Bilibili integration dependencies
         config.push.content_max_chars,
         config.push.summary_max_chars,
         config.push.summary_use_ai,
-        service.targets.can_target_query_history,
+        service.targets.can_conversation_query_history,
         admin_notices,
     )
     return BilibiliMonitorService(service, auth_invalid, push_delivery.send)

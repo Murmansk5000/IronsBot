@@ -28,7 +28,7 @@ from ironsbot.services.seer.rank_page_refresh_selection import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.operations.headless import (
         HeadlessGame,
         HeadlessService,
@@ -78,12 +78,12 @@ class RankAdminService:
         self,
         command: RankCacheBatchCommand,
         *,
-        user_id: int,
+        actor: ActorRef,
         progress: ProgressReporter,
     ) -> str:
         spec, item_count, requested_count = await self._requests.run(
             lambda: self._cache_global_batch(self._headless.get_game(), command),
-            user_id=user_id,
+            actor=actor,
             label="手动缓存榜单",
         )
         if item_count <= 0:
@@ -168,7 +168,7 @@ class RankAdminService:
         self,
         command: RankPageCacheRefreshCommand,
         *,
-        user_id: int,
+        actor: ActorRef,
         progress: ProgressReporter,
     ) -> str:
         await progress(build_rank_page_refresh_start_message(command))
@@ -176,7 +176,7 @@ class RankAdminService:
         result = await self._page_refresh.refresh(
             self._headless.get_game,
             rank_keys,
-            user_id=user_id,
+            actor=actor,
         )
         return build_rank_page_refresh_result_message(result)
 
@@ -194,7 +194,7 @@ class RankAdminService:
     async def cache_refresh(
         self,
         *,
-        user_id: int,
+        actor: ActorRef,
         progress: ProgressReporter,
     ) -> str:
         before = self._local_rank.stats()
@@ -209,7 +209,7 @@ class RankAdminService:
         )
         result = await self._local_rank.refresh(
             self._headless.get_game,
-            user_id=user_id,
+            actor=actor,
         )
         return build_local_rank_refresh_result_message(
             result,

@@ -7,6 +7,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.core.features import FeatureConfig
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
@@ -17,6 +18,8 @@ from tests.helpers.runtime import build_test_runtime
 
 GROUP_ID = 456
 USER_ID = 123
+ACTOR = ActorRef(Platform.ONEBOT, str(USER_ID))
+CONVERSATION = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
 CompletionRequester = Callable[
     [AiConfig, list[HistoryMessage]],
     Awaitable[AiResponseResult],
@@ -57,9 +60,7 @@ def _ai_service(
     config = AiConfig(api_key="test-key", memory=False)
     runtime = build_test_runtime(
         feature_config=FeatureConfig(
-            group_policy={
-                str(group_id): ["admin_notice"] for group_id in admin_groups
-            },
+            group_policy={str(group_id): ["admin_notice"] for group_id in admin_groups},
         ),
         superuser_ids=superusers,
     )
@@ -93,8 +94,8 @@ async def test_ai_error_is_visible_to_superuser() -> None:
 
     assert (
         await service.chat_reply(
-            user_id=USER_ID,
-            group_id=GROUP_ID,
+            actor=ACTOR,
+            conversation=CONVERSATION,
             prompt="hello",
         )
         == REQUEST_FAILED_REPLY
@@ -110,8 +111,8 @@ async def test_ai_error_is_visible_in_admin_notice_group() -> None:
 
     assert (
         await service.chat_reply(
-            user_id=USER_ID,
-            group_id=GROUP_ID,
+            actor=ACTOR,
+            conversation=CONVERSATION,
             prompt="hello",
         )
         == REQUEST_FAILED_REPLY
@@ -126,8 +127,8 @@ async def test_ai_error_is_silent_in_regular_group() -> None:
 
     assert (
         await service.chat_reply(
-            user_id=USER_ID,
-            group_id=GROUP_ID,
+            actor=ACTOR,
+            conversation=CONVERSATION,
             prompt="hello",
         )
         is None
@@ -198,8 +199,8 @@ async def test_ai_admin_notice_includes_source_and_is_limited(
     )
     for _ in range(2):
         await service.chat_reply(
-            user_id=USER_ID,
-            group_id=GROUP_ID,
+            actor=ACTOR,
+            conversation=CONVERSATION,
             prompt="hello",
             source_context="群：456",
         )

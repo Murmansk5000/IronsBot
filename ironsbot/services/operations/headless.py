@@ -27,8 +27,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
-    from ironsbot.config.player_accounts import PlayerAccount
     from ironsbot.core.tasks import TaskSpawner
+    from ironsbot.services.identity.player_accounts import PlayerAccount
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.operations.scheduler import Scheduler
 

@@ -6,7 +6,6 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -51,6 +50,7 @@ from ironsbot.services.seer.rank_player_query import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.operations.headless import (
         HeadlessGame,
         HeadlessService,
@@ -109,8 +109,8 @@ class RankQueryService:
         self,
         command: RankListCommand,
         *,
-        qq_user_id: int | None = None,
-        group_id: int | None = None,
+        actor: ActorRef | None = None,
+        conversation: ConversationRef | None = None,
     ) -> str:
         if command.kind == "local":
             return self._local_message(command)
@@ -119,9 +119,9 @@ class RankQueryService:
                 lambda: self._global_message(
                     self._headless.get_game(),
                     command,
-                    group_id=group_id,
+                    conversation=conversation,
                 ),
-                user_id=qq_user_id,
+                actor=actor,
                 label="榜单查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
@@ -132,8 +132,7 @@ class RankQueryService:
         command: RankScoreCommand,
         *,
         conversation: ConversationRef | None,
-        group_id: int | None,
-        qq_user_id: int | None = None,
+        actor: ActorRef | None = None,
     ) -> str:
         try:
             return await self._run_headless_request(
@@ -141,9 +140,9 @@ class RankQueryService:
                     self._headless.get_game(),
                     command,
                     display_limit=self.default_limit(conversation),
-                    group_id=group_id,
+                    conversation=conversation,
                 ),
-                user_id=qq_user_id,
+                actor=actor,
                 label="榜单分数查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
@@ -153,23 +152,23 @@ class RankQueryService:
         self,
         command: RankPlayerCommand,
         *,
-        qq_user_id: int | None = None,
-        group_id: int | None = None,
+        actor: ActorRef | None = None,
+        conversation: ConversationRef | None = None,
     ) -> str:
         spec = GLOBAL_RANKS[command.rank_key]
         if not is_valid_player_id(command.player_id):
             return PLAYER_ID_ERROR_MESSAGE
-        quota_message = self._check_player_quota(command, qq_user_id)
+        quota_message = self._check_player_quota(command, actor)
         anchor_only = bool(quota_message)
         try:
             result = await self._run_headless_request(
                 lambda: self._fetch_player_message(
                     command,
-                    qq_user_id,
-                    group_id=group_id,
+                    actor,
+                    conversation=conversation,
                     anchor_only=anchor_only,
                 ),
-                user_id=qq_user_id,
+                actor=actor,
                 label="榜单玩家查询",
                 semantic_request=SemanticRequest(
                     action=ActionDefinition(
@@ -203,25 +202,25 @@ class RankQueryService:
             result.lookup.failure is None
             and not result.lookup.cost.lightweight_confirmed
         ):
-            self._record_successful_player_quota(command, qq_user_id)
+            self._record_successful_player_quota(command, actor)
         return result.message
 
     async def _fetch_player_message(
         self,
         command: RankPlayerCommand,
-        qq_user_id: int | None,
+        actor: ActorRef | None,
         *,
-        group_id: int | None,
+        conversation: ConversationRef | None,
         anchor_only: bool,
     ) -> RankPlayerQueryResult:
-        quota_message = self._check_player_quota(command, qq_user_id)
+        quota_message = self._check_player_quota(command, actor)
         if quota_message and not anchor_only:
             raise PlayerQueryQuotaExceededError(quota_message)
         return await asyncio.wait_for(
             self._player_message(
                 self._headless.get_game(),
                 command,
-                group_id=group_id,
+                conversation=conversation,
                 anchor_only=anchor_only,
             ),
             timeout=self._policy.player_timeout_seconds,
@@ -250,7 +249,7 @@ class RankQueryService:
         game: HeadlessGame,
         command: RankListCommand,
         *,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> str:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
@@ -262,7 +261,7 @@ class RankQueryService:
                 f"{command.start_rank}-{command.start_rank + command.limit - 1}名"
             ),
             source="榜单查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             result = await self._rank.fetch_visible_range_result(
                 game,
@@ -286,7 +285,7 @@ class RankQueryService:
         command: RankScoreCommand,
         *,
         display_limit: int,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> str:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
@@ -295,7 +294,7 @@ class RankQueryService:
             "榜单分数查询",
             f"{spec.title} {command.score}{spec.unit}",
             source="榜单分数查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             result = await self._rank.fetch_score_segment(
                 game,
@@ -335,7 +334,7 @@ class RankQueryService:
         game: HeadlessGame,
         command: RankPlayerCommand,
         *,
-        group_id: int | None,
+        conversation: ConversationRef | None,
         anchor_only: bool,
     ) -> RankPlayerQueryResult:
         spec = self._rank.get_spec(command.rank_key)
@@ -343,7 +342,7 @@ class RankQueryService:
             "榜单玩家查询",
             f"{spec.title} 米米号 {command.player_id}",
             source="榜单玩家查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             return await fetch_rank_player_result(
                 self._rank,
@@ -378,12 +377,12 @@ class RankQueryService:
     def _check_player_quota(
         self,
         command: RankPlayerCommand,
-        qq_user_id: int | None,
+        actor: ActorRef | None,
     ) -> str:
-        if self._quotas is None or qq_user_id is None:
+        if self._quotas is None or actor is None:
             return ""
         decision = self._quotas.check(
-            actor=_onebot_actor(qq_user_id),
+            actor=actor,
             player_id=command.player_id,
             action_key=f"rank:{command.rank_key}",
         )
@@ -392,12 +391,12 @@ class RankQueryService:
     def _record_player_quota(
         self,
         command: RankPlayerCommand,
-        qq_user_id: int | None,
+        actor: ActorRef | None,
     ) -> str:
-        if self._quotas is None or qq_user_id is None:
+        if self._quotas is None or actor is None:
             return ""
         decision = self._quotas.consume(
-            actor=_onebot_actor(qq_user_id),
+            actor=actor,
             player_id=command.player_id,
             action_key=f"rank:{command.rank_key}",
         )
@@ -406,14 +405,14 @@ class RankQueryService:
     def _record_successful_player_quota(
         self,
         command: RankPlayerCommand,
-        qq_user_id: int | None,
+        actor: ActorRef | None,
     ) -> None:
-        quota_message = self._record_player_quota(command, qq_user_id)
+        quota_message = self._record_player_quota(command, actor)
         if quota_message:
             logger.warning(
                 "rank player quota changed before successful record: "
-                "user=%s player=%s rank_key=%s",
-                qq_user_id,
+                "actor=%s player=%s rank_key=%s",
+                actor,
                 command.player_id,
                 command.rank_key,
             )
@@ -422,7 +421,7 @@ class RankQueryService:
         self,
         operation: Callable[[], Awaitable[T]],
         *,
-        user_id: int | None,
+        actor: ActorRef | None,
         label: str,
         semantic_request: SemanticRequest | None = None,
     ) -> T:
@@ -430,7 +429,7 @@ class RankQueryService:
             return await operation()
         return await self._requests.run(
             operation,
-            user_id=user_id,
+            actor=actor,
             label=label,
             semantic_request=semantic_request,
         )
@@ -441,7 +440,3 @@ _PLAYER_REQUEST_ERRORS = (
     PlayerRequestPausedError,
     PlayerRequestReconnectError,
 )
-
-
-def _onebot_actor(user_id: int) -> ActorRef:
-    return ActorRef(Platform.ONEBOT, str(int(user_id)))
