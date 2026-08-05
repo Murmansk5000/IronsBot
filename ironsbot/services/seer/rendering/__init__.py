@@ -3,9 +3,7 @@ from collections.abc import Mapping, Sequence
 from os import PathLike
 from typing import Any, Protocol, TypeAlias
 
-TemplatePath: TypeAlias = (
-    str | PathLike[str] | Sequence[str | PathLike[str]]
-)
+TemplatePath: TypeAlias = str | PathLike[str] | Sequence[str | PathLike[str]]
 
 
 class HtmlTemplateRenderer(Protocol):
@@ -18,3 +16,10 @@ class HtmlTemplateRenderer(Protocol):
         max_width: int = 500,
         allow_refit: bool = True,
     ) -> bytes: ...
+
+
+class RenderDocument(Protocol):
+    """Immutable, template-ready input accepted by the final render cache."""
+
+    @property
+    def templates(self) -> Mapping[Any, Any]: ...

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -19,6 +18,7 @@ from ironsbot.services.seer.new_content import (
     NewContentSnapshot,
 )
 from ironsbot.services.seer.render_paths import PET_INFO_IMAGES_PATH
+from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
 from ironsbot.services.seer.rendering.new_content import (
     NewContentMenuItem,
     present_new_content_menu,
@@ -51,10 +51,6 @@ async def render_new_content_menu(  # noqa: PLR0913
 ) -> bytes:
     """Render a release menu after all database state is frozen in a snapshot."""
 
-    content_key = _cache_key(snapshot, display_categories, focused_category)
-    if cached := cache.get("new_content", content_key):
-        return cached
-
     # All ORM and domain-service reads complete before the first await below.
     prepared_items = NewContentSnapshotBuilder(data, autocard).prepare(
         snapshot,
@@ -78,6 +74,9 @@ async def render_new_content_menu(  # noqa: PLR0913
         rows,
         await _load_skill_type_icons(images, prepared_items, visuals),
     )
+    content_key = render_document_cache_key(document)
+    if cacheable and (cached := cache.get("new_content", content_key)):
+        return cached
     result = await render_new_content_document(render_html, document)
     if cacheable:
         cache.put("new_content", content_key, result)
@@ -218,18 +217,3 @@ def _gender_icon_data_uri(gender_id: int | None) -> str | None:
     if not icon_path.exists():
         icon_path = PET_INFO_IMAGES_PATH / "0.png"
     return to_data_uri(icon_path.read_bytes())
-
-
-def _cache_key(
-    snapshot: NewContentSnapshot,
-    categories: tuple[NewContentCategory, ...],
-    focused_category: NewContentCategory | None,
-) -> str:
-    raw = "|".join(
-        (
-            snapshot.config_version,
-            ",".join(categories),
-            focused_category or "root",
-        )
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

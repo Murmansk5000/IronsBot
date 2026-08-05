@@ -150,6 +150,10 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
   适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变
   文档；不得把新的数据库读取或展示推断放回 HTML 模板或纯 presenter。
+- 最终图片缓存统一在素材准备和 `RenderDocument` 生成之后，使用
+  `render_document_cache_key()` 对文档的全部确定性值做哈希。data URI 资产包含在
+  文档中，因此图片资源更新会自然失效旧最终图；不得恢复“只用精灵 ID/榜单参数
+  先查最终缓存”的快捷路径。
 
 ### Phase 5 — 业务服务和通用解析
 

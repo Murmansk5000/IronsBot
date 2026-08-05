@@ -623,7 +623,11 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
 - The integration owns final-image cache lookup and write. Final-cache keys
   include the complete rendered snapshot, category, published data version,
   renderer/template fingerprint, and all asset content versions that affect
-  pixels.
+  pixels. The shared `render_document_cache_key()` is calculated from the
+  completed immutable `RenderDocument`, after asset preparation. A final-cache
+  hit may therefore reuse the image only after the bounded asset cache has
+  confirmed the exact image bytes used by the document; no renderer may return
+  a final image from an entity ID or an incomplete pre-asset key.
 
 The current Phase 4 transition has this target shape for published pet info,
 type matchup, peak-pool, peak-vote, peak-pet-rank, and the private player

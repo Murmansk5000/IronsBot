@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -54,27 +53,6 @@ class PeakPoolRenderDocument:
         return MappingProxyType(
             {"pools": self.pools, "pool_type": self.pool_type},
         )
-
-
-def peak_pool_cache_key(
-    pools: Sequence[PeakPoolSnapshot],
-    pool_type: str,
-) -> str:
-    """Fingerprint all domain data that affects the rendered pool image."""
-    values = tuple(
-        (
-            pool.id,
-            pool.count,
-            pool.start_time.isoformat(),
-            pool.end_time.isoformat(),
-            tuple(
-                (pet.id, pet.name, pet.resource_id, pet.type_id)
-                for pet in pool.pets
-            ),
-        )
-        for pool in pools
-    )
-    return hashlib.sha256(repr((pool_type, values)).encode()).hexdigest()
 
 
 def present_peak_pool(
