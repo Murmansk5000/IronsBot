@@ -9,6 +9,7 @@ PACKAGE = ROOT / "ironsbot"
 CORE = PACKAGE / "core"
 SERVICES = PACKAGE / "services"
 RENDERING = SERVICES / "seer" / "rendering"
+RUNTIME = PACKAGE / "runtime"
 SEER_REQUEST_ACTOR_METHODS = {
     "player_request_protection.py": {
         "PlayerRequestProtectionService": ("run",),
@@ -82,6 +83,13 @@ class MissingArchitectureTargetMethodError(AssertionError):
         )
 
 
+class MissingArchitectureTargetClassError(AssertionError):
+    def __init__(self, *, class_name: str, path: Path) -> None:
+        super().__init__(
+            f"missing class {class_name} in {path.relative_to(ROOT)}"
+        )
+
+
 def _module(path: Path) -> str:
     parts = path.relative_to(ROOT).with_suffix("").parts
     return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
@@ -138,6 +146,33 @@ def _method_argument_names(
         method_name=method_name,
         path=path,
     )
+
+
+def _class_field_names(path: Path, *, class_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        return {
+            statement.target.id
+            for statement in node.body
+            if isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+        }
+    raise MissingArchitectureTargetClassError(class_name=class_name, path=path)
+
+
+def _class_method_names(path: Path, *, class_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        return {
+            method.name
+            for method in node.body
+            if isinstance(method, (ast.AsyncFunctionDef, ast.FunctionDef))
+        }
+    raise MissingArchitectureTargetClassError(class_name=class_name, path=path)
 
 
 def test_core_and_services_do_not_import_adapter_transport_types() -> None:
@@ -246,3 +281,23 @@ def test_bilibili_services_do_not_own_legacy_delivery_types() -> None:
     ]
 
     assert offenders == []
+
+
+def test_command_catalog_context_and_policy_stay_platform_neutral() -> None:
+    path = RUNTIME / "commands.py"
+    context_fields = _class_field_names(path, class_name="CommandContext")
+    policy_methods = _class_method_names(path, class_name="CommandFeaturePolicy")
+
+    assert {"actor", "conversation"} <= context_fields
+    assert {"user_id", "group_id"}.isdisjoint(context_fields)
+    assert {
+        "is_actor_superuser",
+        "conversation_has_feature",
+        "is_feature_allowed",
+    } <= policy_methods
+    assert {
+        "is_superuser",
+        "group_has_feature",
+        "is_group_feature_allowed",
+        "is_private_feature_allowed",
+    }.isdisjoint(policy_methods)
