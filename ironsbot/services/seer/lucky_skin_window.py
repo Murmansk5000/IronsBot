@@ -15,13 +15,18 @@ from zoneinfo import ZoneInfo
 from seerapi_models import PetSkinORM
 from sqlmodel import Session, col, select
 
+from ironsbot.core.messaging import MessageTarget
+from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.seer import LuckySkinWindowConfig
-    from ironsbot.config.player_accounts import PlayerAccount
+    from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
     from ironsbot.core.features import FeatureService
-    from ironsbot.core.platform import ActorRef
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.services.messaging.delivery import MessageDelivery
+    from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
@@ -75,21 +80,9 @@ class LuckySkinWindowCache(Protocol):
 
 
 class LuckySkinWatchPreferenceStore(Protocol):
-    def get(self, actor: ActorRef) -> tuple[int, ...] | None: ...
+    def get(self, qq_user_id: int) -> tuple[int, ...] | None: ...
 
-    def set(self, actor: ActorRef, skin_ids: tuple[int, ...]) -> None: ...
-
-
-class LuckySkinWindowNotificationSender(Protocol):
-    """Deliver a scheduled lucky-window result to one platform actor."""
-
-    async def send_daily_notice(
-        self,
-        actor: ActorRef,
-        message: str,
-        *,
-        day: str,
-    ) -> bool: ...
+    def set(self, qq_user_id: int, skin_ids: tuple[int, ...]) -> None: ...
 
 
 class LuckySkinWindowError(RuntimeError):
@@ -100,12 +93,6 @@ class LuckySkinWindowError(RuntimeError):
 
 class LuckySkinWindowNotConfiguredError(LuckySkinWindowError):
     pass
-
-
-class LuckySkinWindowConfigurationError(LuckySkinWindowError):
-    @classmethod
-    def duplicate_actor(cls) -> LuckySkinWindowConfigurationError:
-        return cls("lucky skin window accounts repeat an actor")
 
 
 class LuckySkinWindowBindingError(LuckySkinWindowError):
@@ -149,27 +136,19 @@ class LuckySkinWatchItem:
     name: str
 
 
-@dataclass(frozen=True, slots=True)
-class LuckySkinWindowAccount:
-    """Platform-neutral owner and Seer account for one window subscription."""
-
-    actor: ActorRef
-    player_account: PlayerAccount
-    watched_skin_ids: tuple[int, ...] = ()
-
-
 class LuckySkinWindowService:
     def __init__(  # noqa: PLR0913 - explicit composition dependencies
         self,
         config: LuckySkinWindowConfig,
-        accounts: tuple[LuckySkinWindowAccount, ...],
+        references: OneBotReferenceResolver,
+        player_accounts: PlayerAccountRegistry,
         features: FeatureService,
         headless_sessions: HeadlessSessionFactory,
         data: SeerDataAccess,
         bindings: PlayerBindingStore,
+        subscriptions: PushSubscriptionRepository,
         watch_preferences: LuckySkinWatchPreferenceStore,
         cache: LuckySkinWindowCache,
-        notification_sender: LuckySkinWindowNotificationSender,
         *,
         today: Callable[[], date] | None = None,
     ) -> None:
@@ -178,16 +157,23 @@ class LuckySkinWindowService:
         self._headless_sessions = headless_sessions
         self._data = data
         self._bindings = bindings
+        self._subscriptions = subscriptions
         self._watch_preferences = watch_preferences
         self._cache = cache
-        self._notification_sender = notification_sender
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
         self._accounts = {
-            configured.actor: configured
-            for configured in accounts
+            references.resolve_user(
+                account.user,
+                location=f"seer.lucky_skin_window.accounts[{index}].user",
+            ): (
+                account,
+                player_accounts.resolve(
+                    account.account,
+                    location=f"seer.lucky_skin_window.accounts[{index}].account",
+                ),
+            )
+            for index, account in enumerate(config.accounts)
         }
-        if len(self._accounts) != len(accounts):
-            raise LuckySkinWindowConfigurationError.duplicate_actor()
         self._query_lock = asyncio.Lock()
         self._memory: dict[int, tuple[int, ...]] = {}
         self._cache_day: str | None = None
@@ -206,18 +192,38 @@ class LuckySkinWindowService:
     def clear_previous_days(self) -> None:
         self._prepare_day(self.day_key())
 
-    def account_for_actor(self, actor: ActorRef) -> PlayerAccount | None:
-        configured = self._accounts.get(actor)
-        return configured.player_account if configured is not None else None
+    def account_for_user(self, user_id: int) -> PlayerAccount | None:
+        configured = self._accounts.get(user_id)
+        return configured[1] if configured is not None else None
 
-    def is_eligible_actor(self, actor: ActorRef) -> bool:
-        account = self.account_for_actor(actor)
+    def is_eligible_user(self, user_id: int) -> bool:
+        account = self.account_for_user(user_id)
         if not self.enabled or account is None:
             return False
-        return self._bindings.get(actor).player_id == account.player_id
+        return self._bindings.get(user_id).player_id == account.player_id
 
-    def watched_skins(self, actor: ActorRef) -> tuple[LuckySkinWatchItem, ...]:
-        skin_ids = self._watched_skin_ids(actor)
+    def subscription_options(
+        self,
+        target_type: str,
+        target_id: int,
+    ) -> list[PushSubscriptionOption]:
+        if target_type != "private" or not self.is_eligible_user(target_id):
+            return []
+        return [
+            PushSubscriptionOption(
+                key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+                label="幸运橱窗提醒",
+                feature="lucky_skin_window",
+                unsubscribed=self._subscriptions.is_target_unsubscribed(
+                    "private",
+                    target_id,
+                    LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+                ),
+            )
+        ]
+
+    def watched_skins(self, user_id: int) -> tuple[LuckySkinWatchItem, ...]:
+        skin_ids = self._watched_skin_ids(user_id)
         if not skin_ids:
             return ()
         with self._data.get_many(self._data.pet_skin, set(skin_ids)) as skins:
@@ -228,10 +234,10 @@ class LuckySkinWindowService:
 
     def resolve_watch_candidates(
         self,
-        actor: ActorRef,
+        user_id: int,
         arg: str,
     ) -> tuple[LuckySkinWatchItem, ...]:
-        self._validated_account_for_actor(actor)
+        self._validated_account_for_user(user_id)
         normalized = arg.strip()
         if not normalized:
             return ()
@@ -247,82 +253,107 @@ class LuckySkinWindowService:
                 for skin in sorted(skins, key=lambda item: int(item.id))
             )
 
-    def add_watched_skin(self, actor: ActorRef, skin_id: int) -> bool:
-        current = self._watched_skin_ids(actor)
+    def add_watched_skin(self, user_id: int, skin_id: int) -> bool:
+        current = self._watched_skin_ids(user_id)
         if skin_id in current:
             return False
-        self._watch_preferences.set(actor, (*current, skin_id))
+        self._watch_preferences.set(user_id, (*current, skin_id))
         return True
 
-    def remove_watched_skin(self, actor: ActorRef, skin_id: int) -> bool:
-        current = self._watched_skin_ids(actor)
+    def remove_watched_skin(self, user_id: int, skin_id: int) -> bool:
+        current = self._watched_skin_ids(user_id)
         if skin_id not in current:
             return False
         self._watch_preferences.set(
-            actor,
+            user_id,
             tuple(value for value in current if value != skin_id),
         )
         return True
 
-    def clear_watched_skins(self, actor: ActorRef) -> bool:
-        current = self._watched_skin_ids(actor)
-        self._watch_preferences.set(actor, ())
+    def clear_watched_skins(self, user_id: int) -> bool:
+        current = self._watched_skin_ids(user_id)
+        self._watch_preferences.set(user_id, ())
         return bool(current)
 
     def reset_watched_skins(
         self,
-        actor: ActorRef,
+        user_id: int,
     ) -> tuple[LuckySkinWatchItem, ...]:
-        self._validated_account_for_actor(actor)
-        defaults = self._default_watched_skin_ids(actor)
-        self._watch_preferences.set(actor, defaults)
-        return self.watched_skins(actor)
+        self._validated_account_for_user(user_id)
+        defaults = self._default_watched_skin_ids(user_id)
+        self._watch_preferences.set(user_id, defaults)
+        return self.watched_skins(user_id)
 
-    async def check_for_actor(self, actor: ActorRef) -> LuckySkinWindowResult:
-        account = self._validated_account_for_actor(actor)
+    async def check_for_user(self, user_id: int) -> LuckySkinWindowResult:
+        account = self._validated_account_for_user(user_id)
         if cached := self._cached_result(account.player_id):
             return cached
         return await self._check(account, background=False)
 
-    def cached_for_actor(self, actor: ActorRef) -> LuckySkinWindowResult | None:
+    def cached_for_user(self, user_id: int) -> LuckySkinWindowResult | None:
         """Return today's result without opening the dedicated game session."""
-        account = self._validated_account_for_actor(actor)
+        account = self._validated_account_for_user(user_id)
         return self._cached_result(account.player_id)
 
-    async def send_daily_notifications(self) -> None:
+    async def send_daily_notifications(self, delivery: MessageDelivery) -> None:
         if not self.enabled:
             return
-        for actor, configured in self._accounts.items():
-            feature_enabled = self._features.actor_has_feature(
-                actor,
-                "lucky_skin_window",
-            )
-            if not self.is_eligible_actor(actor) or not feature_enabled:
-                continue
-            account = configured.player_account
+        target_ids = self._subscriptions.filter_subscribed_user_ids(
+            [
+                user_id
+                for user_id in self._accounts
+                if self.is_eligible_user(user_id)
+                and self._features.is_private_feature_allowed(
+                    user_id,
+                    "lucky_skin_window",
+                )
+            ],
+            LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+        )
+        if not target_ids:
+            return
+        for user_id in target_ids:
+            _subscription, account = self._accounts[user_id]
             try:
                 result = await self._check(account, background=True)
-                message = self.format_result(result, actor=actor)
+                message = self.format_result(result, user_id=user_id)
             except Exception:
                 logger.exception(
                     "lucky skin window scheduled check failed: player_id=%s",
                     account.player_id,
                 )
                 message = "❌ 幸运橱窗数据暂时不可用，请稍后使用“橱窗”查询。"
-            await self._notification_sender.send_daily_notice(
-                actor,
-                message,
-                day=self.day_key(),
-            )
+            await self._send_daily_notice(delivery, user_id, message)
 
-    def _validated_account_for_actor(
+    async def _send_daily_notice(
         self,
-        actor: ActorRef,
+        delivery: MessageDelivery,
+        user_id: int,
+        message: str,
+    ) -> None:
+        if not self._subscriptions.mark_daily_hint_sent(
+            "private",
+            user_id,
+            "lucky_skin_window_delivery",
+            today=self.day_key(),
+        ):
+            return
+        await delivery.send_targets(
+            [MessageTarget("private", user_id)],
+            message,
+            action_name="lucky skin window daily notice",
+            interval_seconds=0,
+            subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+        )
+
+    def _validated_account_for_user(
+        self,
+        user_id: int,
     ) -> PlayerAccount:
-        account = self.account_for_actor(actor)
+        account = self.account_for_user(user_id)
         if not self.enabled or account is None:
             raise LuckySkinWindowNotConfiguredError
-        if self._bindings.get(actor).player_id != account.player_id:
+        if self._bindings.get(user_id).player_id != account.player_id:
             raise LuckySkinWindowBindingError(account.player_id)
         return account
 
@@ -420,8 +451,8 @@ class LuckySkinWindowService:
         )
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
-    def format_result(self, result: LuckySkinWindowResult, *, actor: ActorRef) -> str:
-        watched_ids = frozenset(self._watched_skin_ids(actor))
+    def format_result(self, result: LuckySkinWindowResult, *, user_id: int) -> str:
+        watched_ids = frozenset(self._watched_skin_ids(user_id))
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
         for index, offer in enumerate(result.offers, start=1):
             marker = " ★ 关注" if offer.skin_id in watched_ids else ""
@@ -429,18 +460,18 @@ class LuckySkinWindowService:
             lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
         return "\n".join(lines)
 
-    def _watched_skin_ids(self, actor: ActorRef) -> tuple[int, ...]:
-        self._validated_account_for_actor(actor)
-        stored = self._watch_preferences.get(actor)
+    def _watched_skin_ids(self, user_id: int) -> tuple[int, ...]:
+        self._validated_account_for_user(user_id)
+        stored = self._watch_preferences.get(user_id)
         if stored is not None:
             return stored
-        defaults = self._default_watched_skin_ids(actor)
-        self._watch_preferences.set(actor, defaults)
+        defaults = self._default_watched_skin_ids(user_id)
+        self._watch_preferences.set(user_id, defaults)
         return defaults
 
-    def _default_watched_skin_ids(self, actor: ActorRef) -> tuple[int, ...]:
-        configured = self._accounts[actor]
-        references = configured.watched_skin_ids
+    def _default_watched_skin_ids(self, user_id: int) -> tuple[int, ...]:
+        subscription, _account = self._accounts[user_id]
+        references = tuple(subscription.watched_skin_ids)
         if not references:
             return ()
         resolved = self._skin_items_by_reference(references)
@@ -448,8 +479,8 @@ class LuckySkinWindowService:
         if missing:
             logger.warning(
                 "lucky skin watch defaults could not be resolved: "
-                "actor=%s references=%s",
-                actor,
+                "user_id=%s references=%s",
+                user_id,
                 missing,
             )
         return tuple(

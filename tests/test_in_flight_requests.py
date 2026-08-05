@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
-from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
@@ -14,8 +13,6 @@ from ironsbot.runtime.semantic_requests import (
 
 USER_ID = 100
 OTHER_USER_ID = 200
-ACTOR = ActorRef(Platform.ONEBOT, str(USER_ID))
-OTHER_ACTOR = ActorRef(Platform.ONEBOT, str(OTHER_USER_ID))
 DUPLICATE_MESSAGE = "重复请求"
 
 
@@ -39,22 +36,23 @@ def _service(features: _Features | None = None) -> InFlightRequestService:
 
 @dataclass
 class _Features:
-    superusers: frozenset[ActorRef] = frozenset()
+    superusers: frozenset[int] = frozenset()
 
-    def is_actor_superuser(self, actor: ActorRef) -> bool:
-        return actor in self.superusers
+    def is_superuser(self, user_id: int) -> bool:
+        return user_id in self.superusers
 
 
-def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
+def test_in_flight_request_replies_once_warns_once_then_stays_silent(
+) -> None:
     service = _service()
 
     first = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=0,
     )
     second = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=1,
     )
@@ -65,7 +63,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
     assert second.feedback == DUPLICATE_MESSAGE
 
     assert not service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=2,
     ).allowed
@@ -73,7 +71,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
     service.finish(first.token, now=5)
 
     completed_duplicate = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=64,
     )
@@ -81,13 +79,13 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
     assert completed_duplicate.feedback is None
 
     assert not service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=64.5,
     ).allowed
 
     assert service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=65,
     ).allowed
@@ -96,7 +94,7 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent() -> None:
 def test_in_flight_request_release_does_not_create_a_recent_response() -> None:
     service = _service()
     first = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=0,
     )
@@ -105,57 +103,43 @@ def test_in_flight_request_release_does_not_create_a_recent_response() -> None:
     service.release(first.token)
 
     assert service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=1,
     ).allowed
 
 
-def test_in_flight_request_keeps_actors_actions_and_targets_independent() -> None:
+def test_in_flight_request_keeps_users_actions_and_targets_independent() -> None:
     service = _service()
 
     first = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
     )
     assert first.allowed
     assert service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_info", "5001"),
     ).allowed
     assert service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_pet_image", "5000"),
     ).allowed
     assert service.admit(
-        actor=OTHER_ACTOR,
-        request=_request("seer_pet_info", "5000"),
-    ).allowed
-
-
-def test_in_flight_request_keeps_platform_actor_namespaces_isolated() -> None:
-    service = _service()
-    official_actor = ActorRef(Platform.QQ_OFFICIAL, str(USER_ID))
-
-    assert service.admit(
-        actor=ACTOR,
-        request=_request("seer_pet_info", "5000"),
-    ).allowed
-    assert service.admit(
-        actor=official_actor,
+        user_id=OTHER_USER_ID,
         request=_request("seer_pet_info", "5000"),
     ).allowed
 
 
 def test_in_flight_request_superusers_bypass_reservations() -> None:
-    service = _service(_Features(frozenset({ACTOR})))
+    service = _service(_Features(frozenset({USER_ID})))
 
     first = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer.player.collection", "712345678"),
     )
     second = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer.player.collection", "712345678"),
     )
 
@@ -166,13 +150,13 @@ def test_in_flight_request_superusers_bypass_reservations() -> None:
 def test_in_flight_request_stale_token_does_not_release_new_reservation() -> None:
     service = _service()
     first = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_mintmark_query", "45001"),
     )
     assert first.token is not None
     service.finish(first.token, now=0)
     second = service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_mintmark_query", "45001"),
         now=60,
     )
@@ -181,6 +165,6 @@ def test_in_flight_request_stale_token_does_not_release_new_reservation() -> Non
     service.finish(first.token)
 
     assert not service.admit(
-        actor=ACTOR,
+        user_id=USER_ID,
         request=_request("seer_mintmark_query", "45001"),
     ).allowed

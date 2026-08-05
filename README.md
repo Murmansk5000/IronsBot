@@ -6,7 +6,7 @@
 
 IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
-OneBot 事件入口位于 `ironsbot/plugins/onebot`，查询与渲染等业务由应用服务统一组合。扩展按当前扩展清单加载，不再从 `ironsbot/custom_plugins` 扫描。
+当前主线已经转为显式插件架构：通用功能位于 `ironsbot/plugins`，部署者自行维护的扩展按独立清单加载；二者都由统一注册表安装。原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
 
 ## 功能
 
@@ -128,13 +128,11 @@ services:
 
 ## 插件架构
 
-通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展从配置的数据目录读取
-`manifest.json`；清单指定的工厂接收 `PrivateExtensionRuntime`，返回的
-`PluginContribution` 由当前安装上下文收集并交给应用安装。
+通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展由独立扩展清单加载。
 当前版本仍由 `python -m ironsbot` 经过
-`ironsbot/app/bootstrap.py` 启动。内置插件由标准 NoneBot TOML 清单直接发现；
-每个插件通过 `PluginMetadata` 声明身份，并以 `PluginContribution` 注册运行时
-贡献。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
+`ironsbot/app/bootstrap.py` 启动。内置插件由 `ironsbot/app/registry.py` 中的 `PluginDefinition` 注册表统一安装；
+私有扩展从配置的数据目录读取 `manifest.json`，工厂接收 `PrivateExtensionRuntime`
+并返回 `PluginDefinition`，同样纳入该安装流程。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
 命令认领的唯一语义来源。
 
 `MatcherRegistry` 与私有扩展 bootstrap 仍是过渡组件：前者会迁移为更窄的 matcher

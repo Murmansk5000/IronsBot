@@ -14,17 +14,16 @@ from ironsbot.core.response_admission import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ActorRef
     from ironsbot.core.semantic_requests import SemanticRequest
 
 
 class SuperuserLookup(Protocol):
-    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
+    def is_superuser(self, user_id: int) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
 class InFlightRequestToken:
-    actor: ActorRef
+    user_id: int
     request: SemanticRequest
     token_id: str
 
@@ -61,26 +60,26 @@ class InFlightRequestService:
 
     features: SuperuserLookup
     config: DuplicateResponseConfig
-    _entries: dict[tuple[ActorRef, str, str], _InFlightRequestEntry] = field(
+    _entries: dict[tuple[int, str, str], _InFlightRequestEntry] = field(
         default_factory=dict
     )
-    _recent_completions: dict[tuple[ActorRef, str, str], _RecentCompletion] = field(
+    _recent_completions: dict[tuple[int, str, str], _RecentCompletion] = field(
         default_factory=dict
     )
 
     def admit(
         self,
         *,
-        actor: ActorRef,
+        user_id: int,
         request: SemanticRequest,
         now: float | None = None,
     ) -> InFlightRequestDecision:
-        if self.features.is_actor_superuser(actor):
+        if self.features.is_superuser(user_id):
             return InFlightRequestDecision(allowed=True)
 
         current_time = monotonic() if now is None else now
         self._prune_recent_completions(current_time)
-        key = (actor, request.action.id, request.target.key)
+        key = (user_id, request.action.id, request.target.key)
         if entry := self._entries.get(key):
             return self._reject_duplicate(entry)
         if completion := self._recent_completions.get(key):
@@ -91,7 +90,7 @@ class InFlightRequestService:
         return InFlightRequestDecision(
             allowed=True,
             token=InFlightRequestToken(
-                actor=actor,
+                user_id=user_id,
                 request=request,
                 token_id=token_id,
             ),
@@ -116,10 +115,10 @@ class InFlightRequestService:
     def _release(
         self,
         token: object,
-    ) -> tuple[tuple[ActorRef, str, str], _InFlightRequestEntry] | None:
+    ) -> tuple[tuple[int, str, str], _InFlightRequestEntry] | None:
         if not isinstance(token, InFlightRequestToken):
             return None
-        key = (token.actor, token.request.action.id, token.request.target.key)
+        key = (token.user_id, token.request.action.id, token.request.target.key)
         entry = self._entries.get(key)
         if entry is not None and entry.token_id == token.token_id:
             self._entries.pop(key, None)
