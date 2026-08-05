@@ -53,7 +53,7 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `in_progress` | 声明式贡献、`PluginContribution`、命令目录以及 common / messaging / operations / seer 四个装配 builder 已建立；生命周期、消息、数据同步、运维和 Seer 回归测试已验证 | 所有插件均不再依赖旧桥接或第二份发现来源，且剩余的宿主适配从 builder 迁到平台 port | 插件迁移完全结束 |
+| Phase 2 | `in_progress` | 声明式贡献、`PluginContribution`、命令目录以及 common / messaging / operations / seer 四个装配 builder 已建立；生命周期、消息、数据同步、运维和 Seer 回归测试已验证，组合根拆分后全量 `pytest` 为 1377 passed，静态检查通过 | 所有插件均不再依赖旧桥接或第二份发现来源，且剩余的宿主适配从 builder 迁到平台 port | 插件迁移完全结束 |
 | Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现 | 删除剩余 integration 内旧投递调用并建立跨平台 sender 验收 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性渲染缓存和部分 SeerAPI 效果事实已验证 | 其余 renderer 与数据路径全部只消费视图模型/发布事实 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 所有直接命令与米米号入口使用同一契约 | 业务服务重构完成 |
