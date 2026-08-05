@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.plugins.onebot.seer.rank_help import (
-    RANK_HELP_COMMANDS,
     handle_rank_help_entry,
 )
+from ironsbot.services.seer.rank_command_contracts import RANK_HELP_COMMANDS
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.commands import CommandCatalog
 
 
-def test_rank_help_owns_every_help_alias() -> None:
+def test_rank_help_uses_every_domain_help_alias() -> None:
     assert RANK_HELP_COMMANDS == (
         "榜单",
         "排行榜",

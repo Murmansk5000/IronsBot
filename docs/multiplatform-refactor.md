@@ -225,6 +225,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 公开赛尔查询的命令描述已从 OneBot 插件移入
   `services.seer.command_contracts`；插件只把该领域 contract 提交给目录。后续命令
   迁移必须复用同一模式，不得把领域输入说明重新写进 matcher。
+- 榜单帮助的用户口令、范围和权限同样位于
+  `services.seer.rank_command_contracts`；OneBot 侧只把事件转为上下文并渲染已筛选的
+  目录结果。
 - AI 长期记忆使用异步 `AiMemoryStore` port。SQLite 实现在 worker thread 中完成
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会
