@@ -7,13 +7,13 @@ from string import Formatter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
 
+from ironsbot.config.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
+    OneBotReferenceList,
+)
 from ironsbot.core.commands import (  # noqa: TC001 - Pydantic resolves aliases
     NormalizedStringList,
 )
 from ironsbot.core.messaging import SendpicBehaviorConfig
-from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
-    OneBotReferenceList,
-)
 from ironsbot.core.time import normalize_daily_time
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
@@ -444,6 +444,7 @@ class TeamAuditWelcomeConfig(BaseModel):
         "你加入战队审核群已经 {hours:g} 小时了，仍然还在审核群。\n"
         "如果已经加入主群，或者不想加入战队，请退出本审核群。"
     )
+
     @field_validator(
         "message",
         "followup_message",

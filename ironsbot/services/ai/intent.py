@@ -11,9 +11,10 @@ from ironsbot.core.commands import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.core.platform import ActorRef, ConversationRef
+
 
 class TemplateContext(dict[str, str]):
     def __missing__(self, key: str) -> str:

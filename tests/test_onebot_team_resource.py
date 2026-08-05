@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import pytest
 
-from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
+    OneBotTargetSendSummary,
+)
 from ironsbot.integrations.onebot.team_resource import (
     OneBotTeamResourceNoticeSender,
 )
@@ -17,12 +20,12 @@ class FakeOneBotDelivery:
 
     async def send_targets(
         self,
-        targets: list[MessageTarget],
+        targets: list[OneBotMessageTarget],
         message: str,
         *,
         action_name: str,
         interval_seconds: float,
-    ) -> TargetSendSummary:
+    ) -> OneBotTargetSendSummary:
         self.calls.append(
             {
                 "targets": targets,
@@ -31,7 +34,7 @@ class FakeOneBotDelivery:
                 "interval_seconds": interval_seconds,
             }
         )
-        return TargetSendSummary(targets, [])
+        return OneBotTargetSendSummary(targets, [])
 
 
 @pytest.mark.asyncio
@@ -50,7 +53,7 @@ async def test_onebot_team_resource_sender_routes_group_mentions() -> None:
     assert sent
     assert delivery.calls == [
         {
-            "targets": [MessageTarget("group", 1001, (2001,))],
+            "targets": [OneBotMessageTarget("group", 1001, (2001,))],
             "message": "战队资源不足。",
             "action_name": "team resource subscription notice",
             "interval_seconds": 0,

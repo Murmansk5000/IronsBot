@@ -9,17 +9,20 @@ from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.application import Application
+from ironsbot.app.bilibili_composition import build_onebot_bilibili_monitor
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.private_extensions import (
-    PrivateExtensionRuntime,
     load_private_extension_catalog,
 )
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
-from ironsbot.core.features import Feature, FeatureService
+from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.core.command_catalog import CommandCatalog, CommandContext
+from ironsbot.core.features import Feature
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog
+from ironsbot.extensions.player_lineup import PlayerLineupExtensionServices
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -37,12 +40,27 @@ from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
+from ironsbot.integrations.onebot.bilibili_rendering import (
+    build_dynamic_content_message,
+)
+from ironsbot.integrations.onebot.bilibili_targets import (
+    build_onebot_bili_configured_targets,
+)
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
+from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
+)
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
     OneBotLuckySkinWindowSubscriptionOptions,
     build_onebot_lucky_skin_window_accounts,
+)
+from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
+from ironsbot.integrations.onebot.messaging_config import (
+    build_onebot_message_schedule_targets,
 )
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -51,6 +69,9 @@ from ironsbot.integrations.onebot.outbound import (
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.onebot.scheduled_delivery import (
+    OneBotScheduledMessageSender,
+)
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
     OneBotTeamAuditPolicy,
@@ -109,9 +130,7 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.runtime.cache_paths import CachePaths
-from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
@@ -120,7 +139,6 @@ from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
-from ironsbot.services.messaging.help_hint import HelpHintService
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
@@ -147,6 +165,7 @@ from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
 from ironsbot.services.seer.player_detail_service import PlayerDetailService
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestProtectionService,
@@ -172,6 +191,8 @@ from ironsbot.services.team.resource import TeamResourceService
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
 
+SEERAPI_DB_NAME = "seerapi"
+
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
@@ -194,7 +215,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     prompt_sessions = PromptSessionManager()
     promotions = PromotionCatalog(settings.promotions)
-    features = FeatureService(
+    features = build_onebot_feature_service(
         settings.features,
         settings.superuser_ids,
         command_features=settings.messaging.command_feature_keys,
@@ -239,6 +260,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     headless_operations = HeadlessOperationTracker()
     player_accounts = settings.player_accounts
+
+    def resolve_configured_player_reference(
+        reference: str,
+        conversation: ConversationRef,
+    ) -> int | None:
+        return player_accounts.resolve_player_id(
+            reference,
+            conversation=conversation,
+        )
+
     headless_accounts = settings.headless_accounts
     headless_worker_count = len(headless_accounts)
     headless = HeadlessService(
@@ -281,10 +312,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database,
         player_bindings,
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
-        SqliteLuckySkinWindowCache(
-            settings.paths.runtime_state,
-            legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
-        ),
+        SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         OneBotLuckySkinWindowNotificationSender(delivery, subscriptions),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
@@ -294,6 +322,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         targets=BiliTargetService(
             settings.bilibili,
             features,
+            build_onebot_bili_configured_targets(
+                settings.bilibili,
+                settings.onebot_references,
+            ),
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
             BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
@@ -317,7 +349,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.activity,
         subscriptions,
         features,
-        delivery,
+        OneBotScheduledMessageSender(delivery, push_message_limiter),
+        build_onebot_message_schedule_targets(
+            settings.messaging,
+            settings.onebot_references,
+        ),
         (
             bilibili.targets.subscription_options,
             OneBotLuckySkinWindowSubscriptionOptions(
@@ -325,7 +361,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 subscriptions,
             ).subscription_options,
         ),
-        _push_message_limiter=push_message_limiter,
         _prepare_extra_push_options=bilibili.targets.prepare_account_names,
     )
     sendpic = SendpicService(
@@ -436,6 +471,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_query_quotas,
         player_requests,
         profile_cache=local_rank_repository,
+    )
+    player_id_resolver = PlayerIdResolver(
+        resolve_configured_player_reference,
+        player.default_player_id,
     )
     docker_client = DockerClient()
     private_extensions = load_private_extension_catalog(
@@ -559,27 +598,34 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else None
         ),
     )
-    private_extension_runtime = PrivateExtensionRuntime(
-        features=features,
-        seer=seer,
-        headless=headless,
-        headless_sessions=headless_sessions,
-        data=seer_database,
-        images=seer_images,
-        render_cache=render_cache,
-        render_html=render_coordinator.render,
-        error_message=seer_database.error_message,
-        player_quotas=player_query_quotas,
-        player_requests=player_requests,
-        player_details=player_detail_extensions,
-        scheduler=scheduler,
+    bilibili_monitor = build_onebot_bilibili_monitor(
+        service=bilibili,
+        login=bilibili_login,
+        delivery=delivery,
+        subscriptions=subscriptions,
         admin_notices=admin_notices,
-        qq_state_path=settings.paths.qq_state,
-        runtime_state_path=settings.paths.runtime_state,
-        cache_paths=cache_paths,
-        player_accounts=player_accounts,
-        settings=settings.operations.private_extensions.settings,
+        message_limiter=push_message_limiter,
+        ai_service=ai,
+        config=settings.bilibili,
     )
+    extension_contexts = {
+        "player_lineup": PlayerLineupExtensionServices(
+            features=features,
+            headless=headless,
+            data=seer_database,
+            images=seer_images,
+            render_cache=render_cache,
+            render_html=render_coordinator.render,
+            error_message=seer_database.error_message,
+            player_quotas=player_query_quotas,
+            player_requests=player_requests,
+            player_details=player_detail_extensions,
+            player_id_resolver=player_id_resolver,
+            settings=settings.operations.private_extensions.settings.get(
+                "player_lineup", {}
+            ),
+        )
+    }
     docker_update = DockerUpdateService(
         settings.operations.docker_update,
         docker_client,
@@ -612,10 +658,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         group_role: str | None,
         ignored_plugins: tuple[str, ...],
     ):
+        actor = onebot_actor_ref(user_id)
         return command_catalog.poke_candidates_for_context(
             CommandContext(
-                user_id=user_id,
-                group_id=group_id,
+                actor=actor,
+                conversation=onebot_conversation_ref(user_id, group_id=group_id),
                 group_role=group_role,
             ),
             features,
@@ -625,9 +672,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     resources = ApplicationResources(
         features=features,
         promotions=promotions,
-        outbound=outbound,
-        delivery=delivery,
-        push_message_limiter=push_message_limiter,
         admin_notices=admin_notices,
         activity=activity,
         headless=headless,
@@ -639,6 +683,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions=subscriptions,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
+        bilibili_monitor=bilibili_monitor,
+        bilibili_content_renderer=build_dynamic_content_message,
         lucky_skin_window=lucky_skin_window,
         messaging=messaging,
         sendpic=sendpic,
@@ -646,6 +692,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         team_resource=team_resource,
         local_rank=local_rank,
         rank_page_refresh=rank_page_refresh,
+        player_id_resolver=player_id_resolver,
         seer=seer,
         pet_config=pet_config,
         ai=ai,
@@ -655,15 +702,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         scheduled_restart=scheduled_restart,
         commands=command_catalog,
         contribution_catalog=contribution_catalog,
-        help_hint=HelpHintService(
+        help_hint=OneBotHelpHintService(
             settings.features.help,
             settings.onebot_references,
             poke_hint_candidates,
         ),
         private_extensions=private_extensions,
-        private_extension_runtime=private_extension_runtime,
     )
-    matchers = MatcherRegistry(
+    matcher_factory = MatcherFactory(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
         prompt_session_manager=prompt_sessions,
@@ -683,14 +729,19 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         prompt_sessions=prompt_sessions,
         resources=resources,
         contributions=(),
-        matchers=matchers,
+        matcher_factory=matcher_factory,
+        extension_contexts=extension_contexts,
         task_owner=task_owner,
         known_features=(
             *(feature.value for feature in Feature),
-            *features.command_features,
-            *features.schedule_features,
+            *settings.messaging.command_feature_keys,
+            *settings.messaging.schedule_feature_keys,
         ),
-        required_plugin_features=frozenset(Feature),
+        required_plugin_features=frozenset(
+            feature
+            for feature in Feature
+            if feature.value in features.configured_feature_keys
+        ),
         resource_shutdown_hooks=(
             ("file_logging", file_logging.close),
             ("http_clients", http_clients.close),

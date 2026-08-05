@@ -16,7 +16,7 @@ from ironsbot.config.models.seer import (
     LuckySkinWindowConfig,
     PlayerAccountConfig,
 )
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
 )
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.data import SeerDataAccess
 
 EXPECTED_COMMAND_ID = 45866
@@ -85,7 +85,12 @@ class _Features:
     def actor_has_feature(self, _actor: ActorRef, _feature: str) -> bool:
         return True
 
-    def is_private_feature_allowed(self, _user_id: int, _feature: str) -> bool:
+    def is_feature_allowed(
+        self,
+        _actor: ActorRef,
+        _conversation: ConversationRef,
+        _feature: str,
+    ) -> bool:
         return True
 
 
@@ -204,8 +209,6 @@ class _PluginService:
 
 def _service(
     tmp_path: Path,
-    *,
-    legacy_cache_path: Path | None = None,
 ) -> tuple[
     LuckySkinWindowService,
     _Game,
@@ -273,10 +276,7 @@ def _service(
         cast("SeerDataAccess", _Data()),
         bindings,
         SqliteLuckySkinWatchPreferenceStore(tmp_path / "qq_state.sqlite"),
-        SqliteLuckySkinWindowCache(
-            tmp_path / "runtime_state.sqlite",
-            legacy_paths=(() if legacy_cache_path is None else (legacy_cache_path,)),
-        ),
+        SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite"),
         notification_sender,
         today=lambda: date(2026, 8, 3),
     )
@@ -319,17 +319,14 @@ def test_watch_defaults_accept_resource_ids_and_seed_only_once(
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
     assert [
-        (item.skin_id, item.resource_id)
-        for item in service.watched_skins(_actor(1001))
+        (item.skin_id, item.resource_id) for item in service.watched_skins(_actor(1001))
     ] == [(101, 1_400_101)]
 
     assert service.clear_watched_skins(_actor(1001))
     assert service.watched_skins(_actor(1001)) == ()
 
     reset = service.reset_watched_skins(_actor(1001))
-    assert [(item.skin_id, item.resource_id) for item in reset] == [
-        (101, 1_400_101)
-    ]
+    assert [(item.skin_id, item.resource_id) for item in reset] == [(101, 1_400_101)]
 
 
 def test_watch_management_accepts_both_ids_and_names(tmp_path: Path) -> None:
@@ -423,7 +420,7 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
 ) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
     runtime = build_test_runtime(state_path=tmp_path / "runtime_state.sqlite")
-    registry = runtime.matcher_registry()
+    registry = runtime.matcher_factory()
 
     lucky_skin_window_plugin._install(
         registry,
@@ -511,7 +508,7 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     options = OneBotLuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options("private", 1001)
+    ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
     assert options == [
         PushSubscriptionOption(
             key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
@@ -519,16 +516,22 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
             feature="lucky_skin_window",
         )
     ]
-    assert OneBotLuckySkinWindowSubscriptionOptions(
-        service,
-        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options("group", 1001) == []
+    assert (
+        OneBotLuckySkinWindowSubscriptionOptions(
+            service,
+            PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+        ).subscription_options(ConversationRef(Platform.ONEBOT, "group", "1001"))
+        == []
+    )
 
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
-    assert OneBotLuckySkinWindowSubscriptionOptions(
-        service,
-        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options("private", 1001) == []
+    assert (
+        OneBotLuckySkinWindowSubscriptionOptions(
+            service,
+            PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+        ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
+        == []
+    )
 
 
 def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:
@@ -536,9 +539,7 @@ def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> No
 
     asyncio.run(service.check_for_actor(_actor(1001)))
 
-    assert sessions.opens == [
-        (90001, "owner-secret", "幸运橱窗")
-    ]
+    assert sessions.opens == [(90001, "owner-secret", "幸运橱窗")]
     assert len(game.calls) == 1
 
 
@@ -563,51 +564,6 @@ def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
 
     assert cached.from_cache
     assert recreated_sessions.opens == []
-
-
-def test_legacy_cache_for_the_same_account_survives_a_storage_upgrade(
-    tmp_path: Path,
-) -> None:
-    legacy_path = tmp_path / "cache/runtime/lucky_skin_window.sqlite"
-    legacy_cache = SqliteLuckySkinWindowCache(legacy_path)
-    legacy_cache.prepare_day(day="2026-08-03")
-    legacy_cache.put_if_absent(
-        player_id=90001,
-        skin_ids=(101, 102, 103, 104),
-    )
-
-    service, game, _delivery, _bindings, sessions = _service(
-        tmp_path,
-        legacy_cache_path=legacy_path,
-    )
-    cached = asyncio.run(service.check_for_actor(_actor(1001)))
-
-    assert cached.from_cache
-    assert sessions.opens == []
-    assert game.calls == []
-    assert SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite").get(
-        player_id=90001,
-        day="2026-08-03",
-    ) == (101, 102, 103, 104)
-
-
-def test_legacy_cache_never_crosses_configured_accounts(tmp_path: Path) -> None:
-    legacy_path = tmp_path / "cache/runtime/lucky_skin_window.sqlite"
-    legacy_cache = SqliteLuckySkinWindowCache(legacy_path)
-    legacy_cache.prepare_day(day="2026-08-03")
-    legacy_cache.put_if_absent(
-        player_id=90002,
-        skin_ids=(101, 102, 103, 104),
-    )
-
-    service, game, _delivery, _bindings, sessions = _service(
-        tmp_path,
-        legacy_cache_path=legacy_path,
-    )
-
-    assert service.cached_for_actor(_actor(1001)) is None
-    assert sessions.opens == []
-    assert game.calls == []
 
 
 def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
@@ -718,9 +674,7 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
 def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
     tmp_path: Path,
 ) -> None:
-    cache = SqliteLuckySkinWindowCache(
-        tmp_path / "runtime_state.sqlite"
-    )
+    cache = SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite")
     cache.prepare_day(day="2026-08-02")
     cache.put_if_absent(
         player_id=90001,
@@ -729,7 +683,7 @@ def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
 
     cache.prepare_day(day="2026-08-03")
 
-    assert cache.get(player_id=90001, day="2026-08-03") is None
+    assert cache.get(player_id=90001) is None
 
 
 def test_storage_upgrade_discards_results_from_the_old_decoder(tmp_path: Path) -> None:
@@ -756,7 +710,7 @@ def test_storage_upgrade_discards_results_from_the_old_decoder(tmp_path: Path) -
 
     cache = SqliteLuckySkinWindowCache(path)
 
-    assert cache.get(player_id=90001, day="2026-08-05") is None
+    assert cache.get(player_id=90001) is None
 
 
 def test_daily_notice_logs_in_automatically(tmp_path: Path) -> None:

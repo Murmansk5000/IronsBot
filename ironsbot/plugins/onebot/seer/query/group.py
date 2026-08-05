@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING, Any
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
-    from ironsbot.core.features import FeatureService
-    from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-    from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
+    from ironsbot.core.command_catalog import CommandCatalog
+    from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
 
 
@@ -28,11 +28,11 @@ def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
 
 @dataclass(frozen=True, slots=True)
 class SeerMatcherGroup:
-    registry: MatcherRegistry
+    registry: MatcherFactory
     resources: SeerQueryResources
     features: FeatureService
     commands: CommandCatalog
-    player_accounts: PlayerAccountRegistry
+    player_id_resolver: PlayerIdResolver
     image_command_texts: frozenset[str]
 
     def on_message(

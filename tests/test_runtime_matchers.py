@@ -16,23 +16,23 @@ from nonebot.utils import is_coroutine_callable
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
-    MatcherRegistry,
+    MatcherFactory,
     PromptSessionManager,
     _restore_temporary_matcher_state,
     bind,
     bind_async,
     get_prompt_session_manager,
 )
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.prompt_sessions import (
     GroupMenuAnchor,
     is_current_group_menu_reply,
 )
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -42,7 +42,7 @@ from ironsbot.runtime.semantic_requests import (
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matcher_contracts import CommandCooldown
+    from ironsbot.integrations.onebot.matcher_contracts import CommandCooldown
 
 
 def _semantic_request(target: str) -> SemanticRequest:
@@ -95,7 +95,7 @@ async def test_matcher_runtime_context_keeps_live_tasks_out_of_matcher_state() -
     task = asyncio.create_task(completed.wait())
 
     try:
-        registry = MatcherRegistry(
+        registry = MatcherFactory(
             cooldown=cast("CommandCooldown", object()),
             priorities=object(),
             prompt_session_manager=manager,
@@ -607,9 +607,10 @@ async def test_pending_conversation_holds_early_menu_input_until_activation() ->
         owner_user_id=owner.user_id,
         state={"player_id": 105_023_264},
         reply_check=lambda event: event.get_plaintext().strip() in {"1", "2"},
-        pending_reply_check=lambda event: event.get_session_id()
-        == owner.get_session_id()
-        and event.get_plaintext().strip().isdigit(),
+        pending_reply_check=lambda event: (
+            event.get_session_id() == owner.get_session_id()
+            and event.get_plaintext().strip().isdigit()
+        ),
         handlers=[],
         pending=True,
         parallel=True,

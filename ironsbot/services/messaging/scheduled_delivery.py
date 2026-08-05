@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MIT
+"""Platform-neutral delivery contract for configured message schedules."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ActorRef, ConversationRef
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledMessageDelivery:
+    """One configured text push, addressed through typed platform references."""
+
+    message: str
+    private_conversations: tuple[ConversationRef, ...]
+    group_conversations: tuple[ConversationRef, ...]
+    group_mentions: tuple[ActorRef, ...]
+    action_name: str
+    subscription_key: str
+
+
+class ScheduledMessageSender(Protocol):
+    async def send(self, delivery: ScheduledMessageDelivery) -> None: ...

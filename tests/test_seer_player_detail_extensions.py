@@ -52,3 +52,10 @@ def test_extension_actions_resolve_only_their_registered_aliases() -> None:
 
     assert registry.resolve_alias("阵容", allowed_ids=("lineup",)) is not None
     assert registry.resolve_alias("阵容", allowed_ids=()) is None
+
+
+def test_extension_actions_reuse_the_global_command_normalizer() -> None:
+    registry = PlayerDetailExtensionRegistry()
+    registry.register(_action(aliases=("Line Up",)))
+
+    assert registry.resolve_alias(" line   up ", allowed_ids=("lineup",)) is not None

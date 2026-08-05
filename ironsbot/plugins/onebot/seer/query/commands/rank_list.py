@@ -15,11 +15,11 @@ from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.permissions import can_manage_group_event
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import explicit_command, member_target_command
+from ironsbot.integrations.onebot.matchers import CommandPolicy, bind, bind_async
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.permissions import can_manage_group_event
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command, member_target_command
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
@@ -32,7 +32,7 @@ from ironsbot.services.seer.rank_list_parsing import (
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player_target import event_player_reference_lookup, resolve_player_target
+from .player_target import resolve_player_target
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
@@ -46,7 +46,7 @@ from .rank_list_context import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import RankPlayerCommand
     from ironsbot.services.seer.rank_queries import RankQueryService
@@ -56,6 +56,7 @@ if TYPE_CHECKING:
 class _ResolvedRankPlayerCommand:
     command: RankPlayerCommand | None
     error: str | None = None
+
 
 def _is_rank_list_command(
     service: RankQueryService,
@@ -101,8 +102,7 @@ def _is_rank_player_command(
     target = resolve_player_target(
         event,
         player_reference=requested.player_reference,
-        reference_lookup=event_player_reference_lookup(group.player_accounts, event),
-        binding_for_user=group.resources.player.default_player_id,
+        resolver=group.player_id_resolver,
         allow_default_binding=False,
     )
     if target.player_id is None and target.error is None:
@@ -289,8 +289,7 @@ def install(group: SeerMatcherGroup) -> None:
                 "rank.sample_peak",
             ),
         ),
-        rule=feature_rule
-        & Rule(bind(_is_rank_list_command, query)),
+        rule=feature_rule & Rule(bind(_is_rank_list_command, query)),
         priority=priority,
     )
     list_matcher.append_handler(bind_async(_handle_list, query))
@@ -300,8 +299,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_player",
             help_ids=("rank.global_collection", "rank.global_peak"),
         ),
-        rule=player_feature_rule
-        & Rule(bind(_is_rank_player_command, group)),
+        rule=player_feature_rule & Rule(bind(_is_rank_player_command, group)),
         priority=priority,
     )
     player_matcher.append_handler(bind_async(_handle_player, query))
@@ -368,9 +366,7 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=priority,
     )
-    cache_batch.append_handler(
-        bind_async(_handle_cache_batch, admin)
-    )
+    cache_batch.append_handler(bind_async(_handle_cache_batch, admin))
 
     page_overview = group.on_fullmatch(
         with_admin_prefix(("榜单情况", "榜单状态")),
@@ -418,9 +414,7 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=priority,
     )
-    page_refresh.append_handler(
-        bind_async(_handle_page_refresh, admin)
-    )
+    page_refresh.append_handler(bind_async(_handle_page_refresh, admin))
 
     display_limit = group.on_message(
         policy=CommandPolicy.command(

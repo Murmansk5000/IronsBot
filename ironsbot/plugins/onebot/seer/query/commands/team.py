@@ -11,18 +11,18 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.params import parse_string_arg
-from ironsbot.runtime.permissions import can_manage_group_event
-from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.matchers import CommandPolicy, bind, bind_async
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.params import parse_string_arg
+from ironsbot.integrations.onebot.permissions import can_manage_group_event
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
 from ironsbot.services.seer.team import TeamQueryActor
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.team import SeerTeamQueryService
 
 TEAM_IDS_KEY = "_team_ids"
@@ -75,6 +75,4 @@ def install(group: SeerMatcherGroup) -> None:
         & explicit_command(),
         priority=group.matcher_priority("seer_team"),
     )
-    matcher.append_handler(
-        bind_async(_handle_team_query, service, group.features)
-    )
+    matcher.append_handler(bind_async(_handle_team_query, service, group.features))

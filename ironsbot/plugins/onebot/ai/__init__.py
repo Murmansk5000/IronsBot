@@ -11,37 +11,31 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandCatalog,
-    CommandDescriptor,
-    commands_from_rows,
-)
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import (
+from ironsbot.integrations.onebot.context import (
     build_notice_source,
     command_context,
     mentions_bot,
 )
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import bot_mention
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import bot_mention
+from ironsbot.services.ai.command_contracts import ai_chat_command_descriptors
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.command_catalog import CommandCatalog
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.ai.service import AiService
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
@@ -51,7 +45,6 @@ AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 class AiChatMatcherDependencies:
     features: FeatureService
     commands: CommandCatalog
-    group_aliases: Mapping[str, int]
     bot_mention_block_service: BotMentionBlockService
 
 
@@ -63,39 +56,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
-    if not enabled:
-        return ()
-    return (
-        *commands_from_rows(
-            "ai_chat",
-            "群聊",
-            "ai_chat",
-            (
-                (
-                    "ai_chat.group",
-                    ("@机器人 <问题>",),
-                    "向 AI 聊天提问",
-                    {"access": (CommandAccess(scope="group"),)},
-                ),
-            ),
-        ),
-        *commands_from_rows(
-            "ai_chat",
-            "私聊",
-            "ai_chat",
-            (
-                (
-                    "ai_chat.private",
-                    ("<问题>",),
-                    "直接向 AI 聊天提问",
-                    {"access": (CommandAccess(scope="private"),)},
-                ),
-            ),
-        ),
-    )
 
 
 def _is_claimed_private_command(
@@ -158,7 +118,7 @@ def _capture_group_ai_prompt(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     service: AiService,
     dependencies: AiChatMatcherDependencies,
 ) -> None:
@@ -187,7 +147,6 @@ def install(
             source_context=await build_notice_source(
                 event,
                 prompt,
-                dependencies.group_aliases,
                 bot=bot,
             ),
         )
@@ -228,7 +187,9 @@ def install(
         matcher: Matcher,
         event: GroupMessageEvent,
     ) -> None:
-        decision = dependencies.bot_mention_block_service.admit(event.user_id)
+        decision = dependencies.bot_mention_block_service.admit(
+            message_input_context(event).message.actor
+        )
         if decision.allowed:
             message = _build_guard_message(event)
         elif decision.feedback is not None:
@@ -277,7 +238,7 @@ def plugin_contribution(
                 enabled=enabled,
             ),
         ),
-        commands=command_descriptors(enabled=enabled),
+        commands=ai_chat_command_descriptors(enabled=enabled),
         install=(
             partial(
                 install,
@@ -285,7 +246,6 @@ def plugin_contribution(
                 dependencies=AiChatMatcherDependencies(
                     features=features,
                     commands=commands,
-                    group_aliases=settings.features.group_aliases,
                     bot_mention_block_service=BotMentionBlockService(
                         settings.messaging.command_cooldown
                     ),

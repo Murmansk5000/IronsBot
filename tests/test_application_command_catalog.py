@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from ironsbot.app.application import Application
-from ironsbot.runtime.commands import CommandCatalog
+from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.runtime.plugins import PluginContribution, PluginContributionCatalog
 
 
@@ -53,7 +53,8 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
                 contribution_catalog=PluginContributionCatalog(),
             ),
         ),
-        matchers=cast("Any", Matchers()),
+        matcher_factory=cast("Any", Matchers()),
+        extension_contexts={},
         task_owner=cast("Any", object()),
         known_features=(),
         required_plugin_features=frozenset(),

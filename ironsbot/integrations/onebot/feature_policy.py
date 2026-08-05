@@ -7,7 +7,7 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from nonebot.rule import Rule
 
-from ironsbot.runtime.message_input import message_input_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event

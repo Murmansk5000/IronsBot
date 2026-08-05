@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING, Protocol
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.log import logger
 
-from ironsbot.core.messaging import (
-    MessageTarget,
-    TargetSendSummary,
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
+    OneBotTargetSendSummary,
     broadcast_targets,
 )
 
@@ -25,12 +26,11 @@ if TYPE_CHECKING:
     from ironsbot.config.models.messaging import PushUnsubscribeConfig
     from ironsbot.services.messaging.subscriptions import (
         PushDeliverySubscriptions,
-        PushTargetType,
     )
 
     from .router import BotRouter
 
-MessageLimiter = Callable[[str | Message, MessageTarget], str | Message]
+MessageLimiter = Callable[[str | Message, OneBotMessageTarget], str | Message]
 PUSH_SUBSCRIPTION_HINT_KEY = "push_subscription_hint"
 
 
@@ -57,14 +57,12 @@ def _build_message(
 def _append_unsubscribe_hint(
     message: str | Message,
     config: PushUnsubscribeConfig,
-    target_type: PushTargetType,
-    target_id: int,
+    target: OneBotMessageTarget,
     store: PushDeliverySubscriptions,
 ) -> str | Message:
-    hint = (config.group_hint if target_type == "group" else config.hint).strip()
+    hint = (config.group_hint if target.target_type == "group" else config.hint).strip()
     if not hint or not store.mark_daily_hint_sent(
-        target_type,
-        target_id,
+        _onebot_target_conversation(target),
         PUSH_SUBSCRIPTION_HINT_KEY,
     ):
         return message.rstrip() if isinstance(message, str) else message
@@ -92,12 +90,12 @@ class OneBotDelivery:
     def default_bot(self) -> OneBotMessageSender | None:
         return self.bot_router.default_bot()
 
-    def bot_for_target(self, target: MessageTarget) -> OneBotMessageSender | None:
+    def bot_for_target(self, target: OneBotMessageTarget) -> OneBotMessageSender | None:
         return self.bot_router.for_target(target)
 
     async def _send_target(  # noqa: PLR0913
         self,
-        target: MessageTarget,
+        target: OneBotMessageTarget,
         message: str | Message,
         *,
         index: int,
@@ -126,15 +124,12 @@ class OneBotDelivery:
             limited_message = _append_unsubscribe_hint(
                 limited_message,
                 self.push_unsubscribe,
-                target.target_type,
-                target.target_id,
+                target,
                 self.subscriptions,
             )
         rendered_message = _build_message(
             limited_message,
-            (
-                target.at_user_ids if target.target_type == "group" else ()
-            ),
+            (target.at_user_ids if target.target_type == "group" else ()),
         )
 
         decision = await self.outbound.acquire_push(group_id, source=action_name)
@@ -181,7 +176,7 @@ class OneBotDelivery:
 
     async def send_targets(  # noqa: PLR0913
         self,
-        targets: Iterable[MessageTarget],
+        targets: Iterable[OneBotMessageTarget],
         message: str | Message,
         *,
         bot: OneBotMessageSender | None = None,
@@ -189,7 +184,7 @@ class OneBotDelivery:
         interval_seconds: float = 1.5,
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
-    ) -> TargetSendSummary:
+    ) -> OneBotTargetSendSummary:
         selected = list(dict.fromkeys(targets))
         if subscription_key:
             selected = self._filter_subscribed_targets(selected, subscription_key)
@@ -209,12 +204,8 @@ class OneBotDelivery:
                 for index, target in enumerate(selected)
             )
         )
-        return TargetSendSummary(
-            [
-                target
-                for target, sent in zip(selected, results, strict=True)
-                if sent
-            ],
+        return OneBotTargetSendSummary(
+            [target for target, sent in zip(selected, results, strict=True) if sent],
             [
                 target
                 for target, sent in zip(selected, results, strict=True)
@@ -234,7 +225,7 @@ class OneBotDelivery:
         interval_seconds: float = 1.5,
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
-    ) -> TargetSendSummary:
+    ) -> OneBotTargetSendSummary:
         return await self.send_targets(
             broadcast_targets(
                 private_user_ids=private_user_ids,
@@ -251,32 +242,25 @@ class OneBotDelivery:
 
     def _filter_subscribed_targets(
         self,
-        targets: list[MessageTarget],
+        targets: list[OneBotMessageTarget],
         subscription_key: str,
-    ) -> list[MessageTarget]:
-        private_ids = set(
-            self.subscriptions.filter_subscribed_user_ids(
-                [
-                    target.target_id
-                    for target in targets
-                    if target.target_type == "private"
-                ],
-                subscription_key,
-            )
-        )
-        group_ids = set(
-            self.subscriptions.filter_subscribed_group_ids(
-                [
-                    target.target_id
-                    for target in targets
-                    if target.target_type == "group"
-                ],
+    ) -> list[OneBotMessageTarget]:
+        subscribed = set(
+            self.subscriptions.filter_subscribed_conversations(
+                [_onebot_target_conversation(target) for target in targets],
                 subscription_key,
             )
         )
         return [
             target
             for target in targets
-            if (target.target_type == "private" and target.target_id in private_ids)
-            or (target.target_type == "group" and target.target_id in group_ids)
+            if _onebot_target_conversation(target) in subscribed
         ]
+
+
+def _onebot_target_conversation(target: OneBotMessageTarget) -> ConversationRef:
+    return ConversationRef(
+        Platform.ONEBOT,
+        target.target_type,
+        str(target.target_id),
+    )

@@ -140,6 +140,28 @@ def test_services_do_not_import_framework_or_outer_layers() -> None:
     assert offenders == []
 
 
+def test_core_does_not_import_the_nonebot_framework() -> None:
+    offenders = [
+        f"{_relative(path)} imports {module}"
+        for path in _files(PACKAGE / "core")
+        for module in _imports(path)
+        if module.startswith("nonebot")
+    ]
+    assert offenders == []
+
+
+def test_runtime_does_not_import_onebot_adapter_contracts() -> None:
+    offenders = [
+        f"{_relative(path)} imports {module}"
+        for path in _files(PACKAGE / "runtime")
+        for module in _imports(path)
+        if module.startswith(
+            ("nonebot.adapters.onebot", "ironsbot.integrations.onebot")
+        )
+    ]
+    assert offenders == []
+
+
 def test_plugins_do_not_import_other_plugins() -> None:
     offenders: list[str] = []
     for path in _files(PLUGINS):
@@ -151,12 +173,16 @@ def test_plugins_do_not_import_other_plugins() -> None:
     assert offenders == []
 
 
-def test_plugins_do_not_import_concrete_integrations() -> None:
+def test_plugins_only_import_matching_platform_integrations() -> None:
     offenders = [
         f"{_relative(path)} imports {module}"
         for path in _files(PLUGINS)
         for module in _imports(path)
         if module.startswith("ironsbot.integrations")
+        and not (
+            path.relative_to(PLUGINS).parts[:1] == ("onebot",)
+            and module.startswith("ironsbot.integrations.onebot")
+        )
     ]
     assert offenders == []
 

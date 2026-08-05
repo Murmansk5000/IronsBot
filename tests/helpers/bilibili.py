@@ -1,8 +1,11 @@
 from pathlib import Path
 
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.bilibili import BiliConfig
-from ironsbot.core.features import FeatureConfig
+from ironsbot.integrations.onebot.bilibili_targets import (
+    build_onebot_bili_configured_targets,
+)
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
@@ -43,11 +46,7 @@ def build_test_bilibili_service(
 ) -> BilibiliService:
     resolved = config or _test_bili_config()
     resolved = resolved.model_copy(
-        update={
-            "storage": resolved.storage.model_copy(
-                update={"data_dir": data_dir}
-            )
-        }
+        update={"storage": resolved.storage.model_copy(update={"data_dir": data_dir})}
     )
     push_config = PushUnsubscribeConfig()
     state_path = data_dir / "qq_state.sqlite"
@@ -62,9 +61,11 @@ def build_test_bilibili_service(
         targets=BiliTargetService(
             resolved,
             runtime.features,
-            SqliteBiliPushPreferenceStore(
-                state_path
+            build_onebot_bili_configured_targets(
+                resolved,
+                runtime.onebot_references,
             ),
+            SqliteBiliPushPreferenceStore(state_path),
             PushUnsubscribeStore(state_path),
         ),
         cookie_store=FileBiliCookieStore(data_dir / "bili_cookie_cache.txt"),

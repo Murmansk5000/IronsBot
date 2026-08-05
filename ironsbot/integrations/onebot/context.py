@@ -6,8 +6,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
-from ironsbot.runtime.commands import CommandContext
-from ironsbot.runtime.message_input import message_input_context
+from ironsbot.core.command_catalog import CommandContext
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
+)
+from ironsbot.integrations.onebot.message_input import message_input_context
 
 NOTICE_MESSAGE_MAX_CHARS = 300
 
@@ -22,9 +26,11 @@ def command_context(event: MessageEvent) -> CommandContext:
 
     sender = getattr(event, "sender", None)
     role = getattr(sender, "role", None)
+    user_id = str(event.user_id)
+    group_id = event_group_id(event)
     return CommandContext(
-        user_id=int(event.user_id),
-        group_id=event_group_id(event),
+        actor=onebot_actor_ref(user_id),
+        conversation=onebot_conversation_ref(user_id, group_id=group_id),
         group_role=str(role) if role is not None else None,
     )
 

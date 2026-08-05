@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.push_subscriptions import (
     PushUnsubscribeStore,
 )
@@ -22,6 +23,14 @@ from ironsbot.services.messaging.subscriptions import (
 EXPECTED_PRUNED_UNSUBSCRIPTIONS = 2
 EXPECTED_PRUNED_TIME_PREFERENCES = 2
 EXPECTED_PRUNED_TOTAL = 4
+
+
+def _private(user_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "private", str(user_id))
+
+
+def _group(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,23 +100,35 @@ def test_builtin_push_options_split_startup_admin_notices() -> None:
 def test_store_unsubscribe_restore_and_filter(tmp_path: Path) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 
-    store.unsubscribe_target("private", 1001, "daily", "text_push")
-    store.unsubscribe_target("group", 2001, "bili_push", "bili_push")
+    store.unsubscribe(_private(1001), "daily", "text_push")
+    store.unsubscribe(_group(2001), "bili_push", "bili_push")
 
-    assert store.is_target_unsubscribed("private", 1001, "daily")
-    assert store.target_unsubscribed_keys("private", 1001) == {"daily"}
-    assert store.filter_subscribed_user_ids([1001, 1002, 1001], "daily") == [1002]
-    assert store.is_target_unsubscribed("group", 2001, "bili_push")
-    assert store.filter_subscribed_group_ids([2001, 2002], "bili_push") == [2002]
+    assert store.is_unsubscribed(_private(1001), "daily")
+    assert store.unsubscribed_keys(_private(1001)) == {"daily"}
+    assert store.filter_subscribed_conversations(
+        [_private(1001), _private(1002), _private(1001)],
+        "daily",
+    ) == [_private(1002)]
+    assert store.is_unsubscribed(_group(2001), "bili_push")
+    assert store.filter_subscribed_conversations(
+        [_group(2001), _group(2002)],
+        "bili_push",
+    ) == [_group(2002)]
 
-    store.restore_target("private", 1001, "daily")
-    store.restore_target("group", 2001, "bili_push")
+    store.restore(_private(1001), "daily")
+    store.restore(_group(2001), "bili_push")
 
-    assert not store.is_target_unsubscribed("private", 1001, "daily")
-    assert store.filter_subscribed_user_ids([1001, 1002], "daily") == [1001, 1002]
-    assert store.filter_subscribed_group_ids([2001, 2002], "bili_push") == [
-        2001,
-        2002,
+    assert not store.is_unsubscribed(_private(1001), "daily")
+    assert store.filter_subscribed_conversations(
+        [_private(1001), _private(1002)],
+        "daily",
+    ) == [_private(1001), _private(1002)]
+    assert store.filter_subscribed_conversations(
+        [_group(2001), _group(2002)],
+        "bili_push",
+    ) == [
+        _group(2001),
+        _group(2002),
     ]
 
 
@@ -115,26 +136,22 @@ def test_store_daily_hint_marker_is_per_target_and_day(tmp_path: Path) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 
     assert store.mark_daily_hint_sent(
-        "group",
-        2001,
+        _group(2001),
         "push_subscription_hint",
         today="2026-07-09",
     )
     assert not store.mark_daily_hint_sent(
-        "group",
-        2001,
+        _group(2001),
         "push_subscription_hint",
         today="2026-07-09",
     )
     assert store.mark_daily_hint_sent(
-        "group",
-        2002,
+        _group(2002),
         "push_subscription_hint",
         today="2026-07-09",
     )
     assert store.mark_daily_hint_sent(
-        "group",
-        2001,
+        _group(2001),
         "push_subscription_hint",
         today="2026-07-10",
     )
@@ -144,100 +161,99 @@ def test_store_time_preferences_set_filter_and_clear(tmp_path: Path) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
 
     store.set_time_preference(
-        "group",
-        2001,
+        _group(2001),
         "daily",
         CRON_TIME_PREFERENCE,
         "22:30",
     )
     store.set_time_preference(
-        "private",
-        1001,
+        _private(1001),
         "seer_activity_push",
         ACTIVITY_LEAD_HOURS_PREFERENCE,
         "24,3,1",
     )
 
     assert (
-        store.get_time_preference("group", 2001, "daily", CRON_TIME_PREFERENCE)
+        store.get_time_preference(_group(2001), "daily", CRON_TIME_PREFERENCE)
         == "22:30"
     )
-    assert store.target_time_preferences("private", 1001) == {
+    assert {
+        (preference.subscription_key, preference.preference_type): preference.value
+        for preference in store.all_time_preferences(
+            conversation_kind="private",
+        )
+        if preference.conversation == _private(1001)
+    } == {
         ("seer_activity_push", ACTIVITY_LEAD_HOURS_PREFERENCE): "24,3,1"
     }
     assert [
-        preference.target_id
+        preference.conversation
         for preference in store.all_time_preferences(
-            target_type="group",
+            conversation_kind="group",
             subscription_key="daily",
             preference_type=CRON_TIME_PREFERENCE,
         )
-    ] == [2001]
+    ] == [_group(2001)]
 
-    store.clear_time_preference("group", 2001, "daily", CRON_TIME_PREFERENCE)
+    store.clear_time_preference(_group(2001), "daily", CRON_TIME_PREFERENCE)
 
     assert (
-        store.get_time_preference("group", 2001, "daily", CRON_TIME_PREFERENCE)
+        store.get_time_preference(_group(2001), "daily", CRON_TIME_PREFERENCE)
         is None
     )
 
 
 def test_store_prunes_invalid_push_preferences_atomically(tmp_path: Path) -> None:
     store = PushUnsubscribeStore(tmp_path / "unsubscribe.sqlite")
-    store.unsubscribe_target("group", 2001, "daily", "text_push")
-    store.unsubscribe_target("group", 2001, "removed", "text_push")
-    store.unsubscribe_target("private", 1001, "orphaned", "text_push")
+    store.unsubscribe(_group(2001), "daily", "text_push")
+    store.unsubscribe(_group(2001), "removed", "text_push")
+    store.unsubscribe(_private(1001), "orphaned", "text_push")
     store.set_time_preference(
-        "group",
-        2001,
+        _group(2001),
         "daily",
         CRON_TIME_PREFERENCE,
         "22:30",
     )
     store.set_time_preference(
-        "group",
-        2001,
+        _group(2001),
         "removed",
         CRON_TIME_PREFERENCE,
         "21:30",
     )
     store.set_time_preference(
-        "private",
-        1001,
+        _private(1001),
         "orphaned",
         CRON_TIME_PREFERENCE,
         "20:30",
     )
     assert store.mark_daily_hint_sent(
-        "group",
-        2001,
+        _group(2001),
         "push_subscription_hint",
         today="2026-07-17",
     )
 
-    assert store.preference_targets() == {
-        ("group", 2001),
-        ("private", 1001),
+    assert store.preference_conversations() == {
+        _group(2001),
+        _private(1001),
     }
 
     result = store.prune_invalid_preferences(
         valid_unsubscription_keys={
-            ("group", 2001): {"daily"},
+            _group(2001): {"daily"},
         },
         valid_time_preferences={
-            ("group", 2001): {("daily", CRON_TIME_PREFERENCE)},
+            _group(2001): {("daily", CRON_TIME_PREFERENCE)},
         },
     )
 
     assert result.unsubscriptions_deleted == EXPECTED_PRUNED_UNSUBSCRIPTIONS
     assert result.time_preferences_deleted == EXPECTED_PRUNED_TIME_PREFERENCES
     assert result.total_deleted == EXPECTED_PRUNED_TOTAL
-    assert store.target_unsubscribed_keys("group", 2001) == {"daily"}
-    assert store.target_unsubscribed_keys("private", 1001) == set()
+    assert store.unsubscribed_keys(_group(2001)) == {"daily"}
+    assert store.unsubscribed_keys(_private(1001)) == set()
     assert (
         store.get_time_preference(
-            "group",
-            2001,
+            _group(2001),
             "daily",
             CRON_TIME_PREFERENCE,
         )
@@ -245,16 +261,14 @@ def test_store_prunes_invalid_push_preferences_atomically(tmp_path: Path) -> Non
     )
     assert (
         store.get_time_preference(
-            "group",
-            2001,
+            _group(2001),
             "removed",
             CRON_TIME_PREFERENCE,
         )
         is None
     )
     assert not store.mark_daily_hint_sent(
-        "group",
-        2001,
+        _group(2001),
         "push_subscription_hint",
         today="2026-07-17",
     )
@@ -269,17 +283,17 @@ def test_build_schedule_subscription_options_marks_subscription_state(
         FakeSchedule(id="weekly", feature="weekly_push"),
         FakeSchedule(id="disabled", feature="text_push", enabled=False),
     ]
+    conversation = _private(1001)
     eligible = {
-        "text_push": {1001},
-        "weekly_push": {1001},
+        "text_push": {conversation},
+        "weekly_push": {conversation},
     }
-    store.unsubscribe_target("private", 1001, "daily", "text_push")
+    store.unsubscribe(conversation, "daily", "text_push")
 
     options = build_schedule_subscription_options(
-        target_type="private",
-        target_id=1001,
+        conversation=conversation,
         tasks=tasks,
-        eligible_target_ids_for_feature=eligible,
+        eligible_conversations_for_feature=eligible,
         store=store,
     )
 

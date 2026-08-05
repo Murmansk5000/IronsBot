@@ -9,11 +9,10 @@ from typing import TYPE_CHECKING, Any
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.platform import (
-    ActorRef,
-    ConversationRef,
-    IncomingMessageRef,
-    Platform,
+from ironsbot.core.platform import IncomingMessageRef
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
 )
 
 if TYPE_CHECKING:
@@ -77,14 +76,10 @@ def message_input_context(event: Event) -> MessageInputContext:
         text = event.get_plaintext()
     except Exception:  # noqa: BLE001
         text = ""
-    actor = event_actor_ref(event)
-    user_id = actor.id
+    user_id = _event_user_id(event)
+    actor = onebot_actor_ref(user_id)
     group_id = getattr(event, "group_id", None)
-    conversation = ConversationRef(
-        Platform.ONEBOT,
-        "group" if group_id is not None else "private",
-        str(group_id if group_id is not None else user_id),
-    )
+    conversation = onebot_conversation_ref(user_id, group_id=group_id)
     return MessageInputContext(
         IncomingMessageRef(
             id=_message_id(event),
@@ -92,7 +87,7 @@ def message_input_context(event: Event) -> MessageInputContext:
             conversation=conversation,
             text=text,
             direct_mentions=tuple(
-                ActorRef(Platform.ONEBOT, member_id) for member_id in member_ids
+                onebot_actor_ref(member_id) for member_id in member_ids
             ),
             reply_to_id=_reply_message_id(event),
         ),
@@ -113,11 +108,11 @@ def _message_id(event: Event) -> str:
     return str(value)
 
 
-def event_actor_ref(event: Event) -> ActorRef:
+def _event_user_id(event: Event) -> str:
     value = getattr(event, "user_id", None)
     if value is None:
         raise OneBotMessageInputError.missing_user_id()
-    return ActorRef(Platform.ONEBOT, str(value))
+    return str(value)
 
 
 def _reply_message_id(event: Event) -> str | None:

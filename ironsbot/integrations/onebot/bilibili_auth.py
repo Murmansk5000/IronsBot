@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""OneBot-independent construction of Bilibili login notices."""
+
 from __future__ import annotations
 
 from base64 import b64decode
@@ -14,6 +16,7 @@ if TYPE_CHECKING:
 
 
 def build_bili_login_outbound_message(notice: BiliLoginNotice) -> OutboundMessage:
+    """Build a platform-neutral login notice from the Bilibili login state."""
     parts: list[TextPart | BinaryImagePart] = [TextPart(notice.text)]
     if notice.qrcode is None:
         return OutboundMessage(tuple(parts))
@@ -38,6 +41,7 @@ async def send_bili_login_notice(
     admin_notices: AdminNoticeService,
     notice: BiliLoginNotice,
 ) -> None:
+    """Deliver a Bilibili login notice through the configured admin route."""
     await admin_notices.send_message(
         build_bili_login_outbound_message(notice),
         action_name="Bilibili login notice",

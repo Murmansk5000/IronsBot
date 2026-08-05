@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -20,6 +20,11 @@ from ironsbot.services.seer.rendering.pet_info_models import (
 )
 from ironsbot.services.seer.rendering.pet_info_presentation import present_pet_info
 from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_document
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ironsbot.services.seer.rendering import TemplatePath
 
 EXPECTED_RENDER_WIDTH = 1200
 
@@ -108,7 +113,7 @@ def _assets() -> PetInfoAssets:
 def test_presenter_builds_template_document_from_detached_values() -> None:
     document = present_pet_info(_snapshot(), _assets())
 
-    templates = document.templates
+    templates = cast("Mapping[str, Any]", document.templates)
     assert templates["pet_name"] == "测试精灵"
     assert templates["stats"] == {
         "atk": 1,
@@ -138,10 +143,11 @@ def test_presenter_uses_partner_descriptions_only_for_upgrade_partitioning() -> 
     )
 
     document = present_pet_info(_snapshot(partner=partner), _assets())
+    templates = cast("Mapping[str, Any]", document.templates)
 
-    assert document.templates["pet_partner"]["name"] == "测试羁绊"
-    assert [value["id"] for value in document.templates["base_soulmarks"]] == [10]
-    assert [value["id"] for value in document.templates["upgraded_soulmarks"]] == [20]
+    assert templates["pet_partner"]["name"] == "测试羁绊"
+    assert [value["id"] for value in templates["base_soulmarks"]] == [10]
+    assert [value["id"] for value in templates["upgraded_soulmarks"]] == [20]
 
 
 @pytest.mark.asyncio
@@ -149,8 +155,21 @@ async def test_renderer_only_passes_prepared_document_to_html_port() -> None:
     document = present_pet_info(_snapshot(), _assets())
     captured: dict[str, Any] = {}
 
-    async def render_html(**kwargs: Any) -> bytes:
-        captured.update(kwargs)
+    async def render_html(
+        template_path: TemplatePath,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        captured.update(
+            template_path=template_path,
+            template_name=template_name,
+            templates=templates,
+            max_width=max_width,
+            allow_refit=allow_refit,
+        )
         return b"rendered"
 
     result = await render_pet_info_document(render_html, ["pet", "shared"], document)

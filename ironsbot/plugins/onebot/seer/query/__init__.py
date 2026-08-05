@@ -6,6 +6,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
+from nonebot.plugin import PluginMetadata
+
 from ironsbot.core.features import Feature
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -13,9 +15,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
-from nonebot.plugin import PluginMetadata
-
-from .command_catalog import command_descriptors
+from ironsbot.services.seer.command_contracts import seer_command_descriptors
 
 __plugin_meta__ = PluginMetadata(
     name="赛尔号查询",
@@ -27,19 +27,21 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.app.resources import ApplicationResources
-    from ironsbot.config.models.settings import Settings
-    from ironsbot.runtime.matchers import MatcherRegistry
-    from ironsbot.services.operations.scheduler import Scheduler
     from nonebot.adapters.onebot.v11 import Bot
+
+    from ironsbot.app.composition import ApplicationResources
+    from ironsbot.config.models.settings import Settings
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
+    from ironsbot.services.operations.scheduler import Scheduler
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     settings: Settings,
     resources: ApplicationResources,
 ) -> None:
+    _ = settings
     from .commands.install import install
     from .group import SeerMatcherGroup
 
@@ -49,7 +51,7 @@ def _install(
             resources.seer,
             resources.features,
             resources.commands,
-            settings.player_accounts,
+            resources.player_id_resolver,
             resources.sendpic.exact_command_texts,
         )
     )
@@ -106,7 +108,7 @@ def plugin_contribution(
             group="seer",
             order=10,
         ),
-        commands=command_descriptors(),
+        commands=seer_command_descriptors(resources.player_id_resolver),
         install=partial(_install, settings=settings, resources=resources),
         hooks=PluginHooks(
             startup=(

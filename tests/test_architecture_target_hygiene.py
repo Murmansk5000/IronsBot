@@ -9,6 +9,9 @@ PACKAGE = ROOT / "ironsbot"
 CORE = PACKAGE / "core"
 SERVICES = PACKAGE / "services"
 RENDERING = SERVICES / "seer" / "rendering"
+RUNTIME = PACKAGE / "runtime"
+APPLICATION_RESOURCES = PACKAGE / "app" / "resources.py"
+COMMAND_CATALOG = CORE / "command_catalog.py"
 SEER_REQUEST_ACTOR_METHODS = {
     "player_request_protection.py": {
         "PlayerRequestProtectionService": ("run",),
@@ -51,9 +54,18 @@ BILIBILI_REQUEST_IDENTITY_METHODS = {
         "BiliTargetService": ("query_uids",),
     },
 }
-BILIBILI_LEGACY_DELIVERY_IMPORTS = (
-    "ironsbot.core.messaging",
-    "ironsbot.services.messaging.delivery",
+BILIBILI_LEGACY_DELIVERY_IMPORTS = ("ironsbot.core.messaging",)
+LEGACY_FEATURE_POLICY_METHODS = frozenset(
+    {
+        "group_has_feature",
+        "is_group_feature_allowed",
+        "is_private_feature_allowed",
+        "user_has_feature",
+        "users_for_feature",
+        "groups_for_feature",
+        "users_with_superusers",
+        "is_conversation_blocked",
+    }
 )
 
 TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()
@@ -65,6 +77,10 @@ FORBIDDEN_RENDERER_PERSISTENCE_PREFIXES = (
     "sqlalchemy",
     "sqlmodel",
     "sqlite3",
+)
+RETIRED_RUNTIME_NAMES = (
+    "PluginDefinition",
+    "MatcherRegistry",
 )
 
 
@@ -79,6 +95,11 @@ class MissingArchitectureTargetMethodError(AssertionError):
         super().__init__(
             f"missing method {class_name}.{method_name} in {path.relative_to(ROOT)}"
         )
+
+
+class MissingArchitectureTargetClassError(AssertionError):
+    def __init__(self, *, class_name: str, path: Path) -> None:
+        super().__init__(f"missing class {class_name} in {path.relative_to(ROOT)}")
 
 
 def _module(path: Path) -> str:
@@ -137,6 +158,44 @@ def _method_argument_names(
         method_name=method_name,
         path=path,
     )
+
+
+def _class_field_names(path: Path, *, class_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        return {
+            statement.target.id
+            for statement in node.body
+            if isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+        }
+    raise MissingArchitectureTargetClassError(class_name=class_name, path=path)
+
+
+def _class_method_names(path: Path, *, class_name: str) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        return {
+            method.name
+            for method in node.body
+            if isinstance(method, (ast.AsyncFunctionDef, ast.FunctionDef))
+        }
+    raise MissingArchitectureTargetClassError(class_name=class_name, path=path)
+
+
+def _legacy_feature_policy_calls(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    return {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in LEGACY_FEATURE_POLICY_METHODS
+    }
 
 
 def test_core_and_services_do_not_import_adapter_transport_types() -> None:
@@ -245,3 +304,74 @@ def test_bilibili_services_do_not_own_legacy_delivery_types() -> None:
     ]
 
     assert offenders == []
+
+
+def test_command_catalog_context_and_policy_stay_platform_neutral() -> None:
+    path = COMMAND_CATALOG
+    context_fields = _class_field_names(path, class_name="CommandContext")
+    policy_methods = _class_method_names(path, class_name="CommandFeaturePolicy")
+
+    assert {"actor", "conversation"} <= context_fields
+    assert {"user_id", "group_id"}.isdisjoint(context_fields)
+    assert {
+        "is_actor_superuser",
+        "conversation_has_feature",
+        "is_feature_allowed",
+    } <= policy_methods
+    assert {
+        "is_superuser",
+        "group_has_feature",
+        "is_group_feature_allowed",
+        "is_private_feature_allowed",
+    }.isdisjoint(policy_methods)
+
+
+def test_inbound_blacklist_policy_uses_typed_identity_refs() -> None:
+    methods = _class_method_names(
+        CORE / "feature_policy.py",
+        class_name="FeatureService",
+    )
+
+    assert "is_message_blocked" in methods
+    assert "is_conversation_blocked" not in methods
+
+
+def test_runtime_callers_do_not_use_legacy_numeric_feature_policy() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()}: {method}"
+        for directory in (
+            PACKAGE / "app",
+            PACKAGE / "integrations",
+            PACKAGE / "plugins",
+            RUNTIME,
+        )
+        for path in _python_files(directory)
+        for method in sorted(_legacy_feature_policy_calls(path))
+    ]
+
+    assert offenders == []
+
+
+def test_runtime_does_not_reintroduce_retired_plugin_or_matcher_registries() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} mentions {retired_name}"
+        for path in _python_files(PACKAGE)
+        for retired_name in RETIRED_RUNTIME_NAMES
+        if retired_name in path.read_text(encoding="utf-8-sig")
+    ]
+
+    assert offenders == []
+
+
+def test_plugin_resources_do_not_expose_legacy_onebot_delivery() -> None:
+    fields = _class_field_names(
+        APPLICATION_RESOURCES,
+        class_name="ApplicationResources",
+    )
+
+    assert {"delivery", "outbound", "push_message_limiter"}.isdisjoint(fields)
+
+
+def test_runtime_does_not_reintroduce_command_contract_modules() -> None:
+    assert not (RUNTIME / "commands.py").exists()
+    assert not (RUNTIME / "player_reference_commands.py").exists()

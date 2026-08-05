@@ -6,8 +6,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.matchers import CommandPolicy
+from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule

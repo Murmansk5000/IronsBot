@@ -1,4 +1,4 @@
-from ironsbot.plugins.onebot.operations.db_sync import MANUAL_SYNC_COMMANDS
+from ironsbot.services.operations.data_sync_commands import MANUAL_SYNC_COMMANDS
 from ironsbot.services.seer.data_query_commands import (
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,

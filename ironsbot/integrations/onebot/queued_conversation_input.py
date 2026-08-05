@@ -14,8 +14,8 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.prompt_sessions import (
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
