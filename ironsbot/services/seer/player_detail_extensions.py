@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
@@ -61,7 +62,7 @@ class PlayerDetailExtensionRegistry:
         if "【" in label or "】" in label:
             msg = "player detail extension labels must not include menu brackets"
             raise ValueError(msg)
-        aliases = tuple(_normalize_command(alias) for alias in action.aliases)
+        aliases = tuple(normalize_command_text(alias) for alias in action.aliases)
         if not aliases or any(not alias for alias in aliases):
             msg = "player detail extension action requires aliases"
             raise ValueError(msg)
@@ -114,7 +115,7 @@ class PlayerDetailExtensionRegistry:
         *,
         allowed_ids: Iterable[str],
     ) -> PlayerDetailExtensionAction | None:
-        alias = _normalize_command(text)
+        alias = normalize_command_text(text)
         for action_id in allowed_ids:
             action = self._actions.get(action_id)
             if action is not None and alias in action.aliases:
@@ -131,7 +132,7 @@ class PlayerDetailExtensionRegistry:
         receive a validated numeric player ID when their query is invoked.
         """
 
-        normalized = _normalize_command(text)
+        normalized = normalize_command_text(text)
         matches = sorted(
             (
                 (alias, action)
@@ -146,7 +147,3 @@ class PlayerDetailExtensionRegistry:
             return None
         alias, action = matches[0]
         return action, normalized[len(alias) :]
-
-
-def _normalize_command(value: str) -> str:
-    return "".join(value.split()).casefold()
