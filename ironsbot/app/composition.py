@@ -10,6 +10,7 @@ from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.application import Application
 from ironsbot.app.bilibili_composition import build_onebot_bilibili_monitor
+from ironsbot.app.common_composition import build_common_components
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.operations_composition import build_operations_components
@@ -18,11 +19,9 @@ from ironsbot.app.private_extensions import (
 )
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
-from ironsbot.config.models.features import build_onebot_feature_service
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.extensions.player_lineup import PlayerLineupExtensionServices
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
@@ -36,14 +35,12 @@ from ironsbot.integrations.http.bilibili import (
 )
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
-from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.bilibili_rendering import (
     build_dynamic_content_message,
 )
 from ironsbot.integrations.onebot.bilibili_targets import (
     build_onebot_bili_configured_targets,
 )
-from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
@@ -55,17 +52,11 @@ from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
     build_onebot_lucky_skin_window_accounts,
 )
-from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
+from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
-from ironsbot.integrations.onebot.outbound import (
-    GroupOutboundRateLimitService,
-    install_outbound_rate_limit_hooks,
-)
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.promotions import append_promotions_for_target
-from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.onebot.scheduled_delivery import (
     OneBotScheduledMessageSender,
 )
@@ -115,9 +106,6 @@ from ironsbot.integrations.storage.player_bindings import (
 from ironsbot.integrations.storage.player_query_limits import (
     SqlitePlayerQueryLimitStore,
 )
-from ironsbot.integrations.storage.push_subscriptions import (
-    PushUnsubscribeStore,
-)
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
@@ -132,7 +120,6 @@ from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
-from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.pet_config import PetConfigQueryService
@@ -193,38 +180,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     databases = DatabaseManager()
     cache_paths = CachePaths(settings.paths.cache_root)
     task_owner = TaskOwner()
-    prompt_sessions = PromptSessionManager()
-    promotions = PromotionCatalog(settings.promotions)
-    features = build_onebot_feature_service(
-        settings.features,
-        settings.superuser_ids,
-        command_features=settings.messaging.command_feature_keys,
-        schedule_features=settings.messaging.schedule_feature_keys,
-    )
-    outbound = GroupOutboundRateLimitService(
-        settings.messaging.outbound_rate_limit,
-        features,
-        task_owner.create,
-    )
-    subscriptions = PushUnsubscribeStore(settings.paths.qq_state)
+    common = build_common_components(settings, task_owner)
+    prompt_sessions = common.prompt_sessions
+    features = common.features
+    promotions = common.promotions
+    outbound = common.outbound
+    subscriptions = common.subscriptions
+    bot_router = common.bot_router
+    delivery = common.delivery
+    push_message_limiter = common.push_message_limiter
+    admin_notices = common.admin_notices
     player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
-    bot_router = BotRouter(
-        settings.messaging.bot_routing,
-        settings.onebot_references,
-    )
-    delivery = OneBotDelivery(
-        outbound,
-        settings.messaging.push_unsubscribe,
-        bot_router,
-        subscriptions,
-    )
-    push_message_limiter = partial(
-        append_promotions_for_target,
-        features,
-        promotions,
-    )
-    admin_notices = AdminNoticeService(features, OneBotAdminNoticeSender(delivery))
-    install_outbound_rate_limit_hooks(outbound)
     operations = build_operations_components(
         settings,
         databases,

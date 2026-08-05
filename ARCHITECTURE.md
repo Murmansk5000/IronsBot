@@ -935,6 +935,13 @@ client/session factory, server status, restart services, and the Seer database
 gateway. A builder may depend on configuration and concrete integrations, but
 neither a service nor a plugin may import an application builder.
 
+`app.common_composition.CommonComponents` is the current host-bound boundary
+for feature policy, prompt sessions, routing, push subscriptions, outbound
+limits, delivery, promotions, and administrator notices. It deliberately
+contains the remaining OneBot delivery wiring so domain builders receive typed
+dependencies instead of constructing them. This is a transition boundary, not
+a claim that the common layer itself is platform-neutral.
+
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
 
