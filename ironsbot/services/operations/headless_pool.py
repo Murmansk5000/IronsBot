@@ -20,6 +20,7 @@ from ironsbot.services.operations.request_feedback import send_request_feedback
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
+    from ironsbot.core.platform import ActorRef
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.operations.headless_activity import (
         HeadlessOperationTracker,
@@ -86,7 +87,7 @@ class HeadlessWorkflowState:
 
     sequence: int
     label: str
-    user_id: int | None
+    actor: ActorRef | None
     priority_state: HeadlessRequestPriorityState
     queued_at: float = field(default_factory=monotonic)
     first_packet_at: float | None = None

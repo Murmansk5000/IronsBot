@@ -190,7 +190,7 @@ def build_test_plugin_registry(
             subscriptions=object(),
             bilibili=SimpleNamespace(
                 targets=SimpleNamespace(
-                    can_target_query_history=lambda _target: False,
+                    can_conversation_query_history=lambda _conversation: False,
                 ),
             ),
             bilibili_login=SimpleNamespace(

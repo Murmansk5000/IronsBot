@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from ironsbot.core.commands import parse_confirmation
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
@@ -105,7 +105,7 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
         service.bind_player(
             _PLAYER_ID,
             actor=_actor(),
-            group_id=20002,
+            conversation=ConversationRef(Platform.ONEBOT, "group", "20002"),
         )
     )
 
@@ -113,7 +113,7 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
         _PLAYER_ID,
         actor=_actor(),
         explicit=True,
-        group_id=20002,
+        conversation=ConversationRef(Platform.ONEBOT, "group", "20002"),
     )
     service._save_binding.assert_called_once_with(_actor(), pending)
     assert result.offer_binding is False

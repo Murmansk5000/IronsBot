@@ -7,11 +7,11 @@ import pytest
 from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.core.messaging import TargetSendSummary
+from ironsbot.integrations.onebot.bilibili_push import OneBotBilibiliPushSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.runtime import build_test_runtime
 
@@ -41,7 +41,7 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
 
     runtime = build_test_runtime()
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         runtime.delivery,
         PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
         lambda _item, _pub_ts: Message("链接"),

@@ -478,26 +478,6 @@ class LocalRankConfig(BaseModel):
     refresh_interval_seconds: float = Field(default=0.5, ge=0)
     path: SQLitePath = Path("data/seer/player_query_cache.sqlite")
 
-    @model_validator(mode="before")
-    @classmethod
-    def migrate_legacy_time_fields(cls, value: object) -> object:
-        if not isinstance(value, dict):
-            return value
-
-        data = dict(value)
-        legacy_hour = data.pop("refresh_hour", None)
-        legacy_minute = data.pop("refresh_minute", None)
-        if data.get("time") is not None or legacy_hour is None:
-            return data
-
-        try:
-            hour = int(legacy_hour)
-            minute = int(legacy_minute) if legacy_minute is not None else 0
-        except (TypeError, ValueError) as exc:
-            raise ValueError(LOCAL_RANK_REFRESH_TIME_ERROR) from exc
-        data["time"] = f"{hour:02d}:{minute:02d}"
-        return data
-
     @field_validator("time")
     @classmethod
     def normalize_time(cls, value: str) -> str:
