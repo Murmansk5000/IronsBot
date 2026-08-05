@@ -158,6 +158,27 @@ Architecture-document merge conflicts are resolved by responsibility, not by
 choosing whichever wording is easiest to merge. A conflict is not evidence
 that both designs must survive in the running application.
 
+### Normative Source Map
+
+The following documents have deliberately different authority. A later edit
+must not silently use a deployment guide or an old progress note to redefine a
+target contract:
+
+| Question | Authoritative source | How to resolve a disagreement |
+| --- | --- | --- |
+| What code, schema, or test is true **now**? | Verified implementation and its focused tests | Correct stale prose to match the verified implementation. |
+| What a new cross-feature design must move toward | This document's target contracts and transition inventory | Keep the target; label the current implementation as `transition` until it is removed. |
+| How work is scoped, reported, verified, and handed off | `docs/engineering-workflow.md` | Follow its process without creating a second technical authority. |
+| How a deployer configures or uses the current release | `README.md` and `config.example.toml` | Update after the implementation changes; neither document may redefine an architecture target. |
+
+Different branches, plans, or revisions may have been written by the same
+person or assistant. That does not make their assertions automatically
+compatible: a statement about an earlier implementation can still be stale,
+and a future plan can still be unimplemented. Resolve the responsibility first
+and then rewrite the result as one verified `current`, `transition`, or
+`target` statement. Never retain two competing statements merely because both
+were previously generated.
+
 When resolving a conflict, preserve these parts in order:
 
 1. the current normative target and its named authority;
@@ -173,8 +194,9 @@ facts, rewrite them into the target/transition/completion form above and add
 or update the matching transition-inventory row in the same change.
 
 Git reports a text conflict because two branches touched nearby lines; it does
-not establish an architectural conflict. The verified code state and this
-document's target authority decide the resolution.
+not establish an architectural conflict. Conversely, cleanly merged prose can
+still contain a responsibility conflict. The verified code state and this
+document's target authority decide the resolution in both cases.
 
 ### Transition Inventory And Admission Rule
 
