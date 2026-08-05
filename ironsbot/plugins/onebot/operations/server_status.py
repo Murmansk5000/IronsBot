@@ -21,23 +21,21 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
-
-from .status.command_text import (
+from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     DISABLED_BARE_ADMIN_COMMAND,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
 )
+from ironsbot.services.operations.server_status_commands import (
+    server_status_command_descriptors,
+)
+
 from .status.commands import handle_admin_status, handle_normal_status
 
 if TYPE_CHECKING:
@@ -53,46 +51,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def command_descriptors() -> tuple[CommandDescriptor, ...]:
-    return (
-        *commands_from_rows(
-            "server_status",
-            "查询",
-            "server_status_query",
-            (
-                (
-                    "server_status.query",
-                    (NORMAL_SERVER_STATUS_COMMAND,),
-                    "查询当前维护和开服状态",
-                    {"show_in_poke": True},
-                ),
-            ),
-        ),
-        *commands_from_rows(
-            "server_status",
-            "超级管理员",
-            None,
-            (
-                (
-                    "server_status.admin_query",
-                    (ADMIN_SERVER_STATUS_COMMAND,),
-                    "查询开服状态，并在无头未登录时尝试重连",
-                    {
-                        "features_any": ("server_status_query",),
-                        "access": (CommandAccess(audience="superuser"),),
-                    },
-                ),
-                (
-                    "server_status.headless_instances",
-                    HEADLESS_INSTANCE_STATUS_COMMANDS,
-                    "查看公共查询池与临时专用会话的当前在线实例数",
-                    {"access": (CommandAccess(scope="private", audience="superuser"),)},
-                ),
-            ),
-        ),
-    )
 
 
 async def _handle_disabled_bare_admin_status(
@@ -228,7 +186,7 @@ def plugin_contribution(
                 "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
             ),
         ),
-        commands=command_descriptors(),
+        commands=server_status_command_descriptors(),
         install=partial(
             _install,
             server_status=service,

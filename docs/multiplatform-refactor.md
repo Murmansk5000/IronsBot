@@ -231,6 +231,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 数据更新的命令文字、语法解析和管理员目录描述位于
   `services.operations.data_sync_commands`；OneBot matcher 只从事件取纯文本，并调用
   同一个领域解析器。
+- 开服查询和镜像维护共用的操作口令位于
+  `services.operations.command_text`，其中开服查询的目录描述位于
+  `services.operations.server_status_commands`；插件不再拥有这份跨操作命令定义。
 - AI 长期记忆使用异步 `AiMemoryStore` port。SQLite 实现在 worker thread 中完成
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会

@@ -27,14 +27,13 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.services.operations.docker_preflight import (
-    consume_docker_startup_preflight_notice,
-)
-
-from .status.command_text import (
+from ironsbot.services.operations.command_text import (
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
+)
+from ironsbot.services.operations.docker_preflight import (
+    consume_docker_startup_preflight_notice,
 )
 
 if TYPE_CHECKING:
