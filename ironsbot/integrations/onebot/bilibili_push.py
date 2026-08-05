@@ -15,9 +15,9 @@ from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
 
 if TYPE_CHECKING:
-    from ironsbot.core.messaging import MessageTarget
     from ironsbot.integrations.onebot.delivery import MessageLimiter
-    from ironsbot.runtime.onebot_delivery import OneBotMessageDelivery
+    from ironsbot.integrations.onebot.delivery_port import OneBotMessageDelivery
+    from ironsbot.integrations.onebot.targets import OneBotMessageTarget
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
@@ -27,8 +27,7 @@ if TYPE_CHECKING:
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic content push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
 BILI_PUSH_ADMIN_HINT = (
-    "群主/管理员可发送：B站账号 / "
-    "B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
+    "群主/管理员可发送：B站账号 / B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
@@ -249,7 +248,7 @@ class OneBotBilibiliPushSender:
     def _transform_target_message(
         self,
         message: Any,
-        target: MessageTarget,
+        target: OneBotMessageTarget,
     ) -> Any:
         if self.message_limiter is not None:
             message = self.message_limiter(message, target)
@@ -267,7 +266,7 @@ class OneBotBilibiliPushSender:
         return self.append_hint(message, BILI_PUSH_ADMIN_HINT)
 
 
-def _onebot_conversation(target: MessageTarget) -> ConversationRef:
+def _onebot_conversation(target: OneBotMessageTarget) -> ConversationRef:
     return ConversationRef(
         platform=Platform.ONEBOT,
         kind="group" if target.target_type == "group" else "private",

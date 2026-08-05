@@ -26,7 +26,6 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
-from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.messaging_config import (
@@ -36,6 +35,7 @@ from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.onebot.scheduled_delivery import (
     OneBotScheduledMessageSender,
 )
+from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
@@ -484,7 +484,7 @@ def test_scheduled_messages_append_fire_manual_ad(
         group_ids = kwargs.get("group_ids")
         private_user_ids = kwargs.get("private_user_ids")
         if limiter is not None and isinstance(group_ids, tuple) and group_ids:
-            message = limiter(message, MessageTarget("group", group_ids[0]))  # type: ignore[operator]
+            message = limiter(message, OneBotMessageTarget("group", group_ids[0]))  # type: ignore[operator]
         if (
             limiter is not None
             and isinstance(private_user_ids, tuple)
@@ -492,7 +492,7 @@ def test_scheduled_messages_append_fire_manual_ad(
         ):
             message = limiter(  # type: ignore[operator]
                 message,
-                MessageTarget("private", private_user_ids[0]),
+                OneBotMessageTarget("private", private_user_ids[0]),
             )
         sent.append((message, kwargs))
 
@@ -538,7 +538,7 @@ def test_private_scheduled_message_appends_fire_manual_ad_only_when_enabled(
     ) -> None:
         limiter = kwargs.get("message_limiter")
         if limiter is not None:
-            message = limiter(message, MessageTarget("private", 2001))  # type: ignore[operator]
+            message = limiter(message, OneBotMessageTarget("private", 2001))  # type: ignore[operator]
         sent.append(message)
 
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_broadcast)

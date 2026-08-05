@@ -6,6 +6,10 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ironsbot.config.onebot_references import (
+    OneBotReferenceResolver,
+    normalize_alias_mapping,
+)
 from ironsbot.core.commands import (
     NormalizedStringList,
     csv_items,
@@ -19,10 +23,6 @@ from ironsbot.core.features import (
     FEATURE_KEYS,
     SEER_FEATURES,
     Feature,
-)
-from ironsbot.core.onebot_references import (
-    OneBotReferenceResolver,
-    normalize_alias_mapping,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 

@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import pytest
 
-from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
+    OneBotTargetSendSummary,
+)
 from ironsbot.services.activity.delivery import ActivityReminderDelivery
 
 
@@ -24,7 +27,7 @@ class FakeOneBotDelivery:
         interval_seconds: float,
         message_limiter: object,
         subscription_key: str,
-    ) -> TargetSendSummary:
+    ) -> OneBotTargetSendSummary:
         self.calls.append(
             {
                 "message": str(message),
@@ -36,7 +39,7 @@ class FakeOneBotDelivery:
                 "subscription_key": subscription_key,
             }
         )
-        return TargetSendSummary([MessageTarget("group", 3003)], [])
+        return OneBotTargetSendSummary([OneBotMessageTarget("group", 3003)], [])
 
 
 @pytest.mark.asyncio

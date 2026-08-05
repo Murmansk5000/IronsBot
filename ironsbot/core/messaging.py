@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal, NamedTuple
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing_extensions import Self
@@ -19,17 +19,6 @@ DEFAULT_CLASSIFIER_PROMPT = (
     "Message: {message}\n"
     "Does the message match the intent?"
 )
-
-
-class MessageTarget(NamedTuple):
-    target_type: Literal["private", "group"]
-    target_id: int
-    at_user_ids: tuple[int, ...] = ()
-
-
-class TargetSendSummary(NamedTuple):
-    succeeded: list[MessageTarget]
-    failed: list[MessageTarget]
 
 
 class AiIntentAction(BaseModel):
@@ -169,31 +158,3 @@ class SendpicBehaviorConfig(BaseModel):
                 extra_configs.append(raw_config)
 
         return {**value, "configs": [*defaults.values(), *extra_configs]}
-
-
-def private_targets(user_ids: Iterable[int]) -> list[MessageTarget]:
-    return [MessageTarget("private", user_id) for user_id in dict.fromkeys(user_ids)]
-
-
-def group_targets(
-    group_ids: Iterable[int],
-    *,
-    at_user_ids: Iterable[int] = (),
-) -> list[MessageTarget]:
-    at_users = tuple(dict.fromkeys(at_user_ids))
-    return [
-        MessageTarget("group", group_id, at_users)
-        for group_id in dict.fromkeys(group_ids)
-    ]
-
-
-def broadcast_targets(
-    *,
-    private_user_ids: Iterable[int] = (),
-    group_ids: Iterable[int] = (),
-    group_at_user_ids: Iterable[int] = (),
-) -> list[MessageTarget]:
-    return [
-        *group_targets(group_ids, at_user_ids=group_at_user_ids),
-        *private_targets(private_user_ids),
-    ]

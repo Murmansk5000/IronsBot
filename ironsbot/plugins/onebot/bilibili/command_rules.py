@@ -7,9 +7,9 @@ from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches, strip_command_prefix
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.permissions import can_manage_conversation_event
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.permissions import can_manage_conversation_event
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,

@@ -4,8 +4,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.replies import finish_event_reply
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent

@@ -13,7 +13,6 @@ from ironsbot.app.bilibili_composition import build_onebot_bilibili_monitor
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.private_extensions import (
-    PrivateExtensionRuntime,
     load_private_extension_catalog,
 )
 from ironsbot.app.rendering_composition import build_seer_rendering_components
@@ -22,6 +21,7 @@ from ironsbot.config.models.features import build_onebot_feature_service
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog
+from ironsbot.extensions.player_lineup import PlayerLineupExtensionServices
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -48,11 +48,16 @@ from ironsbot.integrations.onebot.bilibili_targets import (
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
+)
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
     OneBotLuckySkinWindowSubscriptionOptions,
     build_onebot_lucky_skin_window_accounts,
 )
+from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
@@ -126,8 +131,6 @@ from ironsbot.integrations.storage.team_resources import (
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
-from ironsbot.runtime.onebot_identity import onebot_actor_ref, onebot_conversation_ref
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
@@ -258,6 +261,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     headless_operations = HeadlessOperationTracker()
     player_accounts = settings.player_accounts
+
+    def resolve_configured_player_reference(
+        reference: str,
+        conversation: ConversationRef,
+    ) -> int | None:
+        return player_accounts.resolve_player_id(
+            reference,
+            conversation=conversation,
+        )
+
     headless_accounts = settings.headless_accounts
     headless_worker_count = len(headless_accounts)
     headless = HeadlessService(
@@ -592,27 +605,24 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ai_service=ai,
         config=settings.bilibili,
     )
-    private_extension_runtime = PrivateExtensionRuntime(
-        features=features,
-        seer=seer,
-        headless=headless,
-        headless_sessions=headless_sessions,
-        data=seer_database,
-        images=seer_images,
-        render_cache=render_cache,
-        render_html=render_coordinator.render,
-        error_message=seer_database.error_message,
-        player_quotas=player_query_quotas,
-        player_requests=player_requests,
-        player_details=player_detail_extensions,
-        scheduler=scheduler,
-        admin_notices=admin_notices,
-        qq_state_path=settings.paths.qq_state,
-        runtime_state_path=settings.paths.runtime_state,
-        cache_paths=cache_paths,
-        player_accounts=player_accounts,
-        settings=settings.operations.private_extensions.settings,
-    )
+    extension_contexts = {
+        "player_lineup": PlayerLineupExtensionServices(
+            features=features,
+            headless=headless,
+            data=seer_database,
+            images=seer_images,
+            render_cache=render_cache,
+            render_html=render_coordinator.render,
+            error_message=seer_database.error_message,
+            player_quotas=player_query_quotas,
+            player_requests=player_requests,
+            player_details=player_detail_extensions,
+            player_reference_lookup=resolve_configured_player_reference,
+            settings=settings.operations.private_extensions.settings.get(
+                "player_lineup", {}
+            ),
+        )
+    }
     docker_update = DockerUpdateService(
         settings.operations.docker_update,
         docker_client,
@@ -697,9 +707,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             poke_hint_candidates,
         ),
         private_extensions=private_extensions,
-        private_extension_runtime=private_extension_runtime,
     )
-    matchers = MatcherRegistry(
+    matcher_factory = MatcherFactory(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
         prompt_session_manager=prompt_sessions,
@@ -719,7 +728,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         prompt_sessions=prompt_sessions,
         resources=resources,
         contributions=(),
-        matchers=matchers,
+        matcher_factory=matcher_factory,
+        extension_contexts=extension_contexts,
         task_owner=task_owner,
         known_features=(
             *(feature.value for feature in Feature),

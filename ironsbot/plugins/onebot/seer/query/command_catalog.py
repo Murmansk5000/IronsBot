@@ -3,7 +3,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ironsbot.runtime.commands import CommandDescriptor, commands_from_rows
+from ironsbot.runtime.player_reference_commands import player_reference_input_matcher
+from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
     NEW_ACHIEVEMENTS_COMMANDS,
@@ -20,8 +24,36 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_SUITS_COMMANDS,
 )
 
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ConversationRef
 
-def command_descriptors() -> tuple[CommandDescriptor, ...]:
+
+def command_descriptors(
+    player_accounts: PlayerAccountRegistry | None = None,
+) -> tuple[CommandDescriptor, ...]:
+    accounts = player_accounts or PlayerAccountRegistry(())
+
+    def reference_lookup(
+        reference: str,
+        conversation: ConversationRef,
+    ) -> int | None:
+        return accounts.resolve_player_id(
+            reference,
+            conversation=conversation,
+        )
+
+    player_query_input = player_reference_input_matcher(
+        ("米米号", "查询玩家信息"),
+        reference_lookup,
+    )
+    player_shortcut_input = player_reference_input_matcher(
+        ("收集", "巅峰", "群星牌"),
+        reference_lookup,
+    )
+    player_binding_input = player_reference_input_matcher(
+        ("绑定米米号",),
+        reference_lookup,
+    )
     return (
         *commands_from_rows(
             "seer_query",
@@ -32,19 +64,22 @@ def command_descriptors() -> tuple[CommandDescriptor, ...]:
                     "seer.player.query",
                     ("米米号123456", "查询玩家信息123456"),
                     "查询玩家基础信息；随后按提示回复数字查看详情",
-                    {"show_in_poke": True},
+                    {
+                        "show_in_poke": True,
+                        "routing_matcher": player_query_input,
+                    },
                 ),
                 (
                     "seer.player.default",
                     ("米米号", "收集", "巅峰", "群星牌"),
                     "查询已绑定默认米米号的对应数据；未绑定时使用“米米号+完整米米号”",
-                    {},
+                    {"routing_matcher": player_shortcut_input},
                 ),
                 (
                     "seer.player.bind",
                     ("绑定米米号123456",),
                     "查询并绑定默认米米号，之后可使用快捷查询",
-                    {},
+                    {"routing_matcher": player_binding_input},
                 ),
                 (
                     "seer.player.unbind",

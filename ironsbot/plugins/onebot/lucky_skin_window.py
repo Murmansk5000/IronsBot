@@ -26,23 +26,27 @@ from ironsbot.core.semantic_requests import (
     SemanticTarget,
 )
 from ironsbot.core.time import daily_time_parts
-from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.conversations import enter_event_reply_conversation
-from ironsbot.runtime.feature_policy import (
+from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
+from ironsbot.integrations.onebot.feature_policy import (
     event_is_feature_allowed,
     event_is_feature_visible_in_help,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
-from ironsbot.runtime.onebot_identity import onebot_actor_ref
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    MatcherFactory,
+    bind_async,
+)
+from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_command
+from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
-from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, explicit_command
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWatchItem,
@@ -560,7 +564,7 @@ def _watch_item_ids(item: LuckySkinWatchItem) -> str:
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     service: LuckySkinWindowService,
     features: FeatureService,

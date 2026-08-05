@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING, Protocol
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.runtime.onebot_identity import onebot_actor_ref
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
 
 if TYPE_CHECKING:
-    from ironsbot.core.messaging import MessageTarget
     from ironsbot.core.platform import ActorRef
     from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
+    from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 
 
 class OneBotTargetFeaturePolicy(Protocol):
@@ -30,7 +30,7 @@ class OneBotTargetFeaturePolicy(Protocol):
 
 def promotion_enabled_for_target(
     features: OneBotTargetFeaturePolicy,
-    target: MessageTarget,
+    target: OneBotMessageTarget,
     promotion: PromotionConfig,
 ) -> bool:
     """Whether this OneBot target has opted into one promotion feature."""
@@ -52,7 +52,7 @@ def append_promotions_for_target(
     features: OneBotTargetFeaturePolicy,
     catalog: PromotionCatalog,
     message: str | Message,
-    target: MessageTarget,
+    target: OneBotMessageTarget,
 ) -> str | Message:
     """Append every configured push promotion allowed for this OneBot target."""
 
@@ -87,7 +87,7 @@ def _message_already_contains(
     )
 
 
-def _onebot_target_conversation(target: MessageTarget) -> ConversationRef:
+def _onebot_target_conversation(target: OneBotMessageTarget) -> ConversationRef:
     return ConversationRef(
         Platform.ONEBOT,
         target.target_type,

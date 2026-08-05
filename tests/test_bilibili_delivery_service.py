@@ -6,10 +6,6 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.config.models.features import FeatureConfig
-from ironsbot.core.messaging import (
-    MessageTarget,
-    TargetSendSummary,
-)
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.bilibili_push import (
     BILI_PUSH_ADMIN_HINT,
@@ -24,8 +20,12 @@ from ironsbot.integrations.onebot.bilibili_rendering import (
     build_dynamic_link_message,
 )
 from ironsbot.integrations.onebot.promotions import append_promotions_for_target
+from ironsbot.integrations.onebot.replies import append_text_hint
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
+    OneBotTargetSendSummary,
+)
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.runtime.onebot_delivery import OneBotMessageDelivery
+    from ironsbot.integrations.onebot.delivery_port import OneBotMessageDelivery
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )
@@ -139,16 +139,16 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
     )
 
     assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(
-        service._transform_target_message("正文", MessageTarget("group", 1001))
+        service._transform_target_message("正文", OneBotMessageTarget("group", 1001))
     )
     assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(
-        service._transform_target_message("正文", MessageTarget("group", 1002))
+        service._transform_target_message("正文", OneBotMessageTarget("group", 1002))
     )
     assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(
-        service._transform_target_message("正文", MessageTarget("private", 2001))
+        service._transform_target_message("正文", OneBotMessageTarget("private", 2001))
     )
     assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(
-        service._transform_target_message("正文", MessageTarget("private", 2002))
+        service._transform_target_message("正文", OneBotMessageTarget("private", 2002))
     )
 
 
@@ -169,11 +169,11 @@ def test_delivery_service_only_appends_history_hint_for_query_targets(
     assert DYNAMIC_HISTORY_HINT in str(
         service._transform_target_message(
             "正文",
-            MessageTarget("group", QUERY_ENABLED_GROUP_ID),
+            OneBotMessageTarget("group", QUERY_ENABLED_GROUP_ID),
         )
     )
     assert DYNAMIC_HISTORY_HINT not in str(
-        service._transform_target_message("正文", MessageTarget("group", 1002))
+        service._transform_target_message("正文", OneBotMessageTarget("group", 1002))
     )
 
 
@@ -189,9 +189,9 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
             self,
             message: object,
             **kwargs: object,
-        ) -> TargetSendSummary:
+        ) -> OneBotTargetSendSummary:
             sent.append({"message": message, **kwargs})
-            return TargetSendSummary([], [])
+            return OneBotTargetSendSummary([], [])
 
     async def summarize(content: str, max_chars: int) -> str:
         summaries.append((content, max_chars))
@@ -247,9 +247,9 @@ async def test_short_full_dynamic_does_not_call_ai(
             self,
             message: object,
             **kwargs: object,
-        ) -> TargetSendSummary:
+        ) -> OneBotTargetSendSummary:
             sent.append({"message": message, **kwargs})
-            return TargetSendSummary([], [])
+            return OneBotTargetSendSummary([], [])
 
     async def unexpected_summary(_content: str, _max_chars: int) -> str:
         raise AssertionError
@@ -288,9 +288,9 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
             self,
             message: object,
             **kwargs: object,
-        ) -> TargetSendSummary:
+        ) -> OneBotTargetSendSummary:
             sent.append({"message": message, **kwargs})
-            return TargetSendSummary([], [])
+            return OneBotTargetSendSummary([], [])
 
     subscriptions = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
     subscription_key = bili_push_subscription_key(1310714247)
@@ -338,15 +338,15 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
             group_ids: list[int],
             private_user_ids: list[int],
             **kwargs: object,
-        ) -> TargetSendSummary:
+        ) -> OneBotTargetSendSummary:
             limiter = kwargs.get("message_limiter")
             for group_id in group_ids:
-                target = MessageTarget("group", group_id)
+                target = OneBotMessageTarget("group", group_id)
                 sent.append(limiter(message, target) if callable(limiter) else message)
             for user_id in private_user_ids:
-                target = MessageTarget("private", user_id)
+                target = OneBotMessageTarget("private", user_id)
                 sent.append(limiter(message, target) if callable(limiter) else message)
-            return TargetSendSummary([], [])
+            return OneBotTargetSendSummary([], [])
 
     runtime = build_test_runtime(
         feature_config=FeatureConfig(group_policy={"1001": ["fire_manual_ad"]})
@@ -394,14 +394,14 @@ async def test_full_dynamic_retries_only_failed_content_targets(
             self,
             message: object,
             **kwargs: object,
-        ) -> TargetSendSummary:
+        ) -> OneBotTargetSendSummary:
             sent.append({"message": message, **kwargs})
             if kwargs["action_name"] == FULL_DYNAMIC_PUSH_ACTION:
-                return TargetSendSummary(
-                    [MessageTarget("group", 1001)],
-                    [MessageTarget("private", 2001)],
+                return OneBotTargetSendSummary(
+                    [OneBotMessageTarget("group", 1001)],
+                    [OneBotMessageTarget("private", 2001)],
                 )
-            return TargetSendSummary([], [])
+            return OneBotTargetSendSummary([], [])
 
     async def no_sleep(_delay: float) -> None:
         return None
@@ -449,17 +449,20 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
             self,
             _message: object,
             **kwargs: object,
-        ) -> TargetSendSummary:
+        ) -> OneBotTargetSendSummary:
             action_name = str(kwargs["action_name"])
             if action_name == FULL_DYNAMIC_PUSH_ACTION or action_name.startswith(
                 f"{FULL_DYNAMIC_PUSH_ACTION} retry "
             ):
                 content_attempts.append(kwargs)
-                return TargetSendSummary(
+                return OneBotTargetSendSummary(
                     [],
-                    [MessageTarget("group", 1001), MessageTarget("private", 2001)],
+                    [
+                        OneBotMessageTarget("group", 1001),
+                        OneBotMessageTarget("private", 2001),
+                    ],
                 )
-            return TargetSendSummary([], [])
+            return OneBotTargetSendSummary([], [])
 
     class RecordingAdminNotices:
         async def send_private_to_superusers(
@@ -517,13 +520,19 @@ def test_delivery_service_appends_admin_hint_once_per_day(
     store = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
 
     service = _delivery_service(build_test_runtime().features, store)
-    first = service._transform_target_message("正文", MessageTarget("group", 1001))
-    second = service._transform_target_message("正文2", MessageTarget("group", 1001))
+    first = service._transform_target_message(
+        "正文", OneBotMessageTarget("group", 1001)
+    )
+    second = service._transform_target_message(
+        "正文2", OneBotMessageTarget("group", 1001)
+    )
     other_group = service._transform_target_message(
         "正文3",
-        MessageTarget("group", 1002),
+        OneBotMessageTarget("group", 1002),
     )
-    private = service._transform_target_message("正文4", MessageTarget("private", 1))
+    private = service._transform_target_message(
+        "正文4", OneBotMessageTarget("private", 1)
+    )
 
     assert first == f"正文\n\n{BILI_PUSH_ADMIN_HINT}"
     assert second == "正文2"

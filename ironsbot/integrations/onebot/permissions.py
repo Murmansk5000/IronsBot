@@ -3,12 +3,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
-from ironsbot.runtime.onebot_identity import onebot_actor_ref
+from ironsbot.core.authorization import GROUP_MANAGER_ROLES
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
 
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef
-
-GROUP_MANAGER_ROLES = frozenset({"owner", "admin"})
 
 
 class SuperuserPolicy(Protocol):

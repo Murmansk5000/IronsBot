@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 
     from ironsbot.app.composition import ApplicationResources
     from ironsbot.config.models.settings import Settings
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import Scheduler
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     settings: Settings,
     resources: ApplicationResources,
@@ -108,7 +108,7 @@ def plugin_contribution(
             group="seer",
             order=10,
         ),
-        commands=command_descriptors(),
+        commands=command_descriptors(settings.player_accounts),
         install=partial(_install, settings=settings, resources=resources),
         hooks=PluginHooks(
             startup=(

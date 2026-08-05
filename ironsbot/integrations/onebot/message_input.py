@@ -10,7 +10,10 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.platform import IncomingMessageRef
-from ironsbot.runtime.onebot_identity import onebot_actor_ref, onebot_conversation_ref
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event

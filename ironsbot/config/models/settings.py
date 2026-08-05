@@ -22,13 +22,13 @@ from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
-from ironsbot.core.bilibili import BiliConfig
-from ironsbot.core.commands import csv_items, json_array
-from ironsbot.core.features import FEATURE_KEYS
-from ironsbot.core.onebot_references import (
+from ironsbot.config.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
 )
+from ironsbot.core.bilibili import BiliConfig
+from ironsbot.core.commands import csv_items, json_array
+from ironsbot.core.features import FEATURE_KEYS
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,

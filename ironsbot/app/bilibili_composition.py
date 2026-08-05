@@ -12,7 +12,7 @@ from ironsbot.integrations.onebot.bilibili_rendering import (
     build_dynamic_content_message,
     build_dynamic_link_message,
 )
-from ironsbot.runtime.replies import append_text_hint
+from ironsbot.integrations.onebot.replies import append_text_hint
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 
 if TYPE_CHECKING:

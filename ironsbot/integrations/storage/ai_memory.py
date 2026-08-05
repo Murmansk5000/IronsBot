@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 import time
@@ -58,7 +59,10 @@ class SqliteAiMemoryStore:
             migration_namespace=MIGRATION_NAMESPACE,
         )
 
-    def append(self, turn: AiMemoryTurn) -> None:
+    async def append(self, turn: AiMemoryTurn) -> None:
+        await asyncio.to_thread(self._append, turn)
+
+    def _append(self, turn: AiMemoryTurn) -> None:
         now = time.time()
         identity = (
             *_actor_values(turn.actor),
@@ -85,7 +89,23 @@ class SqliteAiMemoryStore:
         except sqlite3.Error:
             _LOGGER.warning("failed to write AI memory for %s", turn.actor)
 
-    def load(
+    async def load(
+        self,
+        *,
+        actor: ActorRef,
+        current_session_key: str,
+        exclude_current_session: bool,
+        limit: int,
+    ) -> list[HistoryMessage]:
+        return await asyncio.to_thread(
+            self._load,
+            actor=actor,
+            current_session_key=current_session_key,
+            exclude_current_session=exclude_current_session,
+            limit=limit,
+        )
+
+    def _load(
         self,
         *,
         actor: ActorRef,

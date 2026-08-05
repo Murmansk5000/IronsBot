@@ -318,10 +318,7 @@ def build_test_plugin_registry(
             commands=CommandCatalog(),
             contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),
-            private_extensions=SimpleNamespace(
-                load_plugin_contributions=lambda _runtime: ()
-            ),
-            private_extension_runtime=object(),
+            private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
     return (
@@ -330,9 +327,6 @@ def build_test_plugin_registry(
             settings=config,
             resources=resources,
             scheduler=SchedulerFacade(),
-        ),
-        *resources.private_extensions.load_plugin_contributions(
-            resources.private_extension_runtime,
         ),
         bilibili_plugin_contribution(
             service=resources.bilibili,

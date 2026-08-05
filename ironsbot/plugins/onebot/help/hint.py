@@ -16,7 +16,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
-from ironsbot.runtime.onebot_help_hint import (
+from ironsbot.integrations.onebot.help_hint import (
     OneBotHelpHintPort,
     is_onebot_poke_at_bot,
 )
@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
 
 
 async def _is_poke_at_bot(event: NoticeEvent) -> bool:
@@ -59,7 +59,7 @@ async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
     return str(role) if role is not None else None
 
 
-def install(registry: MatcherRegistry, service: OneBotHelpHintPort) -> None:
+def install(registry: MatcherFactory, service: OneBotHelpHintPort) -> None:
     async def handle_poke_help(
         matcher: Matcher,
         bot: Bot,
@@ -84,8 +84,7 @@ def install(registry: MatcherRegistry, service: OneBotHelpHintPort) -> None:
             await matcher.finish(reply)
 
         await matcher.finish(
-            MessageSegment.at(event.user_id)
-            + MessageSegment.text(f" {reply}")
+            MessageSegment.at(event.user_id) + MessageSegment.text(f" {reply}")
         )
 
     matcher = registry.on_notice(

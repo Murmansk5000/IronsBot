@@ -16,8 +16,8 @@ from nonebot.log import logger
 from nonebot.matcher import current_event
 
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.runtime.matchers import bind_async
-from ironsbot.runtime.onebot_identity import onebot_actor_ref
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
+from ironsbot.integrations.onebot.matchers import bind_async
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

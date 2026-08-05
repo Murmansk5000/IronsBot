@@ -7,10 +7,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ActorRef, ConversationRef
+from ironsbot.core.platform import ActorRef
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.player_references import PlayerReferenceLookup
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,7 +23,6 @@ class PlayerIdResolution:
     error: str | None = None
 
 
-PlayerReferenceLookup = Callable[[str, ConversationRef], int | None]
 PlayerBindingLookup = Callable[[ActorRef], int | None]
 
 

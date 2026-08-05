@@ -1,19 +1,18 @@
 # SPDX-License-Identifier: MIT
-"""Install and load validated private extension packages."""
+"""Install and validate private extension packages."""
 
 from __future__ import annotations
 
-import importlib
-import json
 import logging
 import re
 import shutil
 import sys
 import tarfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 from ironsbot.services.operations.docker_models import (
@@ -22,45 +21,28 @@ from ironsbot.services.operations.docker_models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Iterator
 
     from ironsbot.config.models.operations import (
         DockerUpdateConfig,
         PrivateExtensionsConfig,
     )
-    from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.integrations.scheduler.facade import SchedulerFacade
-    from ironsbot.runtime.cache_paths import CachePaths
-    from ironsbot.runtime.plugins import PluginContribution
-    from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
-    from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.operations.docker_models import DockerImageArchive
-    from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.operations.headless_session import HeadlessSessionFactory
-    from ironsbot.services.seer.data import SeerDataAccess
-    from ironsbot.services.seer.errors import ErrorMessageLookup
-    from ironsbot.services.seer.images import SeerImageSource
-    from ironsbot.services.seer.player_detail_extensions import (
-        PlayerDetailExtensionRegistry,
-    )
-    from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
-    from ironsbot.services.seer.player_request_protection import (
-        PlayerRequestProtectionService,
-    )
-    from ironsbot.services.seer.render_cache import RenderCache
-    from ironsbot.services.seer.rendering import HtmlTemplateRenderer
-    from ironsbot.services.seer.resources import SeerQueryResources
 
 PRIVATE_EXTENSIONS_ROOT = "ironsbot_extensions"
-PRIVATE_EXTENSIONS_MANIFEST = "manifest.json"
+PRIVATE_EXTENSIONS_MANIFEST = "pyproject.toml"
 PRIVATE_EXTENSIONS_CURRENT_DIRECTORY = "current"
-PRIVATE_EXTENSIONS_SCHEMA_VERSION = 1
 MAX_PRIVATE_EXTENSION_ARCHIVE_BYTES = 16 * 1024 * 1024
-_EXTENSION_ID_PATTERN = re.compile(r"[a-z][a-z0-9_]*\Z")
 _PYTHON_MODULE_PATTERN = re.compile(
     r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\Z"
 )
+_PRIVATE_MODULE_PREFIX = "ironsbot_private_"
 logger = logging.getLogger(__name__)
+
+try:
+    import tomllib  # pyright: ignore[reportMissingImports]
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib  # pyright: ignore[reportMissingImports]
 
 
 class PrivateExtensionError(RuntimeError):
@@ -75,39 +57,10 @@ class PrivateExtensionArtifactGateway(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class PrivateExtensionRuntime:
-    """Public dependencies intentionally exposed to trusted private plugins."""
+class PrivateExtensionManifest:
+    """Validated standard NoneBot plugin declaration from a private package."""
 
-    features: FeatureService
-    seer: SeerQueryResources
-    headless: HeadlessService
-    headless_sessions: HeadlessSessionFactory
-    data: SeerDataAccess
-    images: SeerImageSource
-    render_cache: RenderCache
-    render_html: HtmlTemplateRenderer
-    error_message: ErrorMessageLookup
-    player_quotas: PlayerQueryQuotaService
-    player_requests: PlayerRequestProtectionService
-    player_details: PlayerDetailExtensionRegistry
-    scheduler: SchedulerFacade
-    admin_notices: AdminNoticeService
-    qq_state_path: Path
-    runtime_state_path: Path
-    cache_paths: CachePaths
-    player_accounts: PlayerAccountRegistry
-    settings: Mapping[str, Mapping[str, Any]]
-
-    def settings_for(self, extension_id: str) -> Mapping[str, Any]:
-        return self.settings.get(extension_id, {})
-
-
-@dataclass(frozen=True, slots=True)
-class PrivateExtensionEntry:
-    id: str
-    path: PurePosixPath
-    module: str
-    factory: str
+    plugin_modules: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,21 +68,21 @@ class PrivateExtensionInstallResult:
     installed: bool
     message: str = ""
     image_id: str = ""
-    extension_ids: tuple[str, ...] = ()
+    plugin_modules: tuple[str, ...] = ()
 
 
 class PrivateExtensionCatalog:
-    """Validated package metadata plus controlled module loading."""
+    """Validated private manifest plus its temporary import root."""
 
     def __init__(
         self,
         root: Path | None,
-        entries: dict[str, PrivateExtensionEntry] | None = None,
+        manifest: PrivateExtensionManifest | None = None,
         *,
         reason: str = "",
     ) -> None:
         self._root = root
-        self._entries = entries or {}
+        self._manifest = manifest
         self._reason = reason
 
     @classmethod
@@ -142,91 +95,46 @@ class PrivateExtensionCatalog:
             return cls.unavailable("private extensions are disabled")
         root = Path(config.data_path) / PRIVATE_EXTENSIONS_CURRENT_DIRECTORY
         try:
-            entries = _load_manifest(root)
+            manifest = _load_manifest(root)
         except FileNotFoundError:
             return cls.unavailable("private extension package is not installed")
         except PrivateExtensionError as error:
             logger.warning("private extension package is invalid: %s", error)
             return cls.unavailable("private extension package is invalid")
-        return cls(root, entries)
+        return cls(root, manifest)
 
     @property
     def reason(self) -> str:
         return self._reason
 
     @property
-    def extension_ids(self) -> tuple[str, ...]:
-        return tuple(sorted(self._entries))
+    def manifest_path(self) -> Path | None:
+        if self._root is None or self._manifest is None:
+            return None
+        return self._root / PRIVATE_EXTENSIONS_MANIFEST
 
-    def load_plugin_contributions(
-        self,
-        runtime: PrivateExtensionRuntime,
-    ) -> tuple[PluginContribution, ...]:
-        """Load contributions from the installed, validated extension package."""
+    @property
+    def plugin_modules(self) -> tuple[str, ...]:
+        if self._manifest is None:
+            return ()
+        return self._manifest.plugin_modules
 
-        contributions: list[PluginContribution] = []
-        for entry in self._entries.values():
-            factory = self._load_factory(entry)
-            if factory is None:
-                continue
-            try:
-                contribution = factory(runtime)
-            except Exception:  # noqa: BLE001 - optional code must not stop boot
-                logger.warning(
-                    "private extension factory failed: id=%s",
-                    entry.id,
-                    exc_info=True,
-                )
-                continue
-            from ironsbot.runtime.plugins import PluginContribution
+    @contextmanager
+    def plugin_import_path(self) -> Iterator[None]:
+        """Expose the package root only while NoneBot loads its manifest."""
 
-            if not isinstance(contribution, PluginContribution):
-                logger.warning(
-                    "private extension factory returned an invalid plugin: id=%s",
-                    entry.id,
-                )
-                continue
-            contributions.append(contribution)
-        return tuple(contributions)
-
-    def _load_factory(
-        self,
-        entry: PrivateExtensionEntry,
-    ) -> Callable[..., Any] | None:
         if self._root is None:
-            return None
-        source_root = self._root.joinpath(*entry.path.parts)
-        if not source_root.is_dir():
-            logger.warning(
-                "private extension source path is missing: id=%s path=%s",
-                entry.id,
-                source_root,
-            )
-            return None
-        source_root_text = str(source_root.resolve())
-        if source_root_text not in sys.path:
-            sys.path.insert(0, source_root_text)
-        importlib.invalidate_caches()
+            yield
+            return
+        root_text = str(self._root.resolve())
+        inserted = root_text not in sys.path
+        if inserted:
+            sys.path.insert(0, root_text)
         try:
-            imported = importlib.import_module(entry.module)
-        except Exception:  # noqa: BLE001 - optional extension must not stop boot
-            logger.warning(
-                "private extension import failed: id=%s module=%s",
-                entry.id,
-                entry.module,
-                exc_info=True,
-            )
-            return None
-        candidate = getattr(imported, entry.factory, None)
-        if not callable(candidate):
-            logger.warning(
-                "private extension factory is missing: id=%s module=%s factory=%s",
-                entry.id,
-                entry.module,
-                entry.factory,
-            )
-            return None
-        return cast("Callable[..., Any]", candidate)
+            yield
+        finally:
+            if inserted:
+                sys.path.remove(root_text)
 
 
 def load_private_extension_catalog(
@@ -265,7 +173,7 @@ class PrivateExtensionInstaller:
         )
         try:
             artifact = await self._docker.fetch_image_archive(request)
-            entries = install_private_extension_archive(
+            manifest = install_private_extension_archive(
                 artifact.content,
                 Path(self._config.data_path),
             )
@@ -280,17 +188,17 @@ class PrivateExtensionInstaller:
                 installed=False,
                 message="private extension refresh failed",
             )
-        extension_ids = tuple(sorted(entries))
+        plugin_modules = manifest.plugin_modules
         logger.info(
-            "private extensions installed: image=%s image_id=%s extensions=%s",
+            "private extensions installed: image=%s image_id=%s plugins=%s",
             self._config.image,
             artifact.image.image_id[:19],
-            ",".join(extension_ids),
+            ",".join(plugin_modules),
         )
         return PrivateExtensionInstallResult(
             installed=True,
             image_id=artifact.image.image_id,
-            extension_ids=extension_ids,
+            plugin_modules=plugin_modules,
         )
 
 
@@ -307,7 +215,7 @@ def _registry_credentials(
 def install_private_extension_archive(
     content: bytes,
     destination_root: Path,
-) -> dict[str, PrivateExtensionEntry]:
+) -> PrivateExtensionManifest:
     """Safely install a package archive without replacing a valid old package."""
 
     if len(content) > MAX_PRIVATE_EXTENSION_ARCHIVE_BYTES:
@@ -317,12 +225,12 @@ def install_private_extension_archive(
     staging = destination_root / f".staging-{uuid4().hex}"
     try:
         _extract_private_extension_archive(content, staging)
-        entries = _load_manifest(staging)
+        manifest = _load_manifest(staging)
         _replace_current_extension_package(destination_root, staging)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
-    return entries
+    return manifest
 
 
 def _extract_private_extension_archive(content: bytes, destination: Path) -> None:
@@ -394,92 +302,75 @@ def _archive_member_relative_path(member_name: str) -> PurePosixPath | None:
     return PurePosixPath(*relative_parts)
 
 
-def _load_manifest(root: Path) -> dict[str, PrivateExtensionEntry]:
+def _load_manifest(root: Path) -> PrivateExtensionManifest:
     manifest_path = root / PRIVATE_EXTENSIONS_MANIFEST
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        msg = "private extension manifest is not valid JSON"
+        payload = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as error:
+        msg = "private extension manifest is not valid TOML"
         raise PrivateExtensionError(msg) from error
+    return PrivateExtensionManifest(
+        plugin_modules=_private_plugin_modules(_nonebot_manifest_table(payload), root)
+    )
+
+
+def _nonebot_manifest_table(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict):
         msg = "private extension manifest must be an object"
         raise PrivateExtensionError(msg)
-    if payload.get("schema_version") != PRIVATE_EXTENSIONS_SCHEMA_VERSION:
-        msg = "private extension manifest has an unsupported schema version"
+    tool = payload.get("tool")
+    if not isinstance(tool, dict):
+        msg = "private extension manifest has no tool table"
         raise PrivateExtensionError(msg)
-    raw_extensions = payload.get("extensions")
-    if not isinstance(raw_extensions, list) or not raw_extensions:
-        msg = "private extension manifest has no extensions"
+    nonebot = tool.get("nonebot")
+    if not isinstance(nonebot, dict):
+        msg = "private extension manifest has no [tool.nonebot] table"
         raise PrivateExtensionError(msg)
-
-    entries: dict[str, PrivateExtensionEntry] = {}
-    for raw_entry in raw_extensions:
-        entry = _parse_manifest_entry(raw_entry, root)
-        if entry.id in entries:
-            msg = f"private extension manifest repeats id: {entry.id}"
-            raise PrivateExtensionError(msg)
-        entries[entry.id] = entry
-    return entries
+    return nonebot
 
 
-def _parse_manifest_entry(  # noqa: C901 - explicit manifest diagnostics
-    raw_entry: object,
+def _private_plugin_modules(
+    nonebot: dict[str, object],
     root: Path,
-) -> PrivateExtensionEntry:
-    if not isinstance(raw_entry, dict):
-        msg = "private extension manifest entry must be an object"
+) -> tuple[str, ...]:
+    if nonebot.get("plugin_dirs", []) != []:
+        msg = "private extension manifest must not declare plugin_dirs"
         raise PrivateExtensionError(msg)
-    extension_id = raw_entry.get("id")
-    source_path = raw_entry.get("path")
-    module = raw_entry.get("module")
-    factory = raw_entry.get("factory")
-    if not isinstance(extension_id, str):
-        msg = "private extension manifest entry id must be a string"
+    raw_plugins = nonebot.get("plugins")
+    if not isinstance(raw_plugins, dict) or not raw_plugins:
+        msg = "private extension manifest has no [tool.nonebot.plugins] table"
         raise PrivateExtensionError(msg)
-    if not isinstance(source_path, str):
-        msg = "private extension manifest entry path must be a string"
+
+    modules: list[str] = []
+    for source, raw_modules in raw_plugins.items():
+        if not isinstance(source, str) or not isinstance(raw_modules, list):
+            msg = "private extension plugins must map string sources to module lists"
+            raise PrivateExtensionError(msg)
+        for module in raw_modules:
+            _validate_private_plugin_module(module, root)
+            modules.append(module)
+    if not modules:
+        msg = "private extension manifest has no plugin modules"
         raise PrivateExtensionError(msg)
-    if not isinstance(module, str):
-        msg = "private extension manifest entry module must be a string"
+    if len(set(modules)) != len(modules):
+        msg = "private extension manifest repeats a plugin module"
         raise PrivateExtensionError(msg)
-    if not isinstance(factory, str):
-        msg = "private extension manifest entry factory must be a string"
+    return tuple(modules)
+
+
+def _validate_private_plugin_module(module: object, root: Path) -> None:
+    if not isinstance(module, str) or not _PYTHON_MODULE_PATTERN.fullmatch(module):
+        msg = "private extension plugin module is invalid"
         raise PrivateExtensionError(msg)
-    if not extension_id or not source_path or not module or not factory:
-        msg = "private extension manifest entry fields must be strings"
+    parts = module.split(".")
+    if not parts[0].startswith(_PRIVATE_MODULE_PREFIX):
+        msg = f"private extension plugin module is outside its package: {module}"
         raise PrivateExtensionError(msg)
-    if not _EXTENSION_ID_PATTERN.fullmatch(extension_id):
-        msg = f"private extension id is invalid: {extension_id}"
+    module_file = root.joinpath(*parts).with_suffix(".py")
+    package_file = root.joinpath(*parts, "__init__.py")
+    if not module_file.is_file() and not package_file.is_file():
+        msg = f"private extension plugin module does not exist: {module}"
         raise PrivateExtensionError(msg)
-    if not (
-        _PYTHON_MODULE_PATTERN.fullmatch(module)
-        and _PYTHON_MODULE_PATTERN.fullmatch(factory)
-    ):
-        msg = f"private extension module contract is invalid: {extension_id}"
-        raise PrivateExtensionError(msg)
-    path = PurePosixPath(source_path)
-    if (
-        path.is_absolute()
-        or not path.parts
-        or any(part in {"", ".", ".."} for part in path.parts)
-    ):
-        msg = f"private extension path is invalid: {extension_id}"
-        raise PrivateExtensionError(msg)
-    resolved_source = root.joinpath(*path.parts)
-    try:
-        resolved_source.resolve().relative_to(root.resolve())
-    except ValueError as error:
-        msg = f"private extension path escapes package: {extension_id}"
-        raise PrivateExtensionError(msg) from error
-    if not resolved_source.is_dir():
-        msg = f"private extension path does not exist: {extension_id}"
-        raise PrivateExtensionError(msg)
-    return PrivateExtensionEntry(
-        id=extension_id,
-        path=path,
-        module=module,
-        factory=factory,
-    )
 
 
 def _replace_current_extension_package(destination_root: Path, staging: Path) -> None:

@@ -12,11 +12,45 @@ from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
     from ironsbot.config.models.features import HelpConfig
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.onebot_references import OneBotReferenceResolver
 
 
 class CommandHintCandidate(Protocol):
     def poke_text(self) -> str: ...
+
+
+class OneBotPokeEvent(Protocol):
+    """Small OneBot event view sufficient to decide whether the bot was poked."""
+
+    self_id: int
+    target_id: int
+
+
+class OneBotHelpHintPort(Protocol):
+    """OneBot-only hint policy exposed to the passive poke matcher."""
+
+    def get_poke_reply(
+        self,
+        *,
+        group_id: int | None,
+        user_id: int,
+    ) -> str | None: ...
+
+    def get_default_poke_hint(
+        self,
+        *,
+        group_id: int | None,
+        user_id: int,
+        group_role: str | None = None,
+    ) -> str | None: ...
+
+    def can_send(self, group_id: int | None, *, now: float | None = None) -> bool: ...
+
+
+def is_onebot_poke_at_bot(event: OneBotPokeEvent) -> bool:
+    """Return whether one OneBot poke event explicitly targets this bot."""
+
+    return event.target_id == event.self_id
 
 
 CommandHintCandidates = Callable[

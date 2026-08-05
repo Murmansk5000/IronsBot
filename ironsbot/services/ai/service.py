@@ -101,7 +101,11 @@ class AiService:
         completion = await self._complete(
             prompt,
             history,
-            self._load_memory(actor, key, exclude_current_session=bool(history)),
+            await self._load_memory(
+                actor,
+                key,
+                exclude_current_session=bool(history),
+            ),
             source_context,
         )
         if completion.error_reply:
@@ -118,7 +122,7 @@ class AiService:
             completion.reply,
             self._config.history_turns,
         )
-        self._record_memory(actor, conversation, key, prompt, completion.reply)
+        await self._record_memory(actor, conversation, key, prompt, completion.reply)
         return completion.reply
 
     async def classify_intent(
@@ -332,7 +336,7 @@ class AiService:
         )
         return _Completion(error_reply=REQUEST_FAILED_REPLY)
 
-    def _load_memory(
+    async def _load_memory(
         self,
         actor: ActorRef,
         key: str,
@@ -346,7 +350,7 @@ class AiService:
         ):
             return []
         return trim_memory_chars(
-            self._memory.load(
+            await self._memory.load(
                 actor=actor,
                 current_session_key=key,
                 exclude_current_session=exclude_current_session,
@@ -355,7 +359,7 @@ class AiService:
             self._config.memory_max_chars,
         )
 
-    def _record_memory(
+    async def _record_memory(
         self,
         actor: ActorRef,
         conversation: ConversationRef,
@@ -369,7 +373,7 @@ class AiService:
             or self._memory is None
         ):
             return
-        self._memory.append(
+        await self._memory.append(
             AiMemoryTurn(
                 actor,
                 key,

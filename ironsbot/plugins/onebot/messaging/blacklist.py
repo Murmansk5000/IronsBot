@@ -6,22 +6,23 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
-from ironsbot.runtime.message_input import message_input_context
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-
     from ironsbot.core.feature_policy import FeatureService
 
 
@@ -46,7 +47,7 @@ def event_is_blacklisted(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     features: FeatureService,
 ) -> None:
     async def discard(_matcher: Matcher) -> None:

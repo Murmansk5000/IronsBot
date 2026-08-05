@@ -1,11 +1,11 @@
 from typing import get_type_hints
 
-from ironsbot.runtime.conversations import (
+from ironsbot.integrations.onebot.conversations import (
     command_reply_check,
     event_conversation_session_id,
     is_self_message_event,
 )
-from ironsbot.runtime.prompt_sessions import PromptSessionManager
+from ironsbot.integrations.onebot.prompt_sessions import PromptSessionManager
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 
@@ -32,15 +32,13 @@ def _private_event(text: str = "帮助"):
 
 def test_event_conversation_session_id_includes_group_context() -> None:
     assert (
-        event_conversation_session_id("menu", _group_event())
-        == "menu:group:4:user:2"
+        event_conversation_session_id("menu", _group_event()) == "menu:group:4:user:2"
     )
 
 
 def test_event_conversation_session_id_uses_private_context() -> None:
     assert (
-        event_conversation_session_id("menu", _private_event())
-        == "menu:private:user:2"
+        event_conversation_session_id("menu", _private_event()) == "menu:private:user:2"
     )
 
 

@@ -13,20 +13,24 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    MatcherFactory,
+    bind_async,
+)
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
-from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import explicit_command
 
 from .status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
@@ -111,7 +115,7 @@ async def _handle_disabled_bare_admin_status(
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,

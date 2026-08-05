@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from nonebot.internal.driver import Driver
 
     from ironsbot.app.file_logging import FileLogging
@@ -17,8 +19,11 @@ if TYPE_CHECKING:
     from ironsbot.core.features import Feature
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
+    from ironsbot.integrations.onebot.matchers import (
+        MatcherFactory,
+        PromptSessionManager,
+    )
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
-    from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
     from ironsbot.runtime.plugins import PluginContribution
 
 
@@ -35,7 +40,8 @@ class Application:
     databases: DatabaseManager
     prompt_sessions: PromptSessionManager
     resources: ApplicationResources
-    matchers: MatcherRegistry
+    matcher_factory: MatcherFactory
+    extension_contexts: Mapping[str, object]
     task_owner: TaskOwner
     known_features: tuple[str, ...]
     required_plugin_features: frozenset[Feature]
@@ -79,8 +85,8 @@ class Application:
             raise RuntimeError(msg)
         for contribution in self.contributions:
             if contribution.install is not None:
-                contribution.install(self.matchers)
-        self.matchers.validate_command_catalog(self.resources.commands)
-        self.matchers.install_postprocessor()
+                contribution.install(self.matcher_factory)
+        self.matcher_factory.validate_command_catalog(self.resources.commands)
+        self.matcher_factory.install_postprocessor()
         self.lifecycle.install()
         self._installed = True

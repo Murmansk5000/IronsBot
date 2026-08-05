@@ -36,10 +36,10 @@ from .pet_info_models import (
     PetPartnerSnapshot,
     PetSkillEffectSnapshot,
     PetSkillSnapshot,
+    PetSoulmarkDisplayAddition,
     PetSoulmarkSnapshot,
 )
 
-_SPECIAL_SOULMARK_PET_ID = 2500
 _HIDDEN_SKILL_ID = 19002
 _PARTNER_UPGRADE_MIN_SIMILARITY = 0.8
 _RICH_TEXT_COLOR_OPEN_RE = re.compile(r"<color=(#[0-9a-fA-F]{6})>")
@@ -63,21 +63,12 @@ def present_pet_info(
         if (color := effect.get("color")) is not None
     }
     soulmarks = _soulmark_views(snapshot, effect_colors)
-    if snapshot.pet.id == _SPECIAL_SOULMARK_PET_ID:
-        soulmarks.append(
-            SoulmarkDict(
-                id=0,
-                desc="登场首回合所有攻击先制+1同时增加20%暴击率",
-                intensified=True,
-                intensified_to_id=None,
-                is_adv=False,
-                pve_effective=None,
-                tags=[],
-                icon_id=None,
-                icon_asset_url=None,
-                icon=None,
-            )
+    soulmarks.extend(
+        _soulmark_display_addition_views(
+            snapshot.display.soulmark_display_additions,
+            effect_colors,
         )
+    )
     partner = _partner_view(snapshot.partner, item_icons)
     base_soulmarks, upgraded_soulmarks = _partition_soulmarks(
         soulmarks,
@@ -237,7 +228,7 @@ def _soulmark_views(
 
 
 def _format_soulmark_description(
-    soulmark: PetSoulmarkSnapshot,
+    soulmark: PetSoulmarkSnapshot | PetSoulmarkDisplayAddition,
     effect_colors: Mapping[str, str],
 ) -> str:
     if soulmark.analyze_desc:
@@ -248,6 +239,32 @@ def _format_soulmark_description(
         value = _RICH_TEXT_TAG_RE.sub("", value.replace("</color>", "[/color]"))
         return format_analyze_description(value, effect_colors)
     return format_analyze_description(soulmark.desc, effect_colors)
+
+
+def _soulmark_display_addition_views(
+    additions: Sequence[PetSoulmarkDisplayAddition],
+    effect_colors: Mapping[str, str],
+) -> list[SoulmarkDict]:
+    """Append build-time display corrections after raw soulmarks.
+
+    Their source schema mirrors the raw presentation fields, allowing a future
+    data correction to use rich text and tags without a pet-specific branch.
+    """
+    return [
+        SoulmarkDict(
+            id=addition.id,
+            desc=_format_soulmark_description(addition, effect_colors),
+            intensified=addition.intensified,
+            intensified_to_id=addition.intensified_to_id,
+            is_adv=addition.is_adv,
+            pve_effective=addition.pve_effective,
+            tags=list(addition.tags),
+            icon_id=None,
+            icon_asset_url=None,
+            icon=None,
+        )
+        for addition in additions
+    ]
 
 
 def _partner_view(

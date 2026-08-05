@@ -1,4 +1,8 @@
+import asyncio
+from collections.abc import Callable
 from pathlib import Path
+
+from pytest import MonkeyPatch
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
@@ -16,13 +20,15 @@ def _append(
     prompt: str,
     reply: str,
 ) -> None:
-    store.append(
-        AiMemoryTurn(
-            ACTOR,
-            session_key,
-            CONVERSATION,
-            prompt,
-            reply,
+    asyncio.run(
+        store.append(
+            AiMemoryTurn(
+                ACTOR,
+                session_key,
+                CONVERSATION,
+                prompt,
+                reply,
+            )
         )
     )
 
@@ -32,11 +38,13 @@ def test_ai_memory_appends_and_reads_recent_turn(tmp_path: Path) -> None:
     _append(store, "session-a", "first prompt", "first reply")
     _append(store, "session-b", "second prompt", "second reply")
 
-    assert store.load(
-        actor=ACTOR,
-        current_session_key="current",
-        exclude_current_session=False,
-        limit=2,
+    assert asyncio.run(
+        store.load(
+            actor=ACTOR,
+            current_session_key="current",
+            exclude_current_session=False,
+            limit=2,
+        )
     ) == [
         {"role": "user", "content": "second prompt"},
         {"role": "assistant", "content": "second reply"},
@@ -48,11 +56,13 @@ def test_ai_memory_excludes_current_short_history_session(tmp_path: Path) -> Non
     _append(store, "current", "current prompt", "current reply")
     _append(store, "older", "older prompt", "older reply")
 
-    assert store.load(
-        actor=ACTOR,
-        current_session_key="current",
-        exclude_current_session=True,
-        limit=2,
+    assert asyncio.run(
+        store.load(
+            actor=ACTOR,
+            current_session_key="current",
+            exclude_current_session=True,
+            limit=2,
+        )
     ) == [
         {"role": "user", "content": "older prompt"},
         {"role": "assistant", "content": "older reply"},
@@ -63,22 +73,62 @@ def test_ai_memory_keeps_official_platform_identity_opaque(tmp_path: Path) -> No
     store = SqliteAiMemoryStore(tmp_path / "memory.sqlite")
     actor = ActorRef(Platform.QQ_OFFICIAL, "openid-example")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "guild", "guild-example")
-    store.append(
-        AiMemoryTurn(
-            actor,
-            "official-session",
-            conversation,
-            "official prompt",
-            "official reply",
+    asyncio.run(
+        store.append(
+            AiMemoryTurn(
+                actor,
+                "official-session",
+                conversation,
+                "official prompt",
+                "official reply",
+            )
         )
     )
 
-    assert store.load(
-        actor=actor,
-        current_session_key="current",
-        exclude_current_session=False,
-        limit=2,
+    assert asyncio.run(
+        store.load(
+            actor=actor,
+            current_session_key="current",
+            exclude_current_session=False,
+            limit=2,
+        )
     ) == [
         {"role": "user", "content": "official prompt"},
         {"role": "assistant", "content": "official reply"},
     ]
+
+
+def test_ai_memory_runs_sqlite_operations_in_a_worker_thread(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    async def fake_to_thread(
+        function: Callable[..., object],
+        /,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        calls.append(getattr(function, "__name__", ""))
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "ironsbot.integrations.storage.ai_memory.asyncio.to_thread",
+        fake_to_thread,
+    )
+    store = SqliteAiMemoryStore(tmp_path / "memory.sqlite")
+
+    _append(store, "session", "prompt", "reply")
+    assert asyncio.run(
+        store.load(
+            actor=ACTOR,
+            current_session_key="current",
+            exclude_current_session=False,
+            limit=2,
+        )
+    ) == [
+        {"role": "user", "content": "prompt"},
+        {"role": "assistant", "content": "reply"},
+    ]
+    assert calls == ["_append", "_load"]

@@ -9,16 +9,16 @@ from nonebot.rule import Rule
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.messaging.meeting import build_meeting_reply
 
 __plugin_meta__ = PluginMetadata(
@@ -32,7 +32,7 @@ __plugin_meta__ = PluginMetadata(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     commands: tuple[str, ...],
     number: str,
     template: str,

@@ -200,9 +200,7 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
         }
     )
     assert contribution.commands == ()
-    assert not ai_intent_commands(
-        Settings.model_validate({"ai": {"api_key": "test"}})
-    )
+    assert not ai_intent_commands(Settings.model_validate({"ai": {"api_key": "test"}}))
     enabled_settings = Settings.model_validate(
         {
             "promotions": {
@@ -354,7 +352,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
     ]
 
 
-def test_internal_plugins_use_only_the_matcher_registry() -> None:
+def test_internal_plugins_use_only_the_matcher_factory() -> None:
     forbidden_imports = {
         "MatcherGroup",
         "PluginMetadata",
@@ -378,24 +376,9 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                 )
                 if path in {
                     ROOT / "ironsbot" / "plugins" / "onebot" / "bootstrap.py",
-                        ROOT
-                        / "ironsbot"
-                        / "plugins"
-                        / "onebot"
-                        / "about"
-                        / "__init__.py",
-                        ROOT
-                        / "ironsbot"
-                        / "plugins"
-                        / "onebot"
-                        / "help"
-                        / "__init__.py",
-                        ROOT
-                        / "ironsbot"
-                        / "plugins"
-                        / "onebot"
-                        / "help"
-                        / "hint.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "about" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "help" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "help" / "hint.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
@@ -438,18 +421,8 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "onebot"
                     / "bilibili"
                     / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "ai"
-                    / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "ai"
-                    / "intent.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "ai" / "__init__.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "ai" / "intent.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
@@ -470,21 +443,9 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "seer"
                     / "query"
                     / "__init__.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "lucky_skin_window.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "team_audit.py",
-                    ROOT
-                    / "ironsbot"
-                    / "plugins"
-                    / "onebot"
-                    / "team_resource.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "lucky_skin_window.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "team_audit.py",
+                    ROOT / "ironsbot" / "plugins" / "onebot" / "team_resource.py",
                     ROOT
                     / "ironsbot"
                     / "plugins"
@@ -533,12 +494,12 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
                     / "onebot"
                     / "scheduled_restart"
                     / "__init__.py",
-                        ROOT
-                        / "ironsbot"
-                        / "plugins"
-                        / "onebot"
-                        / "scheduler"
-                        / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "scheduler"
+                    / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

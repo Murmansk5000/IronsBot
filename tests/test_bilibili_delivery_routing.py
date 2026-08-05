@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING
 import pytest
 from nonebot.adapters.onebot.v11 import Message
 
-from ironsbot.core.messaging import TargetSendSummary
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.bilibili_push import OneBotBilibiliPushSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.promotions import append_promotions_for_target
+from ironsbot.integrations.onebot.replies import append_text_hint
+from ironsbot.integrations.onebot.targets import OneBotTargetSendSummary
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
@@ -40,13 +40,14 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     tmp_path: Path,
 ) -> None:
     sent: list[dict[str, object]] = []
+
     async def fake_send_broadcast_message(
         _delivery: object,
         _message: object,
         **kwargs: object,
-    ) -> TargetSendSummary:
+    ) -> OneBotTargetSendSummary:
         sent.append(kwargs)
-        return TargetSendSummary([], [])
+        return OneBotTargetSendSummary([], [])
 
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
 

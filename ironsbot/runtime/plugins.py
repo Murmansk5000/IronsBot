@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -11,19 +11,20 @@ from ironsbot.core.features import Feature
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
-    from nonebot.adapters.onebot.v11 import Bot
     from nonebot.plugin import PluginMetadata
 
     from ironsbot.runtime.commands import CommandDescriptor
-    from ironsbot.runtime.matchers import MatcherRegistry
 
 HookResult: TypeAlias = Awaitable[None] | None
 LifecycleHook: TypeAlias = Callable[[], HookResult]
-BotLifecycleHook: TypeAlias = Callable[["Bot"], HookResult]
+# Plugin callbacks are registered by platform adapters.  The application keeps
+# the callback slot opaque so adapter-specific implementations can accept their
+# concrete bot and matcher types without weakening every plugin signature.
+BotLifecycleHook: TypeAlias = Callable[[Any], HookResult]
 NamedLifecycleHook: TypeAlias = tuple[str, LifecycleHook]
 NamedBotLifecycleHook: TypeAlias = tuple[str, BotLifecycleHook]
 HelpVisibility: TypeAlias = Callable[["Event"], bool]
-PluginInstall: TypeAlias = Callable[["MatcherRegistry"], None]
+PluginInstall: TypeAlias = Callable[[Any], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,14 @@ class PluginInstallContextError(RuntimeError):
         return cls(
             "plugin install context is only available while NoneBot loads plugins"
         )
+
+
+class PluginExtensionContextError(RuntimeError):
+    """Raised when an extension requests a context it was not declared for."""
+
+    @classmethod
+    def unavailable(cls, extension_id: str) -> PluginExtensionContextError:
+        return cls(f"plugin extension context is unavailable: {extension_id}")
 
 
 class PluginContributionError(ValueError):
@@ -143,6 +152,7 @@ class PluginInstallContext:
     settings: Any
     resources: Any
     scheduler: Any
+    extension_contexts: Mapping[str, object]
     _loaded: list[LoadedPluginContribution]
 
     def contribute(
@@ -163,6 +173,14 @@ class PluginInstallContext:
     def loaded_contributions(self) -> tuple[LoadedPluginContribution, ...]:
         return tuple(self._loaded)
 
+    def extension_context(self, extension_id: str) -> object:
+        """Return the narrow contract declared for one external extension."""
+
+        try:
+            return self.extension_contexts[extension_id]
+        except KeyError as error:
+            raise PluginExtensionContextError.unavailable(extension_id) from error
+
 
 @contextmanager
 def scoped_plugin_install_context(
@@ -170,6 +188,7 @@ def scoped_plugin_install_context(
     settings: Any,
     resources: Any,
     scheduler: Any,
+    extension_contexts: Mapping[str, object] | None = None,
 ) -> Iterator[PluginInstallContext]:
     """Expose composition dependencies while `nonebot.load_from_toml()` runs."""
 
@@ -177,6 +196,7 @@ def scoped_plugin_install_context(
         settings=settings,
         resources=resources,
         scheduler=scheduler,
+        extension_contexts=extension_contexts or {},
         _loaded=[],
     )
     token = _INSTALL_CONTEXT.set(context)

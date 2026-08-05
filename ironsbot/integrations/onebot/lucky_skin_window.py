@@ -6,7 +6,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -14,6 +13,7 @@ from ironsbot.core.platform import (
     private_conversation_for_actor,
 )
 from ironsbot.integrations.onebot.target_refs import is_onebot_private_actor
+from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
@@ -22,7 +22,7 @@ from ironsbot.services.seer.lucky_skin_window import (
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import LuckySkinWindowConfig
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.onebot_references import OneBotReferenceResolver
     from ironsbot.integrations.onebot.delivery import OneBotDelivery
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
@@ -59,7 +59,7 @@ class OneBotLuckySkinWindowNotificationSender:
         ):
             return False
         summary = await self.delivery.send_targets(
-            [MessageTarget("private", user_id)],
+            [OneBotMessageTarget("private", user_id)],
             message,
             action_name="lucky skin window daily notice",
             interval_seconds=0,
@@ -115,19 +115,13 @@ def build_onebot_lucky_skin_window_accounts(
                 str(
                     references.resolve_user(
                         configured.user,
-                        location=(
-                            "seer.lucky_skin_window.accounts"
-                            f"[{index}].user"
-                        ),
+                        location=(f"seer.lucky_skin_window.accounts[{index}].user"),
                     )
                 ),
             ),
             player_account=player_accounts.resolve(
                 configured.account,
-                location=(
-                    "seer.lucky_skin_window.accounts"
-                    f"[{index}].account"
-                ),
+                location=(f"seer.lucky_skin_window.accounts[{index}].account"),
             ),
             watched_skin_ids=tuple(configured.watched_skin_ids),
         )

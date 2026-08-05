@@ -28,12 +28,12 @@ __plugin_meta__ = PluginMetadata(
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.messaging.sendpic import SendpicService
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     service: SendpicService,
     features: FeatureService,

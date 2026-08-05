@@ -84,9 +84,10 @@ user_a = "backup_bot"
 ```
 
 `group_a/group_b` 和 `owner/user_a` 分别引用 `[features.group_aliases]`、
-`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会先回退
-到 `default_bot`，再回退到任意在线 OneBot 机器人，并记录 warning。第一版只控制
-主动发送，不过滤接收事件；同一个群放入多个机器人时，它们仍可能同时收到并响应。
+`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
+`default_bot`；若默认机器人也未连接或没有配置，主动发送会明确失败并记录 warning，
+不会选择任意在线 OneBot 机器人。第一版只控制主动发送，不过滤接收事件；同一个群
+放入多个机器人时，它们仍可能同时收到并响应。
 
 ### Docker Compose
 
@@ -135,9 +136,10 @@ services:
 贡献。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
 命令认领的唯一语义来源。
 
-`MatcherRegistry` 与私有扩展 bootstrap 仍是过渡组件：前者会迁移为更窄的 matcher
-工厂，后者只适配配置化的私有扩展，不能重新成为内置插件发现或命令注册入口。
-后续迁移方向、责任边界与完成条件以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
+`MatcherFactory` 只负责构造 matcher、挂入命令权限与冷却，并执行启动校验。私有扩展也通过
+自身标准 NoneBot 清单加载，只能取得公共代码声明的窄上下文，不能成为内置插件发现或命令
+注册入口。后续迁移方向、责任边界与完成条件以
+[ARCHITECTURE.md](ARCHITECTURE.md) 为准。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。
@@ -496,7 +498,8 @@ watchtower_docker_api_version = "1.40"
 真实阵容来自可选私有扩展包 `murmansk5000/ironsbot-private:latest`。它不是机器人
 覆盖镜像：Unraid 的 Repository 和 `[operations.docker_update].image` 始终保持
 `murmansk5000/ironsbot:latest`。容器启动时，公开主镜像通过 Docker socket 拉取私有包、
-校验清单并解包到 `/app/data/private_extensions`，再只加载公开代码明确认可的扩展契约。
+校验其标准 NoneBot 清单并解包到 `/app/data/private_extensions`，再由
+`nonebot.load_from_toml()` 加载其中声明的扩展模块；模块只能取得公开代码为其声明的窄契约。
 
 阵容是第一个扩展；以后可在同一个私有包中增加新的、由公开主程序显式支持的扩展。整个
 部署仍只有一个 IronsBot 进程和一个无头米米号登录。扩展直接借用主连接发送封包，不启动

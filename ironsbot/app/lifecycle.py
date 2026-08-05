@@ -6,9 +6,7 @@ from dataclasses import dataclass, field
 from inspect import isawaitable
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from nonebot.adapters.onebot.v11 import (
-    Bot,  # noqa: TC002 - NoneBot resolves it at runtime
-)
+from nonebot.adapters import Bot  # noqa: TC002 - driver evaluates hook annotations.
 from nonebot.log import logger
 
 if TYPE_CHECKING:
@@ -25,6 +23,12 @@ if TYPE_CHECKING:
     )
 
 T = TypeVar("T")
+
+
+class ConnectedBotIdentityError(ValueError):
+    @classmethod
+    def missing_self_id(cls) -> ConnectedBotIdentityError:
+        return cls("connected bot has no self_id")
 
 
 @dataclass(slots=True)
@@ -119,8 +123,8 @@ class ApplicationLifecycle:
 
         self.driver.on_startup(self.startup)
         self.driver.on_shutdown(self.shutdown)
-        self.driver.on_bot_connect(self.bot_connect)
-        self.driver.on_bot_disconnect(self.bot_disconnect)
+        self.driver.on_bot_connect(self._on_bot_connect)
+        self.driver.on_bot_disconnect(self._on_bot_disconnect)
         self._installed = True
 
     async def startup(self) -> None:
@@ -137,8 +141,18 @@ class ApplicationLifecycle:
             tuple(reversed(self.resource_shutdown_hooks)),
         )
 
-    async def bot_connect(self, bot: Bot) -> None:
-        self.connected_bot_ids.add(int(bot.self_id))
+    async def _on_bot_connect(self, bot: Bot) -> None:
+        """Adapt NoneBot's typed driver hook to platform-agnostic lifecycle hooks."""
+
+        await self.bot_connect(bot)
+
+    async def _on_bot_disconnect(self, bot: Bot) -> None:
+        """Adapt NoneBot's typed driver hook to platform-agnostic lifecycle hooks."""
+
+        await self.bot_disconnect(bot)
+
+    async def bot_connect(self, bot: object) -> None:
+        self.connected_bot_ids.add(_bot_id(bot))
         if not self._first_bot_connected:
             self._first_bot_connected = True
             await self._run_bot_hooks(
@@ -148,7 +162,7 @@ class ApplicationLifecycle:
             )
         await self._run_bot_hooks("bot_connect", self.bot_connect_hooks, bot)
 
-    async def bot_disconnect(self, bot: Bot) -> None:
+    async def bot_disconnect(self, bot: object) -> None:
         try:
             await self._run_bot_hooks(
                 "bot_disconnect",
@@ -156,7 +170,7 @@ class ApplicationLifecycle:
                 bot,
             )
         finally:
-            self.connected_bot_ids.discard(int(bot.self_id))
+            self.connected_bot_ids.discard(_bot_id(bot))
 
     @staticmethod
     async def _run_lifecycle_hooks(
@@ -170,7 +184,7 @@ class ApplicationLifecycle:
     async def _run_bot_hooks(
         phase: str,
         hooks: tuple[NamedBotLifecycleHook, ...],
-        bot: Bot,
+        bot: object,
     ) -> None:
         for name, hook in hooks:
             await ApplicationLifecycle._run_bot_hook(phase, name, hook, bot)
@@ -197,7 +211,7 @@ class ApplicationLifecycle:
         phase: str,
         name: str,
         hook: BotLifecycleHook,
-        bot: Bot,
+        bot: object,
     ) -> None:
         try:
             result = hook(bot)
@@ -209,3 +223,12 @@ class ApplicationLifecycle:
                 phase,
                 name,
             )
+
+
+def _bot_id(bot: object) -> int:
+    """Read an adapter bot's stable numeric identity at the app boundary."""
+
+    value = getattr(bot, "self_id", None)
+    if value is None:
+        raise ConnectedBotIdentityError.missing_self_id()
+    return int(value)

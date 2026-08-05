@@ -9,8 +9,8 @@ from ironsbot.core.selection import (
     SelectionMenuSection,
     format_selection_menu,
 )
-from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
-from ironsbot.runtime.onebot_context import command_context
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent

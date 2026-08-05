@@ -1,5 +1,8 @@
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.runtime.onebot_identity import onebot_actor_ref, onebot_conversation_ref
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
+)
 
 
 def test_onebot_identity_helpers_build_typed_references() -> None:

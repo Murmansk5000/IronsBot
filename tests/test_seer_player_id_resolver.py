@@ -10,6 +10,8 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.runtime.commands import CommandContext
+from ironsbot.runtime.player_reference_commands import player_reference_input_matcher
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 _ALIAS_PLAYER_ID = 700
@@ -100,3 +102,21 @@ def test_member_mention_requires_group_conversation() -> None:
 
     assert result.player_id is None
     assert result.error == "私聊不能使用 @成员 查询米米号。"
+
+
+def test_player_reference_input_matcher_claims_only_numeric_or_known_aliases() -> None:
+    matcher = player_reference_input_matcher(
+        ("米米号",),
+        lambda reference, _conversation: (
+            _ALIAS_PLAYER_ID if reference == "alias" else None
+        ),
+    )
+    context = CommandContext(
+        actor=ActorRef(Platform.ONEBOT, "100"),
+        conversation=ConversationRef(Platform.ONEBOT, "private", "100"),
+    )
+
+    assert matcher("米米号", context)
+    assert matcher("米米号123456", context)
+    assert matcher("米米号alias", context)
+    assert not matcher("米米号是多少", context)
