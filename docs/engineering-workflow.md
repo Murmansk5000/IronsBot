@@ -128,19 +128,22 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
 8. 平台身份使用不透明字符串 `ActorRef`/`ConversationRef`；OneBot QQ 号与
    QQ Official OpenID 不隐式互转。
 9. 正常运行路径只读写一种 schema；旧数据仅由停机的一次性迁移工具处理。
-10. 新生产 Python 模块必须遵守 800 行限制，并按真实职责拆分，不能把代码
-    移进无归属的辅助文件来规避检查。
-11. 平台身份在持久化层只使用 `ActorRef` / `ConversationRef` 的独立列；QQ
-    数字只能存在于 OneBot 适配边界。旧 SQLite 的列形状只能由停机迁移工具
-    读取，运行时代码不得双读、补列或懒迁移。
-12. 迁移到标准 NoneBot 清单的插件必须同时拥有自己的 `PluginMetadata`、
-    `PluginContribution` 和直接命令描述；不得把 matcher 留在中央桥接、
-    把帮助或命令元数据留在另一处。
-13. 迁移出站消息时保留原有发送语义：`OutboundMessenger.send()` 是主动推送，
-    必须经过目标平台的队列、限流和退订策略；`reply()` 才是对当前事件的即时
-    回复。不能因为换成通用端口而绕过防刷屏、路由或失败回滚。
-14. 通知服务的收件人必须使用 `ActorRef` 或 `ConversationRef`；OneBot 数字
-    目标、`MessageTarget`、`OneBotDelivery` 和 CQ 消息只能留在 OneBot 适配层。
+10. 配置字段迁移同样只能由部署迁移说明或一次性工具完成；模型不得静默把
+   `refresh_hour`/`refresh_minute` 等旧字段改写为新字段。无法识别的字段必须在
+   启动时明确报错，当前配置只接受 `time = "HH:MM"`。
+11. 新生产 Python 模块必须遵守 800 行限制，并按真实职责拆分，不能把代码
+   移进无归属的辅助文件来规避检查。
+12. 平台身份在持久化层只使用 `ActorRef` / `ConversationRef` 的独立列；QQ
+   数字只能存在于 OneBot 适配边界。旧 SQLite 的列形状只能由停机迁移工具
+   读取，运行时代码不得双读、补列或懒迁移。
+13. 迁移到标准 NoneBot 清单的插件必须同时拥有自己的 `PluginMetadata`、
+   `PluginContribution` 和直接命令描述；不得把 matcher 留在中央桥接、
+   把帮助或命令元数据留在另一处。
+14. 迁移出站消息时保留原有发送语义：`OutboundMessenger.send()` 是主动推送，
+   必须经过目标平台的队列、限流和退订策略；`reply()` 才是对当前事件的即时
+   回复。不能因为换成通用端口而绕过防刷屏、路由或失败回滚。
+15. 通知服务的收件人必须使用 `ActorRef` 或 `ConversationRef`；OneBot 数字
+   目标、`MessageTarget`、`OneBotDelivery` 和 CQ 消息只能留在 OneBot 适配层。
     迁移中的适配器可以复用旧投递链以保留队列、退订和限流，但不得把这些类型
     重新传回 service。
 
