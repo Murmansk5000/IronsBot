@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches, normalize_command_text
 from ironsbot.core.platform import (
+    ActorRef,
     ConversationKind,
     ConversationRef,
     private_conversation_for_actor,
@@ -67,31 +68,18 @@ class MessagingService:
         Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
 
-    def match_private_action(
-        self,
-        text: str,
-        user_id: int,
-    ) -> MessageReplyAction | None:
-        return self._find_action(
-            text,
-            is_allowed=lambda action: self._features.is_private_feature_allowed(
-                user_id,
-                action.feature,
-            ),
-        )
-
-    def match_group_action(
+    def match_action(
         self,
         text: str,
         *,
-        user_id: int,
-        group_id: int,
+        actor: ActorRef,
+        conversation: ConversationRef,
     ) -> MessageReplyAction | None:
         return self._find_action(
             text,
-            is_allowed=lambda action: self._features.is_group_feature_allowed(
-                user_id,
-                group_id,
+            is_allowed=lambda action: self._features.is_feature_allowed(
+                actor,
+                conversation,
                 action.feature,
             ),
         )
@@ -114,9 +102,6 @@ class MessagingService:
             self._config.keyword_replies,
             is_allowed=is_allowed,
         )
-
-    def is_superuser(self, user_id: int) -> bool:
-        return self._features.is_superuser(user_id)
 
     def matches_subscription_command(self, text: str) -> bool:
         return any(
