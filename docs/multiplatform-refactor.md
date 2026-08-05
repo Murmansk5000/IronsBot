@@ -46,8 +46,8 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 ## 当前验证进度（2026-08-06）
 
 ```text
-总任务  [████░░░░░░] 40%  已完成阶段 3/8  剩余：跨仓库数据事实、解析与错误语义；尚不能可靠估算
-Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：其余 renderer 数据边界与发布 schema 验收
+总任务  [██▌░░░░░░░] 25%  已完成阶段 2/8  剩余：跨仓库装载、数据事实、解析与错误语义；尚不能可靠估算
+Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：素材 manifest、早期 L3 命中和其余 renderer 数据边界验收
 当前任务[██████████] 100%  伙伴魂印展示分类已在构建端发布并由 IronsBot 消费
 ```
 
@@ -73,11 +73,11 @@ Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：其�
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `completed` | 标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文、唯一 `CommandCatalog` 与 common / messaging / operations / seer / bilibili builder 已建立；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后全量 `pytest` 为 1377 passed，静态检查通过 | Phase 3 只迁移仍在 OneBot integration 内的投递消费者，不得重建第二套插件发现或装配入口 | 插件迁移完全结束 |
+| Phase 2 | `in_progress` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后的全量 `pytest` 为 1377 passed，静态检查通过 | 用当前 IronsBot 安装真实 `ironsbot-private` 清单，迁移其已删除的 `runtime.*` 命令 import，并运行跨仓库 import/命令 smoke test；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
-| Phase 4 | `in_progress` | 资源准备、确定性渲染缓存和部分 SeerAPI 效果事实已验证 | 其余 renderer 与数据路径全部只消费视图模型/发布事实 | 所有渲染都已迁移 |
-| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 所有直接命令与米米号入口使用同一契约 | 业务服务重构完成 |
-| Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 清除剩余隐式 fallback、配置兼容和伪成功结果 | 错误语义收口完成 |
+| Phase 4 | `in_progress` | 资源准备、确定性文档内容键和部分 SeerAPI 效果事实已验证 | SeerAPI 发布完整 render asset manifest；IronsBot 以 `RenderRequestKey` 在 SQL/HTTP/presenter 前命中 L3，并对每个 renderer 加零调用命中测试 | 所有渲染都已迁移 |
+| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
+| Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
 
 开始持续任务时，报告必须同时给出总任务、当前阶段和当前小任务的进度及预计剩余时间；
