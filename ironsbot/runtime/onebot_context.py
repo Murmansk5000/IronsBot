@@ -4,8 +4,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
 from ironsbot.runtime.commands import CommandContext
@@ -39,7 +37,6 @@ def mentions_bot(event: GroupMessageEvent) -> bool:
 async def build_notice_source(
     event: MessageEvent,
     prompt: str,
-    group_aliases: Mapping[str, int],
     *,
     bot: Bot | None = None,
 ) -> str:
@@ -49,16 +46,7 @@ async def build_notice_source(
     else:
         group_id = int(group_id)
         group_name = await _group_name(bot, group_id)
-        alias = next(
-            (
-                name
-                for name, alias_id in group_aliases.items()
-                if int(alias_id) == group_id
-            ),
-            "",
-        )
-        label = group_name or alias
-        group_label = f"{label}（{group_id}）" if label else str(group_id)
+        group_label = f"{group_name}（{group_id}）" if group_name else str(group_id)
         lines = [f"群：{group_label}"]
 
     sender = getattr(event, "sender", None)
