@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import MessageTarget
-from ironsbot.services.messaging.promotions import (
+from ironsbot.integrations.onebot.promotions import (
     fire_manual_ad_enabled_for_target,
 )
 from tests.helpers.runtime import build_test_runtime
