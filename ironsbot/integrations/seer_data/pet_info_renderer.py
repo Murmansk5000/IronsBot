@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.images import fetch_optional_image
+from ironsbot.services.seer.pet_info_views import PetInfoAssets
 from ironsbot.services.seer.render_paths import (
     CUSTOM_PET_INFO_TEMPLATE_PATH,
     PET_INFO_IMAGES_PATH,
     SHARED_TEMPLATE_PATH,
 )
 from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
-from ironsbot.services.seer.rendering.pet_info_models import PetInfoAssets
 from ironsbot.services.seer.rendering.pet_info_presentation import present_pet_info
 from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_document
 
@@ -23,12 +23,12 @@ from .pet_info_repository import load_pet_info_snapshot
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.images import SeerImageSource
-    from ironsbot.services.seer.render_cache import RenderCache
-    from ironsbot.services.seer.rendering import HtmlTemplateRenderer
-    from ironsbot.services.seer.rendering.pet_info_models import (
+    from ironsbot.services.seer.pet_info_views import (
         PetInfoSnapshot,
         PetItemSnapshot,
     )
+    from ironsbot.services.seer.render_cache import RenderCache
+    from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
 _PET_INFO_CACHE_CATEGORY = "pet_info_v18"
 PET_INFO_RENDERER_SOURCE_PATH = Path(__file__).resolve()

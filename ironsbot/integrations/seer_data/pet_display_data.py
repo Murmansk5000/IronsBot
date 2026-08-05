@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ironsbot.services.seer.rendering.pet_info_models import (
+from ironsbot.services.seer.pet_info_views import (
     PetDerivedDisplayData,
     PetSoulmarkDisplayAddition,
     PetSpecialEffectView,

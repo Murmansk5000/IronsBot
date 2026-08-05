@@ -629,6 +629,11 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
 
 - A repository obtains and detaches domain data while its database session is
   open. A snapshot is complete enough to survive after that session closes.
+- Render value objects belong to the owning domain, not the renderer package.
+  For pet information, `services.seer.pet_info_views` is shared by the data
+  repository, asset adapter, presenter and document renderer; a repository
+  must never import a presentation or renderer module merely to construct a
+  snapshot.
 - An integration loads reusable image assets through the shared `SeerImageSource`
   and `SeerAssetStore`, then combines the snapshot and assets in a pure
   presenter.

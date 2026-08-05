@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.services.seer.rendering.pet_info_models import (
+from ironsbot.services.seer.pet_info_views import (
     PetCoreSnapshot,
     PetDerivedDisplayData,
     PetInfoAssets,

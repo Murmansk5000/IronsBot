@@ -11,6 +11,18 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+from ironsbot.services.seer.pet_info_views import (
+    PetInfoAssets,
+    PetInfoRenderDocument,
+    PetInfoSnapshot,
+    PetItemSnapshot,
+    PetPartnerSnapshot,
+    PetSkillEffectSnapshot,
+    PetSkillSnapshot,
+    PetSoulmarkDisplayAddition,
+    PetSoulmarkSnapshot,
+)
+
 from .analyze_description import (
     format_analyze_description,
     format_plain_analyze_description,
@@ -27,17 +39,6 @@ from .custom_pet_models import (
     SpecialEffectDict,
 )
 from .pet_effect_presentation import assign_special_effect_colors
-from .pet_info_models import (
-    PetInfoAssets,
-    PetInfoRenderDocument,
-    PetInfoSnapshot,
-    PetItemSnapshot,
-    PetPartnerSnapshot,
-    PetSkillEffectSnapshot,
-    PetSkillSnapshot,
-    PetSoulmarkDisplayAddition,
-    PetSoulmarkSnapshot,
-)
 
 _HIDDEN_SKILL_ID = 19002
 _RICH_TEXT_COLOR_OPEN_RE = re.compile(r"<color=(#[0-9a-fA-F]{6})>")

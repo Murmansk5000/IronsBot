@@ -233,6 +233,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   `pet_soulmark_display.display_kind` 中发布为 `partner_upgrade`。`PetInfoRepository`
   将该字段冻结到快照；`pet_info_presentation` 只消费显示分类，不再根据伙伴描述猜测
   展示位置。
+- 精灵资料的值对象已从 renderer 包迁入 `services.seer.pet_info_views`。Seer 数据仓库、
+  素材适配器、presenter 与 document renderer 都依赖同一纯值契约，仓库不再反向导入
+  renderer 命名空间。
 - `new_content` 使用 `NewContentSnapshotBuilder` 在第一次素材 I/O 前完成详情、
   皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
   适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变

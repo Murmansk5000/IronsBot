@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Immutable data contracts for the pet information render pipeline."""
+"""Immutable value objects shared by pet-data preparation and rendering."""
 
 from __future__ import annotations
 
