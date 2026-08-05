@@ -594,6 +594,25 @@ class FeatureService:
             return self.is_actor_feature_allowed(actor, feature)
         return False
 
+    def is_message_blocked(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+    ) -> bool:
+        """Whether an incoming message must be ignored by feature policy.
+
+        Blacklisting intentionally does not use the superuser bypass. A
+        configured actor or group stays silent regardless of who sends the
+        message, matching the established OneBot behaviour.
+        """
+
+        if actor.platform is not conversation.platform:
+            return False
+        return self.actor_has_feature(actor, Feature.BLACKLIST.value) or (
+            conversation.kind == "group"
+            and self.conversation_has_feature(conversation, Feature.BLACKLIST.value)
+        )
+
     def conversations_for_feature(self, feature: str) -> list[ConversationRef]:
         """Return configured group targets as typed platform references."""
 
@@ -624,18 +643,6 @@ class FeatureService:
                 *self.actors_for_feature(feature),
                 *self.superuser_actors(),
             ]
-        )
-
-    def is_conversation_blocked(
-        self,
-        user_id: int,
-        group_id: int | None = None,
-    ) -> bool:
-        """Whether an incoming private or group message must be ignored."""
-
-        return self.user_has_feature(user_id, Feature.BLACKLIST.value) or (
-            group_id is not None
-            and self.group_has_feature(group_id, Feature.BLACKLIST.value)
         )
 
     def resolve_group_refs(self, refs: Iterable[object]) -> list[int]:
@@ -676,8 +683,7 @@ class FeatureService:
         """Resolve configured OneBot user refs into direct conversations."""
 
         return [
-            private_conversation_for_actor(actor)
-            for actor in self.actor_refs(refs)
+            private_conversation_for_actor(actor) for actor in self.actor_refs(refs)
         ]
 
     def groups_for_feature(self, feature: str) -> list[int]:

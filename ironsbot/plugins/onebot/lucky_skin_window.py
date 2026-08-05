@@ -19,7 +19,6 @@ from nonebot.typing import T_State
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
-from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -29,7 +28,12 @@ from ironsbot.core.semantic_requests import (
 from ironsbot.core.time import daily_time_parts
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.conversations import enter_event_reply_conversation
+from ironsbot.runtime.feature_policy import (
+    event_is_feature_allowed,
+    event_is_feature_visible_in_help,
+)
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.onebot_identity import onebot_actor_ref
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -50,6 +54,7 @@ from ironsbot.services.seer.lucky_skin_window import (
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
+    from ironsbot.core.platform import ActorRef
     from ironsbot.services.operations.scheduler import Scheduler
 
 _COMMANDS = ("幸运橱窗", "橱窗")
@@ -201,9 +206,7 @@ def _help_visible(
         return False
     if not service.is_eligible_actor(_actor_from_event(event)):
         return False
-    if isinstance(event, GroupMessageEvent):
-        return features.group_has_feature(event.group_id, "lucky_skin_window")
-    return features.is_private_feature_allowed(event.user_id, "lucky_skin_window")
+    return event_is_feature_visible_in_help(features, event, "lucky_skin_window")
 
 
 async def _matches_query(
@@ -223,21 +226,13 @@ def _watch_feature_allowed(
     *,
     features: FeatureService,
 ) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return features.is_group_feature_allowed(
-            event.user_id,
-            event.group_id,
-            "lucky_skin_window",
-        )
-    return isinstance(event, PrivateMessageEvent) and (
-        features.is_private_feature_allowed(event.user_id, "lucky_skin_window")
-    )
+    return event_is_feature_allowed(features, event, "lucky_skin_window")
 
 
 def _actor_from_event(event: MessageEvent) -> ActorRef:
     """Adapt the OneBot event identity before calling the domain service."""
 
-    return ActorRef(Platform.ONEBOT, str(event.user_id))
+    return onebot_actor_ref(event.user_id)
 
 
 async def _matches_watch_exact(

@@ -171,6 +171,7 @@ feature, persistence schema, or policy decision.
 | --- | --- | --- | --- |
 | Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
+| Feature-policy decisions for inbound messages | target | `is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins and services pass typed identities. Numeric policy helpers remain a configuration/OneBot-delivery transition only and must not gain new callers. |
 | Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `runtime.onebot_identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
@@ -216,6 +217,11 @@ The following rules are mandatory:
 
 - Plugins adapt transport events and send results. They do not own reusable
   parsing, persistence, HTTP calls, scheduling, retries, or business policy.
+- Public feature-policy calls in plugins and services receive `ActorRef` and
+  `ConversationRef`. Existing numeric group/user helper methods are a
+  transition confined to configuration resolution and OneBot delivery; new
+  callers must use `is_feature_allowed`, `conversation_has_feature`, or a
+  typed domain predicate such as `is_message_blocked`.
 - Services own cohesive use cases and depend on explicit ports, never on
   NoneBot, OneBot event classes, matchers, or global application state.
 - Renderers receive view models and assets. They do not execute raw SQL,

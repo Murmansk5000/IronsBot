@@ -301,3 +301,10 @@ def test_command_catalog_context_and_policy_stay_platform_neutral() -> None:
         "is_group_feature_allowed",
         "is_private_feature_allowed",
     }.isdisjoint(policy_methods)
+
+
+def test_inbound_blacklist_policy_uses_typed_identity_refs() -> None:
+    methods = _class_method_names(CORE / "features.py", class_name="FeatureService")
+
+    assert "is_message_blocked" in methods
+    assert "is_conversation_blocked" not in methods

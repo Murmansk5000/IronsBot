@@ -1,25 +1,30 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+from ironsbot.runtime.onebot_identity import onebot_actor_ref
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ActorRef
 
 GROUP_MANAGER_ROLES = frozenset({"owner", "admin"})
 
 
 class SuperuserPolicy(Protocol):
-    def is_superuser(self, user_id: int) -> bool: ...
+    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
 
 
-def event_user_id(event: object) -> int | None:
+def event_actor(event: object) -> ActorRef | None:
     user_id = getattr(event, "user_id", None)
     if user_id is None:
         return None
-    return int(user_id)
+    return onebot_actor_ref(str(user_id))
 
 
 def is_superuser_event(features: SuperuserPolicy, event: object) -> bool:
-    user_id = event_user_id(event)
-    return user_id is not None and features.is_superuser(user_id)
+    actor = event_actor(event)
+    return actor is not None and features.is_actor_superuser(actor)
 
 
 def is_group_owner_or_admin_event(event: object) -> bool:
@@ -34,4 +39,4 @@ def can_manage_group_event(features: SuperuserPolicy, event: object) -> bool:
 def can_manage_conversation_event(features: SuperuserPolicy, event: object) -> bool:
     if getattr(event, "group_id", None) is not None:
         return can_manage_group_event(features, event)
-    return event_user_id(event) is not None
+    return event_actor(event) is not None

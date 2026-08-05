@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
+from ironsbot.runtime.onebot_identity import onebot_actor_ref
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -42,4 +43,6 @@ def superuser_help_visible(
     if isinstance(event, GroupMessageEvent):
         return False
     user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))
+    return user_id is not None and features.is_actor_superuser(
+        onebot_actor_ref(str(user_id))
+    )

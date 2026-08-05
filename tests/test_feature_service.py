@@ -79,9 +79,18 @@ def test_feature_service_blocks_configured_users_and_groups() -> None:
         frozenset({456}),
     )
 
-    assert feature_service.is_conversation_blocked(456)
-    assert feature_service.is_conversation_blocked(999, 123)
-    assert not feature_service.is_conversation_blocked(999, 321)
+    assert feature_service.is_message_blocked(
+        ActorRef(Platform.ONEBOT, "456"),
+        ConversationRef(Platform.ONEBOT, "private", "456"),
+    )
+    assert feature_service.is_message_blocked(
+        ActorRef(Platform.ONEBOT, "999"),
+        ConversationRef(Platform.ONEBOT, "group", "123"),
+    )
+    assert not feature_service.is_message_blocked(
+        ActorRef(Platform.ONEBOT, "999"),
+        ConversationRef(Platform.ONEBOT, "group", "321"),
+    )
 
 
 def test_feature_service_reads_query_bundle() -> None:

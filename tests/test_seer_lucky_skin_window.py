@@ -85,7 +85,12 @@ class _Features:
     def actor_has_feature(self, _actor: ActorRef, _feature: str) -> bool:
         return True
 
-    def is_private_feature_allowed(self, _user_id: int, _feature: str) -> bool:
+    def is_feature_allowed(
+        self,
+        _actor: ActorRef,
+        _conversation: ConversationRef,
+        _feature: str,
+    ) -> bool:
         return True
 
 

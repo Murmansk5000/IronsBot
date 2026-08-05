@@ -36,6 +36,7 @@ from ironsbot.config.models.seer import (
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
 from ironsbot.core.features import FeatureService
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
     DEFAULT_TAOMEE_INTERNAL_USER_IDS,
@@ -714,8 +715,14 @@ blocked_user = ["blacklist"]
     config = load_settings(config_path)
 
     features = FeatureService(config.features, config.superuser_ids)
-    assert features.is_conversation_blocked(123456789)
-    assert features.is_conversation_blocked(1, 987654321)
+    assert features.is_message_blocked(
+        ActorRef(Platform.ONEBOT, "123456789"),
+        ConversationRef(Platform.ONEBOT, "private", "123456789"),
+    )
+    assert features.is_message_blocked(
+        ActorRef(Platform.ONEBOT, "1"),
+        ConversationRef(Platform.ONEBOT, "group", "987654321"),
+    )
 
 
 def test_all_bundle_declares_custom_extension_feature(tmp_path: Path) -> None:
