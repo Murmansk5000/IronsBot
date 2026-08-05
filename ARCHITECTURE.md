@@ -135,6 +135,23 @@ Completion requires one explicit command-contract type, every direct command
 being registered through it, and deletion of matcher-local duplicate command
 metadata. A rename alone is not completion.
 
+### Plugin Profiles
+
+The bundled NoneBot manifests are intentionally different deployment profiles:
+
+| Profile | Purpose | Included user-facing scope |
+| --- | --- | --- |
+| `full` | Normal production deployment | Every bundled OneBot plugin. |
+| `core` | Compact or platform-porting baseline | Seer queries, rank help, help, and about; plus only the runtime dependencies those plugins need. |
+
+`core` is a strict subset of `full`, not an alias. During application assembly,
+the feature-policy service reports the atomic features actually enabled by
+TOML. The application then verifies that the selected manifest has a
+contribution owning every configured built-in feature. A compact profile must
+therefore fail at startup when its policy enables an omitted feature; it must
+never silently advertise a command that was not loaded. Superuser bypass is
+an authorization rule and does not make an unloaded plugin part of a profile.
+
 ### Architecture Documentation Merge Rule
 
 Architecture-document merge conflicts are resolved by responsibility, not by

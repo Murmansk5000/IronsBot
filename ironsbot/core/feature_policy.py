@@ -31,6 +31,24 @@ class FeatureService:
     superusers: frozenset[ActorRef]
     superuser_bypass: bool = True
 
+    @property
+    def configured_feature_keys(self) -> frozenset[str]:
+        """Return the atomic feature keys explicitly enabled by configuration.
+
+        This is a configuration fact, not an authorization result: superuser
+        bypass remains intentionally absent so compact plugin profiles validate
+        only the features their policies actually request.
+        """
+
+        return frozenset(
+            feature
+            for features in (
+                *self.group_features.values(),
+                *self.actor_features.values(),
+            )
+            for feature in features
+        )
+
     def is_actor_superuser(self, actor: ActorRef) -> bool:
         return actor in self.superusers
 

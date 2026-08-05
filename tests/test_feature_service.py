@@ -44,6 +44,21 @@ def test_feature_service_reads_feature_config() -> None:
     assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "text")
 
 
+def test_feature_service_exposes_only_explicitly_configured_feature_keys() -> None:
+    feature_service = build_onebot_feature_service(
+        FeatureConfig(
+            group_policy={"123": ["seer_player"]},
+            user_policy={"456": ["ai_chat"]},
+            superuser_bypass=True,
+        ),
+        frozenset({789}),
+    )
+
+    assert feature_service.configured_feature_keys == frozenset(
+        {"seer_player", "ai_chat"}
+    )
+
+
 def test_platform_feature_references_do_not_cross_platforms() -> None:
     feature_service = build_onebot_feature_service(
         FeatureConfig(
