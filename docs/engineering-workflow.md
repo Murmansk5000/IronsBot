@@ -271,6 +271,9 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     `config.models.features.build_onebot_feature_service()` 编译。调用方必须使用
     `is_feature_allowed`、`conversation_has_feature` 或 `is_message_blocked` 等
     类型化谓词。
+    此规则不适用于赛尔米米号：`player_id`、排行榜事实的 `user_id` 和无头游戏
+    协议账号仍是独立整数领域值。审查 SQLite 或参数类型时，必须按身份语义和表
+    所有权区分平台身份与米米号，不能按 `user_id`/`group_id` 列名做批量迁移。
 19. 新需求若与已有实体、输入、命令、投递、缓存或权限判断同类，先搜索并扩展
     现有通用契约；只有现有契约无法表达该语义时，才先设计最小的新接口。不得为
     单个精灵、群、用户、活动或平台另建专用 matcher、resolver、状态表或关键词表。

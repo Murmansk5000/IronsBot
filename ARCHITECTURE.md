@@ -397,6 +397,15 @@ delivery ports. They must not receive `GroupMessageEvent`, `Bot`, CQ segments,
 or adapter-specific session objects. Transport adapters own conversion in both
 directions.
 
+Platform identity is deliberately distinct from Seer domain identity. A
+`player_id`, rank-table `user_id`, or headless-game account ID is a numeric
+米米号 and remains an integer where the Seer protocol or its facts require one;
+it must never be migrated into `ActorRef`. Conversely, a QQ user/group/member
+identity is always an `ActorRef` or `ConversationRef` outside the OneBot
+boundary, even when its source happened to be numeric. Storage audits and
+migrations classify IDs by table ownership and protocol meaning, not by a
+column name such as `user_id` or `group_id`.
+
 Extension callbacks follow the same boundary. A player-detail extension
 receives `PlayerDetailActionRequest(player_id, actor, conversation)`, not a
 tuple of numeric player, QQ-user and group IDs. The public player-command
