@@ -297,6 +297,10 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
 表。`PluginContribution` 只是一项插件局部的运行时提交记录，不能承担命令目录、
 权限策略、帮助布局或跨插件生命周期等第二份权威。
 
+NoneBot `PluginMetadata.usage` 是框架元数据，不是命令目录的旧兼容入口。它可以保留
+一句简短插件摘要，但帮助详情、戳一戳、AI 命令认领和可执行语法只能读取
+`CommandCatalog`；不得为了同步一段 `usage` 文案再建关键词表或 matcher 私有说明。
+
 当前代码中的 `CommandDescriptor` 是目标 `CommandContract` 的过渡载体，并非另一
 套命令权威。`CommandCatalog` 已是唯一目录；新增命令能力必须扩展同一描述和同一
 查询接口，让帮助、戳一戳和 AI 认领共同消费。不得因为最终类型尚未改名，就新增

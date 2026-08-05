@@ -124,6 +124,13 @@ the single runtime catalog today. New command work must add the smallest
 missing contract field or catalog query there, then make help, poke hints and
 AI command claims consume the same field.
 
+NoneBot's `PluginMetadata.usage` remains metadata for the framework and plugin
+inspection only. It may give a short human-oriented summary, but it is never a
+source of command syntax, permission, help detail, poke text, or AI command
+ownership. Those user-facing decisions must be derived from `CommandCatalog`.
+Changing a metadata `usage` string therefore never changes which messages the
+bot can handle.
+
 Direct-input ownership is parser-aware. A descriptor may claim an exact
 spelling or declare an explicit input matcher. It must not reserve a broad
 natural-language prefix merely to keep AI from responding: parameterized
