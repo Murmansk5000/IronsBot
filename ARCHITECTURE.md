@@ -655,24 +655,33 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
 - A renderer receives only the document and an HTML/native render port. Native
   work passes through the single `RenderCoordinator`; feature modules must not
   create their own semaphore, task, or timeout policy.
-- The integration owns final-image cache lookup and write. Final-cache keys
-  include the complete rendered snapshot, category, published data version,
-  renderer/template fingerprint, and all asset content versions that affect
-  pixels. The shared `render_document_cache_key()` is calculated from the
-  completed immutable `RenderDocument`, after asset preparation. A final-cache
-  hit may therefore reuse the image only after the bounded asset cache has
-  confirmed the exact image bytes used by the document; no renderer may return
-  a final image from an entity ID or an incomplete pre-asset key.
+- The integration owns final-image cache lookup and write. It first builds an
+  immutable `RenderRequestKey` from the requested render category and input,
+  the published data revision, the declared asset-manifest revision, and the
+  renderer/template fingerprint. An L3 hit by that key returns before any SQL,
+  HTTP, asset loading, presenter invocation, or native rendering. It is never
+  merely an entity-ID cache: every value that can change pixels must be part of
+  the request key through a published data or asset revision.
+- On an L3 miss, the integration loads the detached snapshot and required
+  assets, then produces an immutable `RenderDocument`. The shared
+  `render_document_cache_key()` hashes the completed document and is stored as
+  integrity metadata beside the request-keyed bytes. It proves that the miss
+  path's document, including actual asset bytes, matches the cache entry; it
+  is not the normal lookup key. Missing asset-manifest data is a release
+  contract failure, not permission to fetch assets before every L3 lookup.
 
-The current Phase 4 transition has this target shape for published pet info,
-type matchup, peak-pool, peak-vote, peak-pet-rank, and the private player
-lineup image. The new-content menu follows the same split: its Seer-data
-adapter prepares details and images, while the renderer consumes an immutable
-menu document. The private lineup keeps its own presentation module, but its
-adapter alone owns asset loading, final-cache access, and the HTML render port.
-Rank and any later renderer paths remain **transition** work. They may receive
-narrow correctness fixes, but new rendering features must start from the
-target pipeline above instead of copying their older data-loading patterns.
+The current Phase 4 transition has the snapshot/presenter direction for
+published pet info, type matchup, peak-pool, peak-vote, peak-pet-rank, and the
+private player-lineup image. The new-content menu follows the same split: its
+Seer-data adapter prepares details and images, while the renderer consumes an
+immutable menu document. However, those adapters currently calculate their
+final-cache key only after asset materialization. They are **not** evidence for
+the L3 early-hit target above and new renderers must not copy that order. The
+private lineup keeps its own presentation module, but its adapter alone owns
+asset loading, final-cache access, and the HTML render port. Rank and any later
+renderer paths remain **transition** work. They may receive narrow correctness
+fixes, but new rendering features must start from the target pipeline above
+instead of copying their older data-loading patterns.
 
 Future data work follows these rules:
 

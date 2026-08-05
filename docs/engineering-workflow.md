@@ -284,10 +284,12 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     但必须在扩展边界投影为按职责命名的 context。跨仓库升级 core contract 时，
     同一工作项必须验证真实扩展包的 import 和针对性测试；不能为了未更新的扩展
     恢复旧模块或加入 compatibility shim。
-22. 最终渲染图片缓存只能使用完整 `RenderDocument` 的确定性内容键；键必须包含
-    已加载资产的实际内容，不能只以实体 ID、输入参数或加载资产之前的快照命中。
-    资产缓存可以避免重复网络读取，但不得以牺牲资源更新后的像素正确性换取最终
-    缓存命中。
+22. 最终渲染图片缓存必须先用 `RenderRequestKey` 查询。该键由类别、输入、发布数据
+    版本、素材 manifest 版本和模板/渲染器 fingerprint 组成；L3 命中时不得执行 SQL、
+    HTTP、素材读取、presenter 或原生渲染。miss 路径再构建完整 `RenderDocument`，并以
+    含实际素材字节的 `render_document_cache_key()` 作为写入完整性元数据。不能只以
+    实体 ID 命中，也不能因缺少素材版本而在每次 L3 查询前读取素材；缺少 manifest 是
+    发布契约失败，必须显式处理。
 
 ## 插件术语与权威边界
 
