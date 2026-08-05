@@ -13,7 +13,6 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.core.command_catalog import CommandDescriptor
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.context import build_notice_source
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
@@ -26,6 +25,7 @@ from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.services.ai.command_contracts import ai_intent_command_descriptors
 
 from .team_actions import run_team_action
 
@@ -57,24 +57,6 @@ class AiIntentDependencies:
     service: AiService
     promotions: PromotionCatalog
     team_resource: TeamResourceService
-
-
-def command_descriptors(config: Settings) -> tuple[CommandDescriptor, ...]:
-    if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
-        return ()
-    return tuple(
-        CommandDescriptor(
-            id=f"ai_intent.{action_id}",
-            plugin_id="ai_intent",
-            section="关键词意图",
-            examples=tuple(action.keywords),
-            description="机器人识别到相应意图后自动回复",
-            features_any=(action.feature,),
-            interaction="automatic",
-        )
-        for action_id, action in config.ai.intent_actions.items()
-        if action.enabled and action.keywords
-    )
 
 
 async def _handle_ai_reply_action(
@@ -199,7 +181,7 @@ def plugin_contribution(
     """Declare configured intent actions and their natural-language matcher."""
 
     enabled = bool(settings.ai.api_key.strip()) and settings.ai.intent_actions_enabled
-    commands = command_descriptors(settings)
+    commands = ai_intent_command_descriptors(settings)
     return PluginContribution(
         id="ai_intent",
         features=frozenset(

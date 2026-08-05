@@ -22,11 +22,13 @@ except ValueError:
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature
-from ironsbot.plugins.onebot.ai import command_descriptors as ai_chat_commands
-from ironsbot.plugins.onebot.ai.intent import command_descriptors as ai_intent_commands
 from ironsbot.runtime.plugins import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
+)
+from ironsbot.services.ai.command_contracts import (
+    ai_chat_command_descriptors,
+    ai_intent_command_descriptors,
 )
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -184,7 +186,9 @@ def test_manifest_ai_chat_owns_its_features_and_commands() -> None:
 
     assert contribution.features == frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE})
     assert contribution.commands == ()
-    assert {command.plugin_id for command in ai_chat_commands(enabled=True)} == {
+    assert {
+        command.plugin_id for command in ai_chat_command_descriptors(enabled=True)
+    } == {
         "ai_chat"
     }
 
@@ -200,7 +204,9 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
         }
     )
     assert contribution.commands == ()
-    assert not ai_intent_commands(Settings.model_validate({"ai": {"api_key": "test"}}))
+    assert not ai_intent_command_descriptors(
+        Settings.model_validate({"ai": {"api_key": "test"}})
+    )
     enabled_settings = Settings.model_validate(
         {
             "promotions": {
@@ -223,7 +229,9 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
             },
         }
     )
-    assert {command.plugin_id for command in ai_intent_commands(enabled_settings)} == {
+    assert {
+        command.plugin_id for command in ai_intent_command_descriptors(enabled_settings)
+    } == {
         "ai_intent"
     }
 
