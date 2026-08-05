@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Command contracts owned by the Seer query plugin."""
+"""Platform-neutral command contracts for the Seer query domain."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from ironsbot.services.seer.data_query_commands import (
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
-def command_descriptors(
+def seer_command_descriptors(
     player_id_resolver: PlayerIdResolver,
 ) -> tuple[CommandDescriptor, ...]:
     player_query_input = player_reference_input_matcher(

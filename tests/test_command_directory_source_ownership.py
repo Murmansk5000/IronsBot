@@ -27,14 +27,12 @@ from ironsbot.plugins.onebot.operations.status.command_text import (
     DOCKER_UPDATE_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
 )
-from ironsbot.plugins.onebot.seer.query.command_catalog import (
-    command_descriptors as seer_commands,
-)
 from ironsbot.runtime.commands import CommandContext, CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
 )
+from ironsbot.services.seer.command_contracts import seer_command_descriptors
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
 )
@@ -94,7 +92,7 @@ def test_operation_examples_use_matcher_command_sources() -> None:
 
 
 def test_data_query_examples_use_matcher_command_sources() -> None:
-    seer = _by_id(seer_commands(_empty_player_id_resolver()))
+    seer = _by_id(seer_command_descriptors(_empty_player_id_resolver()))
 
     assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES
 
@@ -104,7 +102,7 @@ def test_seer_player_command_catalog_uses_shared_resolver_alias_recognition() ->
         lambda reference, _conversation: 105023264 if reference == "示例账号" else None,
         lambda _actor: None,
     )
-    player_query = _by_id(seer_commands(resolver))["seer.player.query"]
+    player_query = _by_id(seer_command_descriptors(resolver))["seer.player.query"]
     assert player_query.routing_matcher is not None
     context = CommandContext(
         actor=ActorRef(Platform.ONEBOT, "1234567890"),
