@@ -726,7 +726,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             *settings.messaging.command_feature_keys,
             *settings.messaging.schedule_feature_keys,
         ),
-        required_plugin_features=frozenset(Feature),
+        required_plugin_features=frozenset(
+            feature
+            for feature in Feature
+            if feature.value in features.configured_feature_keys
+        ),
         resource_shutdown_hooks=(
             ("file_logging", file_logging.close),
             ("http_clients", http_clients.close),
