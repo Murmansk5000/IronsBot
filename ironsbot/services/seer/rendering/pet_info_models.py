@@ -169,6 +169,7 @@ class PetDerivedDisplayData:
     soulmark_display_order: tuple[tuple[int, int], ...]
     soulmark_icons: tuple[tuple[int, SoulmarkIconAsset], ...]
     soulmark_display_additions: tuple[PetSoulmarkDisplayAddition, ...] = ()
+    soulmark_display_kinds: tuple[tuple[int, str], ...] = ()
 
     @property
     def soulmark_order_by_id(self) -> Mapping[int, int]:
@@ -177,6 +178,10 @@ class PetDerivedDisplayData:
     @property
     def soulmark_icon_by_id(self) -> Mapping[int, SoulmarkIconAsset]:
         return dict(self.soulmark_icons)
+
+    @property
+    def soulmark_display_kind_by_id(self) -> Mapping[int, str]:
+        return dict(self.soulmark_display_kinds)
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,7 +198,6 @@ class PetInfoSnapshot:
     skill_mintmarks: tuple[PetMintmarkSnapshot, ...]
     display: PetDerivedDisplayData
     rich_texts: tuple[str, ...]
-    partner_upgraded_soulmark_ids: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

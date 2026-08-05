@@ -28,7 +28,6 @@ from ironsbot.services.seer.rendering.pet_info_models import (
 )
 
 from .pet_display_data import load_pet_derived_display_data
-from .pet_soulmark_resolution import resolve_partner_upgraded_soulmark_ids
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -92,10 +91,6 @@ class PetInfoRepository:
             skill_mintmarks=skill_mintmarks,
             display=derived_display,
             rich_texts=_collect_rich_texts(skills, soulmarks),
-            partner_upgraded_soulmark_ids=resolve_partner_upgraded_soulmark_ids(
-                soulmarks,
-                partner,
-            ),
         )
 
 

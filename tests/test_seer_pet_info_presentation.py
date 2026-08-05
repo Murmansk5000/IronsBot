@@ -134,7 +134,7 @@ def test_presenter_builds_template_document_from_detached_values() -> None:
     assert skill["activation_item"]["icon"].startswith("data:image/png;base64,")
 
 
-def test_presenter_uses_prepared_partner_upgrade_fact_for_partitioning() -> None:
+def test_presenter_uses_published_partner_upgrade_kind_for_partitioning() -> None:
     partner = PetPartnerSnapshot(
         group_id=1,
         name="测试羁绊",
@@ -153,7 +153,13 @@ def test_presenter_uses_prepared_partner_upgrade_fact_for_partitioning() -> None
         replace(
             snapshot,
             soulmarks=soulmarks,
-            partner_upgraded_soulmark_ids=frozenset((20,)),
+            display=PetDerivedDisplayData(
+                snapshot.display.special_effects,
+                snapshot.display.soulmark_display_order,
+                snapshot.display.soulmark_icons,
+                snapshot.display.soulmark_display_additions,
+                ((20, "partner_upgrade"),),
+            ),
         ),
         _assets(),
     )

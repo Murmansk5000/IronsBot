@@ -70,7 +70,7 @@ def present_pet_info(
     partner = _partner_view(snapshot.partner, item_icons)
     base_soulmarks, upgraded_soulmarks = _partition_soulmarks(
         soulmarks,
-        snapshot.partner_upgraded_soulmark_ids,
+        snapshot.display.soulmark_display_kind_by_id,
     )
     all_skills = [
         item
@@ -305,16 +305,15 @@ def _partner_item_view(
 
 def _partition_soulmarks(
     soulmarks: Sequence[SoulmarkDict],
-    partner_upgraded_soulmark_ids: frozenset[int],
+    display_kind_by_id: Mapping[int, str],
 ) -> tuple[list[SoulmarkDict], list[SoulmarkDict]]:
     upgraded = {
-        index for index, soulmark in enumerate(soulmarks) if soulmark["intensified"]
-    }
-    upgraded.update(
         index
         for index, soulmark in enumerate(soulmarks)
-        if soulmark["id"] in partner_upgraded_soulmark_ids
-    )
+        if soulmark["intensified"]
+        or display_kind_by_id.get(soulmark["id"])
+        in {"intensified", "partner_upgrade", "advance"}
+    }
     return (
         [value for index, value in enumerate(soulmarks) if index not in upgraded],
         [value for index, value in enumerate(soulmarks) if index in upgraded],
