@@ -108,7 +108,9 @@ class OneBotDelivery:
         if index > 0 and interval_seconds > 0:
             await asyncio.sleep(index * interval_seconds)
 
-        target_bot = bot or self.bot_router.for_target(target)
+        target_bot = bot or self.bot_router.for_conversation(
+            _onebot_target_conversation(target)
+        )
         if target_bot is None:
             logger.warning(
                 f"{action_name} has no connected bot for "
