@@ -10,8 +10,6 @@ from typing_extensions import Self
 from ironsbot.core.commands import json_object
 from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
 from ironsbot.core.messaging import (
-    DEFAULT_JOIN_TEAM_INTENT,
-    DEFAULT_JOIN_TEAM_MESSAGES,
     FIRE_MANUAL_LINK_MESSAGE,
     AiIntentAction,
 )
@@ -41,6 +39,13 @@ DEFAULT_FIRE_MANUAL_INTENT = (
     "manual as a source, asks why it has not updated or cannot open, announces "
     "or shares a manual release/link, or is unrelated to asking for the link."
 )
+DEFAULT_TEAM_RECOMMEND_INTENT = (
+    "Judge whether the message means the sender wants to join, apply for, or find "
+    "a Seer team/guild. Answer yes only when the sender asks to join, asks whether "
+    "they can enter, or asks how to apply. Answer no when the message only queries "
+    "team data, discusses team resources, asks someone to buy resources, or casually "
+    "mentions teams."
+)
 DEFAULT_KEYWORD_INFO_PROMPT = (
     "You are IronsBot, a concise QQ group assistant.\n"
     "Matched action: {action_id}\n"
@@ -58,8 +63,7 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
             feature="ai_intent_team_recommend",
             keywords=["战队"],
             action="team_recommend",
-            intent=DEFAULT_JOIN_TEAM_INTENT,
-            messages=list(DEFAULT_JOIN_TEAM_MESSAGES),
+            intent=DEFAULT_TEAM_RECOMMEND_INTENT,
             include_team_resource_notice=False,
         ),
         "keyword_info": AiIntentAction(
@@ -85,7 +89,6 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
 def default_ai_actions() -> dict[str, AiIntentAction]:
     actions = builtin_ai_actions()
     return {
-        "team_recommend": actions["team_recommend"],
         "fire_manual": actions["fire_manual"],
     }
 
