@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -13,6 +14,17 @@ if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
+
+
+def test_project_nonebot_adapter_matches_the_onebot_v11_runtime() -> None:
+    document = tomllib.loads((Path("pyproject.toml")).read_text(encoding="utf-8"))
+
+    assert document["tool"]["nonebot"]["adapters"]["nonebot-adapter-onebot"] == [
+        {
+            "name": "OneBot V11",
+            "module_name": "nonebot.adapters.onebot.v11",
+        }
+    ]
 
 
 @pytest.mark.parametrize("profile", ("full", "core"))

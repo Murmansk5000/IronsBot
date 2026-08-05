@@ -151,7 +151,6 @@ def _resolve_player_shortcut_command(
         player_reference=command.player_reference,
         reference_lookup=event_player_reference_lookup(
             dependencies.player_accounts,
-            event,
         ),
         binding_for_user=dependencies.player.default_player_id,
     )
@@ -177,7 +176,6 @@ def _resolve_extension_shortcut_command(
         player_reference=command.player_reference,
         reference_lookup=event_player_reference_lookup(
             dependencies.player_accounts,
-            event,
         ),
         binding_for_user=dependencies.player.default_player_id,
     )
@@ -245,6 +243,7 @@ async def handle_player_extension_shortcut(
     command = resolved.command
     if command is None:
         return
+
     async def send_status(label: str, *, queued: bool) -> None:
         await send_event_reply(
             matcher,
@@ -299,9 +298,7 @@ def _extension_shortcut_command_id(
 ) -> str:
     command = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
     resolved = (
-        command
-        if isinstance(command, _ResolvedExtensionShortcutCommand)
-        else None
+        command if isinstance(command, _ResolvedExtensionShortcutCommand) else None
     )
     command = resolved.command if resolved is not None else None
     if command is None:
@@ -369,10 +366,7 @@ def install(group: SeerMatcherGroup) -> None:
     extension_matcher = group.on_message(
         policy=CommandPolicy.command(
             _extension_shortcut_command_id,
-            help_ids=tuple(
-                action.command_help_id
-                for action in extension_actions
-            ),
+            help_ids=tuple(action.command_help_id for action in extension_actions),
             semantic_request=lambda event, state: _extension_shortcut_semantic_request(
                 dependencies,
                 event,

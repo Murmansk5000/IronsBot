@@ -224,7 +224,9 @@ def install(
         matcher: Matcher,
         event: GroupMessageEvent,
     ) -> None:
-        decision = dependencies.bot_mention_block_service.admit(event.user_id)
+        decision = dependencies.bot_mention_block_service.admit(
+            message_input_context(event).message.actor
+        )
         if decision.allowed:
             message = _build_guard_message(event)
         elif decision.feedback is not None:

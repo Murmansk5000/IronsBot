@@ -102,7 +102,6 @@ async def _is_player_id_query(
         player_reference=player_reference,
         reference_lookup=event_player_reference_lookup(
             dependencies.player_accounts,
-            event,
         ),
         binding_for_user=dependencies.player.default_player_id,
     )
@@ -183,7 +182,6 @@ async def handle_player_binding_command(
         player_reference=player_reference or None,
         reference_lookup=event_player_reference_lookup(
             dependencies.player_accounts,
-            event,
         ),
         binding_for_user=dependencies.player.default_player_id,
         allow_default_binding=False,

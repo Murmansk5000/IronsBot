@@ -5,10 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import MessageEvent
-
 from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.services.seer.player_id_resolver import (
     PlayerIdResolution,
     PlayerIdResolver,
@@ -18,7 +15,7 @@ from ironsbot.services.seer.player_id_resolver import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from nonebot.adapters import Event
+    from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
@@ -26,14 +23,12 @@ if TYPE_CHECKING:
 
 def event_player_reference_lookup(
     accounts: PlayerAccountRegistry,
-    event: Event,
 ) -> PlayerReferenceLookup:
     """Adapt scoped configured aliases to the platform-neutral resolver port."""
 
-    group_id = event_group_id(event) if isinstance(event, MessageEvent) else None
-    return lambda reference, _conversation: accounts.resolve_player_id(
+    return lambda reference, conversation: accounts.resolve_player_id(
         reference,
-        group_id=group_id,
+        conversation=conversation,
     )
 
 

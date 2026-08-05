@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.plugins.onebot.seer.query.commands.player import (
     PlayerCommandDependencies,
 )
@@ -30,9 +31,7 @@ def _dependencies() -> PlayerCommandDependencies:
         player=cast(
             "Any",
             SimpleNamespace(
-                default_player_id=lambda actor: (
-                    PLAYER_ID if actor.id == "456" else None
-                )
+                default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
             ),
         ),
         features=cast("Any", SimpleNamespace()),
@@ -46,7 +45,11 @@ def _dependencies() -> PlayerCommandDependencies:
                     public=False,
                 ),
             ),
-            private_alias_groups={GROUP_ID: ("sample_player",)},
+            private_alias_groups={
+                ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)): (
+                    "sample_player",
+                ),
+            },
         ),
     )
 

@@ -1417,11 +1417,25 @@ allowed_group = ["private_account"]
     assert accounts.resolve_player_id("私有账号") is None
     assert accounts.resolve_player_id("private_account") is None
     assert (
-        accounts.resolve_player_id("私有账号", group_id=PLAYER_ALIAS_GROUP_ID)
+        accounts.resolve_player_id(
+            "私有账号",
+            conversation=ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(PLAYER_ALIAS_GROUP_ID),
+            ),
+        )
         == PRIVATE_ALIAS_PLAYER_ID
     )
     assert (
-        accounts.resolve_player_id("private_account", group_id=PLAYER_ALIAS_GROUP_ID)
+        accounts.resolve_player_id(
+            "private_account",
+            conversation=ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(PLAYER_ALIAS_GROUP_ID),
+            ),
+        )
         == PRIVATE_ALIAS_PLAYER_ID
     )
     assert (
@@ -1458,11 +1472,25 @@ allowed_group = ["all"]
     accounts = load_settings(config_path, env={}).player_accounts
 
     assert (
-        accounts.resolve_player_id("第一个", group_id=PLAYER_ALIAS_GROUP_ID)
+        accounts.resolve_player_id(
+            "第一个",
+            conversation=ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(PLAYER_ALIAS_GROUP_ID),
+            ),
+        )
         == ADDITIONAL_HEADLESS_USER_ID
     )
     assert (
-        accounts.resolve_player_id("second_account", group_id=PLAYER_ALIAS_GROUP_ID)
+        accounts.resolve_player_id(
+            "second_account",
+            conversation=ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(PLAYER_ALIAS_GROUP_ID),
+            ),
+        )
         == PRIVATE_ALIAS_PLAYER_ID
     )
 

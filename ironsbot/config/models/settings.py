@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import (
     BaseModel,
@@ -35,6 +35,9 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccountRegistry,
     build_player_account_registry,
 )
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ConversationRef
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -301,13 +304,13 @@ class Settings(BaseModel):
 
     @property
     def player_accounts(self) -> PlayerAccountRegistry:
-        groups: dict[int, list[str]] = {}
+        groups: dict[ConversationRef, list[str]] = {}
         for group_ref, account_refs in self.seer.player_account_aliases.items():
-            group_id = self.onebot_references.resolve_group(
+            conversation = self.onebot_references.group_conversation_ref(
                 group_ref,
                 location=f"seer.player_account_aliases.{group_ref}",
             )
-            groups.setdefault(group_id, []).extend(account_refs)
+            groups.setdefault(conversation, []).extend(account_refs)
         return build_player_account_registry(
             self.seer.player_accounts,
             private_alias_groups=groups,

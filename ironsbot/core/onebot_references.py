@@ -186,6 +186,14 @@ class OneBotReferenceResolver:
             for user_id in self.resolve_users(references, location=location)
         ]
 
+    def actor_ref(self, reference: object, *, location: str) -> ActorRef:
+        """Compile one configured OneBot user into a platform-neutral actor."""
+
+        return ActorRef(
+            Platform.ONEBOT,
+            str(self.resolve_user(reference, location=location)),
+        )
+
     def group_conversation_refs(
         self,
         references: Iterable[object],
@@ -198,6 +206,20 @@ class OneBotReferenceResolver:
             ConversationRef(Platform.ONEBOT, "group", str(group_id))
             for group_id in self.resolve_groups(references, location=location)
         ]
+
+    def group_conversation_ref(
+        self,
+        reference: object,
+        *,
+        location: str,
+    ) -> ConversationRef:
+        """Compile one configured OneBot group into a typed conversation."""
+
+        return ConversationRef(
+            Platform.ONEBOT,
+            "group",
+            str(self.resolve_group(reference, location=location)),
+        )
 
     def private_conversation_refs(
         self,

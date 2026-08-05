@@ -102,7 +102,7 @@ def _is_rank_player_command(
     target = resolve_player_target(
         event,
         player_reference=requested.player_reference,
-        reference_lookup=event_player_reference_lookup(group.player_accounts, event),
+        reference_lookup=event_player_reference_lookup(group.player_accounts),
         binding_for_user=group.resources.player.default_player_id,
         allow_default_binding=False,
     )
