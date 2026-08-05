@@ -24,19 +24,6 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef
 
 
-def resolve_event_player_reference(
-    accounts: PlayerAccountRegistry,
-    event: Event,
-    reference: object,
-) -> int | None:
-    """Resolve one numeric or configured player reference in event scope."""
-
-    return accounts.resolve_player_id(
-        reference,
-        group_id=event_group_id(event) if isinstance(event, MessageEvent) else None,
-    )
-
-
 def event_player_reference_lookup(
     accounts: PlayerAccountRegistry,
     event: Event,
