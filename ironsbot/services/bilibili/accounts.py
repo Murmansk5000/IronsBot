@@ -5,6 +5,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ironsbot.core.aliases import AliasIndex
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
 
@@ -17,9 +19,20 @@ def normalize_account_alias(value: object) -> str:
     return str(value).strip().lower()
 
 
-def account_uid(alias: str, config: BiliConfig) -> int | None:
-    account = config.accounts.get(normalize_account_alias(alias))
-    return account.uid if account is not None else None
+def configured_account_alias_lookup(
+    config: BiliConfig,
+    aliases: Iterable[str],
+) -> AliasIndex[int]:
+    """Build the configured Bilibili alias lookup for one delivery target."""
+
+    return AliasIndex.from_pairs(
+        (
+            (alias, config.accounts[alias].uid)
+            for alias in aliases
+            if alias in config.accounts
+        ),
+        normalizer=normalize_account_alias,
+    )
 
 
 @dataclass(slots=True)
@@ -62,18 +75,14 @@ class BiliAccountNames:
         name = self.names.get(int(uid), "").strip()
         return name or None
 
-    def resolve(self, reference: str, uids: Iterable[int]) -> int | None:
-        folded = reference.strip().casefold()
-        if not folded:
-            return None
-        allowed_uids = tuple(dict.fromkeys(int(uid) for uid in uids))
-        if folded.isdecimal():
-            uid = int(folded)
-            return uid if uid in allowed_uids else None
-        matches = [
-            uid
+    def public_name_alias_lookup(self, uids: Iterable[int]) -> AliasIndex[int]:
+        """Return the public-name/UID aliases that are available to one target."""
+
+        allowed_uids = tuple(dict.fromkeys(int(uid) for uid in uids if int(uid) > 0))
+        pairs: list[tuple[str, int]] = [(str(uid), uid) for uid in allowed_uids]
+        pairs.extend(
+            (name, uid)
             for uid in allowed_uids
             if (name := self.name_for_uid(uid)) is not None
-            and name.casefold() == folded
-        ]
-        return matches[0] if len(matches) == 1 else None
+        )
+        return AliasIndex.from_pairs(pairs, normalizer=normalize_account_alias)
