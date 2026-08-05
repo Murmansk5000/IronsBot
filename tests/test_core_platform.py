@@ -63,36 +63,51 @@ def test_actor_ref_rejects_invalid_scope_shapes(
 
 def test_incoming_message_requires_one_platform_for_all_identity_refs() -> None:
     message = IncomingMessageRef(
-        id="message-1",
+        platform=Platform.ONEBOT,
         actor=ActorRef(Platform.ONEBOT, "123"),
         conversation=ConversationRef(Platform.ONEBOT, "group", "456"),
+        message_id="message-1",
         text="hello",
         direct_mentions=(ActorRef(Platform.ONEBOT, "789"),),
         reply_to_id="message-0",
     )
 
+    assert message.message_id == "message-1"
     assert message.reply_to_id == "message-0"
 
 
 def test_incoming_message_rejects_cross_platform_identity_mix() -> None:
     with pytest.raises(ValueError, match="platforms must match"):
         IncomingMessageRef(
-            id="message-1",
+            platform=Platform.ONEBOT,
             actor=ActorRef(Platform.ONEBOT, "123"),
             conversation=ConversationRef(Platform.QQ_OFFICIAL, "group", "456"),
+            message_id="message-1",
+            text="hello",
+        )
+
+
+def test_incoming_message_rejects_mismatched_declared_platform() -> None:
+    with pytest.raises(ValueError, match="platforms must match"):
+        IncomingMessageRef(
+            platform=Platform.QQ_OFFICIAL,
+            actor=ActorRef(Platform.ONEBOT, "123"),
+            conversation=ConversationRef(Platform.ONEBOT, "group", "456"),
+            message_id="message-1",
             text="hello",
         )
 
 
 def test_incoming_message_preserves_sequence_and_timezone_aware_deadline() -> None:
     message = IncomingMessageRef(
-        id="message-1",
+        platform=Platform.QQ_OFFICIAL,
         actor=ActorRef(Platform.QQ_OFFICIAL, "user-open-id"),
         conversation=ConversationRef(
             Platform.QQ_OFFICIAL,
             "group",
             "group-open-id",
         ),
+        message_id="message-1",
         text="hello",
         sequence="sequence-1",
         reply_deadline=datetime(2026, 8, 4, 12, tzinfo=timezone.utc),
@@ -105,9 +120,10 @@ def test_incoming_message_preserves_sequence_and_timezone_aware_deadline() -> No
 def test_incoming_message_rejects_naive_reply_deadline() -> None:
     with pytest.raises(ValueError, match="timezone"):
         IncomingMessageRef(
-            id="message-1",
+            platform=Platform.ONEBOT,
             actor=ActorRef(Platform.ONEBOT, "1"),
             conversation=ConversationRef(Platform.ONEBOT, "private", "1"),
+            message_id="message-1",
             text="hello",
             reply_deadline=datetime(
                 2026,

@@ -145,9 +145,17 @@ def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
 
 @dataclass(frozen=True, slots=True)
 class IncomingMessageRef:
-    id: str
+    """Platform-neutral reference and direct-input facts for one message.
+
+    ``platform`` and ``message_id`` are explicit instead of inferred or named
+    generically. This keeps a future official-platform adapter from treating a
+    transport message identifier as a OneBot integer by convention.
+    """
+
+    platform: Platform
     actor: ActorRef
     conversation: ConversationRef
+    message_id: str
     text: str
     direct_mentions: tuple[ActorRef, ...] = ()
     reply_to_id: str | None = None
@@ -157,13 +165,19 @@ class IncomingMessageRef:
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
-            "id",
-            _required_id(self.id, error=PlatformReferenceError.empty_message_id),
+            "message_id",
+            _required_id(
+                self.message_id,
+                error=PlatformReferenceError.empty_message_id,
+            ),
         )
-        if self.actor.platform is not self.conversation.platform:
+        if (
+            self.platform is not self.actor.platform
+            or self.platform is not self.conversation.platform
+        ):
             raise PlatformReferenceError.actor_conversation_platform_mismatch()
         if any(
-            mention.platform is not self.conversation.platform
+            mention.platform is not self.platform
             for mention in self.direct_mentions
         ):
             raise PlatformReferenceError.mention_conversation_platform_mismatch()
