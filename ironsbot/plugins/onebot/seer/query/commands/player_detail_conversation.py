@@ -215,7 +215,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
             base_snapshot=base_snapshot,
         ),
         message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
         send_status=send_status,
     )
     message = _reply_text(reply.leading_text, reply.text, reply.image_error)

@@ -161,7 +161,7 @@ async def test_empty_local_rank_refresh_returns_without_headless() -> None:
         pytest.fail("empty cache must not report progress or release")
 
     message = await service.cache_refresh(
-        user_id=1,
+        actor=ActorRef(Platform.ONEBOT, "1"),
         progress=unused,
     )
 
