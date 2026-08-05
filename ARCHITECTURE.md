@@ -714,6 +714,13 @@ Each phase must be independently reviewable, have migration/rollback guidance
 where persistent data changes, and avoid leaving an old and new runtime path
 active indefinitely.
 
+The executable phase order, cross-repository dependencies, and acceptance
+checklists live in [docs/multiplatform-refactor.md](docs/multiplatform-refactor.md).
+That document is a work-breakdown record, not a second architectural authority:
+it must point back to the target contracts and transition inventory above. Keep
+long-lived responsibility rules here; keep phase-local progress, estimates and
+verified evidence in the work-breakdown record or task report.
+
 ## Work Execution And Progress Reporting
 
 Architecture work is performed as a hierarchy of **program -> phase -> task**.
