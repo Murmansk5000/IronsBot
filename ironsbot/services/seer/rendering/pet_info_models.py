@@ -193,6 +193,7 @@ class PetInfoSnapshot:
     skill_mintmarks: tuple[PetMintmarkSnapshot, ...]
     display: PetDerivedDisplayData
     rich_texts: tuple[str, ...]
+    partner_upgraded_soulmark_ids: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

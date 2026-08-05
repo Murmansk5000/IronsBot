@@ -229,6 +229,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   但需要展示的魂印必须写入 SeerAPI 的
   `pet_soulmark_display_addition`，并附带 `source`，不得在 IronsBot presenter
   中按精灵 ID 特判。
+- 伙伴系统导致的魂印强化分区在 `PetInfoRepository` 生成快照时一次性解析为
+  `partner_upgraded_soulmark_ids`。发布关系优先，旧数据才使用有阈值的描述比对；
+  `pet_info_presentation` 只消费该事实，不再根据伙伴描述猜测展示位置。
 - `new_content` 使用 `NewContentSnapshotBuilder` 在第一次素材 I/O 前完成详情、
   皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
   适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变
