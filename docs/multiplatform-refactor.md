@@ -157,6 +157,10 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 私有阵容渲染也复用该内容键；私有模板和本地 Pillow 装饰源码以
   `renderer_fingerprint` 作为显式上下文参与键计算，不能维护第二套按阵容参数命中
   的最终缓存。
+- 2026-08-05 验证：SeerAPI 全量 pytest `218 passed`、Ruff 通过；本轮新增的
+  特殊效果 ORM 已可单独通过 BasedPyright。SeerAPI 仍有 38 条既有静态类型问题
+  （旧模型抽象基类、旧解析器和构建脚本），必须作为独立清债工作处理，不能靠降低
+  目标阶段的静态检查要求掩盖。
 
 ### Phase 5 — 业务服务和通用解析
 
