@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     from ironsbot.app.composition import ApplicationResources
     from ironsbot.config.models.settings import Settings
-    from ironsbot.runtime.matchers import MatcherFactory
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import Scheduler
 
 

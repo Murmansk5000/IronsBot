@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.runtime.message_input import message_input_context
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.seer.player_id_resolver import (
     PlayerIdResolution,
     PlayerIdResolver,

@@ -9,8 +9,8 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.permissions import can_manage_group_event
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.permissions import can_manage_group_event
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.service import MessagingService

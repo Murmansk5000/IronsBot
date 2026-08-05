@@ -23,34 +23,30 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.in_flight_requests import (
-        InFlightRequestService,
-    )
-    from ironsbot.runtime.matcher_contracts import (
+    from ironsbot.integrations.onebot.matcher_contracts import (
         CommandCooldown,
         CommandIdSource,
         QueuedSemanticRequestResolver,
         SemanticRequestResolver,
     )
-    from ironsbot.runtime.prompt_sessions import _QueuedConversation
-from ironsbot.runtime.matcher_contracts import (
+    from ironsbot.integrations.onebot.prompt_sessions import _QueuedConversation
+    from ironsbot.runtime.commands import CommandCatalog
+    from ironsbot.runtime.in_flight_requests import (
+        InFlightRequestService,
+    )
+from ironsbot.integrations.onebot.matcher_contracts import (
     CommandPolicyError,
     default_semantic_request,
     static_command_id,
 )
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.prompt_errors import (
-    PromptLoopConfigurationError,
-    PromptSessionManagerMissingError,
-)
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.prompt_sessions import (
     COMMAND_COOLDOWN_TOKEN_STATE_KEY as _COMMAND_COOLDOWN_TOKEN_KEY,
 )
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.prompt_sessions import (
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY as _IN_FLIGHT_REQUEST_TOKEN_KEY,
 )
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
@@ -58,8 +54,12 @@ from ironsbot.runtime.prompt_sessions import (
     GroupMenuAnchor,
     PromptSessionManager,
 )
-from ironsbot.runtime.queued_conversation_input import (
+from ironsbot.integrations.onebot.queued_conversation_input import (
     capture_queued_conversation_input,
+)
+from ironsbot.runtime.prompt_errors import (
+    PromptLoopConfigurationError,
+    PromptSessionManagerMissingError,
 )
 
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"

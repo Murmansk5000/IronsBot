@@ -8,18 +8,20 @@ from nonebot.adapters import Event  # noqa: TC002 - dynamic callback annotation
 from nonebot.adapters.onebot.v11 import MessageEvent
 
 from ironsbot.core.commands import command_text_matches
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     begin_queued_conversation,
     enter_prompt_loop,
     get_prompt_session_manager,
     get_queued_conversation,
 )
-from ironsbot.runtime.replies import build_message, event_sender_at_user_ids
+from ironsbot.integrations.onebot.replies import build_message, event_sender_at_user_ids
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Message
 
-    from ironsbot.runtime.matcher_contracts import QueuedSemanticRequestResolver
+    from ironsbot.integrations.onebot.matcher_contracts import (
+        QueuedSemanticRequestResolver,
+    )
 
 EventReplyCheck = Callable[[MessageEvent], bool]
 

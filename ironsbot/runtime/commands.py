@@ -5,8 +5,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import normalize_command_text
-from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -68,8 +68,7 @@ class CommandCatalogError(ValueError):
     @classmethod
     def invalid_routing_alias(cls, command_id: str) -> CommandCatalogError:
         return cls(
-            "invalid command descriptor: "
-            f"{command_id!r} has an empty routing alias"
+            f"invalid command descriptor: {command_id!r} has an empty routing alias"
         )
 
     @classmethod

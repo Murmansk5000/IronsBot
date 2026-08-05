@@ -19,8 +19,11 @@ if TYPE_CHECKING:
     from ironsbot.core.features import Feature
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
+    from ironsbot.integrations.onebot.matchers import (
+        MatcherFactory,
+        PromptSessionManager,
+    )
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
-    from ironsbot.runtime.matchers import MatcherFactory, PromptSessionManager
     from ironsbot.runtime.plugins import PluginContribution
 
 

@@ -11,21 +11,21 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.feature_policy import FeatureService  # noqa: TC001
-from ironsbot.runtime.conversations import (
+from ironsbot.integrations.onebot.conversations import (
     begin_event_reply_conversation,
     command_reply_check,
     enter_event_reply_conversation,
 )
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import (
     bind_async,
     get_prompt_session_manager,
 )
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,

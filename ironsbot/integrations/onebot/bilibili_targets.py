@@ -13,8 +13,8 @@ from ironsbot.services.bilibili.targets import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.config.onebot_references import OneBotReferenceResolver
     from ironsbot.core.bilibili import BiliConfig
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.core.platform import ConversationRef
 
 

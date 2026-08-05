@@ -9,7 +9,7 @@ from ironsbot.services.messaging.targets import MessageScheduleTargets
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.onebot_references import OneBotReferenceResolver
 
 
 def build_onebot_message_schedule_targets(

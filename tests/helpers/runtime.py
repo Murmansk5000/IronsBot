@@ -18,16 +18,16 @@ from ironsbot.config.models.messaging import (
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig
-from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
+from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
 )
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 

@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import pytest
 
-from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
+    OneBotTargetSendSummary,
+)
 
 
 class FakeOneBotDelivery:
@@ -22,7 +25,7 @@ class FakeOneBotDelivery:
         action_name: str,
         interval_seconds: float,
         subscription_key: str,
-    ) -> TargetSendSummary:
+    ) -> OneBotTargetSendSummary:
         self.calls.append(
             {
                 "message": str(message),
@@ -33,10 +36,10 @@ class FakeOneBotDelivery:
                 "subscription_key": subscription_key,
             }
         )
-        return TargetSendSummary(
+        return OneBotTargetSendSummary(
             [
-                MessageTarget("private", 1001),
-                MessageTarget("group", 3003),
+                OneBotMessageTarget("private", 1001),
+                OneBotMessageTarget("group", 3003),
             ],
             [],
         )

@@ -16,8 +16,7 @@ from nonebot.utils import is_coroutine_callable
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
@@ -29,10 +28,11 @@ from ironsbot.runtime.matchers import (
     bind_async,
     get_prompt_session_manager,
 )
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.prompt_sessions import (
     GroupMenuAnchor,
     is_current_group_menu_reply,
 )
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -42,7 +42,7 @@ from ironsbot.runtime.semantic_requests import (
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matcher_contracts import CommandCooldown
+    from ironsbot.integrations.onebot.matcher_contracts import CommandCooldown
 
 
 def _semantic_request(target: str) -> SemanticRequest:

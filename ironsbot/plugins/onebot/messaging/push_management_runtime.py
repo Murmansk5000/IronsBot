@@ -8,8 +8,8 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from ironsbot.runtime.conversations import event_conversation_session_id
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.conversations import event_conversation_session_id
+from ironsbot.integrations.onebot.matchers import (
     get_prompt_session_manager,
     reject_with_rule,
     update_queued_reply_check,

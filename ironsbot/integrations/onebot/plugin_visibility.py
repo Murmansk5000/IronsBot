@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
-from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
-from ironsbot.runtime.onebot_identity import onebot_actor_ref
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event

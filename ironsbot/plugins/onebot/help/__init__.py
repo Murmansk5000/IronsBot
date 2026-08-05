@@ -11,26 +11,26 @@ from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.features import Feature
-from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     enter_prompt_loop,
     get_prompt_session_manager,
     reject_with_rule,
 )
+from ironsbot.integrations.onebot.replies import (
+    build_message,
+    event_sender_at_user_ids,
+    finish_event_reply,
+    send_event_reply,
+)
+from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     PluginContributionCatalog,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import (
-    build_message,
-    event_sender_at_user_ids,
-    finish_event_reply,
-    send_event_reply,
-)
-from ironsbot.runtime.rules import explicit_command
 
 from .menu import (
     HELP_ENTRIES_KEY,
@@ -53,8 +53,8 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.matchers import MatcherFactory
 
 
 def _always_visible_help(_event: Event) -> bool:

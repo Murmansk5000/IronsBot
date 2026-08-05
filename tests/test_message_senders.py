@@ -9,8 +9,7 @@ from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     PushUnsubscribeConfig,
 )
-from ironsbot.core.messaging import MessageTarget
-from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.platform import ConversationRef
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
@@ -19,6 +18,7 @@ from ironsbot.integrations.onebot.outbound import (
     OutboundRateLimitDecision,
 )
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 
 GROUP_ID = 10
 PRIVATE_USER_ID = 20
@@ -102,18 +102,18 @@ def _delivery(
 
 def test_send_target_messages_dedupes_and_limits_by_group() -> None:
     bot = FakeBot()
-    limiter_calls: list[MessageTarget] = []
+    limiter_calls: list[OneBotMessageTarget] = []
 
-    def _limit(message: str | Message, target: MessageTarget) -> str | Message:
+    def _limit(message: str | Message, target: OneBotMessageTarget) -> str | Message:
         limiter_calls.append(target)
         return f"{message}:target={target.target_type}:{target.target_id}"
 
     summary = asyncio.run(
         _delivery().send_targets(
             [
-                MessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
-                MessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
-                MessageTarget("private", PRIVATE_USER_ID),
+                OneBotMessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
+                OneBotMessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
+                OneBotMessageTarget("private", PRIVATE_USER_ID),
             ],
             "hello",
             bot=bot,
@@ -123,13 +123,13 @@ def test_send_target_messages_dedupes_and_limits_by_group() -> None:
     )
 
     assert summary.succeeded == [
-        MessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
-        MessageTarget("private", PRIVATE_USER_ID),
+        OneBotMessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
+        OneBotMessageTarget("private", PRIVATE_USER_ID),
     ]
     assert summary.failed == []
     assert limiter_calls == [
-        MessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
-        MessageTarget("private", PRIVATE_USER_ID),
+        OneBotMessageTarget("group", GROUP_ID, (MENTION_USER_ID,)),
+        OneBotMessageTarget("private", PRIVATE_USER_ID),
     ]
 
     group_id, group_message = bot.group_messages[0]
@@ -150,8 +150,8 @@ def test_send_target_messages_reports_failed_targets() -> None:
     summary = asyncio.run(
         _delivery(outbound).send_targets(
             [
-                MessageTarget("group", GROUP_ID),
-                MessageTarget("private", PRIVATE_USER_ID),
+                OneBotMessageTarget("group", GROUP_ID),
+                OneBotMessageTarget("private", PRIVATE_USER_ID),
             ],
             "hello",
             bot=bot,
@@ -159,8 +159,8 @@ def test_send_target_messages_reports_failed_targets() -> None:
         )
     )
 
-    assert summary.succeeded == [MessageTarget("private", PRIVATE_USER_ID)]
-    assert summary.failed == [MessageTarget("group", GROUP_ID)]
+    assert summary.succeeded == [OneBotMessageTarget("private", PRIVATE_USER_ID)]
+    assert summary.failed == [OneBotMessageTarget("group", GROUP_ID)]
     assert outbound.rollbacks == [None]
 
 
@@ -181,8 +181,8 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
     summary = asyncio.run(
         _delivery().send_targets(
             [
-                MessageTarget("group", GROUP_ID),
-                MessageTarget("private", PRIVATE_USER_ID),
+                OneBotMessageTarget("group", GROUP_ID),
+                OneBotMessageTarget("private", PRIVATE_USER_ID),
             ],
             "hello",
             interval_seconds=0,
@@ -213,8 +213,8 @@ def test_send_target_messages_reports_push_queue_suppression() -> None:
     summary = asyncio.run(
         delivery.send_targets(
             [
-                MessageTarget("group", GROUP_ID),
-                MessageTarget("group", GROUP_ID + 1),
+                OneBotMessageTarget("group", GROUP_ID),
+                OneBotMessageTarget("group", GROUP_ID + 1),
             ],
             "hello",
             bot=bot,
@@ -222,6 +222,6 @@ def test_send_target_messages_reports_push_queue_suppression() -> None:
         )
     )
 
-    assert summary.succeeded == [MessageTarget("group", GROUP_ID)]
-    assert summary.failed == [MessageTarget("group", GROUP_ID + 1)]
+    assert summary.succeeded == [OneBotMessageTarget("group", GROUP_ID)]
+    assert summary.failed == [OneBotMessageTarget("group", GROUP_ID + 1)]
     assert [str(message) for _group_id, message in bot.group_messages] == ["hello"]

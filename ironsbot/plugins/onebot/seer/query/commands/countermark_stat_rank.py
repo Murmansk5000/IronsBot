@@ -11,9 +11,9 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
-from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import explicit_command
+from ironsbot.integrations.onebot.matchers import CommandPolicy, bind, bind_async
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 

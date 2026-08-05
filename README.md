@@ -84,9 +84,10 @@ user_a = "backup_bot"
 ```
 
 `group_a/group_b` 和 `owner/user_a` 分别引用 `[features.group_aliases]`、
-`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会先回退
-到 `default_bot`，再回退到任意在线 OneBot 机器人，并记录 warning。第一版只控制
-主动发送，不过滤接收事件；同一个群放入多个机器人时，它们仍可能同时收到并响应。
+`[features.user_aliases]`；也可以直接写群号或 QQ 号。目标机器人未连接时会回退到
+`default_bot`；若默认机器人也未连接或没有配置，主动发送会明确失败并记录 warning，
+不会选择任意在线 OneBot 机器人。第一版只控制主动发送，不过滤接收事件；同一个群
+放入多个机器人时，它们仍可能同时收到并响应。
 
 ### Docker Compose
 

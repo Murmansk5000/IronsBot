@@ -11,30 +11,30 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.integrations.onebot.context import (
+    build_notice_source,
+    command_context,
+    mentions_bot,
+)
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import bot_mention
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandCatalog,
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import (
-    build_notice_source,
-    command_context,
-    mentions_bot,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import bot_mention
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:

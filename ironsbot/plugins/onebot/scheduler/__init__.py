@@ -24,7 +24,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matchers import MatcherFactory
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import SchedulerLifecycle
 
 

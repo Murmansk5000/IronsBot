@@ -5,7 +5,7 @@ from ironsbot.config.models.features import (
     FeatureConfig,
     build_onebot_feature_service,
 )
-from ironsbot.runtime import permissions
+from ironsbot.integrations.onebot import permissions
 from tests.helpers.onebot_events import (
     group_admin_message_event,
     group_member_message_event,

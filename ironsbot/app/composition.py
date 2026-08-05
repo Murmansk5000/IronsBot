@@ -48,11 +48,16 @@ from ironsbot.integrations.onebot.bilibili_targets import (
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
+from ironsbot.integrations.onebot.identity import (
+    onebot_actor_ref,
+    onebot_conversation_ref,
+)
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
     OneBotLuckySkinWindowSubscriptionOptions,
     build_onebot_lucky_skin_window_accounts,
 )
+from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
@@ -126,8 +131,6 @@ from ironsbot.integrations.storage.team_resources import (
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import MatcherFactory, PromptSessionManager
-from ironsbot.runtime.onebot_identity import onebot_actor_ref, onebot_conversation_ref
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames

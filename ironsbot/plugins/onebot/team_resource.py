@@ -14,25 +14,32 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    MatcherFactory,
+    bind_async,
+)
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.permissions import is_group_owner_or_admin_event
+from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
+from ironsbot.integrations.onebot.replies import (
+    finish_event_reply,
+    finish_message_sequence,
+)
+from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind_async
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.permissions import is_group_owner_or_admin_event
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
-from ironsbot.runtime.rules import explicit_command, member_targets_command
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:

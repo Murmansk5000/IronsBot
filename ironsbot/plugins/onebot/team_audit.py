@@ -15,7 +15,7 @@ from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.runtime.matchers import bind_async
+from ironsbot.integrations.onebot.matchers import bind_async
 from ironsbot.runtime.plugins import (
     PluginContribution,
     PluginHooks,
@@ -23,7 +23,7 @@ from ironsbot.runtime.plugins import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matchers import MatcherFactory
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.team.audit import TeamAuditService
 

@@ -9,9 +9,9 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.permissions import can_manage_conversation_event
-from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.permissions import can_manage_conversation_event
+from ironsbot.integrations.onebot.replies import finish_event_reply
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService

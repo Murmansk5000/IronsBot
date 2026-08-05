@@ -16,11 +16,11 @@ from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
-from ironsbot.runtime.onebot_identity import (
+from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
     onebot_conversation_ref,
 )
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,

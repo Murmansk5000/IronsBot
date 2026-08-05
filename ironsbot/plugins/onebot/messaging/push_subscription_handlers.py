@@ -7,8 +7,8 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.platform import ConversationRef
-from ironsbot.runtime.matchers import bind_async, enter_prompt_loop
-from ironsbot.runtime.message_input import message_input_context
+from ironsbot.integrations.onebot.matchers import bind_async, enter_prompt_loop
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.messaging.service import (  # noqa: TC001
     MessagingService,
 )

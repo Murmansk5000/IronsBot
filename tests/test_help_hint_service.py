@@ -1,17 +1,19 @@
 from dataclasses import dataclass
 
 from ironsbot.config.models.features import HelpConfig
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
-from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
+from ironsbot.integrations.onebot.help_hint import (
+    OneBotHelpHintService,
+    is_onebot_poke_at_bot,
+)
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandCatalog,
     CommandContext,
     CommandDescriptor,
 )
-from ironsbot.runtime.onebot_help_hint import is_onebot_poke_at_bot
 from ironsbot.runtime.plugins import PluginContribution
 
 

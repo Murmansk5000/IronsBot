@@ -11,19 +11,17 @@ from ironsbot.core.features import Feature
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
-    from nonebot.adapters.onebot.v11 import Bot
     from nonebot.plugin import PluginMetadata
 
     from ironsbot.runtime.commands import CommandDescriptor
-    from ironsbot.runtime.matchers import MatcherFactory
 
 HookResult: TypeAlias = Awaitable[None] | None
 LifecycleHook: TypeAlias = Callable[[], HookResult]
-BotLifecycleHook: TypeAlias = Callable[["Bot"], HookResult]
+BotLifecycleHook: TypeAlias = Callable[[object], HookResult]
 NamedLifecycleHook: TypeAlias = tuple[str, LifecycleHook]
 NamedBotLifecycleHook: TypeAlias = tuple[str, BotLifecycleHook]
 HelpVisibility: TypeAlias = Callable[["Event"], bool]
-PluginInstall: TypeAlias = Callable[["MatcherFactory"], None]
+PluginInstall: TypeAlias = Callable[[object], None]
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import pytest
 
-from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
+)
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
+    OneBotTargetSendSummary,
 )
 
 
@@ -16,13 +19,13 @@ class FakeOneBotDelivery:
 
     async def send_targets(
         self,
-        targets: list[MessageTarget],
+        targets: list[OneBotMessageTarget],
         message: str,
         *,
         action_name: str,
         interval_seconds: float,
         subscription_key: str,
-    ) -> TargetSendSummary:
+    ) -> OneBotTargetSendSummary:
         self.calls.append(
             {
                 "targets": targets,
@@ -32,7 +35,7 @@ class FakeOneBotDelivery:
                 "subscription_key": subscription_key,
             }
         )
-        return TargetSendSummary(targets, [])
+        return OneBotTargetSendSummary(targets, [])
 
 
 class FakeSubscriptions:
@@ -88,7 +91,7 @@ async def test_onebot_lucky_skin_sender_preserves_daily_push_semantics() -> None
     ]
     assert delivery.calls == [
         {
-            "targets": [MessageTarget("private", 1001)],
+            "targets": [OneBotMessageTarget("private", 1001)],
             "message": "今日幸运橱窗。",
             "action_name": "lucky skin window daily notice",
             "interval_seconds": 0,

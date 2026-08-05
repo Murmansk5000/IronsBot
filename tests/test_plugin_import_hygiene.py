@@ -107,7 +107,7 @@ asyncio.create_task = _forbidden_sync("async task creation")
 httpx.Client.request = _forbidden_sync("http request")
 httpx.AsyncClient.request = _forbidden_async_request
 
-from ironsbot.runtime.matchers import MatcherFactory
+from ironsbot.integrations.onebot.matchers import MatcherFactory
 from tests.helpers.plugin_registry import build_test_plugin_registry
 from tests.helpers.runtime import build_test_runtime
 

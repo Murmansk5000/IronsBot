@@ -30,7 +30,7 @@ try:
 except ValueError:
     nonebot.init()
 
-onebot_context = pytest.importorskip("ironsbot.runtime.onebot_context")
+onebot_context = pytest.importorskip("ironsbot.integrations.onebot.context")
 
 
 class FakeBot:

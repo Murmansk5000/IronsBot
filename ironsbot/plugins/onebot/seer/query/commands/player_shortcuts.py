@@ -14,11 +14,11 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import member_target_command
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import member_target_command
 from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,

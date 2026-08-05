@@ -112,12 +112,12 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 **完成条件：**
 
 - `plugins/onebot` 外没有 OneBot `Event`、`Bot`、`MessageSegment` 或 NapCat 类型；
-- 所有仍依赖 `MessageTarget`/`OneBotDelivery` 的旧调用只位于 OneBot integration，且
+- 所有仍依赖 `OneBotMessageTarget`/`OneBotDelivery` 的旧调用只位于 OneBot integration，且
   每次迁移都减少一个服务消费者；
 - 路由只可选显式 Bot 或配置默认 Bot，二者均不可用时返回可观测失败；
 - 文本、图片、远程图片、@、被动回复、主动群/私聊及失败结果均有适配器测试。
 
-**删除条件：** `MessageTarget` 与 `OneBotDelivery` 不再被服务或 core 公开；其余旧
+**删除条件：** `OneBotMessageTarget` 与 `OneBotDelivery` 不再被服务或 core 公开；其余旧
 调用完成 one-direction 迁移后才可删除类型。
 
 ### Phase 4 — 渲染、发布事实和素材管线

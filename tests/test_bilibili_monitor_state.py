@@ -8,6 +8,7 @@ from ironsbot.config.models.features import (
     FeatureConfig,
     build_onebot_feature_service,
 )
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
@@ -16,7 +17,6 @@ from ironsbot.core.bilibili import (
     BiliStorageConfig,
 )
 from ironsbot.core.feature_policy import FeatureService
-from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.bilibili_targets import (
     build_onebot_bili_configured_targets,

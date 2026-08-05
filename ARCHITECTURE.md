@@ -61,7 +61,7 @@ contract without the qualifier "current bootstrap bridge". This specifically
 prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
-Current transition items are the legacy OneBot `MessageTarget` /
+Current transition items are the legacy OneBot `OneBotMessageTarget` /
 `OneBotDelivery` send chain and the renderer data lookups listed in the Phase
 0 guard below. They keep the current OneBot application runnable; they are not
 the architecture that new cross-feature work should target. Phase 2 has
@@ -210,12 +210,12 @@ feature, persistence schema, or policy decision.
 | Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
 | Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_onebot_feature_service()` is the only OneBot TOML compiler and must finish alias and bundle expansion before constructing the service. |
-| Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `runtime.onebot_identity` to construct the typed context at the edge. |
+| Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `integrations.onebot.identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
 | Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
-| OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
-| OneBot reference resolution and numeric QQ configuration | target adapter | `core.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
+| OneBot `OneBotMessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
+| OneBot reference resolution and numeric QQ configuration | target adapter | `config.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
 | Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
 | OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
@@ -382,12 +382,12 @@ Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
 `ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
 `OutboundMessenger`. They use opaque nonempty string IDs. The current
-OneBot-only `MessageTarget` remains a Phase 3 transition type until its full
+OneBot-only `OneBotMessageTarget` remains a Phase 3 transition type until its full
 call chain can be replaced in one direction; no new platform-neutral service
 may depend on it. `integrations.onebot.outbound_messenger.OneBotOutboundMessenger`
 is the Phase 1 edge adapter for the new port: it translates text, images,
 mentions and reply contexts only after a `ConversationRef` has been routed to
-a OneBot bot. Existing `OneBotDelivery` callers still use `MessageTarget`
+a OneBot bot. Existing `OneBotDelivery` callers still use `OneBotMessageTarget`
 until the Phase 3 one-direction migration; new services must use the
 platform-neutral port instead.
 
@@ -407,7 +407,7 @@ adapter may delegate to the legacy `OneBotDelivery` chain while that chain is
 being retired, because the adapter is the only place that knows numeric QQ
 targets, routing, subscriptions, queueing, and rate limits. A new notification
 service must use this shape or a narrower domain port; it must not import
-`MessageTarget`, `OneBotDelivery`, a NoneBot `Bot`, or CQ message types.
+`OneBotMessageTarget`, `OneBotDelivery`, a NoneBot `Bot`, or CQ message types.
 
 `services.activity.ActivityService` applies the same ownership to scheduled
 activity reminders: the service creates typed recipients and an
@@ -429,8 +429,8 @@ and low-resource policy, while `OneBotTeamResourceNoticeSender` owns QQ number
 conversion, mentions and legacy delivery. The remaining messaging scheduler
 migrations are ordered by semantic overlap, not file size. Each task must
 extract a typed service-side port and move the corresponding OneBot
-`MessageTarget` call into `integrations.onebot`; it must not add another
-platform-neutral wrapper around `MessageTarget`. This keeps current
+`OneBotMessageTarget` call into `integrations.onebot`; it must not add another
+platform-neutral wrapper around `OneBotMessageTarget`. This keeps current
 subscription, queue, rate-limit and failure semantics available while reducing
 the old chain one domain at a time.
 

@@ -6,9 +6,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any, Protocol
 
-from ironsbot.core.messaging import MessageTarget, TargetSendSummary
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
+    OneBotTargetSendSummary,
+)
 
-OneBotMessageLimiter = Callable[[Any, MessageTarget], Any]
+OneBotMessageLimiter = Callable[[Any, OneBotMessageTarget], Any]
 
 
 class OneBotMessageDelivery(Protocol):
@@ -16,7 +19,7 @@ class OneBotMessageDelivery(Protocol):
 
     async def send_targets(  # noqa: PLR0913
         self,
-        targets: Iterable[MessageTarget],
+        targets: Iterable[OneBotMessageTarget],
         message: Any,
         *,
         bot: Any | None = None,
@@ -24,7 +27,7 @@ class OneBotMessageDelivery(Protocol):
         interval_seconds: float = 1.5,
         message_limiter: OneBotMessageLimiter | None = None,
         subscription_key: str | None = None,
-    ) -> TargetSendSummary: ...
+    ) -> OneBotTargetSendSummary: ...
 
     async def broadcast(  # noqa: PLR0913
         self,
@@ -38,8 +41,8 @@ class OneBotMessageDelivery(Protocol):
         interval_seconds: float = 1.5,
         message_limiter: OneBotMessageLimiter | None = None,
         subscription_key: str | None = None,
-    ) -> TargetSendSummary: ...
+    ) -> OneBotTargetSendSummary: ...
 
     def default_bot(self) -> Any | None: ...
 
-    def bot_for_target(self, target: MessageTarget) -> Any | None: ...
+    def bot_for_target(self, target: OneBotMessageTarget) -> Any | None: ...

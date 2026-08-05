@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
-from ironsbot.runtime import prompts
+from ironsbot.integrations.onebot import prompts
 
 
 def test_command_preprocessor_keeps_queued_conversations_open(

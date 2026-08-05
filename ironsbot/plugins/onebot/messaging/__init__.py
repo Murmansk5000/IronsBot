@@ -10,12 +10,12 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -27,9 +27,9 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.config.models.messaging import MessageConfig
+    from ironsbot.config.onebot_references import OneBotReferenceResolver
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
-    from ironsbot.runtime.matchers import MatcherFactory
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.scheduler import Scheduler

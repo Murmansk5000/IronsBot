@@ -16,10 +16,10 @@ if TYPE_CHECKING:
         MessageLimiter,
         OneBotDelivery,
     )
+    from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
     from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.onebot_help_hint import OneBotHelpHintPort
     from ironsbot.runtime.plugins import PluginContributionCatalog
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
