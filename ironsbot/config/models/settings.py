@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import (
     BaseModel,
@@ -17,23 +17,27 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.ai import AiConfig
+from ironsbot.config.models.features import FeatureConfig, validate_feature_config
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
-from ironsbot.core.bilibili import BiliConfig
-from ironsbot.core.commands import csv_items, json_array
-from ironsbot.core.features import FEATURE_KEYS, FeatureConfig, validate_feature_config
-from ironsbot.core.onebot_references import (
+from ironsbot.config.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
 )
+from ironsbot.core.bilibili import BiliConfig
+from ironsbot.core.commands import csv_items, json_array
+from ironsbot.core.features import FEATURE_KEYS
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
     build_player_account_registry,
 )
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import ConversationRef
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -63,8 +67,7 @@ class SettingsReferenceError(ValueError):
         location: str = "seer.player_accounts",
     ) -> SettingsReferenceError:
         return cls(
-            f"{location} "
-            f"requires environment variable SEER_PASSWORD_{player_id}"
+            f"{location} requires environment variable SEER_PASSWORD_{player_id}"
         )
 
 
@@ -301,13 +304,13 @@ class Settings(BaseModel):
 
     @property
     def player_accounts(self) -> PlayerAccountRegistry:
-        groups: dict[int, list[str]] = {}
+        groups: dict[ConversationRef, list[str]] = {}
         for group_ref, account_refs in self.seer.player_account_aliases.items():
-            group_id = self.onebot_references.resolve_group(
+            conversation = self.onebot_references.group_conversation_ref(
                 group_ref,
                 location=f"seer.player_account_aliases.{group_ref}",
             )
-            groups.setdefault(group_id, []).extend(account_refs)
+            groups.setdefault(conversation, []).extend(account_refs)
         return build_player_account_registry(
             self.seer.player_accounts,
             private_alias_groups=groups,

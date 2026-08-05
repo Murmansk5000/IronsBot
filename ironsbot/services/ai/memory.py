@@ -13,9 +13,9 @@ class AiMemoryTurn(NamedTuple):
 
 
 class AiMemoryStore(Protocol):
-    def append(self, turn: AiMemoryTurn) -> None: ...
+    async def append(self, turn: AiMemoryTurn) -> None: ...
 
-    def load(
+    async def load(
         self,
         *,
         actor: ActorRef,

@@ -7,22 +7,30 @@ from typing import TYPE_CHECKING, Protocol
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
+
 if TYPE_CHECKING:
-    from ironsbot.core.messaging import MessageTarget
+    from ironsbot.core.platform import ActorRef
     from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
+    from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 
 
 class OneBotTargetFeaturePolicy(Protocol):
-    """Feature checks expressed in the OneBot numeric target model."""
+    """Feature checks adapted from a legacy OneBot target at the edge."""
 
-    def group_has_feature(self, group_id: int, feature: str) -> bool: ...
+    def conversation_has_feature(
+        self,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool: ...
 
-    def users_for_feature(self, feature: str) -> list[int]: ...
+    def actor_has_feature(self, actor: ActorRef, feature: str) -> bool: ...
 
 
 def promotion_enabled_for_target(
     features: OneBotTargetFeaturePolicy,
-    target: MessageTarget,
+    target: OneBotMessageTarget,
     promotion: PromotionConfig,
 ) -> bool:
     """Whether this OneBot target has opted into one promotion feature."""
@@ -30,15 +38,21 @@ def promotion_enabled_for_target(
     if not promotion.enabled:
         return False
     if target.target_type == "group":
-        return features.group_has_feature(target.target_id, promotion.feature)
-    return target.target_id in features.users_for_feature(promotion.feature)
+        return features.conversation_has_feature(
+            _onebot_target_conversation(target),
+            promotion.feature,
+        )
+    return features.actor_has_feature(
+        onebot_actor_ref(target.target_id),
+        promotion.feature,
+    )
 
 
 def append_promotions_for_target(
     features: OneBotTargetFeaturePolicy,
     catalog: PromotionCatalog,
     message: str | Message,
-    target: MessageTarget,
+    target: OneBotMessageTarget,
 ) -> str | Message:
     """Append every configured push promotion allowed for this OneBot target."""
 
@@ -70,4 +84,12 @@ def _message_already_contains(
     rendered = str(message)
     return promotion.message in rendered or (
         bool(promotion.url) and promotion.url in rendered
+    )
+
+
+def _onebot_target_conversation(target: OneBotMessageTarget) -> ConversationRef:
+    return ConversationRef(
+        Platform.ONEBOT,
+        target.target_type,
+        str(target.target_id),
     )

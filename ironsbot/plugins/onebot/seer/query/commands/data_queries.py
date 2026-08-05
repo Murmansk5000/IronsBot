@@ -18,13 +18,18 @@ from nonebot.typing import (
 )
 from nonebot_plugin_saa import Image, MessageFactory
 
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     bind_async,
     update_queued_menu_anchor,
 )
-from ironsbot.runtime.prompts import PROMPT_STATE_KEY, Prompt, PromptItem, enter_prompt
-from ironsbot.runtime.rules import explicit_command
+from ironsbot.integrations.onebot.prompts import (
+    PROMPT_STATE_KEY,
+    Prompt,
+    PromptItem,
+    enter_prompt,
+)
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.autocard import AutocardPromptValue
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_query_commands import (
@@ -244,9 +249,7 @@ async def _start_new_content(  # noqa: PLR0913
         )
         return
     visible_categories: tuple[NewContentCategory, ...] = tuple(
-        category
-        for category in comparable_categories
-        if snapshot.items_for(category)
+        category for category in comparable_categories if snapshot.items_for(category)
     )
     if categories is not None and not visible_categories:
         await matcher.finish(_empty_new_content_message(snapshot, categories))
@@ -257,9 +260,7 @@ async def _start_new_content(  # noqa: PLR0913
     layout = _NewContentMenuLayout(
         display_categories=visible_categories,
         focused_category=(
-            categories[0]
-            if categories is not None and len(categories) == 1
-            else None
+            categories[0] if categories is not None and len(categories) == 1 else None
         ),
     )
     prompt = _content_prompt(snapshot, layout)
@@ -313,7 +314,7 @@ def _available_categories(
     group: SeerMatcherGroup,
     event: Event,
 ) -> tuple[NewContentCategory, ...]:
-    from ironsbot.runtime.feature_policy import event_is_feature_allowed
+    from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 
     required_features: dict[NewContentCategory, str | None] = {
         "pet": "seer_pet",
@@ -442,9 +443,11 @@ async def _replace_prompt(
     snapshot = matcher.state.get(NEW_CONTENT_SNAPSHOT_KEY)
     layout = matcher.state.get(NEW_CONTENT_MENU_LAYOUT_KEY)
     services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
-    if not isinstance(snapshot, NewContentSnapshot) or not isinstance(
-        layout, _NewContentMenuLayout
-    ) or not isinstance(services, _NewContentServices):
+    if (
+        not isinstance(snapshot, NewContentSnapshot)
+        or not isinstance(layout, _NewContentMenuLayout)
+        or not isinstance(services, _NewContentServices)
+    ):
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
     send_result = await matcher.send(

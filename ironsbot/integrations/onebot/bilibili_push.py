@@ -15,12 +15,10 @@ from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
 
 if TYPE_CHECKING:
-    from ironsbot.core.messaging import MessageTarget
+    from ironsbot.integrations.onebot.delivery import MessageLimiter
+    from ironsbot.integrations.onebot.delivery_port import OneBotMessageDelivery
+    from ironsbot.integrations.onebot.targets import OneBotMessageTarget
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
-    from ironsbot.services.messaging.delivery import (
-        MessageDelivery,
-        MessageLimiter,
-    )
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )
@@ -29,8 +27,7 @@ if TYPE_CHECKING:
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic content push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
 BILI_PUSH_ADMIN_HINT = (
-    "群主/管理员可发送：B站账号 / "
-    "B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
+    "群主/管理员可发送：B站账号 / B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
@@ -52,7 +49,7 @@ logger = logging.getLogger(__name__)
 class OneBotBilibiliPushSender:
     """Preserve OneBot push semantics behind the Bilibili monitor sender port."""
 
-    delivery: MessageDelivery
+    delivery: OneBotMessageDelivery
     subscriptions: PushSubscriptionRepository
     render_link: DynamicLinkRenderer
     render_content: DynamicContentRenderer
@@ -84,8 +81,8 @@ class OneBotBilibiliPushSender:
             return
         await self.delivery.broadcast(
             link_message,
-            group_ids=full_targets.full_group_ids,
-            private_user_ids=full_targets.full_user_ids,
+            group_ids=_onebot_ids(full_targets.full_group_conversations),
+            private_user_ids=_onebot_ids(full_targets.full_private_conversations),
             action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             message_limiter=self._transform_target_message,
@@ -111,8 +108,8 @@ class OneBotBilibiliPushSender:
         content_message: Any,
         targets: BiliPushTargets,
     ) -> None:
-        remaining_group_ids = targets.full_group_ids
-        remaining_user_ids = targets.full_user_ids
+        remaining_group_ids = _onebot_ids(targets.full_group_conversations)
+        remaining_user_ids = _onebot_ids(targets.full_private_conversations)
         for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
             action_name = (
                 FULL_DYNAMIC_PUSH_ACTION
@@ -200,15 +197,18 @@ class OneBotBilibiliPushSender:
         author_mid: int,
         targets: BiliPushTargets,
     ) -> None:
-        if not targets.link_group_ids and not targets.link_user_ids:
+        if (
+            not targets.link_group_conversations
+            and not targets.link_private_conversations
+        ):
             return
         message = self.render_link(item, pub_ts)
         if message is None:
             return
         await self.delivery.broadcast(
             message,
-            group_ids=targets.link_group_ids,
-            private_user_ids=targets.link_user_ids,
+            group_ids=_onebot_ids(targets.link_group_conversations),
+            private_user_ids=_onebot_ids(targets.link_private_conversations),
             action_name=LINK_DYNAMIC_PUSH_ACTION,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             message_limiter=self._transform_target_message,
@@ -231,22 +231,24 @@ class OneBotBilibiliPushSender:
         subscription_key: str,
     ) -> BiliPushTargets:
         return BiliPushTargets(
-            full_group_ids=self.subscriptions.filter_subscribed_group_ids(
-                targets.full_group_ids,
+            full_group_conversations=self.subscriptions.filter_subscribed_conversations(
+                targets.full_group_conversations,
                 subscription_key,
             ),
-            link_group_ids=[],
-            full_user_ids=self.subscriptions.filter_subscribed_user_ids(
-                targets.full_user_ids,
-                subscription_key,
+            link_group_conversations=[],
+            full_private_conversations=(
+                self.subscriptions.filter_subscribed_conversations(
+                    targets.full_private_conversations,
+                    subscription_key,
+                )
             ),
-            link_user_ids=[],
+            link_private_conversations=[],
         )
 
     def _transform_target_message(
         self,
         message: Any,
-        target: MessageTarget,
+        target: OneBotMessageTarget,
     ) -> Any:
         if self.message_limiter is not None:
             message = self.message_limiter(message, target)
@@ -256,19 +258,30 @@ class OneBotBilibiliPushSender:
             message = self.append_hint(message, DYNAMIC_HISTORY_HINT)
         if target.target_type != "group":
             return message
-        group_id = target.target_id
         if not self.subscriptions.mark_daily_hint_sent(
-            "group",
-            group_id,
+            _onebot_conversation(target),
             BILI_PUSH_ADMIN_HINT_KEY,
         ):
             return message.rstrip() if isinstance(message, str) else message
         return self.append_hint(message, BILI_PUSH_ADMIN_HINT)
 
 
-def _onebot_conversation(target: MessageTarget) -> ConversationRef:
+def _onebot_conversation(target: OneBotMessageTarget) -> ConversationRef:
     return ConversationRef(
         platform=Platform.ONEBOT,
         kind="group" if target.target_type == "group" else "private",
         id=str(target.target_id),
     )
+
+
+def _onebot_ids(conversations: list[ConversationRef]) -> list[int]:
+    return [
+        int(conversation.id)
+        for conversation in conversations
+        if (
+            conversation.platform is Platform.ONEBOT
+            and conversation.kind in {"private", "group"}
+            and conversation.id.isdecimal()
+            and int(conversation.id) > 0
+        )
+    ]

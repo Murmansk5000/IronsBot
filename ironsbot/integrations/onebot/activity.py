@@ -14,9 +14,8 @@ from ironsbot.integrations.onebot.message_rendering import (
 from ironsbot.integrations.onebot.target_refs import partition_onebot_targets
 
 if TYPE_CHECKING:
-    from ironsbot.integrations.onebot.delivery import OneBotDelivery
+    from ironsbot.integrations.onebot.delivery import MessageLimiter, OneBotDelivery
     from ironsbot.services.activity.delivery import ActivityReminderDelivery
-    from ironsbot.services.messaging.delivery import MessageLimiter
 
 _LOGGER = logging.getLogger(__name__)
 

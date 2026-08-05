@@ -4,16 +4,20 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.seer.query.commands.player_target import (
-    event_player_reference_lookup,
     resolve_player_target,
 )
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import group_message_event
 
 PLAYER_ID = 105_023_264
+
+
+def _group_conversation(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 def _binding_for(actor: ActorRef) -> int | None:
@@ -25,6 +29,10 @@ def _reference_lookup(reference: str, _conversation: object) -> int | None:
     return int(reference) if reference.isdecimal() else None
 
 
+def _resolver() -> PlayerIdResolver:
+    return PlayerIdResolver(_reference_lookup, _binding_for)
+
+
 def test_player_target_uses_one_current_message_member_mention() -> None:
     event = group_message_event(
         message=Message([MessageSegment.text("收集"), MessageSegment.at(456)])
@@ -33,8 +41,7 @@ def test_player_target_uses_one_current_message_member_mention() -> None:
     target = resolve_player_target(
         event,
         player_reference=None,
-        reference_lookup=_reference_lookup,
-        binding_for_user=_binding_for,
+        resolver=_resolver(),
     )
 
     assert target.player_id == PLAYER_ID
@@ -51,8 +58,7 @@ def test_player_target_uses_member_mention_sent_after_a_quote() -> None:
     target = resolve_player_target(
         event,
         player_reference=None,
-        reference_lookup=_reference_lookup,
-        binding_for_user=_binding_for,
+        resolver=_resolver(),
     )
 
     assert target.player_id == PLAYER_ID
@@ -68,8 +74,7 @@ def test_player_target_member_lookup_does_not_offer_to_bind_another_person() -> 
     target = resolve_player_target(
         event,
         player_reference=None,
-        reference_lookup=_reference_lookup,
-        binding_for_user=_binding_for,
+        resolver=_resolver(),
     )
 
     assert not target.offer_binding
@@ -92,14 +97,12 @@ def test_player_target_rejects_ambiguous_member_target_forms() -> None:
     multiple = resolve_player_target(
         two_members,
         player_reference=None,
-        reference_lookup=_reference_lookup,
-        binding_for_user=_binding_for,
+        resolver=_resolver(),
     )
     mixed = resolve_player_target(
         member_and_number,
         player_reference="105023264",
-        reference_lookup=_reference_lookup,
-        binding_for_user=_binding_for,
+        resolver=_resolver(),
     )
 
     assert multiple.error == "请一次只 @ 一名成员查询其已绑定的米米号。"
@@ -114,8 +117,7 @@ def test_player_target_reports_an_unbound_mentioned_member() -> None:
     target = resolve_player_target(
         event,
         player_reference=None,
-        reference_lookup=_reference_lookup,
-        binding_for_user=_binding_for,
+        resolver=_resolver(),
     )
 
     assert target.player_id is None
@@ -126,8 +128,7 @@ def test_player_target_can_require_an_explicit_reference() -> None:
     target = resolve_player_target(
         group_message_event("绑定米米号"),
         player_reference=None,
-        reference_lookup=_reference_lookup,
-        binding_for_user=_binding_for,
+        resolver=_resolver(),
         allow_default_binding=False,
     )
 
@@ -147,15 +148,22 @@ def test_player_target_resolves_a_group_scoped_alias_once() -> None:
                 public=False,
             ),
         ),
-        private_alias_groups={private_group_id: ("sample_player",)},
+        private_alias_groups={
+            _group_conversation(private_group_id): ("sample_player",),
+        },
     )
     event = group_message_event("米米号示例玩家", group_id=private_group_id)
 
     target = resolve_player_target(
         event,
         player_reference="示例玩家",
-        reference_lookup=event_player_reference_lookup(accounts, event),
-        binding_for_user=_binding_for,
+        resolver=PlayerIdResolver(
+            lambda reference, conversation: accounts.resolve_player_id(
+                reference,
+                conversation=conversation,
+            ),
+            _binding_for,
+        ),
     )
 
     assert target.player_id == PLAYER_ID
@@ -163,7 +171,7 @@ def test_player_target_resolves_a_group_scoped_alias_once() -> None:
     assert target.error is None
 
 
-def test_event_player_reference_lookup_respects_scoped_aliases() -> None:
+def test_player_account_registry_respects_scoped_aliases() -> None:
     private_group_id = 987654321
     accounts = PlayerAccountRegistry(
         (
@@ -175,36 +183,64 @@ def test_event_player_reference_lookup_respects_scoped_aliases() -> None:
                 public=False,
             ),
         ),
-        private_alias_groups={private_group_id: ("sample_player",)},
+        private_alias_groups={
+            _group_conversation(private_group_id): ("sample_player",),
+        },
     )
 
-    lookup = event_player_reference_lookup(
-        accounts,
-        group_message_event("", group_id=private_group_id),
-    )
     assert (
-        lookup(
+        accounts.resolve_player_id(
             "示例玩家",
-            ConversationRef(Platform.ONEBOT, "group", str(private_group_id)),
+            conversation=ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(private_group_id),
+            ),
         )
         == PLAYER_ID
     )
-    other_group_lookup = event_player_reference_lookup(
-        accounts,
-        group_message_event("", group_id=123456789),
-    )
     assert (
-        other_group_lookup(
+        accounts.resolve_player_id(
             "示例玩家",
-            ConversationRef(Platform.ONEBOT, "group", "123456789"),
+            conversation=ConversationRef(Platform.ONEBOT, "group", "123456789"),
         )
         is None
     )
-    private_lookup = event_player_reference_lookup(accounts, group_message_event(""))
     assert (
-        private_lookup(
+        accounts.resolve_player_id(
             str(PLAYER_ID),
-            ConversationRef(Platform.ONEBOT, "private", "123"),
+            conversation=ConversationRef(Platform.ONEBOT, "private", "123"),
         )
         == PLAYER_ID
+    )
+
+
+def test_scoped_player_alias_stays_on_its_platform() -> None:
+    conversation = _group_conversation(987654321)
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=PLAYER_ID,
+                name="sample_player",
+                aliases=("示例玩家",),
+                password=None,
+                public=False,
+            ),
+        ),
+        private_alias_groups={conversation: ("sample_player",)},
+    )
+
+    assert (
+        accounts.resolve_player_id("示例玩家", conversation=conversation) == PLAYER_ID
+    )
+    assert (
+        accounts.resolve_player_id(
+            "示例玩家",
+            conversation=ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                conversation.id,
+            ),
+        )
+        is None
     )

@@ -128,9 +128,7 @@ services:
 
 ## 插件架构
 
-通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展从配置的数据目录读取
-`manifest.json`；清单指定的工厂接收 `PrivateExtensionRuntime`，返回的
-`PluginContribution` 由当前安装上下文收集并交给应用安装。
+通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展由独立扩展清单加载。
 当前版本仍由 `python -m ironsbot` 经过
 `ironsbot/app/bootstrap.py` 启动。内置插件由标准 NoneBot TOML 清单直接发现；
 每个插件通过 `PluginMetadata` 声明身份，并以 `PluginContribution` 注册运行时

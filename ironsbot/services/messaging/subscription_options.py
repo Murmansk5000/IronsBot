@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import ConversationRef
 from ironsbot.core.selection import (
     TOGGLE_SELECTION_FOOTER,
     SelectionMenuItem,
@@ -12,12 +13,13 @@ from ironsbot.core.selection import (
 from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
     PushSubscriptionRepository,
-    PushTargetType,
     ScheduledPushTask,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from ironsbot.core.platform import ConversationRef
 
 READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可查看 · 输入 0 退出"
 
@@ -82,19 +84,21 @@ def _schedule_display_name_from_feature(
 
 def build_schedule_subscription_options(
     *,
-    target_type: PushTargetType,
-    target_id: int,
+    conversation: ConversationRef,
     tasks: Sequence[ScheduledPushTask],
-    eligible_target_ids_for_feature: dict[str, set[int]],
+    eligible_conversations_for_feature: dict[str, set[ConversationRef]],
     store: PushSubscriptionRepository,
 ) -> list[PushSubscriptionOption]:
-    unsubscribed = store.target_unsubscribed_keys(target_type, target_id)
+    unsubscribed = store.unsubscribed_keys(conversation)
     options: list[PushSubscriptionOption] = []
 
     for index, task in enumerate(tasks, start=1):
         if not task.enabled:
             continue
-        if target_id not in eligible_target_ids_for_feature.get(task.feature, set()):
+        if conversation not in eligible_conversations_for_feature.get(
+            task.feature,
+            set(),
+        ):
             continue
 
         key = schedule_key(index, task)

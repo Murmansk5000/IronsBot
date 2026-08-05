@@ -64,13 +64,13 @@ state = bootstrap()
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
 assert len(state.contributions) > 0
-assert len(state.matchers.message_matchers) > 0
-assert len(state.matchers.notice_matchers) > 0
+assert len(state.matcher_factory.message_matchers) > 0
+assert len(state.matcher_factory.notice_matchers) > 0
 assert len({plugin.id for plugin in state.contributions}) == len(state.contributions)
 
 for matcher in (
-    *state.matchers.message_matchers,
-    *state.matchers.notice_matchers,
+    *state.matcher_factory.message_matchers,
+    *state.matcher_factory.notice_matchers,
 ):
     deepcopy(matcher._default_state)
     dependencies = (*matcher.rule.checkers, *matcher.handlers)

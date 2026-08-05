@@ -1,24 +1,22 @@
-from ironsbot.core.messaging import (
-    MessageTarget,
+from ironsbot.integrations.onebot.targets import (
+    OneBotMessageTarget,
     broadcast_targets,
     group_targets,
     private_targets,
 )
-from ironsbot.runtime.replies import message_event_target
-from tests.helpers.onebot_events import group_message_event, private_message_event
 
 
 def test_private_targets_deduplicate_users() -> None:
     assert private_targets([1, 1, 2]) == [
-        MessageTarget("private", 1),
-        MessageTarget("private", 2),
+        OneBotMessageTarget("private", 1),
+        OneBotMessageTarget("private", 2),
     ]
 
 
 def test_group_targets_deduplicate_groups_and_mentions() -> None:
     assert group_targets([10, 10, 20], at_user_ids=[1, 1, 2]) == [
-        MessageTarget("group", 10, (1, 2)),
-        MessageTarget("group", 20, (1, 2)),
+        OneBotMessageTarget("group", 10, (1, 2)),
+        OneBotMessageTarget("group", 20, (1, 2)),
     ]
 
 
@@ -28,15 +26,6 @@ def test_broadcast_targets_keep_groups_before_private_users() -> None:
         private_user_ids=[1],
         group_at_user_ids=[2],
     ) == [
-        MessageTarget("group", 10, (2,)),
-        MessageTarget("private", 1),
+        OneBotMessageTarget("group", 10, (2,)),
+        OneBotMessageTarget("private", 1),
     ]
-
-
-def test_message_event_target_uses_conversation_scope() -> None:
-    assert message_event_target(group_message_event(group_id=10)) == MessageTarget(
-        "group", 10
-    )
-    assert message_event_target(private_message_event(user_id=20)) == MessageTarget(
-        "private", 20
-    )

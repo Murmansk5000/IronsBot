@@ -5,13 +5,17 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 
-from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
+from ironsbot.integrations.onebot.replies import (
+    finish_event_reply,
+    finish_message_sequence,
+)
 
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.services.team.resource import TeamResourceService
+
 
 async def _handle_team_recommend_action(
     matcher: Matcher,
@@ -40,8 +44,7 @@ async def _handle_team_resource_action(
         )
 
     replies = [
-        Message(message)
-        for message in await team_resource.query_messages(team_ids)
+        Message(message) for message in await team_resource.query_messages(team_ids)
     ]
 
     if not replies:

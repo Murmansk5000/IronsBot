@@ -7,8 +7,8 @@ from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.rule import Rule
 
 from ironsbot.core.message_input import MessageInputKind
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.rules import (
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.rules import (
     bot_mention,
     explicit_command,
     member_target_command,

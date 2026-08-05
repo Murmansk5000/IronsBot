@@ -51,7 +51,9 @@ def _normalize_mode(value: object) -> BiliPushMode | None:
     return cast("BiliPushMode", mode)
 
 
-def _normalize_account_alias(value: object) -> str:
+def normalize_account_alias(value: object) -> str:
+    """Normalize one configured or user-supplied Bilibili account alias."""
+
     return str(value).strip().lower()
 
 
@@ -59,7 +61,7 @@ def _account_alias_list(value: object) -> list[str]:
     return [
         alias
         for raw_alias in string_list(value)
-        if (alias := _normalize_account_alias(raw_alias))
+        if (alias := normalize_account_alias(raw_alias))
     ]
 
 
@@ -67,7 +69,7 @@ def _mode_mapping(value: object) -> dict[str, BiliPushMode]:
     parsed = json_object(value, name="bilibili.push.modes")
     result: dict[str, BiliPushMode] = {}
     for raw_alias, raw_mode in parsed.items():
-        alias = _normalize_account_alias(raw_alias)
+        alias = normalize_account_alias(raw_alias)
         mode = _normalize_mode(raw_mode)
         if alias and mode is not None:
             result[alias] = mode
@@ -200,7 +202,7 @@ class BiliConfig(BaseModel):
         parsed = json_object(value, name="bilibili.accounts")
         result: dict[str, object] = {}
         for raw_alias, raw_config in parsed.items():
-            alias = _normalize_account_alias(raw_alias)
+            alias = normalize_account_alias(raw_alias)
             if alias:
                 result[alias] = raw_config
         return result

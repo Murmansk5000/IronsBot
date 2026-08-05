@@ -2,13 +2,14 @@ from dataclasses import dataclass
 
 import pytest
 
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandCatalog,
     CommandCatalogError,
     CommandContext,
     CommandDescriptor,
 )
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.runtime.plugins import PluginContribution
 
 
@@ -18,22 +19,50 @@ class FakeFeatures:
     private_features: dict[int, set[str]]
     superusers: set[int]
 
-    def is_group_feature_allowed(
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        return int(actor.id) in self.superusers
+
+    def conversation_has_feature(
         self,
-        _user_id: int,
-        group_id: int,
+        conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        return feature in self.group_features.get(group_id, set())
+        return (
+            conversation.platform is Platform.ONEBOT
+            and conversation.kind == "group"
+            and feature in self.group_features.get(int(conversation.id), set())
+        )
 
-    def group_has_feature(self, group_id: int, feature: str) -> bool:
-        return feature in self.group_features.get(group_id, set())
+    def is_feature_allowed(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool:
+        if conversation.kind == "group":
+            return self.conversation_has_feature(conversation, feature)
+        return feature in self.private_features.get(int(actor.id), set())
 
-    def is_private_feature_allowed(self, user_id: int, feature: str) -> bool:
-        return feature in self.private_features.get(user_id, set())
+    def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
+        return feature in self.private_features.get(int(actor.id), set())
 
-    def is_superuser(self, user_id: int) -> bool:
-        return user_id in self.superusers
+
+def _context(
+    user_id: int,
+    *,
+    group_id: int | None = None,
+    group_role: str | None = None,
+) -> CommandContext:
+    actor = ActorRef(Platform.ONEBOT, str(user_id))
+    return CommandContext(
+        actor=actor,
+        conversation=ConversationRef(
+            Platform.ONEBOT,
+            "group" if group_id is not None else "private",
+            str(group_id if group_id is not None else user_id),
+        ),
+        group_role=group_role,
+    )
 
 
 def _catalog(*commands: CommandDescriptor) -> CommandCatalog:
@@ -83,19 +112,19 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
     )
 
     regular = catalog.available_for_context(
-        CommandContext(user_id=1, group_id=100, group_role="member"),
+        _context(1, group_id=100, group_role="member"),
         features,
     )
     manager = catalog.available_for_context(
-        CommandContext(user_id=2, group_id=100, group_role="admin"),
+        _context(2, group_id=100, group_role="admin"),
         features,
     )
     superuser = catalog.available_for_context(
-        CommandContext(user_id=3, group_id=100),
+        _context(3, group_id=100),
         features,
     )
     private = catalog.available_for_context(
-        CommandContext(user_id=1, group_id=None),
+        _context(1),
         features,
     )
 
@@ -131,13 +160,13 @@ def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
     )
 
     assert [command.id for command in catalog.available_for_context(
-        CommandContext(user_id=1, group_id=None), features
+        _context(1), features
     )] == ["mixed"]
     assert [command.id for command in catalog.available_for_context(
-        CommandContext(user_id=2, group_id=100, group_role="admin"), features
+        _context(2, group_id=100, group_role="admin"), features
     )] == ["mixed"]
     assert not catalog.available_for_context(
-        CommandContext(user_id=2, group_id=100, group_role="member"), features
+        _context(2, group_id=100, group_role="member"), features
     )
 
 
@@ -162,19 +191,19 @@ def test_catalog_requires_all_declared_features() -> None:
     )
 
     assert not catalog.available_for_context(
-        CommandContext(user_id=1, group_id=100), features
+        _context(1, group_id=100), features
     )
     assert catalog.available_for_context(
-        CommandContext(user_id=1, group_id=101),
+        _context(1, group_id=101),
         features,
     )
     assert catalog.available_for_context(
-        CommandContext(user_id=1, group_id=None),
+        _context(1),
         features,
     )
 
 
-def test_catalog_claims_available_literal_direct_inputs_and_routing_aliases() -> None:
+def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> None:
     catalog = _catalog(
         CommandDescriptor(
             id="help",
@@ -198,6 +227,8 @@ def test_catalog_claims_available_literal_direct_inputs_and_routing_aliases() ->
             section="查询",
             examples=("米米号<号码>",),
             description="查询玩家",
+            routing_matcher=lambda text, _context: text.startswith("米米号")
+            and text[3:].isdecimal(),
         ),
         CommandDescriptor(
             id="automatic",
@@ -213,12 +244,13 @@ def test_catalog_claims_available_literal_direct_inputs_and_routing_aliases() ->
         private_features={1: set()},
         superusers={1},
     )
-    context = CommandContext(user_id=1, group_id=None)
+    context = _context(1)
 
     assert catalog.claims_direct_input(context, features, "帮助")
     assert catalog.claims_direct_input(context, features, "/动态刷新")
     assert catalog.claims_direct_input(context, features, "动态更新")
-    assert not catalog.claims_direct_input(context, features, "米米号123456")
+    assert catalog.claims_direct_input(context, features, "米米号123456")
+    assert not catalog.claims_direct_input(context, features, "米米号示例玩家")
     assert not catalog.claims_direct_input(context, features, "活动")
 
 
@@ -247,15 +279,15 @@ def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:
     )
 
     assert not catalog.available_for_context(
-        CommandContext(user_id=2, group_id=100, group_role="member"),
+        _context(2, group_id=100, group_role="member"),
         features,
     )
     assert catalog.available_for_context(
-        CommandContext(user_id=2, group_id=100, group_role="admin"),
+        _context(2, group_id=100, group_role="admin"),
         features,
     )
     assert catalog.available_for_context(
-        CommandContext(user_id=1, group_id=None),
+        _context(1),
         features,
     )
 

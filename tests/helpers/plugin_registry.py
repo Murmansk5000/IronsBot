@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.settings import Settings
+from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.messaging import default_sendpic_configs
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.docker.client import DockerClient
@@ -90,7 +91,6 @@ from ironsbot.plugins.onebot.team_audit import (
 from ironsbot.plugins.onebot.team_resource import (
     plugin_contribution as team_resource_plugin_contribution,
 )
-from ironsbot.runtime.commands import CommandCatalog
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
@@ -98,10 +98,11 @@ from ironsbot.services.operations.scheduled_restart import ScheduledRestartServi
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from ironsbot.app.resources import ApplicationResources
+    from ironsbot.app.composition import ApplicationResources
     from ironsbot.runtime.plugins import PluginContribution
 
 
@@ -184,8 +185,6 @@ def build_test_plugin_registry(
         SimpleNamespace(
             features=runtime.features,
             promotions=PromotionCatalog(config.promotions),
-            outbound=object(),
-            delivery=runtime.delivery,
             admin_notices=runtime.admin_notices,
             activity=SimpleNamespace(register_jobs=lambda _scheduler: None),
             headless=headless,
@@ -199,6 +198,11 @@ def build_test_plugin_registry(
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,
             ),
+            bilibili_monitor=SimpleNamespace(
+                check_on_connect=_noop_startup,
+                register_job=_noop_startup,
+            ),
+            bilibili_content_renderer=lambda _item, _content: None,
             lucky_skin_window=SimpleNamespace(
                 enabled=False,
                 is_eligible_actor=lambda _actor: False,
@@ -208,13 +212,20 @@ def build_test_plugin_registry(
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,
             ),
-            sendpic=SimpleNamespace(commands=default_sendpic_configs()),
+            sendpic=SimpleNamespace(
+                commands=default_sendpic_configs(),
+                exact_command_texts=frozenset(),
+            ),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
                 register_jobs=lambda _scheduler: None,
             ),
             local_rank=object(),
             rank_page_refresh=object(),
+            player_id_resolver=PlayerIdResolver(
+                lambda _reference, _conversation: None,
+                lambda _actor: None,
+            ),
             pet_config=SimpleNamespace(
                 search=_noop_query,
                 select=_noop_query,
@@ -306,14 +317,10 @@ def build_test_plugin_registry(
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             scheduled_restart=scheduled_restart,
-            push_message_limiter=lambda message, _target: message,
             commands=CommandCatalog(),
             contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),
-            private_extensions=SimpleNamespace(
-                load_plugin_contributions=lambda _runtime: ()
-            ),
-            private_extension_runtime=object(),
+            private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
     return (
@@ -323,24 +330,17 @@ def build_test_plugin_registry(
             resources=resources,
             scheduler=SchedulerFacade(),
         ),
-        *resources.private_extensions.load_plugin_contributions(
-            resources.private_extension_runtime,
-        ),
         bilibili_plugin_contribution(
             service=resources.bilibili,
-            login=resources.bilibili_login,
             features=runtime.features,
-            config=config.bilibili,
-            delivery=resources.delivery,
-            subscriptions=resources.subscriptions,
-            admin_notices=resources.admin_notices,
-            message_limiter=resources.push_message_limiter,
-            ai_service=resources.ai,
+            monitor=resources.bilibili_monitor,
             scheduler=SchedulerFacade(),
+            render_content=resources.bilibili_content_renderer,
         ),
         messaging_plugin_contribution(
             config=config.messaging,
             features=runtime.features,
+            references=config.onebot_references,
             service=resources.messaging,
             activity_service=resources.activity,
             scheduler=SchedulerFacade(),

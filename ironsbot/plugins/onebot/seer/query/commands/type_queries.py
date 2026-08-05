@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Element type and battle effect query matchers."""
 
-from ironsbot.runtime.matchers import CommandPolicy
-from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.matchers import CommandPolicy
+from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
 from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule

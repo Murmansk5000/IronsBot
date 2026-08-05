@@ -13,6 +13,8 @@ from ironsbot.core.seer_ids import is_valid_player_id
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
+    from ironsbot.core.platform import ConversationRef
+
 
 class PlayerAccountReferenceError(ValueError):
     """Raised when a configured or user-facing Seer account reference is invalid."""
@@ -70,7 +72,7 @@ class PlayerAccountRegistry:
         self,
         accounts: Iterable[PlayerAccount],
         *,
-        private_alias_groups: Mapping[int, Iterable[str]] | None = None,
+        private_alias_groups: Mapping[ConversationRef, Iterable[str]] | None = None,
     ) -> None:
         by_player_id: dict[int, PlayerAccount] = {}
         by_reference = AliasIndex[PlayerAccount](normalize_command_text)
@@ -105,7 +107,7 @@ class PlayerAccountRegistry:
         self._by_player_id = by_player_id
         self._by_reference = by_reference
         self._public_by_name = public_by_name
-        self._private_by_group = self._build_private_alias_groups(
+        self._private_by_conversation = self._build_private_alias_groups(
             private_alias_groups or {},
         )
 
@@ -134,7 +136,7 @@ class PlayerAccountRegistry:
         self,
         value: object,
         *,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> int | None:
         """Resolve a user command target without exposing private aliases globally."""
 
@@ -146,8 +148,8 @@ class PlayerAccountRegistry:
             return player_id if is_valid_player_id(player_id) else None
         normalized = normalize_command_text(text)
         account = self._public_by_name.resolve_alias(normalized).unique_value
-        if account is None and group_id is not None:
-            aliases = self._private_by_group.get(group_id)
+        if account is None and conversation is not None:
+            aliases = self._private_by_conversation.get(conversation)
             account = (
                 aliases.resolve_alias(normalized).unique_value
                 if aliases is not None
@@ -160,11 +162,14 @@ class PlayerAccountRegistry:
 
     def _build_private_alias_groups(
         self,
-        group_references: Mapping[int, Iterable[str]],
-    ) -> dict[int, AliasIndex[PlayerAccount]]:
-        groups: dict[int, AliasIndex[PlayerAccount]] = {}
-        for group_id, references in group_references.items():
-            aliases = groups.setdefault(group_id, AliasIndex(normalize_command_text))
+        conversation_references: Mapping[ConversationRef, Iterable[str]],
+    ) -> dict[ConversationRef, AliasIndex[PlayerAccount]]:
+        conversations: dict[ConversationRef, AliasIndex[PlayerAccount]] = {}
+        for conversation, references in conversation_references.items():
+            aliases = conversations.setdefault(
+                conversation,
+                AliasIndex(normalize_command_text),
+            )
             for reference in references:
                 if reference == "all":
                     accounts = self.accounts
@@ -172,7 +177,10 @@ class PlayerAccountRegistry:
                     accounts = (
                         self.resolve(
                             reference,
-                            location=f"seer.player_account_aliases.{group_id}",
+                            location=(
+                                "seer.player_account_aliases."
+                                f"{conversation.kind}:{conversation.id}"
+                            ),
                         ),
                     )
                 for account in accounts:
@@ -182,13 +190,13 @@ class PlayerAccountRegistry:
                         if any(match.value is account for match in existing.matches):
                             continue
                         aliases.add(normalized, account)
-        return groups
+        return conversations
 
 
 def build_player_account_registry(
     entries: Iterable[object],
     *,
-    private_alias_groups: Mapping[int, Iterable[str]] | None = None,
+    private_alias_groups: Mapping[ConversationRef, Iterable[str]] | None = None,
 ) -> PlayerAccountRegistry:
     """Build a registry from Pydantic config entries without coupling to models."""
 
