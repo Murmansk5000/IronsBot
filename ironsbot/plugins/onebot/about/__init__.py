@@ -6,7 +6,7 @@ from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
 from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -61,7 +61,7 @@ async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
     )
 
 
-def install(registry: MatcherRegistry) -> None:
+def install(registry: MatcherFactory) -> None:
     matcher = registry.on_fullmatch(
         "关于",
         policy=CommandPolicy.command("about", help_ids=("about",)),

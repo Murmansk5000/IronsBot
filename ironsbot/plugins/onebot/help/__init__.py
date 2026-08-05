@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.runtime.matchers import MatcherFactory
 
 
 def _always_visible_help(_event: Event) -> bool:
@@ -166,7 +166,7 @@ def _create_selection_handler(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     contribution_catalog: PluginContributionCatalog,
     features: FeatureService,
     commands: CommandCatalog,

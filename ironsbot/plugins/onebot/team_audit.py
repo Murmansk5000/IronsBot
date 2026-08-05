@@ -23,7 +23,7 @@ from ironsbot.runtime.plugins import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.runtime.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.team.audit import TeamAuditService
 
@@ -78,7 +78,7 @@ async def start_team_audit_followups(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     scheduler: Scheduler,
     service: TeamAuditService,
 ) -> None:

@@ -22,7 +22,7 @@ from ironsbot.runtime.commands import (
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind_async
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import is_group_owner_or_admin_event
 from ironsbot.runtime.plugins import (
@@ -261,7 +261,7 @@ async def handle_team_resource(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     service: TeamResourceService,
 ) -> None:
     def is_manage(event: MessageEvent) -> bool:

@@ -11,7 +11,7 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -32,7 +32,7 @@ __plugin_meta__ = PluginMetadata(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     commands: tuple[str, ...],
     number: str,
     template: str,

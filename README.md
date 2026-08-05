@@ -135,9 +135,10 @@ services:
 贡献。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
 命令认领的唯一语义来源。
 
-`MatcherRegistry` 与私有扩展 bootstrap 仍是过渡组件：前者会迁移为更窄的 matcher
-工厂，后者只适配配置化的私有扩展，不能重新成为内置插件发现或命令注册入口。
-后续迁移方向、责任边界与完成条件以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
+`MatcherFactory` 只负责构造 matcher、挂入命令权限与冷却，并执行启动校验。私有扩展
+bootstrap 仍是过渡组件，只适配配置化的私有扩展，不能重新成为内置插件发现或命令
+注册入口。后续迁移方向、责任边界与完成条件以
+[ARCHITECTURE.md](ARCHITECTURE.md) 为准。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。

@@ -17,7 +17,7 @@ from ironsbot.runtime.commands import (
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.onebot_identity import onebot_actor_ref
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -99,7 +99,7 @@ def _start_docker_update(*, startup_notice: StartupNoticeService) -> None:
     )
 
 
-def _install(registry: MatcherRegistry, service: DockerUpdateService) -> None:
+def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
     async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
         message, restart_action = await service.prepare_manual_restart()
         await send_event_reply(matcher, event, message)

@@ -16,7 +16,7 @@ from ironsbot.runtime.feature_policy import (
     event_is_feature_visible_in_help,
     feature_rule,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -102,7 +102,7 @@ def _is_visible(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     service: PetConfigQueryService,
     features: FeatureService,
     *,

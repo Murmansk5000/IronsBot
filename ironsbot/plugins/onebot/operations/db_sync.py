@@ -20,7 +20,7 @@ from ironsbot.runtime.commands import (
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.onebot_identity import onebot_actor_ref
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -119,7 +119,7 @@ def _is_force_manual_sync_event(event: Event) -> bool:
     return command in NORMALIZED_FORCE_MANUAL_SYNC_COMMANDS
 
 
-def _install(registry: MatcherRegistry, service: DataSyncService) -> None:
+def _install(registry: MatcherFactory, service: DataSyncService) -> None:
     async def handle_sync(matcher: Matcher, event: MessageEvent) -> None:
         force = _is_force_manual_sync_event(event)
         message, should_run = service.prepare_manual(force=force)

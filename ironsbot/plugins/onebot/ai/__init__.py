@@ -21,7 +21,7 @@ from ironsbot.runtime.commands import (
     commands_from_rows,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import (
     build_notice_source,
@@ -155,7 +155,7 @@ def _capture_group_ai_prompt(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     service: AiService,
     dependencies: AiChatMatcherDependencies,
 ) -> None:

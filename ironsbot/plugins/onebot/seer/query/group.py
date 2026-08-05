@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+    from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
     from ironsbot.services.seer.resources import SeerQueryResources
 
@@ -28,7 +28,7 @@ def seer_feature_rule(features: FeatureService, feature: str) -> Rule:
 
 @dataclass(frozen=True, slots=True)
 class SeerMatcherGroup:
-    registry: MatcherRegistry
+    registry: MatcherFactory
     resources: SeerQueryResources
     features: FeatureService
     commands: CommandCatalog

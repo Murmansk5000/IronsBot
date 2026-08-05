@@ -20,7 +20,7 @@ from ironsbot.runtime.commands import (
     commands_from_rows,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -91,7 +91,7 @@ async def _is_soon_ending_seer_activity_command(event: Event) -> bool:
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     service: ActivityService,
     features: FeatureService,
 ) -> None:

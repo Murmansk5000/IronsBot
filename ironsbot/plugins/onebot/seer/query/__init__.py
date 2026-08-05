@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 
     from ironsbot.app.composition import ApplicationResources
     from ironsbot.config.models.settings import Settings
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.runtime.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import Scheduler
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     settings: Settings,
     resources: ApplicationResources,

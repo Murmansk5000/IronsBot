@@ -27,7 +27,7 @@ from ironsbot.integrations.onebot.outbound import (
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
+from ironsbot.runtime.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
@@ -47,8 +47,8 @@ class TestRuntime:
     prompt_sessions: PromptSessionManager
     tasks: TaskOwner
 
-    def matcher_registry(self) -> MatcherRegistry:
-        return MatcherRegistry(
+    def matcher_factory(self) -> MatcherFactory:
+        return MatcherFactory(
             self.cooldown,
             self.matcher_priorities,
             prompt_session_manager=self.prompt_sessions,

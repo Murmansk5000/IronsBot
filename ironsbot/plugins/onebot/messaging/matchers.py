@@ -10,7 +10,7 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind, bind_async
 from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from .push_time_handlers import RefreshPushTimeJobs
 
 
-def _message_subscription_priority(registry: MatcherRegistry) -> int:
+def _message_subscription_priority(registry: MatcherFactory) -> int:
     return max(registry.priority("message_commands") - 1, 0)
 
 
@@ -77,7 +77,7 @@ def _action_command_id(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingService,
     references: OneBotReferenceResolver,

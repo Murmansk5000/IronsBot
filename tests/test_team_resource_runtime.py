@@ -99,7 +99,7 @@ def _service(
     )
 
 
-TEAM_RESOURCE_REGISTRY = TEST_RUNTIME.matcher_registry()
+TEAM_RESOURCE_REGISTRY = TEST_RUNTIME.matcher_factory()
 TEAM_RESOURCE_SERVICE = _service(TeamResourceConfig())
 resource.install(TEAM_RESOURCE_REGISTRY, TEAM_RESOURCE_SERVICE)
 
@@ -241,7 +241,7 @@ async def test_team_resource_private_rules_allow_enabled_user() -> None:
         runtime.features,
         FakeTeamResourceNoticeSender(),
     )
-    registry = runtime.matcher_registry()
+    registry = runtime.matcher_factory()
     resource.install(registry, service)
     manage = next(
         matcher

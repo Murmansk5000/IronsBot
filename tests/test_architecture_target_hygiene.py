@@ -78,6 +78,10 @@ FORBIDDEN_RENDERER_PERSISTENCE_PREFIXES = (
     "sqlmodel",
     "sqlite3",
 )
+RETIRED_RUNTIME_NAMES = (
+    "PluginDefinition",
+    "MatcherRegistry",
+)
 
 
 class MissingArchitectureTargetMethodError(AssertionError):
@@ -343,6 +347,17 @@ def test_runtime_callers_do_not_use_legacy_numeric_feature_policy() -> None:
         )
         for path in _python_files(directory)
         for method in sorted(_legacy_feature_policy_calls(path))
+    ]
+
+    assert offenders == []
+
+
+def test_runtime_does_not_reintroduce_retired_plugin_or_matcher_registries() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} mentions {retired_name}"
+        for path in _python_files(PACKAGE)
+        for retired_name in RETIRED_RUNTIME_NAMES
+        if retired_name in path.read_text(encoding="utf-8-sig")
     ]
 
     assert offenders == []

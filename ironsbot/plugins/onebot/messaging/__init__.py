@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.onebot_references import OneBotReferenceResolver
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.runtime.matchers import MatcherFactory
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.scheduler import Scheduler
@@ -168,7 +168,7 @@ def _schedule_label(
 
 
 def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     messaging: MessagingService,
     references: OneBotReferenceResolver,

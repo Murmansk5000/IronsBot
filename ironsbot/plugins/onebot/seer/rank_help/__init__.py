@@ -17,7 +17,7 @@ from ironsbot.runtime.commands import (
     commands_from_rows,
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind_async
 from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -196,7 +196,7 @@ async def handle_rank_help_entry(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     features: FeatureService,
     commands: CommandCatalog,
 ) -> None:

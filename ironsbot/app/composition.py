@@ -126,7 +126,7 @@ from ironsbot.integrations.storage.team_resources import (
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
+from ironsbot.runtime.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.runtime.onebot_identity import onebot_actor_ref, onebot_conversation_ref
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.ai.service import AiService
@@ -699,7 +699,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,
     )
-    matchers = MatcherRegistry(
+    matcher_factory = MatcherFactory(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
         prompt_session_manager=prompt_sessions,
@@ -719,7 +719,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         prompt_sessions=prompt_sessions,
         resources=resources,
         contributions=(),
-        matchers=matchers,
+        matcher_factory=matcher_factory,
         task_owner=task_owner,
         known_features=(
             *(feature.value for feature in Feature),

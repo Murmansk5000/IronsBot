@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind, bind_async
 from ironsbot.runtime.rules import explicit_command
 
 from .account_commands import (
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 
 def install(  # noqa: PLR0913 - explicit matcher dependencies
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     service: BilibiliService,
     features: FeatureService,
     monitor: BilibiliMonitorService,

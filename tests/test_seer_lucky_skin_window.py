@@ -420,7 +420,7 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
 ) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
     runtime = build_test_runtime(state_path=tmp_path / "runtime_state.sqlite")
-    registry = runtime.matcher_registry()
+    registry = runtime.matcher_factory()
 
     lucky_skin_window_plugin._install(
         registry,

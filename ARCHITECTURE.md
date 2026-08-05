@@ -61,15 +61,15 @@ contract without the qualifier "current bootstrap bridge". This specifically
 prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
-Current transition items are `MatcherRegistry`, the private-extension bootstrap
-adapter, the legacy OneBot `MessageTarget` / `OneBotDelivery` send chain, and
-the renderer data lookups listed in the Phase 0 guard below. They keep the
-current OneBot application runnable; they are not the architecture that new
-cross-feature work should target. Phase 2 has completed built-in plugin
-discovery through the standard NoneBot manifest. `PluginContribution` is the
-current plugin-local way to submit explicit runtime contributions; it is not an
-application registry or a catch-all authority for every plugin concern. The
-remaining Phase 2 work replaces `MatcherRegistry` with a matcher factory and
+Current transition items are the private-extension bootstrap adapter, the
+legacy OneBot `MessageTarget` / `OneBotDelivery` send chain, and the renderer
+data lookups listed in the Phase 0 guard below. They keep the current OneBot
+application runnable; they are not the architecture that new cross-feature
+work should target. Phase 2 has completed built-in plugin discovery through the
+standard NoneBot manifest and the matcher-construction boundary now uses
+`MatcherFactory`. `PluginContribution` is the current plugin-local way to
+submit explicit runtime contributions; it is not an application registry or a
+catch-all authority for every plugin concern. The remaining Phase 2 work
 removes the temporary private-extension adapter. Phase 4 removes
 renderer-owned persistence lookups. No new subsystem may be built on those
 transition items merely because they already exist.
@@ -548,7 +548,7 @@ adding fields or side registries to a temporary bootstrap adapter.
 | --- | --- | --- | --- |
 | Plugin discovery and loading | Standard TOML loads declared third-party prerequisites and every built-in local package; a temporary bootstrap adapts configured private extensions only | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No private extension bootstrap adapter remains. |
 | Plugin identity and static metadata | `PluginMetadata` in each built-in top-level plugin package | `PluginMetadata` in each top-level plugin package | Private extensions expose equivalent declarative metadata without importing application composition code. |
-| Matchers, command contracts, jobs, lifecycle contributions | `MatcherRegistry` + plugin-local `PluginContribution` | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
+| Matchers, command contracts, jobs, lifecycle contributions | `MatcherFactory` + plugin-local `PluginContribution` | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
 | Feature visibility and audience | Current feature service plus plugin bridge | Feature policy service consumed by contracts | Plugins declare requirements but do not own policy evaluation. |
 
@@ -944,7 +944,7 @@ class PluginContribution:
     features: frozenset[Feature]
     help: HelpEntry | None
     commands: tuple[CommandDescriptor, ...] = ()
-    install: Callable[[MatcherRegistry], None] | None = None
+    install: Callable[[MatcherFactory], None] | None = None
     hooks: PluginHooks = PluginHooks()
 ```
 
@@ -968,14 +968,14 @@ such as `full` or `core`, but it cannot list modules itself. There is no
 parallel application manifest, help layout map, feature-to-module map, runtime
 setup string list, or reflective `module:function` lookup.
 
-Every message matcher is created through `runtime.matchers.MatcherRegistry`.
+Every message matcher is created through `runtime.matchers.MatcherFactory`.
 Creation requires one explicit command policy:
 
 - a stable semantic command id;
 - a resolver for a dynamic semantic command id; or
 - a documented passive/conversation exemption.
 
-The registry installs command cooldown admission when the matcher is created.
+The factory installs command cooldown admission when the matcher is created.
 There is no second pass that imports matcher objects by string reference.
 
 ## Message Input Routing
@@ -1222,7 +1222,7 @@ reference for users:
 - **Ingress and commands:** NoneBot + OneBot v11 events enter through
   `MessageInputContext`; `CommandCatalog` and `CommandDescriptor` currently
   drive help, poke candidates, access checks, and direct-command ownership.
-  `MatcherRegistry` constructs the current matchers and records their command
+  `MatcherFactory` constructs the current matchers and records their command
   policy. Prompts and selection menus keep their own anchored session state.
 - **Permissions and identity:** the OneBot feature-config compiler resolves
   configured group and user aliases before constructing the typed feature

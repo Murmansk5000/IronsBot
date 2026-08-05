@@ -544,7 +544,14 @@ def _command_policy_label(policy: CommandPolicy) -> str:
 
 
 @dataclass(slots=True)
-class MatcherRegistry:
+class MatcherFactory:
+    """Create and configure this application's OneBot matchers.
+
+    The factory owns matcher construction-time policy only. It retains created
+    matchers solely for command-catalog validation and startup smoke checks;
+    it is not plugin discovery or a runtime service registry.
+    """
+
     cooldown: CommandCooldown
     priorities: object
     prompt_session_manager: PromptSessionManager | None = None

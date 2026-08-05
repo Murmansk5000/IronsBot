@@ -18,7 +18,7 @@ from ironsbot.runtime.commands import (
     CommandDescriptor,
     commands_from_rows,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind_async
 from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -111,7 +111,7 @@ async def _handle_disabled_bare_admin_status(
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,

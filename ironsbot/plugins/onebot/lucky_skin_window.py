@@ -32,7 +32,7 @@ from ironsbot.runtime.feature_policy import (
     event_is_feature_allowed,
     event_is_feature_visible_in_help,
 )
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory, bind_async
 from ironsbot.runtime.onebot_identity import onebot_actor_ref
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -560,7 +560,7 @@ def _watch_item_ids(item: LuckySkinWatchItem) -> str:
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     service: LuckySkinWindowService,
     features: FeatureService,

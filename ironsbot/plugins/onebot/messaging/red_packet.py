@@ -16,7 +16,7 @@ from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.onebot_identity import (
     onebot_actor_ref,
     onebot_conversation_ref,
@@ -166,7 +166,7 @@ async def _send_red_packet_notice(  # noqa: PLR0913
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     config: RedPacketNoticeConfig,
     admin_notices: AdminNoticeService,
 ) -> None:

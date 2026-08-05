@@ -24,11 +24,11 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.runtime.matchers import MatcherFactory
     from ironsbot.services.operations.scheduler import SchedulerLifecycle
 
 
-def _install(registry: MatcherRegistry, *, scheduler: SchedulerLifecycle) -> None:
+def _install(registry: MatcherFactory, *, scheduler: SchedulerLifecycle) -> None:
     del registry
     from nonebot_plugin_apscheduler import scheduler as backend
 

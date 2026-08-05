@@ -16,7 +16,7 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.matchers import CommandPolicy, MatcherFactory
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import build_notice_source
 from ironsbot.runtime.plugins import (
@@ -109,7 +109,7 @@ def _resolve_action_command_id(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     dependencies: AiIntentDependencies,
     command_help_ids: tuple[str, ...],
 ) -> None:
