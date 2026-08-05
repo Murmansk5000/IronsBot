@@ -258,6 +258,37 @@ def test_player_binding_lifecycle(tmp_path: Path) -> None:
     assert store.unbind(actor=_actor()) is False
 
 
+def test_player_binding_store_keeps_platform_and_member_scope_isolated(
+    tmp_path: Path,
+) -> None:
+    store = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    actors = (
+        ActorRef(Platform.ONEBOT, "10001"),
+        ActorRef(Platform.QQ_OFFICIAL, "10001"),
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "10001",
+            kind="member",
+            scope_id="guild-a",
+        ),
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "10001",
+            kind="member",
+            scope_id="guild-b",
+        ),
+    )
+
+    for player_id, actor in enumerate(actors, start=1):
+        store.bind(
+            actor=actor,
+            player_id=player_id,
+            player_nick=f"player-{player_id}",
+        )
+
+    assert [store.get(actor).player_id for actor in actors] == [1, 2, 3, 4]
+
+
 def test_declining_binding_completes_first_choice(tmp_path: Path) -> None:
     path = tmp_path / "bindings.sqlite"
     store = SqlitePlayerBindingStore(path)

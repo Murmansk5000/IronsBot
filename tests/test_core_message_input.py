@@ -12,9 +12,10 @@ from ironsbot.core.platform import (
 def test_message_input_context_classifies_platform_neutral_direct_mentions() -> None:
     context = MessageInputContext(
         IncomingMessageRef(
-            id="message-1",
+            platform=Platform.QQ_OFFICIAL,
             actor=ActorRef(Platform.QQ_OFFICIAL, "open-id"),
             conversation=ConversationRef(Platform.QQ_OFFICIAL, "group", "group-id"),
+            message_id="message-1",
             text="查询",
             direct_mentions=(ActorRef(Platform.QQ_OFFICIAL, "target-open-id"),),
         ),
@@ -28,9 +29,10 @@ def test_message_input_context_classifies_platform_neutral_direct_mentions() -> 
 def test_reply_precedes_bot_mention_for_all_platforms() -> None:
     context = MessageInputContext(
         IncomingMessageRef(
-            id="message-1",
+            platform=Platform.ONEBOT,
             actor=ActorRef(Platform.ONEBOT, "123"),
             conversation=ConversationRef(Platform.ONEBOT, "group", "456"),
+            message_id="message-1",
             text="帮助",
             reply_to_id="message-0",
         ),

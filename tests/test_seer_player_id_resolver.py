@@ -26,9 +26,10 @@ def _context(
 ) -> MessageInputContext:
     return MessageInputContext(
         IncomingMessageRef(
-            id="message-1",
+            platform=Platform.ONEBOT,
             actor=ActorRef(Platform.ONEBOT, "100"),
             conversation=ConversationRef(Platform.ONEBOT, kind, "200"),
+            message_id="message-1",
             text="收集",
             direct_mentions=mentions,
         ),
