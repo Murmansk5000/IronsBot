@@ -362,17 +362,16 @@ def test_scheduled_push_requires_stable_id() -> None:
         )
 
 
-def test_scheduled_push_migrates_legacy_hour_and_minute() -> None:
-    action = MessageScheduledAction.model_validate(
-        {
-            "id": "daily",
-            "message": "私聊定时推送",
-            "hour": 23,
-            "minute": 5,
-        }
-    )
-
-    assert action.time == "23:05"
+def test_scheduled_push_rejects_legacy_hour_and_minute() -> None:
+    with pytest.raises(ValidationError, match="hour"):
+        MessageScheduledAction.model_validate(
+            {
+                "id": "daily",
+                "message": "私聊定时推送",
+                "hour": 23,
+                "minute": 5,
+            }
+        )
 
 
 def test_scheduled_push_ids_are_globally_unique() -> None:
