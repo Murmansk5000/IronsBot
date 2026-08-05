@@ -33,7 +33,7 @@ from ironsbot.services.operations.command_text import (
     NORMAL_SERVER_STATUS_COMMAND,
 )
 from ironsbot.services.operations.server_status_commands import (
-    server_status_command_descriptors,
+    server_status_command_contracts,
 )
 
 from .status.commands import handle_admin_status, handle_normal_status
@@ -186,7 +186,7 @@ def plugin_contribution(
                 "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
             ),
         ),
-        commands=server_status_command_descriptors(),
+        commands=server_status_command_contracts(),
         install=partial(
             _install,
             server_status=service,

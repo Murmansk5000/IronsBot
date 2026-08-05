@@ -4,7 +4,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.core.command_catalog import CommandDescriptor
+from ironsbot.core.command_catalog import CommandContract
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.replies import finish_event_reply
@@ -85,7 +85,7 @@ def plugin_contribution() -> PluginContribution:
             order=20,
         ),
         commands=(
-            CommandDescriptor(
+            CommandContract(
                 id="about",
                 plugin_id="about",
                 section="查看",

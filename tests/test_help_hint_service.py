@@ -6,7 +6,7 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandCatalog,
     CommandContext,
-    CommandDescriptor,
+    CommandContract,
 )
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -85,7 +85,7 @@ def _catalog() -> CommandCatalog:
         PluginContribution(
             id="pet_config",
             commands=(
-                CommandDescriptor(
+                CommandContract(
                     id="pet_config.query",
                     plugin_id="pet_config",
                     section="查询",
@@ -99,7 +99,7 @@ def _catalog() -> CommandCatalog:
         PluginContribution(
             id="server_status",
             commands=(
-                CommandDescriptor(
+                CommandContract(
                     id="server_status.query",
                     plugin_id="server_status",
                     section="查询",
@@ -113,7 +113,7 @@ def _catalog() -> CommandCatalog:
         PluginContribution(
             id="activity",
             commands=(
-                CommandDescriptor(
+                CommandContract(
                     id="activity.ending",
                     plugin_id="activity",
                     section="查询",
@@ -122,7 +122,7 @@ def _catalog() -> CommandCatalog:
                     features_any=("seer_activity_query",),
                     show_in_poke=True,
                 ),
-                CommandDescriptor(
+                CommandContract(
                     id="activity.current",
                     plugin_id="activity",
                     section="超级管理员",
@@ -137,7 +137,7 @@ def _catalog() -> CommandCatalog:
         PluginContribution(
             id="team_resource",
             commands=(
-                CommandDescriptor(
+                CommandContract(
                     id="team_resource.query",
                     plugin_id="team_resource",
                     section="查询",
@@ -152,7 +152,7 @@ def _catalog() -> CommandCatalog:
         PluginContribution(
             id="bilibili",
             commands=(
-                CommandDescriptor(
+                CommandContract(
                     id="bilibili.dynamic",
                     plugin_id="bilibili",
                     section="查询",
@@ -166,7 +166,7 @@ def _catalog() -> CommandCatalog:
         PluginContribution(
             id="rank_help",
             commands=(
-                CommandDescriptor(
+                CommandContract(
                     id="rank.display_limit",
                     plugin_id="rank_help",
                     section="本群管理",

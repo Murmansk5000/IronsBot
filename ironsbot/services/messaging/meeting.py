@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from ironsbot.core.command_catalog import CommandDescriptor
+from ironsbot.core.command_catalog import CommandContract
 
 TENCENT_MEETING_NUMBER_DIGITS = 10
 
@@ -26,13 +26,13 @@ def build_meeting_reply(number: str, template: str) -> str | None:
     )
 
 
-def meeting_command_descriptors(
+def meeting_command_contracts(
     commands: tuple[str, ...],
-) -> tuple[CommandDescriptor, ...]:
+) -> tuple[CommandContract, ...]:
     """Describe configured meeting commands for the shared command catalog."""
 
     return (
-        CommandDescriptor(
+        CommandContract(
             id="meeting",
             plugin_id="meeting",
             section="查询",

@@ -25,7 +25,7 @@ from ironsbot.runtime.plugins import (
     active_plugin_install_context,
 )
 from ironsbot.services.operations.data_sync_commands import (
-    data_sync_command_descriptors,
+    data_sync_command_contracts,
     is_force_data_sync_command,
     is_manual_data_sync_command,
 )
@@ -123,7 +123,7 @@ def plugin_contribution(
             order=20,
             visible=partial(_help_visible, features=features),
         ),
-        commands=data_sync_command_descriptors(),
+        commands=data_sync_command_contracts(),
         install=partial(_install, service=service),
         hooks=PluginHooks(
             startup=(

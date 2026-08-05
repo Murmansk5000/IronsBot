@@ -20,7 +20,7 @@ from ironsbot.runtime.plugins import (
 )
 from ironsbot.services.messaging.meeting import (
     build_meeting_reply,
-    meeting_command_descriptors,
+    meeting_command_contracts,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -90,7 +90,7 @@ def plugin_contribution(
             group="message",
             order=40,
         ),
-        commands=meeting_command_descriptors(commands),
+        commands=meeting_command_contracts(commands),
         install=partial(
             install,
             commands=commands,

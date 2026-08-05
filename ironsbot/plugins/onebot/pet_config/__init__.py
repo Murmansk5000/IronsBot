@@ -23,7 +23,7 @@ from ironsbot.runtime.plugins import (
     active_plugin_install_context,
 )
 from ironsbot.runtime.semantic_requests import ActionDefinition
-from ironsbot.services.pet_config_commands import pet_config_command_descriptors
+from ironsbot.services.pet_config_commands import pet_config_command_contracts
 
 __plugin_meta__ = PluginMetadata(
     name="精灵配置",
@@ -63,7 +63,7 @@ def plugin_contribution(
                 enabled=config.enabled,
             ),
         ),
-        commands=pet_config_command_descriptors(enabled=config.enabled),
+        commands=pet_config_command_contracts(enabled=config.enabled),
         install=partial(
             install,
             service=service,

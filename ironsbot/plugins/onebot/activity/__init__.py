@@ -24,7 +24,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.services.activity.command_contracts import activity_command_descriptors
+from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
     is_soon_ending_seer_activity_text,
@@ -128,7 +128,7 @@ def plugin_contribution(
             order=10,
             notes=("自动提醒时间由 activity.lead_hours 配置。",),
         ),
-        commands=activity_command_descriptors(),
+        commands=activity_command_contracts(),
         install=partial(install, service=service, features=features),
         hooks=PluginHooks(
             startup=(

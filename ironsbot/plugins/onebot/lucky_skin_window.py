@@ -58,7 +58,7 @@ from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
     LUCKY_SKIN_WATCH_RESET_ACTION,
     LUCKY_SKIN_WATCH_RESET_COMMANDS,
-    lucky_skin_window_command_descriptors,
+    lucky_skin_window_command_contracts,
 )
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWatchItem,
@@ -105,7 +105,7 @@ def plugin_contribution(
                 "发送“橱窗”查看；可用“关注橱窗”或“订阅橱窗”管理星标；可在“TD”中退订每日提醒。",
             ),
         ),
-        commands=lucky_skin_window_command_descriptors(),
+        commands=lucky_skin_window_command_contracts(),
         install=partial(_install, service=service, features=features),
         hooks=PluginHooks(
             startup=(

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 from ironsbot.services.activity.commands import (
@@ -14,7 +14,7 @@ from ironsbot.services.activity.commands import (
 )
 
 
-def activity_command_descriptors() -> tuple[CommandDescriptor, ...]:
+def activity_command_contracts() -> tuple[CommandContract, ...]:
     """Describe direct activity commands for the shared command catalog."""
 
     return (

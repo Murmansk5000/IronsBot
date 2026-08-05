@@ -25,7 +25,7 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.onebot.bilibili import command_descriptors as bilibili_commands
+from ironsbot.plugins.onebot.bilibili import command_contracts as bilibili_commands
 from ironsbot.plugins.onebot.bilibili.command_rules import (
     is_bili_account_command,
     is_bili_push_mode_command,

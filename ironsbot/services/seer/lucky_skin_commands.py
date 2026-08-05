@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ironsbot.core.command_catalog import CommandDescriptor
+from ironsbot.core.command_catalog import CommandContract
 from ironsbot.core.semantic_requests import ActionDefinition
 
 LUCKY_SKIN_QUERY_COMMANDS = ("幸运橱窗", "橱窗")
@@ -57,11 +57,11 @@ LUCKY_SKIN_WATCH_RESET_ACTION = ActionDefinition(
 )
 
 
-def lucky_skin_window_command_descriptors() -> tuple[CommandDescriptor, ...]:
+def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
     """Describe all direct lucky-skin-window commands."""
 
     return (
-        CommandDescriptor(
+        CommandContract(
             id=LUCKY_SKIN_QUERY_ACTION.id,
             plugin_id="lucky_skin_window",
             section="幸运橱窗",
@@ -70,7 +70,7 @@ def lucky_skin_window_command_descriptors() -> tuple[CommandDescriptor, ...]:
             features_any=("lucky_skin_window",),
             show_in_poke=True,
         ),
-        CommandDescriptor(
+        CommandContract(
             id=LUCKY_SKIN_WATCH_LIST_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
@@ -79,7 +79,7 @@ def lucky_skin_window_command_descriptors() -> tuple[CommandDescriptor, ...]:
             features_any=("lucky_skin_window",),
             show_in_poke=True,
         ),
-        CommandDescriptor(
+        CommandContract(
             id=LUCKY_SKIN_WATCH_ADD_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
@@ -87,7 +87,7 @@ def lucky_skin_window_command_descriptors() -> tuple[CommandDescriptor, ...]:
             description="按皮肤 ID、资源 ID 或名称新增橱窗关注",
             features_any=("lucky_skin_window",),
         ),
-        CommandDescriptor(
+        CommandContract(
             id=LUCKY_SKIN_WATCH_REMOVE_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
@@ -95,7 +95,7 @@ def lucky_skin_window_command_descriptors() -> tuple[CommandDescriptor, ...]:
             description="取消指定皮肤的橱窗关注",
             features_any=("lucky_skin_window",),
         ),
-        CommandDescriptor(
+        CommandContract(
             id=LUCKY_SKIN_WATCH_CLEAR_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
@@ -103,7 +103,7 @@ def lucky_skin_window_command_descriptors() -> tuple[CommandDescriptor, ...]:
             description="清空当前 QQ 的幸运橱窗关注列表",
             features_any=("lucky_skin_window",),
         ),
-        CommandDescriptor(
+        CommandContract(
             id=LUCKY_SKIN_WATCH_RESET_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",

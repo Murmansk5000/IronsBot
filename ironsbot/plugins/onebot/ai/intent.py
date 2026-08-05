@@ -25,7 +25,7 @@ from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.services.ai.command_contracts import ai_intent_command_descriptors
+from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
 
 from .team_actions import run_team_action
 
@@ -181,7 +181,7 @@ def plugin_contribution(
     """Declare configured intent actions and their natural-language matcher."""
 
     enabled = bool(settings.ai.api_key.strip()) and settings.ai.intent_actions_enabled
-    commands = ai_intent_command_descriptors(settings)
+    commands = ai_intent_command_contracts(settings)
     return PluginContribution(
         id="ai_intent",
         features=frozenset(

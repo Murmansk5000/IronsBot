@@ -5,15 +5,15 @@ from __future__ import annotations
 
 from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 
 
-def team_resource_command_descriptors(
+def team_resource_command_contracts(
     *,
     enabled: bool,
-) -> tuple[CommandDescriptor, ...]:
+) -> tuple[CommandContract, ...]:
     """Describe query and subscription management commands when enabled."""
 
     if not enabled:

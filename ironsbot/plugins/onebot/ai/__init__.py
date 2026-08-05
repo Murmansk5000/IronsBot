@@ -29,7 +29,7 @@ from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.services.ai.command_contracts import ai_chat_command_descriptors
+from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
@@ -238,7 +238,7 @@ def plugin_contribution(
                 enabled=enabled,
             ),
         ),
-        commands=ai_chat_command_descriptors(enabled=enabled),
+        commands=ai_chat_command_contracts(enabled=enabled),
         install=(
             partial(
                 install,

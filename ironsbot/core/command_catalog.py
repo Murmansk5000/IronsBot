@@ -48,60 +48,60 @@ class CommandCatalogError(ValueError):
 
     @classmethod
     def empty_id(cls) -> CommandCatalogError:
-        return cls("invalid command descriptor: id must not be empty")
+        return cls("invalid command contract: id must not be empty")
 
     @classmethod
     def empty_plugin_id(cls) -> CommandCatalogError:
-        return cls("invalid command descriptor: plugin_id must not be empty")
+        return cls("invalid command contract: plugin_id must not be empty")
 
     @classmethod
     def empty_section(cls) -> CommandCatalogError:
-        return cls("invalid command descriptor: section must not be empty")
+        return cls("invalid command contract: section must not be empty")
 
     @classmethod
     def requires_examples(cls, command_id: str) -> CommandCatalogError:
-        return cls(f"invalid command descriptor: {command_id!r} requires examples")
+        return cls(f"invalid command contract: {command_id!r} requires examples")
 
     @classmethod
     def invalid_routing_alias(cls, command_id: str) -> CommandCatalogError:
         return cls(
-            f"invalid command descriptor: {command_id!r} has an empty routing alias"
+            f"invalid command contract: {command_id!r} has an empty routing alias"
         )
 
     @classmethod
     def requires_description(cls, command_id: str) -> CommandCatalogError:
-        return cls(f"invalid command descriptor: {command_id!r} requires a description")
+        return cls(f"invalid command contract: {command_id!r} requires a description")
 
     @classmethod
     def invalid_scope(cls, command_id: str) -> CommandCatalogError:
-        return cls(f"invalid command descriptor: {command_id!r} has invalid scope")
+        return cls(f"invalid command contract: {command_id!r} has invalid scope")
 
     @classmethod
     def invalid_audience(cls, command_id: str) -> CommandCatalogError:
-        return cls(f"invalid command descriptor: {command_id!r} has invalid audience")
+        return cls(f"invalid command contract: {command_id!r} has invalid audience")
 
     @classmethod
     def private_group_manager(cls, command_id: str) -> CommandCatalogError:
         return cls(
-            "invalid command descriptor: "
+            "invalid command contract: "
             f"group manager command {command_id!r} cannot be private-only"
         )
 
     @classmethod
     def empty_features_any(cls, command_id: str) -> CommandCatalogError:
         return cls(
-            f"invalid command descriptor: {command_id!r} has an empty feature id"
+            f"invalid command contract: {command_id!r} has an empty feature id"
         )
 
     @classmethod
     def invalid_interaction(cls, command_id: str) -> CommandCatalogError:
         return cls(
-            f"invalid command descriptor: {command_id!r} has invalid interaction"
+            f"invalid command contract: {command_id!r} has invalid interaction"
         )
 
     @classmethod
     def invalid_help_level(cls, command_id: str) -> CommandCatalogError:
-        return cls(f"invalid command descriptor: {command_id!r} has invalid help level")
+        return cls(f"invalid command contract: {command_id!r} has invalid help level")
 
     @classmethod
     def unknown_registered_help_ids(
@@ -109,7 +109,7 @@ class CommandCatalogError(ValueError):
         command_ids: Iterable[str],
     ) -> CommandCatalogError:
         return cls(
-            "matchers reference unknown command descriptor ids: "
+            "matchers reference unknown command contract ids: "
             + ", ".join(sorted(command_ids))
         )
 
@@ -119,7 +119,7 @@ class CommandCatalogError(ValueError):
         command_ids: Iterable[str],
     ) -> CommandCatalogError:
         return cls(
-            "direct command descriptors have no matcher registration: "
+            "direct command contracts have no matcher registration: "
             + ", ".join(sorted(command_ids))
         )
 
@@ -194,7 +194,7 @@ class CommandAccess:
 
 
 @dataclass(frozen=True, slots=True)
-class CommandDescriptor:
+class CommandContract:
     """One documented user input, shared by help and poke hints."""
 
     id: str
@@ -293,7 +293,7 @@ class CommandContribution(Protocol):
     def id(self) -> str: ...
 
     @property
-    def commands(self) -> tuple[CommandDescriptor, ...]: ...
+    def commands(self) -> tuple[CommandContract, ...]: ...
 
 
 def _validate_routing_aliases(command_id: str, aliases: tuple[str, ...]) -> None:
@@ -306,10 +306,10 @@ def commands_from_rows(
     section: str,
     feature: str | None,
     rows: tuple[tuple[str, tuple[str, ...], str, dict[str, Any]], ...],
-) -> tuple[CommandDescriptor, ...]:
+) -> tuple[CommandContract, ...]:
     """Build command contracts from concise plugin-owned command rows."""
 
-    descriptors = []
+    contracts = []
     for command_id, examples, description, raw_options in rows:
         options = dict(raw_options)
         command_features = options.pop(
@@ -318,8 +318,8 @@ def commands_from_rows(
         )
         command_features_all = options.pop("features_all", ())
         access = options.pop("access", (CommandAccess(),))
-        descriptors.append(
-            CommandDescriptor(
+        contracts.append(
+            CommandContract(
                 id=command_id,
                 plugin_id=plugin_id,
                 section=section,
@@ -331,7 +331,7 @@ def commands_from_rows(
                 **options,
             )
         )
-    return tuple(descriptors)
+    return tuple(contracts)
 
 
 def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
@@ -365,7 +365,7 @@ def _feature_is_allowed(
 class CommandCatalog:
     """Validated command descriptions for the active plugin registry."""
 
-    _commands: tuple[CommandDescriptor, ...] = field(default=(), init=False)
+    _commands: tuple[CommandContract, ...] = field(default=(), init=False)
     _loaded: bool = field(default=False, init=False)
 
     def load(
@@ -390,7 +390,7 @@ class CommandCatalog:
         )
         if duplicate_ids:
             raise CommandCatalogError(
-                "duplicate command descriptor ids: " + ", ".join(duplicate_ids)
+                "duplicate command contract ids: " + ", ".join(duplicate_ids)
             )
         invalid_plugins = sorted(
             {
@@ -401,7 +401,7 @@ class CommandCatalog:
         )
         if invalid_plugins:
             raise CommandCatalogError(
-                "command descriptors reference unknown plugins: "
+                "command contracts reference unknown plugins: "
                 + ", ".join(invalid_plugins)
             )
         known_feature_set = set(known_features)
@@ -423,7 +423,7 @@ class CommandCatalog:
         )
         if invalid_features:
             raise CommandCatalogError(
-                "command descriptors reference unknown features: "
+                "command contracts reference unknown features: "
                 + ", ".join(invalid_features)
             )
         self._commands = commands
@@ -436,7 +436,7 @@ class CommandCatalog:
         *,
         plugin_id: str | None = None,
         ignored_plugins: Iterable[str] = (),
-    ) -> tuple[CommandDescriptor, ...]:
+    ) -> tuple[CommandContract, ...]:
         ignored = set(ignored_plugins)
         return tuple(
             command
@@ -479,7 +479,7 @@ class CommandCatalog:
         features: CommandFeaturePolicy,
         *,
         ignored_plugins: Iterable[str] = (),
-    ) -> tuple[CommandDescriptor, ...]:
+    ) -> tuple[CommandContract, ...]:
         return tuple(
             command
             for command in self.available_for_context(

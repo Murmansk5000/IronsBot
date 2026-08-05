@@ -10,7 +10,7 @@ from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 from ironsbot.core.features import Feature
@@ -50,7 +50,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def command_descriptors() -> tuple[CommandDescriptor, ...]:
+def command_contracts() -> tuple[CommandContract, ...]:
     return (
         *commands_from_rows(
             "bilibili",
@@ -156,7 +156,7 @@ def plugin_contribution(
             group="message",
             order=20,
         ),
-        commands=command_descriptors(),
+        commands=command_contracts(),
         install=partial(
             install,
             service=service,

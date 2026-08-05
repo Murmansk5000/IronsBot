@@ -10,7 +10,7 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.core.command_catalog import CommandDescriptor
+from ironsbot.core.command_catalog import CommandContract
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
@@ -226,7 +226,7 @@ def plugin_contribution(
             visible=_always_visible_help,
         ),
         commands=(
-            CommandDescriptor(
+            CommandContract(
                 id="help",
                 plugin_id="help",
                 section="查看",

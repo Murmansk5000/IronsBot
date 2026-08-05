@@ -14,7 +14,7 @@ from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.services.messaging.sendpic import sendpic_command_descriptors
+from ironsbot.services.messaging.sendpic import sendpic_command_contracts
 
 __plugin_meta__ = PluginMetadata(
     name="图片发送",
@@ -60,7 +60,7 @@ def plugin_contribution(
             group="other",
             order=20,
         ),
-        commands=sendpic_command_descriptors(service),
+        commands=sendpic_command_contracts(service),
         install=partial(_install, service=service, features=features),
     )
 

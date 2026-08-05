@@ -3,16 +3,16 @@
 
 from __future__ import annotations
 
-from ironsbot.core.command_catalog import CommandDescriptor
+from ironsbot.core.command_catalog import CommandContract
 
 
-def pet_config_command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
+def pet_config_command_contracts(*, enabled: bool) -> tuple[CommandContract, ...]:
     """Describe direct pet-configuration commands when the domain is enabled."""
 
     if not enabled:
         return ()
     return (
-        CommandDescriptor(
+        CommandContract(
             id="pet_config.query",
             plugin_id="pet_config",
             section="查询",

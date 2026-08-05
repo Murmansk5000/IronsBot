@@ -7,7 +7,7 @@ from ironsbot.core.command_catalog import (
     CommandCatalog,
     CommandCatalogError,
     CommandContext,
-    CommandDescriptor,
+    CommandContract,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.runtime.plugins import PluginContribution
@@ -65,7 +65,7 @@ def _context(
     )
 
 
-def _catalog(*commands: CommandDescriptor) -> CommandCatalog:
+def _catalog(*commands: CommandContract) -> CommandCatalog:
     catalog = CommandCatalog()
     catalog.load(
         (PluginContribution(id="example", commands=commands),),
@@ -76,7 +76,7 @@ def _catalog(*commands: CommandDescriptor) -> CommandCatalog:
 
 def test_catalog_filters_scope_feature_and_audience() -> None:
     catalog = _catalog(
-        CommandDescriptor(
+        CommandContract(
             id="regular",
             plugin_id="example",
             section="查询",
@@ -85,7 +85,7 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
             features_any=("example_feature",),
             show_in_poke=True,
         ),
-        CommandDescriptor(
+        CommandContract(
             id="manager",
             plugin_id="example",
             section="管理",
@@ -95,7 +95,7 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
             access=(CommandAccess("group", "group_manager"),),
             show_in_poke=True,
         ),
-        CommandDescriptor(
+        CommandContract(
             id="superuser",
             plugin_id="example",
             section="超级管理员",
@@ -140,7 +140,7 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
 
 def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
     catalog = _catalog(
-        CommandDescriptor(
+        CommandContract(
             id="mixed",
             plugin_id="example",
             section="查询",
@@ -172,7 +172,7 @@ def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
 
 def test_catalog_requires_all_declared_features() -> None:
     catalog = _catalog(
-        CommandDescriptor(
+        CommandContract(
             id="new_pet",
             plugin_id="example",
             section="新增内容",
@@ -205,14 +205,14 @@ def test_catalog_requires_all_declared_features() -> None:
 
 def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> None:
     catalog = _catalog(
-        CommandDescriptor(
+        CommandContract(
             id="help",
             plugin_id="example",
             section="基础",
             examples=("帮助",),
             description="打开帮助",
         ),
-        CommandDescriptor(
+        CommandContract(
             id="refresh",
             plugin_id="example",
             section="管理",
@@ -221,7 +221,7 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
             description="刷新动态",
             access=(CommandAccess(audience="superuser"),),
         ),
-        CommandDescriptor(
+        CommandContract(
             id="parameterized",
             plugin_id="example",
             section="查询",
@@ -230,7 +230,7 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
             routing_matcher=lambda text, _context: text.startswith("米米号")
             and text[3:].isdecimal(),
         ),
-        CommandDescriptor(
+        CommandContract(
             id="automatic",
             plugin_id="example",
             section="通知",
@@ -256,7 +256,7 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
 
 def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:
     catalog = _catalog(
-        CommandDescriptor(
+        CommandContract(
             id="combined",
             plugin_id="example",
             section="Query",
@@ -293,7 +293,7 @@ def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:
 
 
 def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
-    duplicate = CommandDescriptor(
+    duplicate = CommandContract(
         id="duplicate",
         plugin_id="example",
         section="查询",
@@ -306,7 +306,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
             (PluginContribution(id="example", commands=(duplicate, duplicate)),),
         )
 
-    unknown_plugin = CommandDescriptor(
+    unknown_plugin = CommandContract(
         id="unknown_plugin",
         plugin_id="missing",
         section="查询",
@@ -316,7 +316,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
     with pytest.raises(CommandCatalogError, match="unknown plugins"):
         catalog.load((PluginContribution(id="example", commands=(unknown_plugin,)),))
 
-    unknown_feature = CommandDescriptor(
+    unknown_feature = CommandContract(
         id="unknown_feature",
         plugin_id="example",
         section="查询",
@@ -330,7 +330,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
 
 def test_group_manager_command_cannot_be_private_only() -> None:
     with pytest.raises(CommandCatalogError, match="cannot be private-only"):
-        CommandDescriptor(
+        CommandContract(
             id="invalid",
             plugin_id="example",
             section="管理",
@@ -342,7 +342,7 @@ def test_group_manager_command_cannot_be_private_only() -> None:
 
 def test_catalog_cannot_be_reloaded_after_validation() -> None:
     catalog = _catalog(
-        CommandDescriptor(
+        CommandContract(
             id="regular",
             plugin_id="example",
             section="查询",
@@ -358,7 +358,7 @@ def test_catalog_cannot_be_reloaded_after_validation() -> None:
 
 def test_catalog_rejects_unknown_and_unregistered_direct_command_ids() -> None:
     catalog = _catalog(
-        CommandDescriptor(
+        CommandContract(
             id="documented",
             plugin_id="example",
             section="查询",
@@ -367,7 +367,7 @@ def test_catalog_rejects_unknown_and_unregistered_direct_command_ids() -> None:
         )
     )
 
-    with pytest.raises(CommandCatalogError, match="unknown command descriptor"):
+    with pytest.raises(CommandCatalogError, match="unknown command contract"):
         catalog.validate_matcher_registrations(help_ids=("missing",))
     with pytest.raises(CommandCatalogError, match="no matcher registration"):
         catalog.validate_matcher_registrations(help_ids=())

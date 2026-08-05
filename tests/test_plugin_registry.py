@@ -27,8 +27,8 @@ from ironsbot.runtime.plugins import (
     validate_plugin_contributions,
 )
 from ironsbot.services.ai.command_contracts import (
-    ai_chat_command_descriptors,
-    ai_intent_command_descriptors,
+    ai_chat_command_contracts,
+    ai_intent_command_contracts,
 )
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -52,7 +52,7 @@ def test_plugin_contributions_cover_feature_ownership() -> None:
     assert len(DEFINITIONS_BY_ID) == len(DEFINITIONS)
 
 
-def test_manifest_sendpic_owns_its_command_descriptors() -> None:
+def test_manifest_sendpic_owns_its_command_contracts() -> None:
     contribution = DEFINITIONS_BY_ID["sendpic"]
 
     assert contribution.features == frozenset({Feature.IMAGE})
@@ -96,7 +96,7 @@ def test_manifest_help_hint_owns_its_passive_matcher() -> None:
     assert contribution.commands == ()
 
 
-def test_manifest_rank_help_owns_its_command_descriptors() -> None:
+def test_manifest_rank_help_owns_its_command_contracts() -> None:
     contribution = DEFINITIONS_BY_ID["rank_help"]
 
     assert contribution.features == frozenset({Feature.SEER_RANK})
@@ -187,7 +187,7 @@ def test_manifest_ai_chat_owns_its_features_and_commands() -> None:
     assert contribution.features == frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE})
     assert contribution.commands == ()
     assert {
-        command.plugin_id for command in ai_chat_command_descriptors(enabled=True)
+        command.plugin_id for command in ai_chat_command_contracts(enabled=True)
     } == {
         "ai_chat"
     }
@@ -204,7 +204,7 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
         }
     )
     assert contribution.commands == ()
-    assert not ai_intent_command_descriptors(
+    assert not ai_intent_command_contracts(
         Settings.model_validate({"ai": {"api_key": "test"}})
     )
     enabled_settings = Settings.model_validate(
@@ -230,7 +230,7 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
         }
     )
     assert {
-        command.plugin_id for command in ai_intent_command_descriptors(enabled_settings)
+        command.plugin_id for command in ai_intent_command_contracts(enabled_settings)
     } == {
         "ai_intent"
     }

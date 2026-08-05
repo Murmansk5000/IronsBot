@@ -26,7 +26,7 @@ from ironsbot.runtime.plugins import (
 )
 from ironsbot.services.seer.rank_command_contracts import (
     RANK_HELP_COMMANDS,
-    rank_help_command_descriptors,
+    rank_help_command_contracts,
 )
 from ironsbot.services.seer.rank_help import format_rank_help
 
@@ -100,7 +100,7 @@ def plugin_contribution(
             group="seer",
             order=20,
         ),
-        commands=rank_help_command_descriptors(),
+        commands=rank_help_command_contracts(),
         install=partial(install, features=features, commands=commands),
     )
 

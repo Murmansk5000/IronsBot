@@ -36,7 +36,7 @@ from ironsbot.runtime.plugins import (
     active_plugin_install_context,
 )
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
-from ironsbot.services.team.resource_commands import team_resource_command_descriptors
+from ironsbot.services.team.resource_commands import team_resource_command_contracts
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
@@ -277,7 +277,7 @@ def plugin_contribution(
                 enabled=config.enabled,
             ),
         ),
-        commands=team_resource_command_descriptors(enabled=config.enabled),
+        commands=team_resource_command_contracts(enabled=config.enabled),
         install=partial(install, service=service),
         hooks=PluginHooks(
             startup=(

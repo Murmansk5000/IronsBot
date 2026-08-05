@@ -17,7 +17,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.services.messaging.command_contracts import messaging_command_descriptors
+from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -92,7 +92,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
 ) -> PluginContribution:
     """Declare configured message commands and scheduled push lifecycle."""
 
-    commands = messaging_command_descriptors(config)
+    commands = messaging_command_contracts(config)
     return PluginContribution(
         id="messaging",
         features=frozenset(

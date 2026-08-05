@@ -115,12 +115,12 @@ check. A branch that reintroduces it, or a document that calls it the current
 installation contract, is stale and must be resolved toward the contract table
 above rather than merged as an alternative design.
 
-### Current Command-Contract Bridge
+### Current Command-Contract Boundary
 
-`core.command_catalog.CommandDescriptor` is the current code carrier for part of the target
-`CommandContract`; it is not a second authority and must not grow a parallel
-catalog, matcher registry, or AI-only keyword list. `CommandCatalog` remains
-the single runtime catalog today. New command work must add the smallest
+`core.command_catalog.CommandContract` is the current runtime representation
+for every direct command. It is not a second authority and must not grow a
+parallel catalog, matcher registry, or AI-only keyword list. `CommandCatalog`
+remains the single runtime catalog. New command work must add the smallest
 missing contract field or catalog query there, then make help, poke hints and
 AI command claims consume the same field.
 
@@ -137,26 +137,24 @@ natural-language prefix merely to keep AI from responding: parameterized
 commands claim only inputs their own parser can accept or reject with a
 command-specific validation error.
 
-The target name `CommandContract` becomes the runtime type only when command
-parsing ownership, access metadata and documentation fields have all moved
-out of matcher-local constants. Until then, plans and reviews must use this
-precise wording:
+The type rename does not make the migration complete. Completion still requires
+command parsing ownership, access metadata and documentation fields to move out
+of matcher-local constants. Plans and reviews must use this precise wording:
 
 | Subject | Correct status | Required wording |
 | --- | --- | --- |
 | `PluginDefinition` | retired | Historical only; never a current contract. |
 | `PluginContribution` | target, currently implemented | Plugin-local runtime contribution only. |
-| `CommandDescriptor` | transition carrier | Current representation of part of the target command contract. |
+| `CommandContract` | target, currently implemented | The only direct-command representation. |
 | `CommandCatalog` | target, currently implemented | The only command metadata/catalog authority. |
-| `CommandContract` | target type | The final command representation; do not claim it already exists as a separate runtime class. |
 
 Completion requires one explicit command-contract type, every direct command
 being registered through it, and deletion of matcher-local duplicate command
 metadata. A rename alone is not completion.
 
-During the transition, each migrated command domain must expose its descriptors
+During the transition, each migrated command domain must expose its contracts
 from `services.<domain>` (or `core` for cross-domain contracts). A platform
-plugin may submit those descriptors to `PluginContribution`, but it must not
+plugin may submit those contracts to `PluginContribution`, but it must not
 redeclare examples, access rules, help text, or input ownership. The current
 migration inventory lives in `docs/multiplatform-refactor.md`; update it in the
 same commit as every ownership move. This is deliberately stricter than
@@ -609,7 +607,7 @@ manifest directly discovers the required third-party runtime
 plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
 `nonebot_plugin_htmlkit`, and `nonebot_plugin_saa`).
 `fire_manual_ad` owns its passive feature policy contribution; `onebot.sendpic`,
-`meeting`, `rank_help`, and `onebot.team_resource` also own the command descriptors
+`meeting`, `rank_help`, and `onebot.team_resource` also own the command contracts
 for the matchers they install.
 Every subsequent private extension follows the same manifest and narrow-context
 pattern.
@@ -987,7 +985,7 @@ class PluginContribution:
     id: str
     features: frozenset[Feature]
     help: HelpEntry | None
-    commands: tuple[CommandDescriptor, ...] = ()
+    commands: tuple[CommandContract, ...] = ()
     install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()
 ```
@@ -1068,7 +1066,7 @@ plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
 service locator and must not be read by services or renderers. A
 `PluginContribution` carries a plugin-local matcher installer, command
 descriptors, lifecycle hooks and scheduled-job contributions during the
-current installation bridge. `CommandCatalog` consumes the command descriptors
+current installation bridge. `CommandCatalog` consumes the command contracts
 and remains the only command-description authority; `ApplicationLifecycle`
 owns lifecycle policy and task lifetime. The replacement becomes the only
 authority; the bridge and its reflective discovery are then deleted instead of
@@ -1271,7 +1269,7 @@ implementation. It is deliberately an ownership map, not a second command
 reference for users:
 
 - **Ingress and commands:** NoneBot + OneBot v11 events enter through
-  `MessageInputContext`; `CommandCatalog` and `CommandDescriptor` currently
+  `MessageInputContext`; `CommandCatalog` and `CommandContract` currently
   drive help, poke candidates, access checks, and direct-command ownership.
   `MatcherFactory` constructs the current matchers and records their command
   policy. Prompts and selection menus keep their own anchored session state.
