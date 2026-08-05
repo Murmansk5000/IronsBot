@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""Platform-neutral team resource subscriptions and reminder policy."""
-
 from __future__ import annotations
 
 import asyncio
@@ -10,13 +8,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol
 
 from ironsbot.core.commands import command_text_matches
-from ironsbot.core.platform import ActorRef, ConversationRef
+from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
 from ironsbot.services.operations.scheduler import JobRegistry
-from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
+from ironsbot.services.seer.ids import (
+    TEAM_ID_ERROR_MESSAGE,
+    is_valid_team_id,
+)
 from ironsbot.services.seer.team import format_team_info
 
 if TYPE_CHECKING:
@@ -24,6 +25,8 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.seer import TeamResourceConfig
     from ironsbot.core.features import FeatureService
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.scheduler import Scheduler
 
@@ -45,77 +48,69 @@ class TeamResourceResult(NamedTuple):
 
 
 class TeamResourceSubscriptionTarget(NamedTuple):
-    """A platform recipient that owns a team resource subscription.
+    """A group or private conversation that owns resource subscriptions."""
 
-    Group subscriptions belong to a ``ConversationRef``. Private subscriptions
-    belong to their subscriber ``ActorRef`` because the delivery integration
-    determines how that actor receives a direct message.
-    """
-
-    recipient: ConversationRef | ActorRef
-    mention_actors: tuple[ActorRef, ...] = ()
+    kind: Literal["group", "private"]
+    target_id: int
+    at_user_ids: tuple[int, ...] = ()
 
     @property
-    def conversation(self) -> ConversationRef | None:
-        return self.recipient if isinstance(self.recipient, ConversationRef) else None
-
-    @property
-    def actor(self) -> ActorRef | None:
-        return self.recipient if isinstance(self.recipient, ActorRef) else None
+    def group_id(self) -> int | None:
+        return self.target_id if self.kind == "group" else None
 
     @property
     def is_group(self) -> bool:
-        return self.conversation is not None and self.conversation.kind == "group"
-
-    @property
-    def is_private(self) -> bool:
-        return self.actor is not None
+        return self.kind == "group"
 
 
 class TeamResourceSubscription(NamedTuple):
-    conversation: ConversationRef
+    group_id: int
     team_id: int
     team_name: str
     threshold: int
-    mention_actors: tuple[ActorRef, ...]
-    created_by: ActorRef
-    updated_by: ActorRef
+    at_user_ids: tuple[int, ...]
+    created_by: int
+    updated_by: int
     created_at: str
     updated_at: str
 
 
 class TeamResourceSubscriptionUpdate(NamedTuple):
-    conversation: ConversationRef
+    group_id: int
     team_id: int
     team_name: str
     threshold: int
-    mention_actors: tuple[ActorRef, ...]
-    operator: ActorRef
+    at_user_ids: tuple[int, ...]
+    operator_id: int
 
 
 class TeamResourcePrivateSubscription(NamedTuple):
-    actor: ActorRef
+    user_id: int
     team_id: int
     team_name: str
     threshold: int
     created_at: str
     updated_at: str
 
+    @property
+    def at_user_ids(self) -> tuple[int, ...]:
+        return ()
+
 
 class TeamResourcePrivateSubscriptionUpdate(NamedTuple):
-    actor: ActorRef
+    user_id: int
     team_id: int
     team_name: str
     threshold: int
 
 
 class TeamResourceSubscriptionPrompt(NamedTuple):
-    conversation: ConversationRef
+    group_id: int
     team_id: int
     team_name: str
-    prompted_by: ActorRef
+    prompted_by: int
     prompted_at: str
-    handled_by: ActorRef | None = None
+    handled_by: int | None = None
     handled_at: str | None = None
     accepted: bool | None = None
 
@@ -150,67 +145,49 @@ class TeamResourceQueryError(RuntimeError):
         return cls(f"战队 {team_id} 查询失败，请稍后再试。")
 
 
-class TeamResourceNoticeSender(Protocol):
-    """Deliver a low-resource notice through the target platform."""
-
-    async def send_low_resource_notice(
-        self,
-        target: TeamResourceSubscriptionTarget,
-        message: str,
-    ) -> bool: ...
-
-
 class TeamResourceStore(Protocol):
     def list_all(self) -> list[TeamResourceSubscription]: ...
-    def list_conversation(
-        self,
-        conversation: ConversationRef,
-    ) -> list[TeamResourceSubscription]: ...
+    def list_group(self, group_id: int) -> list[TeamResourceSubscription]: ...
     def upsert(self, update: TeamResourceSubscriptionUpdate) -> None: ...
     def list_all_private(self) -> list[TeamResourcePrivateSubscription]: ...
-    def list_actor(self, actor: ActorRef) -> list[TeamResourcePrivateSubscription]: ...
+    def list_user(self, user_id: int) -> list[TeamResourcePrivateSubscription]: ...
     def upsert_private(self, update: TeamResourcePrivateSubscriptionUpdate) -> None: ...
-    def has_prompted_conversation(self, conversation: ConversationRef) -> bool: ...
+    def has_prompted_group(self, group_id: int) -> bool: ...
     def get_pending_prompt(
         self,
-        conversation: ConversationRef,
+        group_id: int,
     ) -> TeamResourceSubscriptionPrompt | None: ...
-    def mark_conversation_prompted(
+    def mark_group_prompted(
         self,
         *,
-        conversation: ConversationRef,
+        group_id: int,
         team_id: int,
         team_name: str,
-        prompted_by: ActorRef,
+        prompted_by: int,
     ) -> None: ...
     def mark_prompt_handled(
         self,
         *,
-        conversation: ConversationRef,
-        handled_by: ActorRef,
+        group_id: int,
+        handled_by: int,
         accepted: bool,
     ) -> None: ...
     def update_team_name(
         self,
         *,
-        conversation: ConversationRef,
+        group_id: int,
         team_id: int,
         team_name: str,
     ) -> None: ...
-    def delete(
-        self,
-        *,
-        conversation: ConversationRef,
-        team_id: int,
-    ) -> bool: ...
+    def delete(self, *, group_id: int, team_id: int) -> bool: ...
     def update_private_team_name(
         self,
         *,
-        actor: ActorRef,
+        user_id: int,
         team_id: int,
         team_name: str,
     ) -> None: ...
-    def delete_private(self, *, actor: ActorRef, team_id: int) -> bool: ...
+    def delete_private(self, *, user_id: int, team_id: int) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,44 +195,77 @@ class TeamResourceService:
     _config: TeamResourceConfig
     _store: TeamResourceStore
     _headless: HeadlessService
+    _references: OneBotReferenceResolver
     _features: FeatureService
-    _sender: TeamResourceNoticeSender
-    _default_mention_actors: tuple[ActorRef, ...] = ()
+    _delivery: MessageDelivery
 
     @property
     def enabled(self) -> bool:
         return self._config.enabled
 
     @property
-    def default_mention_actors(self) -> tuple[ActorRef, ...]:
-        return self._default_mention_actors
+    def default_at_user_ids(self) -> tuple[int, ...]:
+        return tuple(
+            self._references.resolve_users(
+                self._config.default_at_users,
+                location="seer.team_resource.default_at_users",
+            )
+        )
+
+    def allows(self, user_id: int, group_id: int) -> bool:
+        return self.allows_target(
+            user_id,
+            TeamResourceSubscriptionTarget("group", group_id),
+        )
+
+    def allows_private(self, user_id: int) -> bool:
+        return self.allows_target(
+            user_id,
+            TeamResourceSubscriptionTarget("private", user_id),
+        )
 
     def allows_target(
         self,
-        actor: ActorRef,
+        user_id: int,
         target: TeamResourceSubscriptionTarget,
     ) -> bool:
         if not self.enabled:
             return False
-        if target.conversation is not None:
-            return self._features.is_feature_allowed(
-                actor,
-                target.conversation,
+        if target.is_group:
+            return self._features.is_group_feature_allowed(
+                user_id,
+                target.target_id,
                 TEAM_RESOURCE_FEATURE,
             )
-        return self._features.is_actor_feature_allowed(actor, TEAM_RESOURCE_FEATURE)
+        return self._features.is_private_feature_allowed(
+            user_id,
+            TEAM_RESOURCE_FEATURE,
+        )
 
-    def is_superuser(self, actor: ActorRef) -> bool:
-        return self._features.is_actor_superuser(actor)
+    def is_superuser(self, user_id: int) -> bool:
+        return self._features.is_superuser(user_id)
+
+    def matches_query(self, text: str, *, user_id: int, group_id: int) -> bool:
+        return self.allows(user_id, group_id) and command_text_matches(
+            text,
+            self._config.commands,
+        )
+
+    def matches_private_query(self, text: str, *, user_id: int) -> bool:
+        return self.matches_target_query(
+            text,
+            user_id=user_id,
+            target=TeamResourceSubscriptionTarget("private", user_id),
+        )
 
     def matches_target_query(
         self,
         text: str,
         *,
-        actor: ActorRef,
+        user_id: int,
         target: TeamResourceSubscriptionTarget,
     ) -> bool:
-        return self.allows_target(actor, target) and command_text_matches(
+        return self.allows_target(user_id, target) and command_text_matches(
             text,
             self._config.commands,
         )
@@ -263,33 +273,30 @@ class TeamResourceService:
     def parse_manage(self, text: str) -> TeamResourceManageCommand | None:
         return parse_team_resource_manage_command(text)
 
-    def has_pending_prompt(self, conversation: ConversationRef) -> bool:
-        return self._store.get_pending_prompt(conversation) is not None
+    def has_pending_prompt(self, group_id: int) -> bool:
+        return self._store.get_pending_prompt(group_id) is not None
 
     def offer_subscription(
         self,
         *,
-        conversation: ConversationRef,
-        actor: ActorRef,
+        group_id: int,
+        user_id: int,
         team_id: int,
         team_name: str,
         can_manage: bool,
     ) -> str | None:
         if (
             not can_manage
-            or not self.allows_target(
-                actor,
-                TeamResourceSubscriptionTarget(conversation),
-            )
-            or self._store.has_prompted_conversation(conversation)
+            or not self.allows(user_id, group_id)
+            or self._store.has_prompted_group(group_id)
         ):
             return None
 
-        self._store.mark_conversation_prompted(
-            conversation=conversation,
+        self._store.mark_group_prompted(
+            group_id=group_id,
             team_id=team_id,
             team_name=team_name,
-            prompted_by=actor,
+            prompted_by=user_id,
         )
         label = f"{team_name}（{team_id}）" if team_name else str(team_id)
         return (
@@ -312,8 +319,8 @@ class TeamResourceService:
                 else str(subscription.team_id)
             )
             line = f"{index}. {label}｜阈值 {subscription.threshold}"
-            if isinstance(subscription, TeamResourceSubscription):
-                line += f"｜提醒 {_format_actor_ids(subscription.mention_actors)}"
+            if target.is_group:
+                line += f"｜提醒 {_format_user_ids(subscription.at_user_ids)}"
             lines.append(line)
         lines.extend(("", *self._manage_usage_lines(target)))
         return "\n".join(lines)
@@ -339,30 +346,33 @@ class TeamResourceService:
         target: TeamResourceSubscriptionTarget,
         team_id: int,
         threshold: int | None,
-        operator: ActorRef,
+        operator_id: int,
     ) -> str:
         if not is_valid_team_id(team_id):
             return TEAM_ID_ERROR_MESSAGE
         try:
-            result = await self.query(team_id)
+            result = await self.query(team_id, group_id=target.group_id)
         except TeamResourceQueryError as error:
             return str(error)
 
         effective_threshold = threshold or self._config.default_threshold
-        mention_actors = (
-            tuple(dict.fromkeys(target.mention_actors))
-            or self.default_mention_actors
+        effective_users = (
+            tuple(dict.fromkeys(target.at_user_ids)) or self.default_at_user_ids
             if target.is_group
             else ()
         )
         self._save_target_subscription(
-            target=TeamResourceSubscriptionTarget(target.recipient, mention_actors),
+            target=TeamResourceSubscriptionTarget(
+                target.kind,
+                target.target_id,
+                effective_users,
+            ),
             result=result,
             threshold=effective_threshold,
-            operator=operator,
+            operator_id=operator_id,
         )
         prefix = "已订阅本群战队" if target.is_group else "已订阅战队"
-        reminder = _format_actor_ids(mention_actors) if target.is_group else "你"
+        reminder = _format_user_ids(effective_users) if target.is_group else "你"
         return (
             f"{prefix}：{result.team_name}（{result.team_id}）。\n"
             f"资源阈值：{effective_threshold}\n"
@@ -372,16 +382,16 @@ class TeamResourceService:
     def answer_prompt(
         self,
         *,
-        conversation: ConversationRef,
-        actor: ActorRef,
+        group_id: int,
+        user_id: int,
         accepted: bool,
     ) -> str | None:
-        prompt = self._store.get_pending_prompt(conversation)
+        prompt = self._store.get_pending_prompt(group_id)
         if prompt is None:
             return None
         self._store.mark_prompt_handled(
-            conversation=conversation,
-            handled_by=actor,
+            group_id=group_id,
+            handled_by=user_id,
             accepted=accepted,
         )
         if not accepted:
@@ -390,22 +400,28 @@ class TeamResourceService:
                 "“订阅战队123456”添加。"
             )
 
-        result = TeamResourceResult(prompt.team_id, prompt.team_name, "", 0)
-        target = TeamResourceSubscriptionTarget(
-            conversation,
-            self.default_mention_actors,
+        at_user_ids = self.default_at_user_ids
+        result = TeamResourceResult(
+            prompt.team_id,
+            prompt.team_name,
+            "",
+            0,
         )
         self._save_target_subscription(
-            target=target,
+            target=TeamResourceSubscriptionTarget(
+                "group",
+                group_id,
+                at_user_ids,
+            ),
             result=result,
             threshold=self._config.default_threshold,
-            operator=actor,
+            operator_id=user_id,
         )
         label = prompt.team_name or str(prompt.team_id)
         return (
             f"已订阅本群战队：{label}（{prompt.team_id}）。\n"
             f"资源阈值：{self._config.default_threshold}\n"
-            f"提醒对象：{_format_actor_ids(self.default_mention_actors)}\n"
+            f"提醒对象：{_format_user_ids(at_user_ids)}\n"
             "还可以继续发送“订阅战队123456”添加更多战队。"
         )
 
@@ -418,23 +434,31 @@ class TeamResourceService:
                 subscription.team_id
                 for subscription in self._subscriptions_for_target(target)
             ),
+            group_id=target.group_id,
         )
 
     async def query_messages(
         self,
         team_ids: Iterable[int],
+        *,
+        group_id: int | None = None,
     ) -> list[str]:
-        return [await self._query_message(team_id) for team_id in team_ids]
+        return [
+            await self._query_message(team_id, group_id=group_id)
+            for team_id in team_ids
+        ]
 
     async def query(
         self,
         team_id: int,
+        *,
+        group_id: int | None = None,
     ) -> TeamResourceResult:
         if not is_valid_team_id(team_id):
             raise TeamResourceQueryError(TEAM_ID_ERROR_MESSAGE)
         try:
             return await asyncio.wait_for(
-                self._fetch(team_id),
+                self._fetch(team_id, group_id=group_id),
                 timeout=self._config.query_timeout_seconds,
             )
         except (NotLoggedInError, DisconnectedError) as error:
@@ -454,7 +478,10 @@ class TeamResourceService:
             if not self._target_has_feature(target):
                 continue
             try:
-                result = await self.query(subscription.team_id)
+                result = await self.query(
+                    subscription.team_id,
+                    group_id=target.group_id,
+                )
             except TeamResourceQueryError:
                 continue
 
@@ -465,19 +492,22 @@ class TeamResourceService:
             )
             if result.resource >= subscription.threshold:
                 continue
-            await self._sender.send_low_resource_notice(
-                target,
+            await self._delivery.send_targets(
+                [MessageTarget(target.kind, target.target_id, target.at_user_ids)],
                 self._resource_notice(result, subscription),
+                action_name="team resource subscription notice",
+                interval_seconds=0,
             )
 
     def register_jobs(self, scheduler: Scheduler) -> None:
         if not self.enabled:
             return
         jobs = JobRegistry(scheduler, prefix=TEAM_RESOURCE_JOB_PREFIX)
+        scan = self.scan
         for time_text in self._config.times:
             hour_text, minute_text = time_text.split(":", maxsplit=1)
             jobs.add(
-                self.scan,
+                scan,
                 "cron",
                 hour=int(hour_text),
                 minute=int(minute_text),
@@ -487,6 +517,8 @@ class TeamResourceService:
     async def _fetch(
         self,
         team_id: int,
+        *,
+        group_id: int | None,
     ) -> TeamResourceResult:
         try:
             game = self._headless.get_game()
@@ -495,10 +527,14 @@ class TeamResourceService:
                 f"战队 {team_id}",
                 source="战队资源查询",
                 background=True,
+                group_id=group_id,
             ):
                 info = await game.get_team_info(team_id)
         except (NotLoggedInError, DisconnectedError) as error:
-            await self._headless.mark_unavailable(str(error), source="战队资源查询")
+            await self._headless.mark_unavailable(
+                str(error),
+                source="战队资源查询",
+            )
             raise
 
         await self._headless.mark_available(source="战队资源查询")
@@ -512,9 +548,11 @@ class TeamResourceService:
     async def _query_message(
         self,
         team_id: int,
+        *,
+        group_id: int | None,
     ) -> str:
         try:
-            return (await self.query(team_id)).message
+            return (await self.query(team_id, group_id=group_id)).message
         except TeamResourceQueryError as error:
             return str(error)
 
@@ -535,10 +573,9 @@ class TeamResourceService:
         self,
         target: TeamResourceSubscriptionTarget,
     ) -> Sequence[TeamResourceSubscription | TeamResourcePrivateSubscription]:
-        if target.conversation is not None:
-            return self._store.list_conversation(target.conversation)
-        actor = target.actor
-        return [] if actor is None else self._store.list_actor(actor)
+        if target.is_group:
+            return self._store.list_group(target.target_id)
+        return self._store.list_user(target.target_id)
 
     def _all_subscriptions(
         self,
@@ -551,23 +588,26 @@ class TeamResourceService:
         for subscription in self._store.list_all():
             yield (
                 TeamResourceSubscriptionTarget(
-                    subscription.conversation,
-                    subscription.mention_actors,
+                    "group",
+                    subscription.group_id,
+                    subscription.at_user_ids,
                 ),
                 subscription,
             )
         for subscription in self._store.list_all_private():
-            yield (TeamResourceSubscriptionTarget(subscription.actor), subscription)
+            yield (
+                TeamResourceSubscriptionTarget("private", subscription.user_id),
+                subscription,
+            )
 
     def _target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
-        if target.conversation is not None:
-            return self._features.conversation_has_feature(
-                target.conversation,
+        if target.is_group:
+            return self._features.group_has_feature(
+                target.target_id,
                 TEAM_RESOURCE_FEATURE,
             )
-        actor = target.actor
-        return actor is not None and self._features.is_actor_feature_allowed(
-            actor,
+        return self._features.user_has_feature(
+            target.target_id,
             TEAM_RESOURCE_FEATURE,
         )
 
@@ -577,36 +617,27 @@ class TeamResourceService:
         team_id: int,
         team_name: str,
     ) -> None:
-        if target.conversation is not None:
+        if target.is_group:
             self._store.update_team_name(
-                conversation=target.conversation,
+                group_id=target.target_id,
                 team_id=team_id,
                 team_name=team_name,
             )
             return
-        actor = target.actor
-        if actor is not None:
-            self._store.update_private_team_name(
-                actor=actor,
-                team_id=team_id,
-                team_name=team_name,
-            )
+        self._store.update_private_team_name(
+            user_id=target.target_id,
+            team_id=team_id,
+            team_name=team_name,
+        )
 
     def _delete_subscription(
         self,
         target: TeamResourceSubscriptionTarget,
         team_id: int,
     ) -> bool:
-        if target.conversation is not None:
-            return self._store.delete(
-                conversation=target.conversation,
-                team_id=team_id,
-            )
-        actor = target.actor
-        return actor is not None and self._store.delete_private(
-            actor=actor,
-            team_id=team_id,
-        )
+        if target.is_group:
+            return self._store.delete(group_id=target.target_id, team_id=team_id)
+        return self._store.delete_private(user_id=target.target_id, team_id=team_id)
 
     def _save_target_subscription(
         self,
@@ -614,33 +645,33 @@ class TeamResourceService:
         target: TeamResourceSubscriptionTarget,
         result: TeamResourceResult,
         threshold: int,
-        operator: ActorRef,
+        operator_id: int,
     ) -> None:
-        if target.conversation is not None:
-            self._store.upsert(
-                TeamResourceSubscriptionUpdate(
-                    conversation=target.conversation,
+        if not target.is_group:
+            self._store.upsert_private(
+                TeamResourcePrivateSubscriptionUpdate(
+                    user_id=target.target_id,
                     team_id=result.team_id,
                     team_name=result.team_name,
                     threshold=threshold,
-                    mention_actors=target.mention_actors,
-                    operator=operator,
                 )
             )
             return
-        actor = target.actor
-        if actor is not None:
-            self._store.upsert_private(
-                TeamResourcePrivateSubscriptionUpdate(
-                    actor=actor,
-                    team_id=result.team_id,
-                    team_name=result.team_name,
-                    threshold=threshold,
-                )
+        self._store.upsert(
+            TeamResourceSubscriptionUpdate(
+                group_id=target.target_id,
+                team_id=result.team_id,
+                team_name=result.team_name,
+                threshold=threshold,
+                at_user_ids=target.at_user_ids,
+                operator_id=operator_id,
             )
+        )
 
-    @staticmethod
-    def _empty_subscriptions_message(target: TeamResourceSubscriptionTarget) -> str:
+    def _empty_subscriptions_message(
+        self,
+        target: TeamResourceSubscriptionTarget,
+    ) -> str:
         if target.is_group:
             return (
                 "本群还没有订阅战队。\n"
@@ -653,8 +684,8 @@ class TeamResourceService:
             "也可发送：订阅战队123456 1000"
         )
 
-    @staticmethod
     def _manage_usage_lines(
+        self,
         target: TeamResourceSubscriptionTarget,
     ) -> tuple[str, ...]:
         if target.is_group:
@@ -702,5 +733,5 @@ def parse_team_resource_manage_command(
     return None
 
 
-def _format_actor_ids(actors: tuple[ActorRef, ...]) -> str:
-    return "、".join(actor.id for actor in actors) if actors else "无"
+def _format_user_ids(user_ids: tuple[int, ...]) -> str:
+    return "、".join(str(user_id) for user_id in user_ids) if user_ids else "无"

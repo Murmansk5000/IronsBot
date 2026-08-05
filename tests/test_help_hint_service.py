@@ -9,7 +9,7 @@ from ironsbot.runtime.commands import (
     CommandContext,
     CommandDescriptor,
 )
-from ironsbot.runtime.plugins import PluginContribution
+from ironsbot.runtime.plugins import PluginDefinition
 from ironsbot.services.messaging.help_hint import (
     HelpHintService,
     is_poke_at_bot,
@@ -52,7 +52,7 @@ class FakeFeatures:
 def _catalog() -> CommandCatalog:
     catalog = CommandCatalog()
     definitions = (
-        PluginContribution(
+        PluginDefinition(
             id="pet_config",
             commands=(
                 CommandDescriptor(
@@ -66,7 +66,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginContribution(
+        PluginDefinition(
             id="server_status",
             commands=(
                 CommandDescriptor(
@@ -80,7 +80,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginContribution(
+        PluginDefinition(
             id="activity",
             commands=(
                 CommandDescriptor(
@@ -104,7 +104,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginContribution(
+        PluginDefinition(
             id="team_resource",
             commands=(
                 CommandDescriptor(
@@ -119,7 +119,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginContribution(
+        PluginDefinition(
             id="bilibili",
             commands=(
                 CommandDescriptor(
@@ -133,7 +133,7 @@ def _catalog() -> CommandCatalog:
                 ),
             ),
         ),
-        PluginContribution(
+        PluginDefinition(
             id="rank_help",
             commands=(
                 CommandDescriptor(

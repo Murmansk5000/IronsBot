@@ -3,34 +3,35 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ironsbot.config.models.messaging import TeamAuditWelcomeConfig
-from ironsbot.core.outbound import (
-    DeliveryCapabilities,
-    MentionPart,
-    OutboundMessage,
-    SendResult,
-)
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.features import FeatureConfig
+from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 from ironsbot.services.team.audit import (
     FINAL_FOLLOWUP_STEP,
     FOLLOWUP_SCAN_INTERVAL_MINUTES,
     TeamAuditPendingReminder,
     TeamAuditService,
 )
+from tests.helpers.runtime import build_test_runtime
 
-GROUP_ID = "987654321"
-USER_ID = "1234567890"
-CONVERSATION = ConversationRef(Platform.ONEBOT, "group", GROUP_ID)
-ACTOR = ActorRef(
-    Platform.ONEBOT,
-    USER_ID,
-    kind="member",
-    scope_id=GROUP_ID,
-)
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from ironsbot.services.messaging.delivery import MessageDelivery
+
+GROUP_ID = 987654321
+USER_ID = 1234567890
 JOINED_AT = datetime(2026, 7, 7, 12, 0, tzinfo=timezone.utc)
 REMIND_AT = datetime(2026, 7, 8, 12, 0, tzinfo=timezone.utc)
+
+TEAM_AUDIT_RUNTIME = build_test_runtime(
+    feature_config=FeatureConfig(
+        group_policy={str(GROUP_ID): ["team_audit"]},
+        superuser_bypass=False,
+    )
+)
 
 
 class FakeJob:
@@ -53,6 +54,11 @@ class FakeScheduler:
         self.jobs = [job for job in self.jobs if job["id"] != job_id]
 
 
+@dataclass(frozen=True)
+class FakeBot:
+    self_id: int = 123456
+
+
 @dataclass
 class FakeStore:
     reminder: TeamAuditPendingReminder | None = None
@@ -61,83 +67,59 @@ class FakeStore:
     def save(self, reminder: TeamAuditPendingReminder) -> None:
         self.reminder = reminder
 
-    def get(
-        self,
-        conversation: ConversationRef,
-        actor: ActorRef,
-    ) -> TeamAuditPendingReminder | None:
-        assert (conversation, actor) == (CONVERSATION, ACTOR)
+    def get(self, group_id: int, user_id: int) -> TeamAuditPendingReminder | None:
+        assert (group_id, user_id) == (GROUP_ID, USER_ID)
         return self.reminder
 
     def list_all(self) -> list[TeamAuditPendingReminder]:
         return [self.reminder] if self.reminder is not None else []
 
-    def clear(self, conversation: ConversationRef, actor: ActorRef) -> None:
-        assert (conversation, actor) == (CONVERSATION, ACTOR)
+    def clear(self, group_id: int, user_id: int) -> None:
+        assert (group_id, user_id) == (GROUP_ID, USER_ID)
         self.cleared = True
         self.reminder = None
 
 
 @dataclass
-class FakePolicy:
-    active: bool = True
+class FakeDelivery:
+    bot: FakeBot
+    sent: list[dict[str, Any]]
 
-    def enabled_for(self, conversation: ConversationRef) -> bool:
-        assert conversation == CONVERSATION
-        return self.active
+    def bot_for_target(self, _target: MessageTarget) -> FakeBot:
+        return self.bot
 
-
-@dataclass
-class FakeMessenger:
-    delivered: bool = True
-    sent: list[tuple[ConversationRef, OutboundMessage]] | None = None
-
-    def __post_init__(self) -> None:
-        if self.sent is None:
-            self.sent = []
-
-    def capabilities_for(self, conversation: ConversationRef) -> DeliveryCapabilities:
-        del conversation
-        return DeliveryCapabilities(
-            can_reply_to_event=True,
-            can_send_proactively=True,
-            can_mention_members=True,
-            supports_group_context=True,
-            supports_private_context=True,
-            supports_images=True,
-        )
-
-    async def send(
+    async def send_targets(
         self,
-        conversation: ConversationRef,
-        message: OutboundMessage,
-    ) -> SendResult:
-        assert self.sent is not None
-        self.sent.append((conversation, message))
-        if self.delivered:
-            return SendResult(delivered=True, message_id="1")
-        return SendResult(delivered=False, error_code="delivery_failed")
-
-    async def reply(self, *_args: object, **_kwargs: object) -> SendResult:
-        raise AssertionError
+        targets: Iterable[MessageTarget],
+        message: Any,
+        **kwargs: Any,
+    ) -> TargetSendSummary:
+        target_list = list(targets)
+        self.sent.append(
+            {"targets": target_list, "message": message, **kwargs}
+        )
+        return TargetSendSummary(target_list, [])
 
 
 @dataclass
-class FakeMembershipProbe:
+class FakeGroupProbe:
     accessible: bool = True
     member_present: bool = True
 
-    async def can_access(self, conversation: ConversationRef) -> bool:
-        assert conversation == CONVERSATION
+    async def can_access(self, bot: Any, *, group_id: int) -> bool:
+        del bot
+        assert group_id == GROUP_ID
         return self.accessible
 
     async def has_member(
         self,
-        conversation: ConversationRef,
+        bot: Any,
         *,
-        actor: ActorRef,
+        group_id: int,
+        user_id: int,
     ) -> bool:
-        assert (conversation, actor) == (CONVERSATION, ACTOR)
+        del bot
+        assert (group_id, user_id) == (GROUP_ID, USER_ID)
         return self.member_present
 
 
@@ -153,40 +135,35 @@ def _config(
 
 
 def _reminder() -> TeamAuditPendingReminder:
-    return TeamAuditPendingReminder(CONVERSATION, ACTOR, JOINED_AT, REMIND_AT)
-
-
-@dataclass(frozen=True)
-class _ServiceConditions:
-    active: bool = True
-    delivered: bool = True
-    accessible: bool = True
-    member_present: bool = True
+    return TeamAuditPendingReminder(
+        GROUP_ID,
+        USER_ID,
+        JOINED_AT,
+        REMIND_AT,
+    )
 
 
 def _service(
     config: TeamAuditWelcomeConfig,
     reminder: TeamAuditPendingReminder | None = None,
     *,
-    conditions: _ServiceConditions = _ServiceConditions(),
-) -> tuple[TeamAuditService, FakeStore, FakeMessenger, FakeMembershipProbe]:
+    accessible: bool = True,
+    member_present: bool = True,
+) -> tuple[TeamAuditService, FakeStore, FakeDelivery, FakeGroupProbe]:
     store = FakeStore(reminder)
-    messenger = FakeMessenger(delivered=conditions.delivered)
-    probe = FakeMembershipProbe(
-        accessible=conditions.accessible,
-        member_present=conditions.member_present,
-    )
+    delivery = FakeDelivery(FakeBot(), [])
+    probe = FakeGroupProbe(accessible, member_present)
     service = TeamAuditService(
         config,
         store,
-        FakePolicy(conditions.active),
-        messenger,
+        TEAM_AUDIT_RUNTIME.features,
+        cast("MessageDelivery", delivery),
         probe,
     )
-    return service, store, messenger, probe
+    return service, store, delivery, probe
 
 
-def test_schedule_team_audit_followup_uses_platform_safe_job_key() -> None:
+def test_schedule_team_audit_followup_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
     service, _, _, _ = _service(_config())
     reminder = _reminder()
@@ -197,19 +174,25 @@ def test_schedule_team_audit_followup_uses_platform_safe_job_key() -> None:
         now=datetime(2026, 7, 8, 11, 0, tzinfo=timezone.utc),
     )
 
-    assert scheduler.jobs[0]["func"] == service.send_followup
-    assert scheduler.jobs[0]["trigger"] == "date"
-    assert scheduler.jobs[0]["id"].startswith("team_audit_followup_")
-    assert scheduler.jobs[0]["run_date"] == REMIND_AT
-    assert scheduler.jobs[0]["args"] == [CONVERSATION, ACTOR]
-    assert scheduler.jobs[0]["kwargs"] == {"scheduler": scheduler}
+    assert scheduler.jobs == [
+        {
+            "func": service.send_followup,
+            "trigger": "date",
+            "id": f"team_audit_followup_{GROUP_ID}_{USER_ID}",
+            "replace_existing": True,
+            "run_date": REMIND_AT,
+            "args": [GROUP_ID, USER_ID],
+            "kwargs": {"scheduler": scheduler},
+            "misfire_grace_time": 3600,
+        }
+    ]
 
 
 def test_start_team_audit_followups_registers_scan() -> None:
     scheduler = FakeScheduler()
     service, _, _, _ = _service(_config())
 
-    asyncio.run(service.start(scheduler=scheduler))
+    asyncio.run(service.start(FakeBot(), scheduler=scheduler))
 
     assert scheduler.jobs == [
         {
@@ -223,66 +206,73 @@ def test_start_team_audit_followups_registers_scan() -> None:
     ]
 
 
-def test_team_audit_welcome_sends_mention_and_schedules_followup() -> None:
+def test_team_audit_welcome_sends_and_schedules_followup() -> None:
     scheduler = FakeScheduler()
-    service, store, messenger, _ = _service(_config())
+    service, store, delivery, _ = _service(_config())
 
     asyncio.run(
         service.welcome(
-            conversation=CONVERSATION,
-            actor=ACTOR,
+            group_id=GROUP_ID,
+            user_id=USER_ID,
             joined_at=JOINED_AT,
             scheduler=scheduler,
+            bot=delivery.bot,
         )
     )
 
-    assert messenger.sent is not None
-    assert messenger.sent[0][0] == CONVERSATION
-    assert isinstance(messenger.sent[0][1].parts[0], MentionPart)
-    assert messenger.sent[0][1].parts[0].actor == ACTOR
+    assert delivery.sent[0]["targets"] == [
+        MessageTarget("group", GROUP_ID, (USER_ID,))
+    ]
+    assert delivery.sent[0]["bot"] is delivery.bot
     assert store.reminder is not None
     assert scheduler.jobs[0]["func"] == service.send_followup
 
 
-def test_team_audit_followup_uses_platform_messenger() -> None:
+def test_team_audit_followup_uses_group_routed_bot() -> None:
     scheduler = FakeScheduler()
-    service, store, messenger, _ = _service(_config(), _reminder())
+    service, store, delivery, _ = _service(_config(), _reminder())
 
-    asyncio.run(service.send_followup(CONVERSATION, ACTOR, scheduler=scheduler))
+    asyncio.run(
+        service.send_followup(GROUP_ID, USER_ID, scheduler=scheduler)
+    )
 
-    assert messenger.sent is not None
-    assert messenger.sent[0][0] == CONVERSATION
-    assert isinstance(messenger.sent[0][1].parts[0], MentionPart)
-    assert messenger.sent[0][1].parts[0].actor == ACTOR
+    assert delivery.sent[0]["targets"] == [
+        MessageTarget("group", GROUP_ID, (USER_ID,))
+    ]
+    assert delivery.sent[0]["bot"] is delivery.bot
     assert store.reminder is not None
     assert store.reminder.step == FINAL_FOLLOWUP_STEP
 
 
-def test_team_audit_followup_keeps_pending_when_group_is_inaccessible() -> None:
+def test_team_audit_followup_keeps_pending_when_bot_cannot_access_group() -> None:
     scheduler = FakeScheduler()
     reminder = _reminder()
-    service, store, messenger, _ = _service(
+    service, store, delivery, _ = _service(
         _config(),
         reminder,
-        conditions=_ServiceConditions(accessible=False),
+        accessible=False,
     )
 
-    asyncio.run(service.send_followup(CONVERSATION, ACTOR, scheduler=scheduler))
+    asyncio.run(
+        service.send_followup(GROUP_ID, USER_ID, scheduler=scheduler)
+    )
 
     assert store.reminder == reminder
     assert not store.cleared
-    assert messenger.sent == []
+    assert delivery.sent == []
 
 
 def test_team_audit_followup_clears_departed_member() -> None:
     scheduler = FakeScheduler()
-    service, store, messenger, _ = _service(
+    service, store, delivery, _ = _service(
         _config(),
         _reminder(),
-        conditions=_ServiceConditions(member_present=False),
+        member_present=False,
     )
 
-    asyncio.run(service.send_followup(CONVERSATION, ACTOR, scheduler=scheduler))
+    asyncio.run(
+        service.send_followup(GROUP_ID, USER_ID, scheduler=scheduler)
+    )
 
     assert store.cleared
-    assert messenger.sent == []
+    assert delivery.sent == []

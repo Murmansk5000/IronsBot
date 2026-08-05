@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 class HttpClients:
     cache: AsyncClient = field(default_factory=AsyncCacheClient)
     origin: AsyncClient = field(default_factory=AsyncClient)
+    cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def close(self) -> None:
         for client in (self.cache, self.origin):

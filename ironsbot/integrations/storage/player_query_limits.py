@@ -4,32 +4,24 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.integrations.storage.platform_identity import ActorIdentityColumns
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.seer.player_query_limits import PlayerQueryUsage
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ironsbot.core.platform import ActorRef
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaScope
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS player_query_usage (
     local_date TEXT NOT NULL,
-    actor_platform TEXT NOT NULL,
-    actor_kind TEXT NOT NULL,
-    actor_id TEXT NOT NULL,
-    actor_scope_id TEXT NOT NULL DEFAULT '',
+    qq_user_id INTEGER NOT NULL,
     scope TEXT NOT NULL,
     player_id INTEGER NOT NULL,
     action_key TEXT NOT NULL,
     usage_count INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (
-        local_date, actor_platform, actor_kind, actor_id, actor_scope_id,
-        scope, player_id, action_key
-    )
+    PRIMARY KEY (local_date, qq_user_id, scope, player_id, action_key)
 )
 """
 _MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
@@ -48,7 +40,7 @@ class SqlitePlayerQueryLimitStore:
         self,
         *,
         local_date: date,
-        actor: ActorRef,
+        qq_user_id: int,
         scope: PlayerQueryQuotaScope,
         player_id: int,
         action_key: str,
@@ -58,7 +50,7 @@ class SqlitePlayerQueryLimitStore:
             return PlayerQueryUsage(allowed=False, used_count=0, limit=limit)
         key = (
             local_date.isoformat(),
-            *ActorIdentityColumns.from_actor(actor).values(),
+            qq_user_id,
             scope,
             player_id,
             action_key,
@@ -68,8 +60,7 @@ class SqlitePlayerQueryLimitStore:
                 """
                 SELECT usage_count
                 FROM player_query_usage
-                WHERE local_date = ? AND actor_platform = ? AND actor_kind = ?
-                  AND actor_id = ? AND actor_scope_id = ? AND scope = ?
+                WHERE local_date = ? AND qq_user_id = ? AND scope = ?
                   AND player_id = ? AND action_key = ?
                 """,
                 key,
@@ -85,7 +76,7 @@ class SqlitePlayerQueryLimitStore:
         self,
         *,
         local_date: date,
-        actor: ActorRef,
+        qq_user_id: int,
         scope: PlayerQueryQuotaScope,
         player_id: int,
         action_key: str,
@@ -96,7 +87,7 @@ class SqlitePlayerQueryLimitStore:
 
         key = (
             local_date.isoformat(),
-            *ActorIdentityColumns.from_actor(actor).values(),
+            qq_user_id,
             scope,
             player_id,
             action_key,
@@ -107,8 +98,7 @@ class SqlitePlayerQueryLimitStore:
                 """
                 SELECT usage_count
                 FROM player_query_usage
-                WHERE local_date = ? AND actor_platform = ? AND actor_kind = ?
-                  AND actor_id = ? AND actor_scope_id = ? AND scope = ?
+                WHERE local_date = ? AND qq_user_id = ? AND scope = ?
                   AND player_id = ? AND action_key = ?
                 """,
                 key,
@@ -126,11 +116,10 @@ class SqlitePlayerQueryLimitStore:
                 conn.execute(
                     """
                     INSERT INTO player_query_usage(
-                        local_date, actor_platform, actor_kind, actor_id,
-                        actor_scope_id, scope, player_id,
+                        local_date, qq_user_id, scope, player_id,
                         action_key, usage_count, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (*key, next_count, _utc_now()),
                 )
@@ -139,9 +128,8 @@ class SqlitePlayerQueryLimitStore:
                     """
                     UPDATE player_query_usage
                     SET usage_count = ?, updated_at = ?
-                    WHERE local_date = ? AND actor_platform = ?
-                      AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
-                      AND scope = ? AND player_id = ? AND action_key = ?
+                    WHERE local_date = ? AND qq_user_id = ? AND scope = ?
+                      AND player_id = ? AND action_key = ?
                     """,
                     (next_count, _utc_now(), *key),
                 )

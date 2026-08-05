@@ -9,7 +9,7 @@ from ironsbot.runtime.commands import (
     CommandContext,
     CommandDescriptor,
 )
-from ironsbot.runtime.plugins import PluginContribution
+from ironsbot.runtime.plugins import PluginDefinition
 
 
 @dataclass(slots=True)
@@ -39,7 +39,7 @@ class FakeFeatures:
 def _catalog(*commands: CommandDescriptor) -> CommandCatalog:
     catalog = CommandCatalog()
     catalog.load(
-        (PluginContribution(id="example", commands=commands),),
+        (PluginDefinition(id="example", commands=commands),),
         known_features={"example_feature", "fallback_feature"},
     )
     return catalog
@@ -174,54 +174,6 @@ def test_catalog_requires_all_declared_features() -> None:
     )
 
 
-def test_catalog_claims_available_literal_direct_inputs_and_routing_aliases() -> None:
-    catalog = _catalog(
-        CommandDescriptor(
-            id="help",
-            plugin_id="example",
-            section="基础",
-            examples=("帮助",),
-            description="打开帮助",
-        ),
-        CommandDescriptor(
-            id="refresh",
-            plugin_id="example",
-            section="管理",
-            examples=("/动态刷新",),
-            routing_aliases=("动态更新", "刷新动态", "更新动态"),
-            description="刷新动态",
-            access=(CommandAccess(audience="superuser"),),
-        ),
-        CommandDescriptor(
-            id="parameterized",
-            plugin_id="example",
-            section="查询",
-            examples=("米米号<号码>",),
-            description="查询玩家",
-        ),
-        CommandDescriptor(
-            id="automatic",
-            plugin_id="example",
-            section="通知",
-            examples=("活动",),
-            description="自动推送",
-            interaction="automatic",
-        ),
-    )
-    features = FakeFeatures(
-        group_features={},
-        private_features={1: set()},
-        superusers={1},
-    )
-    context = CommandContext(user_id=1, group_id=None)
-
-    assert catalog.claims_direct_input(context, features, "帮助")
-    assert catalog.claims_direct_input(context, features, "/动态刷新")
-    assert catalog.claims_direct_input(context, features, "动态更新")
-    assert not catalog.claims_direct_input(context, features, "米米号123456")
-    assert not catalog.claims_direct_input(context, features, "活动")
-
-
 def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:
     catalog = _catalog(
         CommandDescriptor(
@@ -271,7 +223,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
     catalog = CommandCatalog()
     with pytest.raises(CommandCatalogError, match="duplicate"):
         catalog.load(
-            (PluginContribution(id="example", commands=(duplicate, duplicate)),),
+            (PluginDefinition(id="example", commands=(duplicate, duplicate)),),
         )
 
     unknown_plugin = CommandDescriptor(
@@ -282,7 +234,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
         description="查询资料",
     )
     with pytest.raises(CommandCatalogError, match="unknown plugins"):
-        catalog.load((PluginContribution(id="example", commands=(unknown_plugin,)),))
+        catalog.load((PluginDefinition(id="example", commands=(unknown_plugin,)),))
 
     unknown_feature = CommandDescriptor(
         id="unknown_feature",
@@ -293,7 +245,7 @@ def test_catalog_rejects_duplicate_ids_unknown_plugins_and_features() -> None:
         features_any=("missing_feature",),
     )
     with pytest.raises(CommandCatalogError, match="unknown features"):
-        catalog.load((PluginContribution(id="example", commands=(unknown_feature,)),))
+        catalog.load((PluginDefinition(id="example", commands=(unknown_feature,)),))
 
 
 def test_group_manager_command_cannot_be_private_only() -> None:

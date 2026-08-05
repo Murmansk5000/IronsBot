@@ -74,14 +74,6 @@ class RankPlayerCommand:
 
 
 @dataclass(frozen=True, slots=True)
-class RankPlayerTargetCommand:
-    """A global-rank player query before platform input is resolved."""
-
-    rank_key: str
-    player_reference: str | None
-
-
-@dataclass(frozen=True, slots=True)
 class RankCacheBatchCommand:
     rank_key: str
     start_rank: int

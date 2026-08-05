@@ -45,7 +45,6 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ActorRef
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.local_rank_metrics import MetricValue
     from ironsbot.services.seer.player_service import PlayerService
@@ -119,19 +118,10 @@ _PEAK_METRIC_KEYS_BY_MODE: dict[str, frozenset[str]] = {
 
 @dataclass(frozen=True, slots=True)
 class PlayerShortcutCommand:
-    """A validated player shortcut ready for the player service."""
-
     kind: PlayerShortcutKind
-    player_id: int
+    player_id: int | None
+    player_reference: str | None = None
     base_snapshot: PlayerBaseSnapshot | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class PlayerShortcutTargetCommand:
-    """A parsed player shortcut before its target reference is resolved."""
-
-    kind: PlayerShortcutKind
-    player_reference: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,16 +157,21 @@ def _rank_summary_timeout_seconds(rank: RankService, fallback: float) -> float:
         return fallback
 
 
-def parse_player_shortcut_command(text: str) -> PlayerShortcutTargetCommand | None:
+def parse_player_shortcut_command(text: str) -> PlayerShortcutCommand | None:
     normalized = "".join(text.split())
     match = _SHORTCUT_RE.fullmatch(normalized)
     if match is None:
         return None
     command, player_reference = match.groups()
     player_reference = player_reference.strip()
-    return PlayerShortcutTargetCommand(
+    return PlayerShortcutCommand(
         kind=_KIND_BY_COMMAND[command],
-        player_reference=player_reference or None,
+        player_id=int(player_reference) if player_reference.isdecimal() else None,
+        player_reference=(
+            player_reference
+            if player_reference and not player_reference.isdecimal()
+            else None
+        ),
     )
 
 
@@ -189,7 +184,7 @@ def player_request_admission_message(label: str, *, queued: bool) -> str:
 async def execute_player_shortcut(
     service: PlayerService,
     command: PlayerShortcutCommand,
-    actor: ActorRef,
+    qq_user_id: int,
     *,
     group_id: int | None,
     send_status: PlayerShortcutStatusSender | None = None,
@@ -208,7 +203,7 @@ async def execute_player_shortcut(
     ):
         return await service.shortcut(
             command,
-            actor,
+            qq_user_id,
             group_id=group_id,
         )
 

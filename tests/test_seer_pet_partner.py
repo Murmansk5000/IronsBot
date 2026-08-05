@@ -2,7 +2,7 @@
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
-from ironsbot.integrations.seer_data.pet_info_repository import _load_partner
+from ironsbot.services.seer.pet_partner import load_pet_partner
 
 CONTRACT_BADGE_COST = 8
 
@@ -196,14 +196,18 @@ def _session_with_pet_partner() -> Session:
     return Session(engine)
 
 
-def test_load_pet_partner_reads_cost_and_skill_item() -> None:
+def test_load_pet_partner_reads_cost_members_and_skill_item() -> None:
     with _session_with_pet_partner() as session:
-        partner = _load_partner(session, 4329)
+        partner = load_pet_partner(session, 4329)
 
     assert partner is not None
     assert partner.name == "源初之夜"
-    assert partner.cost_item.name == "契约徽章"
-    assert partner.cost_item.quantity == CONTRACT_BADGE_COST
+    assert partner.cost_item_name == "契约徽章"
+    assert partner.cost_item_quantity == CONTRACT_BADGE_COST
+    assert [(member.pet_id, member.name) for member in partner.members] == [
+        (4329, "夜魔之神"),
+        (3491, "魔灵王"),
+    ]
     assert partner.before_description == "强化前魂印"
     assert partner.after_description == "强化后魂印"
     assert partner.skill is not None
@@ -227,7 +231,7 @@ def test_load_pet_partner_keeps_legacy_releases_in_display_order() -> None:
             )
         )
         session.commit()
-        partner = _load_partner(session, 4329)
+        partner = load_pet_partner(session, 4329)
 
     assert partner is not None
     assert partner.before_description == "强化前魂印"
@@ -236,4 +240,4 @@ def test_load_pet_partner_keeps_legacy_releases_in_display_order() -> None:
 
 def test_load_pet_partner_allows_an_older_database_without_tables() -> None:
     with Session(create_engine("sqlite://")) as session:
-        assert _load_partner(session, 4329) is None
+        assert load_pet_partner(session, 4329) is None

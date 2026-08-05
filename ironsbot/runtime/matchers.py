@@ -40,7 +40,6 @@ from ironsbot.runtime.matcher_contracts import (
     default_semantic_request,
     static_command_id,
 )
-from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.prompt_errors import (
     PromptLoopConfigurationError,
     PromptSessionManagerMissingError,
@@ -323,7 +322,9 @@ async def enter_prompt_loop(  # noqa: PLR0913
             handlers=handlers,
             semantic_request_resolver=queue_semantic_request_resolver,
             request_service=(
-                None if runtime_context is None else runtime_context.in_flight_requests
+                None
+                if runtime_context is None
+                else runtime_context.in_flight_requests
             ),
             conversation_session_id=queue_conversation_session_id,
             menu_anchor=menu_anchor,
@@ -453,7 +454,7 @@ async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
         request_service = context.request_service
         if request is not None and request_service is not None:
             decision = request_service.admit(
-                actor=message_input_context(event).message.actor,
+                user_id=event.user_id,
                 request=request,
             )
             if not decision.allowed:
@@ -488,7 +489,9 @@ async def _capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     if request_token is not None:
         _state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_token
     context.mark_dispatched(ticket)
-    action_id = request.action.id if request is not None else "none"
+    action_id = (
+        request.action.id if request is not None else "none"
+    )
     logger.info(
         "queued conversation input dispatched: namespace=%s session=%s "
         "user=%s message_id=%s ticket=%s action=%s waited=%s queue_wait=%.3fs",
@@ -544,7 +547,9 @@ class CommandPolicy:
             raise CommandPolicyError.ambiguous()
         if self.exemption_reason is not None and not self.exemption_reason.strip():
             raise CommandPolicyError.empty_exemption()
-        if self.exemption_reason is not None and (self.semantic_request is not None):
+        if self.exemption_reason is not None and (
+            self.semantic_request is not None
+        ):
             raise CommandPolicyError.exempt_with_semantic_request()
         if self.exemption_reason is not None and self.help_ids:
             raise CommandPolicyError.exempt_with_help_ids()
@@ -595,7 +600,10 @@ class MatcherRegistry:
     _runtime_context_token: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.prompt_session_manager is None and self.in_flight_requests is None:
+        if (
+            self.prompt_session_manager is None
+            and self.in_flight_requests is None
+        ):
             return
         token = token_urlsafe(18)
         _MATCHER_RUNTIME_CONTEXTS[token] = _MatcherRuntimeContext(
@@ -710,7 +718,9 @@ class MatcherRegistry:
         if command_id is None:
             return
         resolver = (
-            static_command_id(command_id) if isinstance(command_id, str) else command_id
+            static_command_id(command_id)
+            if isinstance(command_id, str)
+            else command_id
         )
         label = (
             command_id
@@ -745,7 +755,7 @@ class MatcherRegistry:
                 state[SEMANTIC_REQUEST_STATE_KEY] = request
                 if self.in_flight_requests is not None:
                     request_decision = self.in_flight_requests.admit(
-                        actor=message_input_context(event).message.actor,
+                        user_id=event.user_id,
                         request=request,
                     )
                     if request_decision.token is not None:
@@ -754,7 +764,7 @@ class MatcherRegistry:
                         await matcher.finish(request_decision.feedback)
 
             decision = self.cooldown.admit(
-                actor=message_input_context(event).message.actor,
+                user_id=event.user_id,
                 command_id=normalized_id,
             )
             if not decision.allowed:

@@ -2,8 +2,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
+from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.integrations.storage.team_resources import (
+    TeamResourceSubscriptionStore,
+)
 from ironsbot.services.team.resource import (
     TeamResourcePrivateSubscriptionUpdate,
     TeamResourceService,
@@ -19,32 +21,13 @@ TEAM_ID = 1234567
 TEAM_RESOURCE_THRESHOLD = 2000
 OWNER_ID = 1234567890
 ADMIN_ID = 2345678901
-GROUP_ID = 987654321
 UNUSED_HEADLESS = cast("HeadlessService", object())
-
-
-class NoopTeamResourceNoticeSender:
-    async def send_low_resource_notice(
-        self,
-        _target: TeamResourceSubscriptionTarget,
-        _message: str,
-    ) -> bool:
-        return True
-
-
-def _actor(user_id: int) -> ActorRef:
-    return ActorRef(Platform.ONEBOT, str(user_id))
-
-
-def _group(group_id: int = GROUP_ID) -> ConversationRef:
-    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 def _service(
     config: TeamResourceConfig,
+    aliases: dict[str, int],
     state_path: Path,
-    *,
-    default_mentions: tuple[ActorRef, ...] = (),
 ) -> tuple[TeamResourceService, TeamResourceSubscriptionStore]:
     runtime = build_test_runtime()
     store = TeamResourceSubscriptionStore(state_path)
@@ -53,9 +36,9 @@ def _service(
             config,
             store,
             UNUSED_HEADLESS,
+            OneBotReferenceResolver({}, aliases),
             runtime.features,
-            NoopTeamResourceNoticeSender(),
-            default_mentions,
+            runtime.delivery,
         ),
         store,
     )
@@ -64,36 +47,41 @@ def _service(
 def test_team_resource_subscription_store_is_used_for_group(
     tmp_path: Path,
 ) -> None:
+    config = TeamResourceConfig(default_at_users=["owner", "2345678901"])
     service, store = _service(
-        TeamResourceConfig(),
+        config,
+        {"owner": OWNER_ID},
         tmp_path / "qq_state.sqlite",
-        default_mentions=(_actor(OWNER_ID), _actor(ADMIN_ID)),
     )
+
     store.upsert(
         TeamResourceSubscriptionUpdate(
-            conversation=_group(),
+            group_id=987654321,
             team_id=TEAM_ID,
             team_name="示例战队",
             threshold=TEAM_RESOURCE_THRESHOLD,
-            mention_actors=(_actor(OWNER_ID), _actor(ADMIN_ID)),
-            operator=_actor(OWNER_ID),
+            at_user_ids=(OWNER_ID, ADMIN_ID),
+            operator_id=OWNER_ID,
         )
     )
 
-    subscriptions = store.list_conversation(_group())
+    subscriptions = store.list_group(987654321)
 
     assert len(subscriptions) == 1
     assert subscriptions[0].team_id == TEAM_ID
     assert subscriptions[0].threshold == TEAM_RESOURCE_THRESHOLD
-    assert subscriptions[0].mention_actors == (_actor(OWNER_ID), _actor(ADMIN_ID))
-    assert service.default_mention_actors == (_actor(OWNER_ID), _actor(ADMIN_ID))
-
-
-def test_team_resource_disabled_has_no_subscriptions(tmp_path: Path) -> None:
-    service, store = _service(
-        TeamResourceConfig(enabled=False),
-        tmp_path / "qq_state.sqlite",
+    assert subscriptions[0].at_user_ids == (OWNER_ID, ADMIN_ID)
+    assert service.default_at_user_ids == (
+        OWNER_ID,
+        ADMIN_ID,
     )
+
+
+def test_team_resource_disabled_has_no_subscriptions(
+    tmp_path: Path,
+) -> None:
+    config = TeamResourceConfig(enabled=False)
+    service, store = _service(config, {}, tmp_path / "qq_state.sqlite")
 
     assert not service.enabled
     assert store.list_all() == []
@@ -105,38 +93,39 @@ def test_team_resource_subscription_store_keeps_private_subscriptions_separate(
     store = TeamResourceSubscriptionStore(tmp_path / "team_resource.sqlite")
     store.upsert_private(
         TeamResourcePrivateSubscriptionUpdate(
-            actor=_actor(OWNER_ID),
+            user_id=OWNER_ID,
             team_id=TEAM_ID,
             team_name="示例战队",
             threshold=TEAM_RESOURCE_THRESHOLD,
         )
     )
 
-    subscriptions = store.list_actor(_actor(OWNER_ID))
+    subscriptions = store.list_user(OWNER_ID)
 
     assert len(subscriptions) == 1
     assert subscriptions[0].team_id == TEAM_ID
     assert subscriptions[0].threshold == TEAM_RESOURCE_THRESHOLD
-    assert store.list_conversation(_group()) == []
+    assert store.list_group(OWNER_ID) == []
 
 
 def test_team_resource_service_uses_one_target_interface_for_subscriptions(
     tmp_path: Path,
 ) -> None:
-    service, store = _service(TeamResourceConfig(), tmp_path / "qq_state.sqlite")
+    config = TeamResourceConfig()
+    service, store = _service(config, {}, tmp_path / "qq_state.sqlite")
     store.upsert(
         TeamResourceSubscriptionUpdate(
-            conversation=_group(),
+            group_id=987654321,
             team_id=TEAM_ID,
             team_name="群战队",
             threshold=TEAM_RESOURCE_THRESHOLD,
-            mention_actors=(_actor(OWNER_ID),),
-            operator=_actor(OWNER_ID),
+            at_user_ids=(OWNER_ID,),
+            operator_id=OWNER_ID,
         )
     )
     store.upsert_private(
         TeamResourcePrivateSubscriptionUpdate(
-            actor=_actor(OWNER_ID),
+            user_id=OWNER_ID,
             team_id=TEAM_ID,
             team_name="私聊战队",
             threshold=TEAM_RESOURCE_THRESHOLD,
@@ -144,10 +133,10 @@ def test_team_resource_service_uses_one_target_interface_for_subscriptions(
     )
 
     group_message = service.subscriptions_message(
-        TeamResourceSubscriptionTarget(_group())
+        TeamResourceSubscriptionTarget("group", 987654321)
     )
     private_message = service.subscriptions_message(
-        TeamResourceSubscriptionTarget(_actor(OWNER_ID))
+        TeamResourceSubscriptionTarget("private", OWNER_ID)
     )
 
     assert "群战队" in group_message
@@ -156,49 +145,49 @@ def test_team_resource_service_uses_one_target_interface_for_subscriptions(
     assert "提醒" not in private_message
 
 
-def test_team_resource_store_tracks_conversation_prompt_once(tmp_path: Path) -> None:
+def test_team_resource_store_tracks_group_prompt_once(tmp_path: Path) -> None:
     store = TeamResourceSubscriptionStore(tmp_path / "team_resource.sqlite")
 
-    assert not store.has_prompted_conversation(_group())
-    assert store.get_pending_prompt(_group()) is None
+    assert not store.has_prompted_group(987654321)
+    assert store.get_pending_prompt(987654321) is None
 
-    store.mark_conversation_prompted(
-        conversation=_group(),
+    store.mark_group_prompted(
+        group_id=987654321,
         team_id=TEAM_ID,
         team_name="示例战队",
-        prompted_by=_actor(OWNER_ID),
+        prompted_by=OWNER_ID,
     )
 
-    prompt = store.get_pending_prompt(_group())
+    prompt = store.get_pending_prompt(987654321)
     assert prompt is not None
-    assert store.has_prompted_conversation(_group())
+    assert store.has_prompted_group(987654321)
     assert prompt.team_id == TEAM_ID
     assert prompt.team_name == "示例战队"
-    assert prompt.prompted_by == _actor(OWNER_ID)
+    assert prompt.prompted_by == OWNER_ID
 
-    store.mark_conversation_prompted(
-        conversation=_group(),
+    store.mark_group_prompted(
+        group_id=987654321,
         team_id=7654321,
         team_name="另一个战队",
-        prompted_by=_actor(ADMIN_ID),
+        prompted_by=ADMIN_ID,
     )
-    assert store.get_pending_prompt(_group()) == prompt
+    assert store.get_pending_prompt(987654321) == prompt
 
 
 def test_team_resource_prompt_can_be_marked_handled(tmp_path: Path) -> None:
     store = TeamResourceSubscriptionStore(tmp_path / "team_resource.sqlite")
-    store.mark_conversation_prompted(
-        conversation=_group(),
+    store.mark_group_prompted(
+        group_id=987654321,
         team_id=TEAM_ID,
         team_name="示例战队",
-        prompted_by=_actor(OWNER_ID),
+        prompted_by=OWNER_ID,
     )
 
     store.mark_prompt_handled(
-        conversation=_group(),
-        handled_by=_actor(ADMIN_ID),
+        group_id=987654321,
+        handled_by=ADMIN_ID,
         accepted=True,
     )
 
-    assert store.has_prompted_conversation(_group())
-    assert store.get_pending_prompt(_group()) is None
+    assert store.has_prompted_group(987654321)
+    assert store.get_pending_prompt(987654321) is None
