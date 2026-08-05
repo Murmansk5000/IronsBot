@@ -17,11 +17,9 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.core.command_catalog import CommandDescriptor
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
 from ironsbot.core.semantic_requests import (
-    ActionDefinition,
     SemanticRequest,
     SemanticRequestSource,
     SemanticTarget,
@@ -48,6 +46,20 @@ from ironsbot.runtime.plugins import (
     active_plugin_install_context,
 )
 from ironsbot.services.operations.scheduler import JobRegistry
+from ironsbot.services.seer.lucky_skin_commands import (
+    LUCKY_SKIN_QUERY_ACTION,
+    LUCKY_SKIN_QUERY_COMMANDS,
+    LUCKY_SKIN_WATCH_ADD_ACTION,
+    LUCKY_SKIN_WATCH_CLEAR_ACTION,
+    LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
+    LUCKY_SKIN_WATCH_LIST_ACTION,
+    LUCKY_SKIN_WATCH_LIST_COMMANDS,
+    LUCKY_SKIN_WATCH_REMOVE_ACTION,
+    LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
+    LUCKY_SKIN_WATCH_RESET_ACTION,
+    LUCKY_SKIN_WATCH_RESET_COMMANDS,
+    lucky_skin_window_command_descriptors,
+)
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWatchItem,
     LuckySkinWindowBindingError,
@@ -61,49 +73,6 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.operations.scheduler import Scheduler
 
-_COMMANDS = ("幸运橱窗", "橱窗")
-_WATCH_LIST_COMMANDS = ("关注橱窗", "订阅橱窗", "橱窗关注", "橱窗订阅")
-_WATCH_REMOVE_COMMANDS = (
-    "取消关注橱窗",
-    "取消订阅橱窗",
-    "取消橱窗关注",
-    "取消橱窗订阅",
-    "退订橱窗",
-    "橱窗退订",
-)
-_WATCH_CLEAR_COMMANDS = (
-    "清空关注橱窗",
-    "清空订阅橱窗",
-    "清空橱窗关注",
-    "清空橱窗订阅",
-)
-_WATCH_RESET_COMMANDS = (
-    "重置关注橱窗",
-    "重置订阅橱窗",
-    "重置橱窗关注",
-    "重置橱窗订阅",
-)
-_ACTION = ActionDefinition("seer.lucky_skin_window.query", "幸运橱窗")
-_WATCH_LIST_ACTION = ActionDefinition(
-    "seer.lucky_skin_window.watch.list",
-    "查看橱窗关注",
-)
-_WATCH_ADD_ACTION = ActionDefinition(
-    "seer.lucky_skin_window.watch.add",
-    "新增橱窗关注",
-)
-_WATCH_REMOVE_ACTION = ActionDefinition(
-    "seer.lucky_skin_window.watch.remove",
-    "取消橱窗关注",
-)
-_WATCH_CLEAR_ACTION = ActionDefinition(
-    "seer.lucky_skin_window.watch.clear",
-    "清空橱窗关注",
-)
-_WATCH_RESET_ACTION = ActionDefinition(
-    "seer.lucky_skin_window.watch.reset",
-    "重置橱窗关注",
-)
 _JOB_PREFIX = "lucky_skin_window:"
 _LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
 logger = logging.getLogger(__name__)
@@ -136,58 +105,7 @@ def plugin_contribution(
                 "发送“橱窗”查看；可用“关注橱窗”或“订阅橱窗”管理星标；可在“TD”中退订每日提醒。",
             ),
         ),
-        commands=(
-            CommandDescriptor(
-                id=_ACTION.id,
-                plugin_id="lucky_skin_window",
-                section="幸运橱窗",
-                examples=("橱窗",),
-                description="查看绑定米米号当天刷新出的四个皮肤",
-                features_any=("lucky_skin_window",),
-                show_in_poke=True,
-            ),
-            CommandDescriptor(
-                id=_WATCH_LIST_ACTION.id,
-                plugin_id="lucky_skin_window",
-                section="橱窗关注",
-                examples=("关注橱窗 / 订阅橱窗", "橱窗关注 / 橱窗订阅"),
-                description="查看当前 QQ 的幸运橱窗关注列表",
-                features_any=("lucky_skin_window",),
-                show_in_poke=True,
-            ),
-            CommandDescriptor(
-                id=_WATCH_ADD_ACTION.id,
-                plugin_id="lucky_skin_window",
-                section="橱窗关注",
-                examples=("关注橱窗1400538 / 订阅橱窗1400538", "橱窗订阅名称"),
-                description="按皮肤 ID、资源 ID 或名称新增橱窗关注",
-                features_any=("lucky_skin_window",),
-            ),
-            CommandDescriptor(
-                id=_WATCH_REMOVE_ACTION.id,
-                plugin_id="lucky_skin_window",
-                section="橱窗关注",
-                examples=("取消关注橱窗1400538 / 退订橱窗1400538", "橱窗退订名称"),
-                description="取消指定皮肤的橱窗关注",
-                features_any=("lucky_skin_window",),
-            ),
-            CommandDescriptor(
-                id=_WATCH_CLEAR_ACTION.id,
-                plugin_id="lucky_skin_window",
-                section="橱窗关注",
-                examples=("清空关注橱窗 / 清空订阅橱窗",),
-                description="清空当前 QQ 的幸运橱窗关注列表",
-                features_any=("lucky_skin_window",),
-            ),
-            CommandDescriptor(
-                id=_WATCH_RESET_ACTION.id,
-                plugin_id="lucky_skin_window",
-                section="橱窗关注",
-                examples=("重置关注橱窗 / 重置订阅橱窗",),
-                description="恢复 TOML 中配置的初始幸运橱窗关注列表",
-                features_any=("lucky_skin_window",),
-            ),
-        ),
+        commands=lucky_skin_window_command_descriptors(),
         install=partial(_install, service=service, features=features),
         hooks=PluginHooks(
             startup=(
@@ -220,7 +138,7 @@ async def _matches_query(
     features: FeatureService,
 ) -> bool:
     _ = state
-    if "".join(event.get_plaintext().split()) not in _COMMANDS:
+    if "".join(event.get_plaintext().split()) not in LUCKY_SKIN_QUERY_COMMANDS:
         return False
     return _watch_feature_allowed(event, features=features)
 
@@ -282,7 +200,7 @@ def _semantic_request(
     account = service.account_for_actor(_actor_from_event(event))
     target_key = str(account.player_id) if account is not None else str(event.user_id)
     return SemanticRequest(
-        action=_ACTION,
+        action=LUCKY_SKIN_QUERY_ACTION,
         target=SemanticTarget(target_key, f"{target_key} 幸运橱窗"),
         source=SemanticRequestSource.DIRECT,
     )
@@ -457,7 +375,11 @@ async def _handle_watch_change(
         state,
         Prompt(
             title="请问你想管理的皮肤是……",
-            action=(_WATCH_ADD_ACTION if operation == "add" else _WATCH_REMOVE_ACTION),
+            action=(
+                LUCKY_SKIN_WATCH_ADD_ACTION
+                if operation == "add"
+                else LUCKY_SKIN_WATCH_REMOVE_ACTION
+            ),
             items=[
                 PromptItem(
                     item.name,
@@ -572,8 +494,8 @@ def _install(
     priority = registry.priority("lucky_skin_window")
     matcher = registry.on_message(
         policy=CommandPolicy.command(
-            _ACTION.id,
-            help_ids=(_ACTION.id,),
+            LUCKY_SKIN_QUERY_ACTION.id,
+            help_ids=(LUCKY_SKIN_QUERY_ACTION.id,),
             semantic_request=partial(_semantic_request, service),
         ),
         rule=Rule(bind_async(_matches_query, features=features)) & explicit_command(),
@@ -584,13 +506,13 @@ def _install(
 
     watch_list = registry.on_message(
         policy=CommandPolicy.command(
-            _WATCH_LIST_ACTION.id,
-            help_ids=(_WATCH_LIST_ACTION.id,),
+            LUCKY_SKIN_WATCH_LIST_ACTION.id,
+            help_ids=(LUCKY_SKIN_WATCH_LIST_ACTION.id,),
         ),
         rule=Rule(
             bind_async(
                 _matches_watch_exact,
-                commands=_WATCH_LIST_COMMANDS,
+                commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
                 features=features,
             )
         )
@@ -602,13 +524,13 @@ def _install(
 
     watch_add = registry.on_message(
         policy=CommandPolicy.command(
-            _WATCH_ADD_ACTION.id,
-            help_ids=(_WATCH_ADD_ACTION.id,),
+            LUCKY_SKIN_WATCH_ADD_ACTION.id,
+            help_ids=(LUCKY_SKIN_WATCH_ADD_ACTION.id,),
         ),
         rule=Rule(
             bind_async(
                 _matches_watch_change,
-                commands=_WATCH_LIST_COMMANDS,
+                commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
                 features=features,
             )
         )
@@ -626,13 +548,13 @@ def _install(
 
     watch_remove = registry.on_message(
         policy=CommandPolicy.command(
-            _WATCH_REMOVE_ACTION.id,
-            help_ids=(_WATCH_REMOVE_ACTION.id,),
+            LUCKY_SKIN_WATCH_REMOVE_ACTION.id,
+            help_ids=(LUCKY_SKIN_WATCH_REMOVE_ACTION.id,),
         ),
         rule=Rule(
             bind_async(
                 _matches_watch_change,
-                commands=_WATCH_REMOVE_COMMANDS,
+                commands=LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
                 features=features,
             )
         )
@@ -649,8 +571,16 @@ def _install(
     )
 
     for action, commands, handler in (
-        (_WATCH_CLEAR_ACTION, _WATCH_CLEAR_COMMANDS, _handle_watch_clear),
-        (_WATCH_RESET_ACTION, _WATCH_RESET_COMMANDS, _handle_watch_reset),
+        (
+            LUCKY_SKIN_WATCH_CLEAR_ACTION,
+            LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
+            _handle_watch_clear,
+        ),
+        (
+            LUCKY_SKIN_WATCH_RESET_ACTION,
+            LUCKY_SKIN_WATCH_RESET_COMMANDS,
+            _handle_watch_reset,
+        ),
     ):
         watch_action = registry.on_message(
             policy=CommandPolicy.command(action.id, help_ids=(action.id,)),

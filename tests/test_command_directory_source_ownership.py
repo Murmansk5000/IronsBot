@@ -33,6 +33,9 @@ from ironsbot.services.seer.command_contracts import seer_command_descriptors
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
 )
+from ironsbot.services.seer.lucky_skin_commands import (
+    lucky_skin_window_command_descriptors,
+)
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.team.resource_commands import team_resource_command_descriptors
 
@@ -113,6 +116,16 @@ def test_team_resource_contract_is_owned_by_its_domain_service() -> None:
     assert commands["team_resource.subscribe"].examples == ("订阅战队123456",)
     assert commands["team_resource.subscribe"].show_in_poke is True
     assert team_resource_command_descriptors(enabled=False) == ()
+
+
+def test_lucky_skin_window_contract_is_owned_by_its_domain_service() -> None:
+    commands = _by_id(lucky_skin_window_command_descriptors())
+
+    assert commands["seer.lucky_skin_window.query"].examples == ("橱窗",)
+    assert commands["seer.lucky_skin_window.watch.add"].examples == (
+        "关注橱窗1400538 / 订阅橱窗1400538",
+        "橱窗订阅名称",
+    )
 
 
 def test_seer_player_command_catalog_uses_shared_resolver_alias_recognition() -> None:
