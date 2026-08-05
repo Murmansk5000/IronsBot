@@ -25,6 +25,15 @@ async def _unused_feed(_cookie: str) -> BiliFeedResponse:
     raise AssertionError
 
 
+def _test_bili_config() -> BiliConfig:
+    return BiliConfig.model_validate(
+        {
+            "accounts": {"example_account": {"uid": 912345678}},
+            "push": {"accounts": ["example_account"]},
+        }
+    )
+
+
 def build_test_bilibili_service(
     data_dir: Path,
     *,
@@ -32,7 +41,7 @@ def build_test_bilibili_service(
     feature_config: FeatureConfig | None = None,
     superuser_ids: tuple[int, ...] = (),
 ) -> BilibiliService:
-    resolved = config or BiliConfig()
+    resolved = config or _test_bili_config()
     resolved = resolved.model_copy(
         update={
             "storage": resolved.storage.model_copy(
