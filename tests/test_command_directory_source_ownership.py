@@ -7,13 +7,6 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
 )
-from ironsbot.plugins.onebot.operations.db_sync import (
-    FORCE_MANUAL_SYNC_COMMANDS,
-    MANUAL_SYNC_COMMANDS,
-)
-from ironsbot.plugins.onebot.operations.db_sync import (
-    command_descriptors as data_sync_commands,
-)
 from ironsbot.plugins.onebot.operations.docker_update import (
     command_descriptors as docker_update_commands,
 )
@@ -31,6 +24,11 @@ from ironsbot.runtime.commands import CommandContext, CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
+)
+from ironsbot.services.operations.data_sync_commands import (
+    FORCE_MANUAL_SYNC_COMMANDS,
+    MANUAL_SYNC_COMMANDS,
+    data_sync_command_descriptors,
 )
 from ironsbot.services.seer.command_contracts import seer_command_descriptors
 from ironsbot.services.seer.data_query_commands import (
@@ -74,7 +72,7 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
 def test_operation_examples_use_matcher_command_sources() -> None:
     status = _by_id(server_status_commands())
     docker = _by_id(docker_update_commands())
-    sync = _by_id(data_sync_commands())
+    sync = _by_id(data_sync_command_descriptors())
 
     assert status["server_status.query"].examples == (NORMAL_SERVER_STATUS_COMMAND,)
     assert status["server_status.admin_query"].examples == (
