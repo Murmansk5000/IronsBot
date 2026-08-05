@@ -185,8 +185,6 @@ def build_test_plugin_registry(
         SimpleNamespace(
             features=runtime.features,
             promotions=PromotionCatalog(config.promotions),
-            outbound=object(),
-            delivery=runtime.delivery,
             admin_notices=runtime.admin_notices,
             activity=SimpleNamespace(register_jobs=lambda _scheduler: None),
             headless=headless,
@@ -319,7 +317,6 @@ def build_test_plugin_registry(
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             scheduled_restart=scheduled_restart,
-            push_message_limiter=lambda message, _target: message,
             commands=CommandCatalog(),
             contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),

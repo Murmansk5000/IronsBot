@@ -12,12 +12,7 @@ if TYPE_CHECKING:
     from ironsbot.app.private_extensions import PrivateExtensionCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
-    from ironsbot.integrations.onebot.delivery import (
-        MessageLimiter,
-        OneBotDelivery,
-    )
     from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
-    from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.plugins import PluginContributionCatalog
@@ -49,9 +44,6 @@ if TYPE_CHECKING:
 class ApplicationResources:
     features: FeatureService
     promotions: PromotionCatalog
-    outbound: GroupOutboundRateLimitService
-    delivery: OneBotDelivery
-    push_message_limiter: MessageLimiter
     admin_notices: AdminNoticeService
     activity: ActivityService
     headless: HeadlessService

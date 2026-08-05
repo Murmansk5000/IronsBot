@@ -674,9 +674,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     resources = ApplicationResources(
         features=features,
         promotions=promotions,
-        outbound=outbound,
-        delivery=delivery,
-        push_message_limiter=push_message_limiter,
         admin_notices=admin_notices,
         activity=activity,
         headless=headless,
