@@ -9,6 +9,7 @@ from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.ai.history import HistoryMessage
+from ironsbot.services.ai.memory import AiMemoryTurn
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
@@ -44,11 +45,71 @@ class FakeBot:
         return {"group_id": group_id, "group_name": "示例群"}
 
 
+class RecordingMemory:
+    def __init__(self) -> None:
+        self.loads: list[tuple[ActorRef, str, bool, int]] = []
+        self.turns: list[AiMemoryTurn] = []
+
+    async def load(
+        self,
+        *,
+        actor: ActorRef,
+        current_session_key: str,
+        exclude_current_session: bool,
+        limit: int,
+    ) -> list[HistoryMessage]:
+        self.loads.append((actor, current_session_key, exclude_current_session, limit))
+        return [{"role": "user", "content": "memory prompt"}]
+
+    async def append(self, turn: AiMemoryTurn) -> None:
+        self.turns.append(turn)
+
+
 async def _successful_completion(
     _config: AiConfig,
     _messages: list[HistoryMessage],
 ) -> AiResponseResult:
     return AiResponseResult(status_code=200, reply="正常回复")
+
+
+@pytest.mark.asyncio
+async def test_ai_chat_awaits_memory_store_reads_and_writes() -> None:
+    config = AiConfig(
+        api_key="test-key",
+        memory=True,
+        memory_turns=2,
+        memory_max_chars=100,
+    )
+    runtime = build_test_runtime()
+    memory = RecordingMemory()
+    service = AiService(
+        config,
+        runtime.features,
+        runtime.admin_notices,
+        ("战队",),
+        FakeAiCompletionClient(config, _successful_completion),
+        memory,
+    )
+
+    assert await service.chat_reply(
+        actor=ACTOR,
+        conversation=CONVERSATION,
+        prompt="hello",
+    ) == "正常回复"
+    assert len(memory.loads) == 1
+    actor, session_key, exclude_current_session, limit = memory.loads[0]
+    assert actor == ACTOR
+    assert exclude_current_session is False
+    assert limit == config.memory_turns * 2
+    assert memory.turns == [
+        AiMemoryTurn(
+            ACTOR,
+            session_key,
+            CONVERSATION,
+            "hello",
+            "正常回复",
+        )
+    ]
 
 
 def _ai_service(

@@ -184,6 +184,8 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - `CommandDescriptor.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
+- AI 长期记忆使用异步 `AiMemoryStore` port。SQLite 实现在 worker thread 中完成
+  读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 
 ### Phase 6 — 兜底、配置和错误语义
 
