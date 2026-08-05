@@ -64,7 +64,7 @@ def test_packaged_single_image_aliases_use_one_config() -> None:
 
 def test_custom_config_can_disable_packaged_command() -> None:
     config = SendpicBehaviorConfig(
-        configs=[
+        configs=[  # type: ignore[reportArgumentType]
             {
                 "id": "skill-stone",
                 "enabled": False,
@@ -79,7 +79,7 @@ def test_custom_config_can_disable_packaged_command() -> None:
 def test_custom_gallery_extends_packaged_commands_and_command_index() -> None:
     service = SendpicService(
         SendpicBehaviorConfig(
-            configs=[
+            configs=[  # type: ignore[reportArgumentType]
                 {
                     "id": "example-gallery",
                     "backend": "local",

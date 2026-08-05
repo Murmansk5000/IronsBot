@@ -44,7 +44,7 @@ def is_group_push_subscription_manager(
     messaging: MessagingService,
     event: GroupMessageEvent,
 ) -> bool:
-    return can_manage_group_event(messaging, event)
+    return can_manage_group_event(messaging.feature_policy, event)
 
 
 def match_push_subscription_command(

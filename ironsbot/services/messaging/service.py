@@ -68,6 +68,12 @@ class MessagingService:
         Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
 
+    @property
+    def feature_policy(self) -> FeatureService:
+        """Expose the policy dependency needed by transport-side role checks."""
+
+        return self._features
+
     def match_action(
         self,
         text: str,
