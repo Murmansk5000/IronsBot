@@ -264,6 +264,8 @@ def test_example_config_parses() -> None:
     assert config.features.user_policy["qq_group_manager"] == ["blacklist"]
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
+    assert config.ai.intent_actions["fire_manual"].promotion == "fire_manual"
+    assert config.promotions["fire_manual"].append_to_push
     assert (
         config.bilibili.accounts["example_account"].uid
         == EXAMPLE_BILI_ACCOUNT_UID

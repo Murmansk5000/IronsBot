@@ -272,6 +272,17 @@ hint_max_per_window = 3
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
 
+[promotions.fire_manual]
+# EN: A reusable text promotion. It is appended to proactive text pushes only
+# when the target has this feature enabled; AI actions may reference this ID.
+# ZH: 可复用的文本推广项。仅当目标启用了对应 feature 时附加到主动文本推送；
+# AI 意图动作也可引用此 ID。
+enabled = true
+feature = "fire_manual_ad"
+url = "https://seerinfo.yuyuqaq.cn/firedict"
+text = "火火手册链接：{url}"
+append_to_push = true
+
 [ai]
 # Default: "https://api.deepseek.com"
 # EN: OpenAI-compatible AI API base URL.
@@ -374,8 +385,10 @@ intent_actions_enabled = true
 # Omitted fields inherit built-in defaults for known actions.
 # ZH: AI 意图动作按 [ai.intent_actions.<id>] 配置；已知动作未写字段会继承内置默认值。
 # EN: Delivery content and deployment targets never have built-in defaults. An
-# enabled team recommendation must explicitly declare messages.
-# ZH: 投递文案和部署目标没有内置默认值；启用战队推荐时必须显式填写 messages。
+# enabled team recommendation must explicitly declare messages; a promotion
+# action must reference an ID declared in [promotions].
+# ZH: 投递文案和部署目标没有内置默认值；启用战队推荐时必须显式填写 messages；
+# 推广动作必须引用 [promotions] 中声明的 ID。
 
 [ai.intent_actions.team_recommend]
 # Default: true; EN: Enable team recommendation intent. ZH: 是否启用战队推荐意图。
@@ -389,8 +402,19 @@ messages = [
 ]
 
 [ai.intent_actions.fire_manual]
-# Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
+# This is a normal promotion action. Its wording and destination live in
+# [promotions.fire_manual], not in Python code.
+# ZH: 这是普通推广动作；文案和链接都在 [promotions.fire_manual] 配置，不写死在代码中。
 enabled = true
+feature = "ai_intent_fire_manual"
+keywords = ["手册"]
+action = "promotion"
+promotion = "fire_manual"
+intent = """
+判断消息是否明确索要火火手册的入口、链接、地址或下载方式。
+只有用户确实在索要链接时回答 yes；仅讨论手册内容、分享或发布手册链接、
+引用手册、反馈手册问题时回答 no。
+"""
 
 [activity]
 # Default: true

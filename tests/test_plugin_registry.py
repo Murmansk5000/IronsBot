@@ -200,7 +200,31 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
         }
     )
     assert contribution.commands == ()
-    enabled_settings = Settings.model_validate({"ai": {"api_key": "test"}})
+    assert not ai_intent_commands(
+        Settings.model_validate({"ai": {"api_key": "test"}})
+    )
+    enabled_settings = Settings.model_validate(
+        {
+            "promotions": {
+                "manual": {
+                    "feature": "fire_manual_ad",
+                    "text": "手册：{url}",
+                }
+            },
+            "ai": {
+                "api_key": "test",
+                "intent_actions": {
+                    "manual": {
+                        "feature": "ai_intent_fire_manual",
+                        "keywords": ["手册"],
+                        "action": "promotion",
+                        "promotion": "manual",
+                        "intent": "判断用户是否索要手册链接。",
+                    }
+                },
+            },
+        }
+    )
     assert {command.plugin_id for command in ai_intent_commands(enabled_settings)} == {
         "ai_intent"
     }

@@ -8,14 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from typing_extensions import Self
 
 from ironsbot.core.commands import json_object
-from ironsbot.core.features import FIRE_MANUAL_INTENT_FEATURE
-from ironsbot.core.messaging import (
-    FIRE_MANUAL_LINK_MESSAGE,
-    AiIntentAction,
-)
+from ironsbot.core.messaging import AiIntentAction
 
 KEYWORDS_REQUIRED_ERROR = "enabled AI action must configure keywords"
 MESSAGE_REQUIRED_ERROR = "message AI action must configure message"
+PROMOTION_REQUIRED_ERROR = "promotion AI action must configure promotion"
 TEAM_RECOMMEND_MESSAGES_REQUIRED_ERROR = (
     "team_recommend AI action must configure messages"
 )
@@ -31,14 +28,6 @@ DEFAULT_AI_PROMPT = (
     "回答应简洁、友好、诚实；无法确认时直接说明不确定，不要编造。"
 )
 DEFAULT_AI_ADMIN_NOTICE_COOLDOWN_SECONDS = 600.0
-DEFAULT_FIRE_MANUAL_INTENT = (
-    "Judge whether the QQ group message explicitly asks for the Fire manual "
-    "entry, link, address, URL, download, or where to read it. Answer yes only "
-    "when the sender is requesting the manual link/入口/地址/下载. Answer no when "
-    "the message only mentions 手册 or 火火手册, discusses manual content, cites the "
-    "manual as a source, asks why it has not updated or cannot open, announces "
-    "or shares a manual release/link, or is unrelated to asking for the link."
-)
 DEFAULT_TEAM_RECOMMEND_INTENT = (
     "Judge whether the message means the sender wants to join, apply for, or find "
     "a Seer team/guild. Answer yes only when the sender asks to join, asks whether "
@@ -75,22 +64,11 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
             ),
             reply_prompt=DEFAULT_KEYWORD_INFO_PROMPT,
         ),
-        "fire_manual": AiIntentAction(
-            id="fire_manual",
-            feature=FIRE_MANUAL_INTENT_FEATURE,
-            keywords=["手册"],
-            action="message",
-            intent=DEFAULT_FIRE_MANUAL_INTENT,
-            message=FIRE_MANUAL_LINK_MESSAGE,
-        ),
     }
 
 
 def default_ai_actions() -> dict[str, AiIntentAction]:
-    actions = builtin_ai_actions()
-    return {
-        "fire_manual": actions["fire_manual"],
-    }
+    return {}
 
 
 class AiConfig(BaseModel):
@@ -167,6 +145,11 @@ def _validate_resolved_action(action: AiIntentAction) -> None:
     if action.action == "message" and not action.message.strip():
         raise ValueError(  # noqa: TRY003
             f"ai.intent_actions.{action.id}: {MESSAGE_REQUIRED_ERROR}"
+        )
+
+    if action.action == "promotion" and not action.promotion.strip():
+        raise ValueError(  # noqa: TRY003
+            f"ai.intent_actions.{action.id}: {PROMOTION_REQUIRED_ERROR}"
         )
 
     if action.action == "team_recommend" and not action.messages:

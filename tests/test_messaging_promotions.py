@@ -3,8 +3,9 @@ from __future__ import annotations
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.integrations.onebot.promotions import (
-    fire_manual_ad_enabled_for_target,
+    promotion_enabled_for_target,
 )
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTION
 from tests.helpers.runtime import build_test_runtime
 
 
@@ -26,21 +27,25 @@ def test_fire_manual_push_attachment_is_independent_from_ai_intents() -> None:
         )
     ).features
 
-    assert not fire_manual_ad_enabled_for_target(
+    assert not promotion_enabled_for_target(
         ai_only,
         MessageTarget("group", 1001),
+        FIRE_MANUAL_PROMOTION,
     )
-    assert not fire_manual_ad_enabled_for_target(
+    assert not promotion_enabled_for_target(
         ai_only,
         MessageTarget("private", 2001),
+        FIRE_MANUAL_PROMOTION,
     )
-    assert fire_manual_ad_enabled_for_target(
+    assert promotion_enabled_for_target(
         explicit_ad,
         MessageTarget("group", 1001),
+        FIRE_MANUAL_PROMOTION,
     )
-    assert fire_manual_ad_enabled_for_target(
+    assert promotion_enabled_for_target(
         explicit_ad,
         MessageTarget("private", 2001),
+        FIRE_MANUAL_PROMOTION,
     )
 
 
@@ -51,11 +56,13 @@ def test_fire_manual_push_attachment_respects_all_bundle_and_not_superuser_bypas
         superuser_ids=(1002,),
     ).features
 
-    assert fire_manual_ad_enabled_for_target(
+    assert promotion_enabled_for_target(
         features,
         MessageTarget("private", 2001),
+        FIRE_MANUAL_PROMOTION,
     )
-    assert not fire_manual_ad_enabled_for_target(
+    assert not promotion_enabled_for_target(
         features,
         MessageTarget("private", 1002),
+        FIRE_MANUAL_PROMOTION,
     )

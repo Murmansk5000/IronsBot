@@ -855,13 +855,16 @@ a name, an owner, cancellation on shutdown, and observable failure logging.
 
 ## Temporary Private Extension Bootstrap
 
-`PluginContribution` is the runtime contribution contract. Every built-in
-plugin is a top-level manifest-loaded package and contributes itself during the
-scoped loading window. `ironsbot.plugins.onebot.bootstrap` is now limited to
-adapting configured private extensions; it is not a built-in plugin registry,
-command directory, or second discovery mechanism. Do not add built-in feature
-ownership, command metadata, help metadata, lifecycle concepts, or plugin
-families to this adapter.
+`PluginContribution` is the current plugin-local runtime contribution carrier.
+Every built-in plugin is a top-level manifest-loaded package and submits its
+own contribution during the scoped loading window. `PluginContribution` is not
+the semantic authority for commands, permissions, help layout, or lifecycle
+policy; it carries the local installation callback, declared command
+descriptors and hooks to their respective owners. `ironsbot.plugins.onebot.bootstrap`
+is now limited to adapting configured private extensions; it is not a built-in
+plugin registry, command directory, or second discovery mechanism. Do not add
+built-in feature ownership, command metadata, help metadata, lifecycle
+concepts, or plugin families to this adapter.
 
 The runtime contribution contract is:
 
@@ -943,11 +946,13 @@ The Phase 2 replacement uses `[tool.nonebot.plugins]` and
 plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
 `PluginInstallContext` only while contributions are registered. It is not a
 service locator and must not be read by services or renderers. A
-`PluginContribution` explicitly owns matchers, command contracts, lifecycle
-callbacks, and scheduled jobs. `CommandCatalog` consumes the contributed
-contracts and is the only command-description authority. The replacement
-becomes the only authority; the bridge and its reflective discovery are then
-deleted instead of being kept as a compatibility path.
+`PluginContribution` carries a plugin-local matcher installer, command
+descriptors, lifecycle hooks and scheduled-job contributions during the
+current installation bridge. `CommandCatalog` consumes the command descriptors
+and remains the only command-description authority; `ApplicationLifecycle`
+owns lifecycle policy and task lifetime. The replacement becomes the only
+authority; the bridge and its reflective discovery are then deleted instead of
+being kept as a compatibility path.
 
 ## Service Boundaries
 
