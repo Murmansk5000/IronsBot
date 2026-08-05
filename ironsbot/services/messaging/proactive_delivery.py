@@ -214,7 +214,7 @@ def append_push_promotions(
     for promotion in promotions.push_promotions:
         if not _promotion_enabled(features, conversation, promotion):
             continue
-        result = _append_text_once(result, promotion.message, promotion.url)
+        result = append_outbound_text_once(result, promotion.message, promotion.url)
     return result
 
 
@@ -233,7 +233,7 @@ def append_subscription_hint(
         _SUBSCRIPTION_HINT_KEY,
     ):
         return message
-    return _append_text_once(message, hint)
+    return append_outbound_text_once(message, hint)
 
 
 def _unique_requests(
@@ -258,7 +258,7 @@ def _promotion_enabled(
     return features.conversation_has_feature(conversation, promotion.feature)
 
 
-def _append_text_once(
+def append_outbound_text_once(
     message: OutboundMessage,
     text: str,
     url: str = "",

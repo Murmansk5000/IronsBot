@@ -57,13 +57,6 @@ BILIBILI_REQUEST_IDENTITY_METHODS = {
     },
 }
 BILIBILI_LEGACY_DELIVERY_IMPORTS = ("ironsbot.core.messaging",)
-ONEBOT_DELIVERY_TRANSITION_PATHS = frozenset(
-    {
-        PACKAGE / "app" / "bilibili_composition.py",
-        PACKAGE / "integrations" / "onebot" / "delivery.py",
-        PACKAGE / "integrations" / "onebot" / "delivery_port.py",
-    }
-)
 LEGACY_FEATURE_POLICY_METHODS = frozenset(
     {
         "group_has_feature",
@@ -383,14 +376,13 @@ def test_plugin_resources_do_not_expose_legacy_onebot_delivery() -> None:
 
 def test_legacy_onebot_delivery_is_not_reintroduced_into_services_or_composition(
 ) -> None:
-    """Only Bilibili rich-media still needs the transitional target delivery API."""
+    """All application and service delivery uses the typed outbound port."""
 
     offenders = [
         str(path.relative_to(ROOT))
         for directory in (PACKAGE / "app", SERVICES)
         for path in _python_files(directory)
         if "OneBotDelivery" in path.read_text(encoding="utf-8-sig")
-        and path not in ONEBOT_DELIVERY_TRANSITION_PATHS
     ]
 
     assert offenders == []

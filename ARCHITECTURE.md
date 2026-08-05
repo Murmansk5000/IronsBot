@@ -248,7 +248,7 @@ feature, persistence schema, or policy decision.
 | Proactive text delivery | target | `ProactiveMessageDelivery` plus `OutboundMessenger` | All new non-rich proactive text sends use typed conversations, subscription filtering, promotion text, daily hints and failure summaries here. |
 | Administrator notices | target reference | `AdminNoticeService` plus `OutboundAdminNoticeSender` | Resolve administrators as `ActorRef` values and send through `ProactiveMessageDelivery`; no OneBot delivery object is exposed to the service. |
 | Activity reminders | target reference | `ActivityService` plus `ActivityReminderOutboundSender` | Build typed recipients and a text message, then delegate subscription and rate-limit semantics to proactive delivery. |
-| OneBot `OneBotMessageTarget` / `OneBotDelivery` | transition | Only the Bilibili rich-media path may use it in OneBot integration/composition wiring; never expose it through `ApplicationResources` | Migrate the rich message shape to an explicit platform-neutral port before removing this bridge. No new text sender may depend on it. |
+| OneBot `OneBotMessageTarget` / `OneBotDelivery` | inactive transition | No application or service consumer remains; only obsolete integration/test support code is left | Delete the inactive bridge and its test-only fixtures. No new caller is permitted. |
 | OneBot reference resolution and numeric QQ configuration | target adapter | `config.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
 | Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
 | OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
@@ -454,12 +454,14 @@ SQLite rows retain platform, conversation kind and opaque conversation ID
 columns, so a second transport never has to pretend that its identifiers are
 QQ integers.
 
-`OneBotDelivery` remains a tightly bounded **transition** only for Bilibili
-rich-media pushes, whose current OneBot message payload has not yet been
-represented by a platform-neutral document. It may not be passed through
-`ApplicationResources`, stored in a service, or used by a new text sender. The
-next migration for that path must introduce an explicit rich-media port, then
-delete rather than widen the legacy delivery chain.
+Monitored Bilibili dynamics now use the same route: the Bilibili domain renders
+portable text and remote-image parts, while the shared delivery service keeps
+subscription, promotion, queue and failure behaviour. The OneBot-only renderer
+that remains under `integrations.onebot` is for an incoming user's immediate
+query reply, not a monitored push. `OneBotDelivery` has no application or
+service consumer and is an inactive transition pending deletion with its
+test-only fixtures. It may not be passed through `ApplicationResources`, stored
+in a service, or used by a new sender.
 
 The eventual composition is:
 

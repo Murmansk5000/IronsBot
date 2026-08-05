@@ -168,10 +168,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions=subscriptions,
         admin_notices=admin_notices,
         bot_router=bot_router,
-        outbound=outbound,
-        features=features,
-        promotions=promotions,
-        push_unsubscribe=settings.messaging.push_unsubscribe,
+        proactive_delivery=proactive_delivery,
         ai_service=ai,
         config=settings.bilibili,
     )

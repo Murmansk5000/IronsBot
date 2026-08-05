@@ -14,17 +14,9 @@ from ironsbot.integrations.http.bilibili import (
     request_bili_login_qr,
 )
 from ironsbot.integrations.onebot.bilibili_auth import send_bili_login_notice
-from ironsbot.integrations.onebot.bilibili_push import OneBotBilibiliPushSender
-from ironsbot.integrations.onebot.bilibili_rendering import (
-    build_dynamic_content_message,
-    build_dynamic_link_message,
-)
 from ironsbot.integrations.onebot.bilibili_targets import (
     build_onebot_bili_configured_targets,
 )
-from ironsbot.integrations.onebot.delivery import OneBotDelivery
-from ironsbot.integrations.onebot.promotions import append_promotions_for_target
-from ironsbot.integrations.onebot.replies import append_text_hint
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
@@ -34,22 +26,21 @@ from ironsbot.integrations.storage.bilibili_preferences import (
 )
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.login import BilibiliLoginService
+from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
 
 if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
-    from ironsbot.config.models.messaging import PushUnsubscribeConfig
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.bilibili import BiliConfig
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.http.clients import HttpClients
-    from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.onebot.router import BotRouter
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
 
 
@@ -110,33 +101,20 @@ def build_onebot_bilibili_monitor(  # noqa: PLR0913 - composition root
     subscriptions: PushSubscriptionRepository,
     admin_notices: AdminNoticeService,
     bot_router: BotRouter,
-    outbound: GroupOutboundRateLimitService,
-    features: FeatureService,
-    promotions: PromotionCatalog,
-    push_unsubscribe: PushUnsubscribeConfig,
+    proactive_delivery: ProactiveMessageDelivery,
     ai_service: AiService,
     config: BiliConfig,
 ) -> BilibiliMonitorService:
-    """Assemble the OneBot push sender without exposing it to the plugin."""
-    delivery = OneBotDelivery(
-        outbound,
-        push_unsubscribe,
-        bot_router,
-        subscriptions,
-    )
+    """Assemble OneBot configuration with a platform-neutral push sender."""
     notice_sender = partial(send_bili_login_notice, admin_notices)
     auth_invalid = partial(
         login.notify_required,
         send_notice=notice_sender,
-        is_online=lambda: delivery.default_bot() is not None,
+        is_online=lambda: bot_router.default_bot() is not None,
     )
-    push_delivery = OneBotBilibiliPushSender(
-        delivery,
+    push_delivery = BilibiliDynamicOutboundSender(
+        proactive_delivery,
         subscriptions,
-        build_dynamic_link_message,
-        build_dynamic_content_message,
-        append_text_hint,
-        partial(append_promotions_for_target, features, promotions),
         getattr(ai_service, "summarize_bilibili_dynamic", None),
         config.push.content_max_chars,
         config.push.summary_max_chars,
