@@ -125,3 +125,33 @@ def test_current_content_version_uses_shanghai_date_not_baseline() -> None:
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:
     with pytest.raises(NewContentIndexUnavailableError):
         _service(tmp_path / "empty.sqlite").snapshot()
+
+
+def test_index_without_category_states_is_explicitly_unavailable(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "legacy.sqlite"
+    with Session(create_engine(f"sqlite:///{path}")) as session:
+        session.connection().exec_driver_sql(
+            """
+            CREATE TABLE new_content_release (
+                id INTEGER PRIMARY KEY, current_config_version TEXT,
+                weekly_cycle TEXT, baseline_established INTEGER
+            )
+            """
+        )
+        session.connection().exec_driver_sql(
+            """
+            CREATE TABLE new_content_item (
+                category TEXT, entity_id INTEGER, name TEXT, sort_value INTEGER,
+                payload_json TEXT, change_kind TEXT
+            )
+            """
+        )
+        session.connection().exec_driver_sql(
+            "INSERT INTO new_content_release VALUES (1, '20260731', '2026-07-31', 1)"
+        )
+        session.commit()
+
+    with pytest.raises(NewContentIndexUnavailableError):
+        _service(path).snapshot()

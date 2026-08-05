@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "ironsbot"
 PLUGINS = PACKAGE / "plugins"
 SERVICES = PACKAGE / "services"
+SEER_RENDERING = SERVICES / "seer" / "rendering"
 SERVICE_PACKAGES = frozenset(
     {
         "activity",
@@ -45,6 +46,21 @@ LIFECYCLE_PATH = PACKAGE / "app" / "lifecycle.py"
 SQLITE_PATH = PACKAGE / "integrations" / "storage" / "sqlite.py"
 SCHEDULER_PATH = PACKAGE / "integrations" / "scheduler" / "facade.py"
 SCHEDULER_PLUGIN_PATH = PACKAGE / "plugins" / "onebot" / "scheduler" / "__init__.py"
+FORBIDDEN_RENDERER_IMPORTS = (
+    "aiohttp",
+    "httpx",
+    "requests",
+    "sqlalchemy",
+    "sqlite3",
+    "sqlmodel",
+)
+FORBIDDEN_RENDERER_CALLS = {
+    "open",
+    "read_bytes",
+    "read_text",
+    "write_bytes",
+    "write_text",
+}
 
 
 def _files(root: Path = PACKAGE) -> list[Path]:
@@ -138,6 +154,23 @@ def test_services_do_not_import_framework_or_outer_layers() -> None:
         if module.startswith(FORBIDDEN_SERVICE_IMPORTS)
     ]
     assert offenders == []
+
+
+def test_pure_seer_renderers_do_not_access_data_transport_or_files() -> None:
+    """Keep renderer inputs as prepared documents instead of live dependencies."""
+    import_offenders = [
+        f"{_relative(path)} imports {module}"
+        for path in _files(SEER_RENDERING)
+        for module in _imports(path)
+        if module.startswith(FORBIDDEN_RENDERER_IMPORTS)
+    ]
+    call_offenders = [
+        f"{_relative(path)}:{node.lineno}"
+        for path in _files(SEER_RENDERING)
+        for node in ast.walk(_tree(path))
+        if isinstance(node, ast.Call) and _call_name(node) in FORBIDDEN_RENDERER_CALLS
+    ]
+    assert [*import_offenders, *call_offenders] == []
 
 
 def test_core_does_not_import_the_nonebot_framework() -> None:

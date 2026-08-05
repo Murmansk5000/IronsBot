@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, cast
 
@@ -11,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.services.seer.rendering.pet_info_models import (
     PetDerivedDisplayData,
+    PetSoulmarkDisplayAddition,
     PetSpecialEffectView,
     SoulmarkIconAsset,
 )
@@ -40,6 +42,7 @@ def load_pet_derived_display_data(
         soulmark_icons=tuple(
             _load_soulmark_icons(session, pet_id, soulmark_ids).items()
         ),
+        soulmark_display_additions=_load_soulmark_display_additions(session, pet_id),
     )
 
 
@@ -203,3 +206,65 @@ def _load_soulmark_icons(
             content_type=str(row["icon_png_content_type"] or "image/png"),
         )
     return result
+
+
+def _load_soulmark_display_additions(
+    session: Session,
+    pet_id: int,
+) -> tuple[PetSoulmarkDisplayAddition, ...]:
+    """Load explicit build-time corrections without renderer-side pet branches."""
+    try:
+        rows = session.execute(
+            text(
+                """
+                SELECT display_id, description, analyze_description,
+                       formatting_adjustment, intensified, intensified_to_id,
+                       is_adv, pve_effective, tags_json
+                FROM pet_soulmark_display_addition
+                WHERE pet_id = :pet_id
+                ORDER BY display_order, display_id
+                """
+            ),
+            {"pet_id": pet_id},
+        ).mappings()
+    except SQLAlchemyError:
+        logger.debug("soulmark display additions are unavailable", exc_info=True)
+        return ()
+    return tuple(
+        PetSoulmarkDisplayAddition(
+            id=int(row["display_id"]),
+            desc=str(row["description"]),
+            analyze_desc=(
+                str(row["analyze_description"])
+                if row["analyze_description"] is not None
+                else None
+            ),
+            formatting_adjustment=(
+                str(row["formatting_adjustment"])
+                if row["formatting_adjustment"] is not None
+                else None
+            ),
+            intensified=bool(row["intensified"]),
+            intensified_to_id=(
+                int(row["intensified_to_id"])
+                if row["intensified_to_id"] is not None
+                else None
+            ),
+            is_adv=bool(row["is_adv"]),
+            pve_effective=(
+                bool(row["pve_effective"])
+                if row["pve_effective"] is not None
+                else None
+            ),
+            tags=_tags_from_json(row["tags_json"]),
+        )
+        for row in rows
+    )
+
+
+def _tags_from_json(value: object) -> tuple[str, ...]:
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError):
+        return ()
+    return tuple(str(tag) for tag in parsed) if isinstance(parsed, list) else ()
