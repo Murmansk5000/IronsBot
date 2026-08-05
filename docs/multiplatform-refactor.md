@@ -265,13 +265,16 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   不满足“L3 命中零 SQL/HTTP/presenter”的目标。后续必须由发布数据的 revision 和素材
   manifest 生成 `RenderRequestKey`，先用该键查询 L3，再在 miss 路径以文档内容键做
   完整性校验。不得恢复只含精灵 ID/榜单参数、却没有发布数据和素材版本的快捷键。
-- 当前 SeerAPI 仅发布全库 `api_metadata` 版本和少量魂印/皮肤资源的局部校验结果，
-  尚未发布覆盖 `pet_head`、`pet_body`、`element_type`、`mintmark`、`item`、
-  `sign_buff`、预览图等全部渲染素材的 manifest。因此早期 L3 命中是一个明确的
-  跨仓库前置工作：SeerAPI 必须在构建期发布按 `(asset_kind, asset_key)` 唯一的
-  内容 SHA-256 与 release revision；IronsBot 的渲染请求只能引用这些已发布版本，
-  不能在命中判断时对 HTTP 素材做探测。该表、模型、构建完整性测试和消费端 schema
-  校验完成前，不得把 Phase 4 标为完成。
+- SeerAPI 已为构建期嵌入 `soulmark_icon` 的全部 PNG 发布
+  `render_asset_manifest`：按 `(asset_kind, asset_key)` 唯一记录真实 PNG SHA-256、
+  `release_revision`、可用状态和来源，并发布顺序无关的 manifest revision。它不额外
+  下载素材，也不替代原有 SWF -> PNG 构建管线；消费端可以把这一类素材版本放入将来的
+  `RenderRequestKey`。
+- 这仍只是第一种发布素材。SeerAPI 尚未发布覆盖 `pet_head`、`pet_body`、
+  `element_type`、`mintmark`、`item`、`sign_buff`、预览图等远端渲染素材的完整
+  manifest。因此早期 L3 命中仍是明确的跨仓库前置工作：IronsBot 只能引用已发布的
+  版本，不能在命中判断时对 HTTP 素材做探测。完整表、模型、构建完整性测试和消费端
+  schema 校验完成前，不得把 Phase 4 标为完成。
 - 私有阵容渲染也复用该内容键；私有模板和本地 Pillow 装饰源码以
   `renderer_fingerprint` 作为显式上下文参与键计算，不能维护第二套按阵容参数命中
   的最终缓存。
