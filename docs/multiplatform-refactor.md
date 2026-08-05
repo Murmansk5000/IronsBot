@@ -53,8 +53,8 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `in_progress` | 声明式贡献、`PluginContribution` 与命令目录已建立 | 所有插件均不再依赖旧桥接或第二份发现来源 | 插件迁移完全结束 |
-| Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现 | 删除剩余 integration 内旧投递调用并建立跨平台 sender 验收 | QQ Official 已接入 |
+| Phase 2 | `completed` | 标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文、唯一 `CommandCatalog` 与 common / messaging / operations / seer / bilibili builder 已建立；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后全量 `pytest` 为 1377 passed，静态检查通过 | Phase 3 只迁移仍在 OneBot integration 内的投递消费者，不得重建第二套插件发现或装配入口 | 插件迁移完全结束 |
+| Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 删除无运行时调用方的旧 OneBot delivery 类型/测试夹具，并完成全部 sender 验收 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性渲染缓存和部分 SeerAPI 效果事实已验证 | 其余 renderer 与数据路径全部只消费视图模型/发布事实 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 所有直接命令与米米号入口使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 清除剩余隐式 fallback、配置兼容和伪成功结果 | 错误语义收口完成 |
@@ -120,6 +120,20 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 **唯一目标路径：** 内置和私有插件均由 `nonebot.load_from_toml()` 从声明式清单加载。
 私有插件只从窄 extension context 获取已声明的领域能力。
 
+组合根只协调四个稳定领域的 builder：`common`、`seer`、`messaging` 和
+`operations`。每个 builder 返回类型化组件包；`operations` 已用
+`OperationsComponents` 迁出数据同步、无头客户端、服务器状态和重启装配。
+`common` 已用 `CommonComponents` 收口当前宿主的策略、会话、推送订阅、路由、
+限流、投递、推广和管理通知；其 OneBot 依赖明确留待 Phase 3 替换。
+`messaging` 已用 `MessagingComponents` 收口定时消息、图片、战队审核提醒及其
+投递适配，并只接收 common builder 提供的依赖。
+`seer` 已用 `SeerComponents` 收口玩家、榜单、渲染、战队资源和幸运橱窗的装配；
+当前 OneBot 账号/提及/通知编译仍标记为 Phase 3 的适配边界。
+`bilibili` 已用 `BilibiliComponents` 收口账号目标、Cookie、历史、登录和 HTTP
+装配；消息 builder 只接收其公开订阅选项。
+后续 builder 只能迁移既有装配代码，不能引入第二个 service locator 或由插件反向
+构造基础设施。
+
 **完成条件：**
 
 - 清单外插件不会装载，装载后不重复注册 matcher/lifecycle；
@@ -129,6 +143,28 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 
 **删除条件：** 不存在 `PluginDefinition`、`MatcherRegistry` 或任意第二份插件发现
 来源。
+
+**完成证据（2026-08-06）：**
+
+- `ironsbot/manifests/full.toml` 和 `core.toml` 是唯一内置插件发现来源；私有扩展也
+  只通过其标准 NoneBot TOML 清单加载。
+- `bootstrap()` 只在受限 `PluginInstallContext` 生命周期内调用
+  `nonebot.load_from_toml()`；模块加载完成后上下文立即失效，不能成为运行时
+  service locator。
+- 每个顶层 OneBot 插件声明 `PluginMetadata` 并提交 `PluginContribution`；命令由
+  `CommandCatalog` 统一收集和校验，matcher 只负责平台事件适配与绑定。
+- 组合根只协调领域 builder；所有 builder 返回类型化组件包。它们不能反向装配基础
+  设施、反射发现插件或引入第二个命令/插件注册表。
+- 验证：`uv run pytest -q tests/test_nonebot_manifest.py
+  tests/test_plugin_import_hygiene.py tests/test_plugin_install_context.py
+  tests/test_plugin_registry.py tests/test_command_catalog.py
+  tests/test_architecture_target_hygiene.py`（64 passed）；
+  `uv run python scripts/check_repo.py --static`；全量 `uv run pytest -q`
+  （1377 passed）。
+
+**后续边界：** Phase 3 可以替换 OneBot 的入站和出站实现，但不能修改此阶段已经
+封存的发现、贡献、命令收集和 builder 装配路径；若确有新的平台插件，必须由同一
+TOML 清单、元数据和贡献机制接入。
 
 ### Phase 3 — OneBot 适配和投递边界
 
@@ -149,6 +185,22 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 
 **删除条件：** `OneBotMessageTarget` 与 `OneBotDelivery` 不再被服务或 core 公开；其余旧
 调用完成 one-direction 迁移后才可删除类型。
+
+**完成证据（2026-08-06，进行中）：**
+
+- `ProactiveMessageDelivery` 已成为主动文本发送的唯一服务级入口，接受
+  `ConversationRef`、`OutboundMessage` 和显式投递请求；统一完成 feature/订阅过滤、
+  推广文案、每日退订提示、散发节奏与失败汇总。
+- 管理通知、活动结束提醒、定时文本、幸运橱窗和战队资源通知均已迁出
+  `OneBotDelivery`，只通过 `OutboundMessenger` 进行最后一跳发送。`CommonComponents`
+  不再提供 `OneBotDelivery`、旧限流器或出站实现给插件资源。
+- B 站全文/链接推送已改用 `TextPart` 和 `RemoteImagePart`，链接、正文、订阅过滤、
+  推广、历史提示、重试和管理员失败通知均通过同一主动投递链完成；保留的 OneBot
+  渲染器只处理用户主动查询的即时回复。
+- 验证：`tests/test_proactive_delivery.py` 覆盖订阅、去重、推广、退订提示、失败与
+  五类 sender；`tests/test_bilibili_outbound_delivery.py` 覆盖动态文本/远程图片、
+  两阶段推送、提示、重试与管理员告警；架构测试禁止在服务层和 composition 中重新
+  引入 `OneBotDelivery`。
 
 ### Phase 4 — 渲染、发布事实和素材管线
 
@@ -213,13 +265,16 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - `AliasLookup`、`AliasMatch` 与 `AliasResolution` 是实体别名匹配的共享
   contract；精灵、刻印、刻印系列、宝石与玩家账户各自保存数据，但不再复制
   规范化与多结果语义。
+- `CommandCatalog`、`CommandContract`、`CommandContext` 与玩家引用输入 matcher
+  是 `core` 契约；`runtime` 只保留插件贡献和安装流程。服务、OneBot 适配器和插件
+  都只能依赖该核心契约，不能让领域服务反向依赖 runtime。
 - `PlayerIdResolver` 统一处理数字、当前会话可见的玩家别名、一个直接 @ 已绑定
   成员及默认绑定。它由 application composition 只构造一次，经
   `ApplicationResources` 注入公开 Seer 的玩家、快捷查询、榜单玩家查询和命令目录；
   OneBot matcher 只能把事件转换为 `MessageInputContext`，不得临时拼接别名 lookup
   或 resolver。私有阵容扩展也只通过该 resolver 的 `has_known_reference()` 进行命令
   目录认领；真正的消息级解析仍由公开的详情扩展入口完成。
-- `CommandDescriptor.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
+- `CommandContract.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
 - 公开赛尔查询的命令描述已从 OneBot 插件移入
@@ -235,10 +290,40 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   `services.operations.command_text`，其中开服查询的目录描述位于
   `services.operations.server_status_commands`、镜像维护的目录描述位于
   `services.operations.docker_commands`；插件不再拥有这份跨操作命令定义。
+- 活动查询的用户命令描述位于
+  `services.activity.command_contracts`；活动插件只保留 NoneBot 事件适配、权限
+  matcher、回复和定时任务注册。
+- B 站的命令文字和纯文本解析位于 `services.bilibili.commands`，命令契约位于
+  `services.bilibili.command_contracts`；OneBot rule 只保留事件权限、消息 state 和
+  事件到纯文本解析器的适配。
+- 关于、帮助、战队资源和幸运橱窗分别由 `services.about_commands`、
+  `services.help_commands`、`services.team.resource_commands` 和
+  `services.seer.lucky_skin_commands` 提供命令契约；插件不再直接构造
+  `CommandContract`。
 - AI 长期记忆使用异步 `AiMemoryStore` port。SQLite 实现在 worker thread 中完成
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会
   明确报告不支持，不再用全局 baseline 猜测每一类内容是否可比较。
+
+**命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
+新命令不得在 matcher 内自建第二份示例、权限或帮助说明。
+
+| 领域 | 当前唯一命令 contract 来源 | OneBot 插件允许保留的内容 | 状态 |
+| --- | --- | --- | --- |
+| 赛尔查询 | `services.seer.command_contracts` | 事件转换、参数交给 service、回复 | 已迁移 |
+| 榜单帮助与管理 | `services.seer.rank_command_contracts` | 事件转换、回复 | 已迁移 |
+| 活动查询 | `services.activity.command_contracts` | 事件转换、权限 matcher、回复、定时任务 | 已迁移 |
+| 会议查询 | `services.messaging.meeting` | 事件转换、权限 matcher、回复 | 已迁移 |
+| 配置型文本与推送管理 | `services.messaging.command_contracts` | 事件转换、配置执行、回复和定时任务 | 已迁移 |
+| 配置型图片命令 | `services.messaging.sendpic` | 事件转换、图片发送、回复 | 已迁移 |
+| AI 聊天与意图 | `services.ai.command_contracts` | 事件转换、AI 调用、回复和平台 notice 上下文 | 已迁移 |
+| 数据更新 | `services.operations.data_sync_commands` | 事件转换、异步执行、回复 | 已迁移 |
+| 开服与容器维护 | `services.operations.command_text`、`server_status_commands`、`docker_commands` | 事件转换、平台操作、回复 | 已迁移 |
+| B 站动态 | `services.bilibili.commands`、`bilibili.command_contracts` | 事件权限、state、回复和调度 | 已迁移 |
+| 战队资源订阅 | `services.team.resource_commands` | 事件转换、订阅执行和回复 | 已迁移 |
+| 幸运橱窗 | `services.seer.lucky_skin_commands` | 事件转换、登录确认、回复和调度 | 已迁移 |
+| 关于 | `services.about_commands` | 事件转换、版本读取和回复 | 已迁移 |
+| 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
 
 ### Phase 6 — 兜底、配置和错误语义
 

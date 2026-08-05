@@ -1,17 +1,19 @@
+from ironsbot.core.command_catalog import CommandContext, CommandContract
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.activity import command_descriptors as activity_commands
-from ironsbot.plugins.onebot.bilibili import command_descriptors as bilibili_commands
-from ironsbot.plugins.onebot.bilibili.command_rules import (
+from ironsbot.services.about_commands import about_command_contracts
+from ironsbot.services.activity.command_contracts import activity_command_contracts
+from ironsbot.services.activity.commands import (
+    CURRENT_ACTIVITY_COMMANDS,
+    SOON_ENDING_ACTIVITY_COMMANDS,
+)
+from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
+from ironsbot.services.bilibili.commands import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
 )
-from ironsbot.runtime.commands import CommandContext, CommandDescriptor
-from ironsbot.services.activity.commands import (
-    CURRENT_ACTIVITY_COMMANDS,
-    SOON_ENDING_ACTIVITY_COMMANDS,
-)
+from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
@@ -22,22 +24,27 @@ from ironsbot.services.operations.command_text import (
 from ironsbot.services.operations.data_sync_commands import (
     FORCE_MANUAL_SYNC_COMMANDS,
     MANUAL_SYNC_COMMANDS,
-    data_sync_command_descriptors,
+    data_sync_command_contracts,
 )
-from ironsbot.services.operations.docker_commands import docker_command_descriptors
+from ironsbot.services.operations.docker_commands import docker_command_contracts
 from ironsbot.services.operations.server_status_commands import (
-    server_status_command_descriptors,
+    server_status_command_contracts,
 )
-from ironsbot.services.seer.command_contracts import seer_command_descriptors
+from ironsbot.services.pet_config_commands import pet_config_command_contracts
+from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
 )
+from ironsbot.services.seer.lucky_skin_commands import (
+    lucky_skin_window_command_contracts,
+)
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+from ironsbot.services.team.resource_commands import team_resource_command_contracts
 
 
 def _by_id(
-    commands: tuple[CommandDescriptor, ...],
-) -> dict[str, CommandDescriptor]:
+    commands: tuple[CommandContract, ...],
+) -> dict[str, CommandContract]:
     return {command.id: command for command in commands}
 
 
@@ -49,8 +56,8 @@ def _empty_player_id_resolver() -> PlayerIdResolver:
 
 
 def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
-    bilibili = _by_id(bilibili_commands())
-    activity = _by_id(activity_commands())
+    bilibili = _by_id(bilibili_command_contracts())
+    activity = _by_id(activity_command_contracts())
 
     assert bilibili["bilibili.dynamic"].examples == DYNAMIC_MENU_COMMANDS[:1]
     assert bilibili["bilibili.accounts"].examples == BILI_ACCOUNT_COMMANDS[:1]
@@ -67,10 +74,19 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
     )
 
 
+def test_about_and_help_contracts_are_owned_by_application_services() -> None:
+    about = _by_id(about_command_contracts())
+    help_commands = _by_id(help_command_contracts())
+
+    assert about["about"].examples == ("关于",)
+    assert help_commands["help"].examples == ("帮助",)
+    assert help_commands["help"].show_in_poke is True
+
+
 def test_operation_examples_use_matcher_command_sources() -> None:
-    status = _by_id(server_status_command_descriptors())
-    docker = _by_id(docker_command_descriptors())
-    sync = _by_id(data_sync_command_descriptors())
+    status = _by_id(server_status_command_contracts())
+    docker = _by_id(docker_command_contracts())
+    sync = _by_id(data_sync_command_contracts())
 
     assert status["server_status.query"].examples == (NORMAL_SERVER_STATUS_COMMAND,)
     assert status["server_status.admin_query"].examples == (
@@ -88,9 +104,39 @@ def test_operation_examples_use_matcher_command_sources() -> None:
 
 
 def test_data_query_examples_use_matcher_command_sources() -> None:
-    seer = _by_id(seer_command_descriptors(_empty_player_id_resolver()))
+    seer = _by_id(seer_command_contracts(_empty_player_id_resolver()))
 
     assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES
+
+
+def test_pet_config_contract_is_owned_by_its_domain_service() -> None:
+    enabled = _by_id(pet_config_command_contracts(enabled=True))
+
+    assert enabled["pet_config.query"].examples == (
+        "雷伊配置",
+        "配置雷伊",
+        "4923配置",
+    )
+    assert pet_config_command_contracts(enabled=False) == ()
+
+
+def test_team_resource_contract_is_owned_by_its_domain_service() -> None:
+    commands = _by_id(team_resource_command_contracts(enabled=True))
+
+    assert commands["team_resource.query"].examples == ("战队",)
+    assert commands["team_resource.subscribe"].examples == ("订阅战队123456",)
+    assert commands["team_resource.subscribe"].show_in_poke is True
+    assert team_resource_command_contracts(enabled=False) == ()
+
+
+def test_lucky_skin_window_contract_is_owned_by_its_domain_service() -> None:
+    commands = _by_id(lucky_skin_window_command_contracts())
+
+    assert commands["seer.lucky_skin_window.query"].examples == ("橱窗",)
+    assert commands["seer.lucky_skin_window.watch.add"].examples == (
+        "关注橱窗1400538 / 订阅橱窗1400538",
+        "橱窗订阅名称",
+    )
 
 
 def test_seer_player_command_catalog_uses_shared_resolver_alias_recognition() -> None:
@@ -98,7 +144,7 @@ def test_seer_player_command_catalog_uses_shared_resolver_alias_recognition() ->
         lambda reference, _conversation: 105023264 if reference == "示例账号" else None,
         lambda _actor: None,
     )
-    player_query = _by_id(seer_command_descriptors(resolver))["seer.player.query"]
+    player_query = _by_id(seer_command_contracts(resolver))["seer.player.query"]
     assert player_query.routing_matcher is not None
     context = CommandContext(
         actor=ActorRef(Platform.ONEBOT, "1234567890"),

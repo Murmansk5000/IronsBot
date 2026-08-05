@@ -10,11 +10,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.app.private_extensions import PrivateExtensionCatalog
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.plugins import PluginContributionCatalog
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService

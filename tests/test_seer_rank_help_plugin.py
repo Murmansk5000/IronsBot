@@ -14,8 +14,8 @@ from tests.helpers.onebot_events import group_message_event, private_message_eve
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.runtime.commands import CommandCatalog
 
 
 def test_rank_help_uses_every_domain_help_alias() -> None:

@@ -3,12 +3,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
+from ironsbot.core.command_catalog import CommandContract
 from ironsbot.plugins.onebot.help.menu import HelpMenuEntry, format_plugin_detail
-from ironsbot.runtime.commands import CommandDescriptor
 
 
 def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> None:
-    automatic = CommandDescriptor(
+    automatic = CommandContract(
         id="example.automatic",
         plugin_id="example",
         section="Intent",

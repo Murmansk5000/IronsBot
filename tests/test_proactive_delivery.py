@@ -1,0 +1,277 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import pytest
+
+from ironsbot.config.models.messaging import PushUnsubscribeConfig
+from ironsbot.core.outbound import (
+    DeliveryCapabilities,
+    MentionPart,
+    OutboundMessage,
+    SendResult,
+    TextPart,
+)
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
+from ironsbot.services.activity.delivery import ActivityReminderDelivery
+from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
+from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
+from ironsbot.services.messaging.proactive_delivery import (
+    ProactiveDeliveryRequest,
+    ProactiveMessageDelivery,
+)
+from ironsbot.services.messaging.scheduled_delivery import ScheduledMessageDelivery
+from ironsbot.services.messaging.scheduled_outbound import (
+    ScheduledMessageOutboundSender,
+)
+from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
+from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
+
+GROUP = ConversationRef(Platform.ONEBOT, "group", "3003")
+PRIVATE = ConversationRef(Platform.ONEBOT, "private", "1001")
+UNSUPPORTED = ConversationRef(Platform.QQ_OFFICIAL, "group", "guild-1")
+ACTOR = ActorRef(Platform.ONEBOT, "1001")
+MENTION = ActorRef(Platform.ONEBOT, "2002")
+
+
+@dataclass
+class FakeFeatures:
+    enabled_groups: set[tuple[ConversationRef, str]] = field(default_factory=set)
+    enabled_actors: set[tuple[ActorRef, str]] = field(default_factory=set)
+
+    def actor_has_feature(self, actor: ActorRef, feature: str) -> bool:
+        return (actor, feature) in self.enabled_actors
+
+    def conversation_has_feature(
+        self,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool:
+        return (conversation, feature) in self.enabled_groups
+
+
+@dataclass
+class FakeSubscriptions:
+    allowed: set[ConversationRef] | None = None
+    hint_calls: list[tuple[ConversationRef, str]] = field(default_factory=list)
+
+    def filter_subscribed_conversations(
+        self,
+        conversations: list[ConversationRef],
+        _subscription_key: str,
+    ) -> list[ConversationRef]:
+        if self.allowed is None:
+            return conversations
+        return [
+            conversation
+            for conversation in conversations
+            if conversation in self.allowed
+        ]
+
+    def mark_daily_hint_sent(
+        self,
+        conversation: ConversationRef,
+        hint_key: str,
+        *,
+        today: str | None = None,
+    ) -> bool:
+        del today
+        self.hint_calls.append((conversation, hint_key))
+        return True
+
+
+@dataclass
+class FakeMessenger:
+    failed: set[ConversationRef] = field(default_factory=set)
+    calls: list[tuple[ConversationRef, OutboundMessage]] = field(default_factory=list)
+
+    def capabilities_for(self, conversation: ConversationRef) -> DeliveryCapabilities:
+        supported = conversation.platform is Platform.ONEBOT
+        return DeliveryCapabilities(
+            can_reply_to_event=supported,
+            can_send_proactively=supported,
+            can_mention_members=supported,
+            supports_group_context=supported,
+            supports_private_context=supported,
+            supports_images=supported,
+        )
+
+    async def send(
+        self,
+        conversation: ConversationRef,
+        message: OutboundMessage,
+    ) -> SendResult:
+        self.calls.append((conversation, message))
+        if conversation in self.failed:
+            return SendResult(delivered=False, error_code="delivery_failed")
+        return SendResult(delivered=True, message_id=f"message-{len(self.calls)}")
+
+    async def reply(self, *_args: object, **_kwargs: object) -> SendResult:
+        return SendResult(delivered=False, error_code="unsupported")
+
+
+def _delivery(
+    *,
+    features: FakeFeatures | None = None,
+    subscriptions: FakeSubscriptions | None = None,
+    messenger: FakeMessenger | None = None,
+) -> tuple[ProactiveMessageDelivery, FakeMessenger, FakeSubscriptions]:
+    resolved_features = features or FakeFeatures()
+    resolved_subscriptions = subscriptions or FakeSubscriptions()
+    resolved_messenger = messenger or FakeMessenger()
+    return (
+        ProactiveMessageDelivery(
+            resolved_messenger,  # type: ignore[arg-type]
+            resolved_features,  # type: ignore[arg-type]
+            PromotionCatalog(
+                {
+                    "manual": PromotionConfig(
+                        feature="fire_manual",
+                        text="手册：{url}",
+                        url="https://example.test/manual",
+                        append_to_push=True,
+                    )
+                }
+            ),
+            resolved_subscriptions,  # type: ignore[arg-type]
+            PushUnsubscribeConfig(hint="私聊提示", group_hint="群聊提示"),
+        ),
+        resolved_messenger,
+        resolved_subscriptions,
+    )
+
+
+def _text(message: OutboundMessage) -> str:
+    return "".join(part.text for part in message.parts if isinstance(part, TextPart))
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_filters_subscriptions_and_applies_policy_per_target(
+) -> None:
+    features = FakeFeatures(enabled_groups={(GROUP, "fire_manual")})
+    delivery, messenger, subscriptions = _delivery(
+        features=features,
+        subscriptions=FakeSubscriptions(allowed={GROUP, PRIVATE}),
+    )
+
+    summary = await delivery.send(
+        OutboundMessage((TextPart("定时消息"),)),
+        (GROUP, PRIVATE, GROUP, UNSUPPORTED),
+        action_name="scheduled message",
+        interval_seconds=0,
+        subscription_key="daily",
+        include_promotions=True,
+    )
+
+    assert summary.succeeded == (GROUP, PRIVATE)
+    assert summary.failed == ()
+    assert [conversation for conversation, _message in messenger.calls] == [
+        GROUP,
+        PRIVATE,
+    ]
+    assert _text(messenger.calls[0][1]) == (
+        "定时消息\n\n手册：https://example.test/manual\n\n群聊提示"
+    )
+    assert _text(messenger.calls[1][1]) == "定时消息\n\n私聊提示"
+    assert subscriptions.hint_calls == [
+        (GROUP, "push_subscription_hint"),
+        (PRIVATE, "push_subscription_hint"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_returns_transport_and_capability_failures() -> None:
+    delivery, messenger, _subscriptions = _delivery(
+        messenger=FakeMessenger(failed={GROUP}),
+    )
+
+    summary = await delivery.send(
+        OutboundMessage((TextPart("通知"),)),
+        (GROUP, UNSUPPORTED),
+        action_name="notice",
+        interval_seconds=0,
+    )
+
+    assert summary.succeeded == ()
+    assert summary.failed == (GROUP, UNSUPPORTED)
+    assert [conversation for conversation, _message in messenger.calls] == [GROUP]
+
+
+@pytest.mark.asyncio
+async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() -> None:
+    delivery, messenger, _subscriptions = _delivery()
+
+    activity_sent = await ActivityReminderOutboundSender(delivery).send(
+        ActivityReminderDelivery(
+            status="send",
+            message=OutboundMessage((TextPart("活动即将结束"),)),
+            group_conversations=(GROUP,),
+            private_actors=(ACTOR,),
+            action_name="activity reminder",
+        )
+    )
+    team_sent = await TeamResourceOutboundSender(delivery).send_low_resource_notice(
+        TeamResourceSubscriptionTarget(GROUP, (MENTION,)),
+        "战队资源不足",
+    )
+    await ScheduledMessageOutboundSender(delivery).send(
+        ScheduledMessageDelivery(
+            message="定时推送",
+            private_conversations=(PRIVATE,),
+            group_conversations=(GROUP,),
+            group_mentions=(MENTION,),
+            action_name="schedule",
+            subscription_key="schedule",
+        )
+    )
+
+    assert activity_sent
+    assert team_sent
+    assert [conversation for conversation, _message in messenger.calls] == [
+        GROUP,
+        PRIVATE,
+        GROUP,
+        PRIVATE,
+        GROUP,
+    ]
+    assert isinstance(messenger.calls[2][1].parts[0], MentionPart)
+    assert messenger.calls[2][1].parts[0].actor == MENTION
+    assert isinstance(messenger.calls[4][1].parts[0], MentionPart)
+    assert messenger.calls[4][1].parts[0].actor == MENTION
+
+
+@pytest.mark.asyncio
+async def test_admin_notice_sender_maps_delivery_summary_back_to_original_recipients(
+) -> None:
+    delivery, _messenger, _subscriptions = _delivery()
+    sender = OutboundAdminNoticeSender(delivery)
+
+    summary = await sender.send_admin_notice(
+        OutboundMessage((TextPart("同步失败"),)),
+        private_actors=(ACTOR,),
+        group_conversations=(GROUP,),
+        subscription_key="admin_notice",
+        action_name="sync notice",
+        interval_seconds=0,
+    )
+
+    assert summary.succeeded == (ACTOR, GROUP)
+    assert summary.failed == ()
+
+
+@pytest.mark.asyncio
+async def test_send_many_uses_the_first_message_for_duplicate_conversations() -> None:
+    delivery, messenger, _subscriptions = _delivery()
+
+    summary = await delivery.send_many(
+        (
+            ProactiveDeliveryRequest(GROUP, OutboundMessage((TextPart("first"),))),
+            ProactiveDeliveryRequest(GROUP, OutboundMessage((TextPart("second"),))),
+        ),
+        action_name="dedupe",
+        interval_seconds=0,
+    )
+
+    assert summary.succeeded == (GROUP,)
+    assert _text(messenger.calls[0][1]) == "first"

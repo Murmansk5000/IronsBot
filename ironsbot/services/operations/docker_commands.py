@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 from ironsbot.services.operations.command_text import (
@@ -15,7 +15,7 @@ from ironsbot.services.operations.command_text import (
 )
 
 
-def docker_command_descriptors() -> tuple[CommandDescriptor, ...]:
+def docker_command_contracts() -> tuple[CommandContract, ...]:
     """Describe Docker maintenance commands for the shared command catalog."""
 
     return commands_from_rows(

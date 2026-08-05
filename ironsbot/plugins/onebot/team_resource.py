@@ -29,11 +29,6 @@ from ironsbot.integrations.onebot.replies import (
     finish_message_sequence,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -41,6 +36,7 @@ from ironsbot.runtime.plugins import (
     active_plugin_install_context,
 )
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
+from ironsbot.services.team.resource_commands import team_resource_command_contracts
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
@@ -56,69 +52,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
-    if not enabled:
-        return ()
-    return (
-        *commands_from_rows(
-            "team_resource",
-            "查询",
-            "team_resource_subscription",
-            (
-                (
-                    "team_resource.query",
-                    ("战队",),
-                    "查看当前会话订阅战队的信息和资源",
-                    {"show_in_poke": True},
-                ),
-            ),
-        ),
-        *commands_from_rows(
-            "team_resource",
-            "订阅管理",
-            "team_resource_subscription",
-            (
-                (
-                    "team_resource.subscribe",
-                    ("订阅战队123456",),
-                    "订阅战队资源提醒；群聊可在末尾 @ 提醒对象",
-                    {
-                        "access": (
-                            CommandAccess("group", "group_manager"),
-                            CommandAccess("private"),
-                        ),
-                        "show_in_poke": True,
-                    },
-                ),
-                (
-                    "team_resource.unsubscribe",
-                    ("取消订阅战队123456",),
-                    "取消当前会话指定战队订阅",
-                    {
-                        "access": (
-                            CommandAccess("group", "group_manager"),
-                            CommandAccess("private"),
-                        ),
-                        "show_in_poke": True,
-                    },
-                ),
-                (
-                    "team_resource.list",
-                    ("战队订阅",),
-                    "查看和管理当前会话的战队订阅",
-                    {
-                        "access": (
-                            CommandAccess("group", "group_manager"),
-                            CommandAccess("private"),
-                        ),
-                        "show_in_poke": True,
-                    },
-                ),
-            ),
-        ),
-    )
 
 
 def _is_team_resource_query(
@@ -344,7 +277,7 @@ def plugin_contribution(
                 enabled=config.enabled,
             ),
         ),
-        commands=command_descriptors(enabled=config.enabled),
+        commands=team_resource_command_contracts(enabled=config.enabled),
         install=partial(install, service=service),
         hooks=PluginHooks(
             startup=(

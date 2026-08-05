@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 from ironsbot.services.seer.rank_catalog import rank_command_names
@@ -37,7 +37,7 @@ def _local_rank_titles(*, peak: bool) -> tuple[str, ...]:
     )
 
 
-def rank_help_command_descriptors() -> tuple[CommandDescriptor, ...]:
+def rank_help_command_contracts() -> tuple[CommandContract, ...]:
     """Describe rank commands without depending on a chat adapter."""
 
     regular_rows = (
@@ -78,7 +78,7 @@ def rank_help_command_descriptors() -> tuple[CommandDescriptor, ...]:
         ),
     )
     regular = tuple(
-        CommandDescriptor(
+        CommandContract(
             id=command_id,
             plugin_id="rank_help",
             section=section,

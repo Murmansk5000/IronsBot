@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.runtime.commands import CommandDescriptor, commands_from_rows
-from ironsbot.runtime.player_reference_commands import player_reference_input_matcher
+from ironsbot.core.command_catalog import CommandContract, commands_from_rows
+from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
     NEW_ACHIEVEMENTS_COMMANDS,
@@ -26,9 +26,9 @@ from ironsbot.services.seer.data_query_commands import (
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
-def seer_command_descriptors(
+def seer_command_contracts(
     player_id_resolver: PlayerIdResolver,
-) -> tuple[CommandDescriptor, ...]:
+) -> tuple[CommandContract, ...]:
     player_query_input = player_reference_input_matcher(
         ("米米号", "查询玩家信息"),
         player_id_resolver.has_known_reference,

@@ -24,13 +24,13 @@ from ironsbot.integrations.onebot.replies import (
     send_event_reply,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     PluginContributionCatalog,
     active_plugin_install_context,
 )
+from ironsbot.services.help_commands import help_command_contracts
 
 from .menu import (
     HELP_ENTRIES_KEY,
@@ -52,9 +52,9 @@ __plugin_meta__ = PluginMetadata(
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.matchers import MatcherFactory
-    from ironsbot.runtime.commands import CommandCatalog
 
 
 def _always_visible_help(_event: Event) -> bool:
@@ -225,17 +225,7 @@ def plugin_contribution(
             order=10,
             visible=_always_visible_help,
         ),
-        commands=(
-            CommandDescriptor(
-                id="help",
-                plugin_id="help",
-                section="查看",
-                examples=("帮助",),
-                description="查看当前会话可用功能",
-                features_any=("help",),
-                show_in_poke=True,
-            ),
-        ),
+        commands=help_command_contracts(),
         install=partial(
             install,
             contribution_catalog=contribution_catalog,

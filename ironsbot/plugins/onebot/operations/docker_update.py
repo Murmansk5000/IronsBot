@@ -27,7 +27,7 @@ from ironsbot.services.operations.command_text import (
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
 )
-from ironsbot.services.operations.docker_commands import docker_command_descriptors
+from ironsbot.services.operations.docker_commands import docker_command_contracts
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
@@ -139,7 +139,7 @@ def plugin_contribution(
             order=10,
             visible=partial(_help_visible, features=features),
         ),
-        commands=docker_command_descriptors(),
+        commands=docker_command_contracts(),
         install=partial(_install, service=service),
         hooks=PluginHooks(
             startup=(

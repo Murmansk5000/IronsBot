@@ -20,12 +20,12 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import natural_language
-from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
 
 from .team_actions import run_team_action
 
@@ -57,24 +57,6 @@ class AiIntentDependencies:
     service: AiService
     promotions: PromotionCatalog
     team_resource: TeamResourceService
-
-
-def command_descriptors(config: Settings) -> tuple[CommandDescriptor, ...]:
-    if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
-        return ()
-    return tuple(
-        CommandDescriptor(
-            id=f"ai_intent.{action_id}",
-            plugin_id="ai_intent",
-            section="关键词意图",
-            examples=tuple(action.keywords),
-            description="机器人识别到相应意图后自动回复",
-            features_any=(action.feature,),
-            interaction="automatic",
-        )
-        for action_id, action in config.ai.intent_actions.items()
-        if action.enabled and action.keywords
-    )
 
 
 async def _handle_ai_reply_action(
@@ -199,7 +181,7 @@ def plugin_contribution(
     """Declare configured intent actions and their natural-language matcher."""
 
     enabled = bool(settings.ai.api_key.strip()) and settings.ai.intent_actions_enabled
-    commands = command_descriptors(settings)
+    commands = ai_intent_command_contracts(settings)
     return PluginContribution(
         id="ai_intent",
         features=frozenset(

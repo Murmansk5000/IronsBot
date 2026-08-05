@@ -172,9 +172,9 @@ def test_send_target_messages_routes_each_target_without_explicit_bot(
 
     monkeypatch.setattr(
         BotRouter,
-        "for_target",
-        lambda _router, target: (
-            group_bot if target.target_type == "group" else private_bot
+        "for_conversation",
+        lambda _router, conversation: (
+            group_bot if conversation.kind == "group" else private_bot
         ),
     )
 

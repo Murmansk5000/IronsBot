@@ -8,12 +8,12 @@ from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.services.about_commands import about_command_contracts
 
 __plugin_meta__ = PluginMetadata(
     name="关于",
@@ -84,16 +84,7 @@ def plugin_contribution() -> PluginContribution:
             group="core",
             order=20,
         ),
-        commands=(
-            CommandDescriptor(
-                id="about",
-                plugin_id="about",
-                section="查看",
-                examples=("关于",),
-                description="查看项目、版本和主要能力",
-                features_any=("about",),
-            ),
-        ),
+        commands=about_command_contracts(),
         install=install,
     )
 

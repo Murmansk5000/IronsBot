@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.plugin import PluginMetadata
 
-    from ironsbot.runtime.commands import CommandDescriptor
+    from ironsbot.core.command_catalog import CommandContract
 
 HookResult: TypeAlias = Awaitable[None] | None
 LifecycleHook: TypeAlias = Callable[[], HookResult]
@@ -58,7 +58,7 @@ class PluginContribution:
     id: str
     features: frozenset[Feature] = frozenset()
     help: HelpEntry | None = None
-    commands: tuple[CommandDescriptor, ...] = ()
+    commands: tuple[CommandContract, ...] = ()
     install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()
 

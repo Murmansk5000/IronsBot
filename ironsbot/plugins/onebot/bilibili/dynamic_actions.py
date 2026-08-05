@@ -22,14 +22,19 @@ from ironsbot.integrations.onebot.replies import (
     finish_event_reply,
     send_event_reply,
 )
+from ironsbot.services.bilibili.commands import is_dynamic_selection
 from ironsbot.services.bilibili.menu import DYNAMIC_IDS_STATE_KEY
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 
-from .command_rules import is_dynamic_select_reply
-
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Message | None]
+
+
+def _is_dynamic_selection_reply(event: MessageEvent) -> bool:
+    """Adapt a OneBot reply event for the platform-neutral selection parser."""
+
+    return is_dynamic_selection(event.get_plaintext())
 
 
 async def wait_dynamic_select(
@@ -49,7 +54,7 @@ async def wait_dynamic_select(
                 render_content=render_content,
             )
         ],
-        reply_check=is_dynamic_select_reply,
+        reply_check=_is_dynamic_selection_reply,
     )
 
 
@@ -73,8 +78,8 @@ async def handle_dynamic_menu_action(  # noqa: PLR0913 - matcher dependencies
                     render_content=render_content,
                 )
             ],
-            pending_reply_check=is_dynamic_select_reply,
-            reply_check=is_dynamic_select_reply,
+            pending_reply_check=_is_dynamic_selection_reply,
+            reply_check=_is_dynamic_selection_reply,
         )
         message = message_input_context(event).message
         result = await service.query_dynamic_menu(
@@ -113,7 +118,7 @@ async def handle_dynamic_menu_action(  # noqa: PLR0913 - matcher dependencies
                     render_content=render_content,
                 )
             ],
-            reply_check=is_dynamic_select_reply,
+            reply_check=_is_dynamic_selection_reply,
             prompt=Message(result.prompt),
         )
 

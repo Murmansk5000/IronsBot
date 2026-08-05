@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: MIT
+"""Command contracts owned by the lucky-skin-window domain."""
+
+from __future__ import annotations
+
+from ironsbot.core.command_catalog import CommandContract
+from ironsbot.core.semantic_requests import ActionDefinition
+
+LUCKY_SKIN_QUERY_COMMANDS = ("幸运橱窗", "橱窗")
+LUCKY_SKIN_WATCH_LIST_COMMANDS = (
+    "关注橱窗",
+    "订阅橱窗",
+    "橱窗关注",
+    "橱窗订阅",
+)
+LUCKY_SKIN_WATCH_REMOVE_COMMANDS = (
+    "取消关注橱窗",
+    "取消订阅橱窗",
+    "取消橱窗关注",
+    "取消橱窗订阅",
+    "退订橱窗",
+    "橱窗退订",
+)
+LUCKY_SKIN_WATCH_CLEAR_COMMANDS = (
+    "清空关注橱窗",
+    "清空订阅橱窗",
+    "清空橱窗关注",
+    "清空橱窗订阅",
+)
+LUCKY_SKIN_WATCH_RESET_COMMANDS = (
+    "重置关注橱窗",
+    "重置订阅橱窗",
+    "重置橱窗关注",
+    "重置橱窗订阅",
+)
+
+LUCKY_SKIN_QUERY_ACTION = ActionDefinition("seer.lucky_skin_window.query", "幸运橱窗")
+LUCKY_SKIN_WATCH_LIST_ACTION = ActionDefinition(
+    "seer.lucky_skin_window.watch.list",
+    "查看橱窗关注",
+)
+LUCKY_SKIN_WATCH_ADD_ACTION = ActionDefinition(
+    "seer.lucky_skin_window.watch.add",
+    "新增橱窗关注",
+)
+LUCKY_SKIN_WATCH_REMOVE_ACTION = ActionDefinition(
+    "seer.lucky_skin_window.watch.remove",
+    "取消橱窗关注",
+)
+LUCKY_SKIN_WATCH_CLEAR_ACTION = ActionDefinition(
+    "seer.lucky_skin_window.watch.clear",
+    "清空橱窗关注",
+)
+LUCKY_SKIN_WATCH_RESET_ACTION = ActionDefinition(
+    "seer.lucky_skin_window.watch.reset",
+    "重置橱窗关注",
+)
+
+
+def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
+    """Describe all direct lucky-skin-window commands."""
+
+    return (
+        CommandContract(
+            id=LUCKY_SKIN_QUERY_ACTION.id,
+            plugin_id="lucky_skin_window",
+            section="幸运橱窗",
+            examples=("橱窗",),
+            description="查看绑定米米号当天刷新出的四个皮肤",
+            features_any=("lucky_skin_window",),
+            show_in_poke=True,
+        ),
+        CommandContract(
+            id=LUCKY_SKIN_WATCH_LIST_ACTION.id,
+            plugin_id="lucky_skin_window",
+            section="橱窗关注",
+            examples=("关注橱窗 / 订阅橱窗", "橱窗关注 / 橱窗订阅"),
+            description="查看当前 QQ 的幸运橱窗关注列表",
+            features_any=("lucky_skin_window",),
+            show_in_poke=True,
+        ),
+        CommandContract(
+            id=LUCKY_SKIN_WATCH_ADD_ACTION.id,
+            plugin_id="lucky_skin_window",
+            section="橱窗关注",
+            examples=("关注橱窗1400538 / 订阅橱窗1400538", "橱窗订阅名称"),
+            description="按皮肤 ID、资源 ID 或名称新增橱窗关注",
+            features_any=("lucky_skin_window",),
+        ),
+        CommandContract(
+            id=LUCKY_SKIN_WATCH_REMOVE_ACTION.id,
+            plugin_id="lucky_skin_window",
+            section="橱窗关注",
+            examples=("取消关注橱窗1400538 / 退订橱窗1400538", "橱窗退订名称"),
+            description="取消指定皮肤的橱窗关注",
+            features_any=("lucky_skin_window",),
+        ),
+        CommandContract(
+            id=LUCKY_SKIN_WATCH_CLEAR_ACTION.id,
+            plugin_id="lucky_skin_window",
+            section="橱窗关注",
+            examples=("清空关注橱窗 / 清空订阅橱窗",),
+            description="清空当前 QQ 的幸运橱窗关注列表",
+            features_any=("lucky_skin_window",),
+        ),
+        CommandContract(
+            id=LUCKY_SKIN_WATCH_RESET_ACTION.id,
+            plugin_id="lucky_skin_window",
+            section="橱窗关注",
+            examples=("重置关注橱窗 / 重置订阅橱窗",),
+            description="恢复 TOML 中配置的初始幸运橱窗关注列表",
+            features_any=("lucky_skin_window",),
+        ),
+    )

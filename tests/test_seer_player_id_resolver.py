@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.platform import (
     ActorRef,
@@ -10,8 +11,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.runtime.commands import CommandContext
-from ironsbot.runtime.player_reference_commands import player_reference_input_matcher
+from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 _ALIAS_PLAYER_ID = 700
@@ -26,9 +26,10 @@ def _context(
 ) -> MessageInputContext:
     return MessageInputContext(
         IncomingMessageRef(
-            id="message-1",
+            platform=Platform.ONEBOT,
             actor=ActorRef(Platform.ONEBOT, "100"),
             conversation=ConversationRef(Platform.ONEBOT, kind, "200"),
+            message_id="message-1",
             text="收集",
             direct_mentions=mentions,
         ),

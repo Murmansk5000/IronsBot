@@ -17,13 +17,13 @@ from ironsbot.plugins.onebot.seer.query.commands.query_rules import (
     not_exact_command,
     not_rank_query,
 )
-from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
 from ironsbot.runtime.semantic_requests import ActionDefinition
+from ironsbot.services.pet_config_commands import pet_config_command_contracts
 
 __plugin_meta__ = PluginMetadata(
     name="精灵配置",
@@ -63,21 +63,7 @@ def plugin_contribution(
                 enabled=config.enabled,
             ),
         ),
-        commands=(
-            (
-                CommandDescriptor(
-                    id="pet_config.query",
-                    plugin_id="pet_config",
-                    section="查询",
-                    examples=("雷伊配置", "配置雷伊", "4923配置"),
-                    description="查询已收录的精灵配置图",
-                    features_any=("pet_config",),
-                    show_in_poke=True,
-                ),
-            )
-            if config.enabled
-            else ()
-        ),
+        commands=pet_config_command_contracts(enabled=config.enabled),
         install=partial(
             install,
             service=service,

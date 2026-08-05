@@ -24,21 +24,17 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import bot_mention
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandCatalog,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.ai.service import AiService
 
@@ -60,39 +56,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
-    if not enabled:
-        return ()
-    return (
-        *commands_from_rows(
-            "ai_chat",
-            "群聊",
-            "ai_chat",
-            (
-                (
-                    "ai_chat.group",
-                    ("@机器人 <问题>",),
-                    "向 AI 聊天提问",
-                    {"access": (CommandAccess(scope="group"),)},
-                ),
-            ),
-        ),
-        *commands_from_rows(
-            "ai_chat",
-            "私聊",
-            "ai_chat",
-            (
-                (
-                    "ai_chat.private",
-                    ("<问题>",),
-                    "直接向 AI 聊天提问",
-                    {"access": (CommandAccess(scope="private"),)},
-                ),
-            ),
-        ),
-    )
 
 
 def _is_claimed_private_command(
@@ -275,7 +238,7 @@ def plugin_contribution(
                 enabled=enabled,
             ),
         ),
-        commands=command_descriptors(enabled=enabled),
+        commands=ai_chat_command_contracts(enabled=enabled),
         install=(
             partial(
                 install,

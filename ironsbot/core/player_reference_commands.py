@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 from ironsbot.core.commands import normalize_command_text
 
 if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.platform import ConversationRef
-    from ironsbot.runtime.commands import CommandContext
 
 PlayerReferenceInputMatcher = Callable[[str, "CommandContext"], bool]
 PlayerReferenceRecognizer = Callable[[str, "ConversationRef"], bool]

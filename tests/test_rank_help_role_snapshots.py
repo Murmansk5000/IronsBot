@@ -7,6 +7,7 @@ from ironsbot.config.models.features import (
     build_onebot_feature_service,
 )
 from ironsbot.config.models.settings import Settings
+from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.context import command_context
@@ -14,7 +15,6 @@ from ironsbot.plugins.onebot.help.menu import (
     entry_from_definition,
     format_plugin_detail,
 )
-from ironsbot.runtime.commands import CommandCatalog
 from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 

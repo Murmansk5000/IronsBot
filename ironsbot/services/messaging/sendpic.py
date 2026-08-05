@@ -5,6 +5,7 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from ironsbot.core.command_catalog import CommandContract
 from ironsbot.core.commands import normalize_command_text
 
 if TYPE_CHECKING:
@@ -106,6 +107,29 @@ class SendpicService:
             total=total,
             random_text=selection.random_text,
         )
+
+
+def sendpic_command_contracts(
+    service: SendpicService,
+) -> tuple[CommandContract, ...]:
+    """Describe exactly the configured image commands in the shared catalog."""
+
+    return tuple(
+        CommandContract(
+            id=f"sendpic.{config.id}",
+            plugin_id="sendpic",
+            section="图片",
+            examples=(config.command, *sorted(config.aliases)),
+            description=(
+                "发送配置的图片；可在命令后附加编号"
+                if config.mode == "indexed"
+                else "发送配置的图片"
+            ),
+            features_any=("image",),
+            show_in_poke=True,
+        )
+        for config in service.commands
+    )
 
 
 def select_image(

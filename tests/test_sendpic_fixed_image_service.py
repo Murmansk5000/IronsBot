@@ -9,6 +9,7 @@ from ironsbot.integrations.sendpic import LocalBackend
 from ironsbot.services.messaging.sendpic import (
     ImageNotFoundError,
     SendpicService,
+    sendpic_command_contracts,
 )
 
 
@@ -99,6 +100,32 @@ def test_custom_gallery_extends_packaged_commands_and_command_index() -> None:
         "example-gallery",
     }
     assert service.exact_command_texts >= {"学习力", "学习力表", "表情", "表情包"}
+
+
+def test_sendpic_command_contracts_follow_enabled_configurations() -> None:
+    service = SendpicService(
+        SendpicBehaviorConfig(
+            configs=[  # type: ignore[reportArgumentType]
+                {
+                    "id": "example-gallery",
+                    "backend": "local",
+                    "command": "表情",
+                    "aliases": ["表情包"],
+                    "mode": "indexed",
+                    "image_dir": "memes",
+                    "image_filename_template": "{index}.png",
+                }
+            ]
+        ),
+        lambda _kind: LocalBackend(Path()),
+    )
+
+    descriptors = {item.id: item for item in sendpic_command_contracts(service)}
+
+    assert descriptors["sendpic.example-gallery"].examples == ("表情", "表情包")
+    assert descriptors["sendpic.example-gallery"].description == (
+        "发送配置的图片；可在命令后附加编号"
+    )
 
 
 def test_legacy_enabled_ids_field_is_rejected() -> None:
