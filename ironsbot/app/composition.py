@@ -29,7 +29,6 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.bilibili_rendering import (
     build_dynamic_content_message,
 )
@@ -47,6 +46,7 @@ from ironsbot.integrations.storage.player_bindings import (
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.plugins import PluginContributionCatalog
+from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
@@ -70,8 +70,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     outbound = common.outbound
     subscriptions = common.subscriptions
     bot_router = common.bot_router
-    delivery = common.delivery
-    push_message_limiter = common.push_message_limiter
+    proactive_delivery = common.proactive_delivery
     admin_notices = common.admin_notices
     player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
     operations = build_operations_components(
@@ -91,7 +90,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.activity,
         settings.paths.runtime_state,
         features,
-        OneBotActivityReminderSender(delivery, push_message_limiter),
+        ActivityReminderOutboundSender(proactive_delivery),
         databases,
         subscriptions,
         UnityNoticeSource(
@@ -105,7 +104,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         cache_paths,
         task_owner,
         features,
-        delivery,
+        proactive_delivery,
         subscriptions,
         seer_database,
         headless,
@@ -126,11 +125,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings,
         http_clients,
         features,
-        delivery,
+        proactive_delivery,
         subscriptions,
         bot_router,
         outbound,
-        push_message_limiter,
         bilibili.targets,
         lucky_skin_window,
     )
@@ -167,10 +165,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     bilibili_monitor = build_onebot_bilibili_monitor(
         service=bilibili,
         login=bilibili_login,
-        delivery=delivery,
         subscriptions=subscriptions,
         admin_notices=admin_notices,
-        message_limiter=push_message_limiter,
+        bot_router=bot_router,
+        outbound=outbound,
+        features=features,
+        promotions=promotions,
+        push_unsubscribe=settings.messaging.push_unsubscribe,
         ai_service=ai,
         config=settings.bilibili,
     )

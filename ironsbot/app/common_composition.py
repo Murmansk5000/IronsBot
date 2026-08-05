@@ -4,22 +4,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.config.models.features import build_onebot_feature_service
 from ironsbot.core.promotions import PromotionCatalog
-from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
-from ironsbot.integrations.onebot.delivery import MessageLimiter, OneBotDelivery
 from ironsbot.integrations.onebot.matchers import PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     install_outbound_rate_limit_hooks,
 )
-from ironsbot.integrations.onebot.promotions import append_promotions_for_target
+from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
+from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 
 if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
@@ -37,8 +36,7 @@ class CommonComponents:
     outbound: GroupOutboundRateLimitService
     subscriptions: PushUnsubscribeStore
     bot_router: BotRouter
-    delivery: OneBotDelivery
-    push_message_limiter: MessageLimiter
+    proactive_delivery: ProactiveMessageDelivery
     admin_notices: AdminNoticeService
 
 
@@ -63,13 +61,14 @@ def build_common_components(
         settings.messaging.bot_routing,
         settings.onebot_references,
     )
-    delivery = OneBotDelivery(
-        outbound,
-        settings.messaging.push_unsubscribe,
-        bot_router,
-        subscriptions,
-    )
     promotions = PromotionCatalog(settings.promotions)
+    proactive_delivery = ProactiveMessageDelivery(
+        OneBotOutboundMessenger(bot_router, outbound),
+        features,
+        promotions,
+        subscriptions,
+        settings.messaging.push_unsubscribe,
+    )
     install_outbound_rate_limit_hooks(outbound)
     return CommonComponents(
         prompt_sessions=PromptSessionManager(),
@@ -78,14 +77,9 @@ def build_common_components(
         outbound=outbound,
         subscriptions=subscriptions,
         bot_router=bot_router,
-        delivery=delivery,
-        push_message_limiter=partial(
-            append_promotions_for_target,
-            features,
-            promotions,
-        ),
+        proactive_delivery=proactive_delivery,
         admin_notices=AdminNoticeService(
             features,
-            OneBotAdminNoticeSender(delivery),
+            OutboundAdminNoticeSender(proactive_delivery),
         ),
     )

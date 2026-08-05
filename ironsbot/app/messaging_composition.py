@@ -11,15 +11,15 @@ from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.scheduled_delivery import (
-    OneBotScheduledMessageSender,
-)
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
     OneBotTeamAuditPolicy,
 )
 from ironsbot.integrations.sendpic import SendpicBackendProvider
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
+from ironsbot.services.messaging.scheduled_outbound import (
+    ScheduledMessageOutboundSender,
+)
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.team.audit import TeamAuditService
@@ -28,11 +28,11 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.http.clients import HttpClients
-    from ironsbot.integrations.onebot.delivery import MessageLimiter, OneBotDelivery
     from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.onebot.router import BotRouter
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.bilibili.targets import BiliTargetService
+    from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 
 
@@ -49,11 +49,10 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
     settings: Settings,
     http_clients: HttpClients,
     features: FeatureService,
-    delivery: OneBotDelivery,
+    proactive_delivery: ProactiveMessageDelivery,
     subscriptions: PushUnsubscribeStore,
     bot_router: BotRouter,
     outbound: GroupOutboundRateLimitService,
-    message_limiter: MessageLimiter,
     bili_targets: BiliTargetService,
     lucky_skin_window: LuckySkinWindowService,
 ) -> MessagingComponents:
@@ -68,7 +67,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             settings.activity,
             subscriptions,
             features,
-            OneBotScheduledMessageSender(delivery, message_limiter),
+            ScheduledMessageOutboundSender(proactive_delivery),
             build_onebot_message_schedule_targets(
                 settings.messaging,
                 settings.onebot_references,

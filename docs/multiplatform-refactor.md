@@ -54,7 +54,7 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
 | Phase 2 | `completed` | 标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文、唯一 `CommandCatalog` 与 common / messaging / operations / seer / bilibili builder 已建立；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后全量 `pytest` 为 1377 passed，静态检查通过 | Phase 3 只迁移仍在 OneBot integration 内的投递消费者，不得重建第二套插件发现或装配入口 | 插件迁移完全结束 |
-| Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现 | 删除剩余 integration 内旧投递调用并建立跨平台 sender 验收 | QQ Official 已接入 |
+| Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现。管理通知、活动提醒、定时消息、幸运橱窗和战队资源已统一走 `ProactiveMessageDelivery` | 将 B 站富媒体从最后一条 `OneBotDelivery` 过渡调用迁为显式跨平台 rich-media port，并完成全部 sender 验收 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性渲染缓存和部分 SeerAPI 效果事实已验证 | 其余 renderer 与数据路径全部只消费视图模型/发布事实 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 所有直接命令与米米号入口使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 清除剩余隐式 fallback、配置兼容和伪成功结果 | 错误语义收口完成 |
@@ -185,6 +185,20 @@ TOML 清单、元数据和贡献机制接入。
 
 **删除条件：** `OneBotMessageTarget` 与 `OneBotDelivery` 不再被服务或 core 公开；其余旧
 调用完成 one-direction 迁移后才可删除类型。
+
+**完成证据（2026-08-06，进行中）：**
+
+- `ProactiveMessageDelivery` 已成为主动文本发送的唯一服务级入口，接受
+  `ConversationRef`、`OutboundMessage` 和显式投递请求；统一完成 feature/订阅过滤、
+  推广文案、每日退订提示、散发节奏与失败汇总。
+- 管理通知、活动结束提醒、定时文本、幸运橱窗和战队资源通知均已迁出
+  `OneBotDelivery`，只通过 `OutboundMessenger` 进行最后一跳发送。`CommonComponents`
+  不再提供 `OneBotDelivery`、旧限流器或出站实现给插件资源。
+- B 站全文/链接推送仍是唯一允许的 `OneBotDelivery` 调用方，因为它还依赖 OneBot
+  富媒体内容结构；它被架构测试明确限定为 transition，不能成为新文本推送的先例。
+- 验证：`tests/test_proactive_delivery.py` 覆盖订阅、去重、推广、退订提示、失败与
+  五类 sender；架构测试禁止在服务层和普通 composition 中重新引入
+  `OneBotDelivery`。
 
 ### Phase 4 — 渲染、发布事实和素材管线
 

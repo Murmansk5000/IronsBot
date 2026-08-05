@@ -11,11 +11,9 @@ from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.onebot.lucky_skin_window import (
-    OneBotLuckySkinWindowNotificationSender,
     build_onebot_lucky_skin_window_accounts,
 )
 from ironsbot.integrations.onebot.team_resource import (
-    OneBotTeamResourceNoticeSender,
     build_onebot_team_resource_default_mentions,
 )
 from ironsbot.integrations.seer_data.new_content_renderer import (
@@ -54,6 +52,9 @@ from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
+from ironsbot.services.seer.lucky_skin_window_delivery import (
+    LuckySkinWindowOutboundSender,
+)
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.new_content import NewContentService
 from ironsbot.services.seer.peak import PeakQueryService
@@ -79,18 +80,19 @@ from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
 from ironsbot.services.seer.type_query import TypeQueryService
 from ironsbot.services.team.resource import TeamResourceService
+from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 
 if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.http.clients import HttpClients
-    from ironsbot.integrations.onebot.delivery import OneBotDelivery
     from ironsbot.integrations.seer_data.database import SeerDatabase
     from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.integrations.storage.render_cache import FileRenderCache
     from ironsbot.runtime.cache_paths import CachePaths
+    from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.images import SeerImageSource
@@ -122,7 +124,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
     cache_paths: CachePaths,
     task_owner: TaskOwner,
     features: FeatureService,
-    delivery: OneBotDelivery,
+    proactive_delivery: ProactiveMessageDelivery,
     subscriptions: PushUnsubscribeStore,
     seer_database: SeerDatabase,
     headless: HeadlessService,
@@ -154,14 +156,14 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         player_bindings,
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
-        OneBotLuckySkinWindowNotificationSender(delivery, subscriptions),
+        LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
     )
     team_resource = TeamResourceService(
         settings.seer.team_resource,
         TeamResourceSubscriptionStore(settings.paths.qq_state),
         headless,
         features,
-        OneBotTeamResourceNoticeSender(delivery),
+        TeamResourceOutboundSender(proactive_delivery),
         build_onebot_team_resource_default_mentions(
             settings.seer.team_resource,
             settings.onebot_references,

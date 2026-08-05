@@ -245,14 +245,15 @@ feature, persistence schema, or policy decision.
 | Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_onebot_feature_service()` is the only OneBot TOML compiler and must finish alias and bundle expansion before constructing the service. |
 | Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `integrations.onebot.identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
-| Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
-| Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
-| OneBot `OneBotMessageTarget` / `OneBotDelivery` | transition | Only in OneBot integration and composition wiring; not exposed through `ApplicationResources` | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
+| Proactive text delivery | target | `ProactiveMessageDelivery` plus `OutboundMessenger` | All new non-rich proactive text sends use typed conversations, subscription filtering, promotion text, daily hints and failure summaries here. |
+| Administrator notices | target reference | `AdminNoticeService` plus `OutboundAdminNoticeSender` | Resolve administrators as `ActorRef` values and send through `ProactiveMessageDelivery`; no OneBot delivery object is exposed to the service. |
+| Activity reminders | target reference | `ActivityService` plus `ActivityReminderOutboundSender` | Build typed recipients and a text message, then delegate subscription and rate-limit semantics to proactive delivery. |
+| OneBot `OneBotMessageTarget` / `OneBotDelivery` | transition | Only the Bilibili rich-media path may use it in OneBot integration/composition wiring; never expose it through `ApplicationResources` | Migrate the rich message shape to an explicit platform-neutral port before removing this bridge. No new text sender may depend on it. |
 | OneBot reference resolution and numeric QQ configuration | target adapter | `config.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
 | Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
 | OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
-| Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
-| Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
+| Lucky-skin-window delivery | target reference | `LuckySkinWindowService` plus `LuckySkinWindowOutboundSender` | Reuse typed actor ownership and the shared outbound messenger; persist domain-specific daily state in the lucky-skin service. |
+| Team-resource subscription delivery | target reference | `TeamResourceService` plus `TeamResourceOutboundSender` | Compile numeric QQ configuration and mention parts at the OneBot boundary, then deliver through the shared outbound messenger. |
 | Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |
 | Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
@@ -432,40 +433,33 @@ The OneBot plugin converts notice events at the edge, while
 and group-member probes. Future transport migrations should follow this shape
 rather than passing numeric IDs or adapter bot instances into a service.
 
-`services.messaging.admin_notice.AdminNoticeService` is the reference use case
-for platform-neutral operational delivery. It selects `ActorRef` and
-`ConversationRef` recipients through feature policy and sends an
-`OutboundMessage` through an explicit `AdminNoticeSender` port. The OneBot
-adapter may delegate to the legacy `OneBotDelivery` chain while that chain is
-being retired, because the adapter is the only place that knows numeric QQ
-targets, routing, subscriptions, queueing, and rate limits. A new notification
-service must use this shape or a narrower domain port; it must not import
-`OneBotMessageTarget`, `OneBotDelivery`, a NoneBot `Bot`, or CQ message types.
+`services.messaging.proactive_delivery.ProactiveMessageDelivery` is the target
+reference for proactive **text** delivery. It accepts typed conversations and
+`OutboundMessage` values, applies feature/subscription checks, promotions,
+daily subscription hints, scatter timing and failure summaries, then delegates
+only final transport to `OutboundMessenger`. `OneBotOutboundMessenger` is the
+current edge adapter. Any new non-rich scheduled, administrative or service
+notification must use this service or a narrower domain port that delegates to
+it; it must not import `OneBotMessageTarget`, `OneBotDelivery`, a NoneBot
+`Bot`, or CQ message types.
 
-`services.activity.ActivityService` applies the same ownership to scheduled
-activity reminders: the service creates typed recipients and an
-`OutboundMessage`, while `integrations.onebot.activity` preserves the current
-OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
-Push-preference SQLite rows store platform, conversation kind and opaque
-conversation ID columns. Their public repository and service APIs accept
-`ConversationRef`; configuration composition and OneBot delivery adapters are
-the only layers allowed to convert native QQ numbers. This keeps Bilibili and
-scheduled-push preference logic reusable without making a second platform
-pretend that its identifiers are QQ integers.
+`services.messaging.admin_notice.AdminNoticeService` and
+`services.activity.ActivityService` are reference consumers. Their senders
+resolve `ActorRef` and `ConversationRef` recipients, create typed messages,
+and invoke proactive delivery without receiving a OneBot object. Scheduled
+messages, lucky-skin notices and team-resource notices use the same route.
+Configuration composition and the OneBot edge are the only layers allowed to
+convert native QQ numbers or create OneBot mention parts. Push-preference
+SQLite rows retain platform, conversation kind and opaque conversation ID
+columns, so a second transport never has to pretend that its identifiers are
+QQ integers.
 
-Lucky-skin-window notification delivery now follows this rule: its service
-owns `ActorRef`-scoped account, binding, cache and watch-preference policy;
-the OneBot adapter owns numeric QQ conversion, unsubscription, daily-hint
-deduplication and `OneBotDelivery`. Team-resource subscriptions use the same
-shape: `TeamResourceService` owns typed conversations, actors, subscriptions
-and low-resource policy, while `OneBotTeamResourceNoticeSender` owns QQ number
-conversion, mentions and legacy delivery. The remaining messaging scheduler
-migrations are ordered by semantic overlap, not file size. Each task must
-extract a typed service-side port and move the corresponding OneBot
-`OneBotMessageTarget` call into `integrations.onebot`; it must not add another
-platform-neutral wrapper around `OneBotMessageTarget`. This keeps current
-subscription, queue, rate-limit and failure semantics available while reducing
-the old chain one domain at a time.
+`OneBotDelivery` remains a tightly bounded **transition** only for Bilibili
+rich-media pushes, whose current OneBot message payload has not yet been
+represented by a platform-neutral document. It may not be passed through
+`ApplicationResources`, stored in a service, or used by a new text sender. The
+next migration for that path must introduce an explicit rich-media port, then
+delete rather than widen the legacy delivery chain.
 
 The eventual composition is:
 
