@@ -7,60 +7,59 @@ from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
 from ironsbot.core.features import FeatureService
-from ironsbot.core.messaging import FIXED_IMAGE_COMMANDS, PicConfig
+from ironsbot.core.messaging import PicConfig
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
+    ImageNotFoundError,
     InvalidImageArgumentError,
     SendpicService,
 )
 
-FIXED_IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录。"
+IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录。"
 
 
-def install_fixed_images(
+def create_single_image_command(
     registry: MatcherRegistry,
+    config: PicConfig,
     service: SendpicService,
     features: FeatureService,
 ) -> None:
-    for command, filename in FIXED_IMAGE_COMMANDS.items():
-        matcher = registry.on_fullmatch(
-            command,
-            policy=CommandPolicy.command(
-                f"sendpic_fixed.{command}",
-                help_ids=(f"sendpic.fixed.{command}",),
-            ),
-            rule=Rule(
-                lambda event: event_is_feature_allowed(features, event, "image")
-            )
-            & explicit_command(),
-            priority=registry.priority("sendpic"),
-            block=True,
-        )
+    matcher = registry.on_fullmatch(
+        (config.command, *config.aliases),
+        policy=CommandPolicy.command(
+            f"sendpic.{config.id}",
+            help_ids=(f"sendpic.{config.id}",),
+        ),
+        rule=Rule(lambda event: event_is_feature_allowed(features, event, "image"))
+        & explicit_command(),
+        priority=registry.priority("sendpic"),
+        block=True,
+    )
 
-        async def _handle(
-            matcher: Matcher,
-            event: MessageEvent,
-            filename: str = filename,
-        ) -> None:
-            data = await service.fixed_image(filename)
-            if data is None:
-                await finish_event_reply(
-                    matcher,
-                    event,
-                    FIXED_IMAGE_MISSING_MESSAGE,
-                )
-                return
+    async def _handle(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        try:
+            data = await service.fetch_single(config)
+        except ImageNotFoundError:
             await finish_event_reply(
                 matcher,
                 event,
-                MessageSegment.image(data),
+                IMAGE_MISSING_MESSAGE,
             )
+            return
+        await finish_event_reply(
+            matcher,
+            event,
+            MessageSegment.image(data),
+        )
 
-        matcher.append_handler(_handle)
+    matcher.append_handler(_handle)
 
 
 def create_image_command(
@@ -91,7 +90,7 @@ def create_image_command(
     ) -> None:
         arg_str = arg.extract_plain_text()
         try:
-            result = await service.fetch(config, arg_str)
+            result = await service.fetch_indexed(config, arg_str)
         except InvalidImageArgumentError:
             raise FinishedException from None
         except ImageIndexOutOfRangeError as e:
@@ -117,6 +116,8 @@ def install(
     service: SendpicService,
     features: FeatureService,
 ) -> None:
-    install_fixed_images(registry, service, features)
     for command in service.commands:
-        create_image_command(registry, command, service, features)
+        if command.mode == "single":
+            create_single_image_command(registry, command, service, features)
+        else:
+            create_image_command(registry, command, service, features)

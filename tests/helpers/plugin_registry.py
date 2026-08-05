@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.settings import Settings
+from ironsbot.core.messaging import default_sendpic_configs
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
@@ -205,7 +206,7 @@ def build_test_plugin_registry(
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,
             ),
-            sendpic=SimpleNamespace(commands=()),
+            sendpic=SimpleNamespace(commands=default_sendpic_configs()),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
                 register_jobs=lambda _scheduler: None,

@@ -31,11 +31,11 @@ class SendpicBackendProvider:
         self._token = cnb_token
         self._repo = cnb_repo
         self._local = LocalBackend(local_root)
-        self._fixed = LocalBackend(FIXED_IMAGE_ROOT)
+        self._builtin = LocalBackend(FIXED_IMAGE_ROOT)
 
     def __call__(self, kind: str) -> ImageBackend:
-        if kind == "fixed":
-            return self._fixed
+        if kind == "builtin":
+            return self._builtin
         if kind == "local":
             return self._local
         if kind == "cnb" and self._token and self._repo:
