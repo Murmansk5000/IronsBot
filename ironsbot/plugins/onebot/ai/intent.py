@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
     from ironsbot.core.messaging import AiIntentAction
+    from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.team.resource import TeamResourceService
 
@@ -47,6 +49,16 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
+
+
+@dataclass(frozen=True, slots=True)
+class AiIntentDependencies:
+    """OneBot dependencies needed by the configured AI action adapter."""
+
+    service: AiService
+    group_aliases: Mapping[str, int]
+    promotions: PromotionCatalog
+    team_resource: TeamResourceService
 
 
 def command_descriptors(config: Settings) -> tuple[CommandDescriptor, ...]:
@@ -100,9 +112,7 @@ def _resolve_action_command_id(
 
 def install(
     registry: MatcherRegistry,
-    service: AiService,
-    group_aliases: Mapping[str, int],
-    team_resource: TeamResourceService,
+    dependencies: AiIntentDependencies,
     command_help_ids: tuple[str, ...],
 ) -> None:
     if not command_help_ids:
@@ -114,9 +124,9 @@ def install(
         source_context = await build_notice_source(
             event,
             text,
-            group_aliases,
+            dependencies.group_aliases,
         )
-        action = await service.classify_intent(
+        action = await dependencies.service.classify_intent(
             text,
             actor=message.actor,
             conversation=message.conversation,
@@ -134,21 +144,28 @@ def install(
         state: T_State,
     ) -> None:
         action = state[ACTION_KEY]
-        if service.is_team_action(action):
+        if dependencies.service.is_team_action(action):
             await run_team_action(
                 matcher,
                 event,
                 action,
-                team_resource,
+                dependencies.team_resource,
             )
             return
         if action.action == "ai_reply":
             await _handle_ai_reply_action(
-                service,
+                dependencies.service,
                 action,
                 matcher,
                 event,
                 str(state.get(ACTION_SOURCE_CONTEXT_KEY, "") or "") or None,
+            )
+            return
+        if action.action == "promotion":
+            await finish_event_reply(
+                matcher,
+                event,
+                dependencies.promotions.require(action.promotion).message,
             )
             return
         await finish_event_reply(
@@ -174,6 +191,7 @@ def plugin_contribution(
     settings: Settings,
     service: AiService,
     features: FeatureService,
+    promotions: PromotionCatalog,
     team_resource: TeamResourceService,
 ) -> PluginContribution:
     """Declare configured intent actions and their natural-language matcher."""
@@ -204,9 +222,12 @@ def plugin_contribution(
         commands=commands,
         install=partial(
             install,
-            service=service,
-            group_aliases=settings.features.group_aliases,
-            team_resource=team_resource,
+            dependencies=AiIntentDependencies(
+                service=service,
+                group_aliases=settings.features.group_aliases,
+                promotions=promotions,
+                team_resource=team_resource,
+            ),
             command_help_ids=tuple(command.id for command in commands),
         ),
     )
@@ -219,6 +240,7 @@ if (context := active_plugin_install_context()) is not None:
             settings=context.settings,
             service=context.resources.ai,
             features=context.resources.features,
+            promotions=context.resources.promotions,
             team_resource=context.resources.team_resource,
         ),
     )

@@ -6,8 +6,6 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.plugin import PluginMetadata
-
 from ironsbot.core.features import Feature
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -15,6 +13,7 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
+from nonebot.plugin import PluginMetadata
 
 from .command_catalog import command_descriptors
 
@@ -28,12 +27,11 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-
-    from ironsbot.app.composition import ApplicationResources
+    from ironsbot.app.resources import ApplicationResources
     from ironsbot.config.models.settings import Settings
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.services.operations.scheduler import Scheduler
+    from nonebot.adapters.onebot.v11 import Bot
 
 
 def _install(

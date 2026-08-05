@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
+from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.application import Application
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
@@ -19,7 +18,8 @@ from ironsbot.app.private_extensions import (
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -49,7 +49,7 @@ from ironsbot.integrations.onebot.outbound import (
     install_outbound_rate_limit_hooks,
 )
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
@@ -75,7 +75,6 @@ from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.sendpic import SendpicBackendProvider
-from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
@@ -114,16 +113,6 @@ from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.runtime.plugins import PluginContributionCatalog
-from ironsbot.services.activity.delivery import (
-    ActivityReminderDelivery,
-    ActivityReminderTargets,
-)
-from ironsbot.services.activity.models import ActivityInfoCache
-from ironsbot.services.activity.repository import ActivityRepository
-from ironsbot.services.activity.service import (
-    ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-    ActivityService,
-)
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.login import BilibiliLoginService
@@ -133,9 +122,6 @@ from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.help_hint import HelpHintService
 from ironsbot.services.messaging.sendpic import SendpicService
-from ironsbot.services.messaging.subscriptions import (
-    ACTIVITY_LEAD_HOURS_PREFERENCE,
-)
 from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
@@ -184,94 +170,7 @@ from ironsbot.services.team.audit import TeamAuditService
 from ironsbot.services.team.resource import TeamResourceService
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
-
-LOCAL_TZ = ZoneInfo("Asia/Shanghai")
-SEERAPI_DB_NAME = "seerapi"
-ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
-SOON_ENDING_THRESHOLD = timedelta(days=7)
-
-
-def _build_activity_service(  # noqa: PLR0913 - composition root
-    config: ActivityConfig,
-    runtime_state_path: Path,
-    features: FeatureService,
-    sender: OneBotActivityReminderSender,
-    databases: DatabaseManager,
-    subscriptions: PushUnsubscribeStore,
-    notice_source: UnityNoticeSource,
-) -> ActivityService:
-    sent_store = ActivitySentStore(runtime_state_path)
-    repository = ActivityRepository()
-
-    def load_rows():
-        with databases.session(SEERAPI_DB_NAME) as session:
-            return repository.load(session, only_shown=config.only_shown)
-
-    def preference_values():
-        return (
-            preference.value
-            for preference in subscriptions.all_time_preferences(
-                subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-                preference_type=ACTIVITY_LEAD_HOURS_PREFERENCE,
-            )
-        )
-
-    def preference_for_target(target: ActorRef | ConversationRef) -> str | None:
-        if (
-            isinstance(target, ActorRef)
-            and target.platform is Platform.ONEBOT
-            and target.kind == "user"
-            and target.id.isdecimal()
-        ):
-            target_type = "private"
-        elif (
-            isinstance(target, ConversationRef)
-            and target.platform is Platform.ONEBOT
-            and target.kind == "group"
-            and target.id.isdecimal()
-        ):
-            target_type = "group"
-        else:
-            return None
-        return subscriptions.get_time_preference(
-            target_type,
-            int(target.id),
-            ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-            ACTIVITY_LEAD_HOURS_PREFERENCE,
-        )
-
-    def targets() -> ActivityReminderTargets:
-        return ActivityReminderTargets(
-            group_conversations=tuple(
-                features.conversations_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
-            ),
-            private_actors=tuple(
-                features.actors_with_superusers(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
-            ),
-        )
-
-    async def broadcast(reminder: ActivityReminderDelivery) -> bool:
-        return await sender.send(reminder)
-
-    return ActivityService(
-        config=config,
-        cache=ActivityInfoCache(),
-        load_rows=load_rows,
-        load_notice_text=notice_source.fetch,
-        cache_ttl=ACTIVITY_INFO_CACHE_TTL,
-        soon_ending_threshold=SOON_ENDING_THRESHOLD,
-        filter_unsent=sent_store.filter_unsent,
-        mark_sent=sent_store.mark_sent,
-        preference_values=preference_values,
-        preference_for_target=preference_for_target,
-        targets=targets,
-        broadcast=broadcast,
-        now=lambda: datetime.now(LOCAL_TZ),
-    )
 
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
@@ -294,6 +193,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
     )
     prompt_sessions = PromptSessionManager()
+    promotions = PromotionCatalog(settings.promotions)
     features = FeatureService(
         settings.features,
         settings.superuser_ids,
@@ -317,11 +217,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         bot_router,
         subscriptions,
     )
-    push_message_limiter = partial(append_fire_manual_ad_for_target, features)
+    push_message_limiter = partial(
+        append_promotions_for_target,
+        features,
+        promotions,
+    )
     admin_notices = AdminNoticeService(features, OneBotAdminNoticeSender(delivery))
     install_outbound_rate_limit_hooks(outbound)
 
-    activity = _build_activity_service(
+    activity = build_activity_service(
         settings.activity,
         settings.paths.runtime_state,
         features,
@@ -720,6 +624,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     resources = ApplicationResources(
         features=features,
+        promotions=promotions,
         outbound=outbound,
         delivery=delivery,
         push_message_limiter=push_message_limiter,
