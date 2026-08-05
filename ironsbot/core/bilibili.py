@@ -23,8 +23,6 @@ from ironsbot.core.time import normalize_daily_time
 INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 
 BiliPushMode = Literal["full", "link"]
-DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
-DEFAULT_BILI_ACCOUNT_UID = 1310714247
 DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 400
 DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 250
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
@@ -143,9 +141,7 @@ class BiliPushConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: _RequiredBiliPushMode = "full"
-    accounts: _BiliAccountAliases = Field(
-        default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
-    )
+    accounts: _BiliAccountAliases = Field(default_factory=list)
     # Per-account modes are opt-in TOML overrides. Targets otherwise inherit mode.
     modes: _BiliPushModes = Field(default_factory=dict)
     content_max_chars: int = Field(
@@ -188,11 +184,7 @@ class BiliFilterConfig(BaseModel):
 class BiliConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    accounts: dict[str, BiliAccountConfig] = Field(
-        default_factory=lambda: {
-            DEFAULT_BILI_ACCOUNT_ALIAS: BiliAccountConfig(uid=DEFAULT_BILI_ACCOUNT_UID)
-        }
-    )
+    accounts: dict[str, BiliAccountConfig] = Field(default_factory=dict)
     storage: BiliStorageConfig = Field(default_factory=BiliStorageConfig)
     polling: BiliPollingConfig = Field(default_factory=BiliPollingConfig)
     push: BiliPushConfig = Field(default_factory=BiliPushConfig)
@@ -206,11 +198,7 @@ class BiliConfig(BaseModel):
     @classmethod
     def normalize_accounts(cls, value: object) -> object:
         parsed = json_object(value, name="bilibili.accounts")
-        result: dict[str, object] = {
-            DEFAULT_BILI_ACCOUNT_ALIAS: {
-                "uid": DEFAULT_BILI_ACCOUNT_UID,
-            }
-        }
+        result: dict[str, object] = {}
         for raw_alias, raw_config in parsed.items():
             alias = _normalize_account_alias(raw_alias)
             if alias:
