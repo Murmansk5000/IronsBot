@@ -28,6 +28,7 @@ from ironsbot.services.operations.docker_commands import docker_command_descript
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_descriptors,
 )
+from ironsbot.services.pet_config_commands import pet_config_command_descriptors
 from ironsbot.services.seer.command_contracts import seer_command_descriptors
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
@@ -91,6 +92,17 @@ def test_data_query_examples_use_matcher_command_sources() -> None:
     seer = _by_id(seer_command_descriptors(_empty_player_id_resolver()))
 
     assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES
+
+
+def test_pet_config_contract_is_owned_by_its_domain_service() -> None:
+    enabled = _by_id(pet_config_command_descriptors(enabled=True))
+
+    assert enabled["pet_config.query"].examples == (
+        "雷伊配置",
+        "配置雷伊",
+        "4923配置",
+    )
+    assert pet_config_command_descriptors(enabled=False) == ()
 
 
 def test_seer_player_command_catalog_uses_shared_resolver_alias_recognition() -> None:
