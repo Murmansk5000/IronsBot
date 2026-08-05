@@ -412,6 +412,18 @@ plugin implementation. Each extension receives only the smallest context its
 declared responsibility needs; the application's larger runtime object stays
 an internal composition detail.
 
+An external extension may additionally import a documented core command
+contract (for example `core.command_catalog.CommandContract` and
+`core.player_reference_commands.player_reference_input_matcher`) when it
+declares a direct command, and the narrowly scoped `runtime.plugins` install
+API needed to submit its own `PluginContribution`. These are public semantic
+contracts, not plugin implementation details. It must not import historical
+`runtime.commands` or `runtime.player_reference_commands` paths. When such a
+core contract moves, update the external package in the same cross-repository
+phase; do not restore a deleted runtime module as a compatibility shim. An
+extension that still imports a removed path is an unvalidated dependency, even
+if the bundled application tests do not install it.
+
 Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
 `ReplyContext`, `SendResult`, `DeliveryCapabilities`, and

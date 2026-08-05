@@ -300,8 +300,12 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   成员及默认绑定。它由 application composition 只构造一次，经
   `ApplicationResources` 注入公开 Seer 的玩家、快捷查询、榜单玩家查询和命令目录；
   OneBot matcher 只能把事件转换为 `MessageInputContext`，不得临时拼接别名 lookup
-  或 resolver。私有阵容扩展也只通过该 resolver 的 `has_known_reference()` 进行命令
-  目录认领；真正的消息级解析仍由公开的详情扩展入口完成。
+  或 resolver。私有阵容扩展的目标也是只通过该 resolver 的
+  `has_known_reference()` 进行命令目录认领，真正的消息级解析仍由公开的详情扩展
+  入口完成；但当前外部包仍引用已迁出的
+  `runtime.commands` / `runtime.player_reference_commands`。它必须改为导入
+  `core.command_catalog` / `core.player_reference_commands` 并在私有仓库独立验证，
+  在此之前不得把该扩展计入跨仓库命令边界的完成证据，也不得恢复旧 runtime 路径。
 - `CommandContract.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
@@ -352,6 +356,7 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | 幸运橱窗 | `services.seer.lucky_skin_commands` | 事件转换、登录确认、回复和调度 | 已迁移 |
 | 关于 | `services.about_commands` | 事件转换、版本读取和回复 | 已迁移 |
 | 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
+| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 私有扩展的事件转换、阵容服务调用和回复 | 待跨仓库迁移：不得依赖已删除的 `runtime.*` 命令模块 |
 
 ### Phase 6 — 兜底、配置和错误语义
 

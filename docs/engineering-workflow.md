@@ -276,9 +276,14 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     单个精灵、群、用户、活动或平台另建专用 matcher、resolver、状态表或关键词表。
 20. 任何暂时的例外都必须有明确的来源事实、失效条件、删除工作项和防扩张测试。
     不能把 `if id == ...`、部署者数据、默认回退或复制粘贴的解析逻辑当成长期方案。
-21. 跨仓库私有扩展只能导入 `ironsbot.extensions` 中声明的最小公开 contract，
-    不得导入 `app.composition`、`app.private_extensions` 或公共插件实现。公共应用
-    可以在内部保有更大的资源对象，但必须在扩展边界投影为按职责命名的 context。
+21. 跨仓库私有扩展只能导入 `ironsbot.extensions` 中声明的最小 context、文档化的
+    `ironsbot.core` 语义 contract，以及仅用于安装期提交的
+    `ironsbot.runtime.plugins` 公开 API；不得导入 `app.composition`、
+    `app.private_extensions`、公共插件实现或历史 `runtime.commands` /
+    `runtime.player_reference_commands`。公共应用可以在内部保有更大的资源对象，
+    但必须在扩展边界投影为按职责命名的 context。跨仓库升级 core contract 时，
+    同一工作项必须验证真实扩展包的 import 和针对性测试；不能为了未更新的扩展
+    恢复旧模块或加入 compatibility shim。
 22. 最终渲染图片缓存只能使用完整 `RenderDocument` 的确定性内容键；键必须包含
     已加载资产的实际内容，不能只以实体 ID、输入参数或加载资产之前的快照命中。
     资产缓存可以避免重复网络读取，但不得以牺牲资源更新后的像素正确性换取最终
