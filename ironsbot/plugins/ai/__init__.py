@@ -17,8 +17,6 @@ from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import bot_mention
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
@@ -103,7 +101,6 @@ def install(
     registry: MatcherRegistry,
     service: AiService,
     features: FeatureService,
-    group_aliases: Mapping[str, int],
     bot_mention_block_service: BotMentionBlockService,
 ) -> None:
     async def run_ai_chat(
@@ -130,7 +127,6 @@ def install(
             source_context=await build_notice_source(
                 event,
                 prompt,
-                group_aliases,
                 bot=bot,
             ),
         )
