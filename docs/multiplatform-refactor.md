@@ -174,6 +174,17 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 
 **删除条件：** 无需向 AI、帮助、榜单或插件同步维护第二份命令/别名规则。
 
+**当前收口记录（2026-08）：**
+
+- `AliasLookup`、`AliasMatch` 与 `AliasResolution` 是实体别名匹配的共享
+  contract；精灵、刻印、刻印系列、宝石与玩家账户各自保存数据，但不再复制
+  规范化与多结果语义。
+- `PlayerIdResolver` 统一处理数字、当前会话可见的玩家别名、一个直接 @ 已绑定
+  成员及默认绑定。公共 Seer 查询和私有阵容扩展均通过同一引用查找 port 接入。
+- `CommandDescriptor.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
+  `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
+  抢占普通聊天。
+
 ### Phase 6 — 兜底、配置和错误语义
 
 **目标契约：** 明确的失败、重试、陈旧缓存与配置验证语义。

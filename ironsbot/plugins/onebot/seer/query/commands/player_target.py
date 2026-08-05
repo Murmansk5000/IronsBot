@@ -9,7 +9,6 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.seer.player_id_resolver import (
     PlayerIdResolution,
     PlayerIdResolver,
-    PlayerReferenceLookup,
 )
 
 if TYPE_CHECKING:
@@ -18,6 +17,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.core.platform import ActorRef
+    from ironsbot.core.player_references import PlayerReferenceLookup
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
 
 

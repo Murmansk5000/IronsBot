@@ -203,7 +203,7 @@ def test_catalog_requires_all_declared_features() -> None:
     )
 
 
-def test_catalog_claims_available_literal_direct_inputs_and_routing_aliases() -> None:
+def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> None:
     catalog = _catalog(
         CommandDescriptor(
             id="help",
@@ -227,6 +227,8 @@ def test_catalog_claims_available_literal_direct_inputs_and_routing_aliases() ->
             section="查询",
             examples=("米米号<号码>",),
             description="查询玩家",
+            routing_matcher=lambda text, _context: text.startswith("米米号")
+            and text[3:].isdecimal(),
         ),
         CommandDescriptor(
             id="automatic",
@@ -247,7 +249,8 @@ def test_catalog_claims_available_literal_direct_inputs_and_routing_aliases() ->
     assert catalog.claims_direct_input(context, features, "帮助")
     assert catalog.claims_direct_input(context, features, "/动态刷新")
     assert catalog.claims_direct_input(context, features, "动态更新")
-    assert not catalog.claims_direct_input(context, features, "米米号123456")
+    assert catalog.claims_direct_input(context, features, "米米号123456")
+    assert not catalog.claims_direct_input(context, features, "米米号示例玩家")
     assert not catalog.claims_direct_input(context, features, "活动")
 
 

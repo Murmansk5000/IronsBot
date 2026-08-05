@@ -108,7 +108,7 @@ def plugin_contribution(
             group="seer",
             order=10,
         ),
-        commands=command_descriptors(),
+        commands=command_descriptors(settings.player_accounts),
         install=partial(_install, settings=settings, resources=resources),
         hooks=PluginHooks(
             startup=(

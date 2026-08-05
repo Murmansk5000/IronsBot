@@ -145,6 +145,9 @@ class CommandContext:
         return self.conversation.kind == "group"
 
 
+CommandInputMatcher = Callable[[str, CommandContext], bool]
+
+
 @dataclass(frozen=True, slots=True)
 class CommandAccess:
     """One allowed command audience and conversation scope."""
@@ -203,6 +206,7 @@ class CommandDescriptor:
     examples: tuple[str, ...]
     description: str
     routing_aliases: tuple[str, ...] = ()
+    routing_matcher: CommandInputMatcher | None = None
     features_any: tuple[str, ...] = ()
     features_all: tuple[str, ...] = ()
     access: tuple[CommandAccess, ...] = (CommandAccess(),)
@@ -257,20 +261,32 @@ class CommandDescriptor:
     def poke_text(self) -> str:
         return f"发送“{self.examples[0]}”{self.description}。"
 
-    def matches_direct_input(self, text: str) -> bool:
-        """Return whether text is one literal direct-input spelling for this command."""
+    def matches_direct_input(self, context: CommandContext, text: str) -> bool:
+        """Return whether this command explicitly owns one direct input.
+
+        Parameterized input remains opt-in through ``routing_matcher``. This
+        keeps AI fallback from claiming a command without letting broad
+        natural-language examples become implicit prefixes.
+        """
 
         if self.interaction != "direct":
             return False
         normalized_text = normalize_command_text(text).lstrip("/")
         if not normalized_text:
             return False
-        return normalized_text in {
+        exact_inputs = {
             normalized
             for value in (*self.examples, *self.routing_aliases)
             if "<" not in value and ">" not in value
             if (normalized := normalize_command_text(value).lstrip("/"))
         }
+        if normalized_text in exact_inputs:
+            return True
+        return (
+            self.routing_matcher(text, context)
+            if self.routing_matcher is not None
+            else False
+        )
 
 
 def _validate_routing_aliases(command_id: str, aliases: tuple[str, ...]) -> None:
@@ -483,7 +499,7 @@ class CommandCatalog:
         """
 
         return any(
-            command.matches_direct_input(text)
+            command.matches_direct_input(context, text)
             for command in self.available_for_context(
                 context,
                 features,

@@ -124,6 +124,12 @@ the single runtime catalog today. New command work must add the smallest
 missing contract field or catalog query there, then make help, poke hints and
 AI command claims consume the same field.
 
+Direct-input ownership is parser-aware. A descriptor may claim an exact
+spelling or declare an explicit input matcher. It must not reserve a broad
+natural-language prefix merely to keep AI from responding: parameterized
+commands claim only inputs their own parser can accept or reject with a
+command-specific validation error.
+
 The target name `CommandContract` becomes the runtime type only when command
 parsing ownership, access metadata and documentation fields have all moved
 out of matcher-local constants. Until then, plans and reviews must use this
