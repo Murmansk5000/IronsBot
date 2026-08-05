@@ -5,6 +5,8 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from ironsbot.core.commands import normalize_command_text
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -24,6 +26,9 @@ class ImageIndexOutOfRangeError(Exception):
     def __init__(self, max_index: int) -> None:
         self.max_index = max_index
         super().__init__(f"编号必须在1到{max_index}之间！")
+
+
+class ImageNotFoundError(Exception): ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,21 +58,40 @@ class SendpicService:
         self.commands = tuple(
             command
             for command in config.configs
-            if command.id in config.enabled_ids
+            if command.enabled
         )
         self._backends = {
             kind: provider(kind)
             for kind in {command.backend for command in self.commands}
         }
-        self._fixed_backend = provider("fixed")
 
-    async def fixed_image(self, filename: str) -> bytes | None:
+    @property
+    def exact_command_texts(self) -> frozenset[str]:
+        return frozenset(
+            normalize_command_text(text)
+            for command in self.commands
+            for text in (command.command, *command.aliases)
+        )
+
+    async def fetch_single(self, command: PicConfig) -> bytes:
+        if command.mode != "single" or not command.image_file:
+            raise ValueError(f"{command.id} 不是单图命令")  # noqa: TRY003
         try:
-            return await self._fixed_backend.get_file(filename)
-        except FileNotFoundError:
-            return None
+            return await self._backends[command.backend].get_file(command.image_file)
+        except FileNotFoundError as exc:
+            raise ImageNotFoundError from exc
 
-    async def fetch(self, command: PicConfig, arg_text: str) -> SendpicResult:
+    async def fetch_indexed(
+        self,
+        command: PicConfig,
+        arg_text: str,
+    ) -> SendpicResult:
+        if (
+            command.mode != "indexed"
+            or not command.image_dir
+            or not command.image_filename_template
+        ):
+            raise ValueError(f"{command.id} 不是编号图库命令")  # noqa: TRY003
         backend = self._backends[command.backend]
         total = await backend.count(command.image_dir)
         selection = select_image(arg_text, total)

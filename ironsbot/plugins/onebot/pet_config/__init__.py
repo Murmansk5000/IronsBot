@@ -8,7 +8,7 @@ from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
 from ironsbot.plugins.onebot.seer.query.commands.query_rules import (
-    not_fixed_image_command,
+    not_exact_command,
     not_rank_query,
 )
 from ironsbot.runtime.commands import CommandDescriptor
@@ -47,6 +47,7 @@ def plugin_contribution(
     service: PetConfigQueryService,
     features: FeatureService,
     config: PetConfigConfig,
+    image_command_texts: frozenset[str] = frozenset(),
 ) -> PluginContribution:
     return PluginContribution(
         id="pet_config",
@@ -82,6 +83,7 @@ def plugin_contribution(
             service=service,
             features=features,
             enabled=config.enabled,
+            image_command_texts=image_command_texts,
         ),
     )
 
@@ -105,6 +107,7 @@ def install(
     features: FeatureService,
     *,
     enabled: bool,
+    image_command_texts: frozenset[str],
 ) -> None:
     if not enabled:
         return
@@ -121,7 +124,7 @@ def install(
             suffixes=("配置",),
         )
         & not_rank_query
-        & not_fixed_image_command
+        & not_exact_command(image_command_texts)
         & explicit_command(),
         priority=registry.priority("pet_config"),
         block=True,
@@ -143,5 +146,6 @@ if (context := active_plugin_install_context()) is not None:
             service=context.resources.pet_config,
             features=context.resources.features,
             config=context.settings.pet_config,
+            image_command_texts=context.resources.sendpic.exact_command_texts,
         ),
     )

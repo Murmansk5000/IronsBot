@@ -52,6 +52,7 @@ def _install(
             resources.features,
             resources.commands,
             settings.player_accounts,
+            resources.sendpic.exact_command_texts,
         )
     )
 
