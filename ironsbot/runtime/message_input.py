@@ -9,12 +9,8 @@ from typing import TYPE_CHECKING, Any
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.platform import (
-    ActorRef,
-    ConversationRef,
-    IncomingMessageRef,
-    Platform,
-)
+from ironsbot.core.platform import IncomingMessageRef
+from ironsbot.runtime.onebot_identity import onebot_actor_ref, onebot_conversation_ref
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -78,13 +74,9 @@ def message_input_context(event: Event) -> MessageInputContext:
     except Exception:  # noqa: BLE001
         text = ""
     user_id = _event_user_id(event)
-    actor = ActorRef(Platform.ONEBOT, user_id)
+    actor = onebot_actor_ref(user_id)
     group_id = getattr(event, "group_id", None)
-    conversation = ConversationRef(
-        Platform.ONEBOT,
-        "group" if group_id is not None else "private",
-        str(group_id if group_id is not None else user_id),
-    )
+    conversation = onebot_conversation_ref(user_id, group_id=group_id)
     return MessageInputContext(
         IncomingMessageRef(
             id=_message_id(event),
@@ -92,7 +84,7 @@ def message_input_context(event: Event) -> MessageInputContext:
             conversation=conversation,
             text=text,
             direct_mentions=tuple(
-                ActorRef(Platform.ONEBOT, member_id) for member_id in member_ids
+                onebot_actor_ref(member_id) for member_id in member_ids
             ),
             reply_to_id=_reply_message_id(event),
         ),
