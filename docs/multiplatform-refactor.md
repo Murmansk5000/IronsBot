@@ -154,6 +154,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   `render_document_cache_key()` 对文档的全部确定性值做哈希。data URI 资产包含在
   文档中，因此图片资源更新会自然失效旧最终图；不得恢复“只用精灵 ID/榜单参数
   先查最终缓存”的快捷路径。
+- 私有阵容渲染也复用该内容键；私有模板和本地 Pillow 装饰源码以
+  `renderer_fingerprint` 作为显式上下文参与键计算，不能维护第二套按阵容参数命中
+  的最终缓存。
 
 ### Phase 5 — 业务服务和通用解析
 

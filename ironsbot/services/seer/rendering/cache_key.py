@@ -19,7 +19,11 @@ class RenderDocumentCacheKeyError(ValueError):
     """A render document contains a value unsuitable for deterministic caching."""
 
 
-def render_document_cache_key(document: RenderDocument) -> str:
+def render_document_cache_key(
+    document: RenderDocument,
+    *,
+    renderer_fingerprint: str = "",
+) -> str:
     """Hash every value that can change pixels in an immutable document.
 
     Integrations call this after their repository snapshot and assets have been
@@ -27,7 +31,10 @@ def render_document_cache_key(document: RenderDocument) -> str:
     upstream image cannot reuse a final image rendered with the old bytes.
     """
 
-    payload = _normalize(document)
+    payload = {
+        "document": _normalize(document),
+        "renderer_fingerprint": renderer_fingerprint,
+    }
     encoded = json.dumps(
         payload,
         ensure_ascii=True,
