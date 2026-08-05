@@ -14,10 +14,10 @@ from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
-from ironsbot.integrations.onebot.scheduled_delivery import (
-    OneBotScheduledMessageSender,
-)
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.services.messaging.scheduled_outbound import (
+    ScheduledMessageOutboundSender,
+)
 from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.messaging.subscriptions import CRON_TIME_PREFERENCE
 from tests.helpers.runtime import build_test_runtime
@@ -82,7 +82,7 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
         ActivityConfig(),
         store,
         runtime.features,
-        OneBotScheduledMessageSender(runtime.delivery),
+        ScheduledMessageOutboundSender(runtime.proactive_delivery),
         build_onebot_message_schedule_targets(
             config,
             runtime.onebot_references,
