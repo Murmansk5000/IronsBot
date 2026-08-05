@@ -5,6 +5,7 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 
 from ironsbot.core.features import FeatureService
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 
@@ -15,7 +16,7 @@ async def handle_update_dynamic_action(
     features: FeatureService,
     monitor: BilibiliMonitorService,
 ) -> None:
-    if not features.is_superuser(event.user_id):
+    if not features.is_actor_superuser(message_input_context(event).message.actor):
         await finish_event_reply(
             matcher,
             event,

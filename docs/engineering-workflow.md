@@ -211,8 +211,8 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     `CommandContext`。OneBot 事件、戳一戳和配置解析器在适配边界转换一次后再调用
     目录。
 18. 插件和 service 的公开 feature-policy 调用只能传递 `ActorRef` 与
-    `ConversationRef`。现有数值化群/用户 helper 仅用于配置解析和 OneBot 投递过渡；
-    新调用必须使用 `is_feature_allowed`、`conversation_has_feature` 或
+    `ConversationRef`。现有数值化群/用户 helper 仅限 FeatureService 的配置翻译；
+    调用方必须使用 `is_feature_allowed`、`conversation_has_feature` 或
     `is_message_blocked` 等类型化谓词。
 
 ## 插件术语与权威边界

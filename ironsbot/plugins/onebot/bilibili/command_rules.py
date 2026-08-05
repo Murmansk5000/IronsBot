@@ -8,6 +8,7 @@ from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.commands import command_text_matches, strip_command_prefix
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_conversation_event
 
 from .account_commands import (
@@ -51,7 +52,7 @@ def is_update_dynamic_command(
     ):
         return False
 
-    return features.is_superuser(event.user_id)
+    return features.is_actor_superuser(message_input_context(event).message.actor)
 
 
 def is_bili_account_command(

@@ -15,7 +15,9 @@ from nonebot.exception import MockApiException
 from nonebot.log import logger
 from nonebot.matcher import current_event
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.runtime.matchers import bind_async
+from ironsbot.runtime.onebot_identity import onebot_actor_ref
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -408,8 +410,8 @@ class GroupOutboundRateLimitService:
                 )
 
     def _is_limited_group(self, group_id: int) -> bool:
-        return self.config.enabled and not self.features.group_has_feature(
-            group_id,
+        return self.config.enabled and not self.features.conversation_has_feature(
+            ConversationRef(Platform.ONEBOT, "group", str(group_id)),
             ADMIN_NOTICE_FEATURE,
         )
 
@@ -446,11 +448,7 @@ def _is_superuser_reply(service: GroupOutboundRateLimitService) -> bool:
     raw_user_id = getattr(event, "user_id", None)
     if not isinstance(raw_user_id, int | str):
         return False
-    try:
-        user_id = int(raw_user_id)
-    except (TypeError, ValueError):
-        return False
-    return service.features.is_superuser(user_id)
+    return service.features.is_actor_superuser(onebot_actor_ref(str(raw_user_id)))
 
 
 def _append_cooldown_notice(data: dict[str, Any], notice: str) -> None:
