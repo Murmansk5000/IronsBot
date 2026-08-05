@@ -33,6 +33,7 @@ class SeerMatcherGroup:
     features: FeatureService
     commands: CommandCatalog
     player_accounts: PlayerAccountRegistry
+    image_command_texts: frozenset[str]
 
     def on_message(
         self,

@@ -7,7 +7,7 @@ from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import make_query_handler
-from .query_rules import not_fixed_image_command, not_rank_query
+from .query_rules import not_exact_command, not_rank_query
 
 
 def install(group: SeerMatcherGroup) -> None:
@@ -22,7 +22,7 @@ def install(group: SeerMatcherGroup) -> None:
             prefixes=("立绘", "皮肤", "查询立绘"),
         )
         & not_rank_query
-        & not_fixed_image_command
+        & not_exact_command(group.image_command_texts)
         & explicit_command(),
         priority=group.matcher_priority("seer_pet"),
     )
@@ -46,7 +46,7 @@ def install(group: SeerMatcherGroup) -> None:
             suffixes=("查询精灵信息", "魂印", "技能"),
         )
         & not_rank_query
-        & not_fixed_image_command
+        & not_exact_command(group.image_command_texts)
         & explicit_command(),
         priority=group.matcher_priority("seer_pet"),
     )
