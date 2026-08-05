@@ -78,7 +78,8 @@ The authoritative long-term ownership is therefore:
 
 - `PluginMetadata` owns plugin identity and static metadata;
 - `PluginContribution` owns a plugin's explicit runtime contributions;
-- `CommandCatalog` and `CommandContract` own direct-command semantics;
+- `CommandCatalog` and the target `CommandContract` own direct-command
+  semantics;
 - the feature-policy service owns permission decisions; and
 - `ApplicationLifecycle` owns application lifecycle and background task
   ownership.
@@ -97,7 +98,7 @@ architecture work:
 | --- | --- | --- |
 | `PluginMetadata` | Static plugin identity and NoneBot metadata | Matchers, commands, lifecycle policy, or feature decisions |
 | `PluginContribution` | A plugin's explicit runtime contributions submitted during installation | A central plugin registry, command semantics, or cross-plugin policy |
-| `CommandCatalog` / `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
+| `CommandCatalog` / target `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
 | Feature-policy service | Whether an actor or conversation may use a feature | Plugin discovery or command parsing |
 | `ApplicationLifecycle` | Process lifecycle, owned tasks, and startup/shutdown ordering | Plugin metadata or user-command semantics |
 
@@ -107,6 +108,32 @@ interfaces, tests, and diagrams must not introduce it or treat it as a current
 contract. When a responsibility needs an authority, name the narrow authority
 from the table rather than saying that a plugin, manifest, or contribution
 object owns everything.
+
+### Current Command-Contract Bridge
+
+`CommandDescriptor` is the current code carrier for part of the target
+`CommandContract`; it is not a second authority and must not grow a parallel
+catalog, matcher registry, or AI-only keyword list. `CommandCatalog` remains
+the single runtime catalog today. New command work must add the smallest
+missing contract field or catalog query there, then make help, poke hints and
+AI command claims consume the same field.
+
+The target name `CommandContract` becomes the runtime type only when command
+parsing ownership, access metadata and documentation fields have all moved
+out of matcher-local constants. Until then, plans and reviews must use this
+precise wording:
+
+| Subject | Correct status | Required wording |
+| --- | --- | --- |
+| `PluginDefinition` | retired | Historical only; never a current contract. |
+| `PluginContribution` | target, currently implemented | Plugin-local runtime contribution only. |
+| `CommandDescriptor` | transition carrier | Current representation of part of the target command contract. |
+| `CommandCatalog` | target, currently implemented | The only command metadata/catalog authority. |
+| `CommandContract` | target type | The final command representation; do not claim it already exists as a separate runtime class. |
+
+Completion requires one explicit command-contract type, every direct command
+being registered through it, and deletion of matcher-local duplicate command
+metadata. A rename alone is not completion.
 
 ### Architecture Documentation Merge Rule
 
@@ -1103,11 +1130,11 @@ reference for users:
   `ConversationRef`; a second platform must not consume the numeric values.
   Seer player IDs use a shared resolver for numeric IDs, aliases, one direct
   mention, and the caller's default binding. The OneBot player-query and
-  binding adapters now forward their raw reference through that resolver with
-  a scoped alias-lookup port. Shortcut, detail-extension, and rank player
-  parsers still pre-resolve configured aliases during command admission; they
-  are transition consumers and must move to the same raw-reference contract
-  before another player-ID input form is added.
+  binding adapters, global-rank player queries, and shortcut/detail-extension
+  commands forward their raw reference through that resolver with a scoped
+  alias-lookup port. Matcher admission retains the one resolution result for
+  its handler; it does not resolve an alias once to decide admission and a
+  second time to execute the service command.
 - **Replies and proactive delivery:** group and private replies, scheduled
   pushes, activity notices, Bilibili delivery, team-resource notices, startup
   notices, and admin notices use OneBot routing and outbound rate limiting.
