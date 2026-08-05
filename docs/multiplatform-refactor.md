@@ -53,7 +53,7 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `in_progress` | 声明式贡献、`PluginContribution`、命令目录以及 common / messaging / operations / seer 四个装配 builder 已建立；生命周期、消息、数据同步、运维和 Seer 回归测试已验证，组合根拆分后全量 `pytest` 为 1377 passed，静态检查通过 | 所有插件均不再依赖旧桥接或第二份发现来源，且剩余的宿主适配从 builder 迁到平台 port | 插件迁移完全结束 |
+| Phase 2 | `completed` | 标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文、唯一 `CommandCatalog` 与 common / messaging / operations / seer / bilibili builder 已建立；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后全量 `pytest` 为 1377 passed，静态检查通过 | Phase 3 只迁移仍在 OneBot integration 内的投递消费者，不得重建第二套插件发现或装配入口 | 插件迁移完全结束 |
 | Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现 | 删除剩余 integration 内旧投递调用并建立跨平台 sender 验收 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性渲染缓存和部分 SeerAPI 效果事实已验证 | 其余 renderer 与数据路径全部只消费视图模型/发布事实 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 所有直接命令与米米号入口使用同一契约 | 业务服务重构完成 |
@@ -143,6 +143,28 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 
 **删除条件：** 不存在 `PluginDefinition`、`MatcherRegistry` 或任意第二份插件发现
 来源。
+
+**完成证据（2026-08-06）：**
+
+- `ironsbot/manifests/full.toml` 和 `core.toml` 是唯一内置插件发现来源；私有扩展也
+  只通过其标准 NoneBot TOML 清单加载。
+- `bootstrap()` 只在受限 `PluginInstallContext` 生命周期内调用
+  `nonebot.load_from_toml()`；模块加载完成后上下文立即失效，不能成为运行时
+  service locator。
+- 每个顶层 OneBot 插件声明 `PluginMetadata` 并提交 `PluginContribution`；命令由
+  `CommandCatalog` 统一收集和校验，matcher 只负责平台事件适配与绑定。
+- 组合根只协调领域 builder；所有 builder 返回类型化组件包。它们不能反向装配基础
+  设施、反射发现插件或引入第二个命令/插件注册表。
+- 验证：`uv run pytest -q tests/test_nonebot_manifest.py
+  tests/test_plugin_import_hygiene.py tests/test_plugin_install_context.py
+  tests/test_plugin_registry.py tests/test_command_catalog.py
+  tests/test_architecture_target_hygiene.py`（64 passed）；
+  `uv run python scripts/check_repo.py --static`；全量 `uv run pytest -q`
+  （1377 passed）。
+
+**后续边界：** Phase 3 可以替换 OneBot 的入站和出站实现，但不能修改此阶段已经
+封存的发现、贡献、命令收集和 builder 装配路径；若确有新的平台插件，必须由同一
+TOML 清单、元数据和贡献机制接入。
 
 ### Phase 3 — OneBot 适配和投递边界
 

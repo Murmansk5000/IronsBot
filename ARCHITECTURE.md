@@ -774,7 +774,10 @@ The percentages are estimates based on completed, verifiable tasks, not a
 claim of linear certainty. Re-estimate when investigation changes scope;
 state why the estimate changed. Do not hide a blocked task behind a broad
 percentage. Report the blocker, the affected phase, what was tried, and the
-next safe action.
+next safe action. A phase may be marked `completed` only after its target
+contract, deletion conditions, and verification evidence are recorded in the
+work-breakdown ledger; later phases must treat that path as the only normal
+route instead of reintroducing a compatibility registry or duplicate loader.
 
 At the start of each task, record its target contract, touched repositories,
 acceptance checks, rollback strategy, and whether it changes public behaviour.
