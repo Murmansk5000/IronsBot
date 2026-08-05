@@ -4,9 +4,11 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.integrations.seer_data import getters, mintmark_series_resolvers
 from ironsbot.integrations.seer_data.orm import (
+    MintmarkAliasORM,
     MintmarkClassAliasORM,
     MintmarkSeriesMemberORM,
 )
+from ironsbot.integrations.seer_data.resolvers import AliasResolver
 
 
 def _make_session() -> Session:
@@ -43,6 +45,32 @@ def _add_mintmark(  # noqa: PLR0913
     if max_attr_value is not None:
         universal_part.max_attr_value = max_attr_value
     session.add(universal_part)
+
+
+def test_database_alias_lookup_deduplicates_aliases_for_the_same_entity() -> None:
+    data_session = _make_session()
+    alias_session = _make_session()
+    mintmark_id = 45001
+    _add_mintmark(data_session, mintmark_id, "星光刻印", 75)
+    data_session.commit()
+    alias_session.add_all(
+        [
+            MintmarkAliasORM(name="星光", target_id=mintmark_id),
+            MintmarkAliasORM(name="星光刻印", target_id=mintmark_id),
+        ]
+    )
+    alias_session.commit()
+
+    resolution = AliasResolver(
+        MintmarkORM,
+        MintmarkAliasORM,
+    ).alias_lookup(
+        {"seerapi": data_session, "aliases": alias_session}
+    ).resolve_alias("星光")
+
+    assert resolution.is_unique
+    assert resolution.unique_value is not None
+    assert resolution.unique_value.id == mintmark_id
 
 
 def test_mintmark_series_ordinal_resolves_class_alias() -> None:
