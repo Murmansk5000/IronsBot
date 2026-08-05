@@ -64,6 +64,17 @@ class PlatformStateMigrationError(RuntimeError):
         return cls("platform identity target paths must be distinct")
 
     @classmethod
+    def unreadable_source(
+        cls,
+        data_root: Path,
+        error: sqlite3.Error,
+    ) -> PlatformStateMigrationError:
+        return cls(
+            "cannot read platform identity migration source under "
+            f"{data_root}: {error}"
+        )
+
+    @classmethod
     def integrity_failed(cls, path: Path) -> PlatformStateMigrationError:
         return cls(f"SQLite integrity check failed: {path}")
 
@@ -138,19 +149,25 @@ def migrate_platform_state_identities(  # noqa: PLR0913
         runtime_state_path=runtime_state_path,
         ai_memory_path=ai_memory_path,
     )
-    migrated = tuple(_is_migrated(path) for path in paths.targets)
-    if all(migrated):
-        return PlatformStateMigrationResult(
-            applied=False,
-            already_migrated=True,
-            backup_path=None,
-            migrated_rows=_target_row_counts(paths),
-        )
-    if any(migrated):
-        raise PlatformStateMigrationError.partial_target()
+    try:
+        migrated = tuple(_is_migrated(path) for path in paths.targets)
+        if all(migrated):
+            return PlatformStateMigrationResult(
+                applied=False,
+                already_migrated=True,
+                backup_path=None,
+                migrated_rows=_target_row_counts(paths),
+            )
+        if any(migrated):
+            raise PlatformStateMigrationError.partial_target()
 
-    expected = _source_row_counts(paths)
-    _validate_in_memory(paths, expected)
+        expected = _source_row_counts(paths)
+        _validate_in_memory(paths, expected)
+    except sqlite3.Error as error:
+        raise PlatformStateMigrationError.unreadable_source(
+            paths.data_root,
+            error,
+        ) from error
     if not apply:
         return PlatformStateMigrationResult(
             applied=False,

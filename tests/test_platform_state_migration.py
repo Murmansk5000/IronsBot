@@ -223,6 +223,28 @@ def test_platform_state_migration_dry_run_is_read_only(tmp_path: Path) -> None:
     assert not list(data_root.glob("platform-identity-migration-backups/*"))
 
 
+def test_platform_state_migration_accepts_an_empty_data_root(tmp_path: Path) -> None:
+    result = migrate_platform_state_identities(data_root=tmp_path / "data")
+
+    assert not result.applied
+    assert not result.already_migrated
+    assert result.migrated_rows == {}
+
+
+def test_platform_state_migration_rejects_an_unreadable_source(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    source = data_root / "state/qq_state.sqlite"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"not a sqlite database")
+
+    with pytest.raises(PlatformStateMigrationError, match="cannot read"):
+        migrate_platform_state_identities(data_root=data_root)
+
+    assert not list(data_root.glob("platform-identity-migration-backups/*"))
+
+
 def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     _seed_legacy_platform_state(data_root)
