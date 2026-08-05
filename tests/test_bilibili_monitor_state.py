@@ -146,20 +146,50 @@ def test_bili_account_names_resolve_only_public_account_name() -> None:
     account_names = accounts.BiliAccountNames(
         names={FIRE_BILI_UID: FIRE_BILI_ACCOUNT_NAME}
     )
+    lookup = account_names.public_name_alias_lookup([FIRE_BILI_UID])
 
     assert (
         account_names.name_for_uid(FIRE_BILI_UID)
         == FIRE_BILI_ACCOUNT_NAME
     )
     assert (
-        account_names.resolve(FIRE_BILI_ACCOUNT_NAME, [FIRE_BILI_UID])
-        == FIRE_BILI_UID
+        lookup.resolve_alias(FIRE_BILI_ACCOUNT_NAME).unique_value == FIRE_BILI_UID
     )
     assert (
-        account_names.resolve(str(FIRE_BILI_UID), [FIRE_BILI_UID])
-        == FIRE_BILI_UID
+        lookup.resolve_alias(str(FIRE_BILI_UID)).unique_value == FIRE_BILI_UID
     )
-    assert account_names.resolve("火火", [FIRE_BILI_UID]) is None
+    assert lookup.resolve_alias("火火").is_empty
+
+
+def test_bili_account_alias_lookups_preserve_ambiguous_public_names() -> None:
+    other_uid = FIRE_BILI_UID + 1
+    account_names = accounts.BiliAccountNames(
+        names={
+            FIRE_BILI_UID: FIRE_BILI_ACCOUNT_NAME,
+            other_uid: FIRE_BILI_ACCOUNT_NAME,
+        }
+    )
+
+    resolution = account_names.public_name_alias_lookup(
+        [FIRE_BILI_UID, other_uid]
+    ).resolve_alias(FIRE_BILI_ACCOUNT_NAME)
+
+    assert resolution.is_ambiguous
+    assert resolution.unique_value is None
+
+
+def test_configured_bili_account_aliases_use_the_shared_lookup_contract() -> None:
+    config = _bili_config(
+        accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},
+    )
+
+    resolution = accounts.configured_account_alias_lookup(
+        config,
+        [FIRE_BILI_ALIAS],
+    ).resolve_alias(f"  {FIRE_BILI_ALIAS.upper()}  ")
+
+    assert resolution.is_unique
+    assert resolution.unique_value == FIRE_BILI_UID
 
 
 def test_bili_push_mode_command_accepts_spaces_in_public_account_name() -> None:
