@@ -948,6 +948,14 @@ It accepts delivery, routing, rate-limit, subscription, and feature ports from
 `CommonComponents`; it must not recreate them or reach into the composition
 root. Other domain builders follow the same dependency direction.
 
+`app.seer_composition.SeerComponents` owns player lookup, rank caches and
+refresh, team resources, lucky-skin state, data query services, and render
+dependencies. It returns the existing public service objects and immutable
+render dependencies, not a broad service locator. Its current OneBot account,
+mention, and notification compilers remain explicit transition adapters; they
+move behind platform-neutral ports in Phase 3 rather than leaking back into
+plugins or individual Seer services.
+
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
 
