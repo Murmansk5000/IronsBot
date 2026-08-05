@@ -154,6 +154,14 @@ Completion requires one explicit command-contract type, every direct command
 being registered through it, and deletion of matcher-local duplicate command
 metadata. A rename alone is not completion.
 
+During the transition, each migrated command domain must expose its descriptors
+from `services.<domain>` (or `core` for cross-domain contracts). A platform
+plugin may submit those descriptors to `PluginContribution`, but it must not
+redeclare examples, access rules, help text, or input ownership. The current
+migration inventory lives in `docs/multiplatform-refactor.md`; update it in the
+same commit as every ownership move. This is deliberately stricter than
+`PluginMetadata.usage`, which remains non-authoritative framework metadata.
+
 ### Plugin Profiles
 
 The bundled NoneBot manifests are intentionally different deployment profiles:

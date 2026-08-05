@@ -238,10 +238,25 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   `services.operations.command_text`，其中开服查询的目录描述位于
   `services.operations.server_status_commands`、镜像维护的目录描述位于
   `services.operations.docker_commands`；插件不再拥有这份跨操作命令定义。
+- 活动查询的用户命令描述位于
+  `services.activity.command_contracts`；活动插件只保留 NoneBot 事件适配、权限
+  matcher、回复和定时任务注册。
 - AI 长期记忆使用异步 `AiMemoryStore` port。SQLite 实现在 worker thread 中完成
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会
   明确报告不支持，不再用全局 baseline 猜测每一类内容是否可比较。
+
+**命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
+新命令不得在 matcher 内自建第二份示例、权限或帮助说明。
+
+| 领域 | 当前唯一命令 contract 来源 | OneBot 插件允许保留的内容 | 状态 |
+| --- | --- | --- | --- |
+| 赛尔查询 | `services.seer.command_contracts` | 事件转换、参数交给 service、回复 | 已迁移 |
+| 榜单帮助与管理 | `services.seer.rank_command_contracts` | 事件转换、回复 | 已迁移 |
+| 活动查询 | `services.activity.command_contracts` | 事件转换、权限 matcher、回复、定时任务 | 已迁移 |
+| 数据更新 | `services.operations.data_sync_commands` | 事件转换、异步执行、回复 | 已迁移 |
+| 开服与容器维护 | `services.operations.command_text`、`server_status_commands`、`docker_commands` | 事件转换、平台操作、回复 | 已迁移 |
+| B 站、消息、AI、战队、幸运橱窗、图片与帮助 | 各插件内的过渡实现 | 仅在迁移完成前维护，新增字段必须同步进入目录 | 待迁移 |
 
 ### Phase 6 — 兜底、配置和错误语义
 

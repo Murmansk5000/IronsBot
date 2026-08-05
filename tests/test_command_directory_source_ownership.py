@@ -1,6 +1,5 @@
 from ironsbot.core.command_catalog import CommandContext, CommandDescriptor
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.plugins.onebot.activity import command_descriptors as activity_commands
 from ironsbot.plugins.onebot.bilibili import command_descriptors as bilibili_commands
 from ironsbot.plugins.onebot.bilibili.command_rules import (
     BILI_ACCOUNT_COMMANDS,
@@ -8,6 +7,7 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
 )
+from ironsbot.services.activity.command_contracts import activity_command_descriptors
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
@@ -50,7 +50,7 @@ def _empty_player_id_resolver() -> PlayerIdResolver:
 
 def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
     bilibili = _by_id(bilibili_commands())
-    activity = _by_id(activity_commands())
+    activity = _by_id(activity_command_descriptors())
 
     assert bilibili["bilibili.dynamic"].examples == DYNAMIC_MENU_COMMANDS[:1]
     assert bilibili["bilibili.accounts"].examples == BILI_ACCOUNT_COMMANDS[:1]

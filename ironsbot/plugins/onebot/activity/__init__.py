@@ -13,11 +13,6 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.command_catalog import (
-    CommandAccess,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
@@ -29,9 +24,8 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
+from ironsbot.services.activity.command_contracts import activity_command_descriptors
 from ironsbot.services.activity.commands import (
-    CURRENT_ACTIVITY_COMMANDS,
-    SOON_ENDING_ACTIVITY_COMMANDS,
     is_current_seer_activity_text,
     is_soon_ending_seer_activity_text,
 )
@@ -49,37 +43,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def command_descriptors() -> tuple[CommandDescriptor, ...]:
-    return (
-        *commands_from_rows(
-            "activity",
-            "查询",
-            "seer_activity_query",
-            (
-                (
-                    "activity.ending",
-                    SOON_ENDING_ACTIVITY_COMMANDS[:1],
-                    "查询即将结束的活动",
-                    {"show_in_poke": True},
-                ),
-            ),
-        ),
-        *commands_from_rows(
-            "activity",
-            "超级管理员",
-            "seer_activity_query",
-            (
-                (
-                    "activity.current",
-                    tuple(f"/{command}" for command in CURRENT_ACTIVITY_COMMANDS[:1]),
-                    "查询完整活动列表",
-                    {"access": (CommandAccess(audience="superuser"),)},
-                ),
-            ),
-        ),
-    )
 
 
 async def _is_current_seer_activity_command(event: Event) -> bool:
@@ -165,7 +128,7 @@ def plugin_contribution(
             order=10,
             notes=("自动提醒时间由 activity.lead_hours 配置。",),
         ),
-        commands=command_descriptors(),
+        commands=activity_command_descriptors(),
         install=partial(install, service=service, features=features),
         hooks=PluginHooks(
             startup=(
