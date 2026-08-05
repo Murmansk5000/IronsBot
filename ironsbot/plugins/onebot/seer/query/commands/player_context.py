@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
+
 PLAYER_ID_KEY = "player_id"
 PLAYER_CONVERSATION_NAMESPACE = "seer_player"
 PLAYER_DETAIL_NAMESPACE = PLAYER_CONVERSATION_NAMESPACE
@@ -9,6 +11,7 @@ PLAYER_BINDING_NAMESPACE = PLAYER_CONVERSATION_NAMESPACE
 PLAYER_BINDING_PENDING_KEY = "_player_binding_pending"
 PLAYER_BINDING_REPLACEMENT_KEY = "_player_binding_replacement"
 PLAYER_QUERY_IS_EXPLICIT_KEY = "_player_query_is_explicit"
+PLAYER_TARGET_RESOLUTION_KEY = "_player_target_resolution"
 PLAYER_ERROR_FORMATTER_KEY = "_player_error_formatter"
 PLAYER_DETAIL_MENU_CONTEXT_KEY = "_player_detail_menu_context"
 
@@ -21,3 +24,4 @@ class PlayerDetailMenuContext:
     has_collection: bool
     has_peak: bool
     has_autocard: bool
+    base_snapshot: PlayerBaseSnapshot | None = None

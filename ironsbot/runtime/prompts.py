@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from inspect import signature
+from inspect import isawaitable, signature
 from typing import Any, Generic, TypeAlias, TypeVar, cast, overload
 
 from nonebot.adapters import Event
@@ -22,11 +22,12 @@ from ironsbot.core.selection import (
     format_selection_menu,
 )
 from ironsbot.runtime.matchers import (
-    enter_prompt_loop as _enter_prompt_loop,
-)
-from ironsbot.runtime.matchers import (
+    begin_queued_conversation,
     get_prompt_session_manager,
     reject_with_rule,
+)
+from ironsbot.runtime.matchers import (
+    enter_prompt_loop as _enter_prompt_loop,
 )
 from ironsbot.runtime.prompt_errors import PromptSessionManagerMissingError
 from ironsbot.runtime.semantic_requests import (
@@ -166,7 +167,7 @@ async def enter_prompt(  # noqa: PLR0913
     prompt: Prompt[Any],
     resolver: PromptResolver,
     input_check: Callable[[Event], bool] | None = None,
-    prompt_message: str | Message | None = None,
+    prompt_message: str | Message | Awaitable[str | Message] | None = None,
 ) -> None:
     """发送 Prompt 并进入选择循环（替代 ``matcher.got``）。"""
     state[PROMPT_STATE_KEY] = prompt
@@ -183,19 +184,40 @@ async def enter_prompt(  # noqa: PLR0913
         input_check,
     )
 
+    def queue_reply_check(next_event: Event) -> bool:
+        return next_event.get_session_id() == session_id and input_check(next_event)
+
+    # Image-backed menus can take noticeable time to render.  Reserve the
+    # selection shape before awaiting that work so a quick ``a1`` or ``1`` is
+    # not routed to an unrelated matcher such as AI chat.
+    rendered_prompt = prompt_message
+    if isawaitable(rendered_prompt):
+        await begin_queued_conversation(
+            matcher,
+            [handler],
+            namespace="selection_prompt",
+            pending_reply_check=queue_reply_check,
+            queue_reply_check=queue_reply_check,
+            queue_group_reply_check=input_check,
+            queue_semantic_request_resolver=_prompt_semantic_request,
+        )
+        try:
+            rendered_prompt = await rendered_prompt
+        except BaseException:
+            prompt_sessions.cancel_queued_conversation(matcher.state)
+            raise
+
     await _enter_prompt_loop(
         matcher,
         handlers=[handler],
         rule=rule,
         prompt=(
             prompt.build_event_message(event)
-            if prompt_message is None
-            else prompt_message
+            if rendered_prompt is None
+            else rendered_prompt
         ),
         queue_namespace="selection_prompt",
-        queue_reply_check=lambda next_event: (
-            next_event.get_session_id() == session_id and input_check(next_event)
-        ),
+        queue_reply_check=queue_reply_check,
         queue_group_reply_check=input_check,
         queue_semantic_request_resolver=_prompt_semantic_request,
     )

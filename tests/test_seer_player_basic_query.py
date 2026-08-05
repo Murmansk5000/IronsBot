@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.config.models.seer import SeerConfig
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.headless_seer.packets.user import MoreInfo, UserInfo
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
@@ -112,7 +113,7 @@ async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time() 
             SeerConfig(),
             PLAYER_ID,
             cast("HeadlessGame", game),
-            group_id=100,
+            conversation=ConversationRef(Platform.ONEBOT, "group", "100"),
             profile_cache=cache,
         )
     )
@@ -123,6 +124,10 @@ async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time() 
 
     assert result.more_info.reg_time == REG_TIME
     assert cache.writes == [(PLAYER_ID, "tester", REG_TIME)]
+    assert result.base_snapshot is not None
+    assert result.base_snapshot.user_info is result.user_info
+    assert result.base_snapshot.more_info is result.more_info
+    assert result.base_snapshot.team_name == "test team"
     assert "是否在线：在线（服务器：1701，地图类型：0）" in result.player_message
     assert "战队：test team（战队ID：9001，隐藏）" in result.player_message
 
@@ -136,10 +141,12 @@ async def test_profile_cache_hit_skips_more_info_packet() -> None:
         SeerConfig(),
         PLAYER_ID,
         cast("HeadlessGame", game),
-        group_id=None,
+        conversation=None,
         profile_cache=cache,
     )
 
     assert result.more_info.reg_time == REG_TIME
+    assert result.base_snapshot is not None
+    assert result.base_snapshot.more_info is result.more_info
     assert cache.writes == []
     assert "more" not in game.events

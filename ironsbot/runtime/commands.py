@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 
 if TYPE_CHECKING:
@@ -55,6 +56,13 @@ class CommandCatalogError(ValueError):
     @classmethod
     def requires_examples(cls, command_id: str) -> CommandCatalogError:
         return cls(f"invalid command descriptor: {command_id!r} requires examples")
+
+    @classmethod
+    def invalid_routing_alias(cls, command_id: str) -> CommandCatalogError:
+        return cls(
+            "invalid command descriptor: "
+            f"{command_id!r} has an empty routing alias"
+        )
 
     @classmethod
     def requires_description(cls, command_id: str) -> CommandCatalogError:
@@ -185,6 +193,7 @@ class CommandDescriptor:
     section: str
     examples: tuple[str, ...]
     description: str
+    routing_aliases: tuple[str, ...] = ()
     features_any: tuple[str, ...] = ()
     features_all: tuple[str, ...] = ()
     access: tuple[CommandAccess, ...] = (CommandAccess(),)
@@ -203,6 +212,7 @@ class CommandDescriptor:
             raise CommandCatalogError.empty_section()
         if not self.examples or any(not example.strip() for example in self.examples):
             raise CommandCatalogError.requires_examples(self.id)
+        _validate_routing_aliases(self.id, self.routing_aliases)
         if not self.description.strip():
             raise CommandCatalogError.requires_description(self.id)
         if any(
@@ -237,6 +247,26 @@ class CommandDescriptor:
 
     def poke_text(self) -> str:
         return f"发送“{self.examples[0]}”{self.description}。"
+
+    def matches_direct_input(self, text: str) -> bool:
+        """Return whether text is one literal direct-input spelling for this command."""
+
+        if self.interaction != "direct":
+            return False
+        normalized_text = normalize_command_text(text).lstrip("/")
+        if not normalized_text:
+            return False
+        return normalized_text in {
+            normalized
+            for value in (*self.examples, *self.routing_aliases)
+            if "<" not in value and ">" not in value
+            if (normalized := normalize_command_text(value).lstrip("/"))
+        }
+
+
+def _validate_routing_aliases(command_id: str, aliases: tuple[str, ...]) -> None:
+    if any(not alias.strip() for alias in aliases):
+        raise CommandCatalogError.invalid_routing_alias(command_id)
 
 
 def commands_from_rows(
@@ -426,6 +456,30 @@ class CommandCatalog:
                 ignored_plugins=ignored_plugins,
             )
             if command.show_in_poke
+        )
+
+    def claims_direct_input(
+        self,
+        context: CommandContext,
+        features: CommandFeaturePolicy,
+        text: str,
+        *,
+        ignored_plugins: Iterable[str] = (),
+    ) -> bool:
+        """Whether an available direct command owns this exact input spelling.
+
+        This intentionally answers only literal command ownership. Parameterized
+        parser grammar stays with its domain parser until every matcher is
+        migrated to the target command-contract parser interface.
+        """
+
+        return any(
+            command.matches_direct_input(text)
+            for command in self.available_for_context(
+                context,
+                features,
+                ignored_plugins=ignored_plugins,
+            )
         )
 
     def format_for_context(

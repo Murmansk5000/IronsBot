@@ -78,7 +78,8 @@ The authoritative long-term ownership is therefore:
 
 - `PluginMetadata` owns plugin identity and static metadata;
 - `PluginContribution` owns a plugin's explicit runtime contributions;
-- `CommandCatalog` and `CommandContract` own direct-command semantics;
+- `CommandCatalog` and the target `CommandContract` own direct-command
+  semantics;
 - the feature-policy service owns permission decisions; and
 - `ApplicationLifecycle` owns application lifecycle and background task
   ownership.
@@ -97,7 +98,7 @@ architecture work:
 | --- | --- | --- |
 | `PluginMetadata` | Static plugin identity and NoneBot metadata | Matchers, commands, lifecycle policy, or feature decisions |
 | `PluginContribution` | A plugin's explicit runtime contributions submitted during installation | A central plugin registry, command semantics, or cross-plugin policy |
-| `CommandCatalog` / `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
+| `CommandCatalog` / target `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
 | Feature-policy service | Whether an actor or conversation may use a feature | Plugin discovery or command parsing |
 | `ApplicationLifecycle` | Process lifecycle, owned tasks, and startup/shutdown ordering | Plugin metadata or user-command semantics |
 
@@ -107,6 +108,32 @@ interfaces, tests, and diagrams must not introduce it or treat it as a current
 contract. When a responsibility needs an authority, name the narrow authority
 from the table rather than saying that a plugin, manifest, or contribution
 object owns everything.
+
+### Current Command-Contract Bridge
+
+`CommandDescriptor` is the current code carrier for part of the target
+`CommandContract`; it is not a second authority and must not grow a parallel
+catalog, matcher registry, or AI-only keyword list. `CommandCatalog` remains
+the single runtime catalog today. New command work must add the smallest
+missing contract field or catalog query there, then make help, poke hints and
+AI command claims consume the same field.
+
+The target name `CommandContract` becomes the runtime type only when command
+parsing ownership, access metadata and documentation fields have all moved
+out of matcher-local constants. Until then, plans and reviews must use this
+precise wording:
+
+| Subject | Correct status | Required wording |
+| --- | --- | --- |
+| `PluginDefinition` | retired | Historical only; never a current contract. |
+| `PluginContribution` | target, currently implemented | Plugin-local runtime contribution only. |
+| `CommandDescriptor` | transition carrier | Current representation of part of the target command contract. |
+| `CommandCatalog` | target, currently implemented | The only command metadata/catalog authority. |
+| `CommandContract` | target type | The final command representation; do not claim it already exists as a separate runtime class. |
+
+Completion requires one explicit command-contract type, every direct command
+being registered through it, and deletion of matcher-local duplicate command
+metadata. A rename alone is not completion.
 
 ### Architecture Documentation Merge Rule
 
@@ -151,6 +178,8 @@ feature, persistence schema, or policy decision.
 | OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
 | Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
+| Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |
+| Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
 | Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
 
@@ -477,12 +506,62 @@ rank facts, player samples, line-up blobs, AI history, and Bilibili history
 stay isolated when their contention, retention, or size differs. Small QQ
 user/group state belongs to shared state stores with namespaced migrations.
 
+### Renderer Boundary
+
+**Target contract.** Every image renderer follows one direction only:
+
+```text
+repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
+                                      ^                ^              ^
+                                      |                |              |
+                               prepared assets     final cache    HTML/native port
+```
+
+- A repository obtains and detaches domain data while its database session is
+  open. A snapshot is complete enough to survive after that session closes.
+- An integration loads reusable image assets through the shared `SeerImageSource`
+  and `SeerAssetStore`, then combines the snapshot and assets in a pure
+  presenter.
+- A presenter returns an immutable `RenderDocument`. It performs no ORM, SQL,
+  HTTP, filesystem access, current-time lookup, association inference, cache
+  lookup, or transport operation.
+- A renderer receives only the document and an HTML/native render port. Native
+  work passes through the single `RenderCoordinator`; feature modules must not
+  create their own semaphore, task, or timeout policy.
+- The integration owns final-image cache lookup and write. Final-cache keys
+  include the complete rendered snapshot, category, published data version,
+  renderer/template fingerprint, and all asset content versions that affect
+  pixels.
+
+The current Phase 4 transition has this target shape for published pet info,
+type matchup, peak-pool, peak-vote, peak-pet-rank, and the private player
+lineup image. The new-content menu follows the same split: its Seer-data
+adapter prepares details and images, while the renderer consumes an immutable
+menu document. The private lineup keeps its own presentation module, but its
+adapter alone owns asset loading, final-cache access, and the HTML render port.
+Rank and any later renderer paths remain **transition** work. They may receive
+narrow correctness fixes, but new rendering features must start from the
+target pipeline above instead of copying their older data-loading patterns.
+
 Future data work follows these rules:
 
 - `seerapi` performs data extraction, normalization, schema validation, SWF to
   PNG conversion, and deterministic association building at build time.
 - IronsBot reads published facts through repositories; it does not repeat
   expensive association guessing or SWF conversion while replying to users.
+- All Seer image reads pass through one asset store: a bounded in-memory LRU,
+  integrity-checked disk cache, singleflight request coalescing, bounded
+  upstream concurrency, and short-lived negative caching only for 404/410.
+  Renderer and query features use the same image port rather than creating
+  feature-specific download caches.
+- Native HTML rendering passes through one `RenderCoordinator`. It is fixed at
+  one native render at a time and has an explicit timeout; callers cannot add
+  feature-local HTMLKit semaphores or background render tasks.
+- Disposable rendered images use the same atomic, checksum-verified byte-store
+  primitive as Seer assets. Their cache key includes the published data version,
+  render category and payload, plus a startup fingerprint of the rendering
+  implementation and templates; a renderer change therefore cannot reuse a
+  stale image from a mounted cache directory.
 - Official effect relationships retain provenance and ambiguity records. The
   runtime renderer uses a prepared `PetRenderViewModel` and never tries to
   infer a new association from free text.
@@ -1051,8 +1130,13 @@ reference for users:
   and superuser bypass. The OneBot configuration boundary still owns numeric
   QQ values, but policy and new services expose `ActorRef` and
   `ConversationRef`; a second platform must not consume the numeric values.
-  Seer player IDs already use a shared resolver for numeric IDs, aliases, one
-  direct mention, and the caller's default binding.
+  Seer player IDs use a shared resolver for numeric IDs, aliases, one direct
+  mention, and the caller's default binding. The OneBot player-query and
+  binding adapters, global-rank player queries, and shortcut/detail-extension
+  commands forward their raw reference through that resolver with a scoped
+  alias-lookup port. Matcher admission retains the one resolution result for
+  its handler; it does not resolve an alias once to decide admission and a
+  second time to execute the service command.
 - **Replies and proactive delivery:** group and private replies, scheduled
   pushes, activity notices, Bilibili delivery, team-resource notices, startup
   notices, and admin notices use OneBot routing and outbound rate limiting.
@@ -1078,11 +1162,14 @@ reference for users:
 Phase 0 observations to resolve in later phases are also explicit: the
 current `pyproject.toml` adapter declaration names OneBot v12 while the runtime
 uses OneBot v11; Phase 2 corrects that as part of the standard NoneBot manifest
-migration. The completed Phase 4 pet-info path now loads a detached snapshot in
-`integrations.seer_data`, prepares a render document in a pure presenter, and
-renders without ORM, SQL, HTTP, filesystem, or association inference. Existing
-Bandit findings with no high-severity result remain tracked rather than silently
-suppressed.
+migration. The Phase 4 pet-info, type-matchup, peak-pool, peak-vote,
+peak-pet-rank, and private player-lineup paths use detached snapshots, shared
+image assets, immutable render documents, and pure HTML rendering. The
+new-content adapter similarly prepares its data before rendering an immutable
+menu document. Their renderer modules do not perform ORM, SQL, HTTP,
+filesystem, or association inference. Remaining render paths are explicitly
+transitional, not alternative patterns to copy. Existing Bandit findings with
+no high-severity result remain tracked rather than silently suppressed.
 
 ## Enforcement
 

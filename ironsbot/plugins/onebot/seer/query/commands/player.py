@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -15,7 +15,6 @@ from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import (
     BOT_COMMAND_ARG_KEY,
@@ -29,6 +28,7 @@ from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import extract_player_query_arg
 from ironsbot.services.seer.player_service import (
@@ -43,9 +43,13 @@ from .player_context import (
     PLAYER_BINDING_REPLACEMENT_KEY,
     PLAYER_ID_KEY,
     PLAYER_QUERY_IS_EXPLICIT_KEY,
+    PLAYER_TARGET_RESOLUTION_KEY,
 )
-from .player_detail_conversation import send_player_info_with_detail_prompt
-from .player_target import resolve_event_player_reference, resolve_player_target
+from .player_detail_conversation import (
+    begin_player_detail_conversation,
+    send_player_info_with_detail_prompt,
+)
+from .player_target import event_player_reference_lookup, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -83,20 +87,26 @@ async def _is_player_id_query(
     event: Event,
     state: T_State,
 ) -> bool:
+    if not isinstance(event, MessageEvent):
+        return False
     arg = extract_player_query_arg(event.get_plaintext())
     if arg is None:
         return False
-    if not arg:
-        state[PLAYER_QUERY_IS_EXPLICIT_KEY] = False
-        return True
-    if not arg.isdecimal() and resolve_event_player_reference(
-        dependencies.player_accounts,
+    player_reference = arg or None
+
+    target = resolve_player_target(
         event,
-        arg,
-    ) is None:
+        player_reference=player_reference,
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
+        binding_for_user=dependencies.player.default_player_id,
+    )
+    if arg and not arg.isdecimal() and target.player_id is None:
         return False
-    state[BOT_COMMAND_ARG_KEY] = arg
-    state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
+    state[PLAYER_TARGET_RESOLUTION_KEY] = target
+    state[PLAYER_QUERY_IS_EXPLICIT_KEY] = bool(arg)
     return True
 
 
@@ -115,21 +125,10 @@ async def validate_player_id(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    numeric_player_id = None
-    if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
-        player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-        numeric_player_id = resolve_event_player_reference(
-            dependencies.player_accounts,
-            event,
-            player_reference,
-        )
-        if numeric_player_id is None:
-            await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
-    target = resolve_player_target(
-        event,
-        numeric_player_id=numeric_player_id,
-        binding_for_user=dependencies.player.default_player_id,
-    )
+    target = state.get(PLAYER_TARGET_RESOLUTION_KEY)
+    if not isinstance(target, PlayerIdResolution):
+        await finish_event_reply(matcher, event, PLAYER_ID_ERROR_MESSAGE)
+        return
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
         return
@@ -147,11 +146,18 @@ async def handle_player(
     state: T_State,
 ) -> None:
     explicit = bool(state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True))
+    await begin_player_detail_conversation(
+        dependencies.player,
+        dependencies.detail_extensions,
+        dependencies.features,
+        matcher,
+        event,
+    )
     result = await dependencies.player.query(
         int(state[PLAYER_ID_KEY]),
         actor=message_input_context(event).message.actor,
         explicit=explicit,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await _handle_player_query_result(
         dependencies,
@@ -169,18 +175,13 @@ async def handle_player_binding_command(
     state: T_State,
 ) -> None:
     player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    player_id = (
-        resolve_event_player_reference(
-            dependencies.player_accounts,
-            event,
-            player_reference,
-        )
-        if player_reference
-        else None
-    )
     target = resolve_player_target(
         event,
-        numeric_player_id=player_id,
+        player_reference=player_reference or None,
+        reference_lookup=event_player_reference_lookup(
+            dependencies.player_accounts,
+            event,
+        ),
         binding_for_user=dependencies.player.default_player_id,
         allow_default_binding=False,
     )
@@ -192,7 +193,7 @@ async def handle_player_binding_command(
     result = await dependencies.player.bind_player(
         target.player_id,
         actor=message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await _handle_player_query_result(
         dependencies,
@@ -295,7 +296,7 @@ async def _send_pending_player_query(
         )
         dependencies.player.start_background_refresh(
             pending,
-            group_id=event_group_id(event),
+            conversation=message_input_context(event).message.conversation,
         )
 
     await send_player_info_with_detail_prompt(
@@ -310,6 +311,7 @@ async def _send_pending_player_query(
         has_collection=plan.has_collection,
         has_peak=plan.needs_peak_section,
         has_autocard=plan.has_autocard_rank,
+        base_snapshot=pending.base_snapshot,
         on_sent=after_initial_reply_sent,
     )
 

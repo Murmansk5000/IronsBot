@@ -28,8 +28,10 @@ class RankPageRefreshFailure:
 @dataclass(slots=True)
 class RankPageRefreshResult:
     targets: list[RankPageRefreshTarget]
+    parallelism: int = 1
     refreshed: list[RankPageRefreshTarget] = field(default_factory=list)
     failures: list[RankPageRefreshFailure] = field(default_factory=list)
+    worker_page_counts: dict[int, int] = field(default_factory=dict)
 
     @property
     def total(self) -> int:

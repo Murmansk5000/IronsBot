@@ -16,6 +16,7 @@ from ironsbot.app.private_extensions import (
     PrivateExtensionRuntime,
     load_private_extension_catalog,
 )
+from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -24,7 +25,6 @@ from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
-from ironsbot.integrations.htmlkit import render_html_template
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.bilibili import (
@@ -34,7 +34,6 @@ from ironsbot.integrations.http.bilibili import (
     request_bili_login_qr,
 )
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
@@ -63,9 +62,18 @@ from ironsbot.integrations.onebot.team_resource import (
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
-from ironsbot.integrations.seer_data.pet_info_renderer import (
-    render_published_pet_info,
+from ironsbot.integrations.seer_data.new_content_renderer import (
+    render_new_content_menu,
 )
+from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
+    render_peak_pet_rank,
+)
+from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
+from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
+    render_peak_pool_vote,
+)
+from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
+from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.sendpic import SendpicBackendProvider
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
@@ -97,7 +105,6 @@ from ironsbot.integrations.storage.push_subscriptions import (
 )
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
-from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
@@ -172,12 +179,6 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
-from ironsbot.services.seer.render_scheduler import RenderScheduler
-from ironsbot.services.seer.rendering.new_content import render_new_content_menu
-from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
-from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
-from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
-from ironsbot.services.seer.rendering.type_matchup import render_type_matchup
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
 from ironsbot.services.seer.type_query import TypeQueryService
@@ -463,15 +464,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    seer_images = HttpSeerImageSource(http_clients)
-    render_cache = FileRenderCache(
-        cache_paths.render_dir(),
-        settings.seer.render.cache_max_size_mb * 1024 * 1024,
-        db_version_getter=seer_database.version,
-    )
-    render_scheduler = RenderScheduler(
-        render_html_template,
-        settings.runtime.concurrency.render_max_concurrent,
+    seer_images, render_cache, render_coordinator = build_seer_rendering_components(
+        http_clients,
+        cache_paths,
+        settings.seer.render,
+        seer_database,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
@@ -593,7 +590,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_type_matchup,
                 render_cache,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
         ),
         BattleEffectQueryService(seer_database, seer_images),
@@ -605,7 +602,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_cache,
                 seer_database,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
         ),
         PeakQueryService(
@@ -615,17 +612,19 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_peak_pool,
                 render_cache,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
             partial(
                 render_peak_pool_vote,
+                render_cache,
                 seer_images,
-                render_scheduler.render,
+                render_coordinator.render,
             ),
             partial(
                 render_peak_pet_rank,
-                images=seer_images,
-                render_html=render_scheduler.render,
+                render_cache,
+                seer_images,
+                render_coordinator.render,
             ),
         ),
         MintmarkQueryService(
@@ -643,7 +642,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             seer_database,
             seer_images,
             autocard,
-            render_scheduler.render,
+            render_coordinator.render,
         ),
     )
     ai = AiService(
@@ -665,7 +664,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
-        render_html=render_scheduler.render,
+        render_cache=render_cache,
+        render_html=render_coordinator.render,
         error_message=seer_database.error_message,
         player_quotas=player_query_quotas,
         player_requests=player_requests,

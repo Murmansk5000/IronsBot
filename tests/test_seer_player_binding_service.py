@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from ironsbot.core.commands import parse_confirmation
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
@@ -17,7 +17,6 @@ from ironsbot.services.seer.player_binding import (
     player_binding_offer_message,
     player_binding_replacement_offer_message,
 )
-from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -87,30 +86,6 @@ def test_player_binding_replacement_offer_names_both_accounts() -> None:
     assert "保留当前绑定" in message
 
 
-class _UnboundPlayerBindingStore:
-    def get(self, _actor: ActorRef) -> SimpleNamespace:
-        return SimpleNamespace(player_id=None)
-
-
-def test_shortcut_without_a_default_player_explains_player_id_lookup() -> None:
-    service = PlayerService(
-        config=cast("Any", None),
-        headless=cast("Any", None),
-        bindings=cast("Any", _UnboundPlayerBindingStore()),
-        error_message=cast("Any", None),
-        details=cast("Any", None),
-    )
-
-    reply = asyncio.run(
-        service.shortcut(
-            PlayerShortcutCommand(kind="peak", player_id=None),
-            actor=_actor(),
-        )
-    )
-
-    assert reply.text == unbound_player_shortcut_message()
-
-
 def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
     pending = PendingPlayerQuery(
         player_id=_PLAYER_ID,
@@ -130,7 +105,7 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
         service.bind_player(
             _PLAYER_ID,
             actor=_actor(),
-            group_id=20002,
+            conversation=ConversationRef(Platform.ONEBOT, "group", "20002"),
         )
     )
 
@@ -138,7 +113,7 @@ def test_direct_binding_queries_then_saves_and_returns_player_info() -> None:
         _PLAYER_ID,
         actor=_actor(),
         explicit=True,
-        group_id=20002,
+        conversation=ConversationRef(Platform.ONEBOT, "group", "20002"),
     )
     service._save_binding.assert_called_once_with(_actor(), pending)
     assert result.offer_binding is False

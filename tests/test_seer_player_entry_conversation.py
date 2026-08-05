@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.plugins.onebot.seer.query.commands import player, player_shortcuts
 from ironsbot.plugins.onebot.seer.query.commands.player_context import (
@@ -18,6 +18,7 @@ from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import PendingPlayerQuery
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
@@ -29,6 +30,10 @@ _ACCOUNT_PLAYER_ID = 949105380
 
 def _actor(user_id: int) -> ActorRef:
     return ActorRef(Platform.ONEBOT, str(user_id))
+
+
+def _conversation(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 def test_player_conversation_flows_share_one_session() -> None:
@@ -224,7 +229,9 @@ def test_player_commands_resolve_configured_account_names() -> None:
         )
     )
     assert shortcut_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
-        PlayerShortcutCommand("collection", _ACCOUNT_PLAYER_ID)
+        player_shortcuts._ResolvedShortcutCommand(
+            PlayerShortcutCommand("collection", _ACCOUNT_PLAYER_ID)
+        )
     )
 
     peak_state: dict[str, object] = {}
@@ -236,7 +243,9 @@ def test_player_commands_resolve_configured_account_names() -> None:
         )
     )
     assert peak_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
-        PlayerShortcutCommand("peak", _ACCOUNT_PLAYER_ID)
+        player_shortcuts._ResolvedShortcutCommand(
+            PlayerShortcutCommand("peak", _ACCOUNT_PLAYER_ID)
+        )
     )
 
     autocard_state: dict[str, object] = {}
@@ -248,13 +257,42 @@ def test_player_commands_resolve_configured_account_names() -> None:
         )
     )
     assert autocard_state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
-        PlayerShortcutCommand("autocard", _ACCOUNT_PLAYER_ID)
+        player_shortcuts._ResolvedShortcutCommand(
+            PlayerShortcutCommand("autocard", _ACCOUNT_PLAYER_ID)
+        )
     )
+
+
+def test_player_query_reuses_target_resolved_during_matcher_admission(
+    monkeypatch: Any,
+) -> None:
+    resolved_target = PlayerIdResolution(_ACCOUNT_PLAYER_ID, offer_binding=True)
+    resolve_target = Mock(return_value=resolved_target)
+    monkeypatch.setattr(player, "resolve_player_target", resolve_target)
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
+        cast("Any", object()),
+    )
+    state: dict[str, object] = {}
+    event = group_message_event(f"米米号{_ACCOUNT_PLAYER_ID}")
+
+    assert asyncio.run(player._is_player_id_query(dependencies, event, state))
+    asyncio.run(
+        player.validate_player_id(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    resolve_target.assert_called_once()
+    assert state[player.PLAYER_ID_KEY] == _ACCOUNT_PLAYER_ID
 
 
 def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
     )
 
@@ -276,7 +314,7 @@ def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
 
 def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
     )
     event = group_message_event(
@@ -292,7 +330,7 @@ def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
 
 def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> None:
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
     )
     state: dict[str, object] = {}
@@ -304,20 +342,30 @@ def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> Non
             state,
         )
     )
-    assert state[player.BOT_COMMAND_ARG_KEY] == "12"
+    target = state[player.PLAYER_TARGET_RESOLUTION_KEY]
+    assert isinstance(target, PlayerIdResolution)
+    assert target.player_id is None
+    assert target.error == "未找到该米米号或已开放的玩家别名。"
 
 
-def test_player_shortcut_ignores_unknown_account_suffix() -> None:
+def test_player_shortcut_reports_an_unknown_account_suffix() -> None:
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
     )
 
-    assert not asyncio.run(
+    state: dict[str, object] = {}
+    assert asyncio.run(
         player_shortcuts._is_player_shortcut(
             group_message_event("收集未知别名"),
-            {},
+            state,
             dependencies=dependencies,
+        )
+    )
+    assert state[player_shortcuts._SHORTCUT_COMMAND_KEY] == (
+        player_shortcuts._ResolvedShortcutCommand(
+            None,
+            "未找到该米米号或已开放的玩家别名。",
         )
     )
 
@@ -349,7 +397,7 @@ def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
         )
     )
     dependencies = player.PlayerCommandDependencies(
-        cast("Any", object()),
+        cast("Any", SimpleNamespace(default_player_id=lambda _actor: None)),
         cast("Any", object()),
         extensions,
         accounts,
@@ -369,8 +417,12 @@ def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
         )
     )
     command = state[player_shortcuts._EXTENSION_SHORTCUT_COMMAND_KEY]
-    assert isinstance(command, player_shortcuts.PlayerExtensionShortcutCommand)
-    assert command.player_id == _ACCOUNT_PLAYER_ID
+    assert isinstance(
+        command,
+        player_shortcuts._ResolvedExtensionShortcutCommand,
+    )
+    assert command.command is not None
+    assert command.command.player_id == _ACCOUNT_PLAYER_ID
 
 
 def test_binding_command_resolves_account_aliases(monkeypatch: Any) -> None:
@@ -411,7 +463,7 @@ def test_binding_command_resolves_account_aliases(monkeypatch: Any) -> None:
     service.bind_player.assert_awaited_once_with(
         _ACCOUNT_PLAYER_ID,
         actor=_actor(event.user_id),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
 
 
@@ -447,7 +499,7 @@ def test_binding_command_resolves_one_directly_mentioned_member(
     service.bind_player.assert_awaited_once_with(
         _ACCOUNT_PLAYER_ID,
         actor=_actor(event.user_id),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
 
 
@@ -465,9 +517,12 @@ def test_shortcut_without_default_shows_explicit_player_id_help(
         cast("Any", object()),
     )
     state: dict[str, object] = {
-        player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
-            kind="collection",
-            player_id=None,
+        player_shortcuts._SHORTCUT_COMMAND_KEY: (
+            player_shortcuts._ResolvedShortcutCommand(
+                None,
+                "尚未绑定米米号，发送“绑定米米号123456”后，即可使用快捷指令。\n"
+                "需要在查询指令后加上米米号，才能查询未绑定的米米号。",
+            )
         )
     }
 
@@ -480,8 +535,14 @@ def test_shortcut_without_default_shows_explicit_player_id_help(
         )
     )
 
-    service.shortcut.assert_awaited_once()
+    service.shortcut.assert_not_awaited()
     finish_reply.assert_awaited_once()
+    call = finish_reply.await_args
+    assert call is not None
+    assert call.args[2] == (
+        "尚未绑定米米号，发送“绑定米米号123456”后，即可使用快捷指令。\n"
+        "需要在查询指令后加上米米号，才能查询未绑定的米米号。"
+    )
 
 
 def test_shortcut_sends_loading_reply_before_query(
@@ -505,9 +566,10 @@ def test_shortcut_sends_loading_reply_before_query(
     )
     event = group_message_event("巅峰")
     state: dict[str, object] = {
-        player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
-            kind="peak",
-            player_id=None,
+        player_shortcuts._SHORTCUT_COMMAND_KEY: (
+            player_shortcuts._ResolvedShortcutCommand(
+                PlayerShortcutCommand(kind="peak", player_id=949105380)
+            )
         )
     }
 
@@ -527,7 +589,7 @@ def test_shortcut_sends_loading_reply_before_query(
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="peak", player_id=949105380),
         _actor(event.user_id),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
     finish_reply.assert_awaited_once()
 
@@ -557,9 +619,13 @@ def test_shortcut_reports_when_the_first_packet_is_queued(
             cast("Any", object()),
             group_message_event("收集"),
             {
-                player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
-                    kind="collection",
-                    player_id=None,
+                player_shortcuts._SHORTCUT_COMMAND_KEY: (
+                    player_shortcuts._ResolvedShortcutCommand(
+                        PlayerShortcutCommand(
+                            kind="collection",
+                            player_id=949105380,
+                        )
+                    )
                 )
             },
         )
@@ -594,9 +660,13 @@ def test_shortcut_cache_hit_does_not_send_loading_reply(
             cast("Any", object()),
             group_message_event("群星牌"),
             {
-                player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
-                    kind="autocard",
-                    player_id=None,
+                player_shortcuts._SHORTCUT_COMMAND_KEY: (
+                    player_shortcuts._ResolvedShortcutCommand(
+                        PlayerShortcutCommand(
+                            kind="autocard",
+                            player_id=949105380,
+                        )
+                    )
                 )
             },
         )
@@ -606,17 +676,25 @@ def test_shortcut_cache_hit_does_not_send_loading_reply(
 
 
 def test_shortcut_semantic_request_uses_the_bound_player() -> None:
-    service = SimpleNamespace(default_player_id=lambda _user_id: 712_345_678)
+    service = SimpleNamespace()
+    dependencies = player_shortcuts.PlayerCommandDependencies(
+        player=cast("Any", service),
+        features=cast("Any", SimpleNamespace()),
+    )
     event = group_message_event("收集")
     state: dict[str, object] = {
-        player_shortcuts._SHORTCUT_COMMAND_KEY: PlayerShortcutCommand(
-            kind="collection",
-            player_id=None,
+        player_shortcuts._SHORTCUT_COMMAND_KEY: (
+            player_shortcuts._ResolvedShortcutCommand(
+                PlayerShortcutCommand(
+                    kind="collection",
+                    player_id=712_345_678,
+                )
+            )
         )
     }
 
     request = player_shortcuts._shortcut_semantic_request(
-        cast("Any", service),
+        dependencies,
         event,
         cast("Any", state),
     )

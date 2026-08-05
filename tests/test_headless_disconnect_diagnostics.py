@@ -6,6 +6,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.seer import RankPageRefreshConfig
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -45,17 +46,18 @@ def test_headless_operation_context_keeps_recent_operation() -> None:
     assert operations.format_recent(now=float("inf")) == ""
 
 
-def test_headless_operation_context_includes_group_id() -> None:
+def test_headless_operation_context_includes_conversation() -> None:
     operations = HeadlessOperationTracker()
 
     with operations.track(
         "基础资料",
         "米米号 123456",
         source="米米号查询",
-        group_id=987654321,
+        conversation=ConversationRef(Platform.ONEBOT, "group", "987654321"),
     ):
         assert operations.format_current() == (
-            "基础资料：米米号 123456（用户操作，群：987654321）"
+            "基础资料：米米号 123456"
+            "（用户操作，会话：onebot/group/987654321）"
         )
 
 
@@ -68,12 +70,15 @@ def test_headless_operation_context_captures_semantic_request() -> None:
     )
 
     with (
-        semantic_request_scope(request, user_id=123456),
+        semantic_request_scope(
+            request,
+            actor=ActorRef(Platform.ONEBOT, "123456"),
+        ),
         operations.track("收集查询", "米米号 712345678"),
     ):
         assert operations.format_recent_semantic() == (
             "收集与排行（seer.player.collection）：米米号 712345678"
-            "（来源：menu，QQ：123456）"
+            "（来源：menu，用户：onebot/123456）"
         )
 
 
@@ -241,7 +246,7 @@ def test_rank_page_refresh_enters_backoff_after_connection_failure(
         monkeypatch.setattr(
             rank_page_refresh.RankPageRefreshService,
             "preview",
-            lambda _self, _rank_keys=None: [target],
+            lambda _self, _rank_keys=None, *, limit=None: [target][:limit],
         )
         game = cast(
             "SeerGame",

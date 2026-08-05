@@ -12,6 +12,7 @@ from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.features import FeatureService  # noqa: TC001
 from ironsbot.runtime.conversations import (
+    begin_event_reply_conversation,
     command_reply_check,
     enter_event_reply_conversation,
 )
@@ -64,6 +65,7 @@ from .player_context import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
     from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
 
@@ -73,6 +75,44 @@ _SHORTCUT_KINDS = {
     PLAYER_AUTOCARD_KEY: "autocard",
 }
 _SELECTION_PAIR_LENGTH = 2
+
+
+def _is_pending_player_detail_reply(event: MessageEvent) -> bool:
+    """Recognize only the stable numeric shape before menu capabilities are known."""
+
+    return event.get_plaintext().strip().isdigit()
+
+
+async def begin_player_detail_conversation(
+    service: PlayerService,
+    extensions: PlayerDetailExtensionRegistry,
+    features: FeatureService,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    """Accept fast numeric detail choices while the base profile is loading."""
+
+    await begin_event_reply_conversation(
+        matcher,
+        event,
+        namespace=PLAYER_DETAIL_NAMESPACE,
+        handlers=[
+            bind_async(
+                handle_player_detail_reply,
+                service,
+                extensions,
+                features,
+            )
+        ],
+        pending_reply_check=_is_pending_player_detail_reply,
+        reply_check=_is_pending_player_detail_reply,
+        parallel=True,
+        queue_semantic_request_resolver=partial(
+            _player_detail_semantic_request,
+            extensions,
+            features,
+        ),
+    )
 
 
 async def handle_player_detail_reply(  # noqa: PLR0913
@@ -157,15 +197,25 @@ async def handle_player_detail_reply(  # noqa: PLR0913
         raise FinishedException
 
     kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
+    menu_context = state.get(PLAYER_DETAIL_MENU_CONTEXT_KEY)
+    base_snapshot = (
+        menu_context.base_snapshot
+        if isinstance(menu_context, PlayerDetailMenuContext)
+        else None
+    )
 
     async def send_status(message: str) -> None:
         await send_event_reply(matcher, event, message)
 
     reply = await execute_player_shortcut(
         service,
-        PlayerShortcutCommand(kind=kind, player_id=player_id),
+        PlayerShortcutCommand(
+            kind=kind,
+            player_id=player_id,
+            base_snapshot=base_snapshot,
+        ),
         message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
         send_status=send_status,
     )
     message = _reply_text(reply.leading_text, reply.text, reply.image_error)
@@ -216,6 +266,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
     has_collection: bool = False,
     has_peak: bool = False,
     has_autocard: bool = False,
+    base_snapshot: PlayerBaseSnapshot | None = None,
     on_sent: Callable[[], None] | None = None,
 ) -> None:
     prompt_plan = _configure_player_detail_state(
@@ -228,6 +279,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
             has_collection=has_collection,
             has_peak=has_peak,
             has_autocard=has_autocard,
+            base_snapshot=base_snapshot,
         ),
     )
     prompt = "\n".join((player_message, *prompt_plan.prompt_lines))

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.seer.query.commands import player
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service import PendingPlayerQuery
@@ -69,5 +69,9 @@ def test_initial_player_reply_precedes_background_refresh(
     )
     service.start_background_refresh.assert_called_once_with(
         pending,
-        group_id=event.group_id,
+        conversation=ConversationRef(
+            Platform.ONEBOT,
+            "group",
+            str(event.group_id),
+        ),
     )

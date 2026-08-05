@@ -10,6 +10,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import col, func, select
 
+from ironsbot.core.aliases import AliasMatch, AliasResolution
 from ironsbot.services.seer.data import ALIAS_DB, SEERAPI_DB
 
 from .normalization import IGNORED_CHARS as _IGNORED_CHARS
@@ -137,36 +138,108 @@ class AliasResolver(Generic[_T_Model]):
             ")"
         )
 
+    def alias_lookup(
+        self,
+        sessions: SessionMap,
+    ) -> DatabaseAliasLookup[_T_Model]:
+        """Bind this domain-owned lookup to the current data sessions."""
+
+        return DatabaseAliasLookup(
+            sessions,
+            model=self.model,
+            alias_model=self.alias_model,
+            alias_db=self.alias_db,
+            data_db=self.data_db,
+        )
+
     def __call__(self, sessions: SessionMap, arg: str) -> Iterable[_T_Model]:
-        alias_session = sessions.get(self.alias_db)
+        return tuple(
+            match.value
+            for match in self.alias_lookup(sessions).resolve_alias(arg).matches
+        )
+
+
+class DatabaseAliasLookup(Generic[_T_Model]):
+    """Session-bound AliasLookup implementation for a published alias table."""
+
+    __slots__ = ("alias_db", "alias_model", "data_db", "model", "sessions")
+
+    def __init__(
+        self,
+        sessions: SessionMap,
+        *,
+        model: type[_T_Model],
+        alias_model: type[BaseAliasORM],
+        alias_db: str,
+        data_db: str,
+    ) -> None:
+        self.sessions = sessions
+        self.model = model
+        self.alias_model = alias_model
+        self.alias_db = alias_db
+        self.data_db = data_db
+
+    def resolve_alias(self, reference: object) -> AliasResolution[_T_Model]:
+        """Resolve one query while preserving entity-level ambiguity information."""
+
+        text = str(reference).strip()
+        if not text:
+            return AliasResolution(reference=text)
+        aliases = self._matching_aliases(text)
+        if not aliases:
+            return AliasResolution(reference=text)
+        return AliasResolution(
+            reference=text,
+            matches=self._matching_models(aliases),
+        )
+
+    def _matching_aliases(self, text: str) -> tuple[BaseAliasORM, ...]:
+        alias_session = self.sessions.get(self.alias_db)
         if alias_session is None:
-            logger.warning(f"{self!r}: 未找到别名数据库会话")
+            logger.warning("%r: 未找到别名数据库会话", self)
             return ()
 
+        stripped_arg = _strip_special(text).casefold()
+        if not stripped_arg:
+            return ()
         try:
-            stripped_arg = _strip_special(arg.strip()).casefold()
             statement = select(self.alias_model).where(
                 func.lower(_col_strip_special(col(self.alias_model.name))).like(
                     f"%{stripped_arg}%"
                 )
             )
-            aliases = alias_session.exec(statement).all()
-            ids = {alias.target_id for alias in aliases}
+            return tuple(alias_session.exec(statement).all())
         except OperationalError:
-            logger.exception("AliasResolver failed")
+            logger.exception("DatabaseAliasLookup failed")
             return ()
 
-        if not ids:
-            return ()
-
-        data_session = sessions.get(self.data_db)
+    def _matching_models(
+        self,
+        aliases: tuple[BaseAliasORM, ...],
+    ) -> tuple[AliasMatch[_T_Model], ...]:
+        data_session = self.sessions.get(self.data_db)
         if data_session is None:
-            logger.warning(f"{self!r}: 未找到数据数据库会话")
+            logger.warning("%r: 未找到数据数据库会话", self)
             return ()
 
-        return data_session.exec(
-            select(self.model).where(col(self.model.id).in_(ids))
-        ).all()
+        values_by_id = {
+            value.id: value
+            for value in data_session.exec(
+                select(self.model).where(
+                    col(self.model.id).in_({alias.target_id for alias in aliases})
+                )
+            ).all()
+        }
+        matches: list[AliasMatch[_T_Model]] = []
+        seen_ids: set[int] = set()
+        for alias in aliases:
+            if alias.target_id in seen_ids:
+                continue
+            value = values_by_id.get(alias.target_id)
+            if value is not None:
+                seen_ids.add(alias.target_id)
+                matches.append(AliasMatch(alias.name, value))
+        return tuple(matches)
 
 
 class Getter(Generic[_T_Model]):

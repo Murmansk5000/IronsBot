@@ -130,7 +130,10 @@ def command_descriptors() -> tuple[CommandDescriptor, ...]:
                     "bilibili.refresh",
                     tuple(f"/{command}" for command in DYNAMIC_UPDATE_COMMANDS[:1]),
                     "立即刷新订阅动态",
-                    {"access": (CommandAccess(audience="superuser"),)},
+                    {
+                        "access": (CommandAccess(audience="superuser"),),
+                        "routing_aliases": DYNAMIC_UPDATE_COMMANDS,
+                    },
                 ),
             ),
         ),
@@ -166,6 +169,7 @@ def _build_monitor(  # noqa: PLR0913 - Bilibili integration dependencies
         config.push.summary_max_chars,
         config.push.summary_use_ai,
         service.targets.can_target_query_history,
+        admin_notices,
     )
     return BilibiliMonitorService(service, auth_invalid, push_delivery.send)
 

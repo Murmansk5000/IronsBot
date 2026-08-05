@@ -9,8 +9,7 @@ from ironsbot.core.features import FeatureService
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.bilibili.accounts import (
     BiliAccountNames,
-    account_uid,
-    normalize_account_alias,
+    configured_account_alias_lookup,
 )
 from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
@@ -363,21 +362,24 @@ class BiliTargetService:
         if rule is None:
             return "❌ 当前会话未开启 B站推送。"
 
-        alias = normalize_account_alias(account_ref)
-        uid = (
-            account_uid(alias, self.config)
-            if alias in rule.aliases
-            else None
+        configured_aliases = configured_account_alias_lookup(
+            self.config,
+            rule.aliases,
         )
+        uid = configured_aliases.resolve_alias(account_ref).unique_value
         if uid is None:
-            uid = self.account_names.resolve(account_ref, rule.uids)
+            uid = self.account_names.public_name_alias_lookup(
+                rule.uids,
+            ).resolve_alias(account_ref).unique_value
         if uid is None:
             if error := await self.prepare_account_names(
                 target_type,
                 target_id,
             ):
                 return error
-            uid = self.account_names.resolve(account_ref, rule.uids)
+            uid = self.account_names.public_name_alias_lookup(
+                rule.uids,
+            ).resolve_alias(account_ref).unique_value
         if uid is None or self.mode_for_uid(target_type, target_id, uid) is None:
             return (
                 "❌ 当前会话没有订阅该 B站账号。\n"

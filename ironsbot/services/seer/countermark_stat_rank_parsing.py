@@ -7,6 +7,7 @@ from .countermark_stat_rank_models import (
     CountermarkStatRankCommand,
     StatSpec,
 )
+from .rank_command_text import normalize_rank_command_text
 
 MIN_COMBINATION_PARTS = 2
 ANGLE_MARKERS = {
@@ -100,7 +101,7 @@ _NON_STAT_COUNTERMARK_RANK_COMMANDS = {
 def parse_countermark_stat_rank_command(
     text: str,
 ) -> CountermarkStatRankCommand | None:
-    normalized = normalize_command_text(text)
+    normalized = normalize_rank_command_text(text)
     has_angle_marker = any(marker in normalized for marker in ANGLE_MARKERS)
     has_countermark_marker = "刻印" in normalized
     if not normalized.endswith("榜") or (

@@ -53,7 +53,12 @@ PRIVATE_ALIAS_PLAYER_ID = 34567890
 PLAYER_ALIAS_GROUP_ID = 123456789
 DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
-DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
+DEFAULT_FINAL_RENDER_CACHE_MAX_SIZE_MB = 500
+DEFAULT_RENDER_NATIVE_TIMEOUT_SECONDS = 45.0
+DEFAULT_ASSET_MEMORY_CACHE_MAX_SIZE_MB = 128
+DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB = 1000
+DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
+DEFAULT_ASSET_NEGATIVE_TTL_SECONDS = 300
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
@@ -62,12 +67,13 @@ DEFAULT_RANK_DISPLAY_LIMIT = 10
 DEFAULT_RANK_MAX_DISPLAY_LIMIT = 100
 DEFAULT_RANK_STALE_AGE_WEIGHT = 0.08
 DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER = 5.0
-DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 1
+DEFAULT_RANK_REFRESH_PAGES_PER_RUN = 20
+DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN = 10
 DEFAULT_RANK_REFRESH_INTERVAL_MINUTES = 15
 DEFAULT_RANK_REFRESH_INTERVAL_OFFSET_MINUTES = 4
 DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 240
-DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 3.0
-DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 3.0
+DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 8.0
+DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 12.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
@@ -227,6 +233,7 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert config.score_cutoffs["群星牌"] == DEFAULT_AUTOCARD_SCORE_CUTOFF
     assert config.stale_age_weight == DEFAULT_RANK_STALE_AGE_WEIGHT
     assert config.stale_age_max_multiplier == DEFAULT_RANK_STALE_AGE_MAX_MULTIPLIER
+    assert config.pages_per_run == DEFAULT_RANK_REFRESH_PAGES_PER_RUN
     assert config.pages_per_run_min == DEFAULT_RANK_REFRESH_PAGES_PER_RUN_MIN
     assert config.interval_minutes == DEFAULT_RANK_REFRESH_INTERVAL_MINUTES
     assert (
@@ -312,18 +319,20 @@ def test_example_config_parses() -> None:
     ]
     assert remote_build_steps[-1].repository == "Murmansk-Seer/seerapi"
     assert remote_build_steps[-1].workflow_id == "build-seerapi-data-db.yml"
-    assert remote_build_steps[0].inputs == {
-        "force-update-assets": False,
-        "force-update-config": False,
-        "dispatch-api-data": False,
-    }
-    assert remote_build_steps[1].inputs == {}
-    assert remote_build_steps[2].inputs == {"force": False}
-    assert remote_build_steps[3].inputs == {
-        "debug_enabled": False,
-        "force": False,
-    }
-    assert remote_build_steps[4].inputs == {"force": False}
+    assert [(step.inputs, step.force_inputs) for step in remote_build_steps] == [
+        (
+            {
+                "force-update-assets": False,
+                "force-update-config": False,
+                "dispatch-api-data": False,
+            },
+            {"force-update-assets": True, "force-update-config": True},
+        ),
+        ({}, {}),
+        ({"force": False}, {"force": True}),
+        ({"debug_enabled": False, "force": False}, {"force": True}),
+        ({"force": False}, {"force": True}),
+    ]
 
 
 def test_example_config_pet_config_defaults() -> None:
@@ -1649,5 +1658,27 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.messaging.meeting.commands == ["开播", "会议"]
     assert "aliases" in app_config.operations.data_sync.sources
     assert app_config.paths.cache_root == Path("cache")
-    assert app_config.runtime.concurrency.render_max_concurrent == 1
-    assert app_config.seer.render.cache_max_size_mb == DEFAULT_RENDER_CACHE_MAX_SIZE_MB
+    assert (
+        app_config.seer.render.final_cache_max_size_mb
+        == DEFAULT_FINAL_RENDER_CACHE_MAX_SIZE_MB
+    )
+    assert (
+        app_config.seer.render.native_timeout_seconds
+        == DEFAULT_RENDER_NATIVE_TIMEOUT_SECONDS
+    )
+    assert (
+        app_config.seer.render.asset_memory_max_size_mb
+        == DEFAULT_ASSET_MEMORY_CACHE_MAX_SIZE_MB
+    )
+    assert (
+        app_config.seer.render.asset_cache_max_size_mb
+        == DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB
+    )
+    assert (
+        app_config.seer.render.asset_fetch_max_concurrent
+        == DEFAULT_ASSET_FETCH_MAX_CONCURRENT
+    )
+    assert (
+        app_config.seer.render.asset_negative_ttl_seconds
+        == DEFAULT_ASSET_NEGATIVE_TTL_SECONDS
+    )

@@ -272,11 +272,6 @@ hint_max_per_window = 3
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
 
-[runtime.concurrency]
-# Default: 1; EN: Maximum concurrent HTMLKit image render tasks.
-# ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
-render_max_concurrent = 1
-
 [ai]
 # Default: "https://api.deepseek.com"
 # EN: OpenAI-compatible AI API base URL.
@@ -1086,13 +1081,13 @@ stale_age_max_multiplier = 5.0
 # ZH: 每页榜单请求人数。
 page_size = 100
 # Default: 10
-# EN: Maximum rank pages refreshed per scheduled/manual run.
-# ZH: 每轮最多刷新多少页，也就是最多多少次榜单请求。
-pages_per_run = 3
+# EN: Total rank pages refreshed by the whole worker pool in one run.
+# ZH: 每轮由整个无头池合计最多刷新多少页，不会随账号数倍增。
+pages_per_run = 20
 # Default: 0
 # EN: If > 0, each run refreshes a random number of pages between this value and pages_per_run.
-# ZH: 如果大于 0，每轮随机刷新 pages_per_run_min 到 pages_per_run 页，避免每轮固定请求数。
-pages_per_run_min = 1
+# ZH: 如果大于 0，每轮随机刷新 pages_per_run_min 到 pages_per_run 页，避免每轮固定请求数；总页数仍由整个无头池分摊。
+pages_per_run_min = 10
 # Default: 0
 # EN: Interval-based refresh in minutes. 0 disables interval scheduling.
 # ZH: 按间隔刷榜，0 表示关闭；例如 10 表示每 10 分钟一轮。
@@ -1107,13 +1102,13 @@ interval_offset_minutes = 4
 # ZH: 每轮调度额外随机延后秒数，避免总在整点/固定秒触发。
 schedule_jitter_seconds = 240
 # Default: 0.0
-# EN: Seconds to wait between page requests in one refresh run.
-# ZH: 同一轮刷榜中，每个榜单页请求之间的固定等待秒数。
-request_interval_seconds = 3.0
+# EN: Minimum seconds between scheduled rank-page slots. Scheduled runs also spread the selected batch across their interval.
+# ZH: 定时刷榜页槽位的最小间隔秒数；定时任务还会把本轮页面均匀铺在整个调度间隔内。
+request_interval_seconds = 8.0
 # Default: 0.0
-# EN: Random extra seconds added to each inter-page wait.
-# ZH: 每个榜单页请求之间额外增加的随机等待秒数，降低固定频率特征。
-request_jitter_seconds = 3.0
+# EN: Maximum random offset applied to scheduled page slots; manual runs add up to this delay.
+# ZH: 定时页槽位的最大随机偏移秒数；手动刷新则额外延后不超过该值，用于避免固定频率。
+request_jitter_seconds = 12.0
 # Default: ""; EN: Optional active refresh window start. ZH: 可选的刷榜活跃时间起点。
 active_start = "07:30"
 # Default: ""; EN: Optional active refresh window end; may cross midnight.
@@ -1198,8 +1193,25 @@ resource_message = "出来买资源，别逼我求你😡"
 # ZH: 订阅战队不再使用 [[seer.team_resource.subscriptions]] TOML 表。
 
 [seer.render]
-# Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
-cache_max_size_mb = 200
+# Default: 500; EN: Final rendered-image cache max size in MB.
+# ZH: 最终渲染图片三级缓存上限 MB；位于 cache/rendering/final。
+final_cache_max_size_mb = 500
+# Default: 45; EN: Native HTML image rendering timeout in seconds. Rendering is
+# always serialized to one native task.
+# ZH: 原生 HTML 图片渲染超时秒数；原生渲染固定单并发。
+native_timeout_seconds = 45
+# Default: 128; EN: In-memory Seer image asset LRU size in MB.
+# ZH: 赛尔图片素材一级内存 LRU 缓存上限 MB。
+asset_memory_max_size_mb = 128
+# Default: 1000; EN: Verified on-disk Seer image asset cache size in MB.
+# ZH: 赛尔图片素材二级磁盘缓存上限 MB；位于 cache/rendering/assets。
+asset_cache_max_size_mb = 1000
+# Default: 4; EN: Maximum concurrent upstream image fetches.
+# ZH: 同时请求上游图片的最大并发数。
+asset_fetch_max_concurrent = 4
+# Default: 300; EN: Cache only upstream 404/410 image misses for this many seconds.
+# ZH: 只缓存上游 404/410 的图片缺失；缓存秒数。
+asset_negative_ttl_seconds = 300
 
 [pet_config]
 # Default: true; EN: Enable local pet configuration image replies. ZH: 启用本地精灵配置图查询。
@@ -1249,6 +1261,7 @@ ref = "main"
 timeout_seconds = 3600
 poll_interval_seconds = 10
 inputs = { force-update-assets = false, force-update-config = false, dispatch-api-data = false }
+force_inputs = { force-update-assets = true, force-update-config = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "refresh_unity_config"
@@ -1268,6 +1281,7 @@ ref = "main"
 timeout_seconds = 600
 poll_interval_seconds = 10
 inputs = { force = false }
+force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_api_data"
@@ -1277,6 +1291,7 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { debug_enabled = false, force = false }
+force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"
@@ -1286,6 +1301,7 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { force = false }
+force_inputs = { force = true }
 
 [operations.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"

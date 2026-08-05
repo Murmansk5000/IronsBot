@@ -34,7 +34,7 @@ from ironsbot.services.seer.rank_list_models import (
     RankListCommand,
     RankPageCacheRefreshCommand,
     RankPageCacheStatusCommand,
-    RankPlayerCommand,
+    RankPlayerTargetCommand,
     RankScoreCommand,
 )
 from ironsbot.services.seer.rank_list_parsing import (
@@ -42,7 +42,7 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
-    parse_rank_player_command,
+    parse_rank_player_target_command,
     parse_rank_score_command,
     with_admin_prefix,
 )
@@ -55,6 +55,8 @@ from ironsbot.services.seer.rank_page_cache_messages import (
     build_rank_page_refresh_result_message,
     build_rank_page_refresh_start_message,
 )
+
+PROGRESS_WIDTH = 100
 
 
 @dataclass(frozen=True)
@@ -166,6 +168,10 @@ def test_parse_rank_list_command_reads_global_aliases() -> None:
         start_rank=20,
         limit=1,
     )
+    assert parse_rank_list_command("皮肤排行榜") == RankListCommand(
+        kind="global",
+        rank_key="皮肤图鉴",
+    )
     assert parse_rank_list_command("竞技段位榜50名") == RankListCommand(
         kind="global",
         rank_key="竞技段位",
@@ -247,35 +253,41 @@ def test_parse_rank_score_command_reads_global_score_query() -> None:
     assert parse_rank_score_command("群星牌榜第3149名") is None
 
 
-def test_parse_rank_player_command_treats_plain_digits_as_player_id() -> None:
-    assert parse_rank_player_command("成就榜123456") == RankPlayerCommand(
+def test_parse_rank_player_target_command_preserves_plain_digits() -> None:
+    assert parse_rank_player_target_command("成就榜123456") == RankPlayerTargetCommand(
         rank_key="成就点数",
-        player_id=123456,
+        player_reference="123456",
     )
-    assert parse_rank_player_command("群星之巅榜712345678") == RankPlayerCommand(
-        rank_key="群星牌",
-        player_id=712345678,
+    assert (
+        parse_rank_player_target_command("群星之巅榜712345678")
+        == RankPlayerTargetCommand(
+            rank_key="群星牌",
+            player_reference="712345678",
+        )
     )
-    assert parse_rank_player_command("竞技榜123456") == RankPlayerCommand(
+    assert parse_rank_player_target_command("竞技榜123456") == RankPlayerTargetCommand(
         rank_key="竞技段位",
-        player_id=123456,
+        player_reference="123456",
     )
-    assert parse_rank_player_command("样本成就榜123456") is None
-    assert parse_rank_player_command("成就榜第123456名") is None
-    assert parse_rank_player_command("成就榜5000点") is None
-    assert parse_rank_player_command("群星牌榜26") is None
-    assert parse_rank_player_command("竞技榜49999") is None
-
-
-def test_parse_rank_player_command_can_resolve_configured_account_alias() -> None:
-    assert parse_rank_player_command(
-        "群星之巅榜sample_player",
-        resolve_player_id=lambda reference: (
-            712345678 if reference == "sample_player" else None
-        ),
-    ) == RankPlayerCommand(
+    assert parse_rank_player_target_command("样本成就榜123456") is None
+    assert parse_rank_player_target_command("成就榜第123456名") is None
+    assert parse_rank_player_target_command("成就榜5000点") is None
+    assert parse_rank_player_target_command("群星牌榜26") == RankPlayerTargetCommand(
         rank_key="群星牌",
-        player_id=712345678,
+        player_reference="26",
+    )
+    assert parse_rank_player_target_command("竞技榜49999") == RankPlayerTargetCommand(
+        rank_key="竞技段位",
+        player_reference="49999",
+    )
+
+
+def test_parse_rank_player_target_command_preserves_configured_account_alias() -> None:
+    assert parse_rank_player_target_command(
+        "群星之巅榜sample_player",
+    ) == RankPlayerTargetCommand(
+        rank_key="群星牌",
+        player_reference="sample_player",
     )
 
 
@@ -296,17 +308,13 @@ def test_parse_rank_player_command_can_resolve_configured_account_alias() -> Non
         "专家榜",
     ),
 )
-def test_all_global_rank_families_resolve_player_aliases(alias: str) -> None:
-    expected_player_id = 712345678
-    command = parse_rank_player_command(
+def test_all_global_rank_families_preserve_player_aliases(alias: str) -> None:
+    command = parse_rank_player_target_command(
         f"{alias}示例账号",
-        resolve_player_id=lambda reference: (
-            expected_player_id if reference == "示例账号" else None
-        ),
     )
 
     assert command is not None
-    assert command.player_id == expected_player_id
+    assert command.player_reference == "示例账号"
 
 
 @pytest.mark.parametrize(
@@ -326,13 +334,16 @@ def test_all_global_rank_families_resolve_player_aliases(alias: str) -> None:
         ("专家榜", "专家段位"),
     ],
 )
-def test_all_global_rank_families_treat_plain_number_as_player_id(
+def test_all_global_rank_families_preserve_plain_number_player_targets(
     alias: str,
     rank_key: str,
 ) -> None:
-    assert parse_rank_player_command(f"{alias}123456") == RankPlayerCommand(
-        rank_key=rank_key,
-        player_id=123456,
+    assert (
+        parse_rank_player_target_command(f"{alias}123456")
+        == RankPlayerTargetCommand(
+            rank_key=rank_key,
+            player_reference="123456",
+        )
     )
     assert parse_rank_list_command(f"{alias}123456") is None
 
@@ -714,23 +725,32 @@ def test_build_rank_page_cache_status_message_groups_valid_and_stale_pages() -> 
         PageSummary(start_index=10, item_count=3, is_stale=True),
     ]
 
-    assert build_rank_page_cache_status_message(
+    message = build_rank_page_cache_status_message(
         spec,
         pages,
         ttl_seconds=3600,
-    ) == (
-        "📦【测试榜缓存】\n"
-        "有效缓存：2 段，4 名\n"
-        "有效区间：1-4\n"
-        "过期缓存：1 段，3 名\n"
-        "过期区间：11-13\n"
-        "TTL：3600 秒"
+        target_limit=20,
     )
-    assert build_rank_page_cache_status_message(
+    assert "目标：前 20 名" in message
+    assert "覆盖：7/20 名（35.0%）" in message
+    assert "新鲜完整：4 名（20.0%）｜部分：0 名（0.0%）" in message
+    assert "过期：3 名（15.0%）｜缺失：13 名（65.0%）" in message
+    assert "新鲜完整区间：2 段，4 名" in message
+    assert "有效区间：1-4" in message
+    assert "过期缓存：1 段，3 名" in message
+    assert "过期区间：11-13" in message
+    progress = next(line for line in message.splitlines() if line.startswith("进度："))
+    assert len(progress.removeprefix("进度：")) == PROGRESS_WIDTH
+    assert "█" in progress and "▓" in progress and "░" in progress
+
+    empty_message = build_rank_page_cache_status_message(
         spec,
         [],
         ttl_seconds=3600,
-    ) == "📦【测试榜缓存】\n当前没有缓存区间。"
+        target_limit=20,
+    )
+    assert "覆盖：0/20 名（0.0%）" in empty_message
+    assert "当前没有缓存区间。" in empty_message
 
 
 def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() -> None:
@@ -745,22 +765,21 @@ def test_build_rank_page_cache_status_message_shows_partial_and_next_ranges() ->
         )
     ]
 
-    assert build_rank_page_cache_status_message(
+    message = build_rank_page_cache_status_message(
         spec,
         pages,
         ttl_seconds=3600,
-        target_limit="分数 >= 1000（最多前 500 名）",
+        target_limit=500,
+        target_label="分数 >= 1000（最多前 500 名）",
         next_ranges=(("部分", 1, 100),),
-    ) == (
-        "📦【测试榜缓存】\n"
-        "目标：分数 >= 1000（最多前 500 名）\n"
-        "有效缓存：0 段，0 名\n"
-        "有效区间：无\n"
-        "部分缺失：1 段，现存 99 名\n"
-        "缺失区间：1-100\n"
-        "TTL：3600 秒\n"
-        "下一刷：部分:1-100"
     )
+    assert "目标：分数 >= 1000（最多前 500 名）" in message
+    assert "覆盖：99/500 名（19.8%）" in message
+    assert "新鲜完整：0 名（0.0%）｜部分：99 名（19.8%）" in message
+    assert "过期：0 名（0.0%）｜缺失：401 名（80.2%）" in message
+    assert "部分缺失：1 段，现存 99 名" in message
+    assert "缺失区间：1-100" in message
+    assert "下一刷：部分:1-100" in message
 
 
 def test_build_rank_page_cache_status_does_not_double_count_partial_stale() -> None:
@@ -782,22 +801,52 @@ def test_build_rank_page_cache_status_does_not_double_count_partial_stale() -> N
         ),
     ]
 
-    assert build_rank_page_cache_status_message(
+    message = build_rank_page_cache_status_message(
         spec,
         pages,
         ttl_seconds=3600,
         target_limit=500,
-    ) == (
-        "📦【测试榜缓存】\n"
-        "目标：前 500 名\n"
-        "有效缓存：0 段，0 名\n"
-        "有效区间：无\n"
-        "部分缺失：1 段，现存 90 名\n"
-        "缺失区间：1-100\n"
-        "过期缓存：1 段，100 名\n"
-        "过期区间：101-200\n"
-        "TTL：3600 秒"
     )
+    assert "覆盖：190/500 名（38.0%）" in message
+    assert "新鲜完整：0 名（0.0%）｜部分：90 名（18.0%）" in message
+    assert "过期：100 名（20.0%）｜缺失：310 名（62.0%）" in message
+    assert "部分缺失：1 段，现存 90 名" in message
+    assert "过期缓存：1 段，100 名" in message
+
+
+def test_rank_page_cache_status_maps_entry_states_to_target_positions() -> None:
+    spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
+    pages = [
+        PageSummary(start_index=0, item_count=100, expected_count=100),
+        PageSummary(
+            start_index=100,
+            item_count=40,
+            expected_count=100,
+            is_partial=True,
+        ),
+        PageSummary(
+            start_index=200,
+            item_count=50,
+            expected_count=50,
+            is_stale=True,
+        ),
+    ]
+
+    message = build_rank_page_cache_status_message(
+        spec,
+        pages,
+        ttl_seconds=3600,
+        target_limit=250,
+    )
+
+    assert "覆盖：190/250 名（76.0%）" in message
+    assert "新鲜完整：100 名（40.0%）｜部分：40 名（16.0%）" in message
+    assert "过期：50 名（20.0%）｜缺失：60 名（24.0%）" in message
+    progress = next(line for line in message.splitlines() if line.startswith("进度："))
+    assert progress.removeprefix("进度：") == "█" * 40 + "▒" * 40 + "▓" * 20
+    assert "位置：1" in message
+    assert "125" in message
+    assert message.splitlines()[3].endswith("250")
 
 
 def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
@@ -808,7 +857,7 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
         end_rank=200,
         spec=spec,
     )
-    assert build_rank_page_cache_overview_message(
+    overview = build_rank_page_cache_overview_message(
         [
             (
                 "测试",
@@ -823,12 +872,18 @@ def test_build_rank_page_cache_overview_and_refresh_messages() -> None:
                 ],
                 [target],
                 500,
+                "前 500 名",
             )
         ],
-    ) == (
-        "📦【榜单页缓存】\n"
-        "测试榜：100/500 名，部分 0 页，过期 0 页，下一刷 缺失:101-200"
     )
+    assert overview.splitlines()[:2] == [
+        "📦【榜单页缓存】",
+        "图例：█ 新鲜完整｜▓ 过期｜▒ 部分｜░ 缺失（左侧为第 1 名）",
+    ]
+    overview_line = overview.splitlines()[2]
+    progress = overview_line.split("[", maxsplit=1)[1].split("]", maxsplit=1)[0]
+    assert progress == "█" * 20 + "░" * 80
+    assert overview_line.endswith("100/500 名（20.0%）｜下一刷 缺失:101-200")
     assert build_rank_page_refresh_start_message(
         RankPageCacheRefreshCommand(rank_key="皮肤图鉴")
     ) == "🔄 正在刷新皮肤图鉴榜缓存。"

@@ -26,9 +26,15 @@ ACTIVE_RENDER_MODULES = (
     "ironsbot.services.seer.rendering.pet_info_presentation",
     "ironsbot.services.seer.rendering.pet_info_renderer",
     "ironsbot.services.seer.rendering.peak_pet_rank",
+    "ironsbot.services.seer.rendering.pet_image_assets",
     "ironsbot.services.seer.rendering.peak_pool",
     "ironsbot.services.seer.rendering.peak_pool_vote",
     "ironsbot.services.seer.rendering.type_matchup",
+    "ironsbot.integrations.seer_data.peak_pool_renderer",
+    "ironsbot.integrations.seer_data.pet_image_assets",
+    "ironsbot.integrations.seer_data.peak_pool_vote_renderer",
+    "ironsbot.integrations.seer_data.peak_pet_rank_renderer",
+    "ironsbot.integrations.seer_data.type_matchup_renderer",
 )
 
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.images import fetch_optional_image
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     )
 
 _PET_INFO_CACHE_CATEGORY = "pet_info_v18"
+PET_INFO_RENDERER_SOURCE_PATH = Path(__file__).resolve()
 
 
 class PetInfoNotFoundError(LookupError):
