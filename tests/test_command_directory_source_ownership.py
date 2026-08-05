@@ -34,6 +34,7 @@ from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+from ironsbot.services.team.resource_commands import team_resource_command_descriptors
 
 
 def _by_id(
@@ -103,6 +104,15 @@ def test_pet_config_contract_is_owned_by_its_domain_service() -> None:
         "4923配置",
     )
     assert pet_config_command_descriptors(enabled=False) == ()
+
+
+def test_team_resource_contract_is_owned_by_its_domain_service() -> None:
+    commands = _by_id(team_resource_command_descriptors(enabled=True))
+
+    assert commands["team_resource.query"].examples == ("战队",)
+    assert commands["team_resource.subscribe"].examples == ("订阅战队123456",)
+    assert commands["team_resource.subscribe"].show_in_poke is True
+    assert team_resource_command_descriptors(enabled=False) == ()
 
 
 def test_seer_player_command_catalog_uses_shared_resolver_alias_recognition() -> None:
