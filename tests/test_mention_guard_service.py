@@ -4,9 +4,7 @@ from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 
 def _service() -> BotMentionBlockService:
-    return BotMentionBlockService(
-        CommandCooldownConfig(duplicate_message="重复请求")
-    )
+    return BotMentionBlockService(CommandCooldownConfig(duplicate_message="重复请求"))
 
 
 def _actor(value: int) -> ActorRef:

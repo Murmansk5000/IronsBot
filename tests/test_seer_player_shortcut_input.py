@@ -31,9 +31,7 @@ def _dependencies() -> PlayerCommandDependencies:
         player=cast(
             "Any",
             SimpleNamespace(
-                default_player_id=lambda actor: (
-                    PLAYER_ID if actor.id == "456" else None
-                )
+                default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
             ),
         ),
         features=cast("Any", SimpleNamespace()),

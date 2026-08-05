@@ -228,8 +228,7 @@ def test_scoped_player_alias_stays_on_its_platform() -> None:
     )
 
     assert (
-        accounts.resolve_player_id("示例玩家", conversation=conversation)
-        == PLAYER_ID
+        accounts.resolve_player_id("示例玩家", conversation=conversation) == PLAYER_ID
     )
     assert (
         accounts.resolve_player_id(

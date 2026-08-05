@@ -100,7 +100,7 @@ def test_red_packet_notice_limiter_uses_per_group_cooldown() -> None:
     assert limiter.can_send(first, now=161.0)
 
 
-def test_red_packet_notice_limiter_keeps_same_id_on_different_platforms_separate() -> None:
+def test_red_packet_notice_limiter_keeps_platforms_separate() -> None:
     limiter = RedPacketNoticeLimiter(cooldown_seconds=60.0)
     onebot_group = ConversationRef(Platform.ONEBOT, "group", "1")
     official_group = ConversationRef(Platform.QQ_OFFICIAL, "group", "1")
