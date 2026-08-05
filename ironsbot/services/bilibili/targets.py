@@ -6,7 +6,11 @@ from ironsbot.core.bilibili import (
     BiliPushTargetConfig,
 )
 from ironsbot.core.features import FeatureService
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    private_conversation_for_actor,
+)
 from ironsbot.services.bilibili.accounts import (
     BiliAccountNames,
     configured_account_alias_lookup,
@@ -26,14 +30,6 @@ from ironsbot.services.messaging.subscriptions import (
 
 def _unique_ints(values: list[int]) -> list[int]:
     return list(dict.fromkeys(item for item in values if item > 0))
-
-
-def _onebot_ref_id(value: str) -> int | None:
-    try:
-        parsed = int(value)
-    except ValueError:
-        return None
-    return parsed if parsed > 0 else None
 
 
 ACCOUNT_NAMES_UNAVAILABLE = (
@@ -134,14 +130,14 @@ def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTarg
 def _resolve_group_rules(
     features: FeatureService,
     config: BiliConfig,
-) -> dict[int, BiliTargetRule]:
-    rules: dict[int, BiliTargetRule] = {}
+) -> dict[ConversationRef, BiliTargetRule]:
+    rules: dict[ConversationRef, BiliTargetRule] = {}
     for ref, target_config in config.push.groups.items():
         rule = _resolve_rule(target_config, config)
-        for group_id in features.resolve_group_refs([ref]):
-            rules[group_id] = (
-                _merge_rules(rules[group_id], rule)
-                if group_id in rules
+        for conversation in features.group_conversation_refs([ref]):
+            rules[conversation] = (
+                _merge_rules(rules[conversation], rule)
+                if conversation in rules
                 else rule
             )
     return rules
@@ -150,14 +146,14 @@ def _resolve_group_rules(
 def _resolve_user_rules(
     features: FeatureService,
     config: BiliConfig,
-) -> dict[int, BiliTargetRule]:
-    rules: dict[int, BiliTargetRule] = {}
+) -> dict[ConversationRef, BiliTargetRule]:
+    rules: dict[ConversationRef, BiliTargetRule] = {}
     for ref, target_config in config.push.users.items():
         rule = _resolve_rule(target_config, config)
-        for user_id in features.resolve_user_refs([ref]):
-            rules[user_id] = (
-                _merge_rules(rules[user_id], rule)
-                if user_id in rules
+        for conversation in features.private_conversation_refs([ref]):
+            rules[conversation] = (
+                _merge_rules(rules[conversation], rule)
+                if conversation in rules
                 else rule
             )
     return rules
@@ -171,26 +167,29 @@ class BiliTargetService:
     unsubscribe_store: PushSubscriptionRepository
     account_names: BiliAccountNames = field(default_factory=BiliAccountNames)
 
-    def configured_group_rules(self) -> dict[int, BiliTargetRule]:
+    def configured_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
         return _resolve_group_rules(self.features, self.config)
 
-    def configured_user_rules(self) -> dict[int, BiliTargetRule]:
+    def configured_user_rules(self) -> dict[ConversationRef, BiliTargetRule]:
         return _resolve_user_rules(self.features, self.config)
 
-    def push_group_rules(self) -> dict[int, BiliTargetRule]:
+    def push_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
         default_rule = _default_rule(self.config)
         configured = self.configured_group_rules()
         return {
-            group_id: configured.get(group_id, default_rule)
-            for group_id in self.features.groups_for_feature("bili_push")
+            conversation: configured.get(conversation, default_rule)
+            for conversation in self.features.conversations_for_feature("bili_push")
         }
 
-    def push_user_rules(self) -> dict[int, BiliTargetRule]:
+    def push_user_rules(self) -> dict[ConversationRef, BiliTargetRule]:
         default_rule = _default_rule(self.config)
         configured = self.configured_user_rules()
         return {
-            user_id: configured.get(user_id, default_rule)
-            for user_id in self.features.users_for_feature("bili_push")
+            conversation: configured.get(conversation, default_rule)
+            for conversation in (
+                private_conversation_for_actor(actor)
+                for actor in self.features.actors_for_feature("bili_push")
+            )
         }
 
     def monitored_uids(self) -> list[int]:
@@ -209,10 +208,9 @@ class BiliTargetService:
     ) -> list[int]:
         """Resolve readable Bilibili accounts for one platform conversation.
 
-        The current TOML account-target mapping contains OneBot aliases, so the
-        native-ID conversion is deliberately contained at this configuration
-        boundary. Other platforms fail closed until they have an explicit
-        configuration adapter.
+        Current TOML account-target mappings are resolved to typed OneBot
+        references at the feature-configuration boundary. Other platforms
+        fail closed until they provide their own configuration adapter.
         """
 
         private_superuser_query = (
@@ -224,11 +222,6 @@ class BiliTargetService:
         ):
             return []
 
-        if (
-            conversation.platform is not Platform.ONEBOT
-            or actor.platform is not Platform.ONEBOT
-        ):
-            return []
         if conversation.kind == "group":
             return self._query_group_uids(conversation)
         if conversation.kind == "private":
@@ -236,17 +229,13 @@ class BiliTargetService:
         return []
 
     def _query_group_uids(self, conversation: ConversationRef) -> list[int]:
-        group_id = _onebot_ref_id(conversation.id)
-        if group_id is None:
-            return []
-        rule = self.configured_group_rules().get(group_id)
+        rule = self.configured_group_rules().get(conversation)
         return sorted((rule or _default_rule(self.config)).uids)
 
     def _query_private_uids(self, actor: ActorRef) -> list[int]:
-        user_id = _onebot_ref_id(actor.id)
-        if user_id is None:
-            return []
-        rule = self.configured_user_rules().get(user_id)
+        rule = self.configured_user_rules().get(
+            private_conversation_for_actor(actor)
+        )
         if rule is not None:
             return sorted(rule.uids)
         return self.monitored_uids() if self.features.is_actor_superuser(actor) else []
@@ -254,33 +243,24 @@ class BiliTargetService:
     def can_conversation_query_history(self, conversation: ConversationRef) -> bool:
         """Whether recipients of a push can use the ``动态`` history command."""
 
-        if conversation.platform is not Platform.ONEBOT:
-            return False
-        target_id = _onebot_ref_id(conversation.id)
-        if target_id is None:
-            return False
         if conversation.kind == "group":
-            return self.features.group_has_feature(target_id, "bili_query")
+            return self.features.conversation_has_feature(conversation, "bili_query")
         if conversation.kind == "private":
-            return self.features.is_private_feature_allowed(target_id, "bili_query")
+            return self.features.is_actor_feature_allowed(
+                ActorRef(conversation.platform, conversation.id),
+                "bili_query",
+            )
         return False
 
     def _rules_for_conversation(
         self,
         conversation: ConversationRef,
-    ) -> dict[int, BiliTargetRule] | None:
-        if conversation.platform is not Platform.ONEBOT:
-            return None
+    ) -> dict[ConversationRef, BiliTargetRule] | None:
         if conversation.kind == "group":
             return self.push_group_rules()
         if conversation.kind == "private":
             return self.push_user_rules()
         return None
-
-    def _onebot_target_id(self, conversation: ConversationRef) -> int | None:
-        if self._rules_for_conversation(conversation) is None:
-            return None
-        return _onebot_ref_id(conversation.id)
 
     def mode_for_uid(
         self,
@@ -288,10 +268,9 @@ class BiliTargetService:
         uid: int,
     ) -> BiliPushMode | None:
         rules = self._rules_for_conversation(conversation)
-        target_id = self._onebot_target_id(conversation)
-        if rules is None or target_id is None:
+        if rules is None:
             return None
-        rule = rules.get(target_id)
+        rule = rules.get(conversation)
         if rule is None or uid not in rule.uids:
             return None
         return (
@@ -321,8 +300,7 @@ class BiliTargetService:
         conversation: ConversationRef,
     ) -> BiliTargetRule | None:
         rules = self._rules_for_conversation(conversation)
-        target_id = self._onebot_target_id(conversation)
-        return None if rules is None or target_id is None else rules.get(target_id)
+        return None if rules is None else rules.get(conversation)
 
     def subscription_options(
         self,
@@ -456,12 +434,7 @@ class BiliTargetService:
     def push_targets_for_uid(self, uid: int) -> BiliPushTargets:
         full_group_conversations: list[ConversationRef] = []
         link_group_conversations: list[ConversationRef] = []
-        for group_id in self.push_group_rules():
-            conversation = ConversationRef(
-                Platform.ONEBOT,
-                "group",
-                str(group_id),
-            )
+        for conversation in self.push_group_rules():
             mode = self.mode_for_uid(conversation, uid)
             if mode == "full":
                 full_group_conversations.append(conversation)
@@ -470,12 +443,7 @@ class BiliTargetService:
 
         full_private_conversations: list[ConversationRef] = []
         link_private_conversations: list[ConversationRef] = []
-        for user_id in self.push_user_rules():
-            conversation = ConversationRef(
-                Platform.ONEBOT,
-                "private",
-                str(user_id),
-            )
+        for conversation in self.push_user_rules():
             mode = self.mode_for_uid(conversation, uid)
             if mode == "full":
                 full_private_conversations.append(conversation)

@@ -359,13 +359,13 @@ def test_push_group_rules_use_global_accounts_for_feature_groups() -> None:
         _features({"111": ["bili_push"], "222": ["bili_push"]}),
     ).push_group_rules()
 
-    assert rules[111].uids == frozenset({DEFAULT_BILI_ACCOUNT_UID})
-    assert rules[111].default_mode == "full"
-    assert rules[111].modes == {}
-    assert rules[222].uids == frozenset(
+    assert rules[_group(111)].uids == frozenset({DEFAULT_BILI_ACCOUNT_UID})
+    assert rules[_group(111)].default_mode == "full"
+    assert rules[_group(111)].modes == {}
+    assert rules[_group(222)].uids == frozenset(
         {DEFAULT_BILI_ACCOUNT_UID, FIRE_BILI_UID}
     )
-    assert rules[222].modes == {DEFAULT_BILI_ACCOUNT_UID: "full"}
+    assert rules[_group(222)].modes == {DEFAULT_BILI_ACCOUNT_UID: "full"}
 
 
 def test_global_modes_apply_to_extra_group_accounts() -> None:
@@ -385,7 +385,7 @@ def test_global_modes_apply_to_extra_group_accounts() -> None:
     rule = _target_service(
         config,
         _features({"1": ["bili_push"]}),
-    ).push_group_rules()[1]
+    ).push_group_rules()[_group(1)]
 
     assert rule.mode_for_uid(DEFAULT_BILI_ACCOUNT_UID) == "full"
     assert rule.mode_for_uid(FIRE_BILI_UID) == "full"
@@ -413,7 +413,7 @@ def test_group_modes_override_global_modes() -> None:
     rule = _target_service(
         config,
         _features({"1": ["bili_push"]}),
-    ).push_group_rules()[1]
+    ).push_group_rules()[_group(1)]
 
     assert rule.mode_for_uid(DEFAULT_BILI_ACCOUNT_UID) == "full"
     assert rule.mode_for_uid(FIRE_BILI_UID) == "link"
