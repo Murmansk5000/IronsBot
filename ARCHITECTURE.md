@@ -178,6 +178,12 @@ feature, persistence schema, or policy decision.
 | OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
 | Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
+| Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |
+| Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
+| AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. |
+| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
+| Bilibili rich-media push delivery | target reference with adapter bridge | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `integrations.onebot.bilibili_push.OneBotBilibiliPushSender` owns OneBot rendering, routing, retries, rate limits and subscription hints | Keep future platform-specific media delivery out of `services.bilibili`; any new platform implements the same monitor sender port. |
+| Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
 | Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
 
@@ -194,6 +200,13 @@ single-plugin patch is added. When multiple features need the same kind of
 input, identity, command description, persistence, rate control, notification,
 or rendering, create one small, typed interface at its real ownership boundary
 and make the features use it.
+
+`config.models.settings` is the single narrow exception to the normal
+configuration-layer direction: it may construct
+`services.identity.PlayerAccountRegistry` from validated TOML entries. The
+registry is a framework-free value/lookup service, and this exception must not
+be broadened to another `services.*` module without adding a new inventory row
+and an AST guard.
 
 The following rules are mandatory:
 
@@ -437,6 +450,14 @@ reusable contracts rather than adding feature-local regexes:
   keyword lists for help, poke hints, AI exclusions, and rank protection.
 - Configuration-generated commands, selection menus, and fixed commands must
   use the same contract. Passive notices and scheduled jobs are not commands.
+  `messaging.sendpic.configs` is the sole command declaration shape for both
+  packaged single images and configured indexed galleries. A single-image
+  command uses `mode = "single"` and `image_file`; an indexed gallery uses
+  `mode = "indexed"`, `image_dir`, and `image_filename_template`.
+  Packaged image commands are typed default configs and may be overridden or
+  disabled by `id`; there is no parallel fixed-image command map.
+  Command-conflict guards consume the active image command set from the
+  service, never a second static list.
 
 The retired central registry is a migration-history concern, not a runtime
 bridge. All built-in contributions now come from their own manifest-loaded
@@ -834,13 +855,16 @@ a name, an owner, cancellation on shutdown, and observable failure logging.
 
 ## Temporary Private Extension Bootstrap
 
-`PluginContribution` is the runtime contribution contract. Every built-in
-plugin is a top-level manifest-loaded package and contributes itself during the
-scoped loading window. `ironsbot.plugins.onebot.bootstrap` is now limited to
-adapting configured private extensions; it is not a built-in plugin registry,
-command directory, or second discovery mechanism. Do not add built-in feature
-ownership, command metadata, help metadata, lifecycle concepts, or plugin
-families to this adapter.
+`PluginContribution` is the current plugin-local runtime contribution carrier.
+Every built-in plugin is a top-level manifest-loaded package and submits its
+own contribution during the scoped loading window. `PluginContribution` is not
+the semantic authority for commands, permissions, help layout, or lifecycle
+policy; it carries the local installation callback, declared command
+descriptors and hooks to their respective owners. `ironsbot.plugins.onebot.bootstrap`
+is now limited to adapting configured private extensions; it is not a built-in
+plugin registry, command directory, or second discovery mechanism. Do not add
+built-in feature ownership, command metadata, help metadata, lifecycle
+concepts, or plugin families to this adapter.
 
 The runtime contribution contract is:
 
@@ -922,11 +946,13 @@ The Phase 2 replacement uses `[tool.nonebot.plugins]` and
 plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
 `PluginInstallContext` only while contributions are registered. It is not a
 service locator and must not be read by services or renderers. A
-`PluginContribution` explicitly owns matchers, command contracts, lifecycle
-callbacks, and scheduled jobs. `CommandCatalog` consumes the contributed
-contracts and is the only command-description authority. The replacement
-becomes the only authority; the bridge and its reflective discovery are then
-deleted instead of being kept as a compatibility path.
+`PluginContribution` carries a plugin-local matcher installer, command
+descriptors, lifecycle hooks and scheduled-job contributions during the
+current installation bridge. `CommandCatalog` consumes the command descriptors
+and remains the only command-description authority; `ApplicationLifecycle`
+owns lifecycle policy and task lifetime. The replacement becomes the only
+authority; the bridge and its reflective discovery are then deleted instead of
+being kept as a compatibility path.
 
 ## Service Boundaries
 
@@ -1002,6 +1028,12 @@ the loader only reads and validates.
 
 Non-secret behavior and deployment values live in TOML. Environment variables
 are limited to the configuration location and secrets:
+
+An enabled action that delivers to a deployment-specific account, group, link,
+or invitation must declare its complete delivery content in TOML. It may have
+a reusable classifier and feature key in code, but it has no built-in
+recipient, URL, group number, or message fallback. Examples use non-production
+values only.
 
 ```text
 APP_CONFIG_PATH
