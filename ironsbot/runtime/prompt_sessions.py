@@ -89,6 +89,9 @@ class _QueuedConversation:
     request_service: InFlightRequestService | None = None
     active: bool = True
     parallel: bool = False
+    pending_reply_check: Callable[[Event], bool] | None = None
+    pending: bool = False
+    _activation: Future[bool] | None = field(default=None, init=False, repr=False)
     _next_ticket: int = 0
     _active_ticket: int | None = None
     _active_request_token: object | None = None
@@ -109,6 +112,11 @@ class _QueuedConversation:
     def matches(self, event: Event) -> bool:
         if not self.active:
             return False
+        if self.pending:
+            return (
+                self.pending_reply_check is not None
+                and self.pending_reply_check(event)
+            )
         if self.reply_check(event):
             return True
         if (
@@ -154,6 +162,34 @@ class _QueuedConversation:
         resolver: QueuedSemanticRequestResolver | None,
     ) -> None:
         self.semantic_request_resolver = resolver
+
+    def activate(  # noqa: PLR0913
+        self,
+        *,
+        state: T_State,
+        reply_check: Callable[[Event], bool],
+        group_reply_check: Callable[[Event], bool] | None,
+        menu_anchor: GroupMenuAnchor | None,
+        allow_group_reply_exit: bool,
+        semantic_request_resolver: QueuedSemanticRequestResolver | None,
+    ) -> None:
+        """Make a pre-menu conversation ready after its prompt is sent."""
+
+        self.state = self._saved_state(state)
+        self.update_reply_check(reply_check, group_reply_check)
+        self.update_menu_anchor(menu_anchor)
+        self.update_allow_group_reply_exit(allowed=allow_group_reply_exit)
+        self.update_semantic_request_resolver(semantic_request_resolver)
+        self.pending = False
+        if self._activation is not None and not self._activation.done():
+            self._activation.set_result(self.active)
+
+    async def wait_until_active(self) -> bool:
+        if not self.pending:
+            return self.active
+        if self._activation is None:
+            self._activation = get_running_loop().create_future()
+        return await self._activation
 
     def reserve(
         self,
@@ -262,6 +298,8 @@ class _QueuedConversation:
 
     def close(self) -> None:
         self.active = False
+        if self._activation is not None and not self._activation.done():
+            self._activation.set_result(False)
         if self.parallel:
             pending_tickets = {
                 ticket for ticket, _future in self._parallel_waiters
@@ -286,6 +324,15 @@ class _QueuedConversation:
     def _release_request_token(self, token: object | None) -> None:
         if token is not None and self.request_service is not None:
             self.request_service.release(token)
+
+    @staticmethod
+    def _saved_state(state: T_State) -> T_State:
+        saved_state = dict(state)
+        saved_state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
+        saved_state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
+        saved_state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
+        saved_state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
+        return saved_state
 
     def _advance_parallel_dispatch(self) -> None:
         while self.active and self._parallel_waiters:
@@ -342,20 +389,19 @@ class PromptSessionManager:
         menu_anchor: GroupMenuAnchor | None = None,
         allow_group_reply_exit: bool = False,
         parallel: bool = False,
+        pending_reply_check: Callable[[Event], bool] | None = None,
+        pending: bool = False,
     ) -> _QueuedConversation:
         key = f"{namespace}:{event_session_id}"
         if existing := self._queued_by_key.get(key):
             self._cancel_queued_conversation(existing)
-        saved_state = dict(state)
-        saved_state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
-        saved_state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
         context = _QueuedConversation(
             token=token_urlsafe(18),
             key=key,
             namespace=namespace,
             event_session_id=event_session_id,
             owner_user_id=owner_user_id,
-            state=saved_state,
+            state=_QueuedConversation._saved_state(state),
             reply_check=reply_check,
             group_reply_check=group_reply_check,
             handlers=handlers,
@@ -363,6 +409,8 @@ class PromptSessionManager:
             menu_anchor=menu_anchor,
             allow_group_reply_exit=allow_group_reply_exit,
             parallel=parallel,
+            pending_reply_check=pending_reply_check,
+            pending=pending,
             semantic_request_resolver=semantic_request_resolver,
             request_service=request_service,
         )
@@ -383,6 +431,8 @@ class PromptSessionManager:
         state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
         keep_open = bool(state.pop(QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY, False))
         if context is None or not isinstance(ticket, int):
+            if context is not None and context.pending:
+                self._cancel_queued_conversation(context)
             if isinstance(token, str) and isinstance(ticket, int):
                 self._finish_cancelled_ticket(token)
             return
@@ -395,13 +445,16 @@ class PromptSessionManager:
                 return
             self._close_queued_conversation(context)
             return
-        context.state = dict(state)
-        context.state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
-        context.state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
+        context.state = _QueuedConversation._saved_state(state)
 
     def cancel_queued_conversation(self, state: T_State) -> None:
         if context := self.queued_conversation(state):
             self._cancel_queued_conversation(context)
+
+    def cancel_queued_context(self, context: _QueuedConversation) -> None:
+        """Cancel a context retained before it is attached to matcher state."""
+
+        self._cancel_queued_conversation(context)
 
     def detach_queued_conversation(self, state: T_State) -> _QueuedConversation | None:
         """Release this matcher state without closing the retained conversation."""

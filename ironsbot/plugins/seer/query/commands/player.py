@@ -43,7 +43,10 @@ from .player_context import (
     PLAYER_ID_KEY,
     PLAYER_QUERY_IS_EXPLICIT_KEY,
 )
-from .player_detail_conversation import send_player_info_with_detail_prompt
+from .player_detail_conversation import (
+    begin_player_detail_conversation,
+    send_player_info_with_detail_prompt,
+)
 from .player_target import resolve_event_player_reference, resolve_player_target
 
 if TYPE_CHECKING:
@@ -146,6 +149,13 @@ async def handle_player(
     state: T_State,
 ) -> None:
     explicit = bool(state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True))
+    await begin_player_detail_conversation(
+        dependencies.player,
+        dependencies.detail_extensions,
+        dependencies.features,
+        matcher,
+        event,
+    )
     result = await dependencies.player.query(
         int(state[PLAYER_ID_KEY]),
         qq_user_id=event.user_id,
