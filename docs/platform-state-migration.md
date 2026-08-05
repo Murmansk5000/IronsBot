@@ -1,6 +1,10 @@
-# Platform State Identity Migration Target
+# Platform State Migration
 
-This document specifies the later one-time platform-identity migration. At this snapshot the platform migration module and its CLI entry are absent; current state repositories still use OneBot integer identities. The target column and conversion rules below are not the currently installed schema.
+This document is the implementation contract for the one-time migration from
+OneBot-only integer identifiers to platform-neutral state identities. It is
+written before the executable migration so each source column, target column,
+and ownership boundary is reviewable. The migration command remains dry-run by
+default and must never be invoked by normal application startup.
 
 ## Identity Columns
 
@@ -69,15 +73,56 @@ keys, and missing required timestamps are migration errors. The tool must list
 the offending source table and primary key; it must not silently discard,
 coerce, or merge them.
 
-## Available Offline Tool at This Snapshot
+## Executable Command
 
-The existing ironsbot.state_migration module only consolidates the legacy state files.
-Its supported options are --data-root, --qq-state, --runtime-state, --backup-root
-and --apply. It does not accept --platform-identities or --ai-memory, and does
-not create the platform-qualified identities specified above.
+The tool is exposed through the existing offline migration module. It remains
+dry-run by default. There are two source layouts, and each has one supported
+command. Use the path visible **inside** the process that runs the command:
 
-There is no platform-identity dry-run/apply procedure to execute for this snapshot.
-The executable commands and identity-migration runbook belong at the later node
-that introduces both the migration module and the application readers. Do not
-run a later command against this snapshot or treat legacy consolidation as an
-identity migration. Current startup never performs either migration implicitly.
+1. **Separate legacy state files** such as
+   `seer/player_bindings.sqlite` and `messaging/push_unsubscriptions.sqlite`:
+
+   ```text
+   uv run python -m ironsbot.state_migration --data-root <data-root>
+   ```
+
+   This command creates the target `state/qq_state.sqlite` and
+   `state/runtime_state.sqlite` directly with platform-neutral columns.
+
+2. **Already consolidated but pre-neutral shared state**:
+
+```text
+# Docker container invocation: --data-root /app/data
+# Local source checkout:      --data-root data
+uv run python -m ironsbot.state_migration \
+  --data-root <data-root> \
+  --platform-identities
+```
+
+After a successful dry run, repeat the exact command with `--apply`. The
+optional `--qq-state`, `--runtime-state`, `--ai-memory`, and `--backup-root`
+arguments override their respective paths for test or recovery environments.
+Run only the command that matches the current layout. Neither command is a
+runtime fallback and neither should be scheduled from the bot process.
+
+Do not run this against a production data directory until the application
+release that reads the platform-neutral schema is deployed. The normal runtime
+never invokes this command, adds old columns, or attempts a best-effort import
+when an old schema is found.
+
+## Required Migration Procedure
+
+1. Stop the container and copy the entire data directory at the filesystem
+   level. The migration tool makes an additional timestamped backup itself.
+2. Run the migration command without `--apply`. It validates every source row,
+   shows source/target counts, and writes nothing.
+3. Run it with `--apply`. It creates temporary target database files, copies
+   all rows inside transactions, verifies row counts, key uniqueness, foreign
+   keys, and `PRAGMA integrity_check`, then atomically replaces the targets.
+4. Keep the timestamped backup for seven days. Restart only after the new
+   application version confirms the target schema.
+5. Re-running the tool after success must report that the database is already
+   migrated and must not duplicate rows or change timestamps.
+
+Do not migrate production data manually with SQL snippets. The executable
+command is the only supported conversion path.

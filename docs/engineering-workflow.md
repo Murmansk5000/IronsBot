@@ -129,7 +129,10 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
 | 某个用户或会话是否有功能权限 | feature-policy service |
 | 进程生命周期、后台任务与关闭顺序 | `ApplicationLifecycle` |
 
-当前历史快照仍由 app.registry 的 bootstrap bridge 装配 PluginDefinition；不能把它描述成已经退役。标准清单与 PluginContribution 是完整迁移后的目标边界，必须连同全部内建和私有调用方一起迁移。保留命令目录、功能权限和生命周期的独立权威，不向旧 registry 增加新职责，也不通过 import 副作用注册。
+`PluginDefinition` 已退出当前架构。除迁移记录或 Git 历史说明外，不得在新代码、
+测试、计划、图示或文档中重新引入它，也不得以“临时方便”为由恢复中央插件注册
+表。`PluginContribution` 只是一项插件局部的运行时提交记录，不能承担命令目录、
+权限策略、帮助布局或跨插件生命周期等第二份权威。
 
 当前代码中的 `CommandDescriptor` 是目标 `CommandContract` 的过渡载体，并非另一
 套命令权威。`CommandCatalog` 已是唯一目录；新增命令能力必须扩展同一描述和同一

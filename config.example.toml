@@ -1193,8 +1193,25 @@ resource_message = "出来买资源，别逼我求你😡"
 # ZH: 订阅战队不再使用 [[seer.team_resource.subscriptions]] TOML 表。
 
 [seer.render]
-# Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
-cache_max_size_mb = 200
+# Default: 500; EN: Final rendered-image cache max size in MB.
+# ZH: 最终渲染图片三级缓存上限 MB；位于 cache/rendering/final。
+final_cache_max_size_mb = 500
+# Default: 45; EN: Native HTML image rendering timeout in seconds. Rendering is
+# always serialized to one native task.
+# ZH: 原生 HTML 图片渲染超时秒数；原生渲染固定单并发。
+native_timeout_seconds = 45
+# Default: 128; EN: In-memory Seer image asset LRU size in MB.
+# ZH: 赛尔图片素材一级内存 LRU 缓存上限 MB。
+asset_memory_max_size_mb = 128
+# Default: 1000; EN: Verified on-disk Seer image asset cache size in MB.
+# ZH: 赛尔图片素材二级磁盘缓存上限 MB；位于 cache/rendering/assets。
+asset_cache_max_size_mb = 1000
+# Default: 4; EN: Maximum concurrent upstream image fetches.
+# ZH: 同时请求上游图片的最大并发数。
+asset_fetch_max_concurrent = 4
+# Default: 300; EN: Cache only upstream 404/410 image misses for this many seconds.
+# ZH: 只缓存上游 404/410 的图片缺失；缓存秒数。
+asset_negative_ttl_seconds = 300
 
 [pet_config]
 # Default: true; EN: Enable local pet configuration image replies. ZH: 启用本地精灵配置图查询。
@@ -1244,6 +1261,7 @@ ref = "main"
 timeout_seconds = 3600
 poll_interval_seconds = 10
 inputs = { force-update-assets = false, force-update-config = false, dispatch-api-data = false }
+force_inputs = { force-update-assets = true, force-update-config = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "refresh_unity_config"
@@ -1263,6 +1281,7 @@ ref = "main"
 timeout_seconds = 600
 poll_interval_seconds = 10
 inputs = { force = false }
+force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_api_data"
@@ -1272,6 +1291,7 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { debug_enabled = false, force = false }
+force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"
@@ -1281,6 +1301,7 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { force = false }
+force_inputs = { force = true }
 
 [operations.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
