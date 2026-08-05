@@ -38,8 +38,6 @@ from ironsbot.runtime.rules import bot_mention
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
@@ -51,7 +49,6 @@ AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 class AiChatMatcherDependencies:
     features: FeatureService
     commands: CommandCatalog
-    group_aliases: Mapping[str, int]
     bot_mention_block_service: BotMentionBlockService
 
 
@@ -187,7 +184,6 @@ def install(
             source_context=await build_notice_source(
                 event,
                 prompt,
-                dependencies.group_aliases,
                 bot=bot,
             ),
         )
@@ -285,7 +281,6 @@ def plugin_contribution(
                 dependencies=AiChatMatcherDependencies(
                     features=features,
                     commands=commands,
-                    group_aliases=settings.features.group_aliases,
                     bot_mention_block_service=BotMentionBlockService(
                         settings.messaging.command_cooldown
                     ),

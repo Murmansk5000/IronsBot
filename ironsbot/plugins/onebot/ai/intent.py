@@ -5,6 +5,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
+    Bot,  # noqa: TC002 - NoneBot resolves it at runtime
     MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
@@ -29,8 +30,6 @@ from ironsbot.runtime.rules import natural_language
 from .team_actions import run_team_action
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
     from ironsbot.core.messaging import AiIntentAction
@@ -56,7 +55,6 @@ class AiIntentDependencies:
     """OneBot dependencies needed by the configured AI action adapter."""
 
     service: AiService
-    group_aliases: Mapping[str, int]
     promotions: PromotionCatalog
     team_resource: TeamResourceService
 
@@ -118,13 +116,17 @@ def install(
     if not command_help_ids:
         return
 
-    async def match_action(event: MessageEvent, state: T_State) -> bool:
+    async def match_action(
+        bot: Bot,
+        event: MessageEvent,
+        state: T_State,
+    ) -> bool:
         text = event.get_plaintext().strip()
         message = message_input_context(event).message
         source_context = await build_notice_source(
             event,
             text,
-            dependencies.group_aliases,
+            bot=bot,
         )
         action = await dependencies.service.classify_intent(
             text,
@@ -224,7 +226,6 @@ def plugin_contribution(
             install,
             dependencies=AiIntentDependencies(
                 service=service,
-                group_aliases=settings.features.group_aliases,
                 promotions=promotions,
                 team_resource=team_resource,
             ),
