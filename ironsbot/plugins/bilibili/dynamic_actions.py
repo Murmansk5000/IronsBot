@@ -9,7 +9,10 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.runtime.conversations import enter_event_reply_conversation
+from ironsbot.runtime.conversations import (
+    begin_event_reply_conversation,
+    enter_event_reply_conversation,
+)
 from ironsbot.runtime.matchers import bind_async
 from ironsbot.runtime.replies import (
     finish_event_reply,
@@ -47,6 +50,14 @@ async def handle_dynamic_menu_action(
     monitor: BilibiliMonitorService,
 ) -> None:
     try:
+        await begin_event_reply_conversation(
+            matcher,
+            event,
+            namespace=DYNAMIC_CONVERSATION_NAMESPACE,
+            handlers=[bind_async(handle_dynamic_select_action, service=service)],
+            pending_reply_check=is_dynamic_select_reply,
+            reply_check=is_dynamic_select_reply,
+        )
         target_type, target_id, _ = message_event_target(event)
         result = await service.query_dynamic_menu(
             target_type,

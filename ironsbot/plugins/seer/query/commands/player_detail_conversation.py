@@ -12,6 +12,7 @@ from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.features import FeatureService  # noqa: TC001
 from ironsbot.runtime.conversations import (
+    begin_event_reply_conversation,
     command_reply_check,
     enter_event_reply_conversation,
 )
@@ -73,6 +74,44 @@ _SHORTCUT_KINDS = {
     PLAYER_AUTOCARD_KEY: "autocard",
 }
 _SELECTION_PAIR_LENGTH = 2
+
+
+def _is_pending_player_detail_reply(event: MessageEvent) -> bool:
+    """Recognize only the stable numeric shape before menu capabilities are known."""
+
+    return event.get_plaintext().strip().isdigit()
+
+
+async def begin_player_detail_conversation(
+    service: PlayerService,
+    extensions: PlayerDetailExtensionRegistry,
+    features: FeatureService,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    """Accept fast numeric detail choices while the base profile is loading."""
+
+    await begin_event_reply_conversation(
+        matcher,
+        event,
+        namespace=PLAYER_DETAIL_NAMESPACE,
+        handlers=[
+            bind_async(
+                handle_player_detail_reply,
+                service,
+                extensions,
+                features,
+            )
+        ],
+        pending_reply_check=_is_pending_player_detail_reply,
+        reply_check=_is_pending_player_detail_reply,
+        parallel=True,
+        queue_semantic_request_resolver=partial(
+            _player_detail_semantic_request,
+            extensions,
+            features,
+        ),
+    )
 
 
 async def handle_player_detail_reply(  # noqa: PLR0913
