@@ -54,6 +54,14 @@ def test_resolves_alias_in_the_current_conversation() -> None:
     assert result.error is None
 
 
+def test_recognizes_known_aliases_without_evaluating_message_targets() -> None:
+    resolver = _resolver()
+    conversation = ConversationRef(Platform.ONEBOT, "group", "200")
+
+    assert resolver.has_known_reference("alias", conversation)
+    assert not resolver.has_known_reference("unknown", conversation)
+
+
 def test_uses_current_actor_binding_when_no_reference_is_given() -> None:
     result = _resolver().resolve(_context(), None)
 

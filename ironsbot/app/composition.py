@@ -622,7 +622,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             player_quotas=player_query_quotas,
             player_requests=player_requests,
             player_details=player_detail_extensions,
-            player_reference_lookup=resolve_configured_player_reference,
+            player_id_resolver=player_id_resolver,
             settings=settings.operations.private_extensions.settings.get(
                 "player_lineup", {}
             ),
