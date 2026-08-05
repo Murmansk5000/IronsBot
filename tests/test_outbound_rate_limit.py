@@ -61,11 +61,11 @@ def _service(
         feature_config=FeatureConfig(
             group_policy={str(ADMIN_GROUP_ID): ["admin_notice"]},
         ),
-    ).delivery.outbound
+    ).outbound
 
 
 def test_outbound_rate_limit_is_disabled_by_default() -> None:
-    service = build_test_runtime().delivery.outbound
+    service = build_test_runtime().outbound
 
     assert service.acquire_reply(GROUP_ID, now=0).allowed
     assert service.acquire_reply(GROUP_ID, now=1).allowed
@@ -161,7 +161,7 @@ def test_push_waits_for_capacity_without_blocking_other_groups() -> None:
 
 
 def test_priority_queue_is_unbounded_and_prefers_superuser_replies() -> None:
-    service = _service(windows=_windows((0.01, 1)))
+    service = _service(windows=_windows((0.1, 1)))
 
     async def run() -> None:
         assert (await service.acquire_push(GROUP_ID, source="first")).allowed

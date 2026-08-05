@@ -20,7 +20,6 @@ from ironsbot.config.models.messaging import (
 from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.promotions import PromotionCatalog
-from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -44,7 +43,6 @@ class TestRuntime:
     onebot_references: OneBotReferenceResolver
     outbound: GroupOutboundRateLimitService
     proactive_delivery: ProactiveMessageDelivery
-    delivery: OneBotDelivery
     admin_notices: AdminNoticeService
     cooldown: CommandCooldownService
     in_flight_requests: InFlightRequestService
@@ -97,12 +95,6 @@ def build_test_runtime(  # noqa: PLR0913
         onebot_references,
     )
     subscriptions = PushUnsubscribeStore(isolated_state_path)
-    delivery = OneBotDelivery(
-        outbound,
-        push_config,
-        router,
-        subscriptions,
-    )
     proactive_delivery = ProactiveMessageDelivery(
         OneBotOutboundMessenger(router, outbound),
         features,
@@ -115,7 +107,6 @@ def build_test_runtime(  # noqa: PLR0913
         onebot_references=onebot_references,
         outbound=outbound,
         proactive_delivery=proactive_delivery,
-        delivery=delivery,
         admin_notices=AdminNoticeService(
             features,
             OutboundAdminNoticeSender(proactive_delivery),
