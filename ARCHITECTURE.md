@@ -176,7 +176,7 @@ feature, persistence schema, or policy decision.
 | Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
 | OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
 | OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
-| Push-preference repository integer API | transition | SQLite rows already use `ConversationRef` identity columns, but `PushSubscriptionRepository` and Bilibili preference methods still expose OneBot `target_type` / `target_id` parameters | Replace their public methods and service callers with `ConversationRef`; keep numeric conversion only inside OneBot adapters. |
+| Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
 | OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
 | Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
@@ -351,12 +351,12 @@ service must use this shape or a narrower domain port; it must not import
 activity reminders: the service creates typed recipients and an
 `OutboundMessage`, while `integrations.onebot.activity` preserves the current
 OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
-The current push-preference SQLite schema already stores platform, conversation
-kind, and opaque conversation ID columns. Its public repository API is still a
-transition: it accepts OneBot `target_type` / `target_id` pairs and performs the
-conversion internally. Phase 1 replaces that API with `ConversationRef` so
-services stop exposing numeric QQ targets; OneBot adapters retain the only
-numeric conversion at their edge.
+Push-preference SQLite rows store platform, conversation kind and opaque
+conversation ID columns. Their public repository and service APIs accept
+`ConversationRef`; configuration composition and OneBot delivery adapters are
+the only layers allowed to convert native QQ numbers. This keeps Bilibili and
+scheduled-push preference logic reusable without making a second platform
+pretend that its identifiers are QQ integers.
 
 Lucky-skin-window notification delivery now follows this rule: its service
 owns `ActorRef`-scoped account, binding, cache and watch-preference policy;
