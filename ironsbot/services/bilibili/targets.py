@@ -7,6 +7,7 @@ from ironsbot.core.bilibili import (
 )
 from ironsbot.core.features import FeatureService
 from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.bilibili.accounts import (
     BiliAccountNames,
     configured_account_alias_lookup,
@@ -29,11 +30,17 @@ def _unique_ints(values: list[int]) -> list[int]:
     return list(dict.fromkeys(item for item in values if item > 0))
 
 
+def _onebot_ref_id(value: str) -> int | None:
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
 ACCOUNT_NAMES_UNAVAILABLE = (
     "❌ 暂时无法获取当前会话订阅账号的 B站公开昵称，请稍后重试。"
 )
-
-
 @dataclass(frozen=True, slots=True)
 class BiliTargetRule:
     aliases: frozenset[str]
@@ -52,6 +59,7 @@ class BiliTargetRule:
             return None
         configured_mode = self.modes.get(uid)
         return configured_mode if configured_mode is not None else self.target_mode
+
 
 @dataclass(frozen=True, slots=True)
 class BiliPushTargets:
@@ -196,23 +204,54 @@ class BiliTargetService:
             uids.update(rule.uids)
         return _unique_ints(sorted(uids))
 
-    def query_uids_for_group(self, user_id: int, group_id: int) -> list[int]:
-        if not self.features.is_group_feature_allowed(
-            user_id,
-            group_id,
-            "bili_query",
+    def query_uids(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+    ) -> list[int]:
+        """Resolve readable Bilibili accounts for one platform conversation.
+
+        The current TOML account-target mapping contains OneBot aliases, so the
+        native-ID conversion is deliberately contained at this configuration
+        boundary. Other platforms fail closed until they have an explicit
+        configuration adapter.
+        """
+
+        private_superuser_query = (
+            conversation.kind == "private" and self.features.is_actor_superuser(actor)
+        )
+        if not (
+            self.features.is_feature_allowed(actor, conversation, "bili_query")
+            or private_superuser_query
         ):
+            return []
+
+        if (
+            conversation.platform is not Platform.ONEBOT
+            or actor.platform is not Platform.ONEBOT
+        ):
+            return []
+        if conversation.kind == "group":
+            return self._query_group_uids(conversation)
+        if conversation.kind == "private":
+            return self._query_private_uids(actor)
+        return []
+
+    def _query_group_uids(self, conversation: ConversationRef) -> list[int]:
+        group_id = _onebot_ref_id(conversation.id)
+        if group_id is None:
             return []
         rule = self.configured_group_rules().get(group_id)
         return sorted((rule or _default_rule(self.config)).uids)
 
-    def query_uids_for_private(self, user_id: int) -> list[int]:
+    def _query_private_uids(self, actor: ActorRef) -> list[int]:
+        user_id = _onebot_ref_id(actor.id)
+        if user_id is None:
+            return []
         rule = self.configured_user_rules().get(user_id)
         if rule is not None:
-            if self.features.is_private_feature_allowed(user_id, "bili_query"):
-                return sorted(rule.uids)
-            return []
-        return self.monitored_uids() if self.features.is_superuser(user_id) else []
+            return sorted(rule.uids)
+        return self.monitored_uids() if self.features.is_actor_superuser(actor) else []
 
     def can_target_query_history(self, target: MessageTarget) -> bool:
         """Whether recipients of a push can use the ``动态`` history command."""

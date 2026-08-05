@@ -15,6 +15,7 @@ from ironsbot.core.bilibili import (
 )
 from ironsbot.core.features import FeatureConfig, FeatureService
 from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
@@ -45,6 +46,18 @@ FIRE_BILI_UID = 375750254
 FIRE_BILI_ALIAS = "xiaoshandong"
 DEFAULT_BILI_ACCOUNT_NAME = "赛尔号官号"
 FIRE_BILI_ACCOUNT_NAME = "小山东"
+
+
+def _actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(user_id))
+
+
+def _group(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _private(user_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "private", str(user_id))
 
 
 def _features(
@@ -247,16 +260,16 @@ def test_bili_account_matcher_keeps_push_subscriptions_group_manager_only() -> N
 def test_group_query_falls_back_to_global_uids_when_feature_enabled() -> None:
     features = _features({"987654321": ["bili_query"]})
 
-    assert _target_service(BiliConfig(), features).query_uids_for_group(
-        user_id=1,
-        group_id=987654321,
+    assert _target_service(BiliConfig(), features).query_uids(
+        _actor(1),
+        _group(987654321),
     ) == [1310714247]
 
 
 def test_group_query_still_requires_bili_feature() -> None:
-    assert _target_service(BiliConfig(), _features()).query_uids_for_group(
-        user_id=1,
-        group_id=987654321,
+    assert _target_service(BiliConfig(), _features()).query_uids(
+        _actor(1),
+        _group(987654321),
     ) == []
 
 
@@ -286,9 +299,9 @@ def test_group_query_uses_group_subscription_rule() -> None:
         config,
         _features({"987654321": ["bili_query"]}),
     )
-    assert service.query_uids_for_group(
-        user_id=1,
-        group_id=987654321,
+    assert service.query_uids(
+        _actor(1),
+        _group(987654321),
     ) == [
         375750254,
         1310714247,
@@ -308,8 +321,9 @@ def test_private_superuser_can_query_global_monitored_uids() -> None:
         ),
         _features(superusers=(1234567890,)),
     )
-    assert service.query_uids_for_private(
-        user_id=1234567890,
+    assert service.query_uids(
+        _actor(1234567890),
+        _private(1234567890),
     ) == [
         375750254,
         1310714247,
