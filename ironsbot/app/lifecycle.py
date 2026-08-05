@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from inspect import isawaitable
 from typing import TYPE_CHECKING, Any, TypeVar
 
+from nonebot.adapters import Bot  # noqa: TC002 - driver evaluates hook annotations.
 from nonebot.log import logger
 
 if TYPE_CHECKING:
@@ -122,8 +123,8 @@ class ApplicationLifecycle:
 
         self.driver.on_startup(self.startup)
         self.driver.on_shutdown(self.shutdown)
-        self.driver.on_bot_connect(self.bot_connect)
-        self.driver.on_bot_disconnect(self.bot_disconnect)
+        self.driver.on_bot_connect(self._on_bot_connect)
+        self.driver.on_bot_disconnect(self._on_bot_disconnect)
         self._installed = True
 
     async def startup(self) -> None:
@@ -139,6 +140,16 @@ class ApplicationLifecycle:
             "resource_shutdown",
             tuple(reversed(self.resource_shutdown_hooks)),
         )
+
+    async def _on_bot_connect(self, bot: Bot) -> None:
+        """Adapt NoneBot's typed driver hook to platform-agnostic lifecycle hooks."""
+
+        await self.bot_connect(bot)
+
+    async def _on_bot_disconnect(self, bot: Bot) -> None:
+        """Adapt NoneBot's typed driver hook to platform-agnostic lifecycle hooks."""
+
+        await self.bot_disconnect(bot)
 
     async def bot_connect(self, bot: object) -> None:
         self.connected_bot_ids.add(_bot_id(bot))

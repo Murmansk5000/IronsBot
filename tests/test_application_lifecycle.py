@@ -3,6 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
+from nonebot.adapters import Bot
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.internal.driver import Driver
 
@@ -63,6 +64,10 @@ def test_lifecycle_installs_exactly_four_driver_hooks_once() -> None:
     disconnect_signature = get_typed_signature(lifecycle.bot_disconnect)
     assert connect_signature.parameters["bot"].annotation is object
     assert disconnect_signature.parameters["bot"].annotation is object
+    driver_connect_signature = get_typed_signature(driver.bot_connect_handlers[0])
+    driver_disconnect_signature = get_typed_signature(driver.bot_disconnect_handlers[0])
+    assert driver_connect_signature.parameters["bot"].annotation is Bot
+    assert driver_disconnect_signature.parameters["bot"].annotation is Bot
 
 
 def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:
