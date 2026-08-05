@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -25,8 +26,17 @@ from ironsbot.services.messaging.scheduled_delivery import ScheduledMessageDeliv
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
 )
+from ironsbot.services.seer.lucky_skin_window import (
+    LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+)
+from ironsbot.services.seer.lucky_skin_window_delivery import (
+    LuckySkinWindowOutboundSender,
+)
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
+
+if TYPE_CHECKING:
+    from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
 
 GROUP = ConversationRef(Platform.ONEBOT, "group", "3003")
 PRIVATE = ConversationRef(Platform.ONEBOT, "private", "1001")
@@ -54,6 +64,8 @@ class FakeFeatures:
 @dataclass
 class FakeSubscriptions:
     allowed: set[ConversationRef] | None = None
+    unsubscribed: set[tuple[ConversationRef, str]] = field(default_factory=set)
+    daily_hints_allowed: bool = True
     hint_calls: list[tuple[ConversationRef, str]] = field(default_factory=list)
 
     def filter_subscribed_conversations(
@@ -78,7 +90,14 @@ class FakeSubscriptions:
     ) -> bool:
         del today
         self.hint_calls.append((conversation, hint_key))
-        return True
+        return self.daily_hints_allowed
+
+    def is_unsubscribed(
+        self,
+        conversation: ConversationRef,
+        subscription_key: str,
+    ) -> bool:
+        return (conversation, subscription_key) in self.unsubscribed
 
 
 @dataclass
@@ -251,6 +270,58 @@ async def test_activity_sender_skips_empty_reminders() -> None:
 
     assert not sent
     assert messenger.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ("unsubscribed", "duplicate"))
+async def test_lucky_skin_sender_skips_unsubscribed_or_duplicate_notice(
+    scenario: str,
+) -> None:
+    subscriptions = FakeSubscriptions(
+        unsubscribed=(
+            {(PRIVATE, LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY)}
+            if scenario == "unsubscribed"
+            else set()
+        ),
+        daily_hints_allowed=scenario != "duplicate",
+    )
+    delivery, messenger, _subscriptions = _delivery(subscriptions=subscriptions)
+
+    sender = LuckySkinWindowOutboundSender(
+        delivery,
+        cast("PushSubscriptionRepository", subscriptions),
+    )
+    sent = await sender.send_daily_notice(
+        ActorRef(Platform.ONEBOT, PRIVATE.id),
+        "今日幸运橱窗。",
+        day="2026-08-05",
+    )
+
+    assert not sent
+    assert messenger.calls == []
+
+
+@pytest.mark.asyncio
+async def test_lucky_skin_sender_uses_typed_private_delivery() -> None:
+    delivery, messenger, subscriptions = _delivery()
+
+    sender = LuckySkinWindowOutboundSender(
+        delivery,
+        cast("PushSubscriptionRepository", subscriptions),
+    )
+    sent = await sender.send_daily_notice(
+        ActorRef(Platform.ONEBOT, PRIVATE.id),
+        "今日幸运橱窗。",
+        day="2026-08-05",
+    )
+
+    assert sent
+    assert subscriptions.hint_calls == [
+        (PRIVATE, "lucky_skin_window_delivery"),
+        (PRIVATE, "push_subscription_hint"),
+    ]
+    assert [conversation for conversation, _message in messenger.calls] == [PRIVATE]
+    assert _text(messenger.calls[0][1]) == "今日幸运橱窗。\n\n私聊提示"
 
 
 @pytest.mark.asyncio
