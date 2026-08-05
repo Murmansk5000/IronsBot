@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
     from nonebot.adapters import Event
 
-    from ironsbot.config.player_accounts import PlayerAccountRegistry
     from ironsbot.core.platform import ActorRef
+    from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
 
 
 def event_player_reference_lookup(

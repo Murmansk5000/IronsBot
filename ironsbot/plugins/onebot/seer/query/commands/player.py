@@ -10,7 +10,6 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.config.player_accounts import PlayerAccountRegistry
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
@@ -21,6 +20,7 @@ from ironsbot.runtime.rules import (
     explicit_command,
     member_target_command,
 )
+from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.player_service import PlayerService
 
+
 @dataclass(frozen=True, slots=True)
 class PlayerCommandDependencies:
     player: PlayerService
@@ -65,6 +66,7 @@ class PlayerCommandDependencies:
     player_accounts: PlayerAccountRegistry = field(
         default_factory=lambda: PlayerAccountRegistry(())
     )
+
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)

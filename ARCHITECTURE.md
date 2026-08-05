@@ -182,6 +182,7 @@ feature, persistence schema, or policy decision.
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. |
 | Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary; push delivery remains a separate transition. |
+| Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
 | Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
 
@@ -198,6 +199,13 @@ single-plugin patch is added. When multiple features need the same kind of
 input, identity, command description, persistence, rate control, notification,
 or rendering, create one small, typed interface at its real ownership boundary
 and make the features use it.
+
+`config.models.settings` is the single narrow exception to the normal
+configuration-layer direction: it may construct
+`services.identity.PlayerAccountRegistry` from validated TOML entries. The
+registry is a framework-free value/lookup service, and this exception must not
+be broadened to another `services.*` module without adding a new inventory row
+and an AST guard.
 
 The following rules are mandatory:
 

@@ -19,9 +19,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.seer import LuckySkinWindowConfig
-    from ironsbot.config.player_accounts import PlayerAccount
     from ironsbot.core.features import FeatureService
     from ironsbot.core.platform import ActorRef
+    from ironsbot.services.identity.player_accounts import PlayerAccount
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
