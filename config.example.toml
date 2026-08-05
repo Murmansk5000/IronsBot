@@ -57,9 +57,12 @@ log_level = "INFO"
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
 # Default: "full"
-# EN: Bundled NoneBot plugin profile. Normal deployments use full; core is a
-#     named migration profile and currently loads the same bridge.
-# ZH: 内置 NoneBot 插件配置；正常部署使用 full。core 仍处于迁移阶段。
+# EN: Bundled NoneBot plugin profile. full loads every bundled plugin. core
+#     loads only Seer queries, rank help, help, and about with runtime support.
+#     With core, policies must enable only features provided by that profile.
+# ZH: 内置 NoneBot 插件配置；full 加载全部插件。core 只加载赛尔查询、榜单
+#     帮助、帮助、关于和必要运行支撑；使用 core 时，权限策略只能启用该配置
+#     已加载插件提供的功能，否则启动会明确报错。
 plugin_manifest = "full"
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.
@@ -765,7 +768,9 @@ local_root = "sendpic"
 # Incoming command replies use the receiving bot; proactive pushes use these routes.
 # ZH: 多个 NapCat / OneBot v11 客户端可同时连接同一个 IronsBot。
 # 普通查询由收到事件的机器人回复；主动推送按下面的群/用户路由选择机器人。
-# enabled=false 时保持单机器人行为。开启前请把示例 QQ 和目标别名换成真实配置。
+# enabled=false 时不使用群/用户专用路由，但主动推送仍只会使用明确配置的 default_bot。
+# 未配置或未连接 default_bot 时，主动发送会失败，不会挑选任意在线机器人。
+# 开启前请把示例 QQ 和目标别名换成真实配置。
 [messaging.bot_routing]
 enabled = false
 default_bot = "main_bot"
@@ -1411,7 +1416,7 @@ timeout_seconds = 300.0
 [operations.private_extensions]
 # Optional private extension package. The main Unraid/Docker image remains
 # murmansk5000/ironsbot:latest; when enabled, startup pulls this package through
-# the mounted Docker socket, validates its manifest, and installs it under /app/data.
+# the mounted Docker socket, validates its standard NoneBot manifest, and installs it under /app/data.
 # Default: false; EN: Enable the private extension package. ZH: 启用私有扩展包。
 enabled = false
 # Default: "murmansk5000/ironsbot-private:latest"; EN: Private extension package image.

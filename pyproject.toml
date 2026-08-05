@@ -38,7 +38,7 @@ builtin_plugins = []
 
 [tool.nonebot.adapters]
 nonebot-adapter-onebot = [
-    { name = "OneBot V12", module_name = "nonebot.adapters.onebot.v12" },
+    { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
 ]
 "@local" = []
 
