@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Literal
 
 from pydantic import (
     BaseModel,
@@ -187,7 +186,6 @@ class BotConfig(BaseModel):
     port: int = Field(default=8080, gt=0)
     log_level: str = "INFO"
     command_start: list[str] = Field(default_factory=lambda: ["/", ""])
-    plugin_manifest: Literal["full", "core"] = "full"
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
     matcher_priority: MatcherPriorityConfig = Field(
@@ -229,11 +227,26 @@ class PathsConfig(BaseModel):
     runtime_state: Path = Path("data/state/runtime_state.sqlite")
 
 
+class RuntimeConcurrencyConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    render_max_concurrent: int = Field(default=1, ge=1, le=4)
+
+
+class RuntimeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    concurrency: RuntimeConcurrencyConfig = Field(
+        default_factory=RuntimeConcurrencyConfig
+    )
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bot: BotConfig = Field(default_factory=BotConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
     ai: AiConfig = Field(default_factory=AiConfig)
     activity: ActivityConfig = Field(default_factory=ActivityConfig)

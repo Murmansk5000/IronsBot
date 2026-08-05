@@ -1,30 +1,30 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
-from ironsbot.app.application import Application
 from ironsbot.app.file_logging import FileLogging
-from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.app.private_extensions import (
     PrivateExtensionRuntime,
     load_private_extension_catalog,
 )
-from ironsbot.app.rendering_composition import build_seer_rendering_components
+from ironsbot.app.registry import build_plugin_registry
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
+from ironsbot.integrations.htmlkit import render_html_template
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.bilibili import (
@@ -34,46 +34,19 @@ from ironsbot.integrations.http.bilibili import (
     request_bili_login_qr,
 )
 from ironsbot.integrations.http.clients import HttpClients
+from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
-from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
-from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
-from ironsbot.integrations.onebot.lucky_skin_window import (
-    OneBotLuckySkinWindowNotificationSender,
-    OneBotLuckySkinWindowSubscriptionOptions,
-    build_onebot_lucky_skin_window_accounts,
-)
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
     install_outbound_rate_limit_hooks,
 )
-from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.onebot.router import BotRouter
-from ironsbot.integrations.onebot.team_audit import (
-    OneBotTeamAuditMembershipProbe,
-    OneBotTeamAuditPolicy,
-)
-from ironsbot.integrations.onebot.team_resource import (
-    OneBotTeamResourceNoticeSender,
-    build_onebot_team_resource_default_mentions,
-)
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
-from ironsbot.integrations.seer_data.new_content_renderer import (
-    render_new_content_menu,
-)
-from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
-    render_peak_pet_rank,
-)
-from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
-from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
-    render_peak_pool_vote,
-)
-from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
-from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.sendpic import SendpicBackendProvider
 from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
@@ -105,6 +78,7 @@ from ironsbot.integrations.storage.push_subscriptions import (
 )
 from ironsbot.integrations.storage.rank_display import SqliteRankDisplayStore
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
+from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
@@ -113,7 +87,6 @@ from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
-from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.activity.delivery import (
     ActivityReminderDelivery,
     ActivityReminderTargets,
@@ -123,6 +96,7 @@ from ironsbot.services.activity.repository import ActivityRepository
 from ironsbot.services.activity.service import (
     ACTIVITY_PUSH_SUBSCRIPTION_KEY,
     ActivityService,
+    TargetType,
 )
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
@@ -142,7 +116,6 @@ from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_session import HeadlessSessionFactory
-from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
 from ironsbot.services.operations.server_status import ServerStatusService
 from ironsbot.services.operations.startup import StartupNoticeService
 from ironsbot.services.pet_config import PetConfigQueryService
@@ -179,6 +152,15 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
 )
+from ironsbot.services.seer.render_scheduler import RenderScheduler
+from ironsbot.services.seer.rendering.custom_pet_info import (
+    render_custom_pet_info,
+)
+from ironsbot.services.seer.rendering.new_content import render_new_content_menu
+from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
+from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
+from ironsbot.services.seer.rendering.peak_pool_vote import render_peak_pool_vote
+from ironsbot.services.seer.rendering.type_matchup import render_type_matchup
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
 from ironsbot.services.seer.type_query import TypeQueryService
@@ -188,23 +170,57 @@ from ironsbot.services.team.resource import TeamResourceService
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from nonebot.internal.driver import Driver
+
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
+    from ironsbot.runtime.plugins import PluginDefinition
+    from ironsbot.services.messaging.delivery import (
+        MessageDelivery,
+        MessageLimiter,
+    )
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
 ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
 SOON_ENDING_THRESHOLD = timedelta(days=7)
+@dataclass(slots=True)
+class Application:
+    settings: Settings
+    driver: Driver
+    asgi: Any
+    scheduler: SchedulerFacade
+    file_logging: FileLogging
+    http_clients: HttpClients
+    databases: DatabaseManager
+    prompt_sessions: PromptSessionManager
+    resources: ApplicationResources
+    plugins: tuple[PluginDefinition, ...]
+    matchers: MatcherRegistry
+    lifecycle: ApplicationLifecycle
+    _installed: bool = field(default=False, init=False)
+
+    def install(self) -> None:
+        if self._installed:
+            return
+        for plugin in self.plugins:
+            if plugin.install is not None:
+                plugin.install(self.matchers)
+        self.matchers.validate_command_catalog(self.resources.commands)
+        self.matchers.install_postprocessor()
+        self.lifecycle.install()
+        self._installed = True
 
 
 def _build_activity_service(  # noqa: PLR0913 - composition root
     config: ActivityConfig,
     runtime_state_path: Path,
     features: FeatureService,
-    sender: OneBotActivityReminderSender,
+    message_delivery: MessageDelivery,
     databases: DatabaseManager,
     subscriptions: PushUnsubscribeStore,
     notice_source: UnityNoticeSource,
+    message_limiter: MessageLimiter,
 ) -> ActivityService:
     sent_store = ActivitySentStore(runtime_state_path)
     repository = ActivityRepository()
@@ -222,42 +238,40 @@ def _build_activity_service(  # noqa: PLR0913 - composition root
             )
         )
 
-    def preference_for_target(target: ActorRef | ConversationRef) -> str | None:
-        if (
-            isinstance(target, ActorRef)
-            and target.platform is Platform.ONEBOT
-            and target.kind == "user"
-            and target.id.isdecimal()
-        ):
-            target_type = "private"
-        elif (
-            isinstance(target, ConversationRef)
-            and target.platform is Platform.ONEBOT
-            and target.kind == "group"
-            and target.id.isdecimal()
-        ):
-            target_type = "group"
-        else:
-            return None
+    def preference_for_target(
+        target_type: TargetType,
+        target_id: int,
+    ) -> str | None:
         return subscriptions.get_time_preference(
             target_type,
-            int(target.id),
+            target_id,
             ACTIVITY_PUSH_SUBSCRIPTION_KEY,
             ACTIVITY_LEAD_HOURS_PREFERENCE,
         )
 
     def targets() -> ActivityReminderTargets:
         return ActivityReminderTargets(
-            group_conversations=tuple(
-                features.conversations_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
+            group_ids=tuple(
+                features.groups_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
             ),
-            private_actors=tuple(
-                features.actors_with_superusers(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
+            private_user_ids=tuple(
+                features.users_with_superusers(
+                    features.users_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
+                )
             ),
         )
 
     async def broadcast(reminder: ActivityReminderDelivery) -> bool:
-        return await sender.send(reminder)
+        summary = await message_delivery.broadcast(
+            reminder.message,
+            group_ids=reminder.group_ids,
+            private_user_ids=reminder.private_user_ids,
+            action_name=reminder.action_name,
+            interval_seconds=1.2,
+            message_limiter=message_limiter,
+            subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
+        )
+        return bool(summary.succeeded)
 
     return ActivityService(
         config=config,
@@ -309,31 +323,31 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     subscriptions = PushUnsubscribeStore(settings.paths.qq_state)
     player_bindings = SqlitePlayerBindingStore(settings.paths.qq_state)
-    bot_router = BotRouter(
-        settings.messaging.bot_routing,
-        settings.onebot_references,
-    )
     delivery = OneBotDelivery(
         outbound,
         settings.messaging.push_unsubscribe,
-        bot_router,
+        BotRouter(
+            settings.messaging.bot_routing,
+            settings.onebot_references,
+        ),
         subscriptions,
     )
     push_message_limiter = partial(append_fire_manual_ad_for_target, features)
-    admin_notices = AdminNoticeService(features, OneBotAdminNoticeSender(delivery))
+    admin_notices = AdminNoticeService(features, delivery)
     install_outbound_rate_limit_hooks(outbound)
 
     activity = _build_activity_service(
         settings.activity,
         settings.paths.runtime_state,
         features,
-        OneBotActivityReminderSender(delivery, push_message_limiter),
+        delivery,
         databases,
         subscriptions,
         UnityNoticeSource(
             http_clients.origin,
             settings.activity.notice_timeout_seconds,
         ),
+        push_message_limiter,
     )
     headless_operations = HeadlessOperationTracker()
     player_accounts = settings.player_accounts
@@ -369,24 +383,25 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
-        build_onebot_lucky_skin_window_accounts(
-            settings.seer.lucky_skin_window,
-            settings.onebot_references,
-            player_accounts,
-        ),
+        settings.onebot_references,
+        player_accounts,
         features,
         headless_sessions,
         seer_database,
         player_bindings,
+        subscriptions,
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(
             settings.paths.runtime_state,
-            legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
+            legacy_paths=(
+                cache_paths.root / "runtime" / "lucky_skin_window.sqlite",
+            ),
         ),
-        OneBotLuckySkinWindowNotificationSender(delivery, subscriptions),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
-    bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
+    bili_cookie_store = FileBiliCookieStore(
+        bili_data_dir / "bili_cookie_cache.txt"
+    )
     bilibili = BilibiliService(
         config=settings.bilibili,
         targets=BiliTargetService(
@@ -394,7 +409,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             features,
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
-            BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
+            BiliAccountNames(
+                partial(fetch_bili_account_name, http_clients.origin)
+            ),
         ),
         cookie_store=bili_cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -418,10 +435,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         delivery,
         (
             bilibili.targets.subscription_options,
-            OneBotLuckySkinWindowSubscriptionOptions(
-                lucky_skin_window,
-                subscriptions,
-            ).subscription_options,
+            lucky_skin_window.subscription_options,
         ),
         _push_message_limiter=push_message_limiter,
         _prepare_extra_push_options=bilibili.targets.prepare_account_names,
@@ -439,19 +453,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.seer.team_resource,
         TeamResourceSubscriptionStore(settings.paths.qq_state),
         headless,
+        settings.onebot_references,
         features,
-        OneBotTeamResourceNoticeSender(delivery),
-        build_onebot_team_resource_default_mentions(
-            settings.seer.team_resource,
-            settings.onebot_references,
-        ),
+        delivery,
     )
     team_audit = TeamAuditService(
         settings.messaging.team_audit_welcome,
         SqliteTeamAuditReminderStore(settings.paths.runtime_state),
-        OneBotTeamAuditPolicy(features),
-        OneBotOutboundMessenger(bot_router, outbound),
-        OneBotTeamAuditMembershipProbe(bot_router, OneBotGroupProbe()),
+        features,
+        delivery,
+        OneBotGroupProbe(),
     )
     rank = RankService(
         settings.seer.rank,
@@ -464,11 +475,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    seer_images, render_cache, render_coordinator = build_seer_rendering_components(
-        http_clients,
-        cache_paths,
-        settings.seer.render,
-        seer_database,
+    seer_images = HttpSeerImageSource(http_clients)
+    render_cache = FileRenderCache(
+        cache_paths.render_dir(),
+        settings.seer.render.cache_max_size_mb * 1024 * 1024,
+        db_version_getter=seer_database.version,
+    )
+    render_scheduler = RenderScheduler(
+        render_html_template,
+        settings.runtime.concurrency.render_max_concurrent,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
@@ -502,16 +517,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     local_rank.remove_excluded_samples()
     rank_display = RankDisplayService(
         settings.seer.rank,
-        {
-            ConversationRef(Platform.ONEBOT, "group", str(group_id)): limit
-            for reference, limit in settings.seer.rank.display_limits.items()
-            for group_id in (
-                settings.onebot_references.resolve_group(
-                    reference,
-                    location=f"seer.rank.display_limits.{reference}",
-                ),
-            )
-        },
+        settings.onebot_references,
         SqliteRankDisplayStore(settings.paths.qq_state),
     )
     rank_page_refresh = RankPageRefreshService(
@@ -547,7 +553,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless,
         RankQueryPolicy(
             player_error=player.format_error,
-            player_timeout_seconds=(settings.seer.player.detail_timeout_seconds),
+            player_timeout_seconds=(
+                settings.seer.player.detail_timeout_seconds
+            ),
         ),
         player_query_quotas,
         player_requests,
@@ -557,9 +565,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             rank_limit=settings.seer.rank.limit,
             batch_limit=settings.seer.local_rank.batch_limit,
             refresh_limit=settings.seer.local_rank.refresh_limit,
-            refresh_max_age_hours=(settings.seer.local_rank.refresh_max_age_hours),
-            page_cache_ttl_seconds=(settings.seer.rank.page_cache_ttl_seconds),
-            display_limit=rank_display.limit_for_conversation,
+            refresh_max_age_hours=(
+                settings.seer.local_rank.refresh_max_age_hours
+            ),
+            page_cache_ttl_seconds=(
+                settings.seer.rank.page_cache_ttl_seconds
+            ),
+            display_limit=rank_display.limit_for_group,
         ),
         rank,
         local_rank,
@@ -590,7 +602,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_type_matchup,
                 render_cache,
                 seer_images,
-                render_coordinator.render,
+                render_scheduler.render,
             ),
         ),
         BattleEffectQueryService(seer_database, seer_images),
@@ -598,11 +610,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             seer_database,
             seer_images,
             partial(
-                render_published_pet_info,
+                render_custom_pet_info,
                 render_cache,
-                seer_database,
                 seer_images,
-                render_coordinator.render,
+                render_scheduler.render,
             ),
         ),
         PeakQueryService(
@@ -612,19 +623,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 render_peak_pool,
                 render_cache,
                 seer_images,
-                render_coordinator.render,
+                render_scheduler.render,
             ),
             partial(
                 render_peak_pool_vote,
-                render_cache,
                 seer_images,
-                render_coordinator.render,
+                render_scheduler.render,
             ),
             partial(
                 render_peak_pet_rank,
-                render_cache,
-                seer_images,
-                render_coordinator.render,
+                images=seer_images,
+                render_html=render_scheduler.render,
             ),
         ),
         MintmarkQueryService(
@@ -642,7 +651,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             seer_database,
             seer_images,
             autocard,
-            render_coordinator.render,
+            render_scheduler.render,
         ),
     )
     ai = AiService(
@@ -664,8 +673,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless_sessions=headless_sessions,
         data=seer_database,
         images=seer_images,
-        render_cache=render_cache,
-        render_html=render_coordinator.render,
+        render_html=render_scheduler.render,
         error_message=seer_database.error_message,
         player_quotas=player_query_quotas,
         player_requests=player_requests,
@@ -688,21 +696,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         handoff_store=DockerStartupPreflightStore(),
     )
-    scheduled_restart = ScheduledRestartService(
-        restart_times=(
-            tuple(settings.operations.restart.parsed_restart_times)
-            if settings.operations.restart.enabled
-            else ()
-        ),
-        grace_seconds=settings.operations.restart.grace_seconds,
-        restart_process=partial(
-            terminate_bot_process,
-            signal_parent=settings.operations.restart.signal_parent,
-            reason="scheduled bot restart",
-        ),
-    )
     command_catalog = CommandCatalog()
-    contribution_catalog = PluginContributionCatalog()
 
     def poke_hint_candidates(
         group_id: int | None,
@@ -749,9 +743,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         data_sync=data_sync,
         docker_update=docker_update,
         startup_notice=StartupNoticeService(admin_notices),
-        scheduled_restart=scheduled_restart,
         commands=command_catalog,
-        contribution_catalog=contribution_catalog,
         help_hint=HelpHintService(
             settings.features.help,
             settings.onebot_references,
@@ -760,6 +752,19 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,
     )
+    plugins = build_plugin_registry(
+        settings=settings,
+        resources=resources,
+        scheduler=scheduler,
+    )
+    command_catalog.load(
+        plugins,
+        known_features=(
+            *(feature.value for feature in Feature),
+            *features.command_features,
+            *features.schedule_features,
+        ),
+    )
     matchers = MatcherRegistry(
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
@@ -767,6 +772,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         in_flight_requests=InFlightRequestService(
             features,
             settings.messaging.command_cooldown,
+        ),
+    )
+    lifecycle = ApplicationLifecycle.from_plugins(
+        driver,
+        plugins,
+        task_owner=task_owner,
+        resource_shutdown_hooks=(
+            ("file_logging", file_logging.close),
+            ("http_clients", http_clients.close),
+            ("databases", databases.close),
         ),
     )
     return Application(
@@ -779,18 +794,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         databases=databases,
         prompt_sessions=prompt_sessions,
         resources=resources,
-        contributions=(),
+        plugins=plugins,
         matchers=matchers,
-        task_owner=task_owner,
-        known_features=(
-            *(feature.value for feature in Feature),
-            *features.command_features,
-            *features.schedule_features,
-        ),
-        required_plugin_features=frozenset(Feature),
-        resource_shutdown_hooks=(
-            ("file_logging", file_logging.close),
-            ("http_clients", http_clients.close),
-            ("databases", databases.close),
-        ),
+        lifecycle=lifecycle,
     )

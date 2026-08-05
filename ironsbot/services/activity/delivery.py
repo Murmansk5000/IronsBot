@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeAlias
-
-from ironsbot.core.outbound import OutboundMessage, TextPart
-from ironsbot.core.platform import ActorRef, ConversationRef
+from typing import TYPE_CHECKING, Literal
 
 from .formatting import format_activity_list
 from .planning import filter_valid_reminders
@@ -19,26 +16,25 @@ if TYPE_CHECKING:
 
 DEFAULT_MESSAGE_TEMPLATE = "⏰ 本周活动将在约 {lead_hours} 小时后结束\n{activity_list}"
 ActivityReminderDeliveryStatus = Literal["skip_empty", "skip_no_targets", "send"]
-ActivityReminderRecipient: TypeAlias = ActorRef | ConversationRef
 _LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
 class ActivityReminderTargets:
-    group_conversations: tuple[ConversationRef, ...] = ()
-    private_actors: tuple[ActorRef, ...] = ()
+    group_ids: tuple[int, ...] = ()
+    private_user_ids: tuple[int, ...] = ()
 
     @property
     def has_targets(self) -> bool:
-        return bool(self.group_conversations or self.private_actors)
+        return bool(self.group_ids or self.private_user_ids)
 
 
 @dataclass(frozen=True, slots=True)
 class ActivityReminderDelivery:
     status: ActivityReminderDeliveryStatus
-    message: OutboundMessage | None = None
-    group_conversations: tuple[ConversationRef, ...] = ()
-    private_actors: tuple[ActorRef, ...] = ()
+    message: str = ""
+    group_ids: tuple[int, ...] = ()
+    private_user_ids: tuple[int, ...] = ()
     action_name: str = ""
 
     @property
@@ -83,20 +79,14 @@ def build_reminder_delivery(
 
     return ActivityReminderDelivery(
         status="send",
-        message=OutboundMessage(
-            (
-                TextPart(
-                    format_reminder_message(
-                        lead_hours,
-                        reminders,
-                        template=template,
-                        fallback_template=fallback_template,
-                    )
-                ),
-            )
+        message=format_reminder_message(
+            lead_hours,
+            reminders,
+            template=template,
+            fallback_template=fallback_template,
         ),
-        group_conversations=targets.group_conversations,
-        private_actors=targets.private_actors,
+        group_ids=targets.group_ids,
+        private_user_ids=targets.private_user_ids,
         action_name=f"activity ending reminder {lead_hours}h",
     )
 
@@ -109,7 +99,10 @@ def filter_reminders_before_send(
     dispatch_tolerance: timedelta,
     soon_ending_threshold: timedelta,
 ) -> list[ActivityReminder]:
-    activity_by_id = {activity.activity_id: activity for activity in current_activities}
+    activity_by_id = {
+        activity.activity_id: activity
+        for activity in current_activities
+    }
     return filter_valid_reminders(
         reminders,
         now=now,

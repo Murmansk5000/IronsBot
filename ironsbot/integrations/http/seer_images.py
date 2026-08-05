@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError, RequestError
 
-from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
+from ironsbot.services.seer.images import ImageSourceError
 
 if TYPE_CHECKING:
     from ironsbot.integrations.http.clients import HttpClients
@@ -89,6 +89,7 @@ class HttpSeerImageSource:
                 return await self._get(
                     self._clients.origin if kind == "preview" else self._clients.cache,
                     template.format(key),
+                    serialize=kind != "preview",
                 )
             except (HTTPStatusError, RequestError) as error:  # noqa: PERF203
                 last_error = _image_source_error(error)
@@ -99,7 +100,7 @@ class HttpSeerImageSource:
 
     async def fetch_url(self, url: str) -> bytes:
         try:
-            return await self._get(self._clients.origin, url)
+            return await self._get(self._clients.origin, url, serialize=False)
         except (HTTPStatusError, RequestError) as error:
             raise _image_source_error(error) from error
 
@@ -107,8 +108,14 @@ class HttpSeerImageSource:
         self,
         client: AsyncClient,
         url: str,
+        *,
+        serialize: bool,
     ) -> bytes:
-        response = await client.get(url)
+        if serialize:
+            async with self._clients.cache_lock:
+                response = await client.get(url)
+        else:
+            response = await client.get(url)
         response.raise_for_status()
         return response.content
 
@@ -120,8 +127,7 @@ def _image_source_error(
     error: HTTPStatusError | RequestError,
 ) -> ImageSourceError:
     if isinstance(error, HTTPStatusError):
-        return ImageSourceStatusError(
-            error.response.status_code,
-            error.response.reason_phrase,
+        return ImageSourceError(
+            f"{error.response.status_code} {error.response.reason_phrase}"
         )
     return ImageSourceError(str(error))

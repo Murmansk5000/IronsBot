@@ -7,27 +7,21 @@ from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from nonebot.rule import Rule
 
-from ironsbot.runtime.message_input import message_input_context
-
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.core.platform import ActorRef, ConversationRef
-
 
 class FeaturePolicy(Protocol):
-    def conversation_has_feature(
+    def group_has_feature(self, group_id: int, feature: str) -> bool: ...
+
+    def is_group_feature_allowed(
         self,
-        conversation: ConversationRef,
+        user_id: int,
+        group_id: int,
         feature: str,
     ) -> bool: ...
 
-    def is_feature_allowed(
-        self,
-        actor: ActorRef,
-        conversation: ConversationRef,
-        feature: str,
-    ) -> bool: ...
+    def is_private_feature_allowed(self, user_id: int, feature: str) -> bool: ...
 
 
 def event_is_feature_allowed(
@@ -35,10 +29,15 @@ def event_is_feature_allowed(
     event: Event,
     feature: str,
 ) -> bool:
-    if not isinstance(event, GroupMessageEvent | PrivateMessageEvent):
-        return False
-    message = message_input_context(event).message
-    return features.is_feature_allowed(message.actor, message.conversation, feature)
+    if isinstance(event, GroupMessageEvent):
+        return features.is_group_feature_allowed(
+            event.user_id,
+            event.group_id,
+            feature,
+        )
+    if isinstance(event, PrivateMessageEvent):
+        return features.is_private_feature_allowed(event.user_id, feature)
+    return False
 
 
 def event_is_feature_visible_in_help(
@@ -53,10 +52,7 @@ def event_is_feature_visible_in_help(
     """
 
     if isinstance(event, GroupMessageEvent):
-        return features.conversation_has_feature(
-            message_input_context(event).message.conversation,
-            feature,
-        )
+        return features.group_has_feature(event.group_id, feature)
     return event_is_feature_allowed(features, event, feature)
 
 
