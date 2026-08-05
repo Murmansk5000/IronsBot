@@ -73,7 +73,7 @@ Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：素�
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `in_progress` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后的全量 `pytest` 为 1377 passed，静态检查通过 | 用当前 IronsBot 安装真实 `ironsbot-private` 清单，迁移其已删除的 `runtime.*` 命令 import，并运行跨仓库 import/命令 smoke test；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
+| Phase 2 | `in_progress` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；真实 `ironsbot-private` 已迁到 `core.command_catalog` / `core.player_reference_commands`，并以其自身 `pyproject.toml` 经 `nonebot.load_from_toml()` 的隔离 smoke test 验证；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后的全量 `pytest` 为 1377 passed，静态检查通过 | 将私有阵容尚存的 OneBot 可见性与公共 service 依赖收进 `ironsbot.extensions` 的窄 context，证明外部包只依赖文档化的 extension/core/install 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键和部分 SeerAPI 效果事实已验证 | SeerAPI 发布完整 render asset manifest；IronsBot 以 `RenderRequestKey` 在 SQL/HTTP/presenter 前命中 L3，并对每个 renderer 加零调用命中测试 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
@@ -311,9 +311,11 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   或 resolver。私有阵容扩展的目标也是只通过该 resolver 的
   `has_known_reference()` 进行命令目录认领，真正的消息级解析仍由公开的详情扩展
   入口完成；但当前外部包仍引用已迁出的
-  `runtime.commands` / `runtime.player_reference_commands`。它必须改为导入
-  `core.command_catalog` / `core.player_reference_commands` 并在私有仓库独立验证，
-  在此之前不得把该扩展计入跨仓库命令边界的完成证据，也不得恢复旧 runtime 路径。
+  `runtime.commands` / `runtime.player_reference_commands`。私有包现已改为导入
+  `core.command_catalog` / `core.player_reference_commands`，并在私有仓库通过其真实
+  `pyproject.toml` 的 `nonebot.load_from_toml()` 隔离 smoke test；不得恢复旧 runtime
+  路径。剩余的 OneBot 可见性和公共 service 依赖仍须投影到 `ironsbot.extensions` 的
+  窄 context，完成前不得把该扩展计入完整跨仓库边界的完成证据。
 - `CommandContract.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
@@ -364,7 +366,7 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | 幸运橱窗 | `services.seer.lucky_skin_commands` | 事件转换、登录确认、回复和调度 | 已迁移 |
 | 关于 | `services.about_commands` | 事件转换、版本读取和回复 | 已迁移 |
 | 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
-| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 私有扩展的事件转换、阵容服务调用和回复 | 待跨仓库迁移：不得依赖已删除的 `runtime.*` 命令模块 |
+| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 私有扩展的事件转换、阵容服务调用和回复 | 已迁出历史 `runtime.*` 命令模块并验证真实 manifest；待将剩余 OneBot/service 依赖投影为 extension context |
 
 ### Phase 6 — 兜底、配置和错误语义
 
