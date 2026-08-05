@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from collections.abc import Container
+
 from nonebot.adapters import Event
 from nonebot.rule import Rule
 
-from ironsbot.core.messaging import FIXED_IMAGE_COMMANDS
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.services.seer.query_guards import is_rank_query_text
 
 
@@ -13,8 +15,10 @@ async def _is_not_rank_query(event: Event) -> bool:
 not_rank_query = Rule(_is_not_rank_query)
 
 
-async def _is_not_fixed_image_command(event: Event) -> bool:
-    return event.get_plaintext().strip() not in FIXED_IMAGE_COMMANDS
+def not_exact_command(commands: Container[str]) -> Rule:
+    """Exclude a higher-priority command's exact registered spellings."""
 
+    async def _is_not_exact_command(event: Event) -> bool:
+        return normalize_command_text(event.get_plaintext()) not in commands
 
-not_fixed_image_command = Rule(_is_not_fixed_image_command)
+    return Rule(_is_not_exact_command)

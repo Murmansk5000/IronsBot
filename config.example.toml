@@ -718,17 +718,24 @@ cnb_repo = ""
 # Example: "data/sendpic"
 local_root = "sendpic"
 
-# Default: []
-# EN: Dynamic sendpic configs. Fields: id, backend, command, aliases, image_dir,
-# image_filename_template, message_template.
-# ZH: 可配置发图命令。字段同上。
-configs = []
-
-# Default: []
-# EN: Enabled dynamic sendpic config IDs.
-# ZH: 启用的可配置发图 ID。
-# Example: ["meme"]
-enabled_ids = []
+# EN: Packaged single-image commands are enabled by default. Each item uses one
+# common schema: mode="single" requires image_file; mode="indexed" requires
+# image_dir and image_filename_template. Set an existing id to enabled=false
+# to disable it, or append custom commands below.
+# ZH: 内置单图命令默认启用。所有图片命令共用一套配置：mode="single"
+# 需要 image_file；mode="indexed" 需要 image_dir 和 image_filename_template。
+# 用同 ID 配置 enabled=false 可关闭内置命令，也可在下面添加自定义命令。
+#
+# [[messaging.sendpic.configs]]
+# id = "example-gallery"
+# enabled = true
+# backend = "local"
+# command = "表情"
+# aliases = ["表情包"]
+# mode = "indexed"
+# image_dir = "memes"
+# image_filename_template = "{index}.png"
+# message_template = "{image}"
 
 # EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
 # Incoming command replies use the receiving bot; proactive pushes use these routes.
