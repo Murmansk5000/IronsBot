@@ -115,9 +115,7 @@ def test_member_mention_requires_group_conversation() -> None:
 def test_player_reference_input_matcher_claims_only_numeric_or_known_aliases() -> None:
     matcher = player_reference_input_matcher(
         ("米米号",),
-        lambda reference, _conversation: (
-            _ALIAS_PLAYER_ID if reference == "alias" else None
-        ),
+        lambda reference, _conversation: reference == "alias",
     )
     context = CommandContext(
         actor=ActorRef(Platform.ONEBOT, "100"),
