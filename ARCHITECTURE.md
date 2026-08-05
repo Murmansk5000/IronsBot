@@ -64,14 +64,14 @@ from being mistaken for the plugin, command, or lifecycle contract.
 Current transition items are the legacy OneBot `OneBotMessageTarget` /
 `OneBotDelivery` send chain and the renderer data lookups listed in the Phase
 0 guard below. They keep the current OneBot application runnable; they are not
-the architecture that new cross-feature work should target. Phase 2 has
-completed built-in and private plugin discovery through standard NoneBot
-manifests, and the matcher-construction boundary now uses `MatcherFactory`.
-`PluginContribution` is the current plugin-local way to submit explicit runtime
-contributions; it is not an application registry or a catch-all authority for
-every plugin concern. Phase 4 removes
-renderer-owned persistence lookups. No new subsystem may be built on those
-transition items merely because they already exist.
+the architecture that new cross-feature work should target. Within Phase 2,
+the standard NoneBot manifest discovery and the `MatcherFactory` construction
+boundary are verified sub-items; the phase itself remains in progress until
+its remaining bridge and ownership conditions are met. `PluginContribution` is
+the current plugin-local way to submit explicit runtime contributions; it is
+not an application registry or a catch-all authority for every plugin concern.
+Phase 4 removes renderer-owned persistence lookups. No new subsystem may be
+built on those transition items merely because they already exist.
 
 The authoritative long-term ownership is therefore:
 
@@ -224,6 +224,13 @@ Git reports a text conflict because two branches touched nearby lines; it does
 not establish an architectural conflict. Conversely, cleanly merged prose can
 still contain a responsibility conflict. The verified code state and this
 document's target authority decide the resolution in both cases.
+
+A semantic documentation merge is incomplete until the phase ledger records
+the result: update the affected phase's verified sub-items, remaining gate and
+status only from evidence in the merged code and tests. Accepting text from a
+branch is not evidence that its phase is complete. The merge commit must name
+the responsibility resolved and the surviving target authority, so later work
+does not have to reconstruct the decision from competing prose.
 
 ### Transition Inventory And Admission Rule
 
