@@ -129,6 +129,8 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 投递适配，并只接收 common builder 提供的依赖。
 `seer` 已用 `SeerComponents` 收口玩家、榜单、渲染、战队资源和幸运橱窗的装配；
 当前 OneBot 账号/提及/通知编译仍标记为 Phase 3 的适配边界。
+`bilibili` 已用 `BilibiliComponents` 收口账号目标、Cookie、历史、登录和 HTTP
+装配；消息 builder 只接收其公开订阅选项。
 后续 builder 只能迁移既有装配代码，不能引入第二个 service locator 或由插件反向
 构造基础设施。
 

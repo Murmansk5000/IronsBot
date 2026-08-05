@@ -956,6 +956,12 @@ mention, and notification compilers remain explicit transition adapters; they
 move behind platform-neutral ports in Phase 3 rather than leaking back into
 plugins or individual Seer services.
 
+`app.bilibili_composition.BilibiliComponents` compiles configured OneBot
+targets and creates Bilibili query, history, and login services before the
+messaging builder consumes its subscription options. This keeps the composition
+root as an ordering coordinator instead of a second place that knows Bilibili
+storage and HTTP construction details.
+
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
 

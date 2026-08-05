@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
@@ -9,7 +8,10 @@ from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.application import Application
-from ironsbot.app.bilibili_composition import build_onebot_bilibili_monitor
+from ironsbot.app.bilibili_composition import (
+    build_onebot_bilibili_components,
+    build_onebot_bilibili_monitor,
+)
 from ironsbot.app.common_composition import build_common_components
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
@@ -26,19 +28,10 @@ from ironsbot.extensions.player_lineup import PlayerLineupExtensionServices
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
-from ironsbot.integrations.http.bilibili import (
-    fetch_bili_account_name,
-    fetch_bili_feed,
-    poll_bili_login_qr,
-    request_bili_login_qr,
-)
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.bilibili_rendering import (
     build_dynamic_content_message,
-)
-from ironsbot.integrations.onebot.bilibili_targets import (
-    build_onebot_bili_configured_targets,
 )
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
@@ -48,13 +41,6 @@ from ironsbot.integrations.onebot.identity import (
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
-from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
-from ironsbot.integrations.storage.bilibili_history import (
-    SqliteBiliDynamicHistoryStore,
-)
-from ironsbot.integrations.storage.bilibili_preferences import (
-    SqliteBiliPushPreferenceStore,
-)
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
@@ -62,10 +48,6 @@ from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.ai.service import AiService
-from ironsbot.services.bilibili.accounts import BiliAccountNames
-from ironsbot.services.bilibili.login import BilibiliLoginService
-from ironsbot.services.bilibili.service import BilibiliService
-from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
 if TYPE_CHECKING:
@@ -131,35 +113,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_bindings,
     )
     lucky_skin_window = seer_components.lucky_skin_window
-    bili_data_dir = settings.bilibili.storage.data_dir
-    bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
-    bilibili = BilibiliService(
-        config=settings.bilibili,
-        targets=BiliTargetService(
-            settings.bilibili,
-            features,
-            build_onebot_bili_configured_targets(
-                settings.bilibili,
-                settings.onebot_references,
-            ),
-            SqliteBiliPushPreferenceStore(settings.paths.qq_state),
-            subscriptions,
-            BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
-        ),
-        cookie_store=bili_cookie_store,
-        history=SqliteBiliDynamicHistoryStore(
-            bili_data_dir / "dynamic_history.sqlite",
-            settings.bilibili.storage.history_max_items,
-        ),
-        fetch_feed=partial(fetch_bili_feed, http_clients.origin),
+    bilibili_components = build_onebot_bilibili_components(
+        settings,
+        http_clients,
+        features,
+        subscriptions,
+        task_owner,
     )
-    bilibili_login = BilibiliLoginService(
-        settings.bilibili.login_notice_cooldown_seconds,
-        bili_cookie_store,
-        request_qr=partial(request_bili_login_qr, http_clients.origin),
-        poll_qr=partial(poll_bili_login_qr, http_clients.origin),
-        spawn=task_owner.create,
-    )
+    bilibili = bilibili_components.service
+    bilibili_login = bilibili_components.login
     messaging_components = build_messaging_components(
         settings,
         http_clients,
