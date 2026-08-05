@@ -129,15 +129,9 @@ services:
 ## 插件架构
 
 通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展由独立扩展清单加载。
-当前版本仍由 `python -m ironsbot` 经过
-`ironsbot/app/bootstrap.py` 启动。内置插件由 `ironsbot/app/registry.py` 中的 `PluginDefinition` 注册表统一安装；
-私有扩展从配置的数据目录读取 `manifest.json`，工厂接收 `PrivateExtensionRuntime`
-并返回 `PluginDefinition`，同样纳入该安装流程。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
-命令认领的唯一语义来源。
-
-`MatcherRegistry` 与私有扩展 bootstrap 仍是过渡组件：前者会迁移为更窄的 matcher
-工厂，后者只适配配置化的私有扩展，不能重新成为内置插件发现或命令注册入口。
-后续迁移方向、责任边界与完成条件以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
+`python -m ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动。私有扩展从配置的数据目录读取
+`manifest.json`，调用清单指定的工厂并传入 `PrivateExtensionRuntime`；
+`ironsbot/app/registry.py` 将工厂返回的 `PluginDefinition` 纳入统一安装流程。
 
 - 赛尔查询：玩家、战队、精灵、刻印、装备、属性、巅峰、群星牌和榜单。
 - 消息与内容：固定文本、定时消息、固定图片、腾讯会议和帮助。

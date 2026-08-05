@@ -56,11 +56,6 @@ log_level = "INFO"
 # EN: Command prefixes. Empty string enables direct keyword commands.
 # ZH: 命令前缀；空字符串允许直接发送关键词命令。
 command_start = ["/", ""]
-# Default: "full"
-# EN: Bundled NoneBot plugin profile. Normal deployments use full; core is a
-#     named migration profile and currently loads the same bridge.
-# ZH: 内置 NoneBot 插件配置；正常部署使用 full。core 仍处于迁移阶段。
-plugin_manifest = "full"
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
@@ -271,6 +266,11 @@ hint_max_per_window = 3
 # User replies take priority over group replies. Quote Chinese aliases in TOML.
 # ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
 # poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
+
+[runtime.concurrency]
+# Default: 1; EN: Maximum concurrent HTMLKit image render tasks.
+# ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
+render_max_concurrent = 1
 
 [ai]
 # Default: "https://api.deepseek.com"
@@ -1193,25 +1193,8 @@ resource_message = "出来买资源，别逼我求你😡"
 # ZH: 订阅战队不再使用 [[seer.team_resource.subscriptions]] TOML 表。
 
 [seer.render]
-# Default: 500; EN: Final rendered-image cache max size in MB.
-# ZH: 最终渲染图片三级缓存上限 MB；位于 cache/rendering/final。
-final_cache_max_size_mb = 500
-# Default: 45; EN: Native HTML image rendering timeout in seconds. Rendering is
-# always serialized to one native task.
-# ZH: 原生 HTML 图片渲染超时秒数；原生渲染固定单并发。
-native_timeout_seconds = 45
-# Default: 128; EN: In-memory Seer image asset LRU size in MB.
-# ZH: 赛尔图片素材一级内存 LRU 缓存上限 MB。
-asset_memory_max_size_mb = 128
-# Default: 1000; EN: Verified on-disk Seer image asset cache size in MB.
-# ZH: 赛尔图片素材二级磁盘缓存上限 MB；位于 cache/rendering/assets。
-asset_cache_max_size_mb = 1000
-# Default: 4; EN: Maximum concurrent upstream image fetches.
-# ZH: 同时请求上游图片的最大并发数。
-asset_fetch_max_concurrent = 4
-# Default: 300; EN: Cache only upstream 404/410 image misses for this many seconds.
-# ZH: 只缓存上游 404/410 的图片缺失；缓存秒数。
-asset_negative_ttl_seconds = 300
+# Default: 200; EN: Render cache max size in MB. ZH: 渲染缓存上限 MB。
+cache_max_size_mb = 200
 
 [pet_config]
 # Default: true; EN: Enable local pet configuration image replies. ZH: 启用本地精灵配置图查询。
@@ -1261,7 +1244,6 @@ ref = "main"
 timeout_seconds = 3600
 poll_interval_seconds = 10
 inputs = { force-update-assets = false, force-update-config = false, dispatch-api-data = false }
-force_inputs = { force-update-assets = true, force-update-config = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "refresh_unity_config"
@@ -1281,7 +1263,6 @@ ref = "main"
 timeout_seconds = 600
 poll_interval_seconds = 10
 inputs = { force = false }
-force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_api_data"
@@ -1291,7 +1272,6 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { debug_enabled = false, force = false }
-force_inputs = { force = true }
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "build_ironsbot_data"
@@ -1301,7 +1281,6 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { force = false }
-force_inputs = { force = true }
 
 [operations.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
