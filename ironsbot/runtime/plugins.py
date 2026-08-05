@@ -17,11 +17,14 @@ if TYPE_CHECKING:
 
 HookResult: TypeAlias = Awaitable[None] | None
 LifecycleHook: TypeAlias = Callable[[], HookResult]
-BotLifecycleHook: TypeAlias = Callable[[object], HookResult]
+# Plugin callbacks are registered by platform adapters.  The application keeps
+# the callback slot opaque so adapter-specific implementations can accept their
+# concrete bot and matcher types without weakening every plugin signature.
+BotLifecycleHook: TypeAlias = Callable[[Any], HookResult]
 NamedLifecycleHook: TypeAlias = tuple[str, LifecycleHook]
 NamedBotLifecycleHook: TypeAlias = tuple[str, BotLifecycleHook]
 HelpVisibility: TypeAlias = Callable[["Event"], bool]
-PluginInstall: TypeAlias = Callable[[object], None]
+PluginInstall: TypeAlias = Callable[[Any], None]
 
 
 @dataclass(frozen=True, slots=True)

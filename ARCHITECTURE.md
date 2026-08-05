@@ -966,9 +966,16 @@ class PluginContribution:
     features: frozenset[Feature]
     help: HelpEntry | None
     commands: tuple[CommandDescriptor, ...] = ()
-    install: Callable[[MatcherFactory], None] | None = None
+    install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()
 ```
+
+`PluginInstall` is an opaque platform-install callback. The current application
+composition passes the OneBot `MatcherFactory`; individual plugin installers
+may therefore retain the concrete factory type they actually require. The
+generic contribution boundary must not force every installer or bot lifecycle
+hook to accept `object`, and it must not leak a concrete adapter type into
+platform-neutral services.
 
 The standard manifests discover built-in and private packages directly. Private
 modules can append only configured external contributions during the scoped
