@@ -1,4 +1,7 @@
-from ironsbot.services.messaging.meeting import build_meeting_reply
+from ironsbot.services.messaging.meeting import (
+    build_meeting_reply,
+    meeting_command_descriptors,
+)
 
 
 def test_build_meeting_reply_returns_none_without_number() -> None:
@@ -20,3 +23,12 @@ def test_build_meeting_reply_formats_tencent_meeting_number() -> None:
         "数字：6638682008\n"
         "链接：https://meeting.tencent.com/p/6638682008"
     )
+
+
+def test_meeting_command_contract_uses_configured_examples() -> None:
+    commands = meeting_command_descriptors(("开播", "会议"))
+
+    assert len(commands) == 1
+    assert commands[0].id == "meeting"
+    assert commands[0].examples == ("开播", "会议")
+    assert commands[0].features_any == ("meeting",)

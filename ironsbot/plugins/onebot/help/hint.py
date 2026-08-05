@@ -16,11 +16,14 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.integrations.onebot.help_hint import (
+    OneBotHelpHintPort,
+    is_onebot_poke_at_bot,
+)
 from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.services.messaging.help_hint import HelpHintService, is_poke_at_bot
 
 __plugin_meta__ = PluginMetadata(
     name="戳一戳提示",
@@ -32,13 +35,13 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
 
 
 async def _is_poke_at_bot(event: NoticeEvent) -> bool:
     if not isinstance(event, PokeNotifyEvent):
         return False
-    return is_poke_at_bot(event)
+    return is_onebot_poke_at_bot(event)
 
 
 async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
@@ -56,7 +59,7 @@ async def _group_role(bot: Bot, event: PokeNotifyEvent) -> str | None:
     return str(role) if role is not None else None
 
 
-def install(registry: MatcherRegistry, service: HelpHintService) -> None:
+def install(registry: MatcherFactory, service: OneBotHelpHintPort) -> None:
     async def handle_poke_help(
         matcher: Matcher,
         bot: Bot,
@@ -81,8 +84,7 @@ def install(registry: MatcherRegistry, service: HelpHintService) -> None:
             await matcher.finish(reply)
 
         await matcher.finish(
-            MessageSegment.at(event.user_id)
-            + MessageSegment.text(f" {reply}")
+            MessageSegment.at(event.user_id) + MessageSegment.text(f" {reply}")
         )
 
     matcher = registry.on_notice(
@@ -93,7 +95,7 @@ def install(registry: MatcherRegistry, service: HelpHintService) -> None:
     matcher.append_handler(handle_poke_help)
 
 
-def plugin_contribution(*, service: HelpHintService) -> PluginContribution:
+def plugin_contribution(*, service: OneBotHelpHintPort) -> PluginContribution:
     """Declare the passive poke-hint matcher and its service dependency."""
 
     return PluginContribution(

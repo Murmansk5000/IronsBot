@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from ironsbot.config.models.seer import TeamResourceConfig
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.scheduler import Scheduler
 
@@ -350,8 +350,7 @@ class TeamResourceService:
 
         effective_threshold = threshold or self._config.default_threshold
         mention_actors = (
-            tuple(dict.fromkeys(target.mention_actors))
-            or self.default_mention_actors
+            tuple(dict.fromkeys(target.mention_actors)) or self.default_mention_actors
             if target.is_group
             else ()
         )

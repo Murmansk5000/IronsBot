@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef
@@ -44,6 +44,12 @@ class ActivityReminderDelivery:
     @property
     def should_send(self) -> bool:
         return self.status == "send"
+
+
+class ActivityReminderSender(Protocol):
+    """Platform adapter port for actively delivering an activity reminder."""
+
+    async def send(self, reminder: ActivityReminderDelivery) -> bool: ...
 
 
 def format_reminder_message(

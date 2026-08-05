@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.seer import LuckySkinWindowConfig
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.identity.player_accounts import PlayerAccount
     from ironsbot.services.operations.headless import HeadlessGame
@@ -65,7 +65,7 @@ _SKIN_COUNT = 4
 
 
 class LuckySkinWindowCache(Protocol):
-    def get(self, *, player_id: int, day: str) -> tuple[int, ...] | None: ...
+    def get(self, *, player_id: int) -> tuple[int, ...] | None: ...
 
     def prepare_day(self, *, day: str) -> None: ...
 
@@ -185,10 +185,7 @@ class LuckySkinWindowService:
         self._cache = cache
         self._notification_sender = notification_sender
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
-        self._accounts = {
-            configured.actor: configured
-            for configured in accounts
-        }
+        self._accounts = {configured.actor: configured for configured in accounts}
         if len(self._accounts) != len(accounts):
             raise LuckySkinWindowConfigurationError.duplicate_actor()
         self._query_lock = asyncio.Lock()
@@ -225,8 +222,7 @@ class LuckySkinWindowService:
             return ()
         with self._data.get_many(self._data.pet_skin, set(skin_ids)) as skins:
             return tuple(
-                _watch_item(skins.get(skin_id), skin_id)
-                for skin_id in skin_ids
+                _watch_item(skins.get(skin_id), skin_id) for skin_id in skin_ids
             )
 
     def resolve_watch_candidates(
@@ -380,7 +376,7 @@ class LuckySkinWindowService:
                 day,
             )
             return self._result(player_id, day, skin_ids, from_cache=True)
-        if skin_ids := self._cache.get(player_id=player_id, day=day):
+        if skin_ids := self._cache.get(player_id=player_id):
             self._memory[player_id] = skin_ids
             logger.info(
                 "lucky skin window cache hit: player_id=%s day=%s source=sqlite",
@@ -469,9 +465,7 @@ class LuckySkinWindowService:
     ) -> tuple[LuckySkinWatchItem, ...]:
         resolved = self._skin_items_by_reference(references)
         return tuple(
-            resolved[reference]
-            for reference in references
-            if reference in resolved
+            resolved[reference] for reference in references if reference in resolved
         )
 
     def _skin_items_by_reference(

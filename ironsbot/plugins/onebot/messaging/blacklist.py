@@ -6,21 +6,24 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
 
 
 BLACKLIST_PRIORITY = -1_000
@@ -39,14 +42,12 @@ def event_is_blacklisted(
     features: FeatureService,
     event: MessageEvent,
 ) -> bool:
-    return features.is_conversation_blocked(
-        event.user_id,
-        event.group_id if isinstance(event, GroupMessageEvent) else None,
-    )
+    message = message_input_context(event).message
+    return features.is_message_blocked(message.actor, message.conversation)
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     features: FeatureService,
 ) -> None:
     async def discard(_matcher: Matcher) -> None:

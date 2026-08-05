@@ -6,7 +6,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.platform_identity import (
     ConversationIdentityColumns,
 )
@@ -15,8 +14,8 @@ from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ironsbot.core.platform import ConversationRef
     from ironsbot.services.bilibili.preferences import BiliRuntimePushMode
-    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 
 _SCHEMA = (
@@ -43,7 +42,7 @@ MIGRATION_NAMESPACE = "bilibili_preferences"
 
 
 class SqliteBiliPushPreferenceStore:
-    """Persist modes by a neutral conversation identity."""
+    """Persist Bilibili push modes by opaque conversation identity."""
 
     def __init__(self, path: str | Path) -> None:
         self._database = SqliteDatabase(
@@ -54,8 +53,7 @@ class SqliteBiliPushPreferenceStore:
 
     def get_mode(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
     ) -> BiliRuntimePushMode | None:
         with self._database.connect() as connection:
@@ -65,7 +63,7 @@ class SqliteBiliPushPreferenceStore:
                 WHERE conversation_platform = ? AND conversation_kind = ?
                   AND conversation_id = ? AND uid = ?
                 """,
-                (*_conversation_values(target_type, target_id), uid),
+                (*_conversation_values(conversation), uid),
             ).fetchone()
         mode = str(row[0]) if row is not None else ""
         if mode == "full":
@@ -76,8 +74,7 @@ class SqliteBiliPushPreferenceStore:
 
     def set_mode(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
         mode: BiliRuntimePushMode,
     ) -> None:
@@ -90,7 +87,7 @@ class SqliteBiliPushPreferenceStore:
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    *_conversation_values(target_type, target_id),
+                    *_conversation_values(conversation),
                     uid,
                     mode,
                     datetime.now(timezone.utc).isoformat(),
@@ -99,8 +96,7 @@ class SqliteBiliPushPreferenceStore:
 
     def clear_mode(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
     ) -> None:
         with self._database.connect() as connection:
@@ -110,17 +106,9 @@ class SqliteBiliPushPreferenceStore:
                 WHERE conversation_platform = ? AND conversation_kind = ?
                   AND conversation_id = ? AND uid = ?
                 """,
-                (*_conversation_values(target_type, target_id), uid),
+                (*_conversation_values(conversation), uid),
             )
 
 
-def _conversation_values(
-    target_type: PushTargetType,
-    target_id: int,
-) -> tuple[str, str, str]:
-    conversation = ConversationRef(
-        Platform.ONEBOT,
-        target_type,
-        str(int(target_id)),
-    )
+def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str]:
     return ConversationIdentityColumns.from_conversation(conversation).values()

@@ -4,11 +4,13 @@ from typing import Any, cast
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.plugins.onebot.seer.query.commands import rank_list
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import group_message_event
 
 PLAYER_ID = 712_345_678
@@ -26,15 +28,24 @@ def _group() -> SimpleNamespace:
                 public=False,
             ),
         ),
-        private_alias_groups={PRIVATE_GROUP_ID: ("sample_player",)},
+        private_alias_groups={
+            ConversationRef(Platform.ONEBOT, "group", str(PRIVATE_GROUP_ID)): (
+                "sample_player",
+            ),
+        },
+    )
+    player = SimpleNamespace(
+        default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
     )
     return SimpleNamespace(
-        player_accounts=accounts,
-        resources=SimpleNamespace(
-            player=SimpleNamespace(
-                default_player_id=lambda actor: PLAYER_ID if actor.id == "456" else None
-            )
+        player_id_resolver=PlayerIdResolver(
+            lambda reference, conversation: accounts.resolve_player_id(
+                reference,
+                conversation=conversation,
+            ),
+            player.default_player_id,
         ),
+        resources=SimpleNamespace(player=player),
     )
 
 

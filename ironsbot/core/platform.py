@@ -70,6 +70,10 @@ class PlatformReferenceError(ValueError):
     def mention_conversation_platform_mismatch(cls) -> PlatformReferenceError:
         return cls("direct mention and conversation platforms must match")
 
+    @classmethod
+    def private_conversation_requires_user_actor(cls) -> PlatformReferenceError:
+        return cls("private conversation requires an unscoped user actor")
+
 
 def _required_id(
     value: str,
@@ -129,6 +133,14 @@ class ConversationRef:
                 error=PlatformReferenceError.empty_conversation_id,
             ),
         )
+
+
+def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
+    """Build the direct-message conversation owned by one user actor."""
+
+    if actor.kind != "user" or actor.scope_id is not None:
+        raise PlatformReferenceError.private_conversation_requires_user_actor()
+    return ConversationRef(actor.platform, "private", actor.id)
 
 
 @dataclass(frozen=True, slots=True)

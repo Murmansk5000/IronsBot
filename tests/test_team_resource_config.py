@@ -26,9 +26,10 @@ UNUSED_HEADLESS = cast("HeadlessService", object())
 class NoopTeamResourceNoticeSender:
     async def send_low_resource_notice(
         self,
-        _target: TeamResourceSubscriptionTarget,
-        _message: str,
+        target: TeamResourceSubscriptionTarget,
+        message: str,
     ) -> bool:
+        del target, message
         return True
 
 

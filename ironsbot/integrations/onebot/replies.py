@@ -12,19 +12,12 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.exception import FinishedException
 
-from ironsbot.core.messaging import MessageTarget
-from ironsbot.runtime.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
 ReplyMessage = str | Message | MessageSegment
-
-
-def message_event_target(event: MessageEvent) -> MessageTarget:
-    if isinstance(event, GroupMessageEvent):
-        return MessageTarget("group", int(event.group_id))
-    return MessageTarget("private", int(event.user_id))
 
 
 def render_text(text: str) -> str:

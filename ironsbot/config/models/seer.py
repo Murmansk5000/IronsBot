@@ -13,10 +13,10 @@ from pydantic import (
     model_validator,
 )
 
-from ironsbot.core.commands import NormalizedStringList, string_list
-from ironsbot.core.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
+from ironsbot.config.onebot_references import (  # noqa: TC001 - Pydantic resolves aliases
     OneBotReferenceList,
 )
+from ironsbot.core.commands import NormalizedStringList, string_list
 from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
     DEFAULT_TAOMEE_INTERNAL_USER_IDS,
@@ -562,6 +562,7 @@ class PlayerAccountConfig(BaseModel):
             value,
             error=PLAYER_ACCOUNT_ALIASES_ERROR,
         )
+
 
 def _normalize_player_account_aliases(
     value: list[str],

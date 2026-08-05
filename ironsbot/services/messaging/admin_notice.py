@@ -11,7 +11,7 @@ from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
 logger = logging.getLogger(__name__)

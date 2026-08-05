@@ -61,14 +61,14 @@ async def test_render_coordinator_enforces_native_timeout() -> None:
     started = asyncio.Event()
 
     async def renderer(
-        _template_path: TemplatePath,
-        _template_name: str,
-        _templates: Mapping[Any, Any],
+        template_path: TemplatePath,
+        template_name: str,
+        templates: Mapping[Any, Any],
         *,
         max_width: int = 500,
         allow_refit: bool = True,
     ) -> bytes:
-        del max_width, allow_refit
+        del template_path, template_name, templates, max_width, allow_refit
         started.set()
         await asyncio.Event().wait()
         return b"unreachable"

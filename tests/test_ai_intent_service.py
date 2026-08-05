@@ -3,7 +3,7 @@ from collections.abc import Awaitable, Callable
 import pytest
 
 from ironsbot.config.models.ai import AiConfig
-from ironsbot.core.features import FeatureConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.messaging import AiIntentAction
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.ai import intent

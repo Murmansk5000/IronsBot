@@ -1,17 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import normalize_command_text
-from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from ironsbot.runtime.plugins import PluginContribution
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 CommandScope = Literal["group", "private", "both"]
 CommandAudience = Literal["regular", "group_manager", "superuser"]
@@ -21,19 +19,26 @@ CommandVisibility = Callable[["CommandContext"], bool]
 
 
 class CommandFeaturePolicy(Protocol):
-    def is_superuser(self, user_id: int) -> bool: ...
+    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
 
-    def group_has_feature(self, group_id: int, feature: str) -> bool: ...
-
-    def is_group_feature_allowed(
+    def conversation_has_feature(
         self,
-        user_id: int,
-        group_id: int,
+        conversation: ConversationRef,
         feature: str,
-        /,
     ) -> bool: ...
 
-    def is_private_feature_allowed(self, user_id: int, feature: str) -> bool: ...
+    def is_actor_feature_allowed(
+        self,
+        actor: ActorRef,
+        feature: str,
+    ) -> bool: ...
+
+    def is_feature_allowed(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool: ...
 
 
 class CommandCatalogError(ValueError):
@@ -60,8 +65,7 @@ class CommandCatalogError(ValueError):
     @classmethod
     def invalid_routing_alias(cls, command_id: str) -> CommandCatalogError:
         return cls(
-            "invalid command descriptor: "
-            f"{command_id!r} has an empty routing alias"
+            f"invalid command descriptor: {command_id!r} has an empty routing alias"
         )
 
     @classmethod
@@ -129,13 +133,16 @@ class CommandCatalogError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class CommandContext:
-    user_id: int
-    group_id: int | None
+    actor: ActorRef
+    conversation: ConversationRef
     group_role: str | None = None
 
     @property
     def is_group(self) -> bool:
-        return self.group_id is not None
+        return self.conversation.kind == "group"
+
+
+CommandInputMatcher = Callable[[str, CommandContext], bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,9 +186,11 @@ class CommandAccess:
         if self.audience == "group_manager":
             return context.is_group and (
                 context.group_role in GROUP_MANAGER_ROLES
-                or features.is_superuser(context.user_id)
+                or features.is_actor_superuser(context.actor)
             )
-        return self.audience != "superuser" or features.is_superuser(context.user_id)
+        return self.audience != "superuser" or features.is_actor_superuser(
+            context.actor
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +203,7 @@ class CommandDescriptor:
     examples: tuple[str, ...]
     description: str
     routing_aliases: tuple[str, ...] = ()
+    routing_matcher: CommandInputMatcher | None = None
     features_any: tuple[str, ...] = ()
     features_all: tuple[str, ...] = ()
     access: tuple[CommandAccess, ...] = (CommandAccess(),)
@@ -248,20 +258,42 @@ class CommandDescriptor:
     def poke_text(self) -> str:
         return f"发送“{self.examples[0]}”{self.description}。"
 
-    def matches_direct_input(self, text: str) -> bool:
-        """Return whether text is one literal direct-input spelling for this command."""
+    def matches_direct_input(self, context: CommandContext, text: str) -> bool:
+        """Return whether this command explicitly owns one direct input.
+
+        Parameterized input remains opt-in through ``routing_matcher``. This
+        keeps AI fallback from claiming a command without letting broad
+        natural-language examples become implicit prefixes.
+        """
 
         if self.interaction != "direct":
             return False
         normalized_text = normalize_command_text(text).lstrip("/")
         if not normalized_text:
             return False
-        return normalized_text in {
+        exact_inputs = {
             normalized
             for value in (*self.examples, *self.routing_aliases)
             if "<" not in value and ">" not in value
             if (normalized := normalize_command_text(value).lstrip("/"))
         }
+        if normalized_text in exact_inputs:
+            return True
+        return (
+            self.routing_matcher(text, context)
+            if self.routing_matcher is not None
+            else False
+        )
+
+
+class CommandContribution(Protocol):
+    """The minimal plugin contribution shape needed by the command catalog."""
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def commands(self) -> tuple[CommandDescriptor, ...]: ...
 
 
 def _validate_routing_aliases(command_id: str, aliases: tuple[str, ...]) -> None:
@@ -315,18 +347,18 @@ def _feature_is_allowed(
     context: CommandContext,
     feature: str,
 ) -> bool:
-    if context.group_id is not None:
+    if context.is_group:
         # Group help and poke hints describe the features enabled for the
         # whole group, rather than a superuser's execution bypass.
-        return features.group_has_feature(
-            context.group_id,
+        return features.conversation_has_feature(
+            context.conversation,
             feature,
-        ) and features.is_group_feature_allowed(
-            context.user_id,
-            context.group_id,
+        ) and features.is_feature_allowed(
+            context.actor,
+            context.conversation,
             feature,
         )
-    return features.is_private_feature_allowed(context.user_id, feature)
+    return features.is_feature_allowed(context.actor, context.conversation, feature)
 
 
 @dataclass(slots=True)
@@ -338,7 +370,7 @@ class CommandCatalog:
 
     def load(
         self,
-        definitions: Iterable["PluginContribution"],
+        definitions: Iterable[CommandContribution],
         *,
         known_features: Iterable[str] = (),
     ) -> None:
@@ -474,7 +506,7 @@ class CommandCatalog:
         """
 
         return any(
-            command.matches_direct_input(text)
+            command.matches_direct_input(context, text)
             for command in self.available_for_context(
                 context,
                 features,

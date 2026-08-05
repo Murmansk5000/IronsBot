@@ -10,29 +10,29 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.core.features import FeatureService  # noqa: TC001
-from ironsbot.runtime.conversations import (
+from ironsbot.core.feature_policy import FeatureService  # noqa: TC001
+from ironsbot.integrations.onebot.conversations import (
     begin_event_reply_conversation,
     command_reply_check,
     enter_event_reply_conversation,
 )
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import (
     bind_async,
     get_prompt_session_manager,
 )
-from ironsbot.runtime.message_input import event_actor_ref, message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
-from ironsbot.runtime.prompt_sessions import (
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
 from ironsbot.services.operations.request_feedback import request_feedback_scope
-from ironsbot.services.seer.player_detail_extensions import (  # noqa: TC001
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
@@ -246,11 +246,13 @@ async def _query_extension_action(
         )
 
     with request_feedback_scope(action.action.label, send_status):
+        message = message_input_context(event).message
         return await action.query(
-            player_id,
-            event.user_id,
-            event_group_id(event),
-            event_actor_ref(event),
+            PlayerDetailActionRequest(
+                player_id=player_id,
+                actor=message.actor,
+                conversation=message.conversation,
+            )
         )
 
 
@@ -487,10 +489,9 @@ def _player_detail_semantic_request(
         state,
     )
     if extension_action is not None:
-        if (
-            state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY)
-            and not event_is_feature_allowed(features, event, extension_action.feature)
-        ):
+        if state.get(
+            QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY
+        ) and not event_is_feature_allowed(features, event, extension_action.feature):
             return None
         return SemanticRequest(
             action=extension_action.action,

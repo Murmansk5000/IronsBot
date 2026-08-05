@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from ironsbot.core.features import FeatureConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
@@ -132,7 +132,7 @@ def test_bilibili_service_owns_dynamic_query_and_history(
         "id_str": "dynamic-1",
         "modules": {
             "module_author": {
-                "mid": 1310714247,
+                "mid": 912345678,
                 "name": "赛尔号",
                 "pub_ts": 1781004683,
             },

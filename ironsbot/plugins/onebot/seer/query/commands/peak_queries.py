@@ -10,8 +10,8 @@ from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runti
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot_plugin_saa import Image, MessageFactory
 
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
-from ironsbot.runtime.rules import explicit_command
+from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
@@ -152,9 +152,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    suit.append_handler(
-        bind_async(_handle_item_rank, service, kind="套装")
-    )
+    suit.append_handler(bind_async(_handle_item_rank, service, kind="套装"))
 
     title = group.on_fullmatch(
         ("竞技称号榜", "狂野称号榜", "专家称号榜"),
@@ -165,9 +163,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    title.append_handler(
-        bind_async(_handle_item_rank, service, kind="称号")
-    )
+    title.append_handler(bind_async(_handle_item_rank, service, kind="称号"))
 
     pet = group.on_fullmatch(
         (

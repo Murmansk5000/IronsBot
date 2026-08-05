@@ -9,14 +9,14 @@ from ironsbot.core.selection import (
     SelectionMenuSection,
     format_selection_menu,
 )
-from ironsbot.runtime.feature_policy import event_is_feature_visible_in_help
-from ironsbot.runtime.onebot_context import command_context
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
 
-    from ironsbot.core.features import FeatureService
-    from ironsbot.runtime.commands import CommandCatalog
+    from ironsbot.core.command_catalog import CommandCatalog
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.plugins import PluginContribution
 
 HELP_ENTRIES_KEY = "_help_entries"

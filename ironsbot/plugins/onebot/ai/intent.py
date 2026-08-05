@@ -5,6 +5,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
+    Bot,  # noqa: TC002 - NoneBot resolves it at runtime
     MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
@@ -12,27 +13,25 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
-from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import build_notice_source
+from ironsbot.integrations.onebot.context import build_notice_source
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import natural_language
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import finish_event_reply
-from ironsbot.runtime.rules import natural_language
+from ironsbot.services.ai.command_contracts import ai_intent_command_descriptors
 
 from .team_actions import run_team_action
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.services.ai.service import AiService
@@ -56,27 +55,8 @@ class AiIntentDependencies:
     """OneBot dependencies needed by the configured AI action adapter."""
 
     service: AiService
-    group_aliases: Mapping[str, int]
     promotions: PromotionCatalog
     team_resource: TeamResourceService
-
-
-def command_descriptors(config: Settings) -> tuple[CommandDescriptor, ...]:
-    if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
-        return ()
-    return tuple(
-        CommandDescriptor(
-            id=f"ai_intent.{action_id}",
-            plugin_id="ai_intent",
-            section="关键词意图",
-            examples=tuple(action.keywords),
-            description="机器人识别到相应意图后自动回复",
-            features_any=(action.feature,),
-            interaction="automatic",
-        )
-        for action_id, action in config.ai.intent_actions.items()
-        if action.enabled and action.keywords
-    )
 
 
 async def _handle_ai_reply_action(
@@ -111,20 +91,24 @@ def _resolve_action_command_id(
 
 
 def install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     dependencies: AiIntentDependencies,
     command_help_ids: tuple[str, ...],
 ) -> None:
     if not command_help_ids:
         return
 
-    async def match_action(event: MessageEvent, state: T_State) -> bool:
+    async def match_action(
+        bot: Bot,
+        event: MessageEvent,
+        state: T_State,
+    ) -> bool:
         text = event.get_plaintext().strip()
         message = message_input_context(event).message
         source_context = await build_notice_source(
             event,
             text,
-            dependencies.group_aliases,
+            bot=bot,
         )
         action = await dependencies.service.classify_intent(
             text,
@@ -197,7 +181,7 @@ def plugin_contribution(
     """Declare configured intent actions and their natural-language matcher."""
 
     enabled = bool(settings.ai.api_key.strip()) and settings.ai.intent_actions_enabled
-    commands = command_descriptors(settings)
+    commands = ai_intent_command_descriptors(settings)
     return PluginContribution(
         id="ai_intent",
         features=frozenset(
@@ -224,7 +208,6 @@ def plugin_contribution(
             install,
             dependencies=AiIntentDependencies(
                 service=service,
-                group_aliases=settings.features.group_aliases,
                 promotions=promotions,
                 team_resource=team_resource,
             ),

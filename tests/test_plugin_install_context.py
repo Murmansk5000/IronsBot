@@ -5,6 +5,7 @@ from nonebot.plugin import PluginMetadata
 
 from ironsbot.runtime.plugins import (
     PluginContribution,
+    PluginExtensionContextError,
     PluginInstallContextError,
     current_plugin_install_context,
     scoped_plugin_install_context,
@@ -48,3 +49,17 @@ def test_nested_install_context_restores_the_outer_scope() -> None:
             assert current_plugin_install_context() is inner
 
         assert current_plugin_install_context() is outer
+
+
+def test_install_context_exposes_only_declared_extension_contexts() -> None:
+    extension_context = object()
+
+    with scoped_plugin_install_context(
+        settings=object(),  # type: ignore[arg-type]
+        resources=object(),  # type: ignore[arg-type]
+        scheduler=object(),  # type: ignore[arg-type]
+        extension_contexts={"example": extension_context},
+    ) as context:
+        assert context.extension_context("example") is extension_context
+        with pytest.raises(PluginExtensionContextError, match="unavailable: missing"):
+            context.extension_context("missing")

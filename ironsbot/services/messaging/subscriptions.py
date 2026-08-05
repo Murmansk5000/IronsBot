@@ -8,9 +8,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Set as AbstractSet
 
-PushTargetType = Literal["private", "group"]
+    from ironsbot.core.platform import ConversationKind, ConversationRef, Platform
+
 PushPreferenceType = Literal["cron_time", "activity_lead_hours"]
-PushPreferenceTarget = tuple[PushTargetType, int]
 PushTimePreferenceIdentity = tuple[str, PushPreferenceType]
 CRON_TIME_PREFERENCE: PushPreferenceType = "cron_time"
 ACTIVITY_LEAD_HOURS_PREFERENCE: PushPreferenceType = "activity_lead_hours"
@@ -50,22 +50,15 @@ class ScheduledPushTask(Protocol):
 
 
 class PushDeliverySubscriptions(Protocol):
-    def filter_subscribed_user_ids(
+    def filter_subscribed_conversations(
         self,
-        user_ids: list[int],
+        conversations: list[ConversationRef],
         subscription_key: str,
-    ) -> list[int]: ...
-
-    def filter_subscribed_group_ids(
-        self,
-        group_ids: list[int],
-        subscription_key: str,
-    ) -> list[int]: ...
+    ) -> list[ConversationRef]: ...
 
     def mark_daily_hint_sent(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         hint_key: str,
         *,
         today: str | None = None,
@@ -73,46 +66,40 @@ class PushDeliverySubscriptions(Protocol):
 
 
 class PushSubscriptionRepository(PushDeliverySubscriptions, Protocol):
-    def target_unsubscribed_keys(
+    def unsubscribed_keys(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> set[str]: ...
 
-    def is_target_unsubscribed(
+    def is_unsubscribed(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         subscription_key: str,
     ) -> bool: ...
 
-    def unsubscribe_target(
+    def unsubscribe(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         subscription_key: str,
         feature: str,
     ) -> None: ...
 
-    def restore_target(
+    def restore(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         subscription_key: str,
     ) -> None: ...
 
     def get_time_preference(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         subscription_key: str,
         preference_type: PushPreferenceType,
     ) -> str | None: ...
 
     def set_time_preference(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         subscription_key: str,
         preference_type: PushPreferenceType,
         value: str,
@@ -120,8 +107,7 @@ class PushSubscriptionRepository(PushDeliverySubscriptions, Protocol):
 
     def clear_time_preference(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         subscription_key: str,
         preference_type: PushPreferenceType,
     ) -> None: ...
@@ -129,22 +115,23 @@ class PushSubscriptionRepository(PushDeliverySubscriptions, Protocol):
     def all_time_preferences(
         self,
         *,
-        target_type: PushTargetType | None = None,
+        platform: Platform | None = None,
+        conversation_kind: ConversationKind | None = None,
         subscription_key: str | None = None,
         preference_type: PushPreferenceType | None = None,
     ) -> list[PushTimePreference]: ...
 
-    def preference_targets(self) -> set[PushPreferenceTarget]: ...
+    def preference_conversations(self) -> set[ConversationRef]: ...
 
     def prune_invalid_preferences(
         self,
         *,
         valid_unsubscription_keys: Mapping[
-            PushPreferenceTarget,
+            ConversationRef,
             AbstractSet[str],
         ],
         valid_time_preferences: Mapping[
-            PushPreferenceTarget,
+            ConversationRef,
             AbstractSet[PushTimePreferenceIdentity],
         ],
     ) -> PushPreferencePruneResult: ...
@@ -160,8 +147,7 @@ class PushSubscriptionOption:
 
 @dataclass(frozen=True, slots=True)
 class PushTimePreference:
-    target_type: PushTargetType
-    target_id: int
+    conversation: ConversationRef
     subscription_key: str
     preference_type: PushPreferenceType
     value: str
