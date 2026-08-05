@@ -7,7 +7,6 @@ import pytest
 
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import (
-    FIRE_MANUAL_LINK_MESSAGE,
     MessageTarget,
     TargetSendSummary,
 )
@@ -19,7 +18,7 @@ from ironsbot.integrations.onebot.bilibili_push import (
     LINK_DYNAMIC_PUSH_ACTION,
     OneBotBilibiliPushSender,
 )
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.onebot.bilibili.delivery import (
     build_dynamic_content_message,
@@ -28,6 +27,7 @@ from ironsbot.plugins.onebot.bilibili.delivery import (
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -81,7 +81,7 @@ def _delivery_service(
         build_dynamic_link_message,
         build_dynamic_content_message,
         append_text_hint,
-        partial(append_fire_manual_ad_for_target, features),
+        partial(append_promotions_for_target, features, FIRE_MANUAL_PROMOTIONS),
     )
 
 
@@ -112,16 +112,16 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
     )
 
-    assert FIRE_MANUAL_LINK_MESSAGE in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(
         service._transform_target_message("正文", MessageTarget("group", 1001))
     )
-    assert FIRE_MANUAL_LINK_MESSAGE not in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(
         service._transform_target_message("正文", MessageTarget("group", 1002))
     )
-    assert FIRE_MANUAL_LINK_MESSAGE in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(
         service._transform_target_message("正文", MessageTarget("private", 2001))
     )
-    assert FIRE_MANUAL_LINK_MESSAGE not in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(
         service._transform_target_message("正文", MessageTarget("private", 2002))
     )
 
@@ -349,7 +349,11 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
         build_dynamic_link_message,
         build_dynamic_content_message,
         append_text_hint,
-        partial(append_fire_manual_ad_for_target, runtime.features),
+        partial(
+            append_promotions_for_target,
+            runtime.features,
+            FIRE_MANUAL_PROMOTIONS,
+        ),
     )
 
     await service.send(
@@ -362,11 +366,11 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
     assert "【赛尔号】发布了一条B站动态" in str(sent[0])
     assert "传送门：" in str(sent[0])
-    assert FIRE_MANUAL_LINK_MESSAGE in str(sent[0])
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(sent[0])
     assert BILI_PUSH_ADMIN_HINT in str(sent[0])
     assert "正文内容" in str(sent[1])
     assert "传送门：" not in str(sent[1])
-    assert FIRE_MANUAL_LINK_MESSAGE not in str(sent[1])
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(sent[1])
     assert BILI_PUSH_ADMIN_HINT not in str(sent[1])
 
 

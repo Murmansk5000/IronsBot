@@ -26,9 +26,9 @@ from ironsbot.config.models.messaging import (
     PushUnsubscribeConfig,
 )
 from ironsbot.core.features import FeatureConfig
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
+from ironsbot.core.messaging import MessageTarget
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
@@ -47,6 +47,7 @@ from tests.helpers.onebot_events import (
     group_member_message_event,
     private_message_event,
 )
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -135,8 +136,9 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         resources.delivery,
         (extra_push_options or (lambda _target_type, _target_id: []),),
         _push_message_limiter=partial(
-            append_fire_manual_ad_for_target,
+            append_promotions_for_target,
             resources.features,
+            FIRE_MANUAL_PROMOTIONS,
         ),
     )
 
@@ -496,7 +498,7 @@ def test_scheduled_messages_append_fire_manual_ad(
 
     assert [message for message, _kwargs in sent] == [
         "私聊定时",
-        f"群定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
+        f"群定时\n\n{FIRE_MANUAL_PROMOTIONS.require('fire_manual').message}",
     ]
     assert sent[0][1]["private_user_ids"] == [2001]
     assert sent[0][1]["subscription_key"] == "private"
@@ -533,7 +535,9 @@ def test_private_scheduled_message_appends_fire_manual_ad_only_when_enabled(
         )
     )
 
-    assert sent == [f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}"]
+    assert sent == [
+        f"私聊定时\n\n{FIRE_MANUAL_PROMOTIONS.require('fire_manual').message}"
+    ]
 
 
 def test_private_schedule_passes_subscription_key(

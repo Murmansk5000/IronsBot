@@ -20,6 +20,7 @@ from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -49,7 +50,7 @@ from ironsbot.integrations.onebot.outbound import (
     install_outbound_rate_limit_hooks,
 )
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
@@ -296,6 +297,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
     )
     prompt_sessions = PromptSessionManager()
+    promotions = PromotionCatalog(settings.promotions)
     features = FeatureService(
         settings.features,
         settings.superuser_ids,
@@ -319,7 +321,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         bot_router,
         subscriptions,
     )
-    push_message_limiter = partial(append_fire_manual_ad_for_target, features)
+    push_message_limiter = partial(
+        append_promotions_for_target,
+        features,
+        promotions,
+    )
     admin_notices = AdminNoticeService(features, OneBotAdminNoticeSender(delivery))
     install_outbound_rate_limit_hooks(outbound)
 
@@ -722,6 +728,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     resources = ApplicationResources(
         features=features,
+        promotions=promotions,
         outbound=outbound,
         delivery=delivery,
         push_message_limiter=push_message_limiter,

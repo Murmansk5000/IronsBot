@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.messaging import default_sendpic_configs
+from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
@@ -182,6 +183,7 @@ def build_test_plugin_registry(
         "ApplicationResources",
         SimpleNamespace(
             features=runtime.features,
+            promotions=PromotionCatalog(config.promotions),
             outbound=object(),
             delivery=runtime.delivery,
             admin_notices=runtime.admin_notices,
@@ -353,6 +355,7 @@ def build_test_plugin_registry(
             settings=config,
             service=resources.ai,
             features=runtime.features,
+            promotions=resources.promotions,
             team_resource=resources.team_resource,
         ),
         server_status_plugin_contribution(

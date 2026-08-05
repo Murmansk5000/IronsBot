@@ -9,10 +9,11 @@ from nonebot.adapters.onebot.v11 import Message
 from ironsbot.core.messaging import TargetSendSummary
 from ironsbot.integrations.onebot.bilibili_push import OneBotBilibiliPushSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.targets import BiliPushTargets
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -47,7 +48,11 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
         lambda _item, _pub_ts: Message("链接"),
         lambda _item, _content: Message("动态正文"),
         append_text_hint,
-        partial(append_fire_manual_ad_for_target, runtime.features),
+        partial(
+            append_promotions_for_target,
+            runtime.features,
+            FIRE_MANUAL_PROMOTIONS,
+        ),
     )
     await service.send(
         {},

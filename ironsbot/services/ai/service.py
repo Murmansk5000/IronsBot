@@ -15,11 +15,9 @@ from ironsbot.services.ai.intent import (
     build_intent_prompt,
     contains_any_keyword,
     excluded_by_command,
-    excluded_by_context,
     format_action_template,
     is_action_allowed,
     is_ai_intent_allowed,
-    passes_action_prefilter,
     reply_is_yes,
 )
 from ironsbot.services.ai.memory import AiMemoryTurn, trim_memory_chars
@@ -231,13 +229,11 @@ class AiService:
             action.enabled
             and is_action_allowed(self._features, actor, conversation, action)
             and contains_any_keyword(text, action.keywords)
-            and passes_action_prefilter(text, action)
             and not excluded_by_command(
                 text,
                 action,
                 self._team_resource_commands,
             )
-            and not excluded_by_context(text, action)
         )
 
     async def _complete(
