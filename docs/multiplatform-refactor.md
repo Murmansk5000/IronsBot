@@ -146,9 +146,10 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   但需要展示的魂印必须写入 SeerAPI 的
   `pet_soulmark_display_addition`，并附带 `source`，不得在 IronsBot presenter
   中按精灵 ID 特判。
-- `new_content` 仍有数据详情和素材组装混在 Seer 数据适配器中。这是下一项迁移
-  的候选：先提取不可变快照和素材包，再删除适配器内的逐项展示推断；在此之前，
-  不得把新的业务规则加入 HTML 模板或纯 presenter。
+- `new_content` 使用 `NewContentSnapshotBuilder` 在第一次素材 I/O 前完成详情、
+  皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
+  适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变
+  文档；不得把新的数据库读取或展示推断放回 HTML 模板或纯 presenter。
 
 ### Phase 5 — 业务服务和通用解析
 
