@@ -11,9 +11,13 @@ try:
 except ValueError:
     nonebot.init()
 
+from ironsbot.config.models.features import (
+    FeatureConfig,
+    build_onebot_feature_service,
+)
 from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
-from ironsbot.core.features import Feature, FeatureConfig, FeatureService
+from ironsbot.core.features import Feature
 from ironsbot.plugins.onebot.help.menu import visible_help_entries
 from ironsbot.runtime.commands import CommandCatalog
 from tests.helpers.onebot_events import group_message_event, private_message_event
@@ -73,7 +77,7 @@ def _visible(
     role: str = "member",
 ) -> bool:
     settings = settings or _settings()
-    features = FeatureService(
+    features = build_onebot_feature_service(
         settings.features,
         settings.superuser_ids,
     )
@@ -83,8 +87,8 @@ def _visible(
         definitions,
         known_features={
             *(feature.value for feature in Feature),
-            *features.command_features,
-            *features.schedule_features,
+            *settings.messaging.command_feature_keys,
+            *settings.messaging.schedule_feature_keys,
         },
     )
     entries = visible_help_entries(
@@ -103,7 +107,7 @@ def _private_visible(
     settings: Settings,
     user_id: int = 2,
 ) -> bool:
-    features = FeatureService(
+    features = build_onebot_feature_service(
         settings.features,
         settings.superuser_ids,
     )
@@ -113,8 +117,8 @@ def _private_visible(
         definitions,
         known_features={
             *(feature.value for feature in Feature),
-            *features.command_features,
-            *features.schedule_features,
+            *settings.messaging.command_feature_keys,
+            *settings.messaging.schedule_feature_keys,
         },
     )
     entries = visible_help_entries(

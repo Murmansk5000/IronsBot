@@ -17,13 +17,14 @@ from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.ai import AiConfig
+from ironsbot.config.models.features import FeatureConfig, validate_feature_config
 from ironsbot.config.models.messaging import MessageConfig
 from ironsbot.config.models.operations import OperationsConfig
 from ironsbot.config.models.pet_config import PetConfigConfig
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
-from ironsbot.core.features import FEATURE_KEYS, FeatureConfig, validate_feature_config
+from ironsbot.core.features import FEATURE_KEYS
 from ironsbot.core.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
@@ -63,8 +64,7 @@ class SettingsReferenceError(ValueError):
         location: str = "seer.player_accounts",
     ) -> SettingsReferenceError:
         return cls(
-            f"{location} "
-            f"requires environment variable SEER_PASSWORD_{player_id}"
+            f"{location} requires environment variable SEER_PASSWORD_{player_id}"
         )
 
 

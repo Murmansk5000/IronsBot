@@ -9,9 +9,9 @@ import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.core.features import FeatureConfig, FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
@@ -29,6 +29,8 @@ from tests.helpers.runtime import build_test_runtime
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot
     from nonebot.matcher import Matcher
+
+    from ironsbot.core.feature_policy import FeatureService
 
 os.environ["APP_CONFIG_PATH"] = str(
     Path(__file__).resolve().parents[1] / "config.example.toml"
@@ -334,6 +336,7 @@ async def test_team_resource_scan_keeps_private_superuser_bypass(
             threshold=1000,
         )
     )
+
     async def fake_query(
         _self: TeamResourceService,
         team_id: int,

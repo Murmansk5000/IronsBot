@@ -46,7 +46,7 @@ from .rank_list_context import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import RankPlayerCommand
     from ironsbot.services.seer.rank_queries import RankQueryService
@@ -56,6 +56,7 @@ if TYPE_CHECKING:
 class _ResolvedRankPlayerCommand:
     command: RankPlayerCommand | None
     error: str | None = None
+
 
 def _is_rank_list_command(
     service: RankQueryService,
@@ -289,8 +290,7 @@ def install(group: SeerMatcherGroup) -> None:
                 "rank.sample_peak",
             ),
         ),
-        rule=feature_rule
-        & Rule(bind(_is_rank_list_command, query)),
+        rule=feature_rule & Rule(bind(_is_rank_list_command, query)),
         priority=priority,
     )
     list_matcher.append_handler(bind_async(_handle_list, query))
@@ -300,8 +300,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_player",
             help_ids=("rank.global_collection", "rank.global_peak"),
         ),
-        rule=player_feature_rule
-        & Rule(bind(_is_rank_player_command, group)),
+        rule=player_feature_rule & Rule(bind(_is_rank_player_command, group)),
         priority=priority,
     )
     player_matcher.append_handler(bind_async(_handle_player, query))
@@ -368,9 +367,7 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=priority,
     )
-    cache_batch.append_handler(
-        bind_async(_handle_cache_batch, admin)
-    )
+    cache_batch.append_handler(bind_async(_handle_cache_batch, admin))
 
     page_overview = group.on_fullmatch(
         with_admin_prefix(("榜单情况", "榜单状态")),
@@ -418,9 +415,7 @@ def install(group: SeerMatcherGroup) -> None:
         permission=SUPERUSER,
         priority=priority,
     )
-    page_refresh.append_handler(
-        bind_async(_handle_page_refresh, admin)
-    )
+    page_refresh.append_handler(bind_async(_handle_page_refresh, admin))
 
     display_limit = group.on_message(
         policy=CommandPolicy.command(

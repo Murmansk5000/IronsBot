@@ -4,6 +4,10 @@ from typing import Any, cast
 import nonebot
 import pytest
 
+from ironsbot.config.models.features import (
+    FeatureConfig,
+    build_onebot_feature_service,
+)
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
@@ -11,8 +15,12 @@ from ironsbot.core.bilibili import (
     BiliConfig,
     BiliStorageConfig,
 )
-from ironsbot.core.features import FeatureConfig, FeatureService
+from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.bilibili_targets import (
+    build_onebot_bili_configured_targets,
+)
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
@@ -65,7 +73,7 @@ def _features(
     user_policy: dict[str, list[str]] | None = None,
     superusers: tuple[int, ...] = (),
 ) -> FeatureService:
-    return FeatureService(
+    return build_onebot_feature_service(
         FeatureConfig(
             group_policy=group_policy or {},
             user_policy=user_policy or {},
@@ -99,6 +107,10 @@ def _target_service(
     return BiliTargetService(
         config,
         features,
+        build_onebot_bili_configured_targets(
+            config,
+            OneBotReferenceResolver({}, {}),
+        ),
         SqliteBiliPushPreferenceStore(data_dir / "preferences.sqlite"),
         PushUnsubscribeStore(data_dir / "unsubscribe.sqlite"),
         accounts.BiliAccountNames(names=account_names or {}),
@@ -142,9 +154,7 @@ def test_bili_config_accepts_alias_group_accounts() -> None:
         },
     )
 
-    assert config.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid == (
-        DEFAULT_BILI_ACCOUNT_UID
-    )
+    assert config.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid == (DEFAULT_BILI_ACCOUNT_UID)
     assert config.accounts[FIRE_BILI_ALIAS].uid == FIRE_BILI_UID
     assert config.push.groups["main"].accounts == [FIRE_BILI_ALIAS]
     assert config.push.groups["main"].modes == {FIRE_BILI_ALIAS: "link"}
@@ -168,16 +178,9 @@ def test_bili_account_names_resolve_only_public_account_name() -> None:
     )
     lookup = account_names.public_name_alias_lookup([FIRE_BILI_UID])
 
-    assert (
-        account_names.name_for_uid(FIRE_BILI_UID)
-        == FIRE_BILI_ACCOUNT_NAME
-    )
-    assert (
-        lookup.resolve_alias(FIRE_BILI_ACCOUNT_NAME).unique_value == FIRE_BILI_UID
-    )
-    assert (
-        lookup.resolve_alias(str(FIRE_BILI_UID)).unique_value == FIRE_BILI_UID
-    )
+    assert account_names.name_for_uid(FIRE_BILI_UID) == FIRE_BILI_ACCOUNT_NAME
+    assert lookup.resolve_alias(FIRE_BILI_ACCOUNT_NAME).unique_value == FIRE_BILI_UID
+    assert lookup.resolve_alias(str(FIRE_BILI_UID)).unique_value == FIRE_BILI_UID
     assert lookup.resolve_alias("火火").is_empty
 
 
@@ -213,9 +216,10 @@ def test_configured_bili_account_aliases_use_the_shared_lookup_contract() -> Non
 
 
 def test_bili_push_mode_command_accepts_spaces_in_public_account_name() -> None:
-    assert parse_bili_push_mode_command(
-        "B站推送模式 赛尔号 官号 链接"
-    ) == ("赛尔号 官号", "链接")
+    assert parse_bili_push_mode_command("B站推送模式 赛尔号 官号 链接") == (
+        "赛尔号 官号",
+        "链接",
+    )
 
 
 def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
@@ -237,9 +241,7 @@ def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
 
 def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:
     command = next(
-        item
-        for item in bilibili_commands()
-        if item.id == "bilibili.private_push_mode"
+        item for item in bilibili_commands() if item.id == "bilibili.private_push_mode"
     )
 
     assert command.section == "私聊管理"
@@ -274,10 +276,13 @@ def test_group_query_falls_back_to_global_uids_when_feature_enabled() -> None:
 
 
 def test_group_query_still_requires_bili_feature() -> None:
-    assert _target_service(_bili_config(), _features()).query_uids(
-        _actor(1),
-        _group(987654321),
-    ) == []
+    assert (
+        _target_service(_bili_config(), _features()).query_uids(
+            _actor(1),
+            _group(987654321),
+        )
+        == []
+    )
 
 
 def test_history_hint_requires_target_query_feature() -> None:

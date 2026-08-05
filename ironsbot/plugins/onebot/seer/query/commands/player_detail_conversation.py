@@ -10,7 +10,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.core.features import FeatureService  # noqa: TC001
+from ironsbot.core.feature_policy import FeatureService  # noqa: TC001
 from ironsbot.runtime.conversations import (
     begin_event_reply_conversation,
     command_reply_check,
@@ -489,10 +489,9 @@ def _player_detail_semantic_request(
         state,
     )
     if extension_action is not None:
-        if (
-            state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY)
-            and not event_is_feature_allowed(features, event, extension_action.feature)
-        ):
+        if state.get(
+            QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY
+        ) and not event_is_feature_allowed(features, event, extension_action.feature):
             return None
         return SemanticRequest(
             action=extension_action.action,

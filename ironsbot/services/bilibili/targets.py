@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ironsbot.core.bilibili import (
@@ -5,7 +6,7 @@ from ironsbot.core.bilibili import (
     BiliPushMode,
     BiliPushTargetConfig,
 )
-from ironsbot.core.features import FeatureService
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -35,6 +36,8 @@ def _unique_ints(values: list[int]) -> list[int]:
 ACCOUNT_NAMES_UNAVAILABLE = (
     "❌ 暂时无法获取当前会话订阅账号的 B站公开昵称，请稍后重试。"
 )
+
+
 @dataclass(frozen=True, slots=True)
 class BiliTargetRule:
     aliases: frozenset[str]
@@ -90,13 +93,10 @@ def _resolve_modes(
     modes: dict[str, BiliPushMode],
     config: BiliConfig,
 ) -> dict[int, BiliPushMode]:
-    return {
-        config.accounts[alias].uid: mode
-        for alias, mode in modes.items()
-    }
+    return {config.accounts[alias].uid: mode for alias, mode in modes.items()}
 
 
-def _resolve_rule(
+def build_bili_target_rule(
     target_config: BiliPushTargetConfig,
     config: BiliConfig,
 ) -> BiliTargetRule:
@@ -114,10 +114,13 @@ def _resolve_rule(
 
 
 def _default_rule(config: BiliConfig) -> BiliTargetRule:
-    return _resolve_rule(BiliPushTargetConfig(), config)
+    return build_bili_target_rule(BiliPushTargetConfig(), config)
 
 
-def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTargetRule:
+def merge_bili_target_rules(
+    old_rule: BiliTargetRule,
+    new_rule: BiliTargetRule,
+) -> BiliTargetRule:
     return BiliTargetRule(
         aliases=old_rule.aliases | new_rule.aliases,
         uids=old_rule.uids | new_rule.uids,
@@ -127,51 +130,28 @@ def _merge_rules(old_rule: BiliTargetRule, new_rule: BiliTargetRule) -> BiliTarg
     )
 
 
-def _resolve_group_rules(
-    features: FeatureService,
-    config: BiliConfig,
-) -> dict[ConversationRef, BiliTargetRule]:
-    rules: dict[ConversationRef, BiliTargetRule] = {}
-    for ref, target_config in config.push.groups.items():
-        rule = _resolve_rule(target_config, config)
-        for conversation in features.group_conversation_refs([ref]):
-            rules[conversation] = (
-                _merge_rules(rules[conversation], rule)
-                if conversation in rules
-                else rule
-            )
-    return rules
+@dataclass(frozen=True, slots=True)
+class BiliConfiguredTargets:
+    """Platform-resolved push-target rules consumed by Bili services."""
 
-
-def _resolve_user_rules(
-    features: FeatureService,
-    config: BiliConfig,
-) -> dict[ConversationRef, BiliTargetRule]:
-    rules: dict[ConversationRef, BiliTargetRule] = {}
-    for ref, target_config in config.push.users.items():
-        rule = _resolve_rule(target_config, config)
-        for conversation in features.private_conversation_refs([ref]):
-            rules[conversation] = (
-                _merge_rules(rules[conversation], rule)
-                if conversation in rules
-                else rule
-            )
-    return rules
+    group_rules: Mapping[ConversationRef, BiliTargetRule]
+    private_rules: Mapping[ConversationRef, BiliTargetRule]
 
 
 @dataclass(frozen=True, slots=True)
 class BiliTargetService:
     config: BiliConfig
     features: FeatureService
+    configured_targets: BiliConfiguredTargets
     preferences: BiliPushPreferenceStore
     unsubscribe_store: PushSubscriptionRepository
     account_names: BiliAccountNames = field(default_factory=BiliAccountNames)
 
     def configured_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        return _resolve_group_rules(self.features, self.config)
+        return dict(self.configured_targets.group_rules)
 
     def configured_user_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        return _resolve_user_rules(self.features, self.config)
+        return dict(self.configured_targets.private_rules)
 
     def push_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
         default_rule = _default_rule(self.config)
@@ -233,9 +213,7 @@ class BiliTargetService:
         return sorted((rule or _default_rule(self.config)).uids)
 
     def _query_private_uids(self, actor: ActorRef) -> list[int]:
-        rule = self.configured_user_rules().get(
-            private_conversation_for_actor(actor)
-        )
+        rule = self.configured_user_rules().get(private_conversation_for_actor(actor))
         if rule is not None:
             return sorted(rule.uids)
         return self.monitored_uids() if self.features.is_actor_superuser(actor) else []
@@ -354,21 +332,14 @@ class BiliTargetService:
         for uid in sorted(rule.uids):
             mode_display = self.mode_display_for_uid(conversation, uid)
             td_text = (
-                "，已 TD"
-                if bili_push_subscription_key(uid) in unsubscribed
-                else ""
+                "，已 TD" if bili_push_subscription_key(uid) in unsubscribed else ""
             )
             account_name = self.account_names.name_for_uid(uid)
             if account_name is None:
                 return "\n".join([*lines, ACCOUNT_NAMES_UNAVAILABLE])
-            lines.append(
-                f"- {account_name}：{mode_display}{td_text}"
-            )
+            lines.append(f"- {account_name}：{mode_display}{td_text}")
         manager = "群主/管理员可发送" if conversation.kind == "group" else "可发送"
-        lines.append(
-            f"{manager}：B站推送模式 <账号别名|公开昵称|UID> "
-            "<内容|链接|默认>"
-        )
+        lines.append(f"{manager}：B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>")
         return "\n".join(lines)
 
     async def update_push_mode(  # noqa: PLR0911 - command errors return directly
@@ -390,20 +361,25 @@ class BiliTargetService:
         )
         uid = configured_aliases.resolve_alias(account_ref).unique_value
         if uid is None:
-            uid = self.account_names.public_name_alias_lookup(
-                rule.uids,
-            ).resolve_alias(account_ref).unique_value
+            uid = (
+                self.account_names.public_name_alias_lookup(
+                    rule.uids,
+                )
+                .resolve_alias(account_ref)
+                .unique_value
+            )
         if uid is None:
             if error := await self.prepare_account_names(conversation):
                 return error
-            uid = self.account_names.public_name_alias_lookup(
-                rule.uids,
-            ).resolve_alias(account_ref).unique_value
-        if uid is None or self.mode_for_uid(conversation, uid) is None:
-            return (
-                "❌ 当前会话没有订阅该 B站账号。\n"
-                "可发送“B站账号”查看当前会话订阅。"
+            uid = (
+                self.account_names.public_name_alias_lookup(
+                    rule.uids,
+                )
+                .resolve_alias(account_ref)
+                .unique_value
             )
+        if uid is None or self.mode_for_uid(conversation, uid) is None:
+            return "❌ 当前会话没有订阅该 B站账号。\n可发送“B站账号”查看当前会话订阅。"
 
         try:
             mode = normalize_push_mode_text(raw_mode)
@@ -453,12 +429,8 @@ class BiliTargetService:
         return BiliPushTargets(
             full_group_conversations=list(dict.fromkeys(full_group_conversations)),
             link_group_conversations=list(dict.fromkeys(link_group_conversations)),
-            full_private_conversations=list(
-                dict.fromkeys(full_private_conversations)
-            ),
-            link_private_conversations=list(
-                dict.fromkeys(link_private_conversations)
-            ),
+            full_private_conversations=list(dict.fromkeys(full_private_conversations)),
+            link_private_conversations=list(dict.fromkeys(link_private_conversations)),
         )
 
 

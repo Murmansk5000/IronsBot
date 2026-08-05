@@ -54,8 +54,18 @@ BILIBILI_REQUEST_IDENTITY_METHODS = {
         "BiliTargetService": ("query_uids",),
     },
 }
-BILIBILI_LEGACY_DELIVERY_IMPORTS = (
-    "ironsbot.core.messaging",
+BILIBILI_LEGACY_DELIVERY_IMPORTS = ("ironsbot.core.messaging",)
+LEGACY_FEATURE_POLICY_METHODS = frozenset(
+    {
+        "group_has_feature",
+        "is_group_feature_allowed",
+        "is_private_feature_allowed",
+        "user_has_feature",
+        "users_for_feature",
+        "groups_for_feature",
+        "users_with_superusers",
+        "is_conversation_blocked",
+    }
 )
 
 TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()
@@ -85,9 +95,7 @@ class MissingArchitectureTargetMethodError(AssertionError):
 
 class MissingArchitectureTargetClassError(AssertionError):
     def __init__(self, *, class_name: str, path: Path) -> None:
-        super().__init__(
-            f"missing class {class_name} in {path.relative_to(ROOT)}"
-        )
+        super().__init__(f"missing class {class_name} in {path.relative_to(ROOT)}")
 
 
 def _module(path: Path) -> str:
@@ -173,6 +181,17 @@ def _class_method_names(path: Path, *, class_name: str) -> set[str]:
             if isinstance(method, (ast.AsyncFunctionDef, ast.FunctionDef))
         }
     raise MissingArchitectureTargetClassError(class_name=class_name, path=path)
+
+
+def _legacy_feature_policy_calls(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    return {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in LEGACY_FEATURE_POLICY_METHODS
+    }
 
 
 def test_core_and_services_do_not_import_adapter_transport_types() -> None:
@@ -301,3 +320,29 @@ def test_command_catalog_context_and_policy_stay_platform_neutral() -> None:
         "is_group_feature_allowed",
         "is_private_feature_allowed",
     }.isdisjoint(policy_methods)
+
+
+def test_inbound_blacklist_policy_uses_typed_identity_refs() -> None:
+    methods = _class_method_names(
+        CORE / "feature_policy.py",
+        class_name="FeatureService",
+    )
+
+    assert "is_message_blocked" in methods
+    assert "is_conversation_blocked" not in methods
+
+
+def test_runtime_callers_do_not_use_legacy_numeric_feature_policy() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()}: {method}"
+        for directory in (
+            PACKAGE / "app",
+            PACKAGE / "integrations",
+            PACKAGE / "plugins",
+            RUNTIME,
+        )
+        for path in _python_files(directory)
+        for method in sorted(_legacy_feature_policy_calls(path))
+    ]
+
+    assert offenders == []

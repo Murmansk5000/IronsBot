@@ -344,6 +344,7 @@ def build_test_plugin_registry(
         messaging_plugin_contribution(
             config=config.messaging,
             features=runtime.features,
+            references=config.onebot_references,
             service=resources.messaging,
             activity_service=resources.activity,
             scheduler=SchedulerFacade(),

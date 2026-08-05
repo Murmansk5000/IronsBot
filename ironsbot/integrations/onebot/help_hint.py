@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Protocol
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import HelpConfig
+    from ironsbot.config.models.features import HelpConfig
     from ironsbot.core.onebot_references import OneBotReferenceResolver
 
 
@@ -51,12 +51,8 @@ class OneBotHelpHintService:
     config: HelpConfig
     references: OneBotReferenceResolver
     poke_hint_candidates: CommandHintCandidates | None = None
-    chooser: Callable[
-        [Sequence[CommandHintCandidate]], CommandHintCandidate
-    ] = choice
-    limiter: SlidingWindowRateLimiter = field(
-        default_factory=SlidingWindowRateLimiter
-    )
+    chooser: Callable[[Sequence[CommandHintCandidate]], CommandHintCandidate] = choice
+    limiter: SlidingWindowRateLimiter = field(default_factory=SlidingWindowRateLimiter)
 
     def get_poke_reply(self, *, group_id: int | None, user_id: int) -> str | None:
         return _get_poke_reply(

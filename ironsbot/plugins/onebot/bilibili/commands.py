@@ -21,7 +21,7 @@ from .dynamic_actions import handle_dynamic_menu_action
 from .update_actions import handle_update_dynamic_action
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.bilibili.targets import BiliTargetService

@@ -11,7 +11,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.team.audit import TEAM_AUDIT_FEATURE
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
     from ironsbot.integrations.onebot.router import BotRouter
 
@@ -25,9 +25,8 @@ class OneBotTeamAuditPolicy:
     features: FeatureService
 
     def enabled_for(self, conversation: ConversationRef) -> bool:
-        group_id = _onebot_group_id(conversation)
-        return group_id is not None and self.features.group_has_feature(
-            group_id,
+        return self.features.conversation_has_feature(
+            conversation,
             TEAM_AUDIT_FEATURE,
         )
 

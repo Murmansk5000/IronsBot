@@ -94,9 +94,9 @@ def is_red_packet_message(message: Message) -> bool:
             return True
         if _payload_contains_marker(segment.data, RED_PACKET_RAW_MARKERS):
             return True
-    return _payload_has_red_packet_business_id(
-        message
-    ) or _payload_contains_marker(str(message), RED_PACKET_RAW_MARKERS)
+    return _payload_has_red_packet_business_id(message) or _payload_contains_marker(
+        str(message), RED_PACKET_RAW_MARKERS
+    )
 
 
 def is_red_packet_payload(payload: Mapping[str, Any]) -> bool:

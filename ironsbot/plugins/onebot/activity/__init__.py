@@ -37,7 +37,7 @@ from ironsbot.services.activity.commands import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.operations.scheduler import Scheduler
 

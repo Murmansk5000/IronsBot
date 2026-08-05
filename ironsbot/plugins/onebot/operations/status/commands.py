@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
     from nonebot.matcher import Matcher
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.server_status import (
         ServerStatusService,
     )

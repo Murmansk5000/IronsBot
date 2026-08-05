@@ -37,7 +37,7 @@ from .status.command_text import (
 from .status.commands import handle_admin_status, handle_normal_status
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.operations.server_status import ServerStatusService
 

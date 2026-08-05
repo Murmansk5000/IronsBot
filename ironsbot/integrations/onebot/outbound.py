@@ -15,7 +15,9 @@ from nonebot.exception import MockApiException
 from nonebot.log import logger
 from nonebot.matcher import current_event
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.runtime.matchers import bind_async
+from ironsbot.runtime.onebot_identity import onebot_actor_ref
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
         OutboundRateLimitConfig,
         OutboundRateLimitWindowConfig,
     )
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.tasks import TaskSpawner
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
@@ -220,9 +222,7 @@ class GroupOutboundRateLimitService:
         self._limiter = MultiWindowGroupRateLimiter()
         self._push_queues: dict[int, _GroupPushQueue] = {}
         self._api_permits: dict[int, OutboundPermit] = {}
-        self._preacquired_push_permit: ContextVar[
-            OutboundPermit | None
-        ] = ContextVar(
+        self._preacquired_push_permit: ContextVar[OutboundPermit | None] = ContextVar(
             "ironsbot_preacquired_push_permit",
             default=None,
         )
@@ -370,9 +370,7 @@ class GroupOutboundRateLimitService:
                 now = time.monotonic()
                 if not self._is_limited_group(group_id):
                     queue.pop_waiter(waiter)
-                    waiter.future.set_result(
-                        OutboundRateLimitDecision(allowed=True)
-                    )
+                    waiter.future.set_result(OutboundRateLimitDecision(allowed=True))
                     continue
 
                 config = self.config
@@ -408,8 +406,8 @@ class GroupOutboundRateLimitService:
                 )
 
     def _is_limited_group(self, group_id: int) -> bool:
-        return self.config.enabled and not self.features.group_has_feature(
-            group_id,
+        return self.config.enabled and not self.features.conversation_has_feature(
+            ConversationRef(Platform.ONEBOT, "group", str(group_id)),
             ADMIN_NOTICE_FEATURE,
         )
 
@@ -420,8 +418,7 @@ def _extract_group_id(api: str, data: dict[str, Any]) -> int | None:
         or (
             api == "send_msg"
             and (
-                data.get("message_type") == "group"
-                or data.get("group_id") is not None
+                data.get("message_type") == "group" or data.get("group_id") is not None
             )
         )
     ):
@@ -446,11 +443,7 @@ def _is_superuser_reply(service: GroupOutboundRateLimitService) -> bool:
     raw_user_id = getattr(event, "user_id", None)
     if not isinstance(raw_user_id, int | str):
         return False
-    try:
-        user_id = int(raw_user_id)
-    except (TypeError, ValueError):
-        return False
-    return service.features.is_superuser(user_id)
+    return service.features.is_actor_superuser(onebot_actor_ref(str(raw_user_id)))
 
 
 def _append_cooldown_notice(data: dict[str, Any], notice: str) -> None:
@@ -472,10 +465,7 @@ def _suppressed_result(
 
 
 def is_outbound_suppressed_result(result: object) -> bool:
-    return (
-        isinstance(result, dict)
-        and result.get(_SUPPRESSED_RESULT_KEY) is True
-    )
+    return isinstance(result, dict) and result.get(_SUPPRESSED_RESULT_KEY) is True
 
 
 @contextmanager
@@ -549,6 +539,8 @@ async def _finalize_group_send_api(
         service.rollback(permit)
         if permit is not None:
             service.discard_pending_pushes(permit.group_id)
+
+
 def install_outbound_rate_limit_hooks(
     service: GroupOutboundRateLimitService,
 ) -> None:

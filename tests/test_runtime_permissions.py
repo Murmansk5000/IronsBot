@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from ironsbot.core.features import FeatureConfig, FeatureService
+from ironsbot.config.models.features import (
+    FeatureConfig,
+    build_onebot_feature_service,
+)
 from ironsbot.runtime import permissions
 from tests.helpers.onebot_events import (
     group_admin_message_event,
@@ -10,8 +13,8 @@ from tests.helpers.onebot_events import (
     private_message_event,
 )
 
-REGULAR_FEATURES = FeatureService(FeatureConfig(), frozenset())
-SUPERUSER_FEATURES = FeatureService(FeatureConfig(), frozenset({123}))
+REGULAR_FEATURES = build_onebot_feature_service(FeatureConfig(), frozenset())
+SUPERUSER_FEATURES = build_onebot_feature_service(FeatureConfig(), frozenset({123}))
 
 
 def test_can_manage_group_event_allows_group_owner() -> None:

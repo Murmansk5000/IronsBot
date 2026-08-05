@@ -6,7 +6,7 @@ import pytest
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiConfig
-from ironsbot.core.features import FeatureConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.responses import AiResponseResult

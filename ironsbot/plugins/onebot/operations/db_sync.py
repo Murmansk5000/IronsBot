@@ -21,6 +21,7 @@ from ironsbot.runtime.commands import (
     commands_from_rows,
 )
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.onebot_identity import onebot_actor_ref
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -31,7 +32,7 @@ from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import explicit_command
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.operations.startup import StartupNoticeService
@@ -82,7 +83,9 @@ def _help_visible(event: Event, *, features: FeatureService) -> bool:
     if isinstance(event, GroupMessageEvent):
         return False
     user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))
+    return user_id is not None and features.is_actor_superuser(
+        onebot_actor_ref(str(user_id))
+    )
 
 
 async def _start_data_sync(

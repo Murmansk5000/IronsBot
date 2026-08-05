@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.core.features import FeatureConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.messaging import (
     MessageTarget,
     TargetSendSummary,
@@ -34,7 +34,7 @@ from tests.helpers.runtime import build_test_runtime
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.onebot_delivery import OneBotMessageDelivery
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
@@ -89,9 +89,7 @@ def _item(
                 "major": {
                     "opus": {
                         "summary": {"text": text},
-                        "pics": [
-                            {"url": "http://i0.hdslb.com/bfs/new_dyn/test.jpg]"}
-                        ],
+                        "pics": [{"url": "http://i0.hdslb.com/bfs/new_dyn/test.jpg]"}],
                     }
                 }
             },
@@ -294,9 +292,7 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
             sent.append({"message": message, **kwargs})
             return TargetSendSummary([], [])
 
-    subscriptions = PushUnsubscribeStore(
-        tmp_path / "push_unsubscriptions.sqlite"
-    )
+    subscriptions = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
     subscription_key = bili_push_subscription_key(1310714247)
     subscriptions.unsubscribe(
         ConversationRef(Platform.ONEBOT, "group", "1001"),
@@ -346,14 +342,10 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
             limiter = kwargs.get("message_limiter")
             for group_id in group_ids:
                 target = MessageTarget("group", group_id)
-                sent.append(
-                    limiter(message, target) if callable(limiter) else message
-                )
+                sent.append(limiter(message, target) if callable(limiter) else message)
             for user_id in private_user_ids:
                 target = MessageTarget("private", user_id)
-                sent.append(
-                    limiter(message, target) if callable(limiter) else message
-                )
+                sent.append(limiter(message, target) if callable(limiter) else message)
             return TargetSendSummary([], [])
 
     runtime = build_test_runtime(
@@ -437,9 +429,7 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         entry
         for entry in sent
         if str(entry["action_name"]) == FULL_DYNAMIC_PUSH_ACTION
-        or str(entry["action_name"]).startswith(
-            f"{FULL_DYNAMIC_PUSH_ACTION} retry "
-        )
+        or str(entry["action_name"]).startswith(f"{FULL_DYNAMIC_PUSH_ACTION} retry ")
     ]
     assert len(content_attempts) == EXPECTED_RETRIED_CONTENT_PUSH_COUNT
     assert content_attempts[1]["group_ids"] == []
@@ -524,9 +514,7 @@ def test_content_message_for_image_only_dynamic_omits_synthetic_notice() -> None
 def test_delivery_service_appends_admin_hint_once_per_day(
     tmp_path: Path,
 ) -> None:
-    store = PushUnsubscribeStore(
-        tmp_path / "push_unsubscriptions.sqlite"
-    )
+    store = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
 
     service = _delivery_service(build_test_runtime().features, store)
     first = service._transform_target_message("正文", MessageTarget("group", 1001))

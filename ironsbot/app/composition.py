@@ -18,7 +18,8 @@ from ironsbot.app.private_extensions import (
 )
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
-from ironsbot.core.features import Feature, FeatureService
+from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.core.features import Feature
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.db_registry import DatabaseManager
@@ -41,6 +42,9 @@ from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.bilibili_rendering import (
     build_dynamic_content_message,
 )
+from ironsbot.integrations.onebot.bilibili_targets import (
+    build_onebot_bili_configured_targets,
+)
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
@@ -48,6 +52,9 @@ from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
     OneBotLuckySkinWindowSubscriptionOptions,
     build_onebot_lucky_skin_window_accounts,
+)
+from ironsbot.integrations.onebot.messaging_config import (
+    build_onebot_message_schedule_targets,
 )
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -180,10 +187,11 @@ from ironsbot.services.team.audit import TeamAuditService
 from ironsbot.services.team.resource import TeamResourceService
 
 if TYPE_CHECKING:
-
     from ironsbot.config.models.settings import Settings
 
 SEERAPI_DB_NAME = "seerapi"
+
+
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
 
@@ -205,7 +213,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     prompt_sessions = PromptSessionManager()
     promotions = PromotionCatalog(settings.promotions)
-    features = FeatureService(
+    features = build_onebot_feature_service(
         settings.features,
         settings.superuser_ids,
         command_features=settings.messaging.command_feature_keys,
@@ -302,6 +310,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         targets=BiliTargetService(
             settings.bilibili,
             features,
+            build_onebot_bili_configured_targets(
+                settings.bilibili,
+                settings.onebot_references,
+            ),
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
             BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
@@ -326,6 +338,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions,
         features,
         OneBotScheduledMessageSender(delivery, push_message_limiter),
+        build_onebot_message_schedule_targets(
+            settings.messaging,
+            settings.onebot_references,
+        ),
         (
             bilibili.targets.subscription_options,
             OneBotLuckySkinWindowSubscriptionOptions(
@@ -707,8 +723,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         task_owner=task_owner,
         known_features=(
             *(feature.value for feature in Feature),
-            *features.command_features,
-            *features.schedule_features,
+            *settings.messaging.command_feature_keys,
+            *settings.messaging.schedule_feature_keys,
         ),
         required_plugin_features=frozenset(Feature),
         resource_shutdown_hooks=(

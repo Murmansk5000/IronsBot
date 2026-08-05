@@ -13,7 +13,7 @@ if TYPE_CHECKING:
         PrivateExtensionCatalog,
         PrivateExtensionRuntime,
     )
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.delivery import (
         MessageLimiter,
