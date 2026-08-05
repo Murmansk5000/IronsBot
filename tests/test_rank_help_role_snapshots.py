@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature, FeatureConfig, FeatureService
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.help.menu import (
     entry_from_definition,
     format_plugin_detail,
@@ -64,6 +65,20 @@ def _rank_command_ids(event: MessageEvent) -> tuple[str, ...]:
             plugin_id="rank_help",
         )
     )
+
+
+def test_command_context_adapts_onebot_event_to_typed_identity() -> None:
+    context = command_context(
+        group_message_event(
+            user_id=123,
+            group_id=456,
+            sender={"role": "admin"},
+        )
+    )
+
+    assert context.actor == ActorRef(Platform.ONEBOT, "123")
+    assert context.conversation == ConversationRef(Platform.ONEBOT, "group", "456")
+    assert context.group_role == "admin"
 
 
 def test_rank_help_command_visibility_role_snapshots() -> None:

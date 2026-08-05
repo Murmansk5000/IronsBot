@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.runtime.commands import CommandContext
 from ironsbot.runtime.message_input import message_input_context
 
@@ -22,9 +23,15 @@ def command_context(event: MessageEvent) -> CommandContext:
 
     sender = getattr(event, "sender", None)
     role = getattr(sender, "role", None)
+    user_id = str(event.user_id)
+    group_id = event_group_id(event)
     return CommandContext(
-        user_id=int(event.user_id),
-        group_id=event_group_id(event),
+        actor=ActorRef(Platform.ONEBOT, user_id),
+        conversation=ConversationRef(
+            Platform.ONEBOT,
+            "group" if group_id is not None else "private",
+            str(group_id if group_id is not None else user_id),
+        ),
         group_role=str(role) if role is not None else None,
     )
 

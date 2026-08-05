@@ -19,7 +19,7 @@ from ironsbot.app.private_extensions import (
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
@@ -628,10 +628,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         group_role: str | None,
         ignored_plugins: tuple[str, ...],
     ):
+        actor = ActorRef(Platform.ONEBOT, str(user_id))
         return command_catalog.poke_candidates_for_context(
             CommandContext(
-                user_id=user_id,
-                group_id=group_id,
+                actor=actor,
+                conversation=ConversationRef(
+                    Platform.ONEBOT,
+                    "group" if group_id is not None else "private",
+                    str(group_id if group_id is not None else user_id),
+                ),
                 group_role=group_role,
             ),
             features,

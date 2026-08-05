@@ -206,6 +206,10 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     使用 `PlayerDetailActionRequest(player_id, actor, conversation)`；不得重新
     定义 `(player_id, qq_user_id, group_id)` 这类整数参数，也不得把 NoneBot
     `Event` 传入私有扩展 service。
+17. 通用命令上下文、命令目录和命令权限接口只能接收 `ActorRef` 与
+    `ConversationRef`；不得把 `user_id`、`group_id` 或平台别名作为字段重新带进
+    `CommandContext`。OneBot 事件、戳一戳和配置解析器在适配边界转换一次后再调用
+    目录。
 
 ## 插件术语与权威边界
 
