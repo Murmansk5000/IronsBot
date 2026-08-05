@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from nonebot.internal.driver import Driver
 
     from ironsbot.app.file_logging import FileLogging
@@ -36,6 +38,7 @@ class Application:
     prompt_sessions: PromptSessionManager
     resources: ApplicationResources
     matcher_factory: MatcherFactory
+    extension_contexts: Mapping[str, object]
     task_owner: TaskOwner
     known_features: tuple[str, ...]
     required_plugin_features: frozenset[Feature]

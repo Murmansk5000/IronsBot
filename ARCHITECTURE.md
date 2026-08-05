@@ -61,16 +61,15 @@ contract without the qualifier "current bootstrap bridge". This specifically
 prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
-Current transition items are the private-extension bootstrap adapter, the
-legacy OneBot `MessageTarget` / `OneBotDelivery` send chain, and the renderer
-data lookups listed in the Phase 0 guard below. They keep the current OneBot
-application runnable; they are not the architecture that new cross-feature
-work should target. Phase 2 has completed built-in plugin discovery through the
-standard NoneBot manifest and the matcher-construction boundary now uses
-`MatcherFactory`. `PluginContribution` is the current plugin-local way to
-submit explicit runtime contributions; it is not an application registry or a
-catch-all authority for every plugin concern. The remaining Phase 2 work
-removes the temporary private-extension adapter. Phase 4 removes
+Current transition items are the legacy OneBot `MessageTarget` /
+`OneBotDelivery` send chain and the renderer data lookups listed in the Phase
+0 guard below. They keep the current OneBot application runnable; they are not
+the architecture that new cross-feature work should target. Phase 2 has
+completed built-in and private plugin discovery through standard NoneBot
+manifests, and the matcher-construction boundary now uses `MatcherFactory`.
+`PluginContribution` is the current plugin-local way to submit explicit runtime
+contributions; it is not an application registry or a catch-all authority for
+every plugin concern. Phase 4 removes
 renderer-owned persistence lookups. No new subsystem may be built on those
 transition items merely because they already exist.
 
@@ -229,7 +228,7 @@ feature, persistence schema, or policy decision.
 | Bilibili rich-media push delivery | target reference with adapter bridge | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `integrations.onebot.bilibili_push.OneBotBilibiliPushSender` owns OneBot rendering, routing, retries, rate limits and subscription hints | Keep future platform-specific media delivery out of `services.bilibili`; any new platform implements the same monitor sender port. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
-| Private-extension bootstrap adapter | transition | Import configured external extension modules only | Move external module discovery to a standard declarative extension mechanism, then delete the adapter. It must not call extension factories. |
+| Private-extension loading | target | Verified private `[tool.nonebot.plugins]` manifest plus a scoped `PluginInstallContext` | The public bootstrap only validates the package and calls `nonebot.load_from_toml`; modules receive narrow declared extension contexts, never composition internals. |
 
 Before adding cross-feature code, locate its row in this table. If it has no
 row, add a target responsibility with an owner and a testable boundary first.
@@ -529,13 +528,11 @@ reusable contracts rather than adding feature-local regexes:
   service, never a second static list.
 
 The retired central registry is a migration-history concern, not a runtime
-bridge. All built-in contributions now come from their own manifest-loaded
-plugin packages. The remaining private-extension bootstrap adapter is not the
-long-term owner of command semantics, feature policy, help content, or
-lifecycle design. Do not create a second parallel manifest merely for the
-future target. Each private-extension migration moves one responsibility to
-its declarative replacement and deletes it from this adapter in the same work
-item.
+bridge. All built-in and private contributions now come from manifest-loaded
+plugin packages. Private package validation may supply a temporary Python
+import path only while NoneBot loads the package's own manifest; it must never
+become a second module discovery mechanism, command directory, or lifecycle
+authority.
 
 ## Contract Ownership During Migration
 
@@ -546,7 +543,7 @@ adding fields or side registries to a temporary bootstrap adapter.
 
 | Responsibility | Current bridge | Target authority | Migration completion |
 | --- | --- | --- | --- |
-| Plugin discovery and loading | Standard TOML loads declared third-party prerequisites and every built-in local package; a temporary bootstrap adapts configured private extensions only | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No private extension bootstrap adapter remains. |
+| Plugin discovery and loading | Standard TOML loads declared third-party prerequisites, built-in packages, and verified private packages | `[tool.nonebot.plugins]` + `nonebot.load_from_toml` with one local package per plugin | No reflective module importer, plugin registry, or second manifest format remains. |
 | Plugin identity and static metadata | `PluginMetadata` in each built-in top-level plugin package | `PluginMetadata` in each top-level plugin package | Private extensions expose equivalent declarative metadata without importing application composition code. |
 | Matchers, command contracts, jobs, lifecycle contributions | `MatcherFactory` + plugin-local `PluginContribution` | `PluginContribution` created in a scoped install context | Contributions are explicit and testable without reflective lookup. |
 | Command syntax, help, poke hints, AI command claims | Mixed registry/help constants during transition | `CommandCatalog` + `CommandContract` | Every direct user command is registered once; no parallel keyword lists remain. |
@@ -579,8 +576,8 @@ plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
 `fire_manual_ad` owns its passive feature policy contribution; `onebot.sendpic`,
 `meeting`, `rank_help`, and `onebot.team_resource` also own the command descriptors
 for the matchers they install.
-Every subsequent private-extension migration follows that pattern and removes
-its bootstrap adapter responsibility in the same change.
+Every subsequent private extension follows the same manifest and narrow-context
+pattern.
 
 The target system must not retain an adapter merely to keep the old registry
 alive. A phase may use a short-lived migration tool, but ordinary runtime must
@@ -922,18 +919,19 @@ the lifecycle state machine.
 Background tasks are created through the lifecycle task owner. Every task has
 a name, an owner, cancellation on shutdown, and observable failure logging.
 
-## Temporary Private Extension Bootstrap
+## Private Extension Loading
 
 `PluginContribution` is the current plugin-local runtime contribution carrier.
 Every built-in plugin is a top-level manifest-loaded package and submits its
 own contribution during the scoped loading window. `PluginContribution` is not
 the semantic authority for commands, permissions, help layout, or lifecycle
 policy; it carries the local installation callback, declared command
-descriptors and hooks to their respective owners. `ironsbot.plugins.onebot.bootstrap`
-is now limited to adapting configured private extensions; it is not a built-in
-plugin registry, command directory, or second discovery mechanism. Do not add
-built-in feature ownership, command metadata, help metadata, lifecycle
-concepts, or plugin families to this adapter.
+descriptors and hooks to their respective owners. The public bootstrap validates
+the private package's standard NoneBot TOML and invokes `nonebot.load_from_toml`
+inside the same scoped install window as built-in plugins. It is not a plugin
+registry, command directory, or second discovery mechanism. Do not add built-in
+feature ownership, command metadata, help metadata, lifecycle concepts, or
+plugin families to this loading boundary.
 
 The runtime contribution contract is:
 
@@ -948,10 +946,10 @@ class PluginContribution:
     hooks: PluginHooks = PluginHooks()
 ```
 
-The standard manifest discovers built-in packages directly. The private
-bootstrap can append only configured external contributions during the scoped
-loading window. It must not become an additional authority over the target
-contracts:
+The standard manifests discover built-in and private packages directly. Private
+modules can append only configured external contributions during the scoped
+loading window. The package loader must not become an additional authority over
+the target contracts:
 
 - plugin installation order;
 - feature ownership;
@@ -1277,8 +1275,8 @@ The repository must include tests that prove:
 
 - the dependency graph above;
 - one settings loader and no global settings access;
-- no built-in bootstrap registry or parallel command directory; private
-  extension adaptation must not acquire target-contract ownership;
+- no reflective plugin importer, bootstrap registry, or parallel command
+  directory; private loading must not acquire target-contract ownership;
 - all internal message matchers have an explicit command policy;
 - only bootstrap registers driver lifecycle hooks;
 - only `SqliteDatabase` calls `sqlite3.connect`;

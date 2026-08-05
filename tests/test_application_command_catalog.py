@@ -54,6 +54,7 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
             ),
         ),
         matcher_factory=cast("Any", Matchers()),
+        extension_contexts={},
         task_owner=cast("Any", object()),
         known_features=(),
         required_plugin_features=frozenset(),

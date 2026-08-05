@@ -40,8 +40,12 @@ def bootstrap() -> Application:
         settings=settings,
         resources=application.resources,
         scheduler=application.scheduler,
+        extension_contexts=application.extension_contexts,
     ) as context:
         nonebot.load_from_toml(str(nonebot_manifest_path(settings.bot.plugin_manifest)))
+        if manifest_path := application.resources.private_extensions.manifest_path:
+            with application.resources.private_extensions.plugin_import_path():
+                nonebot.load_from_toml(str(manifest_path))
     application.configure(context.contributions)
     application.install()
     return application

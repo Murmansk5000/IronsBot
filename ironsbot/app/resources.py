@@ -9,10 +9,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ironsbot.app.private_extensions import (
-        PrivateExtensionCatalog,
-        PrivateExtensionRuntime,
-    )
+    from ironsbot.app.private_extensions import PrivateExtensionCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.delivery import (
@@ -81,4 +78,3 @@ class ApplicationResources:
     contribution_catalog: PluginContributionCatalog
     help_hint: OneBotHelpHintPort
     private_extensions: PrivateExtensionCatalog
-    private_extension_runtime: PrivateExtensionRuntime

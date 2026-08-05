@@ -135,8 +135,8 @@ services:
 贡献。`CommandCatalog`/`CommandContract` 是用户命令、帮助、戳一戳提示和 AI
 命令认领的唯一语义来源。
 
-`MatcherFactory` 只负责构造 matcher、挂入命令权限与冷却，并执行启动校验。私有扩展
-bootstrap 仍是过渡组件，只适配配置化的私有扩展，不能重新成为内置插件发现或命令
+`MatcherFactory` 只负责构造 matcher、挂入命令权限与冷却，并执行启动校验。私有扩展也通过
+自身标准 NoneBot 清单加载，只能取得公共代码声明的窄上下文，不能成为内置插件发现或命令
 注册入口。后续迁移方向、责任边界与完成条件以
 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
 
@@ -497,7 +497,8 @@ watchtower_docker_api_version = "1.40"
 真实阵容来自可选私有扩展包 `murmansk5000/ironsbot-private:latest`。它不是机器人
 覆盖镜像：Unraid 的 Repository 和 `[operations.docker_update].image` 始终保持
 `murmansk5000/ironsbot:latest`。容器启动时，公开主镜像通过 Docker socket 拉取私有包、
-校验清单并解包到 `/app/data/private_extensions`，再只加载公开代码明确认可的扩展契约。
+校验其标准 NoneBot 清单并解包到 `/app/data/private_extensions`，再由
+`nonebot.load_from_toml()` 加载其中声明的扩展模块；模块只能取得公开代码为其声明的窄契约。
 
 阵容是第一个扩展；以后可在同一个私有包中增加新的、由公开主程序显式支持的扩展。整个
 部署仍只有一个 IronsBot 进程和一个无头米米号登录。扩展直接借用主连接发送封包，不启动

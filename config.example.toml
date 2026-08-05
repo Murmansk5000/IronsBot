@@ -1414,7 +1414,7 @@ timeout_seconds = 300.0
 [operations.private_extensions]
 # Optional private extension package. The main Unraid/Docker image remains
 # murmansk5000/ironsbot:latest; when enabled, startup pulls this package through
-# the mounted Docker socket, validates its manifest, and installs it under /app/data.
+# the mounted Docker socket, validates its standard NoneBot manifest, and installs it under /app/data.
 # Default: false; EN: Enable the private extension package. ZH: 启用私有扩展包。
 enabled = false
 # Default: "murmansk5000/ironsbot-private:latest"; EN: Private extension package image.

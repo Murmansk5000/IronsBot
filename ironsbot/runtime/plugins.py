@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -80,6 +80,14 @@ class PluginInstallContextError(RuntimeError):
         )
 
 
+class PluginExtensionContextError(RuntimeError):
+    """Raised when an extension requests a context it was not declared for."""
+
+    @classmethod
+    def unavailable(cls, extension_id: str) -> PluginExtensionContextError:
+        return cls(f"plugin extension context is unavailable: {extension_id}")
+
+
 class PluginContributionError(ValueError):
     """Raised when declarative plugin contributions cannot be composed."""
 
@@ -143,6 +151,7 @@ class PluginInstallContext:
     settings: Any
     resources: Any
     scheduler: Any
+    extension_contexts: Mapping[str, object]
     _loaded: list[LoadedPluginContribution]
 
     def contribute(
@@ -163,6 +172,14 @@ class PluginInstallContext:
     def loaded_contributions(self) -> tuple[LoadedPluginContribution, ...]:
         return tuple(self._loaded)
 
+    def extension_context(self, extension_id: str) -> object:
+        """Return the narrow contract declared for one external extension."""
+
+        try:
+            return self.extension_contexts[extension_id]
+        except KeyError as error:
+            raise PluginExtensionContextError.unavailable(extension_id) from error
+
 
 @contextmanager
 def scoped_plugin_install_context(
@@ -170,6 +187,7 @@ def scoped_plugin_install_context(
     settings: Any,
     resources: Any,
     scheduler: Any,
+    extension_contexts: Mapping[str, object] | None = None,
 ) -> Iterator[PluginInstallContext]:
     """Expose composition dependencies while `nonebot.load_from_toml()` runs."""
 
@@ -177,6 +195,7 @@ def scoped_plugin_install_context(
         settings=settings,
         resources=resources,
         scheduler=scheduler,
+        extension_contexts=extension_contexts or {},
         _loaded=[],
     )
     token = _INSTALL_CONTEXT.set(context)
