@@ -271,18 +271,37 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     `config.models.features.build_onebot_feature_service()` 编译。调用方必须使用
     `is_feature_allowed`、`conversation_has_feature` 或 `is_message_blocked` 等
     类型化谓词。
+    此规则不适用于赛尔米米号：`player_id`、排行榜事实的 `user_id` 和无头游戏
+    协议账号仍是独立整数领域值。审查 SQLite 或参数类型时，必须按身份语义和表
+    所有权区分平台身份与米米号，不能按 `user_id`/`group_id` 列名做批量迁移。
 19. 新需求若与已有实体、输入、命令、投递、缓存或权限判断同类，先搜索并扩展
     现有通用契约；只有现有契约无法表达该语义时，才先设计最小的新接口。不得为
     单个精灵、群、用户、活动或平台另建专用 matcher、resolver、状态表或关键词表。
 20. 任何暂时的例外都必须有明确的来源事实、失效条件、删除工作项和防扩张测试。
     不能把 `if id == ...`、部署者数据、默认回退或复制粘贴的解析逻辑当成长期方案。
-21. 跨仓库私有扩展只能导入 `ironsbot.extensions` 中声明的最小公开 contract，
-    不得导入 `app.composition`、`app.private_extensions` 或公共插件实现。公共应用
-    可以在内部保有更大的资源对象，但必须在扩展边界投影为按职责命名的 context。
-22. 最终渲染图片缓存只能使用完整 `RenderDocument` 的确定性内容键；键必须包含
-    已加载资产的实际内容，不能只以实体 ID、输入参数或加载资产之前的快照命中。
-    资产缓存可以避免重复网络读取，但不得以牺牲资源更新后的像素正确性换取最终
-    缓存命中。
+21. 跨仓库私有扩展只能导入 `ironsbot.extensions` 中声明的最小 context、文档化的
+    `ironsbot.core` 语义 contract，以及仅用于安装期提交的
+    `ironsbot.runtime.plugins` 公开 API；不得导入 `app.composition`、
+    `app.private_extensions`、公共插件实现或历史 `runtime.commands` /
+    `runtime.player_reference_commands`。公共应用可以在内部保有更大的资源对象，
+    但必须在扩展边界投影为按职责命名的 context。跨仓库升级 core contract 时，
+    同一工作项必须验证真实扩展包的 import 和针对性测试；不能为了未更新的扩展
+    恢复旧模块或加入 compatibility shim。
+22. 最终渲染图片缓存必须先用 `RenderRequestKey` 查询。该键由类别、输入、发布数据
+    版本、素材 manifest 版本和模板/渲染器 fingerprint 组成；L3 命中时不得执行 SQL、
+    HTTP、素材读取、presenter 或原生渲染。miss 路径再构建完整 `RenderDocument`，并以
+    含实际素材字节的 `render_document_cache_key()` 作为写入完整性元数据。不能只以
+    实体 ID 命中，也不能因缺少素材版本而在每次 L3 查询前读取素材；缺少 manifest 是
+    发布契约失败，必须显式处理。
+23. 跨仓库工作必须先建立可审计的证据账本：目标契约、影响仓库、唯一正常路径、删除的
+    旧路径、验收测试、发布依赖和回滚点缺一不可。每个仓库单独记录 commit 与实际验证
+    结果；上游事实尚未发布、下游尚未严格消费或迁移尚未验证时，父阶段不得标为完成。
+24. 文档的进度条和“已完成”只描述已提交且验证过的子任务，不能把设计、接口定义、
+    单仓库测试或预期发布当成端到端完成。完成一个可独立验收的子任务时，同时明确它
+    没有覆盖的资源、平台、旧数据或生产发布边界。
+25. 上游 schema/fact、消费者严格读取、私有扩展迁移和生产数据迁移必须按依赖顺序
+    进行。中间阶段不得恢复旧接口、双读/双写或静默 fallback 来制造“看似可用”；例外
+    必须有最迟删除阶段、失效条件和阻止新调用方的测试。
 
 ## 插件术语与权威边界
 

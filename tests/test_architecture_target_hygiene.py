@@ -9,6 +9,10 @@ PACKAGE = ROOT / "ironsbot"
 CORE = PACKAGE / "core"
 SERVICES = PACKAGE / "services"
 RENDERING = SERVICES / "seer" / "rendering"
+PET_RENDER_DATA_SOURCES = (
+    PACKAGE / "integrations" / "seer_data" / "pet_info_repository.py",
+    PACKAGE / "integrations" / "seer_data" / "pet_display_data.py",
+)
 RUNTIME = PACKAGE / "runtime"
 APPLICATION_RESOURCES = PACKAGE / "app" / "resources.py"
 COMMAND_CATALOG = CORE / "command_catalog.py"
@@ -80,6 +84,7 @@ FORBIDDEN_RENDERER_PERSISTENCE_PREFIXES = (
     "sqlmodel",
     "sqlite3",
 )
+FORBIDDEN_RENDERER_INFERENCE_IMPORT_PREFIXES = ("difflib",)
 RETIRED_RUNTIME_NAMES = (
     "PluginDefinition",
     "MatcherRegistry",
@@ -235,6 +240,32 @@ def test_renderer_transition_allowlist_is_exact_and_documented() -> None:
     }
 
     assert current == TRANSITIONAL_RENDERER_PERSISTENCE_MODULES
+
+
+def test_renderers_do_not_import_entity_resolution_heuristics() -> None:
+    """Snapshots, not presenters, own data-association decisions."""
+
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} imports {module}"
+        for path in _python_files(RENDERING)
+        for module in _imports(path)
+        if module.startswith(FORBIDDEN_RENDERER_INFERENCE_IMPORT_PREFIXES)
+    ]
+
+    assert offenders == []
+
+
+def test_pet_data_sources_do_not_depend_on_renderer_modules() -> None:
+    """Repositories may produce views, but must not depend on presentation."""
+
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} imports {module}"
+        for path in PET_RENDER_DATA_SOURCES
+        for module in _imports(path)
+        if module.startswith("ironsbot.services.seer.rendering")
+    ]
+
+    assert offenders == []
 
 
 def test_seer_request_services_use_actor_refs_not_onebot_user_ids() -> None:

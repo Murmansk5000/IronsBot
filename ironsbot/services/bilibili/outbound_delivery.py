@@ -286,7 +286,7 @@ def render_dynamic_content_message(
 
     try:
         content = (content_override or dynamic_content(item)).strip()
-        parts = [TextPart(content)] if content else []
+        parts: list[TextPart | RemoteImagePart] = [TextPart(content)] if content else []
         parts.extend(
             RemoteImagePart(url)
             for raw_url in dynamic_image_urls(item)

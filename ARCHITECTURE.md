@@ -61,10 +61,10 @@ contract without the qualifier "current bootstrap bridge". This specifically
 prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
-Current transition items are the legacy OneBot `OneBotMessageTarget` /
-`OneBotDelivery` send chain and the renderer data lookups listed in the Phase
-0 guard below. They keep the current OneBot application runnable; they are not
-the architecture that new cross-feature work should target. Within Phase 2,
+Current transition items are the OneBot-only configuration compilers and the
+renderer data lookups listed in the Phase 0 guard below. They keep the current
+OneBot application runnable; they are not the architecture that new
+cross-feature work should target. Within Phase 2,
 the standard NoneBot manifest discovery and the `MatcherFactory` construction
 boundary are verified sub-items; the phase itself remains in progress until
 its remaining bridge and ownership conditions are met. `PluginContribution` is
@@ -248,7 +248,7 @@ feature, persistence schema, or policy decision.
 | Proactive text delivery | target | `ProactiveMessageDelivery` plus `OutboundMessenger` | All new non-rich proactive text sends use typed conversations, subscription filtering, promotion text, daily hints and failure summaries here. |
 | Administrator notices | target reference | `AdminNoticeService` plus `OutboundAdminNoticeSender` | Resolve administrators as `ActorRef` values and send through `ProactiveMessageDelivery`; no OneBot delivery object is exposed to the service. |
 | Activity reminders | target reference | `ActivityService` plus `ActivityReminderOutboundSender` | Build typed recipients and a text message, then delegate subscription and rate-limit semantics to proactive delivery. |
-| OneBot `OneBotMessageTarget` / `OneBotDelivery` | inactive transition | No application or service consumer remains; only obsolete integration/test support code is left | Delete the inactive bridge and its test-only fixtures. No new caller is permitted. |
+| OneBot outbound delivery | target adapter | `integrations.onebot.outbound_messenger.OneBotOutboundMessenger` | Convert typed messages to OneBot only after `ConversationRef` routing. Numeric batch targets and `OneBotDelivery` are deleted and must not return. |
 | OneBot reference resolution and numeric QQ configuration | target adapter | `config.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
 | Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
 | OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
@@ -259,7 +259,7 @@ feature, persistence schema, or policy decision.
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. |
 | Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
-| Bilibili rich-media push delivery | target reference with adapter bridge | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `integrations.onebot.bilibili_push.OneBotBilibiliPushSender` owns OneBot rendering, routing, retries, rate limits and subscription hints | Keep future platform-specific media delivery out of `services.bilibili`; any new platform implements the same monitor sender port. |
+| Bilibili rich-media push delivery | target reference | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `services.bilibili.outbound_delivery.BilibiliDynamicOutboundSender` creates portable parts and delegates routing, retries, rate limits and subscription hints to the shared outbound path | Keep future platform-specific media rendering in platform adapters, never in the Bilibili service. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. Raw-package omissions that change display use a SeerAPI `pet_soulmark_display_addition` fact with provenance; no presenter may branch on a pet ID. |
 | Private-extension loading | target | Verified private `[tool.nonebot.plugins]` manifest plus a scoped `PluginInstallContext` | The public bootstrap only validates the package and calls `nonebot.load_from_toml`; modules receive narrow declared extension contexts, never composition internals. |
@@ -397,6 +397,15 @@ delivery ports. They must not receive `GroupMessageEvent`, `Bot`, CQ segments,
 or adapter-specific session objects. Transport adapters own conversion in both
 directions.
 
+Platform identity is deliberately distinct from Seer domain identity. A
+`player_id`, rank-table `user_id`, or headless-game account ID is a numeric
+米米号 and remains an integer where the Seer protocol or its facts require one;
+it must never be migrated into `ActorRef`. Conversely, a QQ user/group/member
+identity is always an `ActorRef` or `ConversationRef` outside the OneBot
+boundary, even when its source happened to be numeric. Storage audits and
+migrations classify IDs by table ownership and protocol meaning, not by a
+column name such as `user_id` or `group_id`.
+
 Extension callbacks follow the same boundary. A player-detail extension
 receives `PlayerDetailActionRequest(player_id, actor, conversation)`, not a
 tuple of numeric player, QQ-user and group IDs. The public player-command
@@ -412,18 +421,27 @@ plugin implementation. Each extension receives only the smallest context its
 declared responsibility needs; the application's larger runtime object stays
 an internal composition detail.
 
+An external extension may additionally import a documented core command
+contract (for example `core.command_catalog.CommandContract` and
+`core.player_reference_commands.player_reference_input_matcher`) when it
+declares a direct command, and the narrowly scoped `runtime.plugins` install
+API needed to submit its own `PluginContribution`. These are public semantic
+contracts, not plugin implementation details. It must not import historical
+`runtime.commands` or `runtime.player_reference_commands` paths. When such a
+core contract moves, update the external package in the same cross-repository
+phase; do not restore a deleted runtime module as a compatibility shim. An
+extension that still imports a removed path is an unvalidated dependency, even
+if the bundled application tests do not install it.
+
 Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
 `ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
-`OutboundMessenger`. They use opaque nonempty string IDs. The current
-OneBot-only `OneBotMessageTarget` remains a Phase 3 transition type until its full
-call chain can be replaced in one direction; no new platform-neutral service
-may depend on it. `integrations.onebot.outbound_messenger.OneBotOutboundMessenger`
-is the Phase 1 edge adapter for the new port: it translates text, images,
-mentions and reply contexts only after a `ConversationRef` has been routed to
-a OneBot bot. Existing `OneBotDelivery` callers still use `OneBotMessageTarget`
-until the Phase 3 one-direction migration; new services must use the
-platform-neutral port instead.
+`OutboundMessenger`. They use opaque nonempty string IDs.
+`integrations.onebot.outbound_messenger.OneBotOutboundMessenger` is the OneBot
+edge adapter for the port: it translates text, images, mentions and reply
+contexts only after a `ConversationRef` has been routed to a OneBot bot. Numeric
+target types and the former `OneBotDelivery` batch bridge were removed in Phase 3;
+new services use the platform-neutral port directly.
 
 `services.team.audit.TeamAuditService` is the first complete reference use
 case for this boundary. Its workflow, reminder store, scheduler jobs, and
@@ -458,9 +476,8 @@ Monitored Bilibili dynamics now use the same route: the Bilibili domain renders
 portable text and remote-image parts, while the shared delivery service keeps
 subscription, promotion, queue and failure behaviour. The OneBot-only renderer
 that remains under `integrations.onebot` is for an incoming user's immediate
-query reply, not a monitored push. `OneBotDelivery` has no application or
-service consumer and is an inactive transition pending deletion with its
-test-only fixtures. It may not be passed through `ApplicationResources`, stored
+query reply, not a monitored push. Numeric batch delivery and its test fixtures
+are deleted; no replacement may be passed through `ApplicationResources`, stored
 in a service, or used by a new sender.
 
 The eventual composition is:
@@ -633,6 +650,11 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
 
 - A repository obtains and detaches domain data while its database session is
   open. A snapshot is complete enough to survive after that session closes.
+- Render value objects belong to the owning domain, not the renderer package.
+  For pet information, `services.seer.pet_info_views` is shared by the data
+  repository, asset adapter, presenter and document renderer; a repository
+  must never import a presentation or renderer module merely to construct a
+  snapshot.
 - An integration loads reusable image assets through the shared `SeerImageSource`
   and `SeerAssetStore`, then combines the snapshot and assets in a pure
   presenter.
@@ -642,24 +664,39 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
 - A renderer receives only the document and an HTML/native render port. Native
   work passes through the single `RenderCoordinator`; feature modules must not
   create their own semaphore, task, or timeout policy.
-- The integration owns final-image cache lookup and write. Final-cache keys
-  include the complete rendered snapshot, category, published data version,
-  renderer/template fingerprint, and all asset content versions that affect
-  pixels. The shared `render_document_cache_key()` is calculated from the
-  completed immutable `RenderDocument`, after asset preparation. A final-cache
-  hit may therefore reuse the image only after the bounded asset cache has
-  confirmed the exact image bytes used by the document; no renderer may return
-  a final image from an entity ID or an incomplete pre-asset key.
+- The integration owns final-image cache lookup and write. It first builds an
+  immutable `RenderRequestKey` from the requested render category and input,
+  the published data revision, the declared asset-manifest revision, and the
+  renderer/template fingerprint. An L3 hit by that key returns before any SQL,
+  HTTP, asset loading, presenter invocation, or native rendering. It is never
+  merely an entity-ID cache: every value that can change pixels must be part of
+  the request key through a published data or asset revision.
+- On an L3 miss, the integration loads the detached snapshot and required
+  assets, then produces an immutable `RenderDocument`. The shared
+  `render_document_cache_key()` hashes the completed document and is stored as
+  integrity metadata beside the request-keyed bytes. It proves that the miss
+  path's document, including actual asset bytes, matches the cache entry; it
+  is not the normal lookup key. Missing asset-manifest data is a release
+  contract failure, not permission to fetch assets before every L3 lookup.
+- `seerapi` must publish that manifest as deterministic facts keyed by
+  `(asset_kind, asset_key)`, with a content SHA-256 and release revision.
+  A global database timestamp or a few feature-specific asset checks do not
+  satisfy this contract. A consumer validates the manifest schema before it
+  enables request-keyed final-image caching; it never probes mutable HTTP
+  resources merely to decide whether an L3 entry is safe to use.
 
-The current Phase 4 transition has this target shape for published pet info,
-type matchup, peak-pool, peak-vote, peak-pet-rank, and the private player
-lineup image. The new-content menu follows the same split: its Seer-data
-adapter prepares details and images, while the renderer consumes an immutable
-menu document. The private lineup keeps its own presentation module, but its
-adapter alone owns asset loading, final-cache access, and the HTML render port.
-Rank and any later renderer paths remain **transition** work. They may receive
-narrow correctness fixes, but new rendering features must start from the
-target pipeline above instead of copying their older data-loading patterns.
+The current Phase 4 transition has the snapshot/presenter direction for
+published pet info, type matchup, peak-pool, peak-vote, peak-pet-rank, and the
+private player-lineup image. The new-content menu follows the same split: its
+Seer-data adapter prepares details and images, while the renderer consumes an
+immutable menu document. However, those adapters currently calculate their
+final-cache key only after asset materialization. They are **not** evidence for
+the L3 early-hit target above and new renderers must not copy that order. The
+private lineup keeps its own presentation module, but its adapter alone owns
+asset loading, final-cache access, and the HTML render port. Rank and any later
+renderer paths remain **transition** work. They may receive narrow correctness
+fixes, but new rendering features must start from the target pipeline above
+instead of copying their older data-loading patterns.
 
 Future data work follows these rules:
 
@@ -936,10 +973,11 @@ neither a service nor a plugin may import an application builder.
 
 `app.common_composition.CommonComponents` is the current host-bound boundary
 for feature policy, prompt sessions, routing, push subscriptions, outbound
-limits, delivery, promotions, and administrator notices. It deliberately
-contains the remaining OneBot delivery wiring so domain builders receive typed
-dependencies instead of constructing them. This is a transition boundary, not
-a claim that the common layer itself is platform-neutral.
+limits, proactive delivery, promotions, and administrator notices. It owns
+the explicit OneBot edge wiring needed to construct the platform-neutral
+outbound port, so domain builders receive typed dependencies instead of
+constructing platform objects themselves. The common layer remains host-bound
+composition code; only the port it supplies is platform-neutral.
 
 `app.messaging_composition.MessagingComponents` owns configuration-backed
 message schedules, fixed-image delivery, and team-audit notification assembly.
@@ -950,10 +988,11 @@ root. Other domain builders follow the same dependency direction.
 `app.seer_composition.SeerComponents` owns player lookup, rank caches and
 refresh, team resources, lucky-skin state, data query services, and render
 dependencies. It returns the existing public service objects and immutable
-render dependencies, not a broad service locator. Its current OneBot account,
-mention, and notification compilers remain explicit transition adapters; they
-move behind platform-neutral ports in Phase 3 rather than leaking back into
-plugins or individual Seer services.
+render dependencies, not a broad service locator. Its OneBot account and
+mention compilers remain explicit composition adapters: they create typed
+identity and recipient values before a service is constructed. Notifications
+already cross the platform-neutral outbound port rather than leaking platform
+objects back into plugins or individual Seer services.
 
 `app.bilibili_composition.BilibiliComponents` compiles configured OneBot
 targets and creates Bilibili query, history, and login services before the
