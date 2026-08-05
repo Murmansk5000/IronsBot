@@ -13,7 +13,7 @@ import tarfile
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
 from ironsbot.services.operations.docker_models import (
@@ -22,7 +22,7 @@ from ironsbot.services.operations.docker_models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Mapping
 
     from ironsbot.config.models.operations import (
         DockerUpdateConfig,
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.cache_paths import CachePaths
-    from ironsbot.runtime.plugins import PluginContribution
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.operations.docker_models import DockerImageArchive
@@ -107,7 +106,6 @@ class PrivateExtensionEntry:
     id: str
     path: PurePosixPath
     module: str
-    factory: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,43 +156,19 @@ class PrivateExtensionCatalog:
     def extension_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._entries))
 
-    def load_plugin_contributions(
-        self,
-        runtime: PrivateExtensionRuntime,
-    ) -> tuple[PluginContribution, ...]:
-        """Load contributions from the installed, validated extension package."""
+    def load_plugins(self) -> tuple[str, ...]:
+        """Import declared extension modules during the scoped NoneBot load."""
 
-        contributions: list[PluginContribution] = []
-        for entry in self._entries.values():
-            factory = self._load_factory(entry)
-            if factory is None:
-                continue
-            try:
-                contribution = factory(runtime)
-            except Exception:  # noqa: BLE001 - optional code must not stop boot
-                logger.warning(
-                    "private extension factory failed: id=%s",
-                    entry.id,
-                    exc_info=True,
-                )
-                continue
-            from ironsbot.runtime.plugins import PluginContribution
+        return tuple(
+            entry.id for entry in self._entries.values() if self._load_module(entry)
+        )
 
-            if not isinstance(contribution, PluginContribution):
-                logger.warning(
-                    "private extension factory returned an invalid plugin: id=%s",
-                    entry.id,
-                )
-                continue
-            contributions.append(contribution)
-        return tuple(contributions)
-
-    def _load_factory(
+    def _load_module(
         self,
         entry: PrivateExtensionEntry,
-    ) -> Callable[..., Any] | None:
+    ) -> bool:
         if self._root is None:
-            return None
+            return False
         source_root = self._root.joinpath(*entry.path.parts)
         if not source_root.is_dir():
             logger.warning(
@@ -202,13 +176,13 @@ class PrivateExtensionCatalog:
                 entry.id,
                 source_root,
             )
-            return None
+            return False
         source_root_text = str(source_root.resolve())
         if source_root_text not in sys.path:
             sys.path.insert(0, source_root_text)
         importlib.invalidate_caches()
         try:
-            imported = importlib.import_module(entry.module)
+            importlib.import_module(entry.module)
         except Exception:  # noqa: BLE001 - optional extension must not stop boot
             logger.warning(
                 "private extension import failed: id=%s module=%s",
@@ -216,17 +190,8 @@ class PrivateExtensionCatalog:
                 entry.module,
                 exc_info=True,
             )
-            return None
-        candidate = getattr(imported, entry.factory, None)
-        if not callable(candidate):
-            logger.warning(
-                "private extension factory is missing: id=%s module=%s factory=%s",
-                entry.id,
-                entry.module,
-                entry.factory,
-            )
-            return None
-        return cast("Callable[..., Any]", candidate)
+            return False
+        return True
 
 
 def load_private_extension_catalog(
@@ -429,10 +394,17 @@ def _parse_manifest_entry(  # noqa: C901 - explicit manifest diagnostics
     if not isinstance(raw_entry, dict):
         msg = "private extension manifest entry must be an object"
         raise PrivateExtensionError(msg)
+    unsupported_fields = tuple(
+        sorted(str(key) for key in set(raw_entry) - {"id", "path", "module"})
+    )
+    if unsupported_fields:
+        msg = "private extension manifest entry has unsupported fields: " + ", ".join(
+            unsupported_fields
+        )
+        raise PrivateExtensionError(msg)
     extension_id = raw_entry.get("id")
     source_path = raw_entry.get("path")
     module = raw_entry.get("module")
-    factory = raw_entry.get("factory")
     if not isinstance(extension_id, str):
         msg = "private extension manifest entry id must be a string"
         raise PrivateExtensionError(msg)
@@ -442,19 +414,13 @@ def _parse_manifest_entry(  # noqa: C901 - explicit manifest diagnostics
     if not isinstance(module, str):
         msg = "private extension manifest entry module must be a string"
         raise PrivateExtensionError(msg)
-    if not isinstance(factory, str):
-        msg = "private extension manifest entry factory must be a string"
-        raise PrivateExtensionError(msg)
-    if not extension_id or not source_path or not module or not factory:
+    if not extension_id or not source_path or not module:
         msg = "private extension manifest entry fields must be strings"
         raise PrivateExtensionError(msg)
     if not _EXTENSION_ID_PATTERN.fullmatch(extension_id):
         msg = f"private extension id is invalid: {extension_id}"
         raise PrivateExtensionError(msg)
-    if not (
-        _PYTHON_MODULE_PATTERN.fullmatch(module)
-        and _PYTHON_MODULE_PATTERN.fullmatch(factory)
-    ):
+    if not _PYTHON_MODULE_PATTERN.fullmatch(module):
         msg = f"private extension module contract is invalid: {extension_id}"
         raise PrivateExtensionError(msg)
     path = PurePosixPath(source_path)
@@ -478,7 +444,6 @@ def _parse_manifest_entry(  # noqa: C901 - explicit manifest diagnostics
         id=extension_id,
         path=path,
         module=module,
-        factory=factory,
     )
 
 

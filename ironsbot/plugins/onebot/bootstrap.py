@@ -22,9 +22,5 @@ __plugin_meta__ = PluginMetadata(
 )
 
 _context = current_plugin_install_context()
-_context.contribute(
-    __plugin_meta__,
-    *_context.resources.private_extensions.load_plugin_contributions(
-        _context.resources.private_extension_runtime,
-    ),
-)
+_context.contribute(__plugin_meta__)
+_context.resources.private_extensions.load_plugins()

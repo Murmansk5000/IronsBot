@@ -4,7 +4,7 @@ import asyncio
 import io
 import json
 import tarfile
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,13 +13,13 @@ from ironsbot.app.private_extensions import (
     PrivateExtensionCatalog,
     PrivateExtensionError,
     PrivateExtensionInstaller,
-    PrivateExtensionRuntime,
     install_private_extension_archive,
 )
 from ironsbot.config.models.operations import (
     DockerUpdateConfig,
     PrivateExtensionsConfig,
 )
+from ironsbot.runtime.plugins import scoped_plugin_install_context
 from ironsbot.services.operations.docker_models import (
     DockerImageArchive,
     DockerImageArchiveRequest,
@@ -34,18 +34,19 @@ def _package_archive(
     *,
     module: str = "ironsbot_private_lineup.plugin",
     include_source: bool = True,
+    include_legacy_factory: bool = False,
 ) -> bytes:
+    entry: dict[str, str] = {
+        "id": "player_lineup",
+        "path": "player_lineup",
+        "module": module,
+    }
+    if include_legacy_factory:
+        entry["factory"] = "build_plugin_contribution"
     manifest = json.dumps(
         {
             "schema_version": 1,
-            "extensions": [
-                {
-                    "id": "player_lineup",
-                    "path": "player_lineup",
-                    "module": module,
-                    "factory": "build_plugin_contribution",
-                }
-            ],
+            "extensions": [entry],
         }
     ).encode("utf-8")
     result = io.BytesIO()
@@ -59,11 +60,22 @@ def _package_archive(
             )
             _add_tar_file(
                 archive,
-                f"{PRIVATE_EXTENSIONS_ROOT}/player_lineup/ironsbot_private_lineup/plugin.py",
+                f"{PRIVATE_EXTENSIONS_ROOT}/player_lineup/private_test_plugin.py",
                 (
-                    b"from ironsbot.runtime.plugins import PluginContribution\n"
-                    b"def build_plugin_contribution(_runtime):\n"
-                    b"    return PluginContribution(id='private_test')\n"
+                    b"from nonebot.plugin import PluginMetadata\n"
+                    b"from ironsbot.runtime.plugins import (\n"
+                    b"    PluginContribution, active_plugin_install_context\n"
+                    b")\n"
+                    b"context = active_plugin_install_context()\n"
+                    b"if context is not None:\n"
+                    b"    context.contribute(\n"
+                    b"        PluginMetadata(\n"
+                    b"            name='Private test',\n"
+                    b"            description='test',\n"
+                    b"            usage='test',\n"
+                    b"        ),\n"
+                    b"        PluginContribution(id='private_test'),\n"
+                    b"    )\n"
                 ),
             )
     return result.getvalue()
@@ -121,6 +133,14 @@ def test_invalid_new_archive_preserves_last_valid_package(tmp_path: Path) -> Non
     assert catalog.extension_ids == ("player_lineup",)
 
 
+def test_legacy_factory_manifest_field_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(PrivateExtensionError, match="unsupported fields: factory"):
+        install_private_extension_archive(
+            _package_archive(include_legacy_factory=True),
+            tmp_path,
+        )
+
+
 def test_archive_rejects_entries_outside_package_root(tmp_path: Path) -> None:
     archive = io.BytesIO()
     with tarfile.open(fileobj=archive, mode="w") as output:
@@ -167,13 +187,24 @@ def test_disabled_private_extensions_do_not_load_a_cached_package(
     assert catalog.extension_ids == ()
 
 
-def test_private_catalog_loads_only_plugin_contributions(tmp_path: Path) -> None:
-    install_private_extension_archive(_package_archive(), tmp_path)
+def test_private_catalog_imports_declared_modules_in_the_scoped_context(
+    tmp_path: Path,
+) -> None:
+    install_private_extension_archive(
+        _package_archive(module="private_test_plugin"),
+        tmp_path,
+    )
     catalog = PrivateExtensionCatalog.from_config(
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
 
-    runtime = cast("PrivateExtensionRuntime", object())
-    contributions = catalog.load_plugin_contributions(runtime)
+    with scoped_plugin_install_context(
+        settings=object(),  # type: ignore[arg-type]
+        resources=object(),  # type: ignore[arg-type]
+        scheduler=object(),  # type: ignore[arg-type]
+    ) as context:
+        assert catalog.load_plugins() == ("player_lineup",)
 
-    assert tuple(contribution.id for contribution in contributions) == ("private_test",)
+    assert tuple(contribution.id for contribution in context.contributions) == (
+        "private_test",
+    )
