@@ -380,7 +380,7 @@ class LuckySkinWindowService:
                 day,
             )
             return self._result(player_id, day, skin_ids, from_cache=True)
-        if skin_ids := self._cache.get(player_id=player_id, day=day):
+        if skin_ids := self._cache.get(player_id=player_id):
             self._memory[player_id] = skin_ids
             logger.info(
                 "lucky skin window cache hit: player_id=%s day=%s source=sqlite",

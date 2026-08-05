@@ -204,8 +204,6 @@ class _PluginService:
 
 def _service(
     tmp_path: Path,
-    *,
-    legacy_cache_path: Path | None = None,
 ) -> tuple[
     LuckySkinWindowService,
     _Game,
@@ -273,10 +271,7 @@ def _service(
         cast("SeerDataAccess", _Data()),
         bindings,
         SqliteLuckySkinWatchPreferenceStore(tmp_path / "qq_state.sqlite"),
-        SqliteLuckySkinWindowCache(
-            tmp_path / "runtime_state.sqlite",
-            legacy_paths=(() if legacy_cache_path is None else (legacy_cache_path,)),
-        ),
+        SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite"),
         notification_sender,
         today=lambda: date(2026, 8, 3),
     )
@@ -565,51 +560,6 @@ def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
     assert recreated_sessions.opens == []
 
 
-def test_legacy_cache_for_the_same_account_survives_a_storage_upgrade(
-    tmp_path: Path,
-) -> None:
-    legacy_path = tmp_path / "cache/runtime/lucky_skin_window.sqlite"
-    legacy_cache = SqliteLuckySkinWindowCache(legacy_path)
-    legacy_cache.prepare_day(day="2026-08-03")
-    legacy_cache.put_if_absent(
-        player_id=90001,
-        skin_ids=(101, 102, 103, 104),
-    )
-
-    service, game, _delivery, _bindings, sessions = _service(
-        tmp_path,
-        legacy_cache_path=legacy_path,
-    )
-    cached = asyncio.run(service.check_for_actor(_actor(1001)))
-
-    assert cached.from_cache
-    assert sessions.opens == []
-    assert game.calls == []
-    assert SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite").get(
-        player_id=90001,
-        day="2026-08-03",
-    ) == (101, 102, 103, 104)
-
-
-def test_legacy_cache_never_crosses_configured_accounts(tmp_path: Path) -> None:
-    legacy_path = tmp_path / "cache/runtime/lucky_skin_window.sqlite"
-    legacy_cache = SqliteLuckySkinWindowCache(legacy_path)
-    legacy_cache.prepare_day(day="2026-08-03")
-    legacy_cache.put_if_absent(
-        player_id=90002,
-        skin_ids=(101, 102, 103, 104),
-    )
-
-    service, game, _delivery, _bindings, sessions = _service(
-        tmp_path,
-        legacy_cache_path=legacy_path,
-    )
-
-    assert service.cached_for_actor(_actor(1001)) is None
-    assert sessions.opens == []
-    assert game.calls == []
-
-
 def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
@@ -729,7 +679,7 @@ def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
 
     cache.prepare_day(day="2026-08-03")
 
-    assert cache.get(player_id=90001, day="2026-08-03") is None
+    assert cache.get(player_id=90001) is None
 
 
 def test_storage_upgrade_discards_results_from_the_old_decoder(tmp_path: Path) -> None:
@@ -756,7 +706,7 @@ def test_storage_upgrade_discards_results_from_the_old_decoder(tmp_path: Path) -
 
     cache = SqliteLuckySkinWindowCache(path)
 
-    assert cache.get(player_id=90001, day="2026-08-05") is None
+    assert cache.get(player_id=90001) is None
 
 
 def test_daily_notice_logs_in_automatically(tmp_path: Path) -> None:

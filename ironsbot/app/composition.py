@@ -291,10 +291,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database,
         player_bindings,
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
-        SqliteLuckySkinWindowCache(
-            settings.paths.runtime_state,
-            legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
-        ),
+        SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         OneBotLuckySkinWindowNotificationSender(delivery, subscriptions),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
