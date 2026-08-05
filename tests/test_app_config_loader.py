@@ -35,10 +35,6 @@ from ironsbot.config.models.seer import (
     TeamResourceConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
-from ironsbot.core.bilibili import (
-    DEFAULT_BILI_ACCOUNT_ALIAS,
-    DEFAULT_BILI_ACCOUNT_UID,
-)
 from ironsbot.core.features import FeatureService
 from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
@@ -59,6 +55,7 @@ DEFAULT_ASSET_MEMORY_CACHE_MAX_SIZE_MB = 128
 DEFAULT_ASSET_DISK_CACHE_MAX_SIZE_MB = 1000
 DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
 DEFAULT_ASSET_NEGATIVE_TTL_SECONDS = 300
+EXAMPLE_BILI_ACCOUNT_UID = 912345678
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
@@ -268,11 +265,11 @@ def test_example_config_parses() -> None:
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
     assert (
-        config.bilibili.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid
-        == DEFAULT_BILI_ACCOUNT_UID
+        config.bilibili.accounts["example_account"].uid
+        == EXAMPLE_BILI_ACCOUNT_UID
     )
     assert config.bilibili.push.mode == "full"
-    assert config.bilibili.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
+    assert config.bilibili.push.accounts == ["example_account"]
     assert config.bilibili.push.modes == {}
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
