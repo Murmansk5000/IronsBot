@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""OneBot adapter for Bilibili rich-media push delivery."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,17 +9,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
 
 if TYPE_CHECKING:
     from ironsbot.core.messaging import MessageTarget
+    from ironsbot.integrations.onebot.delivery import MessageLimiter
+    from ironsbot.runtime.onebot_delivery import OneBotMessageDelivery
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
-    from ironsbot.services.messaging.delivery import (
-        MessageDelivery,
-        MessageLimiter,
-    )
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )
@@ -32,7 +33,7 @@ BILI_PUSH_ADMIN_HINT = (
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
-# The first send counts toward the total.  Failed rich-media delivery therefore
+# The first send counts toward the total. Failed rich-media delivery therefore
 # receives at most two retries before a single administrator notice is sent.
 FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
 FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
@@ -46,8 +47,10 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
-class BilibiliPushDeliveryService:
-    delivery: MessageDelivery
+class OneBotBilibiliPushSender:
+    """Preserve OneBot push semantics behind the Bilibili monitor sender port."""
+
+    delivery: OneBotMessageDelivery
     subscriptions: PushSubscriptionRepository
     render_link: DynamicLinkRenderer
     render_content: DynamicContentRenderer
@@ -57,7 +60,7 @@ class BilibiliPushDeliveryService:
     content_max_chars: int = 400
     summary_max_chars: int = 250
     summary_use_ai: bool = True
-    can_query_history: Callable[[MessageTarget], bool] | None = None
+    can_query_history: Callable[[ConversationRef], bool] | None = None
     admin_notices: AdminNoticeService | None = None
 
     async def send(
@@ -79,8 +82,8 @@ class BilibiliPushDeliveryService:
             return
         await self.delivery.broadcast(
             link_message,
-            group_ids=full_targets.full_group_ids,
-            private_user_ids=full_targets.full_user_ids,
+            group_ids=_onebot_ids(full_targets.full_group_conversations),
+            private_user_ids=_onebot_ids(full_targets.full_private_conversations),
             action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             message_limiter=self._transform_target_message,
@@ -106,8 +109,8 @@ class BilibiliPushDeliveryService:
         content_message: Any,
         targets: BiliPushTargets,
     ) -> None:
-        remaining_group_ids = targets.full_group_ids
-        remaining_user_ids = targets.full_user_ids
+        remaining_group_ids = _onebot_ids(targets.full_group_conversations)
+        remaining_user_ids = _onebot_ids(targets.full_private_conversations)
         for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
             action_name = (
                 FULL_DYNAMIC_PUSH_ACTION
@@ -195,15 +198,18 @@ class BilibiliPushDeliveryService:
         author_mid: int,
         targets: BiliPushTargets,
     ) -> None:
-        if not targets.link_group_ids and not targets.link_user_ids:
+        if (
+            not targets.link_group_conversations
+            and not targets.link_private_conversations
+        ):
             return
         message = self.render_link(item, pub_ts)
         if message is None:
             return
         await self.delivery.broadcast(
             message,
-            group_ids=targets.link_group_ids,
-            private_user_ids=targets.link_user_ids,
+            group_ids=_onebot_ids(targets.link_group_conversations),
+            private_user_ids=_onebot_ids(targets.link_private_conversations),
             action_name=LINK_DYNAMIC_PUSH_ACTION,
             interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             message_limiter=self._transform_target_message,
@@ -226,16 +232,18 @@ class BilibiliPushDeliveryService:
         subscription_key: str,
     ) -> BiliPushTargets:
         return BiliPushTargets(
-            full_group_ids=self.subscriptions.filter_subscribed_group_ids(
-                targets.full_group_ids,
+            full_group_conversations=self.subscriptions.filter_subscribed_conversations(
+                targets.full_group_conversations,
                 subscription_key,
             ),
-            link_group_ids=[],
-            full_user_ids=self.subscriptions.filter_subscribed_user_ids(
-                targets.full_user_ids,
-                subscription_key,
+            link_group_conversations=[],
+            full_private_conversations=(
+                self.subscriptions.filter_subscribed_conversations(
+                    targets.full_private_conversations,
+                    subscription_key,
+                )
             ),
-            link_user_ids=[],
+            link_private_conversations=[],
         )
 
     def _transform_target_message(
@@ -245,15 +253,36 @@ class BilibiliPushDeliveryService:
     ) -> Any:
         if self.message_limiter is not None:
             message = self.message_limiter(message, target)
-        if self.can_query_history is not None and self.can_query_history(target):
+        if self.can_query_history is not None and self.can_query_history(
+            _onebot_conversation(target)
+        ):
             message = self.append_hint(message, DYNAMIC_HISTORY_HINT)
         if target.target_type != "group":
             return message
-        group_id = target.target_id
         if not self.subscriptions.mark_daily_hint_sent(
-            "group",
-            group_id,
+            _onebot_conversation(target),
             BILI_PUSH_ADMIN_HINT_KEY,
         ):
             return message.rstrip() if isinstance(message, str) else message
         return self.append_hint(message, BILI_PUSH_ADMIN_HINT)
+
+
+def _onebot_conversation(target: MessageTarget) -> ConversationRef:
+    return ConversationRef(
+        platform=Platform.ONEBOT,
+        kind="group" if target.target_type == "group" else "private",
+        id=str(target.target_id),
+    )
+
+
+def _onebot_ids(conversations: list[ConversationRef]) -> list[int]:
+    return [
+        int(conversation.id)
+        for conversation in conversations
+        if (
+            conversation.platform is Platform.ONEBOT
+            and conversation.kind in {"private", "group"}
+            and conversation.id.isdecimal()
+            and int(conversation.id) > 0
+        )
+    ]

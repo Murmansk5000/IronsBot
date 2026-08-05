@@ -1,10 +1,13 @@
 from pathlib import Path
 
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.services.ai.memory import AiMemoryTurn
 
 GROUP_ID = 456
 USER_ID = 123
+ACTOR = ActorRef(Platform.ONEBOT, str(USER_ID))
+CONVERSATION = ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID))
 
 
 def _append(
@@ -15,10 +18,9 @@ def _append(
 ) -> None:
     store.append(
         AiMemoryTurn(
-            USER_ID,
+            ACTOR,
             session_key,
-            "group",
-            GROUP_ID,
+            CONVERSATION,
             prompt,
             reply,
         )
@@ -31,7 +33,7 @@ def test_ai_memory_appends_and_reads_recent_turn(tmp_path: Path) -> None:
     _append(store, "session-b", "second prompt", "second reply")
 
     assert store.load(
-        user_id=USER_ID,
+        actor=ACTOR,
         current_session_key="current",
         exclude_current_session=False,
         limit=2,
@@ -47,11 +49,36 @@ def test_ai_memory_excludes_current_short_history_session(tmp_path: Path) -> Non
     _append(store, "older", "older prompt", "older reply")
 
     assert store.load(
-        user_id=USER_ID,
+        actor=ACTOR,
         current_session_key="current",
         exclude_current_session=True,
         limit=2,
     ) == [
         {"role": "user", "content": "older prompt"},
         {"role": "assistant", "content": "older reply"},
+    ]
+
+
+def test_ai_memory_keeps_official_platform_identity_opaque(tmp_path: Path) -> None:
+    store = SqliteAiMemoryStore(tmp_path / "memory.sqlite")
+    actor = ActorRef(Platform.QQ_OFFICIAL, "openid-example")
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "guild", "guild-example")
+    store.append(
+        AiMemoryTurn(
+            actor,
+            "official-session",
+            conversation,
+            "official prompt",
+            "official reply",
+        )
+    )
+
+    assert store.load(
+        actor=actor,
+        current_session_key="current",
+        exclude_current_session=False,
+        limit=2,
+    ) == [
+        {"role": "user", "content": "official prompt"},
+        {"role": "assistant", "content": "official reply"},
     ]

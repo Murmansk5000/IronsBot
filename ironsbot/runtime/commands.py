@@ -11,6 +11,7 @@ from ironsbot.runtime.permissions import GROUP_MANAGER_ROLES
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.runtime.plugins import PluginContribution
 
 CommandScope = Literal["group", "private", "both"]
@@ -21,19 +22,26 @@ CommandVisibility = Callable[["CommandContext"], bool]
 
 
 class CommandFeaturePolicy(Protocol):
-    def is_superuser(self, user_id: int) -> bool: ...
+    def is_actor_superuser(self, actor: ActorRef) -> bool: ...
 
-    def group_has_feature(self, group_id: int, feature: str) -> bool: ...
-
-    def is_group_feature_allowed(
+    def conversation_has_feature(
         self,
-        user_id: int,
-        group_id: int,
+        conversation: ConversationRef,
         feature: str,
-        /,
     ) -> bool: ...
 
-    def is_private_feature_allowed(self, user_id: int, feature: str) -> bool: ...
+    def is_actor_feature_allowed(
+        self,
+        actor: ActorRef,
+        feature: str,
+    ) -> bool: ...
+
+    def is_feature_allowed(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool: ...
 
 
 class CommandCatalogError(ValueError):
@@ -129,13 +137,13 @@ class CommandCatalogError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class CommandContext:
-    user_id: int
-    group_id: int | None
+    actor: ActorRef
+    conversation: ConversationRef
     group_role: str | None = None
 
     @property
     def is_group(self) -> bool:
-        return self.group_id is not None
+        return self.conversation.kind == "group"
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,9 +187,11 @@ class CommandAccess:
         if self.audience == "group_manager":
             return context.is_group and (
                 context.group_role in GROUP_MANAGER_ROLES
-                or features.is_superuser(context.user_id)
+                or features.is_actor_superuser(context.actor)
             )
-        return self.audience != "superuser" or features.is_superuser(context.user_id)
+        return self.audience != "superuser" or features.is_actor_superuser(
+            context.actor
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,18 +325,18 @@ def _feature_is_allowed(
     context: CommandContext,
     feature: str,
 ) -> bool:
-    if context.group_id is not None:
+    if context.is_group:
         # Group help and poke hints describe the features enabled for the
         # whole group, rather than a superuser's execution bypass.
-        return features.group_has_feature(
-            context.group_id,
+        return features.conversation_has_feature(
+            context.conversation,
             feature,
-        ) and features.is_group_feature_allowed(
-            context.user_id,
-            context.group_id,
+        ) and features.is_feature_allowed(
+            context.actor,
+            context.conversation,
             feature,
         )
-    return features.is_private_feature_allowed(context.user_id, feature)
+    return features.is_feature_allowed(context.actor, context.conversation, feature)
 
 
 @dataclass(slots=True)

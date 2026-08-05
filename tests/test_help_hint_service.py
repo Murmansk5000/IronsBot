@@ -3,17 +3,16 @@ from dataclasses import dataclass
 from ironsbot.core.features import HelpConfig
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandCatalog,
     CommandContext,
     CommandDescriptor,
 )
+from ironsbot.runtime.onebot_help_hint import is_onebot_poke_at_bot
 from ironsbot.runtime.plugins import PluginContribution
-from ironsbot.services.messaging.help_hint import (
-    HelpHintService,
-    is_poke_at_bot,
-)
 
 
 @dataclass(slots=True)
@@ -29,24 +28,53 @@ class FakeFeatures:
     group_allowed_features: dict[tuple[int, int], set[str]] | None = None
     superusers: set[int] | None = None
 
-    def group_has_feature(self, group_id: int, feature: str) -> bool:
-        return feature in self.group_features.get(group_id, set())
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        return int(actor.id) in (self.superusers or set())
 
-    def is_group_feature_allowed(
+    def conversation_has_feature(
         self,
-        user_id: int,
-        group_id: int,
+        conversation: ConversationRef,
         feature: str,
     ) -> bool:
+        if conversation.platform is not Platform.ONEBOT or conversation.kind != "group":
+            return False
+        return feature in self.group_features.get(int(conversation.id), set())
+
+    def is_feature_allowed(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool:
+        if conversation.kind != "group":
+            return self.is_actor_feature_allowed(actor, feature)
         if self.group_allowed_features is None:
-            return self.group_has_feature(group_id, feature)
-        return feature in self.group_allowed_features.get((user_id, group_id), set())
+            return self.conversation_has_feature(conversation, feature)
+        return feature in self.group_allowed_features.get(
+            (int(actor.id), int(conversation.id)),
+            set(),
+        )
 
-    def is_private_feature_allowed(self, user_id: int, feature: str) -> bool:
-        return feature in self.private_features.get(user_id, set())
+    def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
+        return feature in self.private_features.get(int(actor.id), set())
 
-    def is_superuser(self, user_id: int) -> bool:
-        return user_id in (self.superusers or set())
+
+def _command_context(
+    user_id: int,
+    *,
+    group_id: int | None = None,
+    group_role: str | None = None,
+) -> CommandContext:
+    actor = ActorRef(Platform.ONEBOT, str(user_id))
+    return CommandContext(
+        actor=actor,
+        conversation=ConversationRef(
+            Platform.ONEBOT,
+            "group" if group_id is not None else "private",
+            str(group_id if group_id is not None else user_id),
+        ),
+        group_role=group_role,
+    )
 
 
 def _catalog() -> CommandCatalog:
@@ -169,7 +197,7 @@ def _service(
     group_aliases: dict[str, int] | None = None,
     user_aliases: dict[str, int] | None = None,
     features: FakeFeatures | None = None,
-) -> HelpHintService:
+) -> OneBotHelpHintService:
     catalog = _catalog()
 
     def candidates(
@@ -181,8 +209,8 @@ def _service(
         if features is None:
             return ()
         return catalog.poke_candidates_for_context(
-            CommandContext(
-                user_id=user_id,
+            _command_context(
+                user_id,
                 group_id=group_id,
                 group_role=group_role,
             ),
@@ -190,7 +218,7 @@ def _service(
             ignored_plugins=ignored_plugins,
         )
 
-    return HelpHintService(
+    return OneBotHelpHintService(
         config=config or HelpConfig(),
         references=OneBotReferenceResolver(
             group_aliases=group_aliases or {},
@@ -209,9 +237,9 @@ def test_help_hint_text_mentions_help_command() -> None:
     )
 
 
-def test_is_poke_at_bot_checks_poke_target() -> None:
-    assert is_poke_at_bot(FakePokeEvent(self_id=100, target_id=100))
-    assert not is_poke_at_bot(FakePokeEvent(self_id=100, target_id=200))
+def test_is_onebot_poke_at_bot_checks_poke_target() -> None:
+    assert is_onebot_poke_at_bot(FakePokeEvent(self_id=100, target_id=100))
+    assert not is_onebot_poke_at_bot(FakePokeEvent(self_id=100, target_id=200))
 
 
 def test_group_poke_reply_prefers_configured_group_alias() -> None:

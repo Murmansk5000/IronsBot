@@ -22,6 +22,7 @@ from ironsbot.runtime.commands import (
 )
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import (
     build_notice_source,
     command_context,
@@ -37,8 +38,6 @@ from ironsbot.runtime.rules import bot_mention
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
     from ironsbot.services.ai.service import AiService
@@ -50,8 +49,8 @@ AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 class AiChatMatcherDependencies:
     features: FeatureService
     commands: CommandCatalog
-    group_aliases: Mapping[str, int]
     bot_mention_block_service: BotMentionBlockService
+
 
 __plugin_meta__ = PluginMetadata(
     name="AI聊天",
@@ -96,24 +95,17 @@ def command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
     )
 
 
-def _group_id(event: MessageEvent) -> int | None:
-    return int(event.group_id) if isinstance(event, GroupMessageEvent) else None
-
-
 def _is_claimed_private_command(
     commands: CommandCatalog,
     features: FeatureService,
     event: MessageEvent,
     prompt: str,
 ) -> bool:
-    return (
-        not isinstance(event, GroupMessageEvent)
-        and commands.claims_direct_input(
-            command_context(event),
-            features,
-            prompt,
-            ignored_plugins=("ai_chat",),
-        )
+    return not isinstance(event, GroupMessageEvent) and commands.claims_direct_input(
+        command_context(event),
+        features,
+        prompt,
+        ignored_plugins=("ai_chat",),
     )
 
 
@@ -184,14 +176,14 @@ def install(
         if service.waiting_notice:
             await send_event_reply(matcher, event, "处理中...")
 
+        message = message_input_context(event).message
         reply = await service.chat_reply(
-            user_id=int(event.user_id),
-            group_id=_group_id(event),
+            actor=message.actor,
+            conversation=message.conversation,
             prompt=prompt,
             source_context=await build_notice_source(
                 event,
                 prompt,
-                dependencies.group_aliases,
                 bot=bot,
             ),
         )
@@ -289,7 +281,6 @@ def plugin_contribution(
                 dependencies=AiChatMatcherDependencies(
                     features=features,
                     commands=commands,
-                    group_aliases=settings.features.group_aliases,
                     bot_mention_block_service=BotMentionBlockService(
                         settings.messaging.command_cooldown
                     ),

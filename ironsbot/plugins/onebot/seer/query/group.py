@@ -12,10 +12,10 @@ from ironsbot.runtime.feature_policy import event_is_feature_allowed
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
-    from ironsbot.config.player_accounts import PlayerAccountRegistry
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+    from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
     from ironsbot.services.seer.resources import SeerQueryResources
 
 
@@ -33,6 +33,7 @@ class SeerMatcherGroup:
     features: FeatureService
     commands: CommandCatalog
     player_accounts: PlayerAccountRegistry
+    image_command_texts: frozenset[str]
 
     def on_message(
         self,

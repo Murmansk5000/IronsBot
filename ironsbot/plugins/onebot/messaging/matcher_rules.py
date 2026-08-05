@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
 
 if TYPE_CHECKING:
@@ -23,19 +24,14 @@ def match_message_command(
     *,
     messaging: MessagingService,
 ) -> bool:
-    if isinstance(event, PrivateMessageEvent):
-        action = messaging.match_private_action(
-            event.get_plaintext(),
-            event.user_id,
-        )
-    elif isinstance(event, GroupMessageEvent):
-        action = messaging.match_group_action(
-            event.get_plaintext(),
-            user_id=event.user_id,
-            group_id=event.group_id,
-        )
-    else:
+    if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
         return False
+    message = message_input_context(event).message
+    action = messaging.match_action(
+        message.text,
+        actor=message.actor,
+        conversation=message.conversation,
+    )
 
     if action is not None:
         state[MESSAGE_ACTION_KEY] = action
@@ -48,7 +44,7 @@ def is_group_push_subscription_manager(
     messaging: MessagingService,
     event: GroupMessageEvent,
 ) -> bool:
-    return can_manage_group_event(messaging, event)
+    return can_manage_group_event(messaging.feature_policy, event)
 
 
 def match_push_subscription_command(

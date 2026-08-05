@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.commands import positive_int_list
+from ironsbot.core.platform import ConversationKind, ConversationRef
 from ironsbot.core.selection import (
     DEFAULT_SELECTION_FOOTER,
     SelectionMenuItem,
@@ -20,7 +21,6 @@ from ironsbot.services.messaging.subscriptions import (
     ACTIVITY_LEAD_HOURS_PREFERENCE,
     CRON_TIME_PREFERENCE,
     PushPreferenceType,
-    PushTargetType,
 )
 
 if TYPE_CHECKING:
@@ -30,9 +30,9 @@ if TYPE_CHECKING:
         PushSubscriptionRepository,
     )
 
-EligibleTargetIds = Callable[
-    [PushTargetType, set[str]],
-    dict[str, set[int]],
+EligibleConversations = Callable[
+    [ConversationKind, set[str]],
+    dict[str, set[ConversationRef]],
 ]
 
 DEFAULT_TEXT = "默认"
@@ -70,21 +70,19 @@ def lead_hours_text(values: list[int]) -> str:
 
 def _activity_time_option(
     *,
-    target_type: PushTargetType,
-    target_id: int,
+    conversation: ConversationRef,
     config: ActivityConfig,
     store: PushSubscriptionRepository,
-    eligible_target_ids: EligibleTargetIds,
+    eligible_conversations: EligibleConversations,
 ) -> PushTimeOption | None:
-    eligible = eligible_target_ids(target_type, {"seer_activity_push"})
-    if target_id not in eligible.get("seer_activity_push", set()):
+    eligible = eligible_conversations(conversation.kind, {"seer_activity_push"})
+    if conversation not in eligible.get("seer_activity_push", set()):
         return None
 
     key = "seer_activity_push"
     default_value = lead_hours_text(config.lead_hours)
     override = store.get_time_preference(
-        target_type,
-        target_id,
+        conversation,
         key,
         ACTIVITY_LEAD_HOURS_PREFERENCE,
     )
@@ -106,28 +104,26 @@ def _activity_time_option(
 
 def _schedule_time_options(
     *,
-    target_type: PushTargetType,
-    target_id: int,
+    conversation: ConversationRef,
     config: MessageConfig,
     store: PushSubscriptionRepository,
-    eligible_target_ids: EligibleTargetIds,
+    eligible_conversations: EligibleConversations,
 ) -> list[PushTimeOption]:
     tasks = config.schedules
     features = {task.feature for task in tasks if task.enabled}
-    eligible = eligible_target_ids(target_type, features)
+    eligible = eligible_conversations(conversation.kind, features)
 
     options: list[PushTimeOption] = []
     for index, task in enumerate(tasks, start=1):
         if not task.enabled:
             continue
-        if target_id not in eligible.get(task.feature, set()):
+        if conversation not in eligible.get(task.feature, set()):
             continue
 
         key = schedule_key(index, task)
         default_value = task.time
         override = store.get_time_preference(
-            target_type,
-            target_id,
+            conversation,
             key,
             CRON_TIME_PREFERENCE,
         )
@@ -152,48 +148,45 @@ def _schedule_time_options(
     return options
 
 
-def build_push_time_options(  # noqa: PLR0913 - explicit catalog dependencies
-    target_type: PushTargetType,
-    target_id: int,
+def build_push_time_options(
+    conversation: ConversationRef,
     *,
     activity: ActivityConfig,
     config: MessageConfig,
     store: PushSubscriptionRepository,
-    eligible_target_ids: EligibleTargetIds,
+    eligible_conversations: EligibleConversations,
 ) -> list[PushTimeOption]:
     options: list[PushTimeOption] = []
     activity_option = _activity_time_option(
-        target_type=target_type,
-        target_id=target_id,
+        conversation=conversation,
         config=activity,
         store=store,
-        eligible_target_ids=eligible_target_ids,
+        eligible_conversations=eligible_conversations,
     )
     if activity_option is not None:
         options.append(activity_option)
     options.extend(
         _schedule_time_options(
-            target_type=target_type,
-            target_id=target_id,
+            conversation=conversation,
             config=config,
             store=store,
-            eligible_target_ids=eligible_target_ids,
+            eligible_conversations=eligible_conversations,
         )
     )
     return options
 
 
-def _push_time_menu_title(target_type: PushTargetType) -> str:
-    scope = "本群" if target_type == "group" else "私聊"
+def _push_time_menu_title(conversation: ConversationRef) -> str:
+    scope = "本群" if conversation.kind == "group" else "私聊"
     return f"请选择要修改时间的{scope}推送："
 
 
 def build_push_time_menu_prompt(
-    target_type: PushTargetType,
+    conversation: ConversationRef,
     options: list[PushTimeOption],
 ) -> str:
     return format_selection_menu(
-        title=_push_time_menu_title(target_type),
+        title=_push_time_menu_title(conversation),
         items=tuple(
             SelectionMenuItem(
                 label=option.label,

@@ -26,9 +26,13 @@ from ironsbot.config.models.messaging import (
     PushUnsubscribeConfig,
 )
 from ironsbot.core.features import FeatureConfig
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE, MessageTarget
+from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
+from ironsbot.integrations.onebot.scheduled_delivery import (
+    OneBotScheduledMessageSender,
+)
 from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
@@ -47,6 +51,7 @@ from tests.helpers.onebot_events import (
     group_member_message_event,
     private_message_event,
 )
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -55,8 +60,6 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
     from ironsbot.services.activity.service import ActivityService
-    from ironsbot.services.messaging.subscriptions import PushTargetType
-
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30
@@ -110,7 +113,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     superusers: tuple[int, ...] = (),
     store: PushUnsubscribeStore | None = None,
     extra_push_options: (
-        Callable[[PushTargetType, int], list[PushSubscriptionOption]] | None
+        Callable[[ConversationRef], list[PushSubscriptionOption]] | None
     ) = None,
 ) -> MessagingService:
     config = MessageConfig(
@@ -132,12 +135,15 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         ActivityConfig(),
         store or PushUnsubscribeStore(data_path),
         resources.features,
-        resources.delivery,
-        (extra_push_options or (lambda _target_type, _target_id: []),),
-        _push_message_limiter=partial(
-            append_fire_manual_ad_for_target,
-            resources.features,
+        OneBotScheduledMessageSender(
+            resources.delivery,
+            partial(
+                append_promotions_for_target,
+                resources.features,
+                FIRE_MANUAL_PROMOTIONS,
+            ),
         ),
+        (extra_push_options or (lambda _conversation: []),),
     )
 
 
@@ -262,11 +268,10 @@ def test_push_subscription_menu_prompt_marks_current_state(tmp_path: Path) -> No
     ]
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
-        extra_push_options=lambda _target_type, _target_id: options,
+        extra_push_options=lambda _conversation: options,
     )
     _, prompt = messaging.subscription_menu(
-        "private",
-        1001,
+        ConversationRef(Platform.ONEBOT, "private", "1001"),
     )
 
     assert "请选择要切换的私聊推送订阅：" in prompt
@@ -281,11 +286,10 @@ def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
     ]
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
-        extra_push_options=lambda _target_type, _target_id: options,
+        extra_push_options=lambda _conversation: options,
     )
     _, prompt = messaging.subscription_menu(
-        "group",
-        1001,
+        ConversationRef(Platform.ONEBOT, "group", "1001"),
         read_only=True,
     )
 
@@ -441,10 +445,10 @@ def test_unified_schedule_delivers_to_private_and_group_targets(
         )
     )
 
-    assert sent[0]["private_user_ids"] == [2001]
+    assert sent[0]["private_user_ids"] == (2001,)
     assert sent[0]["subscription_key"] == "daily"
-    assert sent[1]["group_ids"] == [1001]
-    assert sent[1]["group_at_user_ids"] == [3001]
+    assert sent[1]["group_ids"] == (1001,)
+    assert sent[1]["group_at_user_ids"] == (3001,)
     assert sent[1]["subscription_key"] == "daily"
 
 
@@ -467,11 +471,11 @@ def test_scheduled_messages_append_fire_manual_ad(
         limiter = kwargs.get("message_limiter")
         group_ids = kwargs.get("group_ids")
         private_user_ids = kwargs.get("private_user_ids")
-        if limiter is not None and isinstance(group_ids, list) and group_ids:
+        if limiter is not None and isinstance(group_ids, tuple) and group_ids:
             message = limiter(message, MessageTarget("group", group_ids[0]))  # type: ignore[operator]
         if (
             limiter is not None
-            and isinstance(private_user_ids, list)
+            and isinstance(private_user_ids, tuple)
             and private_user_ids
         ):
             message = limiter(  # type: ignore[operator]
@@ -496,12 +500,12 @@ def test_scheduled_messages_append_fire_manual_ad(
 
     assert [message for message, _kwargs in sent] == [
         "私聊定时",
-        f"群定时\n\n{FIRE_MANUAL_LINK_MESSAGE}",
+        f"群定时\n\n{FIRE_MANUAL_PROMOTIONS.require('fire_manual').message}",
     ]
-    assert sent[0][1]["private_user_ids"] == [2001]
+    assert sent[0][1]["private_user_ids"] == (2001,)
     assert sent[0][1]["subscription_key"] == "private"
-    assert sent[1][1]["group_ids"] == [1001]
-    assert sent[1][1]["group_at_user_ids"] == [3001]
+    assert sent[1][1]["group_ids"] == (1001,)
+    assert sent[1][1]["group_at_user_ids"] == (3001,)
     assert sent[1][1]["subscription_key"] == "group"
 
 
@@ -533,7 +537,9 @@ def test_private_scheduled_message_appends_fire_manual_ad_only_when_enabled(
         )
     )
 
-    assert sent == [f"私聊定时\n\n{FIRE_MANUAL_LINK_MESSAGE}"]
+    assert sent == [
+        f"私聊定时\n\n{FIRE_MANUAL_PROMOTIONS.require('fire_manual').message}"
+    ]
 
 
 def test_private_schedule_passes_subscription_key(
@@ -565,7 +571,7 @@ def test_private_schedule_passes_subscription_key(
         )
     )
 
-    assert sent[0][1]["private_user_ids"] == [2001, 2002]
+    assert sent[0][1]["private_user_ids"] == (2001, 2002)
     assert sent[0][1]["subscription_key"] == "private"
 
 
@@ -585,8 +591,7 @@ def test_group_schedule_skips_default_time_for_overridden_group(
         store=store,
     )
     store.set_time_preference(
-        "group",
-        1001,
+        ConversationRef(Platform.ONEBOT, "group", "1001"),
         "daily",
         CRON_TIME_PREFERENCE,
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
@@ -607,7 +612,7 @@ def test_group_schedule_skips_default_time_for_overridden_group(
         )
     )
 
-    assert sent[0][1]["group_ids"] == [1002]
+    assert sent[0][1]["group_ids"] == (1002,)
     assert sent[0][1]["subscription_key"] == "daily"
 
 
@@ -617,8 +622,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
     data_path = tmp_path / "unsubscribe.sqlite"
     store = PushUnsubscribeStore(data_path)
     store.set_time_preference(
-        "group",
-        1001,
+        ConversationRef(Platform.ONEBOT, "group", "1001"),
         "daily",
         CRON_TIME_PREFERENCE,
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
@@ -647,7 +651,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
 
     assert [job["id"] for job in scheduler.jobs] == [
         "message_action_schedule_daily",
-        "message_action_group_schedule_daily_override_1001",
+        "message_action_group_schedule_daily_override_onebot_group_1001",
     ]
     override_job = scheduler.jobs[1]
     assert override_job["hour"] == OVERRIDE_HOUR
@@ -655,5 +659,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
     assert override_job["kwargs"] == {
         "task": task,
         "index": 1,
-        "target_group_ids": (1001,),
+        "target_conversations": (
+            ConversationRef(Platform.ONEBOT, "group", "1001"),
+        ),
     }

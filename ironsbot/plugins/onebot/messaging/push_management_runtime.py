@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -24,13 +24,12 @@ if TYPE_CHECKING:
     from nonebot.rule import Rule
     from nonebot.typing import T_State
 
-    from ironsbot.services.messaging.subscriptions import PushTargetType
-
 PUSH_SUBSCRIPTION_OPTIONS_KEY = "_message_push_subscription_options"
-PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
+PUSH_SUBSCRIPTION_CONVERSATION_KEY = "_message_push_subscription_conversation"
 PUSH_TIME_OPTIONS_KEY = "_message_push_time_options"
 PUSH_TIME_SELECTED_KEY = "_message_push_time_selected"
-PUSH_TIME_TARGET_ID_KEY = "_message_push_time_target_id"
+PUSH_TIME_CONVERSATION_KEY = "_message_push_time_conversation"
+OneBotConversationKind = Literal["private", "group"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,7 +43,7 @@ class PromptFlow:
         self,
         event: MessageEvent,
         state: T_State,
-        target_type: PushTargetType,
+        target_type: OneBotConversationKind,
     ) -> tuple[str, int]:
         session_id = event_conversation_session_id(self.namespace, event)
         version = get_prompt_session_manager(state).acquire(session_id)
@@ -58,7 +57,7 @@ class PromptFlow:
         state: T_State,
         session_id: str,
         version: int,
-        target_type: PushTargetType,
+        target_type: OneBotConversationKind,
         *,
         selection: bool = True,
     ) -> Rule:
@@ -75,7 +74,7 @@ class PromptFlow:
     def reply_check(
         self,
         session_id: str,
-        target_type: PushTargetType,
+        target_type: OneBotConversationKind,
         *,
         selection: bool = True,
     ) -> Callable[[Event], bool]:
@@ -98,7 +97,7 @@ class PromptFlow:
     def input_check(
         self,
         event: Event,
-        target_type: PushTargetType,
+        target_type: OneBotConversationKind,
         *,
         selection: bool = True,
     ) -> bool:
@@ -128,7 +127,7 @@ class PromptFlow:
             or target_type not in {"private", "group"}
         ):
             await matcher.finish(prompt)
-        resolved_target_type = cast("PushTargetType", target_type)
+        resolved_target_type = cast("OneBotConversationKind", target_type)
         reply_check = self.reply_check(
             session_id,
             resolved_target_type,

@@ -6,23 +6,24 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.core.platform import ConversationRef
 from ironsbot.runtime.matchers import bind_async, enter_prompt_loop
-from ironsbot.runtime.replies import message_event_target
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.services.messaging.service import (  # noqa: TC001
     MessagingService,
 )
 
 from .matcher_rules import is_group_push_subscription_manager
 from .push_management_runtime import (
+    PUSH_SUBSCRIPTION_CONVERSATION_KEY,
     PUSH_SUBSCRIPTION_FLOW,
     PUSH_SUBSCRIPTION_OPTIONS_KEY,
-    PUSH_SUBSCRIPTION_TARGET_ID_KEY,
+    OneBotConversationKind,
 )
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionOption,
-        PushTargetType,
     )
 
 
@@ -33,18 +34,19 @@ async def handle_push_subscription_menu(
     *,
     messaging: MessagingService,
 ) -> None:
-    target_type, target_id, _ = message_event_target(event)
+    conversation = message_input_context(event).message.conversation
+    if conversation.kind not in {"private", "group"}:
+        await matcher.finish()
+    target_type = cast("OneBotConversationKind", conversation.kind)
     read_only = isinstance(event, GroupMessageEvent) and not (
         is_group_push_subscription_manager(messaging, event)
     )
     if error := await messaging.prepare_subscription_options(
-        target_type,
-        target_id,
+        conversation,
     ):
         await matcher.finish(error)
     options, prompt = messaging.subscription_menu(
-        target_type,
-        target_id,
+        conversation,
         read_only=read_only,
     )
     if not options:
@@ -56,7 +58,7 @@ async def handle_push_subscription_menu(
         state,
         target_type,
     )
-    state[PUSH_SUBSCRIPTION_TARGET_ID_KEY] = target_id
+    state[PUSH_SUBSCRIPTION_CONVERSATION_KEY] = conversation
 
     await enter_prompt_loop(
         matcher,
@@ -110,18 +112,18 @@ async def handle_push_subscription_select(
 
     option = options[index - 1]
     target_type = state.get(PUSH_SUBSCRIPTION_FLOW.target_type_key)
-    target_id = state.get(PUSH_SUBSCRIPTION_TARGET_ID_KEY)
-    if target_type not in {"private", "group"} or not isinstance(target_id, int):
+    conversation = state.get(PUSH_SUBSCRIPTION_CONVERSATION_KEY)
+    if target_type not in {"private", "group"} or not isinstance(
+        conversation,
+        ConversationRef,
+    ):
         await matcher.finish()
-    target_type = cast("PushTargetType", target_type)
-
-    if target_type == "group" and (
+    if conversation.kind == "group" and (
         not isinstance(event, GroupMessageEvent)
         or not is_group_push_subscription_manager(messaging, event)
     ):
         _, menu_prompt = messaging.subscription_menu(
-            target_type,
-            target_id,
+            conversation,
             read_only=True,
         )
         prompt = (
@@ -136,13 +138,11 @@ async def handle_push_subscription_select(
         )
 
     result_message = messaging.toggle_subscription(
-        target_type,
-        target_id,
+        conversation,
         option,
     )
     refreshed_options, menu_prompt = messaging.subscription_menu(
-        target_type,
-        target_id,
+        conversation,
     )
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = refreshed_options
     prompt = f"{result_message}\n\n{menu_prompt}"

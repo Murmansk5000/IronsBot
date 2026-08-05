@@ -7,12 +7,14 @@ import pytest
 from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.core.messaging import TargetSendSummary
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.bilibili_push import OneBotBilibiliPushSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.targets import BiliPushTargets
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -22,6 +24,14 @@ if TYPE_CHECKING:
 
 
 EXPECTED_PUSH_COUNT = 2
+
+
+def _group(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _private(user_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "private", str(user_id))
 
 
 @pytest.mark.asyncio
@@ -41,19 +51,23 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
 
     runtime = build_test_runtime()
-    service = BilibiliPushDeliveryService(
+    service = OneBotBilibiliPushSender(
         runtime.delivery,
         PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
         lambda _item, _pub_ts: Message("链接"),
         lambda _item, _content: Message("动态正文"),
         append_text_hint,
-        partial(append_fire_manual_ad_for_target, runtime.features),
+        partial(
+            append_promotions_for_target,
+            runtime.features,
+            FIRE_MANUAL_PROMOTIONS,
+        ),
     )
     await service.send(
         {},
         1,
         1310714247,
-        BiliPushTargets([987654321], [], [1234567890], []),
+        BiliPushTargets([_group(987654321)], [], [_private(1234567890)], []),
     )
 
     assert len(sent) == EXPECTED_PUSH_COUNT

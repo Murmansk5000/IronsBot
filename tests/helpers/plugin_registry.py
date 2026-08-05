@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.settings import Settings
+from ironsbot.core.messaging import default_sendpic_configs
+from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.process import terminate_bot_process
@@ -181,6 +183,7 @@ def build_test_plugin_registry(
         "ApplicationResources",
         SimpleNamespace(
             features=runtime.features,
+            promotions=PromotionCatalog(config.promotions),
             outbound=object(),
             delivery=runtime.delivery,
             admin_notices=runtime.admin_notices,
@@ -190,12 +193,17 @@ def build_test_plugin_registry(
             subscriptions=object(),
             bilibili=SimpleNamespace(
                 targets=SimpleNamespace(
-                    can_target_query_history=lambda _target: False,
+                    can_conversation_query_history=lambda _conversation: False,
                 ),
             ),
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,
             ),
+            bilibili_monitor=SimpleNamespace(
+                check_on_connect=_noop_startup,
+                register_job=_noop_startup,
+            ),
+            bilibili_content_renderer=lambda _item, _content: None,
             lucky_skin_window=SimpleNamespace(
                 enabled=False,
                 is_eligible_actor=lambda _actor: False,
@@ -205,7 +213,10 @@ def build_test_plugin_registry(
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,
             ),
-            sendpic=SimpleNamespace(commands=()),
+            sendpic=SimpleNamespace(
+                commands=default_sendpic_configs(),
+                exact_command_texts=frozenset(),
+            ),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
                 register_jobs=lambda _scheduler: None,
@@ -325,15 +336,10 @@ def build_test_plugin_registry(
         ),
         bilibili_plugin_contribution(
             service=resources.bilibili,
-            login=resources.bilibili_login,
             features=runtime.features,
-            config=config.bilibili,
-            delivery=resources.delivery,
-            subscriptions=resources.subscriptions,
-            admin_notices=resources.admin_notices,
-            message_limiter=resources.push_message_limiter,
-            ai_service=resources.ai,
+            monitor=resources.bilibili_monitor,
             scheduler=SchedulerFacade(),
+            render_content=resources.bilibili_content_renderer,
         ),
         messaging_plugin_contribution(
             config=config.messaging,
@@ -352,6 +358,7 @@ def build_test_plugin_registry(
             settings=config,
             service=resources.ai,
             features=runtime.features,
+            promotions=resources.promotions,
             team_resource=resources.team_resource,
         ),
         server_status_plugin_contribution(

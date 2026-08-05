@@ -169,10 +169,12 @@ class PlayerAccountRegistry:
                 if reference == "all":
                     accounts = self.accounts
                 else:
-                    accounts = (self.resolve(
-                        reference,
-                        location=f"seer.player_account_aliases.{group_id}",
-                    ),)
+                    accounts = (
+                        self.resolve(
+                            reference,
+                            location=f"seer.player_account_aliases.{group_id}",
+                        ),
+                    )
                 for account in accounts:
                     for value in (account.name, *account.aliases):
                         normalized = normalize_command_text(value)
@@ -195,14 +197,10 @@ def build_player_account_registry(
         location = f"seer.player_accounts[{index}]"
         player_id = getattr(entry, "player_id", None)
         if not isinstance(player_id, int) or not is_valid_player_id(player_id):
-            raise PlayerAccountReferenceError.invalid_player_id(
-                f"{location}.player_id"
-            )
+            raise PlayerAccountReferenceError.invalid_player_id(f"{location}.player_id")
         name = str(getattr(entry, "name", "")).strip()
         _normalize_name(name, location=f"{location}.name")
-        aliases = tuple(
-            str(value).strip() for value in getattr(entry, "aliases", ())
-        )
+        aliases = tuple(str(value).strip() for value in getattr(entry, "aliases", ()))
         for alias_index, alias in enumerate(aliases):
             _normalize_name(
                 alias,

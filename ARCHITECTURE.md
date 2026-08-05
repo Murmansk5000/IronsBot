@@ -171,15 +171,23 @@ feature, persistence schema, or policy decision.
 | --- | --- | --- | --- |
 | Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
+| Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `runtime.onebot_identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
 | Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
 | OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
 | OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
+| Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
+| OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
 | Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
 | Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |
+| Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
+| AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. |
+| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
+| Bilibili rich-media push delivery | target reference with adapter bridge | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `integrations.onebot.bilibili_push.OneBotBilibiliPushSender` owns OneBot rendering, routing, retries, rate limits and subscription hints | Keep future platform-specific media delivery out of `services.bilibili`; any new platform implements the same monitor sender port. |
+| Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. |
 | Private-extension bootstrap adapter | transition | External configured contribution adaptation only | Move one declared responsibility at a time to a standard declarative extension contract, then delete it from the adapter. |
 
@@ -196,6 +204,13 @@ single-plugin patch is added. When multiple features need the same kind of
 input, identity, command description, persistence, rate control, notification,
 or rendering, create one small, typed interface at its real ownership boundary
 and make the features use it.
+
+`config.models.settings` is the single narrow exception to the normal
+configuration-layer direction: it may construct
+`services.identity.PlayerAccountRegistry` from validated TOML entries. The
+registry is a framework-free value/lookup service, and this exception must not
+be broadened to another `services.*` module without adding a new inventory row
+and an AST guard.
 
 The following rules are mandatory:
 
@@ -303,6 +318,14 @@ delivery ports. They must not receive `GroupMessageEvent`, `Bot`, CQ segments,
 or adapter-specific session objects. Transport adapters own conversion in both
 directions.
 
+Extension callbacks follow the same boundary. A player-detail extension
+receives `PlayerDetailActionRequest(player_id, actor, conversation)`, not a
+tuple of numeric player, QQ-user and group IDs. The public player-command
+adapter resolves the player target and platform message once; quota checks,
+request scheduling and operation tracing then use the request's typed actor
+and conversation. An extension that needs a platform-native value must expose
+a narrow platform integration port rather than widening this callback.
+
 Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
 `ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
@@ -338,8 +361,12 @@ service must use this shape or a narrower domain port; it must not import
 activity reminders: the service creates typed recipients and an
 `OutboundMessage`, while `integrations.onebot.activity` preserves the current
 OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
-The current push-preference SQLite schema still stores OneBot target IDs; its
-conversion is confined to composition until the later identity-state migration.
+Push-preference SQLite rows store platform, conversation kind and opaque
+conversation ID columns. Their public repository and service APIs accept
+`ConversationRef`; configuration composition and OneBot delivery adapters are
+the only layers allowed to convert native QQ numbers. This keeps Bilibili and
+scheduled-push preference logic reusable without making a second platform
+pretend that its identifiers are QQ integers.
 
 Lucky-skin-window notification delivery now follows this rule: its service
 owns `ActorRef`-scoped account, binding, cache and watch-preference policy;
@@ -439,6 +466,14 @@ reusable contracts rather than adding feature-local regexes:
   keyword lists for help, poke hints, AI exclusions, and rank protection.
 - Configuration-generated commands, selection menus, and fixed commands must
   use the same contract. Passive notices and scheduled jobs are not commands.
+  `messaging.sendpic.configs` is the sole command declaration shape for both
+  packaged single images and configured indexed galleries. A single-image
+  command uses `mode = "single"` and `image_file`; an indexed gallery uses
+  `mode = "indexed"`, `image_dir`, and `image_filename_template`.
+  Packaged image commands are typed default configs and may be overridden or
+  disabled by `id`; there is no parallel fixed-image command map.
+  Command-conflict guards consume the active image command set from the
+  service, never a second static list.
 
 The retired central registry is a migration-history concern, not a runtime
 bridge. All built-in contributions now come from their own manifest-loaded
@@ -836,13 +871,16 @@ a name, an owner, cancellation on shutdown, and observable failure logging.
 
 ## Temporary Private Extension Bootstrap
 
-`PluginContribution` is the runtime contribution contract. Every built-in
-plugin is a top-level manifest-loaded package and contributes itself during the
-scoped loading window. `ironsbot.plugins.onebot.bootstrap` is now limited to
-adapting configured private extensions; it is not a built-in plugin registry,
-command directory, or second discovery mechanism. Do not add built-in feature
-ownership, command metadata, help metadata, lifecycle concepts, or plugin
-families to this adapter.
+`PluginContribution` is the current plugin-local runtime contribution carrier.
+Every built-in plugin is a top-level manifest-loaded package and submits its
+own contribution during the scoped loading window. `PluginContribution` is not
+the semantic authority for commands, permissions, help layout, or lifecycle
+policy; it carries the local installation callback, declared command
+descriptors and hooks to their respective owners. `ironsbot.plugins.onebot.bootstrap`
+is now limited to adapting configured private extensions; it is not a built-in
+plugin registry, command directory, or second discovery mechanism. Do not add
+built-in feature ownership, command metadata, help metadata, lifecycle
+concepts, or plugin families to this adapter.
 
 The runtime contribution contract is:
 
@@ -924,11 +962,13 @@ The Phase 2 replacement uses `[tool.nonebot.plugins]` and
 plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
 `PluginInstallContext` only while contributions are registered. It is not a
 service locator and must not be read by services or renderers. A
-`PluginContribution` explicitly owns matchers, command contracts, lifecycle
-callbacks, and scheduled jobs. `CommandCatalog` consumes the contributed
-contracts and is the only command-description authority. The replacement
-becomes the only authority; the bridge and its reflective discovery are then
-deleted instead of being kept as a compatibility path.
+`PluginContribution` carries a plugin-local matcher installer, command
+descriptors, lifecycle hooks and scheduled-job contributions during the
+current installation bridge. `CommandCatalog` consumes the command descriptors
+and remains the only command-description authority; `ApplicationLifecycle`
+owns lifecycle policy and task lifetime. The replacement becomes the only
+authority; the bridge and its reflective discovery are then deleted instead of
+being kept as a compatibility path.
 
 ## Service Boundaries
 
@@ -1004,6 +1044,12 @@ the loader only reads and validates.
 
 Non-secret behavior and deployment values live in TOML. Environment variables
 are limited to the configuration location and secrets:
+
+An enabled action that delivers to a deployment-specific account, group, link,
+or invitation must declare its complete delivery content in TOML. It may have
+a reusable classifier and feature key in code, but it has no built-in
+recipient, URL, group number, or message fallback. Examples use non-production
+values only.
 
 ```text
 APP_CONFIG_PATH

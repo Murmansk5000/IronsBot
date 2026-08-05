@@ -4,26 +4,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ironsbot.app.private_extensions import (
         PrivateExtensionCatalog,
         PrivateExtensionRuntime,
     )
     from ironsbot.core.features import FeatureService
-    from ironsbot.integrations.onebot.delivery import OneBotDelivery
+    from ironsbot.core.promotions import PromotionCatalog
+    from ironsbot.integrations.onebot.delivery import (
+        MessageLimiter,
+        OneBotDelivery,
+    )
     from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.runtime.commands import CommandCatalog
+    from ironsbot.runtime.onebot_help_hint import OneBotHelpHintPort
     from ironsbot.runtime.plugins import PluginContributionCatalog
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.login import BilibiliLoginService
+    from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
-    from ironsbot.services.messaging.delivery import MessageLimiter
-    from ironsbot.services.messaging.help_hint import HelpHintService
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.data_sync import DataSyncService
@@ -44,6 +50,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class ApplicationResources:
     features: FeatureService
+    promotions: PromotionCatalog
     outbound: GroupOutboundRateLimitService
     delivery: OneBotDelivery
     push_message_limiter: MessageLimiter
@@ -54,6 +61,8 @@ class ApplicationResources:
     subscriptions: PushUnsubscribeStore
     bilibili: BilibiliService
     bilibili_login: BilibiliLoginService
+    bilibili_monitor: BilibiliMonitorService
+    bilibili_content_renderer: Callable[[dict[str, Any], str | None], Any | None]
     lucky_skin_window: LuckySkinWindowService
     messaging: MessagingService
     sendpic: SendpicService
@@ -70,6 +79,6 @@ class ApplicationResources:
     scheduled_restart: ScheduledRestartService
     commands: CommandCatalog
     contribution_catalog: PluginContributionCatalog
-    help_hint: HelpHintService
+    help_hint: OneBotHelpHintPort
     private_extensions: PrivateExtensionCatalog
     private_extension_runtime: PrivateExtensionRuntime

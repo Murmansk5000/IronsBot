@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from ironsbot.core.messaging import FIRE_MANUAL_LINK_MESSAGE
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.activity.delivery import (
@@ -108,7 +107,7 @@ def test_build_reminder_delivery_builds_send_payload() -> None:
     assert isinstance(delivery.message, OutboundMessage)
     assert isinstance(delivery.message.parts[0], TextPart)
     assert delivery.message.parts[0].text.startswith("1 个活动：")
-    assert FIRE_MANUAL_LINK_MESSAGE not in delivery.message.parts[0].text
+    assert "Manual:" not in delivery.message.parts[0].text
     assert delivery.group_conversations == (GROUP,)
     assert delivery.private_actors == (USER,)
     assert delivery.action_name == "activity ending reminder 1h"

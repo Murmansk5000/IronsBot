@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from ironsbot.core.messaging import MessageTarget, TargetSendSummary
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowNotificationSender,
 )
@@ -39,30 +39,27 @@ class FakeSubscriptions:
     def __init__(self, *, unsubscribed: bool = False, daily_hint: bool = True) -> None:
         self.unsubscribed = unsubscribed
         self.daily_hint = daily_hint
-        self.hint_calls: list[tuple[str, int, str, str]] = []
+        self.hint_calls: list[tuple[ConversationRef, str, str]] = []
 
-    def is_target_unsubscribed(
+    def is_unsubscribed(
         self,
-        target_type: str,
-        target_id: int,
+        conversation: ConversationRef,
         subscription_key: str,
     ) -> bool:
-        assert (target_type, target_id, subscription_key) == (
-            "private",
-            1001,
+        assert (conversation, subscription_key) == (
+            ConversationRef(Platform.ONEBOT, "private", "1001"),
             "lucky_skin_window",
         )
         return self.unsubscribed
 
     def mark_daily_hint_sent(
         self,
-        target_type: str,
-        target_id: int,
+        conversation: ConversationRef,
         hint_key: str,
         *,
         today: str,
     ) -> bool:
-        self.hint_calls.append((target_type, target_id, hint_key, today))
+        self.hint_calls.append((conversation, hint_key, today))
         return self.daily_hint
 
 
@@ -83,7 +80,11 @@ async def test_onebot_lucky_skin_sender_preserves_daily_push_semantics() -> None
 
     assert sent
     assert subscriptions.hint_calls == [
-        ("private", 1001, "lucky_skin_window_delivery", "2026-08-05")
+        (
+            ConversationRef(Platform.ONEBOT, "private", "1001"),
+            "lucky_skin_window_delivery",
+            "2026-08-05",
+        )
     ]
     assert delivery.calls == [
         {

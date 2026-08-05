@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 from ironsbot.core.features import FeatureConfig
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
 )
@@ -131,7 +132,7 @@ def test_bilibili_service_owns_dynamic_query_and_history(
         "id_str": "dynamic-1",
         "modules": {
             "module_author": {
-                "mid": 1310714247,
+                "mid": 912345678,
                 "name": "赛尔号",
                 "pub_ts": 1781004683,
             },
@@ -153,7 +154,12 @@ def test_bilibili_service_owns_dynamic_query_and_history(
         )
 
     service.fetch_feed = fetch_feed
-    result = asyncio.run(service.query_dynamic_menu("group", 1001, 2001))
+    result = asyncio.run(
+        service.query_dynamic_menu(
+            actor=ActorRef(Platform.ONEBOT, "2001"),
+            conversation=ConversationRef(Platform.ONEBOT, "group", "1001"),
+        )
+    )
 
     assert result.status == "ok"
     assert result.dynamic_ids == ("dynamic-1",)

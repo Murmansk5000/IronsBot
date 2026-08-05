@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nonebot.plugin import PluginMetadata
 
@@ -20,11 +20,8 @@ from ironsbot.runtime.plugins import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 
-from .auth import send_bili_login_notice
 from .command_rules import (
     BILI_ACCOUNT_COMMANDS,
     BILI_PUSH_MODE_COMMANDS,
@@ -32,19 +29,15 @@ from .command_rules import (
     DYNAMIC_UPDATE_COMMANDS,
 )
 from .commands import install
-from .delivery import build_dynamic_content_message, build_dynamic_link_message
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from nonebot.adapters.onebot.v11 import Bot
 
-    from ironsbot.core.bilibili import BiliConfig
     from ironsbot.core.features import FeatureService
-    from ironsbot.services.ai.service import AiService
-    from ironsbot.services.bilibili.login import BilibiliLoginService
+    from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
-    from ironsbot.services.messaging.admin_notice import AdminNoticeService
-    from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
-    from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
     from ironsbot.services.operations.scheduler import Scheduler
 
 __plugin_meta__ = PluginMetadata(
@@ -140,69 +133,20 @@ def command_descriptors() -> tuple[CommandDescriptor, ...]:
     )
 
 
-def _build_monitor(  # noqa: PLR0913 - Bilibili integration dependencies
-    *,
-    service: BilibiliService,
-    login: BilibiliLoginService,
-    delivery: MessageDelivery,
-    subscriptions: PushSubscriptionRepository,
-    admin_notices: AdminNoticeService,
-    message_limiter: MessageLimiter,
-    ai_service: AiService,
-    config: BiliConfig,
-) -> BilibiliMonitorService:
-    notice_sender = partial(send_bili_login_notice, admin_notices)
-    auth_invalid = partial(
-        login.notify_required,
-        send_notice=notice_sender,
-        is_online=lambda: delivery.default_bot() is not None,
-    )
-    push_delivery = BilibiliPushDeliveryService(
-        delivery,
-        subscriptions,
-        build_dynamic_link_message,
-        build_dynamic_content_message,
-        append_text_hint,
-        message_limiter,
-        getattr(ai_service, "summarize_bilibili_dynamic", None),
-        config.push.content_max_chars,
-        config.push.summary_max_chars,
-        config.push.summary_use_ai,
-        service.targets.can_target_query_history,
-        admin_notices,
-    )
-    return BilibiliMonitorService(service, auth_invalid, push_delivery.send)
-
-
 async def _check_on_connect(bot: Bot, *, monitor: BilibiliMonitorService) -> None:
     await monitor.check_on_connect(str(bot.self_id))
 
 
-def plugin_contribution(  # noqa: PLR0913
+def plugin_contribution(
     *,
     service: BilibiliService,
-    login: BilibiliLoginService,
     features: FeatureService,
-    config: BiliConfig,
-    delivery: MessageDelivery,
-    subscriptions: PushSubscriptionRepository,
-    admin_notices: AdminNoticeService,
-    message_limiter: MessageLimiter,
-    ai_service: AiService,
+    monitor: BilibiliMonitorService,
     scheduler: Scheduler,
+    render_content: Callable[[dict[str, Any], str | None], Any | None],
 ) -> PluginContribution:
     """Declare Bilibili commands, delivery construction, and monitor lifecycle."""
 
-    monitor = _build_monitor(
-        service=service,
-        login=login,
-        delivery=delivery,
-        subscriptions=subscriptions,
-        admin_notices=admin_notices,
-        message_limiter=message_limiter,
-        ai_service=ai_service,
-        config=config,
-    )
     return PluginContribution(
         id="bilibili",
         features=frozenset({Feature.BILI_QUERY, Feature.BILI_PUSH}),
@@ -219,6 +163,7 @@ def plugin_contribution(  # noqa: PLR0913
             features=features,
             monitor=monitor,
             targets=service.targets,
+            render_content=render_content,
         ),
         hooks=PluginHooks(
             startup=(
@@ -242,14 +187,9 @@ if (context := active_plugin_install_context()) is not None:
         __plugin_meta__,
         plugin_contribution(
             service=context.resources.bilibili,
-            login=context.resources.bilibili_login,
             features=context.resources.features,
-            config=context.settings.bilibili,
-            delivery=context.resources.delivery,
-            subscriptions=context.resources.subscriptions,
-            admin_notices=context.resources.admin_notices,
-            message_limiter=context.resources.push_message_limiter,
-            ai_service=context.resources.ai,
+            monitor=context.resources.bilibili_monitor,
             scheduler=context.scheduler,
+            render_content=context.resources.bilibili_content_renderer,
         ),
     )

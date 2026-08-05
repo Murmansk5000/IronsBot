@@ -7,34 +7,35 @@ import pytest
 
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import (
-    FIRE_MANUAL_LINK_MESSAGE,
     MessageTarget,
     TargetSendSummary,
 )
-from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
-from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.onebot.bilibili.delivery import (
-    build_dynamic_content_message,
-    build_dynamic_link_message,
-)
-from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import (
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.bilibili_push import (
     BILI_PUSH_ADMIN_HINT,
     DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
-    BilibiliPushDeliveryService,
+    OneBotBilibiliPushSender,
 )
+from ironsbot.integrations.onebot.bilibili_rendering import (
+    build_dynamic_content_message,
+    build_dynamic_link_message,
+)
+from ironsbot.integrations.onebot.promotions import append_promotions_for_target
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.core.features import FeatureService
-    from ironsbot.services.messaging.delivery import MessageDelivery
+    from ironsbot.runtime.onebot_delivery import OneBotMessageDelivery
     from ironsbot.services.messaging.subscriptions import (
         PushSubscriptionRepository,
     )
@@ -43,6 +44,33 @@ PUB_TS = 1781004683
 EXPECTED_FULL_PUSH_COUNT = 2
 EXPECTED_RETRIED_CONTENT_PUSH_COUNT = 2
 QUERY_ENABLED_GROUP_ID = 1001
+
+
+def _targets(
+    *,
+    full_groups: tuple[int, ...] = (),
+    link_groups: tuple[int, ...] = (),
+    full_users: tuple[int, ...] = (),
+    link_users: tuple[int, ...] = (),
+) -> BiliPushTargets:
+    return BiliPushTargets(
+        full_group_conversations=[
+            ConversationRef(Platform.ONEBOT, "group", str(group_id))
+            for group_id in full_groups
+        ],
+        link_group_conversations=[
+            ConversationRef(Platform.ONEBOT, "group", str(group_id))
+            for group_id in link_groups
+        ],
+        full_private_conversations=[
+            ConversationRef(Platform.ONEBOT, "private", str(user_id))
+            for user_id in full_users
+        ],
+        link_private_conversations=[
+            ConversationRef(Platform.ONEBOT, "private", str(user_id))
+            for user_id in link_users
+        ],
+    )
 
 
 def _item(
@@ -74,14 +102,14 @@ def _item(
 def _delivery_service(
     features: FeatureService,
     subscriptions: PushSubscriptionRepository | None = None,
-) -> BilibiliPushDeliveryService:
-    return BilibiliPushDeliveryService(
-        cast("MessageDelivery", object()),
+) -> OneBotBilibiliPushSender:
+    return OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", object()),
         subscriptions or cast("PushSubscriptionRepository", object()),
         build_dynamic_link_message,
         build_dynamic_content_message,
         append_text_hint,
-        partial(append_fire_manual_ad_for_target, features),
+        partial(append_promotions_for_target, features, FIRE_MANUAL_PROMOTIONS),
     )
 
 
@@ -112,16 +140,16 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
     )
 
-    assert FIRE_MANUAL_LINK_MESSAGE in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(
         service._transform_target_message("正文", MessageTarget("group", 1001))
     )
-    assert FIRE_MANUAL_LINK_MESSAGE not in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(
         service._transform_target_message("正文", MessageTarget("group", 1002))
     )
-    assert FIRE_MANUAL_LINK_MESSAGE in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(
         service._transform_target_message("正文", MessageTarget("private", 2001))
     )
-    assert FIRE_MANUAL_LINK_MESSAGE not in str(
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(
         service._transform_target_message("正文", MessageTarget("private", 2002))
     )
 
@@ -129,13 +157,15 @@ def test_delivery_service_appends_fire_manual_ad_per_target(
 def test_delivery_service_only_appends_history_hint_for_query_targets(
     tmp_path: Path,
 ) -> None:
-    service = BilibiliPushDeliveryService(
-        cast("MessageDelivery", object()),
+    service = OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", object()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
         build_dynamic_content_message,
         append_text_hint,
-        can_query_history=lambda target: target.target_id == QUERY_ENABLED_GROUP_ID,
+        can_query_history=lambda conversation: (
+            conversation.id == str(QUERY_ENABLED_GROUP_ID)
+        ),
     )
 
     assert DYNAMIC_HISTORY_HINT in str(
@@ -169,8 +199,8 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
         summaries.append((content, max_chars))
         return "这是忠实摘要。"
 
-    service = BilibiliPushDeliveryService(
-        cast("MessageDelivery", RecordingDelivery()),
+    service = OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", RecordingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
         build_dynamic_content_message,
@@ -185,12 +215,7 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
         _item(text="这是一条超过十个字符的长动态正文，用于验证统一摘要投递。"),
         PUB_TS,
         1310714247,
-        BiliPushTargets(
-            full_group_ids=[1001],
-            link_group_ids=[1002],
-            full_user_ids=[],
-            link_user_ids=[],
-        ),
+        _targets(full_groups=(1001,), link_groups=(1002,)),
     )
 
     assert summaries == [
@@ -231,8 +256,8 @@ async def test_short_full_dynamic_does_not_call_ai(
     async def unexpected_summary(_content: str, _max_chars: int) -> str:
         raise AssertionError
 
-    service = BilibiliPushDeliveryService(
-        cast("MessageDelivery", RecordingDelivery()),
+    service = OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", RecordingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
         build_dynamic_content_message,
@@ -247,7 +272,7 @@ async def test_short_full_dynamic_does_not_call_ai(
         _item(text="这是一条不会触发 AI 的短动态正文。"),
         PUB_TS,
         1310714247,
-        BiliPushTargets([1001], [], [], []),
+        _targets(full_groups=(1001,)),
     )
 
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
@@ -273,20 +298,18 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
         tmp_path / "push_unsubscriptions.sqlite"
     )
     subscription_key = bili_push_subscription_key(1310714247)
-    subscriptions.unsubscribe_target(
-        "group",
-        1001,
+    subscriptions.unsubscribe(
+        ConversationRef(Platform.ONEBOT, "group", "1001"),
         subscription_key,
         "bili_push",
     )
-    subscriptions.unsubscribe_target(
-        "private",
-        2001,
+    subscriptions.unsubscribe(
+        ConversationRef(Platform.ONEBOT, "private", "2001"),
         subscription_key,
         "bili_push",
     )
-    service = BilibiliPushDeliveryService(
-        cast("MessageDelivery", RecordingDelivery()),
+    service = OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", RecordingDelivery()),
         subscriptions,
         build_dynamic_link_message,
         build_dynamic_content_message,
@@ -297,12 +320,7 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
         _item(),
         PUB_TS,
         1310714247,
-        BiliPushTargets(
-            full_group_ids=[1001, 1002],
-            link_group_ids=[],
-            full_user_ids=[2001, 2002],
-            link_user_ids=[],
-        ),
+        _targets(full_groups=(1001, 1002), full_users=(2001, 2002)),
     )
 
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
@@ -341,30 +359,34 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
     runtime = build_test_runtime(
         feature_config=FeatureConfig(group_policy={"1001": ["fire_manual_ad"]})
     )
-    service = BilibiliPushDeliveryService(
-        cast("MessageDelivery", ApplyingDelivery()),
+    service = OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", ApplyingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
         build_dynamic_content_message,
         append_text_hint,
-        partial(append_fire_manual_ad_for_target, runtime.features),
+        partial(
+            append_promotions_for_target,
+            runtime.features,
+            FIRE_MANUAL_PROMOTIONS,
+        ),
     )
 
     await service.send(
         _item(),
         PUB_TS,
         1310714247,
-        BiliPushTargets([1001], [], [], []),
+        _targets(full_groups=(1001,)),
     )
 
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
     assert "【赛尔号】发布了一条B站动态" in str(sent[0])
     assert "传送门：" in str(sent[0])
-    assert FIRE_MANUAL_LINK_MESSAGE in str(sent[0])
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message in str(sent[0])
     assert BILI_PUSH_ADMIN_HINT in str(sent[0])
     assert "正文内容" in str(sent[1])
     assert "传送门：" not in str(sent[1])
-    assert FIRE_MANUAL_LINK_MESSAGE not in str(sent[1])
+    assert FIRE_MANUAL_PROMOTIONS.require("fire_manual").message not in str(sent[1])
     assert BILI_PUSH_ADMIN_HINT not in str(sent[1])
 
 
@@ -393,11 +415,11 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         return None
 
     monkeypatch.setattr(
-        "ironsbot.services.bilibili.delivery.asyncio.sleep",
+        "ironsbot.integrations.onebot.bilibili_push.asyncio.sleep",
         no_sleep,
     )
-    service = BilibiliPushDeliveryService(
-        cast("MessageDelivery", PartiallyFailingDelivery()),
+    service = OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", PartiallyFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
         build_dynamic_content_message,
@@ -408,7 +430,7 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         _item(),
         PUB_TS,
         1310714247,
-        BiliPushTargets([1001], [], [2001], []),
+        _targets(full_groups=(1001,), full_users=(2001,)),
     )
 
     content_attempts = [
@@ -461,11 +483,11 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         return None
 
     monkeypatch.setattr(
-        "ironsbot.services.bilibili.delivery.asyncio.sleep",
+        "ironsbot.integrations.onebot.bilibili_push.asyncio.sleep",
         no_sleep,
     )
-    service = BilibiliPushDeliveryService(
-        cast("MessageDelivery", AlwaysFailingDelivery()),
+    service = OneBotBilibiliPushSender(
+        cast("OneBotMessageDelivery", AlwaysFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
         build_dynamic_content_message,
@@ -477,7 +499,7 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         _item(),
         PUB_TS,
         1310714247,
-        BiliPushTargets([1001], [], [2001], []),
+        _targets(full_groups=(1001,), full_users=(2001,)),
     )
 
     assert len(content_attempts) == FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS

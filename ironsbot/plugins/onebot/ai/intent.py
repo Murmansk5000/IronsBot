@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
+    Bot,  # noqa: TC002 - NoneBot resolves it at runtime
     MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
@@ -15,6 +17,7 @@ from ironsbot.app.plugin_visibility import feature_help_visible
 from ironsbot.core.features import Feature
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import build_notice_source
 from ironsbot.runtime.plugins import (
     HelpEntry,
@@ -27,11 +30,10 @@ from ironsbot.runtime.rules import natural_language
 from .team_actions import run_team_action
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import FeatureService
     from ironsbot.core.messaging import AiIntentAction
+    from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.team.resource import TeamResourceService
 
@@ -46,6 +48,15 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
+
+
+@dataclass(frozen=True, slots=True)
+class AiIntentDependencies:
+    """OneBot dependencies needed by the configured AI action adapter."""
+
+    service: AiService
+    promotions: PromotionCatalog
+    team_resource: TeamResourceService
 
 
 def command_descriptors(config: Settings) -> tuple[CommandDescriptor, ...]:
@@ -99,26 +110,28 @@ def _resolve_action_command_id(
 
 def install(
     registry: MatcherRegistry,
-    service: AiService,
-    group_aliases: Mapping[str, int],
-    team_resource: TeamResourceService,
+    dependencies: AiIntentDependencies,
     command_help_ids: tuple[str, ...],
 ) -> None:
     if not command_help_ids:
         return
 
-    async def match_action(event: MessageEvent, state: T_State) -> bool:
+    async def match_action(
+        bot: Bot,
+        event: MessageEvent,
+        state: T_State,
+    ) -> bool:
         text = event.get_plaintext().strip()
-        group_id = getattr(event, "group_id", None)
+        message = message_input_context(event).message
         source_context = await build_notice_source(
             event,
             text,
-            group_aliases,
+            bot=bot,
         )
-        action = await service.classify_intent(
+        action = await dependencies.service.classify_intent(
             text,
-            user_id=int(event.user_id),
-            group_id=int(group_id) if group_id is not None else None,
+            actor=message.actor,
+            conversation=message.conversation,
             source_context=source_context,
         )
         if action is None:
@@ -133,21 +146,28 @@ def install(
         state: T_State,
     ) -> None:
         action = state[ACTION_KEY]
-        if service.is_team_action(action):
+        if dependencies.service.is_team_action(action):
             await run_team_action(
                 matcher,
                 event,
                 action,
-                team_resource,
+                dependencies.team_resource,
             )
             return
         if action.action == "ai_reply":
             await _handle_ai_reply_action(
-                service,
+                dependencies.service,
                 action,
                 matcher,
                 event,
                 str(state.get(ACTION_SOURCE_CONTEXT_KEY, "") or "") or None,
+            )
+            return
+        if action.action == "promotion":
+            await finish_event_reply(
+                matcher,
+                event,
+                dependencies.promotions.require(action.promotion).message,
             )
             return
         await finish_event_reply(
@@ -173,6 +193,7 @@ def plugin_contribution(
     settings: Settings,
     service: AiService,
     features: FeatureService,
+    promotions: PromotionCatalog,
     team_resource: TeamResourceService,
 ) -> PluginContribution:
     """Declare configured intent actions and their natural-language matcher."""
@@ -203,9 +224,11 @@ def plugin_contribution(
         commands=commands,
         install=partial(
             install,
-            service=service,
-            group_aliases=settings.features.group_aliases,
-            team_resource=team_resource,
+            dependencies=AiIntentDependencies(
+                service=service,
+                promotions=promotions,
+                team_resource=team_resource,
+            ),
             command_help_ids=tuple(command.id for command in commands),
         ),
     )
@@ -218,6 +241,7 @@ if (context := active_plugin_install_context()) is not None:
             settings=context.settings,
             service=context.resources.ai,
             features=context.resources.features,
+            promotions=context.resources.promotions,
             team_resource=context.resources.team_resource,
         ),
     )

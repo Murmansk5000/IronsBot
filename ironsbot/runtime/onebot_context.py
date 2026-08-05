@@ -4,12 +4,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
 from ironsbot.runtime.commands import CommandContext
 from ironsbot.runtime.message_input import message_input_context
+from ironsbot.runtime.onebot_identity import onebot_actor_ref, onebot_conversation_ref
 
 NOTICE_MESSAGE_MAX_CHARS = 300
 
@@ -24,9 +23,11 @@ def command_context(event: MessageEvent) -> CommandContext:
 
     sender = getattr(event, "sender", None)
     role = getattr(sender, "role", None)
+    user_id = str(event.user_id)
+    group_id = event_group_id(event)
     return CommandContext(
-        user_id=int(event.user_id),
-        group_id=event_group_id(event),
+        actor=onebot_actor_ref(user_id),
+        conversation=onebot_conversation_ref(user_id, group_id=group_id),
         group_role=str(role) if role is not None else None,
     )
 
@@ -39,7 +40,6 @@ def mentions_bot(event: GroupMessageEvent) -> bool:
 async def build_notice_source(
     event: MessageEvent,
     prompt: str,
-    group_aliases: Mapping[str, int],
     *,
     bot: Bot | None = None,
 ) -> str:
@@ -49,16 +49,7 @@ async def build_notice_source(
     else:
         group_id = int(group_id)
         group_name = await _group_name(bot, group_id)
-        alias = next(
-            (
-                name
-                for name, alias_id in group_aliases.items()
-                if int(alias_id) == group_id
-            ),
-            "",
-        )
-        label = group_name or alias
-        group_label = f"{label}（{group_id}）" if label else str(group_id)
+        group_label = f"{group_name}（{group_id}）" if group_name else str(group_id)
         lines = [f"群：{group_label}"]
 
     sender = getattr(event, "sender", None)

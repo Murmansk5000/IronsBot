@@ -9,8 +9,9 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_conversation_event
-from ironsbot.runtime.replies import finish_event_reply, message_event_target
+from ironsbot.runtime.replies import finish_event_reply
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -26,11 +27,12 @@ async def handle_bili_accounts_action(
     *,
     targets: BiliTargetService,
 ) -> None:
-    target_type, target_id, _ = message_event_target(event)
     await finish_event_reply(
         matcher,
         event,
-        await targets.account_summary(target_type, target_id),
+        await targets.account_summary(
+            message_input_context(event).message.conversation,
+        ),
     )
 
 
@@ -52,13 +54,11 @@ async def handle_bili_push_mode_action(
 
     account_ref = str(state.get(BILI_PUSH_MODE_ACCOUNT_KEY, "") or "").strip()
     raw_mode = str(state.get(BILI_PUSH_MODE_RAW_KEY, "") or "")
-    target_type, target_id, _ = message_event_target(event)
     await finish_event_reply(
         matcher,
         event,
         await targets.update_push_mode(
-            target_type,
-            target_id,
+            message_input_context(event).message.conversation,
             account_ref,
             raw_mode,
         ),

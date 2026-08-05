@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import nonebot
+import pytest
+from pydantic import ValidationError
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.integrations.headless_seer.client import ClientManager
@@ -113,16 +115,15 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
     ]
 
 
-def test_local_rank_refresh_migrates_legacy_hour_and_minute(tmp_path: Path) -> None:
-    config = LocalRankConfig.model_validate(
-        {
-            "path": tmp_path / "local-rank.sqlite",
-            "refresh_hour": 3,
-            "refresh_minute": 30,
-        }
-    )
-
-    assert config.time == "03:30"
+def test_local_rank_refresh_rejects_legacy_hour_and_minute(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="refresh_hour"):
+        LocalRankConfig.model_validate(
+            {
+                "path": tmp_path / "local-rank.sqlite",
+                "refresh_hour": 3,
+                "refresh_minute": 30,
+            }
+        )
 
 
 def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(

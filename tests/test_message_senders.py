@@ -11,6 +11,7 @@ from ironsbot.config.models.messaging import (
 )
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.core.platform import ConversationRef
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -69,40 +70,23 @@ class FakeBot:
 
 
 class FakeSubscriptions:
-    def filter_subscribed_user_ids(
+    def filter_subscribed_conversations(
         self,
-        user_ids: list[int],
+        conversations: list[ConversationRef],
         subscription_key: str,
-    ) -> list[int]:
+    ) -> list[ConversationRef]:
         del subscription_key
-        return user_ids
-
-    def filter_subscribed_group_ids(
-        self,
-        group_ids: list[int],
-        subscription_key: str,
-    ) -> list[int]:
-        del subscription_key
-        return group_ids
+        return conversations
 
     def mark_daily_hint_sent(
         self,
-        target_type: str,
-        target_id: int,
+        conversation: ConversationRef,
         hint_key: str,
         *,
         today: str | None = None,
     ) -> bool:
-        del target_type, target_id, hint_key, today
+        del conversation, hint_key, today
         return True
-
-    def target_unsubscribed_keys(
-        self,
-        target_type: str,
-        target_id: int,
-    ) -> set[str]:
-        del target_type, target_id
-        return set()
 
 
 def _delivery(

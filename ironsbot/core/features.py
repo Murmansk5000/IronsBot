@@ -21,7 +21,12 @@ from ironsbot.core.onebot_references import (
     OneBotReferenceResolver,
     normalize_alias_mapping,
 )
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    Platform,
+    private_conversation_for_actor,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -644,6 +649,36 @@ class FeatureService:
             refs,
             location="configured user refs",
         )
+
+    def actor_refs(self, refs: Iterable[object]) -> list[ActorRef]:
+        """Resolve configured user references at the OneBot configuration edge."""
+
+        return [
+            ActorRef(Platform.ONEBOT, str(user_id))
+            for user_id in self.resolve_user_refs(refs)
+        ]
+
+    def group_conversation_refs(
+        self,
+        refs: Iterable[object],
+    ) -> list[ConversationRef]:
+        """Resolve configured OneBot group refs into typed conversations."""
+
+        return [
+            ConversationRef(Platform.ONEBOT, "group", str(group_id))
+            for group_id in self.resolve_group_refs(refs)
+        ]
+
+    def private_conversation_refs(
+        self,
+        refs: Iterable[object],
+    ) -> list[ConversationRef]:
+        """Resolve configured OneBot user refs into direct conversations."""
+
+        return [
+            private_conversation_for_actor(actor)
+            for actor in self.actor_refs(refs)
+        ]
 
     def groups_for_feature(self, feature: str) -> list[int]:
         return self._ids_for_feature(

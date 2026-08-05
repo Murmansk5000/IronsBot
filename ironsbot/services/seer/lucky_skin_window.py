@@ -19,9 +19,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.config.models.seer import LuckySkinWindowConfig
-    from ironsbot.config.player_accounts import PlayerAccount
     from ironsbot.core.features import FeatureService
     from ironsbot.core.platform import ActorRef
+    from ironsbot.services.identity.player_accounts import PlayerAccount
     from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
@@ -65,7 +65,7 @@ _SKIN_COUNT = 4
 
 
 class LuckySkinWindowCache(Protocol):
-    def get(self, *, player_id: int, day: str) -> tuple[int, ...] | None: ...
+    def get(self, *, player_id: int) -> tuple[int, ...] | None: ...
 
     def prepare_day(self, *, day: str) -> None: ...
 
@@ -380,7 +380,7 @@ class LuckySkinWindowService:
                 day,
             )
             return self._result(player_id, day, skin_ids, from_cache=True)
-        if skin_ids := self._cache.get(player_id=player_id, day=day):
+        if skin_ids := self._cache.get(player_id=player_id):
             self._memory[player_id] = skin_ids
             logger.info(
                 "lucky skin window cache hit: player_id=%s day=%s source=sqlite",

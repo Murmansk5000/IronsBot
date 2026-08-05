@@ -22,7 +22,6 @@ from ironsbot.runtime.matchers import (
     get_prompt_session_manager,
 )
 from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
@@ -32,7 +31,8 @@ from ironsbot.runtime.semantic_requests import (
     SemanticRequestSource,
 )
 from ironsbot.services.operations.request_feedback import request_feedback_scope
-from ironsbot.services.seer.player_detail_extensions import (  # noqa: TC001
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
@@ -246,10 +246,13 @@ async def _query_extension_action(
         )
 
     with request_feedback_scope(action.action.label, send_status):
+        message = message_input_context(event).message
         return await action.query(
-            player_id,
-            event.user_id,
-            event_group_id(event),
+            PlayerDetailActionRequest(
+                player_id=player_id,
+                actor=message.actor,
+                conversation=message.conversation,
+            )
         )
 
 

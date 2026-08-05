@@ -21,6 +21,7 @@ from ironsbot.runtime.prompt_sessions import (
 from ironsbot.runtime.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
@@ -461,7 +462,17 @@ def test_player_detail_delegates_a_registered_private_action(
         )
     )
 
-    action_query.assert_awaited_once_with(PLAYER_ID, event.user_id, event.group_id)
+    action_query.assert_awaited_once_with(
+        PlayerDetailActionRequest(
+            player_id=PLAYER_ID,
+            actor=ActorRef(Platform.ONEBOT, str(event.user_id)),
+            conversation=ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(event.group_id),
+            ),
+        )
+    )
     call = continue_conversation.await_args
     assert call is not None
     assert call.kwargs["prompt"] == "private reply"
