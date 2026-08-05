@@ -46,11 +46,11 @@ from .player_context import (
     PLAYER_QUERY_IS_EXPLICIT_KEY,
     PLAYER_TARGET_RESOLUTION_KEY,
 )
-from .player_detail_conversation import send_player_info_with_detail_prompt
-from .player_target import (
-    event_player_reference_lookup,
-    resolve_player_target,
+from .player_detail_conversation import (
+    begin_player_detail_conversation,
+    send_player_info_with_detail_prompt,
 )
+from .player_target import event_player_reference_lookup, resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -147,6 +147,13 @@ async def handle_player(
     state: T_State,
 ) -> None:
     explicit = bool(state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True))
+    await begin_player_detail_conversation(
+        dependencies.player,
+        dependencies.detail_extensions,
+        dependencies.features,
+        matcher,
+        event,
+    )
     result = await dependencies.player.query(
         int(state[PLAYER_ID_KEY]),
         actor=message_input_context(event).message.actor,

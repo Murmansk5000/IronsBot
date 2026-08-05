@@ -169,6 +169,7 @@ def _build_monitor(  # noqa: PLR0913 - Bilibili integration dependencies
         config.push.summary_max_chars,
         config.push.summary_use_ai,
         service.targets.can_target_query_history,
+        admin_notices,
     )
     return BilibiliMonitorService(service, auth_invalid, push_delivery.send)
 
