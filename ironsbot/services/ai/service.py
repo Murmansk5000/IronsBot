@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.ai import AiConfig
     from ironsbot.core.features import FeatureService
     from ironsbot.core.messaging import AiIntentAction
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.ai.client import AiCompletionClient
     from ironsbot.services.ai.memory import AiMemoryStore
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
@@ -78,34 +79,37 @@ class AiService:
 
     def _can_show_admin_notice(
         self,
-        user_id: int,
-        group_id: int | None,
+        actor: ActorRef,
+        conversation: ConversationRef,
     ) -> bool:
-        return self._features.is_superuser(user_id) or (
-            group_id is not None
-            and self._features.group_has_feature(group_id, "admin_notice")
+        return self._features.is_actor_superuser(actor) or (
+            conversation.kind == "group"
+            and self._features.conversation_has_feature(
+                conversation,
+                "admin_notice",
+            )
         )
 
     async def chat_reply(
         self,
         *,
-        user_id: int,
-        group_id: int | None,
+        actor: ActorRef,
+        conversation: ConversationRef,
         prompt: str,
         source_context: str | None = None,
     ) -> str | None:
-        key = _chat_key(user_id, group_id)
+        key = _chat_key(actor, conversation)
         history = self._history.get(key, [])
         completion = await self._complete(
             prompt,
             history,
-            self._load_memory(user_id, key, exclude_current_session=bool(history)),
+            self._load_memory(actor, key, exclude_current_session=bool(history)),
             source_context,
         )
         if completion.error_reply:
             return (
                 completion.error_reply
-                if self._can_show_admin_notice(user_id, group_id)
+                if self._can_show_admin_notice(actor, conversation)
                 else None
             )
 
@@ -116,21 +120,21 @@ class AiService:
             completion.reply,
             self._config.history_turns,
         )
-        self._record_memory(user_id, group_id, key, prompt, completion.reply)
+        self._record_memory(actor, conversation, key, prompt, completion.reply)
         return completion.reply
 
     async def classify_intent(
         self,
         text: str,
         *,
-        user_id: int,
-        group_id: int | None = None,
+        actor: ActorRef,
+        conversation: ConversationRef,
         source_context: str | None = None,
     ) -> AiIntentAction | None:
         if (
             not self._config.intent_actions_enabled
             or not self._config.api_key.strip()
-            or not is_ai_intent_allowed(self._features, user_id, group_id)
+            or not is_ai_intent_allowed(self._features, actor, conversation)
         ):
             return None
 
@@ -139,7 +143,7 @@ class AiService:
             return None
 
         for action in self._config.intent_actions.values():
-            if not self._action_matches(action, text, user_id, group_id):
+            if not self._action_matches(action, text, actor, conversation):
                 continue
 
             completion = await self._complete(
@@ -154,7 +158,7 @@ class AiService:
             logger.info(
                 "AI intent action %s classified %s: %r",
                 action.id or "<unnamed>",
-                user_id,
+                actor,
                 completion.reply,
             )
             if reply_is_yes(completion.reply):
@@ -220,12 +224,12 @@ class AiService:
         self,
         action: AiIntentAction,
         text: str,
-        user_id: int,
-        group_id: int | None,
+        actor: ActorRef,
+        conversation: ConversationRef,
     ) -> bool:
         return (
             action.enabled
-            and is_action_allowed(self._features, user_id, group_id, action)
+            and is_action_allowed(self._features, actor, conversation, action)
             and contains_any_keyword(text, action.keywords)
             and passes_action_prefilter(text, action)
             and not excluded_by_command(
@@ -282,9 +286,7 @@ class AiService:
             await self._notify_admin_once(
                 "unexpected",
                 _append_notice_source(
-                    "AI聊天处理失败。\n"
-                    f"错误：{exc}\n"
-                    "请查看容器日志确认具体原因。",
+                    f"AI聊天处理失败。\n错误：{exc}\n请查看容器日志确认具体原因。",
                     source_context,
                 ),
             )
@@ -336,7 +338,7 @@ class AiService:
 
     def _load_memory(
         self,
-        user_id: int,
+        actor: ActorRef,
         key: str,
         *,
         exclude_current_session: bool,
@@ -349,7 +351,7 @@ class AiService:
             return []
         return trim_memory_chars(
             self._memory.load(
-                user_id=user_id,
+                actor=actor,
                 current_session_key=key,
                 exclude_current_session=exclude_current_session,
                 limit=self._config.memory_turns * 2,
@@ -359,8 +361,8 @@ class AiService:
 
     def _record_memory(
         self,
-        user_id: int,
-        group_id: int | None,
+        actor: ActorRef,
+        conversation: ConversationRef,
         key: str,
         prompt: str,
         reply: str,
@@ -371,17 +373,11 @@ class AiService:
             or self._memory is None
         ):
             return
-        chat_scope, chat_id = (
-            ("group", group_id)
-            if group_id is not None
-            else ("private", user_id)
-        )
         self._memory.append(
             AiMemoryTurn(
-                user_id,
+                actor,
                 key,
-                chat_scope,
-                chat_id,
+                conversation,
                 prompt,
                 reply,
             )
@@ -405,10 +401,12 @@ class AiService:
         )
 
 
-def _chat_key(user_id: int, group_id: int | None) -> str:
-    if group_id is not None:
-        return f"group:{group_id}:user:{user_id}"
-    return f"private:{user_id}"
+def _chat_key(actor: ActorRef, conversation: ConversationRef) -> str:
+    actor_scope = actor.scope_id or ""
+    return (
+        f"{conversation.platform}:{conversation.kind}:{conversation.id}:"
+        f"actor:{actor.platform}:{actor.kind}:{actor_scope}:{actor.id}"
+    )
 
 
 def _append_notice_source(message: str, source_context: str | None) -> str:

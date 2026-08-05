@@ -40,6 +40,11 @@ SEER_REQUEST_CONVERSATION_METHODS = {
         "RankQueryService": ("list", "score", "player"),
     },
 }
+AI_REQUEST_IDENTITY_METHODS = {
+    "ai/service.py": {
+        "AiService": ("chat_reply", "classify_intent"),
+    },
+}
 
 TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()
 FORBIDDEN_TRANSPORT_IMPORT_PREFIXES = (
@@ -186,4 +191,20 @@ def test_seer_request_services_use_conversation_refs_not_group_ids() -> None:
                     method_name=method_name,
                 )
                 assert "conversation" in arguments
+                assert "group_id" not in arguments
+
+
+def test_ai_request_services_use_platform_identity_refs() -> None:
+    for relative_filename, classes in AI_REQUEST_IDENTITY_METHODS.items():
+        path = SERVICES / relative_filename
+        for class_name, method_names in classes.items():
+            for method_name in method_names:
+                arguments = _method_argument_names(
+                    path,
+                    class_name=class_name,
+                    method_name=method_name,
+                )
+                assert "actor" in arguments
+                assert "conversation" in arguments
+                assert "user_id" not in arguments
                 assert "group_id" not in arguments
