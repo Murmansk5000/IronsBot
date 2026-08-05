@@ -632,7 +632,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     install_ai,
                     service=ai_service,
                     features=features,
-                    group_aliases=config.features.group_aliases,
                     bot_mention_block_service=bot_mention_block_service,
                 )
                 if config.ai.api_key.strip()
@@ -667,7 +666,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             install=partial(
                 install_ai_intent,
                 service=ai_service,
-                group_aliases=config.features.group_aliases,
                 team_resource=team_resource_service,
                 command_help_ids=tuple(
                     command.id for command in ai_intent_command_descriptors

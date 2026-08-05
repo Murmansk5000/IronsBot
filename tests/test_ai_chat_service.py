@@ -147,7 +147,6 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
         onebot_context.build_notice_source(
             event,
             "你好",
-            {},
             bot=FakeBot(),
         )
     )
@@ -158,7 +157,7 @@ def test_ai_notice_source_context_includes_group_user_and_message() -> None:
     assert "消息：你好" in source
 
 
-def test_ai_notice_source_context_falls_back_to_group_alias() -> None:
+def test_ai_notice_source_context_falls_back_to_group_id() -> None:
     event = group_message_event("hello", group_id=GROUP_ID)
 
     async def fail_group_info(**_kwargs: object) -> dict[str, object]:
@@ -171,12 +170,12 @@ def test_ai_notice_source_context_falls_back_to_group_alias() -> None:
         onebot_context.build_notice_source(
             event,
             "你好",
-            {"example": GROUP_ID},
             bot=FailingBot(),
         )
     )
 
-    assert f"群：example（{GROUP_ID}）" in source
+    assert f"群：{GROUP_ID}" in source
+    assert "example" not in source
 
 
 @pytest.mark.asyncio

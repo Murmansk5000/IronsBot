@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
+    Bot,  # noqa: TC002 - NoneBot resolves it at runtime
     MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
@@ -17,8 +18,6 @@ from ironsbot.runtime.rules import natural_language
 from .team_actions import run_team_action
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.team.resource import TeamResourceService
@@ -61,20 +60,19 @@ def _resolve_action_command_id(
 def install(
     registry: MatcherRegistry,
     service: AiService,
-    group_aliases: Mapping[str, int],
     team_resource: TeamResourceService,
     command_help_ids: tuple[str, ...],
 ) -> None:
     if not command_help_ids:
         return
 
-    async def match_action(event: MessageEvent, state: T_State) -> bool:
+    async def match_action(bot: Bot, event: MessageEvent, state: T_State) -> bool:
         text = event.get_plaintext().strip()
         group_id = getattr(event, "group_id", None)
         source_context = await build_notice_source(
             event,
             text,
-            group_aliases,
+            bot=bot,
         )
         action = await service.classify_intent(
             text,
