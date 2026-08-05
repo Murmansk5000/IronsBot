@@ -254,6 +254,7 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | 赛尔查询 | `services.seer.command_contracts` | 事件转换、参数交给 service、回复 | 已迁移 |
 | 榜单帮助与管理 | `services.seer.rank_command_contracts` | 事件转换、回复 | 已迁移 |
 | 活动查询 | `services.activity.command_contracts` | 事件转换、权限 matcher、回复、定时任务 | 已迁移 |
+| 会议查询 | `services.messaging.meeting` | 事件转换、权限 matcher、回复 | 已迁移 |
 | 数据更新 | `services.operations.data_sync_commands` | 事件转换、异步执行、回复 | 已迁移 |
 | 开服与容器维护 | `services.operations.command_text`、`server_status_commands`、`docker_commands` | 事件转换、平台操作、回复 | 已迁移 |
 | B 站、消息、AI、战队、幸运橱窗、图片与帮助 | 各插件内的过渡实现 | 仅在迁移完成前维护，新增字段必须同步进入目录 | 待迁移 |
