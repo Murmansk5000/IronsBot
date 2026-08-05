@@ -926,6 +926,15 @@ contributions, but it is not a second discovery path. Composition:
 4. builds the application lifecycle;
 5. returns one `Application` object.
 
+The root coordinates domain builders; it must not become the implementation
+site for a feature's infrastructure graph. Builders are grouped by stable
+responsibility (`common`, `seer`, `messaging`, and `operations`) and return
+small typed component bundles. `app.operations_composition.OperationsComponents`
+is the first extracted builder: it owns data synchronization, the headless
+client/session factory, server status, restart services, and the Seer database
+gateway. A builder may depend on configuration and concrete integrations, but
+neither a service nor a plugin may import an application builder.
+
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
 

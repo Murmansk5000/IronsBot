@@ -53,7 +53,7 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `in_progress` | 声明式贡献、`PluginContribution` 与命令目录已建立 | 所有插件均不再依赖旧桥接或第二份发现来源 | 插件迁移完全结束 |
+| Phase 2 | `in_progress` | 声明式贡献、`PluginContribution`、命令目录及 `OperationsComponents` 运维装配 builder 已建立；生命周期/数据同步/运维测试已验证 | 所有插件均不再依赖旧桥接或第二份发现来源，且组合根完成按领域拆分 | 插件迁移完全结束 |
 | Phase 3 | `in_progress` | OneBot context/投递边界已有目标端口和适配器；`ApplicationResources` 不再向插件暴露旧 `OneBotDelivery`、限流器或出站实现 | 删除剩余 integration 内旧投递调用并建立跨平台 sender 验收 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性渲染缓存和部分 SeerAPI 效果事实已验证 | 其余 renderer 与数据路径全部只消费视图模型/发布事实 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 所有直接命令与米米号入口使用同一契约 | 业务服务重构完成 |
@@ -119,6 +119,12 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 
 **唯一目标路径：** 内置和私有插件均由 `nonebot.load_from_toml()` 从声明式清单加载。
 私有插件只从窄 extension context 获取已声明的领域能力。
+
+组合根只协调四个稳定领域的 builder：`common`、`seer`、`messaging` 和
+`operations`。每个 builder 返回类型化组件包；`operations` 已用
+`OperationsComponents` 迁出数据同步、无头客户端、服务器状态和重启装配。
+后续 builder 只能迁移既有装配代码，不能引入第二个 service locator 或由插件反向
+构造基础设施。
 
 **完成条件：**
 

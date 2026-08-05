@@ -12,6 +12,7 @@ from ironsbot.app.application import Application
 from ironsbot.app.bilibili_composition import build_onebot_bilibili_monitor
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
+from ironsbot.app.operations_composition import build_operations_components
 from ironsbot.app.private_extensions import (
     load_private_extension_catalog,
 )
@@ -24,9 +25,6 @@ from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.extensions.player_lineup import PlayerLineupExtensionServices
 from ironsbot.integrations.db_registry import DatabaseManager
-from ironsbot.integrations.db_sync.runner import DatabaseSync
-from ironsbot.integrations.docker.client import DockerClient
-from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
@@ -37,7 +35,6 @@ from ironsbot.integrations.http.bilibili import (
     request_bili_login_qr,
 )
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
 from ironsbot.integrations.onebot.bilibili_rendering import (
@@ -80,9 +77,7 @@ from ironsbot.integrations.onebot.team_resource import (
     OneBotTeamResourceNoticeSender,
     build_onebot_team_resource_default_mentions,
 )
-from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
-from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.integrations.seer_data.new_content_renderer import (
     render_new_content_menu,
 )
@@ -140,15 +135,6 @@ from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.sendpic import SendpicService
-from ironsbot.services.operations.data_sync import DataSyncService
-from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
-from ironsbot.services.operations.docker_update import DockerUpdateService
-from ironsbot.services.operations.headless import HeadlessService
-from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
-from ironsbot.services.operations.headless_session import HeadlessSessionFactory
-from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
-from ironsbot.services.operations.server_status import ServerStatusService
-from ironsbot.services.operations.startup import StartupNoticeService
 from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
@@ -206,15 +192,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     http_clients = HttpClients()
     databases = DatabaseManager()
     cache_paths = CachePaths(settings.paths.cache_root)
-    database_sync = DatabaseSync(databases, cache_paths=cache_paths)
     task_owner = TaskOwner()
-    for name, source in settings.operations.data_sync.sources.items():
-        database_sync.register(name, source)
-    data_sync = DataSyncService(settings.operations.data_sync, database_sync)
-    seer_database = SeerDatabase(
-        databases,
-        merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
-    )
     prompt_sessions = PromptSessionManager()
     promotions = PromotionCatalog(settings.promotions)
     features = build_onebot_feature_service(
@@ -247,6 +225,18 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     admin_notices = AdminNoticeService(features, OneBotAdminNoticeSender(delivery))
     install_outbound_rate_limit_hooks(outbound)
+    operations = build_operations_components(
+        settings,
+        databases,
+        cache_paths,
+        task_owner,
+        admin_notices,
+        http_clients,
+    )
+    data_sync = operations.data_sync
+    seer_database = operations.seer_database
+    headless = operations.headless
+    headless_sessions = operations.headless_sessions
 
     activity = build_activity_service(
         settings.activity,
@@ -260,7 +250,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.activity.notice_timeout_seconds,
         ),
     )
-    headless_operations = HeadlessOperationTracker()
     player_accounts = settings.player_accounts
 
     def resolve_configured_player_reference(
@@ -272,36 +261,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             conversation=conversation,
         )
 
-    headless_accounts = settings.headless_accounts
-    headless_worker_count = len(headless_accounts)
-    headless = HeadlessService(
-        [
-            ClientManager(
-                task_owner.create,
-                operations=headless_operations,
-            )
-            for _ in range(headless_worker_count)
-        ],
-        settings.operations.headless,
-        settings.operations.headless_notice,
-        admin_notices,
-        accounts=headless_accounts,
-        request_interval_seconds=(
-            settings.seer.player.request_protection.base_request_interval_seconds
-            if settings.seer.player.request_protection.enabled
-            else 0.0
-        ),
-        spawn=task_owner.create,
-    )
-    headless_sessions = HeadlessSessionFactory(
-        lambda: ClientManager(task_owner.create),
-        settings.operations.headless,
-        request_interval_seconds=(
-            settings.seer.player.request_protection.base_request_interval_seconds
-            if settings.seer.player.request_protection.enabled
-            else 0.0
-        ),
-    )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         build_onebot_lucky_skin_window_accounts(
@@ -478,7 +437,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         resolve_configured_player_reference,
         player.default_player_id,
     )
-    docker_client = DockerClient()
     private_extensions = load_private_extension_catalog(
         settings.operations.private_extensions
     )
@@ -628,29 +586,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             ),
         )
     }
-    docker_update = DockerUpdateService(
-        settings.operations.docker_update,
-        docker_client,
-        partial(
-            terminate_bot_process,
-            signal_parent=True,
-            reason="admin requested bot restart",
-        ),
-        handoff_store=DockerStartupPreflightStore(),
-    )
-    scheduled_restart = ScheduledRestartService(
-        restart_times=(
-            tuple(settings.operations.restart.parsed_restart_times)
-            if settings.operations.restart.enabled
-            else ()
-        ),
-        grace_seconds=settings.operations.restart.grace_seconds,
-        restart_process=partial(
-            terminate_bot_process,
-            signal_parent=settings.operations.restart.signal_parent,
-            reason="scheduled bot restart",
-        ),
-    )
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
 
@@ -677,11 +612,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         admin_notices=admin_notices,
         activity=activity,
         headless=headless,
-        server_status=ServerStatusService(
-            headless,
-            HttpServerNoticeSource(http_clients.origin),
-            dedicated_sessions=headless_sessions,
-        ),
+        server_status=operations.server_status,
         subscriptions=subscriptions,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
@@ -699,9 +630,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         pet_config=pet_config,
         ai=ai,
         data_sync=data_sync,
-        docker_update=docker_update,
-        startup_notice=StartupNoticeService(admin_notices),
-        scheduled_restart=scheduled_restart,
+        docker_update=operations.docker_update,
+        startup_notice=operations.startup_notice,
+        scheduled_restart=operations.scheduled_restart,
         commands=command_catalog,
         contribution_catalog=contribution_catalog,
         help_hint=OneBotHelpHintService(
