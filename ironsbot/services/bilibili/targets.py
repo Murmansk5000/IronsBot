@@ -21,7 +21,6 @@ from ironsbot.services.bilibili.preferences import (
 from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
     PushSubscriptionRepository,
-    PushTargetType,
 )
 
 
@@ -62,19 +61,19 @@ class BiliTargetRule:
 
 @dataclass(frozen=True, slots=True)
 class BiliPushTargets:
-    full_group_ids: list[int]
-    link_group_ids: list[int]
-    full_user_ids: list[int]
-    link_user_ids: list[int]
+    full_group_conversations: list[ConversationRef]
+    link_group_conversations: list[ConversationRef]
+    full_private_conversations: list[ConversationRef]
+    link_private_conversations: list[ConversationRef]
 
     @property
     def has_targets(self) -> bool:
         return any(
             (
-                self.full_group_ids,
-                self.link_group_ids,
-                self.full_user_ids,
-                self.link_user_ids,
+                self.full_group_conversations,
+                self.link_group_conversations,
+                self.full_private_conversations,
+                self.link_private_conversations,
             )
         )
 
@@ -266,38 +265,50 @@ class BiliTargetService:
             return self.features.is_private_feature_allowed(target_id, "bili_query")
         return False
 
-    def _rules(self, target_type: PushTargetType) -> dict[int, BiliTargetRule]:
-        return (
-            self.push_group_rules()
-            if target_type == "group"
-            else self.push_user_rules()
-        )
+    def _rules_for_conversation(
+        self,
+        conversation: ConversationRef,
+    ) -> dict[int, BiliTargetRule] | None:
+        if conversation.platform is not Platform.ONEBOT:
+            return None
+        if conversation.kind == "group":
+            return self.push_group_rules()
+        if conversation.kind == "private":
+            return self.push_user_rules()
+        return None
+
+    def _onebot_target_id(self, conversation: ConversationRef) -> int | None:
+        if self._rules_for_conversation(conversation) is None:
+            return None
+        return _onebot_ref_id(conversation.id)
 
     def mode_for_uid(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
     ) -> BiliPushMode | None:
-        rule = self._rules(target_type).get(target_id)
+        rules = self._rules_for_conversation(conversation)
+        target_id = self._onebot_target_id(conversation)
+        if rules is None or target_id is None:
+            return None
+        rule = rules.get(target_id)
         if rule is None or uid not in rule.uids:
             return None
         return (
-            self.preferences.get_mode(target_type, target_id, uid)
+            self.preferences.get_mode(conversation, uid)
             or rule.mode_for_uid(uid)
             or rule.default_mode
         )
 
     def mode_display_for_uid(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
     ) -> str | None:
-        rule = self._rules(target_type).get(target_id)
+        rule = self.target_rule(conversation)
         if rule is None or uid not in rule.uids:
             return None
-        runtime_mode = self.preferences.get_mode(target_type, target_id, uid)
+        runtime_mode = self.preferences.get_mode(conversation, uid)
         if runtime_mode is not None:
             return f"已自定义（{push_mode_label(runtime_mode)}）"
         configured_mode = rule.configured_mode_for_uid(uid)
@@ -307,24 +318,21 @@ class BiliTargetService:
 
     def target_rule(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> BiliTargetRule | None:
-        return self._rules(target_type).get(target_id)
+        rules = self._rules_for_conversation(conversation)
+        target_id = self._onebot_target_id(conversation)
+        return None if rules is None or target_id is None else rules.get(target_id)
 
     def subscription_options(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
-        rule = self._rules(target_type).get(target_id)
+        rule = self.target_rule(conversation)
         if rule is None:
             return []
 
-        unsubscribed = self.unsubscribe_store.target_unsubscribed_keys(
-            target_type,
-            target_id,
-        )
+        unsubscribed = self.unsubscribe_store.unsubscribed_keys(conversation)
         return [
             PushSubscriptionOption(
                 key=(key := bili_push_subscription_key(uid)),
@@ -340,10 +348,9 @@ class BiliTargetService:
 
     async def prepare_account_names(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> str | None:
-        rule = self.target_rule(target_type, target_id)
+        rule = self.target_rule(conversation)
         if rule is None:
             return None
         if await self.account_names.refresh(rule.uids):
@@ -352,26 +359,22 @@ class BiliTargetService:
 
     async def account_summary(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> str:
         lines = ["📺【B站账号】"]
-        rule = self.target_rule(target_type, target_id)
+        rule = self.target_rule(conversation)
         if rule is None:
             lines.append("当前会话未开启 B站推送。")
             return "\n".join(lines)
-        if error := await self.prepare_account_names(target_type, target_id):
+        if error := await self.prepare_account_names(conversation):
             lines.append(error)
             return "\n".join(lines)
 
-        unsubscribed = self.unsubscribe_store.target_unsubscribed_keys(
-            target_type,
-            target_id,
-        )
-        scope = "当前群" if target_type == "group" else "当前私聊"
+        unsubscribed = self.unsubscribe_store.unsubscribed_keys(conversation)
+        scope = "当前群" if conversation.kind == "group" else "当前私聊"
         lines.append(f"{scope}订阅：")
         for uid in sorted(rule.uids):
-            mode_display = self.mode_display_for_uid(target_type, target_id, uid)
+            mode_display = self.mode_display_for_uid(conversation, uid)
             td_text = (
                 "，已 TD"
                 if bili_push_subscription_key(uid) in unsubscribed
@@ -383,7 +386,7 @@ class BiliTargetService:
             lines.append(
                 f"- {account_name}：{mode_display}{td_text}"
             )
-        manager = "群主/管理员可发送" if target_type == "group" else "可发送"
+        manager = "群主/管理员可发送" if conversation.kind == "group" else "可发送"
         lines.append(
             f"{manager}：B站推送模式 <账号别名|公开昵称|UID> "
             "<内容|链接|默认>"
@@ -392,15 +395,14 @@ class BiliTargetService:
 
     async def update_push_mode(  # noqa: PLR0911 - command errors return directly
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         account_ref: str,
         raw_mode: str,
     ) -> str:
         if not account_ref.strip() or not raw_mode.strip():
             return _push_mode_usage()
 
-        rule = self.target_rule(target_type, target_id)
+        rule = self.target_rule(conversation)
         if rule is None:
             return "❌ 当前会话未开启 B站推送。"
 
@@ -414,15 +416,12 @@ class BiliTargetService:
                 rule.uids,
             ).resolve_alias(account_ref).unique_value
         if uid is None:
-            if error := await self.prepare_account_names(
-                target_type,
-                target_id,
-            ):
+            if error := await self.prepare_account_names(conversation):
                 return error
             uid = self.account_names.public_name_alias_lookup(
                 rule.uids,
             ).resolve_alias(account_ref).unique_value
-        if uid is None or self.mode_for_uid(target_type, target_id, uid) is None:
+        if uid is None or self.mode_for_uid(conversation, uid) is None:
             return (
                 "❌ 当前会话没有订阅该 B站账号。\n"
                 "可发送“B站账号”查看当前会话订阅。"
@@ -434,12 +433,12 @@ class BiliTargetService:
             return _push_mode_usage()
 
         if mode is None:
-            self.preferences.clear_mode(target_type, target_id, uid)
+            self.preferences.clear_mode(conversation, uid)
         else:
-            self.preferences.set_mode(target_type, target_id, uid, mode)
+            self.preferences.set_mode(conversation, uid, mode)
 
-        effective_display = self.mode_display_for_uid(target_type, target_id, uid)
-        scope = "当前群" if target_type == "group" else "当前私聊"
+        effective_display = self.mode_display_for_uid(conversation, uid)
+        scope = "当前群" if conversation.kind == "group" else "当前私聊"
         await self.account_names.refresh([uid])
         account_name = self.account_names.name_for_uid(uid)
         account_text = f"“{account_name}”" if account_name else ""
@@ -455,29 +454,43 @@ class BiliTargetService:
         )
 
     def push_targets_for_uid(self, uid: int) -> BiliPushTargets:
-        full_group_ids: list[int] = []
-        link_group_ids: list[int] = []
+        full_group_conversations: list[ConversationRef] = []
+        link_group_conversations: list[ConversationRef] = []
         for group_id in self.push_group_rules():
-            mode = self.mode_for_uid("group", group_id, uid)
+            conversation = ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(group_id),
+            )
+            mode = self.mode_for_uid(conversation, uid)
             if mode == "full":
-                full_group_ids.append(group_id)
+                full_group_conversations.append(conversation)
             elif mode == "link":
-                link_group_ids.append(group_id)
+                link_group_conversations.append(conversation)
 
-        full_user_ids: list[int] = []
-        link_user_ids: list[int] = []
+        full_private_conversations: list[ConversationRef] = []
+        link_private_conversations: list[ConversationRef] = []
         for user_id in self.push_user_rules():
-            mode = self.mode_for_uid("private", user_id, uid)
+            conversation = ConversationRef(
+                Platform.ONEBOT,
+                "private",
+                str(user_id),
+            )
+            mode = self.mode_for_uid(conversation, uid)
             if mode == "full":
-                full_user_ids.append(user_id)
+                full_private_conversations.append(conversation)
             elif mode == "link":
-                link_user_ids.append(user_id)
+                link_private_conversations.append(conversation)
 
         return BiliPushTargets(
-            full_group_ids=_unique_ints(full_group_ids),
-            link_group_ids=_unique_ints(link_group_ids),
-            full_user_ids=_unique_ints(full_user_ids),
-            link_user_ids=_unique_ints(link_user_ids),
+            full_group_conversations=list(dict.fromkeys(full_group_conversations)),
+            link_group_conversations=list(dict.fromkeys(link_group_conversations)),
+            full_private_conversations=list(
+                dict.fromkeys(full_private_conversations)
+            ),
+            link_private_conversations=list(
+                dict.fromkeys(link_private_conversations)
+            ),
         )
 
 

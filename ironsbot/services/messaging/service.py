@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches, normalize_command_text
+from ironsbot.core.platform import (
+    ConversationKind,
+    ConversationRef,
+    private_conversation_for_actor,
+)
 from ironsbot.core.time import daily_time_parts
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
@@ -27,15 +32,12 @@ if TYPE_CHECKING:
     )
     from ironsbot.core.features import FeatureService
     from ironsbot.services.activity.service import ActivityService
-    from ironsbot.services.messaging.delivery import (
-        MessageDelivery,
-        MessageLimiter,
+    from ironsbot.services.messaging.scheduled_delivery import (
+        ScheduledMessageSender,
     )
     from ironsbot.services.messaging.subscriptions import (
         PushPreferencePruneResult,
-        PushPreferenceTarget,
         PushSubscriptionRepository,
-        PushTargetType,
         PushTimePreferenceIdentity,
     )
     from ironsbot.services.operations.scheduler import Scheduler
@@ -56,14 +58,13 @@ class MessagingService:
     _activity: ActivityConfig
     _store: PushSubscriptionRepository
     _features: FeatureService
-    _delivery: MessageDelivery
+    _schedule_sender: ScheduledMessageSender
     _extra_push_options: tuple[
-        Callable[[PushTargetType, int], list[PushSubscriptionOption]],
+        Callable[[ConversationRef], list[PushSubscriptionOption]],
         ...,
     ] = ()
-    _push_message_limiter: MessageLimiter | None = None
     _prepare_extra_push_options: (
-        Callable[[PushTargetType, int], Awaitable[str | None]] | None
+        Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
 
     def match_private_action(
@@ -132,40 +133,37 @@ class MessagingService:
 
     def subscription_options(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
         extra_options = [
             option
             for provider in self._extra_push_options
-            for option in provider(target_type, target_id)
+            for option in provider(conversation)
         ]
         return [
             *extra_options,
-            *self._builtin_subscription_options(target_type, target_id),
-            *self._schedule_subscription_options(target_type, target_id),
+            *self._builtin_subscription_options(conversation),
+            *self._schedule_subscription_options(conversation),
         ]
 
     async def prepare_subscription_options(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> str | None:
         if self._prepare_extra_push_options is None:
             return None
-        return await self._prepare_extra_push_options(target_type, target_id)
+        return await self._prepare_extra_push_options(conversation)
 
     def subscription_menu(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         *,
         read_only: bool = False,
     ) -> tuple[list[PushSubscriptionOption], str]:
-        options = self.subscription_options(target_type, target_id)
+        options = self.subscription_options(conversation)
         return options, build_push_subscription_menu(
             title=_push_subscription_menu_title(
-                target_type,
+                conversation,
                 read_only=read_only,
             ),
             options=options,
@@ -174,16 +172,14 @@ class MessagingService:
 
     def toggle_subscription(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         option: PushSubscriptionOption,
     ) -> str:
-        if self._store.is_target_unsubscribed(target_type, target_id, option.key):
-            self._store.restore_target(target_type, target_id, option.key)
+        if self._store.is_unsubscribed(conversation, option.key):
+            self._store.restore(conversation, option.key)
             return f"已恢复订阅：{option.label}。"
-        self._store.unsubscribe_target(
-            target_type,
-            target_id,
+        self._store.unsubscribe(
+            conversation,
             option.key,
             option.feature,
         )
@@ -191,39 +187,34 @@ class MessagingService:
 
     def push_time_options(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> list[PushTimeOption]:
         from .push_time import build_push_time_options
 
         return build_push_time_options(
-            target_type,
-            target_id,
+            conversation,
             activity=self._activity,
             config=self._config,
             store=self._store,
-            eligible_target_ids=self._eligible_target_ids,
+            eligible_conversations=self._eligible_conversations,
         )
 
     def update_push_time(
         self,
         *,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         option: PushTimeOption,
         value: str | None,
     ) -> str:
         if value is None:
             self._store.clear_time_preference(
-                target_type,
-                target_id,
+                conversation,
                 option.key,
                 option.preference_type,
             )
             return f"已恢复默认：{option.label}。"
         self._store.set_time_preference(
-            target_type,
-            target_id,
+            conversation,
             option.key,
             option.preference_type,
             value,
@@ -263,33 +254,36 @@ class MessagingService:
             return
         await activity_service.schedule_reminders(scheduler)
 
-    def _eligible_target_ids(
+    def _eligible_conversations(
         self,
-        target_type: PushTargetType,
+        conversation_kind: ConversationKind,
         feature_keys: set[str],
-    ) -> dict[str, set[int]]:
-        if target_type == "group":
+    ) -> dict[str, set[ConversationRef]]:
+        if conversation_kind == "group":
             return {
-                feature: set(self._features.groups_for_feature(feature))
+                feature: set(self._features.conversations_for_feature(feature))
+                for feature in feature_keys
+            }
+        if conversation_kind == "private":
+            return {
+                feature: {
+                    private_conversation_for_actor(actor)
+                    for actor in self._features.actors_with_superusers(feature)
+                }
                 for feature in feature_keys
             }
         return {
-            feature: set(
-                self._features.users_with_superusers(
-                    self._features.users_for_feature(feature)
-                )
-            )
+            feature: set()
             for feature in feature_keys
         }
 
     def _builtin_subscription_options(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
-        unsubscribed = self._store.target_unsubscribed_keys(target_type, target_id)
-        eligible = self._eligible_target_ids(
-            target_type,
+        unsubscribed = self._store.unsubscribed_keys(conversation)
+        eligible = self._eligible_conversations(
+            conversation.kind,
             {option.feature for option in BUILTIN_PUSH_OPTIONS},
         )
         return [
@@ -300,42 +294,39 @@ class MessagingService:
                 unsubscribed=option.key in unsubscribed,
             )
             for option in BUILTIN_PUSH_OPTIONS
-            if target_id in eligible.get(option.feature, set())
+            if conversation in eligible.get(option.feature, set())
         ]
 
     def _schedule_subscription_options(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
         tasks = self._config.schedules
         features = {task.feature for task in tasks if task.enabled}
         return build_schedule_subscription_options(
-            target_type=target_type,
-            target_id=target_id,
+            conversation=conversation,
             tasks=tasks,
-            eligible_target_ids_for_feature=self._eligible_target_ids(
-                target_type,
+            eligible_conversations_for_feature=self._eligible_conversations(
+                conversation.kind,
                 features,
             ),
             store=self._store,
         )
 
     def _prune_stale_preferences(self) -> PushPreferencePruneResult:
-        valid_unsubscriptions: dict[PushPreferenceTarget, set[str]] = {}
+        valid_unsubscriptions: dict[ConversationRef, set[str]] = {}
         valid_times: dict[
-            PushPreferenceTarget,
+            ConversationRef,
             set[PushTimePreferenceIdentity],
         ] = {}
-        for target in self._store.preference_targets():
-            target_type, target_id = target
-            valid_unsubscriptions[target] = {
+        for conversation in self._store.preference_conversations():
+            valid_unsubscriptions[conversation] = {
                 option.key
-                for option in self.subscription_options(target_type, target_id)
+                for option in self.subscription_options(conversation)
             }
-            valid_times[target] = {
+            valid_times[conversation] = {
                 (option.key, option.preference_type)
-                for option in self.push_time_options(target_type, target_id)
+                for option in self.push_time_options(conversation)
             }
         return self._store.prune_invalid_preferences(
             valid_unsubscription_keys=valid_unsubscriptions,
@@ -411,11 +402,11 @@ def find_keyword_reply_action(
 
 
 def _push_subscription_menu_title(
-    target_type: PushTargetType,
+    conversation: ConversationRef,
     *,
     read_only: bool,
 ) -> str:
-    if target_type == "group" and read_only:
+    if conversation.kind == "group" and read_only:
         return "本群推送订阅状态："
-    scope = "本群" if target_type == "group" else "私聊"
+    scope = "本群" if conversation.kind == "group" else "私聊"
     return f"请选择要切换的{scope}推送订阅："

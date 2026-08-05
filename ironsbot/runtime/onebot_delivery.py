@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: MIT
+"""OneBot-only delivery contracts shared by runtime adapters and plugins."""
+
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Protocol
+from collections.abc import Callable, Iterable
+from typing import Any, Protocol
 
-from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.messaging import MessageTarget, TargetSendSummary
 
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
-    from ironsbot.core.messaging import TargetSendSummary
-
-MessageLimiter = Callable[[Any, MessageTarget], Any]
+OneBotMessageLimiter = Callable[[Any, MessageTarget], Any]
 
 
-class MessageDelivery(Protocol):
+class OneBotMessageDelivery(Protocol):
+    """Numeric OneBot delivery boundary used only by OneBot runtime code."""
+
     async def send_targets(  # noqa: PLR0913
         self,
         targets: Iterable[MessageTarget],
@@ -23,7 +22,7 @@ class MessageDelivery(Protocol):
         bot: Any | None = None,
         action_name: str = "message action",
         interval_seconds: float = 1.5,
-        message_limiter: MessageLimiter | None = None,
+        message_limiter: OneBotMessageLimiter | None = None,
         subscription_key: str | None = None,
     ) -> TargetSendSummary: ...
 
@@ -37,7 +36,7 @@ class MessageDelivery(Protocol):
         bot: Any | None = None,
         action_name: str = "message action",
         interval_seconds: float = 1.5,
-        message_limiter: MessageLimiter | None = None,
+        message_limiter: OneBotMessageLimiter | None = None,
         subscription_key: str | None = None,
     ) -> TargetSendSummary: ...
 

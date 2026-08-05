@@ -645,6 +645,14 @@ class FeatureService:
             location="configured user refs",
         )
 
+    def actor_refs(self, refs: Iterable[object]) -> list[ActorRef]:
+        """Resolve configured user references at the OneBot configuration edge."""
+
+        return [
+            ActorRef(Platform.ONEBOT, str(user_id))
+            for user_id in self.resolve_user_refs(refs)
+        ]
+
     def groups_for_feature(self, feature: str) -> list[int]:
         return self._ids_for_feature(
             self.config.group_policy,

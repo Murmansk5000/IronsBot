@@ -25,16 +25,7 @@ CommandHintCandidates = Callable[
 ]
 
 
-class OneBotPokeEvent(Protocol):
-    self_id: int
-    target_id: int
-
-
 POKE_HINT_HELP_SUFFIX = "发送“帮助”可查看全部指令。"
-
-
-def is_onebot_poke_at_bot(event: OneBotPokeEvent) -> bool:
-    return event.target_id == event.self_id
 
 
 def _get_poke_reply(

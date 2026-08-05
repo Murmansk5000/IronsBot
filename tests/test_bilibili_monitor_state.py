@@ -443,16 +443,15 @@ def test_push_targets_for_uid_respects_runtime_mode_override(
     )
 
     service.preferences.set_mode(
-        "group",
-        987654321,
+        _group(987654321),
         375750254,
         "link",
     )
 
     push_targets = service.push_targets_for_uid(375750254)
 
-    assert push_targets.full_group_ids == []
-    assert push_targets.link_group_ids == [987654321]
+    assert push_targets.full_group_conversations == []
+    assert push_targets.link_group_conversations == [_group(987654321)]
 
 
 def test_bili_push_subscription_options_are_per_uid(
@@ -477,7 +476,7 @@ def test_bili_push_subscription_options_are_per_uid(
         },
     )
 
-    options = service.subscription_options("group", 987654321)
+    options = service.subscription_options(_group(987654321))
 
     assert [option.key for option in options] == [
         bili_push_subscription_key(375750254),
@@ -488,14 +487,13 @@ def test_bili_push_subscription_options_are_per_uid(
         f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}",
     ]
 
-    cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
-        "group",
-        987654321,
+    cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe(
+        _group(987654321),
         bili_push_subscription_key(375750254),
         "bili_push",
     )
 
-    options = service.subscription_options("group", 987654321)
+    options = service.subscription_options(_group(987654321))
 
     assert [option.key for option in options] == [
         bili_push_subscription_key(375750254),
@@ -527,7 +525,7 @@ def test_bili_push_subscription_options_use_public_account_names(
         },
     )
 
-    options = service.subscription_options("group", 987654321)
+    options = service.subscription_options(_group(987654321))
 
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
@@ -563,7 +561,7 @@ async def test_bili_account_summary_and_push_mode_update_use_target_service(
         },
     )
 
-    summary = await service.account_summary("group", 987654321)
+    summary = await service.account_summary(_group(987654321))
     assert FIRE_BILI_ACCOUNT_NAME in summary
     assert DEFAULT_BILI_ACCOUNT_NAME in summary
     assert str(FIRE_BILI_UID) not in summary
@@ -574,14 +572,13 @@ async def test_bili_account_summary_and_push_mode_update_use_target_service(
     assert "账号库：" not in summary
 
     result = await service.update_push_mode(
-        "group",
-        987654321,
+        _group(987654321),
         FIRE_BILI_ACCOUNT_NAME,
         "链接",
     )
     assert "推送模式：链接" in result
     assert "已自定义（链接）" in result
-    assert service.mode_for_uid("group", 987654321, FIRE_BILI_UID) == "link"
+    assert service.mode_for_uid(_group(987654321), FIRE_BILI_UID) == "link"
 
 
 @pytest.mark.asyncio
@@ -601,24 +598,22 @@ async def test_bili_mode_display_distinguishes_default_config_and_runtime(
     )
 
     assert (
-        service.mode_display_for_uid("group", 987654321, DEFAULT_BILI_ACCOUNT_UID)
+        service.mode_display_for_uid(_group(987654321), DEFAULT_BILI_ACCOUNT_UID)
         == "配置（链接）"
     )
 
     await service.update_push_mode(
-        "group",
-        987654321,
+        _group(987654321),
         DEFAULT_BILI_ACCOUNT_ALIAS,
         "内容",
     )
     assert (
-        service.mode_display_for_uid("group", 987654321, DEFAULT_BILI_ACCOUNT_UID)
+        service.mode_display_for_uid(_group(987654321), DEFAULT_BILI_ACCOUNT_UID)
         == "已自定义（内容）"
     )
 
     result = await service.update_push_mode(
-        "group",
-        987654321,
+        _group(987654321),
         DEFAULT_BILI_ACCOUNT_ALIAS,
         "默认",
     )
@@ -646,25 +641,23 @@ async def test_bili_push_mode_accepts_alias_and_uid_without_public_name(
     )
 
     result = await service.update_push_mode(
-        "group",
-        987654321,
+        _group(987654321),
         FIRE_BILI_ALIAS,
         "链接",
     )
 
     assert "推送模式：链接" in result
     assert FIRE_BILI_ALIAS not in result
-    assert service.mode_for_uid("group", 987654321, FIRE_BILI_UID) == "link"
+    assert service.mode_for_uid(_group(987654321), FIRE_BILI_UID) == "link"
 
     uid_result = await service.update_push_mode(
-        "group",
-        987654321,
+        _group(987654321),
         str(FIRE_BILI_UID),
         "内容",
     )
 
     assert "推送模式：内容" in uid_result
-    assert service.mode_for_uid("group", 987654321, FIRE_BILI_UID) == "full"
+    assert service.mode_for_uid(_group(987654321), FIRE_BILI_UID) == "full"
 
 
 @pytest.mark.asyncio
@@ -696,7 +689,7 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
         },
     )
 
-    summary = await service.account_summary("private", user_id)
+    summary = await service.account_summary(_private(user_id))
 
     assert "当前私聊订阅：" in summary
     assert DEFAULT_BILI_ACCOUNT_NAME in summary
@@ -707,14 +700,13 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
     assert "群主/管理员" not in summary
 
     result = await service.update_push_mode(
-        "private",
-        user_id,
+        _private(user_id),
         FIRE_BILI_ACCOUNT_NAME,
         "内容",
     )
 
     assert "已设置当前私聊" in result
-    assert service.mode_for_uid("private", user_id, FIRE_BILI_UID) == "full"
+    assert service.mode_for_uid(_private(user_id), FIRE_BILI_UID) == "full"
 
 
 @pytest.mark.asyncio
@@ -727,7 +719,7 @@ async def test_bili_account_summary_does_not_fall_back_to_numeric_uid(
         tmp_path,
     )
 
-    summary = await service.account_summary("group", 987654321)
+    summary = await service.account_summary(_group(987654321))
 
     assert "暂时无法获取" in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary

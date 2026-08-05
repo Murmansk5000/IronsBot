@@ -8,8 +8,9 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.core.platform import ConversationRef
 from ironsbot.runtime.matchers import enter_prompt_loop
-from ironsbot.runtime.replies import message_event_target
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.services.messaging.push_time import (
     PushTimeOption,
     build_push_time_menu_prompt,
@@ -18,15 +19,15 @@ from ironsbot.services.messaging.push_time import (
 )
 
 from .push_management_runtime import (
+    PUSH_TIME_CONVERSATION_KEY,
     PUSH_TIME_FLOW,
     PUSH_TIME_OPTIONS_KEY,
     PUSH_TIME_SELECTED_KEY,
-    PUSH_TIME_TARGET_ID_KEY,
+    OneBotConversationKind,
 )
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.service import MessagingService
-    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 RefreshPushTimeJobs = Callable[[PushTimeOption], Awaitable[None]]
 
@@ -34,8 +35,7 @@ RefreshPushTimeJobs = Callable[[PushTimeOption], Awaitable[None]]
 @dataclass(frozen=True)
 class PushTimeValueContext:
     selected: int
-    target_type: PushTargetType
-    target_id: int
+    conversation: ConversationRef
     refresh_push_time_jobs: RefreshPushTimeJobs
     messaging: MessagingService
 
@@ -47,31 +47,31 @@ def build_push_time_menu_handler(
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingService,
 ) -> PushTimeHandler:
-    def options_for(
-        target_type: PushTargetType,
-        target_id: int,
-    ) -> list[PushTimeOption]:
-        return messaging.push_time_options(target_type, target_id)
+    def options_for(conversation: ConversationRef) -> list[PushTimeOption]:
+        return messaging.push_time_options(conversation)
 
     async def handle_push_time_menu(
         matcher: Matcher,
         event: MessageEvent,
         state: T_State,
     ) -> None:
-        target_type, target_id, _ = message_event_target(event)
-        options = options_for(target_type, target_id)
+        conversation = message_input_context(event).message.conversation
+        if conversation.kind not in {"private", "group"}:
+            await matcher.finish()
+        target_type = cast("OneBotConversationKind", conversation.kind)
+        options = options_for(conversation)
         if not options:
             await matcher.finish("当前没有可修改时间的推送。")
 
         state[PUSH_TIME_OPTIONS_KEY] = options
         session_id, version = PUSH_TIME_FLOW.begin(event, state, target_type)
-        state[PUSH_TIME_TARGET_ID_KEY] = target_id
+        state[PUSH_TIME_CONVERSATION_KEY] = conversation
 
         await enter_prompt_loop(
             matcher,
             handlers=[handle_push_time_select],
             rule=PUSH_TIME_FLOW.rule(state, session_id, version, target_type),
-            prompt=build_push_time_menu_prompt(target_type, options),
+            prompt=build_push_time_menu_prompt(conversation, options),
             queue_namespace=PUSH_TIME_FLOW.namespace,
             queue_reply_check=PUSH_TIME_FLOW.reply_check(
                 session_id,
@@ -94,11 +94,12 @@ def build_push_time_menu_handler(
         options: list[PushTimeOption] = raw_options
 
         target_type = state.get(PUSH_TIME_FLOW.target_type_key)
-        target_id = state.get(PUSH_TIME_TARGET_ID_KEY)
-        if target_type not in {"private", "group"} or not isinstance(target_id, int):
+        conversation = state.get(PUSH_TIME_CONVERSATION_KEY)
+        if target_type not in {"private", "group"} or not isinstance(
+            conversation,
+            ConversationRef,
+        ):
             await matcher.finish()
-        target_type = cast("PushTargetType", target_type)
-
         selected = state.get(PUSH_TIME_SELECTED_KEY)
         text = event.get_plaintext().strip()
         if selected is None:
@@ -115,8 +116,7 @@ def build_push_time_menu_handler(
             options,
             PushTimeValueContext(
                 selected=selected,
-                target_type=target_type,
-                target_id=target_id,
+                conversation=conversation,
                 refresh_push_time_jobs=refresh_push_time_jobs,
                 messaging=messaging,
             ),
@@ -164,7 +164,7 @@ async def _handle_push_time_value(
         await PUSH_TIME_FLOW.reject(
             matcher,
             state,
-            build_push_time_menu_prompt(context.target_type, options),
+            build_push_time_menu_prompt(context.conversation, options),
             replace_menu_anchor=True,
         )
 
@@ -179,8 +179,7 @@ async def _handle_push_time_value(
         return
 
     result_message = context.messaging.update_push_time(
-        target_type=context.target_type,
-        target_id=context.target_id,
+        conversation=context.conversation,
         option=option,
         value=normalized,
     )
@@ -188,13 +187,12 @@ async def _handle_push_time_value(
     await context.refresh_push_time_jobs(option)
     state.pop(PUSH_TIME_SELECTED_KEY, None)
     refreshed_options = context.messaging.push_time_options(
-        context.target_type,
-        context.target_id,
+        context.conversation,
     )
     state[PUSH_TIME_OPTIONS_KEY] = refreshed_options
     prompt = (
         f"{result_message}\n\n"
-        f"{build_push_time_menu_prompt(context.target_type, refreshed_options)}"
+        f"{build_push_time_menu_prompt(context.conversation, refreshed_options)}"
     )
     await PUSH_TIME_FLOW.reject(
         matcher,

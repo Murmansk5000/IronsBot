@@ -26,13 +26,16 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.bilibili.targets import BiliTargetService
 
+    from .dynamic_actions import DynamicContentRenderer
 
-def install(
+
+def install(  # noqa: PLR0913 - explicit matcher dependencies
     registry: MatcherRegistry,
     service: BilibiliService,
     features: FeatureService,
     monitor: BilibiliMonitorService,
     targets: BiliTargetService,
+    render_content: DynamicContentRenderer,
 ) -> None:
     dynamic_menu = registry.on_message(
         policy=CommandPolicy.command("bili_query", help_ids=("bilibili.dynamic",)),
@@ -45,6 +48,7 @@ def install(
             handle_dynamic_menu_action,
             service=service,
             monitor=monitor,
+            render_content=render_content,
         )
     )
 

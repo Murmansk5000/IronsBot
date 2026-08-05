@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
+from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.application import Application
+from ironsbot.app.bilibili_composition import build_onebot_bilibili_monitor
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.private_extensions import (
@@ -19,7 +19,7 @@ from ironsbot.app.private_extensions import (
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
@@ -38,6 +38,9 @@ from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.onebot.activity import OneBotActivityReminderSender
 from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
+from ironsbot.integrations.onebot.bilibili_rendering import (
+    build_dynamic_content_message,
+)
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
@@ -53,6 +56,9 @@ from ironsbot.integrations.onebot.outbound import (
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.onebot.scheduled_delivery import (
+    OneBotScheduledMessageSender,
+)
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
     OneBotTeamAuditPolicy,
@@ -77,7 +83,6 @@ from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.sendpic import SendpicBackendProvider
-from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
@@ -116,16 +121,6 @@ from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.runtime.plugins import PluginContributionCatalog
-from ironsbot.services.activity.delivery import (
-    ActivityReminderDelivery,
-    ActivityReminderTargets,
-)
-from ironsbot.services.activity.models import ActivityInfoCache
-from ironsbot.services.activity.repository import ActivityRepository
-from ironsbot.services.activity.service import (
-    ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-    ActivityService,
-)
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.login import BilibiliLoginService
@@ -134,9 +129,6 @@ from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.sendpic import SendpicService
-from ironsbot.services.messaging.subscriptions import (
-    ACTIVITY_LEAD_HOURS_PREFERENCE,
-)
 from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
@@ -187,96 +179,10 @@ from ironsbot.services.team.audit import TeamAuditService
 from ironsbot.services.team.resource import TeamResourceService
 
 if TYPE_CHECKING:
-    from pathlib import Path
 
-    from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
 
-LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 SEERAPI_DB_NAME = "seerapi"
-ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
-SOON_ENDING_THRESHOLD = timedelta(days=7)
-
-
-def _build_activity_service(  # noqa: PLR0913 - composition root
-    config: ActivityConfig,
-    runtime_state_path: Path,
-    features: FeatureService,
-    sender: OneBotActivityReminderSender,
-    databases: DatabaseManager,
-    subscriptions: PushUnsubscribeStore,
-    notice_source: UnityNoticeSource,
-) -> ActivityService:
-    sent_store = ActivitySentStore(runtime_state_path)
-    repository = ActivityRepository()
-
-    def load_rows():
-        with databases.session(SEERAPI_DB_NAME) as session:
-            return repository.load(session, only_shown=config.only_shown)
-
-    def preference_values():
-        return (
-            preference.value
-            for preference in subscriptions.all_time_preferences(
-                subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-                preference_type=ACTIVITY_LEAD_HOURS_PREFERENCE,
-            )
-        )
-
-    def preference_for_target(target: ActorRef | ConversationRef) -> str | None:
-        if (
-            isinstance(target, ActorRef)
-            and target.platform is Platform.ONEBOT
-            and target.kind == "user"
-            and target.id.isdecimal()
-        ):
-            target_type = "private"
-        elif (
-            isinstance(target, ConversationRef)
-            and target.platform is Platform.ONEBOT
-            and target.kind == "group"
-            and target.id.isdecimal()
-        ):
-            target_type = "group"
-        else:
-            return None
-        return subscriptions.get_time_preference(
-            target_type,
-            int(target.id),
-            ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-            ACTIVITY_LEAD_HOURS_PREFERENCE,
-        )
-
-    def targets() -> ActivityReminderTargets:
-        return ActivityReminderTargets(
-            group_conversations=tuple(
-                features.conversations_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
-            ),
-            private_actors=tuple(
-                features.actors_with_superusers(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
-            ),
-        )
-
-    async def broadcast(reminder: ActivityReminderDelivery) -> bool:
-        return await sender.send(reminder)
-
-    return ActivityService(
-        config=config,
-        cache=ActivityInfoCache(),
-        load_rows=load_rows,
-        load_notice_text=notice_source.fetch,
-        cache_ttl=ACTIVITY_INFO_CACHE_TTL,
-        soon_ending_threshold=SOON_ENDING_THRESHOLD,
-        filter_unsent=sent_store.filter_unsent,
-        mark_sent=sent_store.mark_sent,
-        preference_values=preference_values,
-        preference_for_target=preference_for_target,
-        targets=targets,
-        broadcast=broadcast,
-        now=lambda: datetime.now(LOCAL_TZ),
-    )
-
-
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
 
@@ -329,7 +235,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     admin_notices = AdminNoticeService(features, OneBotAdminNoticeSender(delivery))
     install_outbound_rate_limit_hooks(outbound)
 
-    activity = _build_activity_service(
+    activity = build_activity_service(
         settings.activity,
         settings.paths.runtime_state,
         features,
@@ -421,7 +327,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.activity,
         subscriptions,
         features,
-        delivery,
+        OneBotScheduledMessageSender(delivery, push_message_limiter),
         (
             bilibili.targets.subscription_options,
             OneBotLuckySkinWindowSubscriptionOptions(
@@ -429,7 +335,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 subscriptions,
             ).subscription_options,
         ),
-        _push_message_limiter=push_message_limiter,
         _prepare_extra_push_options=bilibili.targets.prepare_account_names,
     )
     sendpic = SendpicService(
@@ -663,6 +568,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else None
         ),
     )
+    bilibili_monitor = build_onebot_bilibili_monitor(
+        service=bilibili,
+        login=bilibili_login,
+        delivery=delivery,
+        subscriptions=subscriptions,
+        admin_notices=admin_notices,
+        message_limiter=push_message_limiter,
+        ai_service=ai,
+        config=settings.bilibili,
+    )
     private_extension_runtime = PrivateExtensionRuntime(
         features=features,
         seer=seer,
@@ -743,6 +658,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         subscriptions=subscriptions,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
+        bilibili_monitor=bilibili_monitor,
+        bilibili_content_renderer=build_dynamic_content_message,
         lucky_skin_window=lucky_skin_window,
         messaging=messaging,
         sendpic=sendpic,

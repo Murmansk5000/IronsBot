@@ -55,7 +55,6 @@ BILIBILI_REQUEST_IDENTITY_METHODS = {
 }
 BILIBILI_LEGACY_DELIVERY_IMPORTS = (
     "ironsbot.core.messaging",
-    "ironsbot.services.messaging.delivery",
 )
 
 TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()

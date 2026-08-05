@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
@@ -15,12 +16,13 @@ def test_bili_push_preference_store_sets_gets_and_clears_mode(
 ) -> None:
     db_path = tmp_path / "bili_preferences.sqlite"
     store = SqliteBiliPushPreferenceStore(db_path)
+    conversation = ConversationRef(Platform.ONEBOT, "group", "1001")
 
-    assert store.get_mode("group", 1001, 123456) is None
+    assert store.get_mode(conversation, 123456) is None
 
-    store.set_mode("group", 1001, 123456, "full")
+    store.set_mode(conversation, 123456, "full")
 
-    assert store.get_mode("group", 1001, 123456) == "full"
+    assert store.get_mode(conversation, 123456) == "full"
 
     with sqlite3.connect(db_path) as conn:
         indexes = {
@@ -31,9 +33,9 @@ def test_bili_push_preference_store_sets_gets_and_clears_mode(
         }
     assert "idx_bili_push_preferences_uid" in indexes
 
-    store.clear_mode("group", 1001, 123456)
+    store.clear_mode(conversation, 123456)
 
-    assert store.get_mode("group", 1001, 123456) is None
+    assert store.get_mode(conversation, 123456) is None
 
 
 def test_bili_push_subscription_key_and_mode_normalization() -> None:

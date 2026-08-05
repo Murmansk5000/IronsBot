@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.messaging import MessageTarget
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    Platform,
+    private_conversation_for_actor,
+)
 from ironsbot.integrations.onebot.target_refs import is_onebot_private_actor
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.seer.lucky_skin_window import (
@@ -41,15 +46,14 @@ class OneBotLuckySkinWindowNotificationSender:
         if not is_onebot_private_actor(actor):
             return False
         user_id = int(actor.id)
-        if self.subscriptions.is_target_unsubscribed(
-            "private",
-            user_id,
+        conversation = private_conversation_for_actor(actor)
+        if self.subscriptions.is_unsubscribed(
+            conversation,
             LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
         ):
             return False
         if not self.subscriptions.mark_daily_hint_sent(
-            "private",
-            user_id,
+            conversation,
             "lucky_skin_window_delivery",
             today=day,
         ):
@@ -73,12 +77,15 @@ class OneBotLuckySkinWindowSubscriptionOptions:
 
     def subscription_options(
         self,
-        target_type: str,
-        target_id: int,
+        conversation: ConversationRef,
     ) -> list[PushSubscriptionOption]:
-        if target_type != "private":
+        if (
+            conversation.platform is not Platform.ONEBOT
+            or conversation.kind != "private"
+            or not conversation.id.isdecimal()
+        ):
             return []
-        actor = ActorRef(Platform.ONEBOT, str(target_id))
+        actor = ActorRef(Platform.ONEBOT, conversation.id)
         if not self.service.is_eligible_actor(actor):
             return []
         return [
@@ -86,9 +93,8 @@ class OneBotLuckySkinWindowSubscriptionOptions:
                 key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
                 label="幸运橱窗提醒",
                 feature="lucky_skin_window",
-                unsubscribed=self.subscriptions.is_target_unsubscribed(
-                    "private",
-                    target_id,
+                unsubscribed=self.subscriptions.is_unsubscribed(
+                    conversation,
                     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
                 ),
             )

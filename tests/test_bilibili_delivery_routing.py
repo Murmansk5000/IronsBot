@@ -7,6 +7,7 @@ import pytest
 from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.core.messaging import TargetSendSummary
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.bilibili_push import OneBotBilibiliPushSender
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.promotions import append_promotions_for_target
@@ -23,6 +24,14 @@ if TYPE_CHECKING:
 
 
 EXPECTED_PUSH_COUNT = 2
+
+
+def _group(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _private(user_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "private", str(user_id))
 
 
 @pytest.mark.asyncio
@@ -58,7 +67,7 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
         {},
         1,
         1310714247,
-        BiliPushTargets([987654321], [], [1234567890], []),
+        BiliPushTargets([_group(987654321)], [], [_private(1234567890)], []),
     )
 
     assert len(sent) == EXPECTED_PUSH_COUNT

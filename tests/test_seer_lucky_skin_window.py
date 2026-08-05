@@ -16,7 +16,7 @@ from ironsbot.config.models.seer import (
     LuckySkinWindowConfig,
     PlayerAccountConfig,
 )
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
 )
@@ -511,7 +511,7 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     options = OneBotLuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options("private", 1001)
+    ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
     assert options == [
         PushSubscriptionOption(
             key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
@@ -522,13 +522,13 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     assert OneBotLuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options("group", 1001) == []
+    ).subscription_options(ConversationRef(Platform.ONEBOT, "group", "1001")) == []
 
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     assert OneBotLuckySkinWindowSubscriptionOptions(
         service,
         PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options("private", 1001) == []
+    ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001")) == []
 
 
 def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:

@@ -199,6 +199,11 @@ def build_test_plugin_registry(
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,
             ),
+            bilibili_monitor=SimpleNamespace(
+                check_on_connect=_noop_startup,
+                register_job=_noop_startup,
+            ),
+            bilibili_content_renderer=lambda _item, _content: None,
             lucky_skin_window=SimpleNamespace(
                 enabled=False,
                 is_eligible_actor=lambda _actor: False,
@@ -328,15 +333,10 @@ def build_test_plugin_registry(
         ),
         bilibili_plugin_contribution(
             service=resources.bilibili,
-            login=resources.bilibili_login,
             features=runtime.features,
-            config=config.bilibili,
-            delivery=resources.delivery,
-            subscriptions=resources.subscriptions,
-            admin_notices=resources.admin_notices,
-            message_limiter=resources.push_message_limiter,
-            ai_service=resources.ai,
+            monitor=resources.bilibili_monitor,
             scheduler=SchedulerFacade(),
+            render_content=resources.bilibili_content_renderer,
         ),
         messaging_plugin_contribution(
             config=config.messaging,

@@ -7,6 +7,7 @@ from nonebot.adapters.onebot.v11 import Message
 
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from tests.helpers.runtime import build_test_runtime
 
@@ -35,8 +36,16 @@ def test_send_target_messages_filters_unsubscribed_push_targets(
         group_hint="群管理发送 TD 管理推送。",
     )
     store = PushUnsubscribeStore(state_path)
-    store.unsubscribe_target("private", 1001, "bili_push", "bili_push")
-    store.unsubscribe_target("group", 2001, "bili_push", "bili_push")
+    store.unsubscribe(
+        ConversationRef(Platform.ONEBOT, "private", "1001"),
+        "bili_push",
+        "bili_push",
+    )
+    store.unsubscribe(
+        ConversationRef(Platform.ONEBOT, "group", "2001"),
+        "bili_push",
+        "bili_push",
+    )
     bot = FakeBot()
     delivery = build_test_runtime(
         push_unsubscribe=config,
