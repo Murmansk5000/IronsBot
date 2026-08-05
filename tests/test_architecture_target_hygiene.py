@@ -53,6 +53,10 @@ BILIBILI_REQUEST_IDENTITY_METHODS = {
         "BiliTargetService": ("query_uids",),
     },
 }
+BILIBILI_LEGACY_DELIVERY_IMPORTS = (
+    "ironsbot.core.messaging",
+    "ironsbot.services.messaging.delivery",
+)
 
 TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()
 FORBIDDEN_TRANSPORT_IMPORT_PREFIXES = (
@@ -232,3 +236,14 @@ def test_bilibili_query_services_use_platform_identity_refs() -> None:
                 assert "conversation" in arguments
                 assert "user_id" not in arguments
                 assert "group_id" not in arguments
+
+
+def test_bilibili_services_do_not_own_legacy_delivery_types() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} imports {module}"
+        for path in _python_files(SERVICES / "bilibili")
+        for module in _imports(path)
+        if module.startswith(BILIBILI_LEGACY_DELIVERY_IMPORTS)
+    ]
+
+    assert offenders == []

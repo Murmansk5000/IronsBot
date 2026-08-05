@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: MIT
+"""OneBot adapter for Bilibili rich-media push delivery."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,6 +9,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
@@ -32,7 +35,7 @@ BILI_PUSH_ADMIN_HINT = (
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
-# The first send counts toward the total.  Failed rich-media delivery therefore
+# The first send counts toward the total. Failed rich-media delivery therefore
 # receives at most two retries before a single administrator notice is sent.
 FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
 FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
@@ -46,7 +49,9 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
-class BilibiliPushDeliveryService:
+class OneBotBilibiliPushSender:
+    """Preserve OneBot push semantics behind the Bilibili monitor sender port."""
+
     delivery: MessageDelivery
     subscriptions: PushSubscriptionRepository
     render_link: DynamicLinkRenderer
@@ -57,7 +62,7 @@ class BilibiliPushDeliveryService:
     content_max_chars: int = 400
     summary_max_chars: int = 250
     summary_use_ai: bool = True
-    can_query_history: Callable[[MessageTarget], bool] | None = None
+    can_query_history: Callable[[ConversationRef], bool] | None = None
     admin_notices: AdminNoticeService | None = None
 
     async def send(
@@ -245,7 +250,9 @@ class BilibiliPushDeliveryService:
     ) -> Any:
         if self.message_limiter is not None:
             message = self.message_limiter(message, target)
-        if self.can_query_history is not None and self.can_query_history(target):
+        if self.can_query_history is not None and self.can_query_history(
+            _onebot_conversation(target)
+        ):
             message = self.append_hint(message, DYNAMIC_HISTORY_HINT)
         if target.target_type != "group":
             return message
@@ -257,3 +264,11 @@ class BilibiliPushDeliveryService:
         ):
             return message.rstrip() if isinstance(message, str) else message
         return self.append_hint(message, BILI_PUSH_ADMIN_HINT)
+
+
+def _onebot_conversation(target: MessageTarget) -> ConversationRef:
+    return ConversationRef(
+        platform=Platform.ONEBOT,
+        kind="group" if target.target_type == "group" else "private",
+        id=str(target.target_id),
+    )

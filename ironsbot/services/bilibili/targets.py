@@ -6,7 +6,6 @@ from ironsbot.core.bilibili import (
     BiliPushTargetConfig,
 )
 from ironsbot.core.features import FeatureService
-from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.bilibili.accounts import (
     BiliAccountNames,
@@ -253,15 +252,19 @@ class BiliTargetService:
             return sorted(rule.uids)
         return self.monitored_uids() if self.features.is_actor_superuser(actor) else []
 
-    def can_target_query_history(self, target: MessageTarget) -> bool:
+    def can_conversation_query_history(self, conversation: ConversationRef) -> bool:
         """Whether recipients of a push can use the ``动态`` history command."""
 
-        if target.target_type == "group":
-            return self.features.group_has_feature(target.target_id, "bili_query")
-        return self.features.is_private_feature_allowed(
-            target.target_id,
-            "bili_query",
-        )
+        if conversation.platform is not Platform.ONEBOT:
+            return False
+        target_id = _onebot_ref_id(conversation.id)
+        if target_id is None:
+            return False
+        if conversation.kind == "group":
+            return self.features.group_has_feature(target_id, "bili_query")
+        if conversation.kind == "private":
+            return self.features.is_private_feature_allowed(target_id, "bili_query")
+        return False
 
     def _rules(self, target_type: PushTargetType) -> dict[int, BiliTargetRule]:
         return (
