@@ -242,6 +242,18 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
 
 
 @pytest.mark.asyncio
+async def test_activity_sender_skips_empty_reminders() -> None:
+    delivery, messenger, _subscriptions = _delivery()
+
+    sent = await ActivityReminderOutboundSender(delivery).send(
+        ActivityReminderDelivery(status="skip_empty")
+    )
+
+    assert not sent
+    assert messenger.calls == []
+
+
+@pytest.mark.asyncio
 async def test_admin_notice_sender_maps_delivery_summary_back_to_original_recipients(
 ) -> None:
     delivery, _messenger, _subscriptions = _delivery()
