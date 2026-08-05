@@ -11,6 +11,7 @@ SERVICES = PACKAGE / "services"
 RENDERING = SERVICES / "seer" / "rendering"
 RUNTIME = PACKAGE / "runtime"
 APPLICATION_RESOURCES = PACKAGE / "app" / "resources.py"
+COMMAND_CATALOG = CORE / "command_catalog.py"
 SEER_REQUEST_ACTOR_METHODS = {
     "player_request_protection.py": {
         "PlayerRequestProtectionService": ("run",),
@@ -308,7 +309,7 @@ def test_bilibili_services_do_not_own_legacy_delivery_types() -> None:
 
 
 def test_command_catalog_context_and_policy_stay_platform_neutral() -> None:
-    path = RUNTIME / "commands.py"
+    path = COMMAND_CATALOG
     context_fields = _class_field_names(path, class_name="CommandContext")
     policy_methods = _class_method_names(path, class_name="CommandFeaturePolicy")
 
@@ -371,3 +372,8 @@ def test_plugin_resources_do_not_expose_legacy_onebot_delivery() -> None:
     )
 
     assert {"delivery", "outbound", "push_message_limiter"}.isdisjoint(fields)
+
+
+def test_runtime_does_not_reintroduce_command_contract_modules() -> None:
+    assert not (RUNTIME / "commands.py").exists()
+    assert not (RUNTIME / "player_reference_commands.py").exists()

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.runtime.commands import CommandDescriptor
+from ironsbot.core.command_catalog import CommandDescriptor
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.sendpic import SendpicService

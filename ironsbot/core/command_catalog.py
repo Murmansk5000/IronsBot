@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -9,10 +9,7 @@ from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import normalize_command_text
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from ironsbot.core.platform import ActorRef, ConversationRef
-    from ironsbot.runtime.plugins import PluginContribution
 
 CommandScope = Literal["group", "private", "both"]
 CommandAudience = Literal["regular", "group_manager", "superuser"]
@@ -289,6 +286,16 @@ class CommandDescriptor:
         )
 
 
+class CommandContribution(Protocol):
+    """The minimal plugin contribution shape needed by the command catalog."""
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def commands(self) -> tuple[CommandDescriptor, ...]: ...
+
+
 def _validate_routing_aliases(command_id: str, aliases: tuple[str, ...]) -> None:
     if any(not alias.strip() for alias in aliases):
         raise CommandCatalogError.invalid_routing_alias(command_id)
@@ -363,7 +370,7 @@ class CommandCatalog:
 
     def load(
         self,
-        definitions: Iterable["PluginContribution"],
+        definitions: Iterable[CommandContribution],
         *,
         known_features: Iterable[str] = (),
     ) -> None:

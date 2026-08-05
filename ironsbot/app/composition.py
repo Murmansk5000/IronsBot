@@ -18,6 +18,7 @@ from ironsbot.app.private_extensions import (
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog
@@ -129,7 +130,6 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.runtime.cache_paths import CachePaths
-from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.ai.service import AiService

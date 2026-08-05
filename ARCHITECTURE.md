@@ -77,7 +77,7 @@ The authoritative long-term ownership is therefore:
 
 - `PluginMetadata` owns plugin identity and static metadata;
 - `PluginContribution` owns a plugin's explicit runtime contributions;
-- `CommandCatalog` and the target `CommandContract` own direct-command
+- `core.command_catalog.CommandCatalog` and the target `CommandContract` own direct-command
   semantics;
 - the feature-policy service owns permission decisions; and
 - `ApplicationLifecycle` owns application lifecycle and background task
@@ -97,7 +97,7 @@ architecture work:
 | --- | --- | --- |
 | `PluginMetadata` | Static plugin identity and NoneBot metadata | Matchers, commands, lifecycle policy, or feature decisions |
 | `PluginContribution` | A plugin's explicit runtime contributions submitted during installation | A central plugin registry, command semantics, or cross-plugin policy |
-| `CommandCatalog` / target `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
+| `core.command_catalog.CommandCatalog` / target `CommandContract` | Direct command syntax, examples, parsing ownership, help, poke candidates, and AI command claims | Passive notices, scheduled jobs, or matcher construction |
 | Feature-policy service | Whether an actor or conversation may use a feature | Plugin discovery or command parsing |
 | `ApplicationLifecycle` | Process lifecycle, owned tasks, and startup/shutdown ordering | Plugin metadata or user-command semantics |
 
@@ -117,7 +117,7 @@ above rather than merged as an alternative design.
 
 ### Current Command-Contract Bridge
 
-`CommandDescriptor` is the current code carrier for part of the target
+`core.command_catalog.CommandDescriptor` is the current code carrier for part of the target
 `CommandContract`; it is not a second authority and must not grow a parallel
 catalog, matcher registry, or AI-only keyword list. `CommandCatalog` remains
 the single runtime catalog today. New command work must add the smallest

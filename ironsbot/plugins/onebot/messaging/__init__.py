@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandDescriptor,
     commands_from_rows,
 )
+from ironsbot.core.features import Feature
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
     from nonebot.plugin import PluginMetadata
 
-    from ironsbot.runtime.commands import CommandDescriptor
+    from ironsbot.core.command_catalog import CommandDescriptor
 
 HookResult: TypeAlias = Awaitable[None] | None
 LifecycleHook: TypeAlias = Callable[[], HookResult]

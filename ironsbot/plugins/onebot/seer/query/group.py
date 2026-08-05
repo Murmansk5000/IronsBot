@@ -12,9 +12,9 @@ from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
 

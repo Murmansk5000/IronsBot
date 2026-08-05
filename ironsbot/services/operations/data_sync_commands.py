@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
-from ironsbot.core.commands import normalize_command_text
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandDescriptor,
     commands_from_rows,
 )
+from ironsbot.core.commands import normalize_command_text
 
 MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
 FORCE_MANUAL_SYNC_COMMANDS = ("强制更新数据", "强制数据更新")

@@ -17,9 +17,9 @@ from ironsbot.config.models.features import (
 )
 from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
+from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
 from ironsbot.plugins.onebot.help.menu import visible_help_entries
-from ironsbot.runtime.commands import CommandCatalog
 from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 

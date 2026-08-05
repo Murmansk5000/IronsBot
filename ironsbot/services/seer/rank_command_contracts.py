@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandDescriptor,
     commands_from_rows,

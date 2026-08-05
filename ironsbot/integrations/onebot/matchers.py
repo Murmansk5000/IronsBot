@@ -23,6 +23,7 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
 if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.integrations.onebot.matcher_contracts import (
         CommandCooldown,
         CommandIdSource,
@@ -30,7 +31,6 @@ if TYPE_CHECKING:
         SemanticRequestResolver,
     )
     from ironsbot.integrations.onebot.prompt_sessions import _QueuedConversation
-    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.in_flight_requests import (
         InFlightRequestService,
     )

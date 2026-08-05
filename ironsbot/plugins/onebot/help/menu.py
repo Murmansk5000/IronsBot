@@ -15,8 +15,8 @@ from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
 
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.plugins import PluginContribution
 
 HELP_ENTRIES_KEY = "_help_entries"

@@ -213,6 +213,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - `AliasLookup`、`AliasMatch` 与 `AliasResolution` 是实体别名匹配的共享
   contract；精灵、刻印、刻印系列、宝石与玩家账户各自保存数据，但不再复制
   规范化与多结果语义。
+- `CommandCatalog`、`CommandDescriptor`、`CommandContext` 与玩家引用输入 matcher
+  是 `core` 契约；`runtime` 只保留插件贡献和安装流程。服务、OneBot 适配器和插件
+  都只能依赖该核心契约，不能让领域服务反向依赖 runtime。
 - `PlayerIdResolver` 统一处理数字、当前会话可见的玩家别名、一个直接 @ 已绑定
   成员及默认绑定。它由 application composition 只构造一次，经
   `ApplicationResources` 注入公开 Seer 的玩家、快捷查询、榜单玩家查询和命令目录；

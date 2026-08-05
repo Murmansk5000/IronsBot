@@ -11,6 +11,12 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.core.command_catalog import (
+    CommandAccess,
+    CommandCatalog,
+    CommandDescriptor,
+    commands_from_rows,
+)
 from ironsbot.core.features import Feature
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.integrations.onebot.context import (
@@ -24,12 +30,6 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import bot_mention
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandCatalog,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,

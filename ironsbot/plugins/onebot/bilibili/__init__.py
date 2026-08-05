@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.core.features import Feature
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandDescriptor,
     commands_from_rows,
 )
+from ironsbot.core.features import Feature
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,

@@ -14,6 +14,11 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from ironsbot.core.command_catalog import (
+    CommandAccess,
+    CommandDescriptor,
+    commands_from_rows,
+)
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.matchers import (
@@ -29,11 +34,6 @@ from ironsbot.integrations.onebot.replies import (
     finish_message_sequence,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,

@@ -1,3 +1,4 @@
+from ironsbot.core.command_catalog import CommandContext, CommandDescriptor
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.activity import command_descriptors as activity_commands
 from ironsbot.plugins.onebot.bilibili import command_descriptors as bilibili_commands
@@ -7,7 +8,6 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
 )
-from ironsbot.runtime.commands import CommandContext, CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,

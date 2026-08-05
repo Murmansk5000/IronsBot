@@ -39,8 +39,8 @@ from ironsbot.services.operations.server_status_commands import (
 from .status.commands import handle_admin_status, handle_normal_status
 
 if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.operations.server_status import ServerStatusService
 
 __plugin_meta__ = PluginMetadata(

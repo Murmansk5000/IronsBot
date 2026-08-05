@@ -17,6 +17,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
+from ironsbot.core.command_catalog import CommandDescriptor
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
 from ironsbot.core.semantic_requests import (
@@ -40,7 +41,6 @@ from ironsbot.integrations.onebot.matchers import (
 from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_command
-from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,

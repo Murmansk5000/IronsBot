@@ -31,8 +31,8 @@ from ironsbot.services.seer.rank_command_contracts import (
 from ironsbot.services.seer.rank_help import format_rank_help
 
 if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.runtime.commands import CommandCatalog
 
 __plugin_meta__ = PluginMetadata(
     name="榜单",

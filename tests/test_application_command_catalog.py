@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from ironsbot.app.application import Application
-from ironsbot.runtime.commands import CommandCatalog
+from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.runtime.plugins import PluginContribution, PluginContributionCatalog
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
+from ironsbot.core.command_catalog import CommandDescriptor
 from ironsbot.plugins.onebot.help.menu import HelpMenuEntry, format_plugin_detail
-from ironsbot.runtime.commands import CommandDescriptor
 
 
 def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> None:

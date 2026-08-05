@@ -2,14 +2,14 @@ from dataclasses import dataclass
 
 import pytest
 
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.runtime.commands import (
+from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandCatalog,
     CommandCatalogError,
     CommandContext,
     CommandDescriptor,
 )
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.runtime.plugins import PluginContribution
 
 

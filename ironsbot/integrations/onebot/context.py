@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
+from ironsbot.core.command_catalog import CommandContext
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
     onebot_conversation_ref,
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.runtime.commands import CommandContext
 
 NOTICE_MESSAGE_MAX_CHARS = 300
 

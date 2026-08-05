@@ -10,6 +10,7 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.core.command_catalog import CommandDescriptor
 from ironsbot.core.features import Feature
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
@@ -24,7 +25,6 @@ from ironsbot.integrations.onebot.replies import (
     send_event_reply,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -52,9 +52,9 @@ __plugin_meta__ = PluginMetadata(
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.matchers import MatcherFactory
-    from ironsbot.runtime.commands import CommandCatalog
 
 
 def _always_visible_help(_event: Event) -> bool:
