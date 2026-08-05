@@ -42,6 +42,7 @@ def _install(
     settings: Settings,
     resources: ApplicationResources,
 ) -> None:
+    _ = settings
     from .commands.install import install
     from .group import SeerMatcherGroup
 
@@ -51,7 +52,7 @@ def _install(
             resources.seer,
             resources.features,
             resources.commands,
-            settings.player_accounts,
+            resources.player_id_resolver,
             resources.sendpic.exact_command_texts,
         )
     )

@@ -24,6 +24,7 @@ class PlayerIdResolution:
 
 
 PlayerBindingLookup = Callable[[ActorRef], int | None]
+PLAYER_ID_RESOLVER_REQUIRED_ERROR = "player ID resolver is not configured"
 
 
 class PlayerIdResolver:

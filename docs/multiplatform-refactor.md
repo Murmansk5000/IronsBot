@@ -214,7 +214,10 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   contract；精灵、刻印、刻印系列、宝石与玩家账户各自保存数据，但不再复制
   规范化与多结果语义。
 - `PlayerIdResolver` 统一处理数字、当前会话可见的玩家别名、一个直接 @ 已绑定
-  成员及默认绑定。公共 Seer 查询和私有阵容扩展均通过同一引用查找 port 接入。
+  成员及默认绑定。它由 application composition 只构造一次，经
+  `ApplicationResources` 注入公开 Seer 的玩家、快捷查询和榜单玩家查询；OneBot
+  matcher 只能把事件转换为 `MessageInputContext`，不得临时拼接别名 lookup 或 resolver。
+  私有阵容扩展目前仍使用窄引用 lookup port，是下一项迁移对象，不能误报为已共用 resolver。
 - `CommandDescriptor.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。

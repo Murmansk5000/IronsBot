@@ -39,10 +39,7 @@ from ironsbot.services.seer.player_shortcuts import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player import PlayerCommandDependencies
-from .player_target import (
-    event_player_reference_lookup,
-    resolve_player_target,
-)
+from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
@@ -149,10 +146,7 @@ def _resolve_player_shortcut_command(
     target = resolve_player_target(
         event,
         player_reference=command.player_reference,
-        reference_lookup=event_player_reference_lookup(
-            dependencies.player_accounts,
-        ),
-        binding_for_user=dependencies.player.default_player_id,
+        resolver=dependencies.player_id_resolver,
     )
     if target.error is not None:
         return _ResolvedShortcutCommand(None, target.error)
@@ -174,10 +168,7 @@ def _resolve_extension_shortcut_command(
     target = resolve_player_target(
         event,
         player_reference=command.player_reference,
-        reference_lookup=event_player_reference_lookup(
-            dependencies.player_accounts,
-        ),
-        binding_for_user=dependencies.player.default_player_id,
+        resolver=dependencies.player_id_resolver,
     )
     if target.error is not None:
         return _ResolvedExtensionShortcutCommand(None, target.error)
@@ -334,7 +325,7 @@ def install(group: SeerMatcherGroup) -> None:
         group.resources.player,
         group.features,
         group.resources.player_detail_extensions,
-        group.player_accounts,
+        group.player_id_resolver,
     )
     matcher = group.on_message(
         policy=CommandPolicy.command(

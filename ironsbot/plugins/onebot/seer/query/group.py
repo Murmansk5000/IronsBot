@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
 
 
@@ -32,7 +32,7 @@ class SeerMatcherGroup:
     resources: SeerQueryResources
     features: FeatureService
     commands: CommandCatalog
-    player_accounts: PlayerAccountRegistry
+    player_id_resolver: PlayerIdResolver
     image_command_texts: frozenset[str]
 
     def on_message(

@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.team.audit import TeamAuditService
@@ -67,6 +68,7 @@ class ApplicationResources:
     team_resource: TeamResourceService
     local_rank: LocalRankService
     rank_page_refresh: RankPageRefreshService
+    player_id_resolver: PlayerIdResolver
     seer: SeerQueryResources
     pet_config: PetConfigQueryService
     ai: AiService

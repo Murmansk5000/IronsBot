@@ -7,28 +7,15 @@ from typing import TYPE_CHECKING
 
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.seer.player_id_resolver import (
-    PlayerIdResolution,
-    PlayerIdResolver,
+    PLAYER_ID_RESOLVER_REQUIRED_ERROR,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from nonebot.adapters.onebot.v11 import MessageEvent
 
-    from ironsbot.core.platform import ActorRef
-    from ironsbot.core.player_references import PlayerReferenceLookup
-    from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
-
-
-def event_player_reference_lookup(
-    accounts: PlayerAccountRegistry,
-) -> PlayerReferenceLookup:
-    """Adapt scoped configured aliases to the platform-neutral resolver port."""
-
-    return lambda reference, conversation: accounts.resolve_player_id(
-        reference,
-        conversation=conversation,
+    from ironsbot.services.seer.player_id_resolver import (
+        PlayerIdResolution,
+        PlayerIdResolver,
     )
 
 
@@ -36,18 +23,14 @@ def resolve_player_target(
     event: MessageEvent,
     *,
     player_reference: str | None,
-    reference_lookup: PlayerReferenceLookup,
-    binding_for_user: Callable[[ActorRef], int | None],
+    resolver: PlayerIdResolver | None,
     allow_default_binding: bool = True,
 ) -> PlayerIdResolution:
     """Adapt current OneBot input to the shared player-ID resolver."""
-    context = message_input_context(event)
-    resolver = PlayerIdResolver(
-        reference_lookup,
-        binding_for_user,
-    )
+    if resolver is None:
+        raise RuntimeError(PLAYER_ID_RESOLVER_REQUIRED_ERROR)
     return resolver.resolve(
-        context,
+        message_input_context(event),
         player_reference,
         allow_default_binding=allow_default_binding,
     )
