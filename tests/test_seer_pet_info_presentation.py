@@ -15,6 +15,7 @@ from ironsbot.services.seer.rendering.pet_info_models import (
     PetPartnerSnapshot,
     PetSkillEffectSnapshot,
     PetSkillSnapshot,
+    PetSoulmarkDisplayAddition,
     PetSoulmarkSnapshot,
     PetStatsSnapshot,
 )
@@ -148,6 +149,46 @@ def test_presenter_uses_partner_descriptions_only_for_upgrade_partitioning() -> 
     assert templates["pet_partner"]["name"] == "测试羁绊"
     assert [value["id"] for value in templates["base_soulmarks"]] == [10]
     assert [value["id"] for value in templates["upgraded_soulmarks"]] == [20]
+
+
+def test_presenter_uses_published_soulmark_display_additions() -> None:
+    snapshot = _snapshot()
+    snapshot = PetInfoSnapshot(
+        pet=snapshot.pet,
+        base_stats=snapshot.base_stats,
+        advance_stats=snapshot.advance_stats,
+        skills=snapshot.skills,
+        soulmarks=snapshot.soulmarks,
+        activation_items=snapshot.activation_items,
+        partner=snapshot.partner,
+        skill_mintmarks=snapshot.skill_mintmarks,
+        display=PetDerivedDisplayData(
+            snapshot.display.special_effects,
+            snapshot.display.soulmark_display_order,
+            snapshot.display.soulmark_icons,
+            (
+                PetSoulmarkDisplayAddition(
+                    id=0,
+                    desc="构建期补充魂印",
+                    analyze_desc=None,
+                    formatting_adjustment=None,
+                    intensified=True,
+                    intensified_to_id=None,
+                    is_adv=False,
+                    pve_effective=None,
+                    tags=(),
+                ),
+            ),
+        ),
+        rich_texts=snapshot.rich_texts,
+    )
+
+    document = present_pet_info(snapshot, _assets())
+    templates = cast("Mapping[str, Any]", document.templates)
+
+    assert [value["id"] for value in templates["soulmarks"]] == [10, 20, 0]
+    assert [value["id"] for value in templates["upgraded_soulmarks"]] == [20, 0]
+    assert templates["upgraded_soulmarks"][1]["desc"] == "构建期补充魂印"
 
 
 @pytest.mark.asyncio

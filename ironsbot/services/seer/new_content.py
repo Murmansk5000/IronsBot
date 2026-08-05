@@ -109,16 +109,10 @@ class NewContentSnapshot:
         for state in self.category_states:
             if state.category == category:
                 return state
-        # Older releases do not carry per-category state. Their index is still
-        # trustworthy when its legacy global baseline was completed.
         return NewContentCategoryState(
             category=category,
-            comparison_ready=self.baseline_established,
-            reason=(
-                "legacy_index"
-                if self.baseline_established
-                else "history_unavailable"
-            ),
+            comparison_ready=False,
+            reason="source_unavailable",
         )
 
     def is_category_comparable(self, category: NewContentCategory) -> bool:
@@ -203,7 +197,6 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
             .mappings()
             .all()
         )
-        state_rows = ()
         has_category_state = connection.exec_driver_sql(
             """
             SELECT 1
@@ -211,19 +204,20 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
             WHERE type = 'table' AND name = 'new_content_category_state'
             """
         ).first()
-        if has_category_state:
-            state_rows = (
-                connection
-                .exec_driver_sql(
-                    """
-                    SELECT category, comparison_ready, reason
-                    FROM new_content_category_state
-                    ORDER BY category
-                    """
-                )
-                .mappings()
-                .all()
+        if not has_category_state:
+            raise NewContentIndexUnavailableError
+        state_rows = (
+            connection
+            .exec_driver_sql(
+                """
+                SELECT category, comparison_ready, reason
+                FROM new_content_category_state
+                ORDER BY category
+                """
             )
+            .mappings()
+            .all()
+        )
     except SQLAlchemyError as error:
         raise NewContentIndexUnavailableError from error
 
