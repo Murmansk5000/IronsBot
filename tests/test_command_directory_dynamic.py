@@ -1,11 +1,9 @@
 from ironsbot.config.models.messaging import MessageConfig, MessageScheduledAction
-from ironsbot.plugins.onebot.messaging import (
-    command_descriptors as configured_message_commands,
-)
+from ironsbot.services.messaging.command_contracts import messaging_command_descriptors
 
 
 def test_message_schedule_is_documented_as_automatic_not_a_command() -> None:
-    commands = configured_message_commands(
+    commands = messaging_command_descriptors(
         MessageConfig(
             schedules=[
                 MessageScheduledAction(

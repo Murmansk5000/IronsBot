@@ -12,34 +12,30 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandDescriptor,
-    commands_from_rows,
-)
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import explicit_command
-from ironsbot.services.operations.docker_preflight import (
-    consume_docker_startup_preflight_notice,
-)
-
-from .status.command_text import (
+from ironsbot.services.operations.command_text import (
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
+)
+from ironsbot.services.operations.docker_commands import docker_command_descriptors
+from ironsbot.services.operations.docker_preflight import (
+    consume_docker_startup_preflight_notice,
 )
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.startup import StartupNoticeService
 
@@ -53,39 +49,13 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def command_descriptors() -> tuple[CommandDescriptor, ...]:
-    return commands_from_rows(
-        "docker_update",
-        "超级管理员",
-        None,
-        (
-            (
-                "docker_update.restart",
-                BOT_RESTART_COMMANDS,
-                "重启机器人进程",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-            (
-                "docker_update.image_update",
-                DOCKER_UPDATE_COMMANDS,
-                "检查镜像并重启机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-            (
-                "docker_update.image_check",
-                DOCKER_CHECK_UPDATE_COMMANDS,
-                "只检查远端镜像，不拉取或重启机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-        ),
-    )
-
-
 def _help_visible(event: Event, *, features: FeatureService) -> bool:
     if isinstance(event, GroupMessageEvent):
         return False
     user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_superuser(int(user_id))
+    return user_id is not None and features.is_actor_superuser(
+        onebot_actor_ref(str(user_id))
+    )
 
 
 def _start_docker_update(*, startup_notice: StartupNoticeService) -> None:
@@ -96,7 +66,7 @@ def _start_docker_update(*, startup_notice: StartupNoticeService) -> None:
     )
 
 
-def _install(registry: MatcherRegistry, service: DockerUpdateService) -> None:
+def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
     async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
         message, restart_action = await service.prepare_manual_restart()
         await send_event_reply(matcher, event, message)
@@ -169,7 +139,7 @@ def plugin_contribution(
             order=10,
             visible=partial(_help_visible, features=features),
         ),
-        commands=command_descriptors(),
+        commands=docker_command_descriptors(),
         install=partial(_install, service=service),
         hooks=PluginHooks(
             startup=(

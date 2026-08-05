@@ -21,12 +21,12 @@ from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     begin_queued_conversation,
     get_prompt_session_manager,
     reject_with_rule,
 )
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     enter_prompt_loop as _enter_prompt_loop,
 )
 from ironsbot.runtime.prompt_errors import PromptSessionManagerMissingError
@@ -137,9 +137,7 @@ PromptResolverWithEvent: TypeAlias = Callable[
     [Any, Matcher, Event],
     Awaitable[None],
 ]
-PromptResolver: TypeAlias = (
-    PromptResolverWithoutEvent | PromptResolverWithEvent
-)
+PromptResolver: TypeAlias = PromptResolverWithoutEvent | PromptResolverWithEvent
 
 
 def _is_digit_input(event: Event) -> bool:

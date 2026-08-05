@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ironsbot.core.aliases import AliasIndex
+from ironsbot.core.bilibili import normalize_account_alias
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
@@ -13,11 +14,6 @@ if TYPE_CHECKING:
     from ironsbot.core.bilibili import BiliConfig
 
 logger = logging.getLogger(__name__)
-
-
-def normalize_account_alias(value: object) -> str:
-    return str(value).strip().lower()
-
 
 def configured_account_alias_lookup(
     config: BiliConfig,

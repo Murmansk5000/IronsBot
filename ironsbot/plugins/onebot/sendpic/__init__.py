@@ -14,8 +14,7 @@ from ironsbot.runtime.plugins import (
     PluginContribution,
     active_plugin_install_context,
 )
-
-from .commands import command_descriptors
+from ironsbot.services.messaging.sendpic import sendpic_command_descriptors
 
 __plugin_meta__ = PluginMetadata(
     name="图片发送",
@@ -27,13 +26,13 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
-    from ironsbot.runtime.matchers import MatcherRegistry
+    from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.messaging.sendpic import SendpicService
 
 
 def _install(
-    registry: MatcherRegistry,
+    registry: MatcherFactory,
     *,
     service: SendpicService,
     features: FeatureService,
@@ -61,7 +60,7 @@ def plugin_contribution(
             group="other",
             order=20,
         ),
-        commands=command_descriptors(service),
+        commands=sendpic_command_descriptors(service),
         install=partial(_install, service=service, features=features),
     )
 

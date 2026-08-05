@@ -2,23 +2,16 @@
 from __future__ import annotations
 
 import json
-import logging
-import sqlite3
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.storage.sqlite import (
     SqliteDatabase,
     SqliteMigration,
-    open_sqlite_connection,
-    resolve_sqlite_path,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from pathlib import Path
-
-logger = logging.getLogger(__name__)
 
 _LEGACY_SCHEMA = """
 CREATE TABLE IF NOT EXISTS lucky_skin_window_cache (
@@ -61,25 +54,19 @@ _OFFER_COUNT = 4
 
 
 class SqliteLuckySkinWindowCache:
-    def __init__(
-        self,
-        path: str | Path,
-        *,
-        legacy_paths: Iterable[str | Path] = (),
-    ) -> None:
+    def __init__(self, path: str | Path) -> None:
         self._database = SqliteDatabase(
             path,
             migrations=_MIGRATIONS,
             migration_namespace="skin_window",
         )
-        self._legacy_paths = tuple(resolve_sqlite_path(item) for item in legacy_paths)
 
     def initialize(self) -> None:
         """Create or migrate the persistent store without reading a player row."""
         with self._database.connect():
             pass
 
-    def get(self, *, player_id: int, day: str) -> tuple[int, ...] | None:
+    def get(self, *, player_id: int) -> tuple[int, ...] | None:
         with self._database.connect() as connection:
             row = connection.execute(
                 "SELECT skin_ids_json FROM lucky_skin_window_cache "
@@ -88,31 +75,6 @@ class SqliteLuckySkinWindowCache:
             ).fetchone()
         if row is not None and (skin_ids := _parse_skin_ids(row[0])) is not None:
             return skin_ids
-        return self._restore_legacy_result(player_id=player_id, day=day)
-
-    def _restore_legacy_result(
-        self,
-        *,
-        player_id: int,
-        day: str,
-    ) -> tuple[int, ...] | None:
-        for path in self._legacy_paths:
-            if not path.is_file():
-                continue
-            skin_ids = _read_legacy_result(path, player_id=player_id, day=day)
-            if skin_ids is None:
-                continue
-            persisted = self.put_if_absent(
-                player_id=player_id,
-                skin_ids=skin_ids,
-            )
-            logger.info(
-                "lucky skin window legacy cache imported: player_id=%s day=%s path=%s",
-                player_id,
-                day,
-                path,
-            )
-            return persisted
         return None
 
     def _get_current(self, *, player_id: int) -> tuple[int, ...] | None:
@@ -161,53 +123,6 @@ class SqliteLuckySkinWindowCache:
                 ),
             )
         return self._get_current(player_id=player_id) or skin_ids
-
-
-def _read_legacy_result(
-    path: Path,
-    *,
-    player_id: int,
-    day: str,
-) -> tuple[int, ...] | None:
-    try:
-        with open_sqlite_connection(path, read_only=True) as connection:
-            columns = {
-                str(row[1])
-                for row in connection.execute(
-                    "PRAGMA table_info(lucky_skin_window_cache)"
-                )
-            }
-            if {"player_id", "day", "skin_ids_json"} <= columns:
-                row = connection.execute(
-                    "SELECT skin_ids_json FROM lucky_skin_window_cache "
-                    "WHERE player_id = ? AND day = ?",
-                    (player_id, day),
-                ).fetchone()
-            elif {"player_id", "skin_ids_json"} <= columns and _legacy_day_matches(
-                connection,
-                day,
-            ):
-                row = connection.execute(
-                    "SELECT skin_ids_json FROM lucky_skin_window_cache "
-                    "WHERE player_id = ?",
-                    (player_id,),
-                ).fetchone()
-            else:
-                return None
-    except sqlite3.Error:
-        logger.warning("lucky skin window legacy cache unreadable: path=%s", path)
-        return None
-    return None if row is None else _parse_skin_ids(row[0])
-
-
-def _legacy_day_matches(connection: sqlite3.Connection, day: str) -> bool:
-    try:
-        row = connection.execute(
-            "SELECT cache_day FROM lucky_skin_window_cache_state WHERE id = 1"
-        ).fetchone()
-    except sqlite3.Error:
-        return False
-    return row is not None and str(row[0]) == day
 
 
 def _parse_skin_ids(payload: object) -> tuple[int, ...] | None:

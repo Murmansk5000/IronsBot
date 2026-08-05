@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from collections.abc import Callable
+from typing import Any
+
 from nonebot.adapters.onebot.v11 import (
     Message,
     MessageEvent,
@@ -9,13 +12,13 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
-from ironsbot.runtime.conversations import (
+from ironsbot.integrations.onebot.conversations import (
     begin_event_reply_conversation,
     enter_event_reply_conversation,
 )
-from ironsbot.runtime.matchers import bind_async
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.replies import (
+from ironsbot.integrations.onebot.matchers import bind_async
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.replies import (
     finish_event_reply,
     send_event_reply,
 )
@@ -24,37 +27,52 @@ from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 
 from .command_rules import is_dynamic_select_reply
-from .delivery import build_dynamic_content_message
 
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
+DynamicContentRenderer = Callable[[dict[str, Any], str | None], Message | None]
 
 
 async def wait_dynamic_select(
     matcher: Matcher,
     event: MessageEvent,
     service: BilibiliService,
+    render_content: DynamicContentRenderer,
 ) -> None:
     await enter_event_reply_conversation(
         matcher,
         event,
         namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-        handlers=[bind_async(handle_dynamic_select_action, service=service)],
+        handlers=[
+            bind_async(
+                handle_dynamic_select_action,
+                service=service,
+                render_content=render_content,
+            )
+        ],
         reply_check=is_dynamic_select_reply,
     )
 
-async def handle_dynamic_menu_action(
+
+async def handle_dynamic_menu_action(  # noqa: PLR0913 - matcher dependencies
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
     service: BilibiliService,
     monitor: BilibiliMonitorService,
+    render_content: DynamicContentRenderer,
 ) -> None:
     try:
         await begin_event_reply_conversation(
             matcher,
             event,
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-            handlers=[bind_async(handle_dynamic_select_action, service=service)],
+            handlers=[
+                bind_async(
+                    handle_dynamic_select_action,
+                    service=service,
+                    render_content=render_content,
+                )
+            ],
             pending_reply_check=is_dynamic_select_reply,
             reply_check=is_dynamic_select_reply,
         )
@@ -88,7 +106,13 @@ async def handle_dynamic_menu_action(
             matcher,
             event,
             namespace=DYNAMIC_CONVERSATION_NAMESPACE,
-            handlers=[bind_async(handle_dynamic_select_action, service=service)],
+            handlers=[
+                bind_async(
+                    handle_dynamic_select_action,
+                    service=service,
+                    render_content=render_content,
+                )
+            ],
             reply_check=is_dynamic_select_reply,
             prompt=Message(result.prompt),
         )
@@ -103,11 +127,13 @@ async def handle_dynamic_menu_action(
             "❌ 获取动态列表失败。",
         )
 
+
 async def handle_dynamic_select_action(
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
     service: BilibiliService,
+    render_content: DynamicContentRenderer,
 ) -> None:
     try:
         if event.get_plaintext().strip() == "0":
@@ -131,7 +157,7 @@ async def handle_dynamic_select_action(
                 event,
                 "请输入数字。",
             )
-            await wait_dynamic_select(matcher, event, service)
+            await wait_dynamic_select(matcher, event, service, render_content)
             return
 
         if selection.status == "out_of_range":
@@ -140,7 +166,7 @@ async def handle_dynamic_select_action(
                 event,
                 f"请输入 1~{selection.available_count} 之间的数字。",
             )
-            await wait_dynamic_select(matcher, event, service)
+            await wait_dynamic_select(matcher, event, service, render_content)
             return
 
         if selection.status == "missing":
@@ -151,7 +177,7 @@ async def handle_dynamic_select_action(
             )
 
         if selection.record is not None:
-            message = build_dynamic_content_message(selection.record.item)
+            message = render_content(selection.record.item, None)
             if message is None:
                 await finish_event_reply(
                     matcher,
@@ -165,7 +191,7 @@ async def handle_dynamic_select_action(
                 message,
             )
 
-        await wait_dynamic_select(matcher, event, service)
+        await wait_dynamic_select(matcher, event, service, render_content)
 
     except FinishedException:
         raise

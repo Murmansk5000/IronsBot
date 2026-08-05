@@ -7,16 +7,16 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.integrations.onebot.target_refs import (
     is_onebot_group_conversation,
     is_onebot_private_actor,
 )
+from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.onebot_references import OneBotReferenceResolver
     from ironsbot.integrations.onebot.delivery import OneBotDelivery
     from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
@@ -68,7 +68,7 @@ def build_onebot_team_resource_default_mentions(
 
 def _onebot_message_target(
     target: TeamResourceSubscriptionTarget,
-) -> MessageTarget | None:
+) -> OneBotMessageTarget | None:
     conversation = target.conversation
     if conversation is not None:
         if not is_onebot_group_conversation(conversation):
@@ -80,12 +80,10 @@ def _onebot_message_target(
         )
         invalid_mentions = len(mention_ids) != len(target.mention_actors)
         if invalid_mentions:
-            _LOGGER.warning(
-                "team resource notice ignored unsupported mention actors"
-            )
-        return MessageTarget("group", int(conversation.id), mention_ids)
+            _LOGGER.warning("team resource notice ignored unsupported mention actors")
+        return OneBotMessageTarget("group", int(conversation.id), mention_ids)
 
     actor = target.actor
     if actor is None or not is_onebot_private_actor(actor):
         return None
-    return MessageTarget("private", int(actor.id))
+    return OneBotMessageTarget("private", int(actor.id))

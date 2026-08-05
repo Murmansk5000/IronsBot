@@ -9,18 +9,19 @@ from unittest.mock import AsyncMock
 from nonebot.exception import FinishedException
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.prompt_sessions import (
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
+)
 from ironsbot.plugins.onebot.seer.query.commands import player_detail_conversation
 from ironsbot.plugins.onebot.seer.query.commands.player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,
 )
-from ironsbot.runtime.prompt_sessions import (
-    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
-)
 from ironsbot.runtime.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
@@ -272,9 +273,7 @@ def test_shared_player_menu_reply_creates_the_replying_members_context(
         continue_conversation,
     )
     monkeypatch.setattr(player_detail_conversation, "send_event_reply", AsyncMock())
-    features = SimpleNamespace(
-        is_group_feature_allowed=lambda *_args: True,
-    )
+    features = SimpleNamespace(is_feature_allowed=lambda *_args: True)
     event = group_message_event("1", user_id=456_789)
     state: dict[str, object] = {
         QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY: True,
@@ -323,7 +322,7 @@ def test_shared_player_menu_exit_only_exits_the_replying_member(
         lambda _matcher: PromptSessions(),
     )
     monkeypatch.setattr(player_detail_conversation, "finish_event_reply", finish_reply)
-    features = SimpleNamespace(is_group_feature_allowed=lambda *_args: True)
+    features = SimpleNamespace(is_feature_allowed=lambda *_args: True)
     event = group_message_event("0", user_id=456_789)
     matcher = cast("Any", object())
     state: dict[str, object] = {
@@ -461,7 +460,17 @@ def test_player_detail_delegates_a_registered_private_action(
         )
     )
 
-    action_query.assert_awaited_once_with(PLAYER_ID, event.user_id, event.group_id)
+    action_query.assert_awaited_once_with(
+        PlayerDetailActionRequest(
+            player_id=PLAYER_ID,
+            actor=ActorRef(Platform.ONEBOT, str(event.user_id)),
+            conversation=ConversationRef(
+                Platform.ONEBOT,
+                "group",
+                str(event.group_id),
+            ),
+        )
+    )
     call = continue_conversation.await_args
     assert call is not None
     assert call.kwargs["prompt"] == "private reply"

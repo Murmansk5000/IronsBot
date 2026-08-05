@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from ironsbot.core.bilibili import BiliPushMode
-    from ironsbot.services.messaging.subscriptions import PushTargetType
+    from ironsbot.core.platform import ConversationRef
 
 BILI_PUSH_SUBSCRIPTION_PREFIX = "bili_push:"
 BiliRuntimePushMode = Literal["full", "link"]
@@ -14,23 +14,20 @@ INVALID_PUSH_MODE_ERROR = "push mode must be content/full, link, or default"
 class BiliPushPreferenceStore(Protocol):
     def get_mode(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
     ) -> BiliRuntimePushMode | None: ...
 
     def set_mode(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
         mode: BiliRuntimePushMode,
     ) -> None: ...
 
     def clear_mode(
         self,
-        target_type: PushTargetType,
-        target_id: int,
+        conversation: ConversationRef,
         uid: int,
     ) -> None: ...
 

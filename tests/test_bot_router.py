@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.config.models.messaging import BotRoutingConfig
-from ironsbot.core.messaging import MessageTarget
-from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.onebot import router as bot_router
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -63,10 +63,10 @@ def test_bot_router_routes_groups_and_users_by_alias(
         connected=[main_bot, backup_bot],
     )
 
-    assert router.for_target(MessageTarget("group", 987654321)) is main_bot
-    assert router.for_target(MessageTarget("group", 876543210)) is backup_bot
-    assert router.for_target(MessageTarget("private", 1234567890)) is main_bot
-    assert router.for_target(MessageTarget("private", 2345678901)) is backup_bot
+    assert router.for_target(OneBotMessageTarget("group", 987654321)) is main_bot
+    assert router.for_target(OneBotMessageTarget("group", 876543210)) is backup_bot
+    assert router.for_target(OneBotMessageTarget("private", 1234567890)) is main_bot
+    assert router.for_target(OneBotMessageTarget("private", 2345678901)) is backup_bot
 
 
 def test_bot_router_falls_back_to_default_when_routed_bot_is_offline(
@@ -79,10 +79,10 @@ def test_bot_router_falls_back_to_default_when_routed_bot_is_offline(
         connected=[main_bot],
     )
 
-    assert router.for_target(MessageTarget("group", 876543210)) is main_bot
+    assert router.for_target(OneBotMessageTarget("group", 876543210)) is main_bot
 
 
-def test_bot_router_falls_back_to_any_onebot_when_default_is_offline(
+def test_bot_router_rejects_delivery_when_default_is_offline(
     monkeypatch: MonkeyPatch,
 ) -> None:
     backup_bot = FakeBot(222222222)
@@ -92,10 +92,10 @@ def test_bot_router_falls_back_to_any_onebot_when_default_is_offline(
         connected=[backup_bot],
     )
 
-    assert router.for_target(MessageTarget("group", 987654321)) is backup_bot
+    assert router.for_target(OneBotMessageTarget("group", 987654321)) is None
 
 
-def test_bot_router_disabled_uses_connected_bot(
+def test_bot_router_disabled_uses_explicit_default_bot(
     monkeypatch: MonkeyPatch,
 ) -> None:
     main_bot = FakeBot(111111111)
@@ -105,4 +105,18 @@ def test_bot_router_disabled_uses_connected_bot(
         connected=[main_bot],
     )
 
-    assert router.for_target(MessageTarget("group", 987654321)) is main_bot
+    assert router.for_target(OneBotMessageTarget("group", 987654321)) is main_bot
+
+
+def test_bot_router_disabled_without_default_bot_rejects_delivery(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    backup_bot = FakeBot(222222222)
+    router = _patch_router(
+        monkeypatch,
+        config=_routing_config(enabled=False, default_bot=None),
+        connected=[backup_bot],
+    )
+
+    assert router.default_bot() is None
+    assert router.for_target(OneBotMessageTarget("group", 987654321)) is None

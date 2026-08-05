@@ -14,17 +14,19 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.feature_policy import event_is_feature_allowed
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
-from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import member_target_command
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import member_target_command
 from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
 from ironsbot.services.operations.request_feedback import request_feedback_scope
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
@@ -37,10 +39,7 @@ from ironsbot.services.seer.player_shortcuts import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player import PlayerCommandDependencies
-from .player_target import (
-    event_player_reference_lookup,
-    resolve_player_target,
-)
+from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
@@ -147,11 +146,7 @@ def _resolve_player_shortcut_command(
     target = resolve_player_target(
         event,
         player_reference=command.player_reference,
-        reference_lookup=event_player_reference_lookup(
-            dependencies.player_accounts,
-            event,
-        ),
-        binding_for_user=dependencies.player.default_player_id,
+        resolver=dependencies.player_id_resolver,
     )
     if target.error is not None:
         return _ResolvedShortcutCommand(None, target.error)
@@ -173,11 +168,7 @@ def _resolve_extension_shortcut_command(
     target = resolve_player_target(
         event,
         player_reference=command.player_reference,
-        reference_lookup=event_player_reference_lookup(
-            dependencies.player_accounts,
-            event,
-        ),
-        binding_for_user=dependencies.player.default_player_id,
+        resolver=dependencies.player_id_resolver,
     )
     if target.error is not None:
         return _ResolvedExtensionShortcutCommand(None, target.error)
@@ -243,6 +234,7 @@ async def handle_player_extension_shortcut(
     command = resolved.command
     if command is None:
         return
+
     async def send_status(label: str, *, queued: bool) -> None:
         await send_event_reply(
             matcher,
@@ -251,10 +243,13 @@ async def handle_player_extension_shortcut(
         )
 
     with request_feedback_scope(command.action.action.label, send_status):
+        message = message_input_context(event).message
         reply = await command.action.query(
-            command.player_id,
-            event.user_id,
-            event_group_id(event),
+            PlayerDetailActionRequest(
+                player_id=command.player_id,
+                actor=message.actor,
+                conversation=message.conversation,
+            )
         )
     await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
 
@@ -294,9 +289,7 @@ def _extension_shortcut_command_id(
 ) -> str:
     command = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
     resolved = (
-        command
-        if isinstance(command, _ResolvedExtensionShortcutCommand)
-        else None
+        command if isinstance(command, _ResolvedExtensionShortcutCommand) else None
     )
     command = resolved.command if resolved is not None else None
     if command is None:
@@ -332,7 +325,7 @@ def install(group: SeerMatcherGroup) -> None:
         group.resources.player,
         group.features,
         group.resources.player_detail_extensions,
-        group.player_accounts,
+        group.player_id_resolver,
     )
     matcher = group.on_message(
         policy=CommandPolicy.command(
@@ -364,10 +357,7 @@ def install(group: SeerMatcherGroup) -> None:
     extension_matcher = group.on_message(
         policy=CommandPolicy.command(
             _extension_shortcut_command_id,
-            help_ids=tuple(
-                action.command_help_id
-                for action in extension_actions
-            ),
+            help_ids=tuple(action.command_help_id for action in extension_actions),
             semantic_request=lambda event, state: _extension_shortcut_semantic_request(
                 dependencies,
                 event,

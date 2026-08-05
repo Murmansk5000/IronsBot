@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from ironsbot.core.features import FeatureConfig, FeatureService
+from ironsbot.config.models.features import (
+    FeatureConfig,
+    build_onebot_feature_service,
+)
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.messaging.admin_notice import (
@@ -49,7 +52,7 @@ def _service(
     sender = FakeAdminNoticeSender()
     return (
         AdminNoticeService(
-            FeatureService(
+            build_onebot_feature_service(
                 feature_config,
                 frozenset((2002, 1001) if with_targets else ()),
             ),

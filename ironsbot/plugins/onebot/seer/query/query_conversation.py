@@ -11,9 +11,9 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot_plugin_saa import Image, MessageFactory
 
-from ironsbot.runtime.matchers import queued_conversation_is_cancelled
-from ironsbot.runtime.params import parse_string_arg
-from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
+from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.params import parse_string_arg
+from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticTarget,

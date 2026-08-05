@@ -8,12 +8,12 @@ from nonebot import get_bots
 from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
-from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import BotRoutingConfig
-    from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.config.onebot_references import OneBotReferenceResolver
 
 
 def _connected_onebot_bots() -> dict[int, Bot]:
@@ -22,11 +22,7 @@ def _connected_onebot_bots() -> dict[int, Bot]:
     except Exception as e:  # noqa: BLE001
         logger.warning(f"bot routing failed to list connected bots: {e}")
         return {}
-    return {
-        int(bot.self_id): bot
-        for bot in bots
-        if isinstance(bot, Bot)
-    }
+    return {int(bot.self_id): bot for bot in bots if isinstance(bot, Bot)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +30,7 @@ class BotRouter:
     config: BotRoutingConfig
     references: OneBotReferenceResolver
 
-    def _configured_bot_id(self, target: MessageTarget) -> int | None:
+    def _configured_bot_id(self, target: OneBotMessageTarget) -> int | None:
         if target.target_type == "group":
             routes = self.config.groups
             resolve = self.references.resolve_group
@@ -43,18 +39,18 @@ class BotRouter:
             resolve = self.references.resolve_user
 
         for target_ref, bot_ref in routes.items():
-            if resolve(
-                target_ref,
-                location=f"messaging.bot_routing.{target.target_type}s.{target_ref}",
-            ) == target.target_id:
+            if (
+                resolve(
+                    target_ref,
+                    location=f"messaging.bot_routing.{target.target_type}s.{target_ref}",
+                )
+                == target.target_id
+            ):
                 return self.config.resolve_bot_reference(bot_ref)
         return None
 
     def default_bot(self) -> Bot | None:
         connected = _connected_onebot_bots()
-        if not self.config.enabled:
-            return next(iter(connected.values()), None)
-
         bot_id = (
             self.config.resolve_bot_reference(self.config.default_bot)
             if self.config.default_bot is not None
@@ -67,14 +63,11 @@ class BotRouter:
                 "configured default bot is not connected: bot_self_id={}",
                 bot_id,
             )
-        return next(iter(connected.values()), None)
+        return None
 
-    def for_target(self, target: MessageTarget) -> Bot | None:
-        if not self.config.enabled:
-            return self.default_bot()
-
+    def for_target(self, target: OneBotMessageTarget) -> Bot | None:
         connected = _connected_onebot_bots()
-        routed_bot_id = self._configured_bot_id(target)
+        routed_bot_id = self._configured_bot_id(target) if self.config.enabled else None
         if routed_bot_id is not None:
             if bot := connected.get(routed_bot_id):
                 return bot
@@ -96,12 +89,17 @@ class BotRouter:
                 return bot
             logger.warning(
                 "default bot fallback is not connected: target_type={} target_id={} "
-                "bot_self_id={}; falling back to any OneBot bot",
+                "bot_self_id={}; delivery will fail",
                 target.target_type,
                 target.target_id,
                 default_bot_id,
             )
-        return next(iter(connected.values()), None)
+        logger.warning(
+            "no configured OneBot bot is available: target_type={} target_id={}",
+            target.target_type,
+            target.target_id,
+        )
+        return None
 
     def for_conversation(self, conversation: ConversationRef) -> Bot | None:
         """Route a platform-neutral OneBot conversation at the adapter edge."""
@@ -115,7 +113,7 @@ class BotRouter:
         if target_id <= 0:
             return None
         if conversation.kind == "private":
-            return self.for_target(MessageTarget("private", target_id))
+            return self.for_target(OneBotMessageTarget("private", target_id))
         if conversation.kind == "group":
-            return self.for_target(MessageTarget("group", target_id))
+            return self.for_target(OneBotMessageTarget("group", target_id))
         return None

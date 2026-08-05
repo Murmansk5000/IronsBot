@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+"""OneBot rendering for Bilibili dynamic messages."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -19,6 +22,7 @@ def build_dynamic_link_message(
     item: dict[str, Any],
     pub_ts: int,
 ) -> Message | None:
+    """Render the OneBot link-only representation of one Bilibili dynamic."""
     try:
         author_name = item_author_name(item)
         author_mid = item_author_mid(item)
@@ -35,7 +39,7 @@ def build_dynamic_link_message(
             )
         )
     except (TypeError, ValueError, KeyError) as error:
-        logger.error(f"failed to render Bilibili dynamic link: {error}")
+        logger.error("failed to render Bilibili dynamic link: %s", error)
         return None
 
 
@@ -43,7 +47,7 @@ def build_dynamic_content_message(
     item: dict[str, Any],
     content_override: str | None = None,
 ) -> Message | None:
-    """Render only a dynamic's content and images, without duplicate metadata."""
+    """Render dynamic content and images without duplicate link metadata."""
     try:
         message = Message()
         content = (content_override or dynamic_content(item)).strip()
@@ -57,7 +61,6 @@ def build_dynamic_content_message(
                 message += MessageSegment.text("\n")
             message += MessageSegment.image(sanitized_url)
     except (TypeError, ValueError, KeyError) as error:
-        logger.error(f"failed to render Bilibili dynamic content: {error}")
+        logger.error("failed to render Bilibili dynamic content: %s", error)
         return None
-    else:
-        return message or None
+    return message or None

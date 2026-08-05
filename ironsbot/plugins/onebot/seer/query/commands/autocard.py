@@ -10,18 +10,18 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.runtime.conversations import (
+from ironsbot.integrations.onebot.conversations import (
     enter_event_reply_conversation,
     event_conversation_session_id,
 )
-from ironsbot.runtime.matchers import (
+from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     bind_async,
     get_prompt_session_manager,
 )
-from ironsbot.runtime.params import parse_string_arg
-from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.params import parse_string_arg
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
 from ironsbot.services.seer.autocard import (
     AUTOCARD_QUERY_PREFIXES,
     AUTOCARD_QUERY_SUFFIXES,
@@ -207,6 +207,4 @@ def install(group: SeerMatcherGroup) -> None:
         & explicit_command(),
         priority=group.matcher_priority("seer_autocard"),
     )
-    matcher.append_handler(
-        bind_async(handle_autocard_query, group.resources.autocard)
-    )
+    matcher.append_handler(bind_async(handle_autocard_query, group.resources.autocard))
