@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -57,36 +56,13 @@ class PeakPoolVoteRenderDocument:
         )
 
 
-def peak_pool_vote_cache_key(
-    pools: Sequence[PeakVotePoolInput],
-    generated_at: str,
-) -> str:
-    """Fingerprint every value that changes a rendered peak-vote image."""
-    values = tuple(
-        (
-            pool.title,
-            tuple((item.id, item.name, item.score) for item in pool.items),
-            tuple(
-                (pet.id, pet.name, pet.resource_id, pet.type_id)
-                for pet in pool.pets
-            ),
-        )
-        for pool in pools
-    )
-    return hashlib.sha256(repr((values, generated_at)).encode()).hexdigest()
-
-
 def present_peak_pool_vote(
     pools: Sequence[PeakVotePoolInput],
     generated_at: str,
     assets: PetImageAssets,
 ) -> PeakPoolVoteRenderDocument:
     """Prepare a deterministic vote document without I/O or clock access."""
-    pet_map = {
-        pet.id: pet
-        for pool in pools
-        for pet in pool.pets
-    }
+    pet_map = {pet.id: pet for pool in pools for pet in pool.pets}
     head_icons = assets.pet_head_by_resource_id
     type_icons = assets.type_icon_by_id
     documents = tuple(
