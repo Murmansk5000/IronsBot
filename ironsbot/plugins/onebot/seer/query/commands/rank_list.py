@@ -41,7 +41,6 @@ from .rank_list_context import (
     RANK_PAGE_CACHE_STATUS_COMMAND_KEY,
     RANK_PLAYER_COMMAND_KEY,
     RANK_SCORE_COMMAND_KEY,
-    event_group_id,
 )
 
 if TYPE_CHECKING:
@@ -130,7 +129,7 @@ async def _handle_list(
     message = await service.list(
         state[RANK_LIST_COMMAND_KEY],
         actor=message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await finish_event_reply(matcher, event, message)
 
@@ -144,7 +143,6 @@ async def _handle_score(
     message = await service.score(
         state[RANK_SCORE_COMMAND_KEY],
         conversation=message_input_context(event).message.conversation,
-        group_id=event_group_id(event),
         actor=message_input_context(event).message.actor,
     )
     await finish_event_reply(matcher, event, message)
@@ -167,7 +165,7 @@ async def _handle_player(
     message = await service.player(
         resolved.command,
         actor=message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await finish_event_reply(matcher, event, message)
 

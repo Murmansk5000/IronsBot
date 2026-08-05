@@ -110,7 +110,7 @@ class RankQueryService:
         command: RankListCommand,
         *,
         actor: ActorRef | None = None,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> str:
         if command.kind == "local":
             return self._local_message(command)
@@ -119,7 +119,7 @@ class RankQueryService:
                 lambda: self._global_message(
                     self._headless.get_game(),
                     command,
-                    group_id=group_id,
+                    conversation=conversation,
                 ),
                 actor=actor,
                 label="榜单查询",
@@ -132,7 +132,6 @@ class RankQueryService:
         command: RankScoreCommand,
         *,
         conversation: ConversationRef | None,
-        group_id: int | None,
         actor: ActorRef | None = None,
     ) -> str:
         try:
@@ -141,7 +140,7 @@ class RankQueryService:
                     self._headless.get_game(),
                     command,
                     display_limit=self.default_limit(conversation),
-                    group_id=group_id,
+                    conversation=conversation,
                 ),
                 actor=actor,
                 label="榜单分数查询",
@@ -154,7 +153,7 @@ class RankQueryService:
         command: RankPlayerCommand,
         *,
         actor: ActorRef | None = None,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> str:
         spec = GLOBAL_RANKS[command.rank_key]
         if not is_valid_player_id(command.player_id):
@@ -166,7 +165,7 @@ class RankQueryService:
                 lambda: self._fetch_player_message(
                     command,
                     actor,
-                    group_id=group_id,
+                    conversation=conversation,
                     anchor_only=anchor_only,
                 ),
                 actor=actor,
@@ -211,7 +210,7 @@ class RankQueryService:
         command: RankPlayerCommand,
         actor: ActorRef | None,
         *,
-        group_id: int | None,
+        conversation: ConversationRef | None,
         anchor_only: bool,
     ) -> RankPlayerQueryResult:
         quota_message = self._check_player_quota(command, actor)
@@ -221,7 +220,7 @@ class RankQueryService:
             self._player_message(
                 self._headless.get_game(),
                 command,
-                group_id=group_id,
+                conversation=conversation,
                 anchor_only=anchor_only,
             ),
             timeout=self._policy.player_timeout_seconds,
@@ -250,7 +249,7 @@ class RankQueryService:
         game: HeadlessGame,
         command: RankListCommand,
         *,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> str:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
@@ -262,7 +261,7 @@ class RankQueryService:
                 f"{command.start_rank}-{command.start_rank + command.limit - 1}名"
             ),
             source="榜单查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             result = await self._rank.fetch_visible_range_result(
                 game,
@@ -286,7 +285,7 @@ class RankQueryService:
         command: RankScoreCommand,
         *,
         display_limit: int,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> str:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
@@ -295,7 +294,7 @@ class RankQueryService:
             "榜单分数查询",
             f"{spec.title} {command.score}{spec.unit}",
             source="榜单分数查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             result = await self._rank.fetch_score_segment(
                 game,
@@ -335,7 +334,7 @@ class RankQueryService:
         game: HeadlessGame,
         command: RankPlayerCommand,
         *,
-        group_id: int | None,
+        conversation: ConversationRef | None,
         anchor_only: bool,
     ) -> RankPlayerQueryResult:
         spec = self._rank.get_spec(command.rank_key)
@@ -343,7 +342,7 @@ class RankQueryService:
             "榜单玩家查询",
             f"{spec.title} 米米号 {command.player_id}",
             source="榜单玩家查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             return await fetch_rank_player_result(
                 self._rank,

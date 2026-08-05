@@ -12,7 +12,7 @@ from ironsbot.core.semantic_requests import current_semantic_request_trace
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ironsbot.core.platform import ActorRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 RECENT_OPERATION_WINDOW_SECONDS = 90.0
 
@@ -23,7 +23,7 @@ class HeadlessOperation:
     detail: str
     source: str
     background: bool
-    group_id: int | None
+    conversation: ConversationRef | None
     started_at: float
     semantic_action_id: str = ""
     semantic_action_label: str = ""
@@ -50,7 +50,7 @@ class HeadlessOperationTracker:
         *,
         source: str = "",
         background: bool = False,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> Iterator[HeadlessOperation]:
         parent = self._current.get()
         semantic = current_semantic_request_trace()
@@ -59,7 +59,7 @@ class HeadlessOperationTracker:
             detail=detail.strip(),
             source=source.strip() or label.strip() or "无头请求",
             background=background,
-            group_id=group_id,
+            conversation=conversation,
             started_at=time.monotonic(),
             semantic_action_id=(
                 "" if semantic is None else semantic.request.action.id
@@ -122,8 +122,11 @@ class HeadlessOperationTracker:
     def _format(operation: HeadlessOperation) -> str:
         detail = f"：{operation.detail}" if operation.detail else ""
         kind = "后台" if operation.background else "用户"
-        group = f"，群：{operation.group_id}" if operation.group_id is not None else ""
-        return f"{operation.label}{detail}（{kind}操作{group}）"
+        conversation = ""
+        if operation.conversation is not None:
+            ref = operation.conversation
+            conversation = f"，会话：{ref.platform.value}/{ref.kind}/{ref.id}"
+        return f"{operation.label}{detail}（{kind}操作{conversation}）"
 
     def _recent(
         self,

@@ -68,7 +68,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ironsbot.config.models.seer import SeerConfig
-    from ironsbot.core.platform import ActorRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.operations.headless import HeadlessGame, HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
@@ -110,7 +110,7 @@ class PlayerDetailService:
         game: HeadlessGame,
         pending: PendingPlayerQuery,
         *,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> None:
         refresh_config = self._config.player.background_refresh
         if not refresh_config.enabled:
@@ -133,7 +133,7 @@ class PlayerDetailService:
                 game,
                 player_id=pending.player_id,
                 refresh=refresh,
-                group_id=group_id,
+                conversation=conversation,
             ),
             name=f"seer-player-background-refresh-{pending.player_id}",
         )
@@ -230,7 +230,7 @@ class PlayerDetailService:
         *,
         player_id: int,
         refresh: _BackgroundRefresh,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> None:
         await asyncio.gather(
             *(
@@ -240,7 +240,7 @@ class PlayerDetailService:
                     kind=kind,
                     future=future,
                     base_snapshot=refresh.base_snapshot,
-                    group_id=group_id,
+                    conversation=conversation,
                 )
                 for kind, future in refresh.replies.items()
             )
@@ -254,7 +254,7 @@ class PlayerDetailService:
         kind: PlayerShortcutKind,
         future: asyncio.Future[QueryReply | None],
         base_snapshot: PlayerBaseSnapshot | None,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> None:
         if future.done():
             return
@@ -273,7 +273,7 @@ class PlayerDetailService:
                 game,
                 command=command,
                 player_id=player_id,
-                group_id=group_id,
+                conversation=conversation,
             )
         except asyncio.CancelledError:
             raise
@@ -359,7 +359,7 @@ class PlayerDetailService:
         *,
         command: PlayerShortcutCommand,
         player_id: int,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> QueryReply:
         async def fetch() -> QueryReply:
             with game.operations.track(
@@ -367,7 +367,7 @@ class PlayerDetailService:
                 f"米米号 {player_id}",
                 source="米米号后台预热",
                 background=True,
-                group_id=group_id,
+                conversation=conversation,
             ):
                 return await asyncio.wait_for(
                     self._fetch_shortcut(
@@ -457,7 +457,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         *,
         actor: ActorRef,
         explicit: bool,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> PlayerQueryResult:
         if not is_valid_player_id(player_id):
             return PlayerQueryResult(message=PLAYER_ID_ERROR_MESSAGE)
@@ -478,7 +478,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                 lambda: self._query(
                     player_id,
                     source="米米号查询",
-                    group_id=group_id,
+                    conversation=conversation,
                 ),
                 actor=actor,
                 label="米米号基础资料",
@@ -518,7 +518,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         player_id: int,
         *,
         actor: ActorRef,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> PlayerQueryResult:
         """Validate a player ID, save it as default, and return its info."""
         binding = self._bindings.get(actor)
@@ -535,7 +535,7 @@ class PlayerService(PlayerAccountPolicyMixin):
             player_id,
             actor=actor,
             explicit=True,
-            group_id=group_id,
+            conversation=conversation,
         )
         if result.message or result.pending is None:
             return result
@@ -576,7 +576,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         self,
         pending: PendingPlayerQuery,
         *,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> None:
         """Begin optional detail prefetch only after the initial reply is sent."""
         try:
@@ -590,7 +590,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         self._details.start_background_refresh(
             game,
             pending,
-            group_id=group_id,
+            conversation=conversation,
         )
 
     def unbind(self, actor: ActorRef) -> str:
@@ -611,7 +611,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         command: PlayerShortcutCommand,
         actor: ActorRef,
         *,
-        group_id: int | None = None,
+        conversation: ConversationRef | None = None,
     ) -> QueryReply:
         player_id = command.player_id
         if not is_valid_player_id(player_id):
@@ -633,7 +633,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                 lambda: self._shortcut_live(
                     command,
                     player_id,
-                    group_id=group_id,
+                    conversation=conversation,
                     anchor_only=anchor_only,
                 ),
                 actor=actor,
@@ -683,7 +683,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         command: PlayerShortcutCommand,
         player_id: int,
         *,
-        group_id: int | None,
+        conversation: ConversationRef | None,
         anchor_only: bool,
     ) -> QueryReply:
         game = self._headless.get_game()
@@ -691,7 +691,7 @@ class PlayerService(PlayerAccountPolicyMixin):
             shortcut_operation_label(command.kind),
             f"米米号 {player_id}",
             source="米米号快捷详情查询",
-            group_id=group_id,
+            conversation=conversation,
         ):
             message = await asyncio.wait_for(
                 self._details.shortcut(
@@ -717,7 +717,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         player_id: int,
         *,
         source: str,
-        group_id: int | None,
+        conversation: ConversationRef | None,
     ) -> PlayerQueryResult:
         try:
             game = self._headless.get_game()
@@ -725,7 +725,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                 self._config,
                 player_id,
                 game,
-                group_id=group_id,
+                conversation=conversation,
                 profile_cache=self._profile_cache,
             )
             await self._headless.mark_available(

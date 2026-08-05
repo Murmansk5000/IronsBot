@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
@@ -126,11 +127,11 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
 
     async def run() -> None:
         service = _service(enabled=True)
-        tracked_groups: list[int | None] = []
+        tracked_conversations: list[ConversationRef | None] = []
         tracked = asyncio.Event()
 
         def track(*_args: Any, **kwargs: Any) -> nullcontext[None]:
-            tracked_groups.append(kwargs.get("group_id"))
+            tracked_conversations.append(kwargs.get("conversation"))
             tracked.set()
             return nullcontext()
 
@@ -140,7 +141,12 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
                 operations=SimpleNamespace(track=track)
             ),
         )
-        service.start_background_refresh(game, _pending(), group_id=987654321)
+        conversation = ConversationRef(Platform.ONEBOT, "group", "987654321")
+        service.start_background_refresh(
+            game,
+            _pending(),
+            conversation=conversation,
+        )
         await asyncio.wait_for(tracked.wait(), timeout=0.1)
 
         first = await service.shortcut(
@@ -156,8 +162,8 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
 
         assert first.text == "peak reply"
         assert second.text == "peak reply"
-        assert tracked_groups
-        assert set(tracked_groups) == {987654321}
+        assert tracked_conversations
+        assert set(tracked_conversations) == {conversation}
 
     asyncio.run(run())
 
@@ -291,7 +297,7 @@ def test_player_shortcut_live_prefers_live_data_while_quota_is_available() -> No
         result = await service._shortcut_live(
             PlayerShortcutCommand(kind="autocard", player_id=PLAYER_ID),
             PLAYER_ID,
-            group_id=987654321,
+            conversation=ConversationRef(Platform.ONEBOT, "group", "987654321"),
             anchor_only=False,
         )
 

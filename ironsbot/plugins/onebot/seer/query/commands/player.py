@@ -15,7 +15,6 @@ from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import (
     BOT_COMMAND_ARG_KEY,
@@ -158,7 +157,7 @@ async def handle_player(
         int(state[PLAYER_ID_KEY]),
         actor=message_input_context(event).message.actor,
         explicit=explicit,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await _handle_player_query_result(
         dependencies,
@@ -194,7 +193,7 @@ async def handle_player_binding_command(
     result = await dependencies.player.bind_player(
         target.player_id,
         actor=message_input_context(event).message.actor,
-        group_id=event_group_id(event),
+        conversation=message_input_context(event).message.conversation,
     )
     await _handle_player_query_result(
         dependencies,
@@ -297,7 +296,7 @@ async def _send_pending_player_query(
         )
         dependencies.player.start_background_refresh(
             pending,
-            group_id=event_group_id(event),
+            conversation=message_input_context(event).message.conversation,
         )
 
     await send_player_info_with_detail_prompt(

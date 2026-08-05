@@ -6,7 +6,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.seer import RankPageRefreshConfig
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -46,17 +46,18 @@ def test_headless_operation_context_keeps_recent_operation() -> None:
     assert operations.format_recent(now=float("inf")) == ""
 
 
-def test_headless_operation_context_includes_group_id() -> None:
+def test_headless_operation_context_includes_conversation() -> None:
     operations = HeadlessOperationTracker()
 
     with operations.track(
         "基础资料",
         "米米号 123456",
         source="米米号查询",
-        group_id=987654321,
+        conversation=ConversationRef(Platform.ONEBOT, "group", "987654321"),
     ):
         assert operations.format_current() == (
-            "基础资料：米米号 123456（用户操作，群：987654321）"
+            "基础资料：米米号 123456"
+            "（用户操作，会话：onebot/group/987654321）"
         )
 
 

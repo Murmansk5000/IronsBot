@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
-from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.plugins.onebot.seer.query.commands import player, player_shortcuts
 from ironsbot.plugins.onebot.seer.query.commands.player_context import (
@@ -30,6 +30,10 @@ _ACCOUNT_PLAYER_ID = 949105380
 
 def _actor(user_id: int) -> ActorRef:
     return ActorRef(Platform.ONEBOT, str(user_id))
+
+
+def _conversation(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
 
 
 def test_player_conversation_flows_share_one_session() -> None:
@@ -459,7 +463,7 @@ def test_binding_command_resolves_account_aliases(monkeypatch: Any) -> None:
     service.bind_player.assert_awaited_once_with(
         _ACCOUNT_PLAYER_ID,
         actor=_actor(event.user_id),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
 
 
@@ -495,7 +499,7 @@ def test_binding_command_resolves_one_directly_mentioned_member(
     service.bind_player.assert_awaited_once_with(
         _ACCOUNT_PLAYER_ID,
         actor=_actor(event.user_id),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
 
 
@@ -585,7 +589,7 @@ def test_shortcut_sends_loading_reply_before_query(
     service.shortcut.assert_awaited_once_with(
         PlayerShortcutCommand(kind="peak", player_id=949105380),
         _actor(event.user_id),
-        group_id=event.group_id,
+        conversation=_conversation(event.group_id),
     )
     finish_reply.assert_awaited_once()
 

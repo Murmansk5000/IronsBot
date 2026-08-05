@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.config.models.seer import SeerConfig
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.headless_seer.packets.user import MoreInfo, UserInfo
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
@@ -112,7 +113,7 @@ async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time() 
             SeerConfig(),
             PLAYER_ID,
             cast("HeadlessGame", game),
-            group_id=100,
+            conversation=ConversationRef(Platform.ONEBOT, "group", "100"),
             profile_cache=cache,
         )
     )
@@ -140,7 +141,7 @@ async def test_profile_cache_hit_skips_more_info_packet() -> None:
         SeerConfig(),
         PLAYER_ID,
         cast("HeadlessGame", game),
-        group_id=None,
+        conversation=None,
         profile_cache=cache,
     )
 

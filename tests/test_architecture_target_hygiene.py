@@ -26,6 +26,20 @@ SEER_REQUEST_ACTOR_METHODS = {
         "RankQueryService": ("list", "score", "player"),
     },
 }
+SEER_REQUEST_CONVERSATION_METHODS = {
+    "player_service.py": {
+        "PlayerDetailService": ("start_background_refresh",),
+        "PlayerService": (
+            "query",
+            "bind_player",
+            "start_background_refresh",
+            "shortcut",
+        ),
+    },
+    "rank_queries.py": {
+        "RankQueryService": ("list", "score", "player"),
+    },
+}
 
 TRANSITIONAL_RENDERER_PERSISTENCE_MODULES = frozenset()
 FORBIDDEN_TRANSPORT_IMPORT_PREFIXES = (
@@ -159,3 +173,17 @@ def test_seer_request_services_use_actor_refs_not_onebot_user_ids() -> None:
                 )
                 assert "actor" in arguments
                 assert "user_id" not in arguments
+
+
+def test_seer_request_services_use_conversation_refs_not_group_ids() -> None:
+    for filename, classes in SEER_REQUEST_CONVERSATION_METHODS.items():
+        path = SERVICES / "seer" / filename
+        for class_name, method_names in classes.items():
+            for method_name in method_names:
+                arguments = _method_argument_names(
+                    path,
+                    class_name=class_name,
+                    method_name=method_name,
+                )
+                assert "conversation" in arguments
+                assert "group_id" not in arguments
