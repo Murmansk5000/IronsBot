@@ -441,15 +441,15 @@ notice_timeout_seconds = 8.0
 # Example: 600.0
 login_notice_cooldown_seconds = 300.0
 
-[bilibili.accounts.seer]
-# Default: 1310714247
-# EN: Bilibili UID referenced by the stable alias `seer`.
-# ZH: 稳定别名 `seer` 对应的 B 站 UID。
-uid = 1310714247
+[bilibili.accounts.example_account]
+# EN: Explicitly declare every account to monitor. Empty accounts means Bilibili
+# monitoring and pushes are disabled.
+# ZH: 每个要监控的账号都必须显式声明；不填写账号时 B 站监控和推送不会启用。
+uid = 912345678
 
 # Add more accounts with unique aliases:
-# [bilibili.accounts.fire]
-# uid = 527589079
+# [bilibili.accounts.another_account]
+# uid = 234567891
 
 [bilibili.storage]
 # Default: "data/bilibili_monitor"
@@ -484,11 +484,11 @@ windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 # Example: "full"
 mode = "full"
 
-# Default: ["seer"]
+# Default: []
 # EN: Account aliases pushed to every target that enables bili_push.
 # ZH: 所有开启 bili_push 的群/私聊默认推送的账号别名。
-# Example: ["seer"]
-accounts = ["seer"]
+# Example: ["example_account"]
+accounts = ["example_account"]
 
 # EN: Optional per-account push mode overrides. Runtime admin overrides take priority.
 # ZH: 可选的全局按账号别名推送模式覆盖；未填写时继承上面的 mode，当前会话的运行时设置优先级更高。
