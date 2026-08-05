@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from ironsbot.core.features import FeatureConfig, FeatureService
+from ironsbot.config.models.features import (
+    FeatureConfig,
+    build_onebot_feature_service,
+)
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditMembershipProbe,
@@ -61,7 +64,7 @@ class FakeGroupProbe:
 
 def _policy() -> OneBotTeamAuditPolicy:
     return OneBotTeamAuditPolicy(
-        FeatureService(
+        build_onebot_feature_service(
             FeatureConfig(group_policy={str(GROUP_ID): ["team_audit"]}),
             frozenset(),
         )

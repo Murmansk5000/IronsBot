@@ -8,11 +8,11 @@ import pytest
 from nonebot.exception import MockApiException
 from nonebot.matcher import current_event
 
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import (
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
 )
-from ironsbot.core.features import FeatureConfig
 from ironsbot.integrations.onebot import outbound as outbound_rate_limit
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
@@ -146,9 +146,7 @@ def test_push_waits_for_capacity_without_blocking_other_groups() -> None:
 
     async def run() -> None:
         assert (await service.acquire_push(GROUP_ID, source="first")).allowed
-        waiting = asyncio.create_task(
-            service.acquire_push(GROUP_ID, source="waiting")
-        )
+        waiting = asyncio.create_task(service.acquire_push(GROUP_ID, source="waiting"))
         await asyncio.sleep(0)
         other_group = await service.acquire_push(OTHER_GROUP_ID, source="other")
         delayed = await waiting
@@ -216,9 +214,7 @@ def test_superuser_group_reply_uses_priority_queue() -> None:
             "group_id": GROUP_ID,
             "message": "superuser reply",
         }
-        token = current_event.set(
-            cast("Event", SimpleNamespace(user_id=SUPERUSER_ID))
-        )
+        token = current_event.set(cast("Event", SimpleNamespace(user_id=SUPERUSER_ID)))
         try:
             queued = asyncio.create_task(
                 outbound_rate_limit._check_group_send_api(

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
         DockerUpdateConfig,
         PrivateExtensionsConfig,
     )
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.cache_paths import CachePaths
     from ironsbot.runtime.plugins import PluginContribution
@@ -362,16 +362,10 @@ def _extract_private_extension_members(
             target.mkdir(parents=True, exist_ok=True)
             continue
         if not member.isfile():
-            msg = (
-                "private extension archive contains unsupported entry: "
-                f"{member.name}"
-            )
+            msg = f"private extension archive contains unsupported entry: {member.name}"
             raise PrivateExtensionError(msg)
         if target.exists():
-            msg = (
-                "private extension archive contains duplicate entry: "
-                f"{member.name}"
-            )
+            msg = f"private extension archive contains duplicate entry: {member.name}"
             raise PrivateExtensionError(msg)
         target.parent.mkdir(parents=True, exist_ok=True)
         source = archive.extractfile(member)
@@ -464,8 +458,10 @@ def _parse_manifest_entry(  # noqa: C901 - explicit manifest diagnostics
         msg = f"private extension module contract is invalid: {extension_id}"
         raise PrivateExtensionError(msg)
     path = PurePosixPath(source_path)
-    if path.is_absolute() or not path.parts or any(
-        part in {"", ".", ".."} for part in path.parts
+    if (
+        path.is_absolute()
+        or not path.parts
+        or any(part in {"", ".", ".."} for part in path.parts)
     ):
         msg = f"private extension path is invalid: {extension_id}"
         raise PrivateExtensionError(msg)

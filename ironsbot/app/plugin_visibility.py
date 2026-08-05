@@ -13,7 +13,7 @@ from ironsbot.runtime.onebot_identity import onebot_actor_ref
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
 
 
 def always_help_visible(_event: Event) -> bool:

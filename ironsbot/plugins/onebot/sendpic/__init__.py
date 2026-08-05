@@ -27,7 +27,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.services.messaging.sendpic import SendpicService
 

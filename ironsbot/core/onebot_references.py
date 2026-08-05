@@ -10,6 +10,12 @@ from typing import Annotated
 from pydantic import BeforeValidator
 
 from ironsbot.core.commands import csv_items, json_array
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    Platform,
+    private_conversation_for_actor,
+)
 
 
 class OneBotReferenceError(ValueError):
@@ -166,6 +172,45 @@ class OneBotReferenceResolver:
             resolve=self.resolve_user,
             location=location,
         )
+
+    def actor_refs(
+        self,
+        references: Iterable[object],
+        *,
+        location: str,
+    ) -> list[ActorRef]:
+        """Compile configured OneBot users into platform-neutral actors."""
+
+        return [
+            ActorRef(Platform.ONEBOT, str(user_id))
+            for user_id in self.resolve_users(references, location=location)
+        ]
+
+    def group_conversation_refs(
+        self,
+        references: Iterable[object],
+        *,
+        location: str,
+    ) -> list[ConversationRef]:
+        """Compile configured OneBot groups into typed conversations."""
+
+        return [
+            ConversationRef(Platform.ONEBOT, "group", str(group_id))
+            for group_id in self.resolve_groups(references, location=location)
+        ]
+
+    def private_conversation_refs(
+        self,
+        references: Iterable[object],
+        *,
+        location: str,
+    ) -> list[ConversationRef]:
+        """Compile configured OneBot users into their private conversations."""
+
+        return [
+            private_conversation_for_actor(actor)
+            for actor in self.actor_refs(references, location=location)
+        ]
 
     @staticmethod
     def _resolve_many(

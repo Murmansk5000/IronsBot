@@ -211,9 +211,16 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     `CommandContext`。OneBot 事件、戳一戳和配置解析器在适配边界转换一次后再调用
     目录。
 18. 插件和 service 的公开 feature-policy 调用只能传递 `ActorRef` 与
-    `ConversationRef`。现有数值化群/用户 helper 仅限 FeatureService 的配置翻译；
-    调用方必须使用 `is_feature_allowed`、`conversation_has_feature` 或
-    `is_message_blocked` 等类型化谓词。
+    `ConversationRef`。`FeatureService` 不得拥有数值化群/用户 helper；OneBot
+    TOML 别名和 feature bundle 仅由
+    `config.models.features.build_onebot_feature_service()` 编译。调用方必须使用
+    `is_feature_allowed`、`conversation_has_feature` 或 `is_message_blocked` 等
+    类型化谓词。
+19. 新需求若与已有实体、输入、命令、投递、缓存或权限判断同类，先搜索并扩展
+    现有通用契约；只有现有契约无法表达该语义时，才先设计最小的新接口。不得为
+    单个精灵、群、用户、活动或平台另建专用 matcher、resolver、状态表或关键词表。
+20. 任何暂时的例外都必须有明确的来源事实、失效条件、删除工作项和防扩张测试。
+    不能把 `if id == ...`、部署者数据、默认回退或复制粘贴的解析逻辑当成长期方案。
 
 ## 插件术语与权威边界
 

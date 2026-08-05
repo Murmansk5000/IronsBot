@@ -14,7 +14,7 @@ from ironsbot.runtime.permissions import can_manage_conversation_event
 from ironsbot.runtime.replies import finish_event_reply
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.bilibili.targets import BiliTargetService
 
 BILI_PUSH_MODE_ACCOUNT_KEY = "_bili_push_mode_account"

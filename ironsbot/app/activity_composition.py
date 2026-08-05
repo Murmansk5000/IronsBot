@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.config.models.activity import ActivityConfig
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.activity_notice import UnityNoticeSource
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository

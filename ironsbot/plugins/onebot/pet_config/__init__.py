@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.config.models.pet_config import PetConfigConfig
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.pet_config import PetConfigQueryService
 
 

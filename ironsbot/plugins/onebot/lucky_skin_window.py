@@ -53,7 +53,7 @@ from ironsbot.services.seer.lucky_skin_window import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.operations.scheduler import Scheduler
 

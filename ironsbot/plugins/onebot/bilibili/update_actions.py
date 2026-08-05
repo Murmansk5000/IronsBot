@@ -4,7 +4,7 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher
 
-from ironsbot.core.features import FeatureService
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService

@@ -11,7 +11,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.team.audit import TEAM_AUDIT_FEATURE
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
     from ironsbot.integrations.onebot.router import BotRouter
 

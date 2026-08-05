@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ironsbot.core.features import FeatureConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.integrations.onebot.promotions import (
     promotion_enabled_for_target,
@@ -49,8 +49,9 @@ def test_fire_manual_push_attachment_is_independent_from_ai_intents() -> None:
     )
 
 
-def test_fire_manual_push_attachment_respects_all_bundle_and_not_superuser_bypass(
-) -> None:
+def test_fire_manual_push_attachment_respects_all_bundle_and_not_superuser_bypass() -> (
+    None
+):
     features = build_test_runtime(
         feature_config=FeatureConfig(user_policy={"2001": ["all"]}),
         superuser_ids=(1002,),

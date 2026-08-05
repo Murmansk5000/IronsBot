@@ -4,13 +4,16 @@ import asyncio
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import (
     MessageConfig,
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
-from ironsbot.core.features import FeatureConfig
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.messaging_config import (
+    build_onebot_message_schedule_targets,
+)
 from ironsbot.integrations.onebot.scheduled_delivery import (
     OneBotScheduledMessageSender,
 )
@@ -64,21 +67,26 @@ def test_cleanup_uses_current_subscription_and_time_catalogs(
     runtime = build_test_runtime(
         feature_config=FeatureConfig(group_policy={"2001": ["text_push"]})
     )
+    config = MessageConfig(
+        push_unsubscribe=PushUnsubscribeConfig(),
+        schedules=[
+            MessageScheduledAction(
+                id="daily",
+                message="每日提醒",
+                time="23:00",
+            )
+        ],
+    )
     messaging = MessagingService(
-        MessageConfig(
-            push_unsubscribe=PushUnsubscribeConfig(),
-            schedules=[
-                MessageScheduledAction(
-                    id="daily",
-                    message="每日提醒",
-                    time="23:00",
-                )
-            ],
-        ),
+        config,
         ActivityConfig(),
         store,
         runtime.features,
         OneBotScheduledMessageSender(runtime.delivery),
+        build_onebot_message_schedule_targets(
+            config,
+            runtime.onebot_references,
+        ),
         (lambda _conversation: [],),
     )
     asyncio.run(messaging.start(cast("Scheduler", object())))

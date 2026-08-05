@@ -31,7 +31,7 @@ from .team_actions import run_team_action
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.services.ai.service import AiService

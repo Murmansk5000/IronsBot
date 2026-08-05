@@ -52,7 +52,7 @@ __plugin_meta__ = PluginMetadata(
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import MatcherRegistry
 

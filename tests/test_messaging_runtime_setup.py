@@ -18,6 +18,7 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.config.models.activity import ActivityConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageConfig,
@@ -25,10 +26,12 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
-from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
+from ironsbot.integrations.onebot.messaging_config import (
+    build_onebot_message_schedule_targets,
+)
 from ironsbot.integrations.onebot.promotions import append_promotions_for_target
 from ironsbot.integrations.onebot.scheduled_delivery import (
     OneBotScheduledMessageSender,
@@ -142,6 +145,10 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
                 resources.features,
                 FIRE_MANUAL_PROMOTIONS,
             ),
+        ),
+        build_onebot_message_schedule_targets(
+            config,
+            resources.onebot_references,
         ),
         (extra_push_options or (lambda _conversation: []),),
     )
@@ -424,10 +431,12 @@ def test_unified_schedule_delivers_to_private_and_group_targets(
     tmp_path: Path,
 ) -> None:
     sent: list[dict[str, object]] = []
+    task = _schedule("shared schedule", at_user_ids=[3001])
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
         user_policy={"2001": ["text_push"]},
         group_policy={"1001": ["text_push"]},
+        schedules=[task],
     )
 
     async def fake_broadcast(
@@ -440,7 +449,7 @@ def test_unified_schedule_delivers_to_private_and_group_targets(
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_broadcast)
     asyncio.run(
         message_schedules.send_schedule(
-            _schedule("shared schedule", at_user_ids=[3001]),
+            task,
             messaging=messaging,
         )
     )
@@ -457,10 +466,13 @@ def test_scheduled_messages_append_fire_manual_ad(
     tmp_path: Path,
 ) -> None:
     sent: list[tuple[str, dict[str, object]]] = []
+    private_task = _schedule("私聊定时", schedule_id="private")
+    group_task = _schedule("群定时", at_user_ids=[3001], schedule_id="group")
     messaging = _messaging_resources(
         tmp_path / "unsubscribe.sqlite",
         user_policy={"2001": ["text_push"]},
         group_policy={"1001": ["text_push", "fire_manual_ad"]},
+        schedules=[group_task],
     )
 
     async def fake_send_broadcast_message(
@@ -487,13 +499,13 @@ def test_scheduled_messages_append_fire_manual_ad(
     monkeypatch.setattr(OneBotDelivery, "broadcast", fake_send_broadcast_message)
     asyncio.run(
         message_schedules.send_private_schedule(
-            _schedule("私聊定时", schedule_id="private"),
+            private_task,
             messaging=messaging,
         )
     )
     asyncio.run(
         message_schedules.send_group_schedule(
-            _schedule("群定时", at_user_ids=[3001], schedule_id="group"),
+            group_task,
             messaging=messaging,
         )
     )
@@ -659,7 +671,5 @@ def test_group_schedule_override_job_targets_only_overridden_group(
     assert override_job["kwargs"] == {
         "task": task,
         "index": 1,
-        "target_conversations": (
-            ConversationRef(Platform.ONEBOT, "group", "1001"),
-        ),
+        "target_conversations": (ConversationRef(Platform.ONEBOT, "group", "1001"),),
     }

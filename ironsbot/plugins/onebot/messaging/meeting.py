@@ -7,7 +7,8 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.commands import command_text_matches
-from ironsbot.core.features import Feature, FeatureService
+from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.features import Feature
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
@@ -38,10 +39,9 @@ def install(
     features: FeatureService,
 ) -> None:
     async def is_meeting_command(event: MessageEvent) -> bool:
-        return (
-            event_is_feature_allowed(features, event, "meeting")
-            and command_text_matches(event.get_plaintext(), commands)
-        )
+        return event_is_feature_allowed(
+            features, event, "meeting"
+        ) and command_text_matches(event.get_plaintext(), commands)
 
     async def handle_meeting_reply(
         matcher: Matcher,

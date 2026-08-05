@@ -25,7 +25,7 @@ from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
     from ironsbot.config.models.ai import AiConfig
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.messaging import AiIntentAction
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.ai.client import AiCompletionClient

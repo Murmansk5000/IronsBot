@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: MIT
+"""Platform-neutral feature-policy facts and decisions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from ironsbot.core.features import Feature
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    private_conversation_for_actor,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+
+@dataclass(frozen=True, slots=True)
+class FeatureService:
+    """Answer feature-policy questions from already-resolved identities.
+
+    Configuration adapters are responsible for expanding feature bundles and
+    translating deployment-specific user or conversation references before
+    constructing this service. The core never interprets native platform IDs.
+    """
+
+    group_features: Mapping[ConversationRef, frozenset[str]]
+    actor_features: Mapping[ActorRef, frozenset[str]]
+    superusers: frozenset[ActorRef]
+    superuser_bypass: bool = True
+
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        return actor in self.superusers
+
+    def actor_has_feature(self, actor: ActorRef, feature: str) -> bool:
+        return feature in self.actor_features.get(actor, frozenset())
+
+    def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
+        return self.actor_has_feature(actor, feature) or (
+            self.superuser_bypass and self.is_actor_superuser(actor)
+        )
+
+    def conversation_has_feature(
+        self,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool:
+        return feature in self.group_features.get(conversation, frozenset())
+
+    def is_feature_allowed(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        feature: str,
+    ) -> bool:
+        if actor.platform is not conversation.platform:
+            return False
+        if conversation.kind == "group":
+            return self.conversation_has_feature(conversation, feature) or (
+                self.superuser_bypass and self.is_actor_superuser(actor)
+            )
+        if conversation.kind == "private":
+            return private_conversation_for_actor(
+                actor
+            ) == conversation and self.is_actor_feature_allowed(actor, feature)
+        return False
+
+    def is_message_blocked(
+        self,
+        actor: ActorRef,
+        conversation: ConversationRef,
+    ) -> bool:
+        """Whether an incoming message must be ignored by feature policy."""
+
+        if actor.platform is not conversation.platform:
+            return False
+        return self.actor_has_feature(actor, Feature.BLACKLIST.value) or (
+            conversation.kind == "group"
+            and self.conversation_has_feature(conversation, Feature.BLACKLIST.value)
+        )
+
+    def conversations_for_feature(self, feature: str) -> list[ConversationRef]:
+        return [
+            conversation
+            for conversation, features in self.group_features.items()
+            if feature in features
+        ]
+
+    def actors_for_feature(self, feature: str) -> list[ActorRef]:
+        return [
+            actor
+            for actor, features in self.actor_features.items()
+            if feature in features
+        ]
+
+    def superuser_actors(self) -> list[ActorRef]:
+        return sorted(
+            self.superusers,
+            key=lambda item: (
+                item.platform.value,
+                item.kind,
+                item.scope_id or "",
+                item.id,
+            ),
+        )
+
+    def actors_with_superusers(self, feature: str) -> list[ActorRef]:
+        """Return feature actors followed by remaining superusers once each."""
+
+        actors = self.actors_for_feature(feature)
+        actors.extend(actor for actor in self.superuser_actors() if actor not in actors)
+        return actors

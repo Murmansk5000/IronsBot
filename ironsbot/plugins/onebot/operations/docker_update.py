@@ -40,7 +40,7 @@ from .status.command_text import (
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.startup import StartupNoticeService
 

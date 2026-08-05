@@ -50,9 +50,7 @@ async def send_private_schedule(
             schedule_key(index, task),
         )
         recipients = tuple(
-            conversation
-            for conversation in eligible
-            if conversation not in overrides
+            conversation for conversation in eligible if conversation not in overrides
         )
     else:
         allowed = set(eligible)
@@ -89,9 +87,7 @@ async def send_group_schedule(
             schedule_key(index, task),
         )
         recipients = tuple(
-            conversation
-            for conversation in eligible
-            if conversation not in overrides
+            conversation for conversation in eligible if conversation not in overrides
         )
     else:
         allowed = set(eligible)
@@ -106,9 +102,7 @@ async def send_group_schedule(
             message=task.message,
             private_conversations=(),
             group_conversations=recipients,
-            group_mentions=tuple(
-                messaging._features.actor_refs(task.at_user_ids)
-            ),
+            group_mentions=messaging.schedule_mentions(index),
             action_name=f"group scheduled message {task.id or '<unnamed>'}",
             subscription_key=schedule_key(index, task),
         )

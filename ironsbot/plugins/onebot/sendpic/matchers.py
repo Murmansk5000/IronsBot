@@ -6,7 +6,7 @@ from nonebot.params import CommandArg
 from nonebot.rule import Rule
 from nonebot_plugin_saa import Image
 
-from ironsbot.core.features import FeatureService
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import PicConfig
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
@@ -76,9 +76,7 @@ def create_image_command(
             help_ids=(f"sendpic.{config.id}",),
         ),
         aliases=set(config.aliases),
-        rule=Rule(
-            lambda event: event_is_feature_allowed(features, event, "image")
-        )
+        rule=Rule(lambda event: event_is_feature_allowed(features, event, "image"))
         & explicit_command(),
     )
     template = config.message_template

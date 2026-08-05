@@ -37,7 +37,7 @@ from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.team.resource import TeamResourceService
 
@@ -200,11 +200,7 @@ async def handle_team_resource_manage(
             team_id=team_id,
         )
     else:
-        if (
-            command.has_manual_mention
-            and target.is_group
-            and not target.mention_actors
-        ):
+        if command.has_manual_mention and target.is_group and not target.mention_actors:
             await finish_event_reply(
                 matcher,
                 event,

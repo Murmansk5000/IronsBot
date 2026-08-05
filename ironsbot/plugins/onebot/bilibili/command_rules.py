@@ -17,7 +17,7 @@ from .account_commands import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
 
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")

@@ -14,6 +14,7 @@ from ironsbot.config.loader import (
     ConfigFileNotFoundError,
     load_settings,
 )
+from ironsbot.config.models.features import build_onebot_feature_service
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
@@ -35,7 +36,6 @@ from ironsbot.config.models.seer import (
     TeamResourceConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
-from ironsbot.core.features import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
@@ -216,8 +216,9 @@ def _assert_default_matcher_priorities(
 def _assert_example_rank_exclusions(config: Settings) -> None:
     exclusions = config.seer.rank.exclusions
     assert exclusions.taomee_internal_user_ids == DEFAULT_TAOMEE_INTERNAL_USER_IDS
-    assert exclusions.user_ids_by_rank["精灵图鉴"] == (
-        DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK["精灵图鉴"]
+    assert (
+        exclusions.user_ids_by_rank["精灵图鉴"]
+        == (DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK["精灵图鉴"])
     )
     assert exclusions.user_ids_by_rank["成就点数"] == ()
 
@@ -267,10 +268,7 @@ def test_example_config_parses() -> None:
     assert "fire_manual" in config.ai.intent_actions
     assert config.ai.intent_actions["fire_manual"].promotion == "fire_manual"
     assert config.promotions["fire_manual"].append_to_push
-    assert (
-        config.bilibili.accounts["example_account"].uid
-        == EXAMPLE_BILI_ACCOUNT_UID
-    )
+    assert config.bilibili.accounts["example_account"].uid == EXAMPLE_BILI_ACCOUNT_UID
     assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == ["example_account"]
     assert config.bilibili.push.modes == {}
@@ -626,7 +624,6 @@ feature = "chuchu_reply"
     assert config.messaging.command_feature_keys == frozenset({"chuchu_reply"})
 
 
-
 def test_message_command_feature_registers_for_bundle_and_group_policy(
     tmp_path: Path,
 ) -> None:
@@ -652,7 +649,7 @@ feature = "seerinfo_link"
     )
 
     config = load_settings(config_path)
-    features = FeatureService(
+    features = build_onebot_feature_service(
         config.features,
         frozenset(),
         command_features=config.messaging.command_feature_keys,
@@ -660,9 +657,9 @@ feature = "seerinfo_link"
     )
 
     assert config.messaging.command_feature_keys == frozenset({"seerinfo_link"})
-    assert features.is_group_feature_allowed(
-        999,
-        123456789,
+    assert features.is_feature_allowed(
+        ActorRef(Platform.ONEBOT, "999"),
+        ConversationRef(Platform.ONEBOT, "group", "123456789"),
         "seerinfo_link",
     )
 
@@ -714,7 +711,7 @@ blocked_user = ["blacklist"]
 
     config = load_settings(config_path)
 
-    features = FeatureService(config.features, config.superuser_ids)
+    features = build_onebot_feature_service(config.features, config.superuser_ids)
     assert features.is_message_blocked(
         ActorRef(Platform.ONEBOT, "123456789"),
         ConversationRef(Platform.ONEBOT, "private", "123456789"),
@@ -742,9 +739,13 @@ main = ["all"]
     )
 
     config = load_settings(config_path)
-    features = FeatureService(config.features, config.superuser_ids)
+    features = build_onebot_feature_service(config.features, config.superuser_ids)
 
-    assert features.is_group_feature_allowed(1, 123456789, "private_extension")
+    assert features.is_feature_allowed(
+        ActorRef(Platform.ONEBOT, "1"),
+        ConversationRef(Platform.ONEBOT, "group", "123456789"),
+        "private_extension",
+    )
 
 
 def test_onebot_config_references_accept_aliases_and_numeric_ids(
@@ -1048,18 +1049,12 @@ watched_skin_ids = [1400538]
         encoding="utf-8",
     )
 
-    account_password_env = (
-        f"{SEER_PASSWORD_ENV_PREFIX}"
-        f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
-    )
+    account_password_env = f"{SEER_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}"
     env = {account_password_env: "secret"}
     config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
     assert config.seer.lucky_skin_window.time == "00:02"
-    assert (
-        config.seer.lucky_skin_window.accounts[0].account
-        == "sample_account"
-    )
+    assert config.seer.lucky_skin_window.accounts[0].account == "sample_account"
     assert (
         config.player_accounts.resolve("sample_account", location="test").password
         == hashlib.md5(
@@ -1067,10 +1062,13 @@ watched_skin_ids = [1400538]
             usedforsecurity=False,
         ).hexdigest()
     )
-    assert config.onebot_references.resolve_user(
-        config.seer.lucky_skin_window.accounts[0].user,
-        location="test",
-    ) == LUCKY_SKIN_WINDOW_OWNER_ID
+    assert (
+        config.onebot_references.resolve_user(
+            config.seer.lucky_skin_window.accounts[0].user,
+            location="test",
+        )
+        == LUCKY_SKIN_WINDOW_OWNER_ID
+    )
 
     config_path.write_text(
         config_path.read_text(encoding="utf-8")
@@ -1124,10 +1122,7 @@ name = "sample_account"
         load_settings(
             config_path,
             env={
-                (
-                    f"{SEER_PASSWORD_ENV_PREFIX}"
-                    f"{LUCKY_SKIN_WINDOW_PLAYER_ID}"
-                ): "secret",
+                (f"{SEER_PASSWORD_ENV_PREFIX}{LUCKY_SKIN_WINDOW_PLAYER_ID}"): "secret",
             },
         )
 
@@ -1368,8 +1363,7 @@ accounts = ["测试无头", "worker_two", 23456789]
     assert worker.password == expected_digest
     assert settings.headless_accounts == (worker,)
     assert (
-        settings.player_accounts.resolve_player_id("worker alias")
-        == worker.player_id
+        settings.player_accounts.resolve_player_id("worker alias") == worker.player_id
     )
 
     hexadecimal_plaintext = "0123456789abcdef0123456789abcdef"

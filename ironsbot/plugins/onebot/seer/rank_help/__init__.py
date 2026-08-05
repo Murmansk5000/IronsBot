@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from functools import partial
+from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.core.features import Feature, FeatureService
+from ironsbot.core.features import Feature
 from ironsbot.runtime.commands import (
     CommandAccess,
     CommandCatalog,
@@ -28,6 +29,9 @@ from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.seer.rank_catalog import rank_command_names
 from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, LOCAL_RANKS
+
+if TYPE_CHECKING:
+    from ironsbot.core.feature_policy import FeatureService
 
 __plugin_meta__ = PluginMetadata(
     name="榜单",

@@ -171,13 +171,13 @@ feature, persistence schema, or policy decision.
 | --- | --- | --- | --- |
 | Plugin runtime contribution submission | target | Plugin-local `PluginContribution` during installation | Extend a plugin's explicit contribution only; never recreate an application registry or let contributions replace the command catalog. |
 | `ActorRef`, `ConversationRef`, `OutboundMessage`, `OutboundMessenger` | target | Core values and explicit ports | Services and new notification workflows use these values directly. |
-| Feature-policy decisions for inbound messages | target | `is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. Numeric policy helpers remain internal configuration translation only and must not gain callers. |
+| Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_onebot_feature_service()` is the only OneBot TOML compiler and must finish alias and bundle expansion before constructing the service. |
 | Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `runtime.onebot_identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
 | Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
 | Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
 | OneBot `MessageTarget` / `OneBotDelivery` | transition | Only inside legacy callers and `integrations.onebot` adapters | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
-| OneBot reference resolution and numeric QQ configuration | transition | Configuration parsing and application composition | Convert configuration values to opaque refs before a service receives them. |
+| OneBot reference resolution and numeric QQ configuration | target adapter | `core.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
 | Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
 | OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
 | Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
@@ -218,10 +218,11 @@ The following rules are mandatory:
 - Plugins adapt transport events and send results. They do not own reusable
   parsing, persistence, HTTP calls, scheduling, retries, or business policy.
 - Public feature-policy calls in plugins and services receive `ActorRef` and
-  `ConversationRef`. Existing numeric group/user helper methods are a
-  transition confined to FeatureService's configuration translation; all
-  callers must use `is_feature_allowed`, `conversation_has_feature`, or a
-  typed domain predicate such as `is_message_blocked`.
+  `ConversationRef`. `FeatureService` contains no numeric group/user helpers;
+  `config.models.features.build_onebot_feature_service()` owns the one-time
+  TOML alias and feature-bundle compilation. All callers use
+  `is_feature_allowed`, `conversation_has_feature`, or a typed domain
+  predicate such as `is_message_blocked`.
 - Services own cohesive use cases and depend on explicit ports, never on
   NoneBot, OneBot event classes, matchers, or global application state.
 - Renderers receive view models and assets. They do not execute raw SQL,
@@ -1177,10 +1178,11 @@ reference for users:
   drive help, poke candidates, access checks, and direct-command ownership.
   `MatcherRegistry` constructs the current matchers and records their command
   policy. Prompts and selection menus keep their own anchored session state.
-- **Permissions and identity:** the current feature policy resolves configured
-  group and user aliases, group/private feature access, group-manager roles,
-  and superuser bypass. The OneBot configuration boundary still owns numeric
-  QQ values, but policy and new services expose `ActorRef` and
+- **Permissions and identity:** the OneBot feature-config compiler resolves
+  configured group and user aliases before constructing the typed feature
+  policy. The policy handles group/private feature access, group-manager
+  roles, and superuser bypass. The OneBot configuration boundary owns numeric
+  QQ values, while policy and new services expose `ActorRef` and
   `ConversationRef`; a second platform must not consume the numeric values.
   Seer player IDs use a shared resolver for numeric IDs, aliases, one direct
   mention, and the caller's default binding. The OneBot player-query and

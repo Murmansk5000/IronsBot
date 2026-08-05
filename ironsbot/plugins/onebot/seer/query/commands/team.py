@@ -22,7 +22,7 @@ from ironsbot.services.seer.team import TeamQueryActor
 from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.team import SeerTeamQueryService
 
 TEAM_IDS_KEY = "_team_ids"
@@ -75,6 +75,4 @@ def install(group: SeerMatcherGroup) -> None:
         & explicit_command(),
         priority=group.matcher_priority("seer_team"),
     )
-    matcher.append_handler(
-        bind_async(_handle_team_query, service, group.features)
-    )
+    matcher.append_handler(bind_async(_handle_team_query, service, group.features))

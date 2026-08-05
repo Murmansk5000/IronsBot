@@ -26,7 +26,7 @@ if TYPE_CHECKING:
         OutboundRateLimitConfig,
         OutboundRateLimitWindowConfig,
     )
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.tasks import TaskSpawner
 
 ADMIN_NOTICE_FEATURE = "admin_notice"
@@ -222,9 +222,7 @@ class GroupOutboundRateLimitService:
         self._limiter = MultiWindowGroupRateLimiter()
         self._push_queues: dict[int, _GroupPushQueue] = {}
         self._api_permits: dict[int, OutboundPermit] = {}
-        self._preacquired_push_permit: ContextVar[
-            OutboundPermit | None
-        ] = ContextVar(
+        self._preacquired_push_permit: ContextVar[OutboundPermit | None] = ContextVar(
             "ironsbot_preacquired_push_permit",
             default=None,
         )
@@ -372,9 +370,7 @@ class GroupOutboundRateLimitService:
                 now = time.monotonic()
                 if not self._is_limited_group(group_id):
                     queue.pop_waiter(waiter)
-                    waiter.future.set_result(
-                        OutboundRateLimitDecision(allowed=True)
-                    )
+                    waiter.future.set_result(OutboundRateLimitDecision(allowed=True))
                     continue
 
                 config = self.config
@@ -422,8 +418,7 @@ def _extract_group_id(api: str, data: dict[str, Any]) -> int | None:
         or (
             api == "send_msg"
             and (
-                data.get("message_type") == "group"
-                or data.get("group_id") is not None
+                data.get("message_type") == "group" or data.get("group_id") is not None
             )
         )
     ):
@@ -470,10 +465,7 @@ def _suppressed_result(
 
 
 def is_outbound_suppressed_result(result: object) -> bool:
-    return (
-        isinstance(result, dict)
-        and result.get(_SUPPRESSED_RESULT_KEY) is True
-    )
+    return isinstance(result, dict) and result.get(_SUPPRESSED_RESULT_KEY) is True
 
 
 @contextmanager
@@ -547,6 +539,8 @@ async def _finalize_group_send_api(
         service.rollback(permit)
         if permit is not None:
             service.discard_pending_pushes(permit.group_id)
+
+
 def install_outbound_rate_limit_hooks(
     service: GroupOutboundRateLimitService,
 ) -> None:

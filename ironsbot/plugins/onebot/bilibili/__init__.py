@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     from nonebot.adapters.onebot.v11 import Bot
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.operations.scheduler import Scheduler

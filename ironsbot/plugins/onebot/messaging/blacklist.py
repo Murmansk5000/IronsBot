@@ -22,7 +22,7 @@ from ironsbot.runtime.plugins import (
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
 
 
 BLACKLIST_PRIORITY = -1_000

@@ -54,9 +54,7 @@ BILIBILI_REQUEST_IDENTITY_METHODS = {
         "BiliTargetService": ("query_uids",),
     },
 }
-BILIBILI_LEGACY_DELIVERY_IMPORTS = (
-    "ironsbot.core.messaging",
-)
+BILIBILI_LEGACY_DELIVERY_IMPORTS = ("ironsbot.core.messaging",)
 LEGACY_FEATURE_POLICY_METHODS = frozenset(
     {
         "group_has_feature",
@@ -97,9 +95,7 @@ class MissingArchitectureTargetMethodError(AssertionError):
 
 class MissingArchitectureTargetClassError(AssertionError):
     def __init__(self, *, class_name: str, path: Path) -> None:
-        super().__init__(
-            f"missing class {class_name} in {path.relative_to(ROOT)}"
-        )
+        super().__init__(f"missing class {class_name} in {path.relative_to(ROOT)}")
 
 
 def _module(path: Path) -> str:
@@ -327,7 +323,10 @@ def test_command_catalog_context_and_policy_stay_platform_neutral() -> None:
 
 
 def test_inbound_blacklist_policy_uses_typed_identity_refs() -> None:
-    methods = _class_method_names(CORE / "features.py", class_name="FeatureService")
+    methods = _class_method_names(
+        CORE / "feature_policy.py",
+        class_name="FeatureService",
+    )
 
     assert "is_message_blocked" in methods
     assert "is_conversation_blocked" not in methods

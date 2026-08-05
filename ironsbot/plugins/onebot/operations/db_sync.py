@@ -32,7 +32,7 @@ from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import explicit_command
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.operations.startup import StartupNoticeService

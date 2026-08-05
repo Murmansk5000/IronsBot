@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from ironsbot.core.features import FeatureConfig
+from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,

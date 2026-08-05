@@ -15,7 +15,7 @@ from ironsbot.runtime.onebot_context import command_context
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import MessageEvent
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.plugins import PluginContribution
 

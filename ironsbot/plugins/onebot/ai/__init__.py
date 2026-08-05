@@ -39,7 +39,7 @@ from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.ai.service import AiService
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"

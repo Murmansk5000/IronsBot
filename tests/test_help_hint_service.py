@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ironsbot.core.features import HelpConfig
+from ironsbot.config.models.features import HelpConfig
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -231,8 +231,7 @@ def _service(
 
 def test_help_hint_text_mentions_help_command() -> None:
     assert (
-        DIRECT_COMMAND_HELP_HINT_TEXT
-        == "别 @ 我，@ 我不会执行任何指令。"
+        DIRECT_COMMAND_HELP_HINT_TEXT == "别 @ 我，@ 我不会执行任何指令。"
         "删除 @ 后直接发送需要使用的指令；不会用就发送‘帮助’。"
     )
 
@@ -248,9 +247,7 @@ def test_group_poke_reply_prefers_configured_group_alias() -> None:
         config=HelpConfig(poke_replies={"example": "自定义戳一戳回复"}),
     )
 
-    assert service.get_poke_reply(group_id=987654321, user_id=1) == (
-        "自定义戳一戳回复"
-    )
+    assert service.get_poke_reply(group_id=987654321, user_id=1) == ("自定义戳一戳回复")
     assert service.get_poke_reply(group_id=876543210, user_id=1) is None
 
 
@@ -268,9 +265,7 @@ def test_user_poke_reply_accepts_chinese_user_alias() -> None:
         config=HelpConfig(poke_user_replies={"示例昵称": "用户专属回复"}),
     )
 
-    assert service.get_poke_reply(group_id=None, user_id=1234567890) == (
-        "用户专属回复"
-    )
+    assert service.get_poke_reply(group_id=None, user_id=1234567890) == ("用户专属回复")
     assert service.get_poke_reply(group_id=None, user_id=9876543210) is None
 
 
@@ -285,12 +280,10 @@ def test_user_poke_reply_takes_priority_over_group_reply() -> None:
     )
 
     assert (
-        service.get_poke_reply(group_id=987654321, user_id=1234567890)
-        == "用户专属回复"
+        service.get_poke_reply(group_id=987654321, user_id=1234567890) == "用户专属回复"
     )
     assert (
-        service.get_poke_reply(group_id=987654321, user_id=2345678901)
-        == "群专属回复"
+        service.get_poke_reply(group_id=987654321, user_id=2345678901) == "群专属回复"
     )
 
 
@@ -412,10 +405,7 @@ def test_group_manager_poke_hint_can_include_group_management_command() -> None:
         group_id=987654321,
         user_id=1,
         group_role="owner",
-    ) == (
-        "发送“/榜单显示 20”设置本群榜单默认显示名次。\n"
-        "发送“帮助”可查看全部指令。"
-    )
+    ) == ("发送“/榜单显示 20”设置本群榜单默认显示名次。\n发送“帮助”可查看全部指令。")
 
 
 def test_superuser_poke_hint_can_include_group_management_command() -> None:
@@ -428,6 +418,5 @@ def test_superuser_poke_hint_can_include_group_management_command() -> None:
     )
 
     assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
-        "发送“/榜单显示 20”设置本群榜单默认显示名次。\n"
-        "发送“帮助”可查看全部指令。"
+        "发送“/榜单显示 20”设置本群榜单默认显示名次。\n发送“帮助”可查看全部指令。"
     )

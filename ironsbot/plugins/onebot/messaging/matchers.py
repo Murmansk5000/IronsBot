@@ -27,6 +27,7 @@ from .push_subscription_handlers import handle_push_subscription_menu
 from .push_time_handlers import build_push_time_menu_handler
 
 if TYPE_CHECKING:
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.services.messaging.service import MessagingService
 
     from .push_time_handlers import RefreshPushTimeJobs
@@ -41,13 +42,16 @@ async def handle_message_command(
     event: PrivateMessageEvent | GroupMessageEvent,
     state: T_State,
     *,
-    messaging: MessagingService,
+    references: OneBotReferenceResolver,
 ) -> None:
     action = state[MESSAGE_ACTION_KEY]
     at_user_ids = (
         [
             *event_sender_at_user_ids(event),
-            *messaging._features.resolve_user_refs(action.at_user_ids),
+            *references.resolve_users(
+                action.at_user_ids,
+                location=f"messaging.commands.{action.id}.at_user_ids",
+            ),
         ]
         if isinstance(event, GroupMessageEvent)
         else []
@@ -76,6 +80,7 @@ def install(
     registry: MatcherRegistry,
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingService,
+    references: OneBotReferenceResolver,
     command_help_ids: tuple[str, ...],
 ) -> None:
     if command_help_ids:
@@ -90,13 +95,14 @@ def install(
             block=True,
         )
         command_matcher.append_handler(
-            bind_async(handle_message_command, messaging=messaging)
+            bind_async(
+                handle_message_command,
+                references=references,
+            )
         )
 
     subscription_matcher = registry.on_message(
-        policy=CommandPolicy.exempt(
-            "second-level subscription toggle conversation"
-        ),
+        policy=CommandPolicy.exempt("second-level subscription toggle conversation"),
         rule=Rule(bind(match_push_subscription_command, messaging=messaging))
         & explicit_command(),
         priority=_message_subscription_priority(registry),

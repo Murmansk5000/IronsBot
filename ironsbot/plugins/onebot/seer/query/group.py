@@ -12,7 +12,7 @@ from ironsbot.runtime.feature_policy import event_is_feature_allowed
 if TYPE_CHECKING:
     from nonebot.matcher import Matcher
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry

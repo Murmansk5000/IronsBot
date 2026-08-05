@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ironsbot.config.models.features import (
+    FeatureConfig,
+    build_onebot_feature_service,
+)
 from ironsbot.config.models.settings import Settings
-from ironsbot.core.features import Feature, FeatureConfig, FeatureService
+from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.help.menu import (
     entry_from_definition,
@@ -51,7 +55,7 @@ def _settings() -> Settings:
 def _rank_command_ids(event: MessageEvent) -> tuple[str, ...]:
     settings = _settings()
     definitions = build_test_plugin_registry(settings)
-    features = FeatureService(settings.features, settings.superuser_ids)
+    features = build_onebot_feature_service(settings.features, settings.superuser_ids)
     catalog = CommandCatalog()
     catalog.load(
         definitions,
@@ -85,9 +89,12 @@ def test_rank_help_command_visibility_role_snapshots() -> None:
     assert _rank_command_ids(group_message_event(user_id=1, group_id=4)) == (
         _REGULAR_RANK_COMMANDS
     )
-    assert _rank_command_ids(
-        group_message_event(user_id=2, group_id=4, sender={"role": "admin"})
-    ) == _GROUP_MANAGER_RANK_COMMANDS
+    assert (
+        _rank_command_ids(
+            group_message_event(user_id=2, group_id=4, sender={"role": "admin"})
+        )
+        == _GROUP_MANAGER_RANK_COMMANDS
+    )
     assert _rank_command_ids(group_message_event(user_id=3, group_id=4)) == (
         _SUPERUSER_RANK_COMMANDS
     )
@@ -97,7 +104,7 @@ def test_rank_help_command_visibility_role_snapshots() -> None:
 def test_rank_help_group_manager_detail_only_shows_group_setting() -> None:
     settings = _settings()
     definitions = build_test_plugin_registry(settings)
-    features = FeatureService(settings.features, settings.superuser_ids)
+    features = build_onebot_feature_service(settings.features, settings.superuser_ids)
     catalog = CommandCatalog()
     catalog.load(definitions, known_features={feature.value for feature in Feature})
     definition = next(

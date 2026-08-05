@@ -46,7 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.data import SeerDataAccess
 
 EXPECTED_COMMAND_ID = 45866
@@ -319,17 +319,14 @@ def test_watch_defaults_accept_resource_ids_and_seed_only_once(
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
     assert [
-        (item.skin_id, item.resource_id)
-        for item in service.watched_skins(_actor(1001))
+        (item.skin_id, item.resource_id) for item in service.watched_skins(_actor(1001))
     ] == [(101, 1_400_101)]
 
     assert service.clear_watched_skins(_actor(1001))
     assert service.watched_skins(_actor(1001)) == ()
 
     reset = service.reset_watched_skins(_actor(1001))
-    assert [(item.skin_id, item.resource_id) for item in reset] == [
-        (101, 1_400_101)
-    ]
+    assert [(item.skin_id, item.resource_id) for item in reset] == [(101, 1_400_101)]
 
 
 def test_watch_management_accepts_both_ids_and_names(tmp_path: Path) -> None:
@@ -519,16 +516,22 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
             feature="lucky_skin_window",
         )
     ]
-    assert OneBotLuckySkinWindowSubscriptionOptions(
-        service,
-        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options(ConversationRef(Platform.ONEBOT, "group", "1001")) == []
+    assert (
+        OneBotLuckySkinWindowSubscriptionOptions(
+            service,
+            PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+        ).subscription_options(ConversationRef(Platform.ONEBOT, "group", "1001"))
+        == []
+    )
 
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
-    assert OneBotLuckySkinWindowSubscriptionOptions(
-        service,
-        PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
-    ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001")) == []
+    assert (
+        OneBotLuckySkinWindowSubscriptionOptions(
+            service,
+            PushUnsubscribeStore(tmp_path / "qq_state.sqlite"),
+        ).subscription_options(ConversationRef(Platform.ONEBOT, "private", "1001"))
+        == []
+    )
 
 
 def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:
@@ -536,9 +539,7 @@ def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> No
 
     asyncio.run(service.check_for_actor(_actor(1001)))
 
-    assert sessions.opens == [
-        (90001, "owner-secret", "幸运橱窗")
-    ]
+    assert sessions.opens == [(90001, "owner-secret", "幸运橱窗")]
     assert len(game.calls) == 1
 
 
@@ -673,9 +674,7 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
 def test_cache_deletes_previous_days_at_the_first_new_day_lookup(
     tmp_path: Path,
 ) -> None:
-    cache = SqliteLuckySkinWindowCache(
-        tmp_path / "runtime_state.sqlite"
-    )
+    cache = SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite")
     cache.prepare_day(day="2026-08-02")
     cache.put_if_absent(
         player_id=90001,

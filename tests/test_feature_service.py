@@ -1,15 +1,31 @@
 import pytest
 from pydantic import ValidationError
 
+from ironsbot.config.models.features import (
+    FEATURE_BUNDLES,
+    FeatureConfig,
+    build_onebot_feature_service,
+)
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import (
-    FEATURE_BUNDLES,
     FEATURE_KEYS,
     SEER_FEATURES,
-    FeatureConfig,
-    FeatureService,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+
+_ACTOR = ActorRef(Platform.ONEBOT, "999")
+
+
+def _actor(user_id: int) -> ActorRef:
+    return ActorRef(Platform.ONEBOT, str(user_id))
+
+
+def _group(group_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _private(user_id: int) -> ConversationRef:
+    return ConversationRef(Platform.ONEBOT, "private", str(user_id))
 
 
 def test_feature_service_reads_feature_config() -> None:
@@ -20,16 +36,16 @@ def test_feature_service_reads_feature_config() -> None:
         user_policy={"owner": ["ai_chat"]},
         superuser_bypass=False,
     )
-    feature_service = FeatureService(feature_config, frozenset())
+    feature_service = build_onebot_feature_service(feature_config, frozenset())
 
-    assert feature_service.groups_for_feature("seer") == [123]
-    assert feature_service.users_for_feature("ai_chat") == [456]
-    assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
-    assert not feature_service.is_group_feature_allowed(999, 123, "text")
+    assert feature_service.conversations_for_feature("seer_pet") == [_group(123)]
+    assert feature_service.actors_for_feature("ai_chat") == [_actor(456)]
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "seer_pet")
+    assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "text")
 
 
 def test_platform_feature_references_do_not_cross_platforms() -> None:
-    feature_service = FeatureService(
+    feature_service = build_onebot_feature_service(
         FeatureConfig(
             group_policy={"123": ["seer"]},
             user_policy={"456": ["ai_chat"]},
@@ -55,7 +71,7 @@ def test_platform_feature_references_do_not_cross_platforms() -> None:
 
 
 def test_actor_feature_policy_applies_superuser_bypass_without_onebot_ids() -> None:
-    feature_service = FeatureService(
+    feature_service = build_onebot_feature_service(
         FeatureConfig(superuser_bypass=True),
         frozenset({456}),
     )
@@ -71,7 +87,7 @@ def test_actor_feature_policy_applies_superuser_bypass_without_onebot_ids() -> N
 
 
 def test_feature_service_blocks_configured_users_and_groups() -> None:
-    feature_service = FeatureService(
+    feature_service = build_onebot_feature_service(
         FeatureConfig(
             group_policy={"123": ["blacklist"]},
             user_policy={"456": ["blacklist"]},
@@ -102,13 +118,17 @@ def test_feature_service_reads_query_bundle() -> None:
         group_policy={"main": ["query"]},
         superuser_bypass=False,
     )
-    feature_service = FeatureService(feature_config, frozenset())
+    feature_service = build_onebot_feature_service(feature_config, frozenset())
 
-    assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
-    assert feature_service.is_group_feature_allowed(999, 123, "seer_rank")
-    assert feature_service.is_group_feature_allowed(999, 123, "bili_query")
-    assert feature_service.is_group_feature_allowed(999, 123, "seer_activity_query")
-    assert not feature_service.is_group_feature_allowed(999, 123, "text")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "seer_pet")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "seer_rank")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "bili_query")
+    assert feature_service.is_feature_allowed(
+        _ACTOR,
+        _group(123),
+        "seer_activity_query",
+    )
+    assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "text")
 
 
 def test_seer_activity_is_the_only_activity_feature_bundle() -> None:
@@ -129,13 +149,13 @@ def test_feature_service_expands_configured_bundles() -> None:
         group_policy={"main": ["standard"]},
         superuser_bypass=False,
     )
-    feature_service = FeatureService(feature_config, frozenset())
+    feature_service = build_onebot_feature_service(feature_config, frozenset())
 
-    assert feature_service.is_group_feature_allowed(999, 123, "seer_player")
-    assert feature_service.is_group_feature_allowed(999, 123, "seer_rank")
-    assert feature_service.is_group_feature_allowed(999, 123, "image")
-    assert feature_service.is_group_feature_allowed(999, 123, "bili_query")
-    assert not feature_service.is_group_feature_allowed(999, 123, "bili_push")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "seer_player")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "seer_rank")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "image")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "bili_query")
+    assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "bili_push")
 
 
 def test_message_action_features_are_registered_for_bundles_and_policies() -> None:
@@ -145,22 +165,22 @@ def test_message_action_features_are_registered_for_bundles_and_policies() -> No
         group_policy={"main": ["custom_links"]},
         superuser_bypass=False,
     )
-    feature_service = FeatureService(
+    feature_service = build_onebot_feature_service(
         feature_config,
         frozenset(),
         command_features=frozenset({"seerinfo_link"}),
     )
 
-    assert feature_service.is_group_feature_allowed(
-        999,
-        123,
+    assert feature_service.is_feature_allowed(
+        _ACTOR,
+        _group(123),
         "seerinfo_link",
     )
 
 
 @pytest.mark.parametrize("bundle", ["all", "text", "message"])
 def test_command_features_join_relevant_builtin_bundles(bundle: str) -> None:
-    feature_service = FeatureService(
+    feature_service = build_onebot_feature_service(
         FeatureConfig(
             group_policy={"123": [bundle]},
             superuser_bypass=False,
@@ -169,12 +189,12 @@ def test_command_features_join_relevant_builtin_bundles(bundle: str) -> None:
         command_features=frozenset({"custom_reply"}),
     )
 
-    assert feature_service.is_group_feature_allowed(999, 123, "custom_reply")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "custom_reply")
 
 
 @pytest.mark.parametrize("bundle", ["all", "text_push", "message"])
 def test_schedule_features_join_relevant_builtin_bundles(bundle: str) -> None:
-    feature_service = FeatureService(
+    feature_service = build_onebot_feature_service(
         FeatureConfig(
             user_policy={"123": [bundle]},
             superuser_bypass=False,
@@ -183,7 +203,11 @@ def test_schedule_features_join_relevant_builtin_bundles(bundle: str) -> None:
         schedule_features=frozenset({"custom_reminder"}),
     )
 
-    assert feature_service.is_private_feature_allowed(123, "custom_reminder")
+    assert feature_service.is_feature_allowed(
+        _actor(123),
+        _private(123),
+        "custom_reminder",
+    )
 
 
 def test_message_action_feature_cannot_reuse_bundle_name() -> None:
@@ -191,7 +215,7 @@ def test_message_action_feature_cannot_reuse_bundle_name() -> None:
         ValueError,
         match="messaging action feature cannot use registered bundle",
     ):
-        FeatureService(
+        build_onebot_feature_service(
             FeatureConfig(),
             frozenset(),
             command_features=frozenset({"query"}),
@@ -203,7 +227,7 @@ def test_custom_bundle_cannot_replace_message_action_feature() -> None:
         ValueError,
         match="cannot replace registered feature",
     ):
-        FeatureService(
+        build_onebot_feature_service(
             FeatureConfig(bundles={"custom_reply": ["text"]}),
             frozenset(),
             command_features=frozenset({"custom_reply"}),
@@ -237,10 +261,10 @@ def test_seer_bundle_enables_all_seer_subfeatures() -> None:
         group_policy={"main": ["seer"]},
         superuser_bypass=False,
     )
-    feature_service = FeatureService(feature_config, frozenset())
+    feature_service = build_onebot_feature_service(feature_config, frozenset())
 
     for feature in SEER_FEATURES:
-        assert feature_service.is_group_feature_allowed(999, 123, feature)
+        assert feature_service.is_feature_allowed(_ACTOR, _group(123), feature)
 
 
 def test_all_feature_bundle_does_not_include_admin_notice() -> None:
@@ -252,23 +276,23 @@ def test_all_feature_bundle_does_not_include_admin_notice() -> None:
         group_policy={"main": ["all"]},
         superuser_bypass=False,
     )
-    feature_service = FeatureService(feature_config, frozenset())
+    feature_service = build_onebot_feature_service(feature_config, frozenset())
 
-    assert feature_service.is_group_feature_allowed(999, 123, "seer_pet")
-    assert feature_service.is_group_feature_allowed(999, 123, "fire_manual_ad")
-    assert feature_service.is_group_feature_allowed(
-        999,
-        123,
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "seer_pet")
+    assert feature_service.is_feature_allowed(_ACTOR, _group(123), "fire_manual_ad")
+    assert feature_service.is_feature_allowed(
+        _ACTOR,
+        _group(123),
         "player_lineup_private",
     )
-    assert not feature_service.is_group_feature_allowed(999, 123, "admin_notice")
-    assert not feature_service.is_group_feature_allowed(999, 123, "blacklist")
-    assert feature_service.groups_for_feature("seer_pet") == [123]
-    assert feature_service.groups_for_feature("admin_notice") == []
+    assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "admin_notice")
+    assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "blacklist")
+    assert feature_service.conversations_for_feature("seer_pet") == [_group(123)]
+    assert feature_service.conversations_for_feature("admin_notice") == []
 
 
 def test_all_bundle_accepts_declared_custom_feature_but_not_blacklist() -> None:
-    feature_service = FeatureService(
+    feature_service = build_onebot_feature_service(
         FeatureConfig(
             bundles={"all": ["private_extension_action"]},
             group_policy={"123": ["all"]},
@@ -277,18 +301,18 @@ def test_all_bundle_accepts_declared_custom_feature_but_not_blacklist() -> None:
         frozenset(),
     )
 
-    assert feature_service.is_group_feature_allowed(
-        999,
-        123,
+    assert feature_service.is_feature_allowed(
+        _ACTOR,
+        _group(123),
         "private_extension_action",
     )
-    assert not feature_service.is_group_feature_allowed(999, 123, "blacklist")
+    assert not feature_service.is_feature_allowed(_ACTOR, _group(123), "blacklist")
 
 
 @pytest.mark.parametrize("feature", ["admin_notice", "blacklist"])
 def test_all_bundle_rejects_protected_feature(feature: str) -> None:
     with pytest.raises(ValueError, match="must not include protected feature"):
-        FeatureService(
+        build_onebot_feature_service(
             FeatureConfig(bundles={"all": [feature]}),
             frozenset(),
         )

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
         MessageConfig,
         MessageReplyAction,
     )
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.scheduled_delivery import (
         ScheduledMessageSender,
@@ -41,6 +41,7 @@ if TYPE_CHECKING:
         PushSubscriptionRepository,
         PushTimePreferenceIdentity,
     )
+    from ironsbot.services.messaging.targets import MessageScheduleTargets
     from ironsbot.services.operations.scheduler import Scheduler
 
     from .push_time import PushTimeOption
@@ -60,6 +61,7 @@ class MessagingService:
     _store: PushSubscriptionRepository
     _features: FeatureService
     _schedule_sender: ScheduledMessageSender
+    _schedule_targets: MessageScheduleTargets
     _extra_push_options: tuple[
         Callable[[ConversationRef], list[PushSubscriptionOption]],
         ...,
@@ -73,6 +75,14 @@ class MessagingService:
         """Expose the policy dependency needed by transport-side role checks."""
 
         return self._features
+
+    def schedule_mentions(
+        self,
+        index: int,
+    ) -> tuple[ActorRef, ...]:
+        """Return precompiled mentions for one configured schedule."""
+
+        return self._schedule_targets.mentions_for(index)
 
     def match_action(
         self,
@@ -263,10 +273,7 @@ class MessagingService:
                 }
                 for feature in feature_keys
             }
-        return {
-            feature: set()
-            for feature in feature_keys
-        }
+        return {feature: set() for feature in feature_keys}
 
     def _builtin_subscription_options(
         self,
@@ -312,8 +319,7 @@ class MessagingService:
         ] = {}
         for conversation in self._store.preference_conversations():
             valid_unsubscriptions[conversation] = {
-                option.key
-                for option in self.subscription_options(conversation)
+                option.key for option in self.subscription_options(conversation)
             }
             valid_times[conversation] = {
                 (option.key, option.preference_type)

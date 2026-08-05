@@ -27,7 +27,8 @@ if TYPE_CHECKING:
     from nonebot.adapters import Event
 
     from ironsbot.config.models.messaging import MessageConfig
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.runtime.matchers import MatcherRegistry
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.service import MessagingService
@@ -166,10 +167,11 @@ def _schedule_label(
     return f"{title}（{timing}）"
 
 
-def _install(
+def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
     registry: MatcherRegistry,
     *,
     messaging: MessagingService,
+    references: OneBotReferenceResolver,
     activity_service: ActivityService,
     scheduler: Scheduler,
     command_help_ids: tuple[str, ...],
@@ -185,14 +187,16 @@ def _install(
         registry,
         refresh_push_time_jobs=refresh_push_time_jobs,
         messaging=messaging,
+        references=references,
         command_help_ids=command_help_ids,
     )
 
 
-def plugin_contribution(
+def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
     *,
     config: MessageConfig,
     features: FeatureService,
+    references: OneBotReferenceResolver,
     service: MessagingService,
     activity_service: ActivityService,
     scheduler: Scheduler,
@@ -222,6 +226,7 @@ def plugin_contribution(
         install=partial(
             _install,
             messaging=service,
+            references=references,
             activity_service=activity_service,
             scheduler=scheduler,
             command_help_ids=tuple(
@@ -240,6 +245,7 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             config=context.settings.messaging,
             features=context.resources.features,
+            references=context.settings.onebot_references,
             service=context.resources.messaging,
             activity_service=context.resources.activity,
             scheduler=context.scheduler,

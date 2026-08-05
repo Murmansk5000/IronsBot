@@ -52,7 +52,7 @@ from .player_detail_conversation import (
 from .player_target import event_player_reference_lookup, resolve_player_target
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import FeatureService
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.player_service import PlayerService
 
 
@@ -66,6 +66,7 @@ class PlayerCommandDependencies:
     player_accounts: PlayerAccountRegistry = field(
         default_factory=lambda: PlayerAccountRegistry(())
     )
+
 
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
@@ -376,7 +377,5 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
-    query_matcher.append_handler(
-        bind_async(validate_player_id, dependencies)
-    )
+    query_matcher.append_handler(bind_async(validate_player_id, dependencies))
     query_matcher.append_handler(bind_async(handle_player, dependencies))
