@@ -108,6 +108,13 @@ contract. When a responsibility needs an authority, name the narrow authority
 from the table rather than saying that a plugin, manifest, or contribution
 object owns everything.
 
+**Verified baseline (2026-08):** the production Python packages contain no
+`PluginDefinition` implementation or import. The name is retained only in
+historical/architecture prose and in the architecture guard's retired-name
+check. A branch that reintroduces it, or a document that calls it the current
+installation contract, is stale and must be resolved toward the contract table
+above rather than merged as an alternative design.
+
 ### Current Command-Contract Bridge
 
 `CommandDescriptor` is the current code carrier for part of the target
