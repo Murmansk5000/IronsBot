@@ -17,7 +17,6 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.message_input import message_input_context
-from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import member_target_command
 from ironsbot.runtime.semantic_requests import (
@@ -25,6 +24,9 @@ from ironsbot.runtime.semantic_requests import (
     SemanticRequestSource,
 )
 from ironsbot.services.operations.request_feedback import request_feedback_scope
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_shortcuts import (
     PlayerShortcutCommand,
@@ -251,10 +253,13 @@ async def handle_player_extension_shortcut(
         )
 
     with request_feedback_scope(command.action.action.label, send_status):
+        message = message_input_context(event).message
         reply = await command.action.query(
-            command.player_id,
-            event.user_id,
-            event_group_id(event),
+            PlayerDetailActionRequest(
+                player_id=command.player_id,
+                actor=message.actor,
+                conversation=message.conversation,
+            )
         )
     await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
 

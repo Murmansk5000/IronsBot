@@ -10,9 +10,19 @@ from typing import TYPE_CHECKING
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.core.semantic_requests import ActionDefinition
 
-PlayerDetailActionQuery = Callable[[int, int, int | None], Awaitable[QueryReply]]
+@dataclass(frozen=True, slots=True)
+class PlayerDetailActionRequest:
+    """Validated player target and platform context for an extension action."""
+
+    player_id: int
+    actor: ActorRef
+    conversation: ConversationRef
+
+
+PlayerDetailActionQuery = Callable[[PlayerDetailActionRequest], Awaitable[QueryReply]]
 _BUILTIN_ALIASES = frozenset({"收集", "巅峰", "群星牌"})
 
 
