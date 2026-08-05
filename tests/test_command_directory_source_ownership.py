@@ -7,9 +7,6 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
 )
-from ironsbot.plugins.onebot.operations.docker_update import (
-    command_descriptors as docker_update_commands,
-)
 from ironsbot.runtime.commands import CommandContext, CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
@@ -27,6 +24,7 @@ from ironsbot.services.operations.data_sync_commands import (
     MANUAL_SYNC_COMMANDS,
     data_sync_command_descriptors,
 )
+from ironsbot.services.operations.docker_commands import docker_command_descriptors
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_descriptors,
 )
@@ -71,7 +69,7 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
 
 def test_operation_examples_use_matcher_command_sources() -> None:
     status = _by_id(server_status_command_descriptors())
-    docker = _by_id(docker_update_commands())
+    docker = _by_id(docker_command_descriptors())
     sync = _by_id(data_sync_command_descriptors())
 
     assert status["server_status.query"].examples == (NORMAL_SERVER_STATUS_COMMAND,)

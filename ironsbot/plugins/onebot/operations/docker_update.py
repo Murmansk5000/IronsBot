@@ -16,11 +16,6 @@ from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.commands import (
-    CommandAccess,
-    CommandDescriptor,
-    commands_from_rows,
-)
 from ironsbot.runtime.plugins import (
     HelpEntry,
     PluginContribution,
@@ -32,6 +27,7 @@ from ironsbot.services.operations.command_text import (
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
 )
+from ironsbot.services.operations.docker_commands import docker_command_descriptors
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
@@ -51,34 +47,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def command_descriptors() -> tuple[CommandDescriptor, ...]:
-    return commands_from_rows(
-        "docker_update",
-        "超级管理员",
-        None,
-        (
-            (
-                "docker_update.restart",
-                BOT_RESTART_COMMANDS,
-                "重启机器人进程",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-            (
-                "docker_update.image_update",
-                DOCKER_UPDATE_COMMANDS,
-                "检查镜像并重启机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-            (
-                "docker_update.image_check",
-                DOCKER_CHECK_UPDATE_COMMANDS,
-                "只检查远端镜像，不拉取或重启机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-        ),
-    )
 
 
 def _help_visible(event: Event, *, features: FeatureService) -> bool:
@@ -171,7 +139,7 @@ def plugin_contribution(
             order=10,
             visible=partial(_help_visible, features=features),
         ),
-        commands=command_descriptors(),
+        commands=docker_command_descriptors(),
         install=partial(_install, service=service),
         hooks=PluginHooks(
             startup=(
