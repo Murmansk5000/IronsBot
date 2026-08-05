@@ -385,6 +385,10 @@ enabled = true
 #   "点击链接加入战队审核群：https://example.com/team-review",
 #   "战队审核群号：123456789",
 # ]
+# 部署时请按本群实际报名和审核流程修改示例消息；不要公开私人群邀请或凭据。
+messages = [
+    "想加入战队，请向本群管理员咨询报名和审核方式。",
+]
 
 [ai.intent_actions.fire_manual]
 # Default: true; EN: Enable Fire manual intent. ZH: 是否启用火火手册意图。
