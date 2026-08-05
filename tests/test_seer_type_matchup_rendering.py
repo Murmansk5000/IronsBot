@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
+from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
 from ironsbot.services.seer.rendering.type_matchup import (
     TypeMatchupAssets,
     present_type_matchup,
@@ -50,9 +51,7 @@ def _combination(id_: int, name: str) -> TypeCombinationSnapshot:
 
 def _matchup(*, custom: bool = False) -> TypeMatchup:
     target = (
-        TypeCombinationSnapshot(-1, "草水", 1, 2)
-        if custom
-        else _combination(1, "草")
+        TypeCombinationSnapshot(-1, "草水", 1, 2) if custom else _combination(1, "草")
     )
     return TypeMatchup(
         target=target,
@@ -80,17 +79,19 @@ def test_type_matchup_presentation_is_pure_and_orders_multipliers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_type_matchup_render_adapter_skips_assets_on_final_cache_hit() -> None:
+async def test_type_matchup_adapter_loads_assets_before_final_cache_lookup() -> None:
     cache = _Cache(b"cached")
+    images = _Images()
 
     result = await render_type_matchup(
         cast("RenderCache", cache),
-        cast("SeerImageSource", _Images()),
+        cast("SeerImageSource", images),
         cast("HtmlTemplateRenderer", _unexpected_render),
         _matchup(),
     )
 
     assert result == b"cached"
+    assert images.requests
 
 
 @pytest.mark.asyncio
@@ -118,7 +119,22 @@ async def test_type_matchup_render_adapter_loads_custom_target_assets() -> None:
         ("element_type", "4"),
     ]
     assert captured["templates"]["type_icon_secondary"] is not None
-    assert cache.writes == [("type_matchup", "grass-water", b"rendered")]
+    expected_document = present_type_matchup(
+        _matchup(custom=True),
+        TypeMatchupAssets(
+            icons=(
+                (1, "data:image/png;base64,ZWxlbWVudF90eXBlOjE="),
+                (2, "data:image/png;base64,ZWxlbWVudF90eXBlOjI="),
+                (3, "data:image/png;base64,ZWxlbWVudF90eXBlOjM="),
+                (4, "data:image/png;base64,ZWxlbWVudF90eXBlOjQ="),
+            ),
+            target_icon="data:image/png;base64,ZWxlbWVudF90eXBlOjE=",
+            target_icon_secondary="data:image/png;base64,ZWxlbWVudF90eXBlOjI=",
+        ),
+    )
+    assert cache.writes == [
+        ("type_matchup", render_document_cache_key(expected_document), b"rendered")
+    ]
 
 
 async def _unexpected_render(**_kwargs: object) -> bytes:

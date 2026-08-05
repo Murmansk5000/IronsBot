@@ -8,14 +8,15 @@ import pytest
 from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
     render_peak_pet_rank,
 )
+from ironsbot.services.seer.images import to_data_uri
 from ironsbot.services.seer.peak import (
     PeakPetBanSnapshot,
     PeakPetPickSnapshot,
     PeakPetRankRenderInput,
     PeakPetSnapshot,
 )
+from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
 from ironsbot.services.seer.rendering.peak_pet_rank import (
-    peak_pet_rank_cache_key,
     present_peak_pet_rank,
 )
 from ironsbot.services.seer.rendering.pet_image_assets import PetImageAssets
@@ -65,6 +66,10 @@ def _input() -> PeakPetRankRenderInput:
     )
 
 
+def _asset_uri(kind: str, key: str) -> str:
+    return to_data_uri(f"{kind}:{key}".encode())
+
+
 def test_peak_pet_rank_presentation_uses_prepared_assets() -> None:
     document = present_peak_pet_rank(
         _input(),
@@ -81,7 +86,7 @@ def test_peak_pet_rank_presentation_uses_prepared_assets() -> None:
     assert document.ban_ranks[1].type_icon == ""
 
 
-def test_peak_pet_rank_cache_key_changes_with_rendered_data() -> None:
+def test_peak_pet_rank_document_key_changes_with_rendered_data() -> None:
     original = _input()
     changed = PeakPetRankRenderInput(
         title=original.title,
@@ -90,19 +95,27 @@ def test_peak_pet_rank_cache_key_changes_with_rendered_data() -> None:
         pets=original.pets,
     )
 
-    assert peak_pet_rank_cache_key(original) != peak_pet_rank_cache_key(changed)
+    assets = PetImageAssets(
+        pet_heads=((70, "rei"), (71, "gaiya")),
+        type_icons=((1, "electric"), (2, "fight")),
+    )
+    assert render_document_cache_key(
+        present_peak_pet_rank(original, assets)
+    ) != render_document_cache_key(present_peak_pet_rank(changed, assets))
 
 
 @pytest.mark.asyncio
-async def test_peak_pet_rank_adapter_skips_assets_on_final_cache_hit() -> None:
+async def test_peak_pet_rank_adapter_loads_assets_before_final_cache_lookup() -> None:
+    images = _Images()
     result = await render_peak_pet_rank(
         cast("RenderCache", _Cache(b"cached")),
-        cast("SeerImageSource", _Images()),
+        cast("SeerImageSource", images),
         cast("HtmlTemplateRenderer", _unexpected_render),
         _input(),
     )
 
     assert result == b"cached"
+    assert images.requests
 
 
 @pytest.mark.asyncio
@@ -130,8 +143,21 @@ async def test_peak_pet_rank_adapter_deduplicates_assets_and_writes_cache() -> N
         ("element_type", "2"),
     ]
     assert captured["templates"]["title"] == "竞技精灵总榜"
+    expected_document = present_peak_pet_rank(
+        _input(),
+        PetImageAssets(
+            pet_heads=(
+                (70, _asset_uri("pet_head", "70")),
+                (71, _asset_uri("pet_head", "71")),
+            ),
+            type_icons=(
+                (1, _asset_uri("element_type", "1")),
+                (2, _asset_uri("element_type", "2")),
+            ),
+        ),
+    )
     assert cache.writes == [
-        ("peak_pet_rank", peak_pet_rank_cache_key(_input()), b"rendered")
+        ("peak_pet_rank", render_document_cache_key(expected_document), b"rendered")
     ]
 
 

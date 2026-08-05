@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
@@ -67,20 +66,6 @@ class PeakPetRankRenderDocument:
                 "ban_ranks": self.ban_ranks,
             },
         )
-
-
-def peak_pet_rank_cache_key(input_: PeakPetRankRenderInput) -> str:
-    """Fingerprint every domain field that changes a pet-rank image."""
-    values = (
-        input_.title,
-        tuple((item.id, item.count, item.win) for item in input_.pick_items),
-        tuple((item.id, item.name, item.score) for item in input_.ban_items),
-        tuple(
-            (pet.id, pet.name, pet.resource_id, pet.type_id)
-            for pet in input_.pets
-        ),
-    )
-    return hashlib.sha256(repr(values).encode()).hexdigest()
 
 
 def present_peak_pet_rank(

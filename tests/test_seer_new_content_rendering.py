@@ -9,8 +9,13 @@ import pytest
 from ironsbot.integrations.seer_data import (
     new_content_renderer as new_content_rendering,
 )
+from ironsbot.integrations.seer_data import new_content_snapshot
 from ironsbot.integrations.seer_data.new_content_renderer import (
     render_new_content_menu,
+)
+from ironsbot.integrations.seer_data.new_content_snapshot import (
+    NewContentPreparedItem,
+    NewContentSnapshotBuilder,
 )
 from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
 from ironsbot.services.seer.new_content import (
@@ -21,6 +26,9 @@ from ironsbot.services.seer.new_content import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
+
+    from ironsbot.services.seer.autocard import AutocardService
+    from ironsbot.services.seer.data import SeerDataAccess
 
 
 class _Cache:
@@ -146,6 +154,17 @@ def _attributes() -> SimpleNamespace:
     return attributes
 
 
+def _prepared(
+    data: Any,
+    item: NewContentItem,
+    autocard: Any | None = None,
+) -> NewContentPreparedItem:
+    return NewContentSnapshotBuilder(
+        cast("SeerDataAccess", data),
+        cast("AutocardService", autocard or _Autocard()),
+    ).prepare_item(item)
+
+
 @pytest.mark.asyncio
 async def test_render_new_content_menu_uses_category_specific_thumbnails(
     monkeypatch: pytest.MonkeyPatch,
@@ -166,7 +185,7 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
 
     images = _Images()
     monkeypatch.setattr(
-        new_content_rendering,
+        new_content_snapshot,
         "load_skin_image_resolutions",
         lambda _session, _skin_ids: {
             856: SimpleNamespace(head_resource_id=1856),
@@ -265,6 +284,64 @@ async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> 
     assert item_row.image is None
 
 
+@pytest.mark.asyncio
+async def test_new_content_closes_data_context_before_fetching_assets() -> None:
+    attributes = _attributes()
+    pet = SimpleNamespace(
+        id=4926,
+        type=SimpleNamespace(id=3, name="水"),
+        gender=SimpleNamespace(id=1, name="雄"),
+        encyclopedia=SimpleNamespace(introduction="官方精灵简介"),
+        base_stats=SimpleNamespace(to_model=lambda: attributes),
+    )
+
+    class _TrackedData(_RichData):
+        active_contexts = 0
+
+        @contextmanager
+        def get(self, getter: object, entity_id: int) -> Iterator[object | None]:
+            self.active_contexts += 1
+            try:
+                with super().get(getter, entity_id) as result:
+                    yield result
+            finally:
+                self.active_contexts -= 1
+
+    data = _TrackedData({(_RichData.pet, 4926): pet})
+
+    class _IdleOnlyImages(_Images):
+        async def fetch(
+            self,
+            kind: str,
+            key: str,
+            *,
+            fallback: bool = True,
+        ) -> bytes:
+            assert data.active_contexts == 0
+            return await super().fetch(kind, key, fallback=fallback)
+
+    async def render_html(*_args: object, **_kwargs: object) -> bytes:
+        return b"menu-image"
+
+    result = await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        data,  # type: ignore[arg-type]
+        _IdleOnlyImages(),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,  # type: ignore[arg-type]
+        NewContentSnapshot(
+            baseline_established=True,
+            config_version="20260803",
+            weekly_cycle="2026-08-03",
+            items=(_item("pet", 4926, resource_id=4926),),
+        ),
+        ("pet",),
+        "pet",
+    )
+
+    assert result == b"menu-image"
+
+
 def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
     water_type_id = 3
     attributes = _attributes()
@@ -277,11 +354,7 @@ def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
     )
     data = _RichData({(_RichData.pet, 4926): pet})
 
-    details = new_content_rendering._item_details(
-        data,  # type: ignore[arg-type]
-        _Autocard(),  # type: ignore[arg-type]
-        _item("pet", 4926),
-    )
+    details = _prepared(data, _item("pet", 4926)).details
 
     assert details.metadata == "ID: 4926"
     assert details.description == "官方精灵简介"
@@ -324,9 +397,8 @@ def test_skill_menu_details_match_pet_skill_fields() -> None:
         },
         skills={10001: skill},
     )
-    details = new_content_rendering._item_details(
-        data,  # type: ignore[arg-type]
-        _Autocard(),  # type: ignore[arg-type]
+    details = _prepared(
+        data,
         _item(
             "skill",
             10001,
@@ -341,7 +413,7 @@ def test_skill_menu_details_match_pet_skill_fields() -> None:
             info="测试技能效果",
             pets=[{"id": 70, "name": "雷伊"}],
         ),
-    )
+    ).details
 
     assert details.metadata == ""
     assert details.type_id == electric_type_id
@@ -378,15 +450,14 @@ def test_skill_menu_details_format_official_rich_text() -> None:
     )
     data = _RichData({}, skills={10001: skill})
 
-    details = new_content_rendering._item_details(
-        data,  # type: ignore[arg-type]
-        _Autocard(),  # type: ignore[arg-type]
+    details = _prepared(
+        data,
         _item(
             "skill",
             10001,
             info="[sprite name=iconHit]技能说明",
         ),
-    )
+    ).details
 
     assert details.skill is not None
     effect_text = details.skill["effects"][0]["info"]
@@ -413,16 +484,8 @@ def test_suit_and_equip_menu_details_prefer_official_descriptions() -> None:
         }
     )
 
-    suit_details = new_content_rendering._item_details(
-        data,  # type: ignore[arg-type]
-        _Autocard(),  # type: ignore[arg-type]
-        _item("suit", 447),
-    )
-    equip_details = new_content_rendering._item_details(
-        data,  # type: ignore[arg-type]
-        _Autocard(),  # type: ignore[arg-type]
-        _item("equip", 333),
-    )
+    suit_details = _prepared(data, _item("suit", 447)).details
+    equip_details = _prepared(data, _item("equip", 333)).details
 
     assert suit_details.description == ""
     assert suit_details.side_title == "套装效果"
@@ -443,11 +506,11 @@ def test_autocard_menu_details_keep_intro_left_and_skills_right() -> None:
         skill_text="造成 3 点伤害。",
         skill_upgrade="伤害提升至 5 点。",
     )
-    details = new_content_rendering._item_details(
+    details = _prepared(
         _Data(),  # type: ignore[arg-type]
-        _Autocard({("role", 8): role}),  # type: ignore[arg-type]
         _item("autocard_role", 8),
-    )
+        _Autocard({("role", 8): role}),
+    ).details
 
     assert details.metadata == "ID：8｜角色"
     assert details.description == role.description
@@ -467,20 +530,28 @@ async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
     )
     autocard = _Autocard({("card", 98): card})
 
-    pet_image = await new_content_rendering._sanctuary_item_image(
-        images,  # type: ignore[arg-type]
-        autocard,  # type: ignore[arg-type]
+    pet_request = _prepared(
+        _Data(),
         _item("autocard_sanctuary_effect", 1, sanctuary_pet_id=70),
-    )
-    card_image = await new_content_rendering._sanctuary_item_image(
-        images,  # type: ignore[arg-type]
-        autocard,  # type: ignore[arg-type]
+        autocard,
+    ).asset
+    card_request = _prepared(
+        _Data(),
         _item(
             "autocard_sanctuary_effect",
             2,
             target_type="card",
             target_id=98,
         ),
+        autocard,
+    ).asset
+    pet_image = await new_content_rendering._asset_data_uri(
+        images,  # type: ignore[arg-type]
+        pet_request,
+    )
+    card_image = await new_content_rendering._asset_data_uri(
+        images,  # type: ignore[arg-type]
+        card_request,
     )
 
     assert pet_image is not None
