@@ -11,6 +11,7 @@ CACHED_PAGE_LOOKUP_INDEX = 123
 CACHED_PAGE_LOOKUP_SCORE = 977
 OVERLAP_LOOKUP_INDEX = 14
 OVERLAP_NEW_USER_ID = 2000
+MISS_SEARCH_LIMIT = 2_000
 
 
 @dataclass(frozen=True)
@@ -96,7 +97,12 @@ def test_rank_page_cache_uses_player_rank_fact_schema(
             )
         }
 
-    assert {"rank_players", "rank_pages", "player_rank_facts"} <= tables
+    assert {
+        "rank_players",
+        "rank_pages",
+        "player_rank_facts",
+        "player_rank_misses",
+    } <= tables
     assert "pages" not in tables
     assert "items" not in tables
 
@@ -196,3 +202,32 @@ def test_cached_rank_item_by_index_reads_containing_page(
     assert cached.rank_index == CACHED_PAGE_LOOKUP_INDEX
     assert cached.score == CACHED_PAGE_LOOKUP_SCORE
     assert cached.fetched_at == FETCHED_AT
+
+
+def test_rank_miss_cache_requires_the_requested_search_coverage(
+    tmp_path: Path,
+) -> None:
+    cache = build_cache(tmp_path / "rank_page_cache.sqlite")
+    cache.save_miss(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        searched_limit=MISS_SEARCH_LIMIT,
+        fetched_at=FETCHED_AT,
+    )
+
+    cached = cache.miss(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        minimum_limit=MISS_SEARCH_LIMIT,
+    )
+
+    assert cached is not None
+    assert cached.searched_limit == MISS_SEARCH_LIMIT
+    assert cache.miss(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        minimum_limit=MISS_SEARCH_LIMIT + 1,
+    ) is None

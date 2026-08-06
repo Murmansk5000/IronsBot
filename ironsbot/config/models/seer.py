@@ -181,10 +181,24 @@ class PlayerQueryLimitsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    bound_default_daily_limit: int = Field(default=10, ge=0)
-    other_target_action_daily_limit: int = Field(default=1, ge=0)
-    unbound_daily_limit: int = Field(default=1, ge=0)
+    bound_default_daily_limit: int = Field(default=60, ge=0)
+    bound_other_daily_limit: int = Field(default=60, ge=0)
+    unbound_daily_limit: int = Field(default=30, ge=0)
     superuser_bypass: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_other_target_limit(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        legacy = value.get("other_target_action_daily_limit")
+        if legacy is None or "bound_other_daily_limit" in value:
+            return value
+        return {
+            key: item
+            for key, item in value.items()
+            if key != "other_target_action_daily_limit"
+        } | {"bound_other_daily_limit": legacy}
 
 
 class PlayerRequestProtectionConfig(BaseModel):
