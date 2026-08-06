@@ -3,11 +3,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
-
+from ironsbot.core.onebot_group_identity import (
+    format_group_label,
+    resolve_group_name,
+)
 from ironsbot.runtime.commands import CommandContext
 from ironsbot.runtime.message_input import message_input_context
+
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 
 NOTICE_MESSAGE_MAX_CHARS = 300
 
@@ -45,8 +49,10 @@ async def build_notice_source(
         lines = ["会话：私聊"]
     else:
         group_id = int(group_id)
-        group_name = await _group_name(bot, group_id)
-        group_label = f"{group_name}（{group_id}）" if group_name else str(group_id)
+        group_label = format_group_label(
+            group_id,
+            await resolve_group_name(bot, group_id),
+        )
         lines = [f"群：{group_label}"]
 
     sender = getattr(event, "sender", None)
@@ -67,17 +73,3 @@ async def build_notice_source(
         text = text[:NOTICE_MESSAGE_MAX_CHARS].rstrip() + "..."
     lines.append(f"消息：{text or '（空）'}")
     return "\n".join(lines)
-
-
-async def _group_name(bot: Bot | None, group_id: int) -> str:
-    if bot is None:
-        return ""
-    try:
-        info = await bot.get_group_info(group_id=group_id, no_cache=False)
-    except Exception:  # noqa: BLE001
-        return ""
-    return str(
-        info.get("group_name", "")
-        if isinstance(info, dict)
-        else getattr(info, "group_name", "")
-    ).strip()
