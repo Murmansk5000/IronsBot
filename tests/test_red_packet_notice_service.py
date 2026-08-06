@@ -103,7 +103,11 @@ def test_red_packet_notice_uses_admin_notice_delivery(
     bot = cast("Bot", object())
     calls: list[dict[str, Any]] = []
 
-    async def fake_get_group_name(_bot: object, _group_id: int) -> str:
+    async def fake_resolve_group_name(
+        _bot: object,
+        _group_id: int,
+        **_kwargs: object,
+    ) -> str:
         return "示例群"
 
     async def fake_send_admin_notice(
@@ -128,8 +132,8 @@ def test_red_packet_notice_uses_admin_notice_delivery(
 
     monkeypatch.setattr(
         red_packet_notice_plugin,
-        "_get_group_name",
-        fake_get_group_name,
+        "resolve_group_name",
+        fake_resolve_group_name,
     )
     monkeypatch.setattr(
         AdminNoticeService,
