@@ -238,6 +238,7 @@ async def _handle_player_query_result(
                 replacement=result.binding_replacement,
             ),
         )
+        return
     await _send_pending_player_query(
         dependencies,
         matcher,

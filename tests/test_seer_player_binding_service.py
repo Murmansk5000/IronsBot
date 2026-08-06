@@ -52,7 +52,7 @@ def test_player_binding_offer_only_displays_short_reply_choices() -> None:
 
     assert "已查到米米号：123456（测试玩家）" in message
     assert "回复“是”或“y”确认，回复“否”或“n”跳过。" in message
-    assert "实时数据的每日额度可从 1 次提升至 10 次" in message
+    assert "每日无头查询额度可从 1 项提升至 10 项" in message
     assert "yes" not in message
     assert "no" not in message
     assert "确认 / 确定" not in message
@@ -66,7 +66,7 @@ def test_player_binding_offer_omits_quota_hint_without_an_increase() -> None:
         bound_default_daily_limit=2,
     )
 
-    assert "实时数据的每日额度可从" not in message
+    assert "每日无头查询额度可从" not in message
 
 
 def test_player_binding_replacement_offer_names_both_accounts() -> None:

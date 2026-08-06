@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,7 @@ from ironsbot.services.seer.player_shortcuts import (
     fetch_player_shortcut_reply,
     player_shortcut_semantic_request,
 )
+from ironsbot.services.seer.query_work import QueryWorkMeter, query_work_scope
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeerConfig
@@ -129,7 +131,8 @@ class PlayerDetailService:
             player_id=player_id,
             anchor_only=anchor_only,
         )
-        self._store_reply(player_id, command.kind, reply)
+        if reply.complete:
+            self._store_reply(player_id, command.kind, reply)
         return reply
 
     async def cached_or_inflight_reply(
@@ -280,6 +283,8 @@ class PlayerDetailService:
         kind: PlayerShortcutKind,
         reply: QueryReply,
     ) -> None:
+        if not reply.complete:
+            return
         self._cached_replies[(player_id, kind)] = _CachedDetailReply(
             expires_at=monotonic()
             + self._config.player.background_refresh.cache_ttl_seconds,
@@ -324,15 +329,18 @@ class PlayerDetailService:
                 background=True,
                 group_id=group_id,
             ):
-                return await asyncio.wait_for(
-                    self._fetch_shortcut(
-                        game,
-                        command=command,
-                        player_id=player_id,
-                        anchor_only=False,
-                    ),
-                    timeout=self._config.player.detail_timeout_seconds,
-                )
+                meter = QueryWorkMeter("prefetch")
+                with query_work_scope(meter):
+                    reply = await asyncio.wait_for(
+                        self._fetch_shortcut(
+                            game,
+                            command=command,
+                            player_id=player_id,
+                            anchor_only=False,
+                        ),
+                        timeout=self._config.player.detail_timeout_seconds,
+                    )
+                return replace(reply, query_work=meter.result())
 
         timeout_seconds = self._background_refresh_timeout_seconds()
         if self._requests is None:
