@@ -14,6 +14,8 @@ from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.rule import Rule
 
+from ironsbot.runtime.onebot_reply import event_reply_message_id
+
 if TYPE_CHECKING:
     from asyncio import TimerHandle
     from collections.abc import Callable
@@ -27,9 +29,7 @@ if TYPE_CHECKING:
 TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
 QUEUED_CONVERSATION_TOKEN_STATE_KEY = "_ironsbot_queued_conversation_token"
 QUEUED_CONVERSATION_TICKET_STATE_KEY = "_ironsbot_queued_conversation_ticket"
-QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY = (
-    "_ironsbot_queued_conversation_keep_open"
-)
+QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY = "_ironsbot_queued_conversation_keep_open"
 QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY = (
     "_ironsbot_queued_conversation_shared_reply"
 )
@@ -57,12 +57,12 @@ def is_current_group_menu_reply(
         return False
     if event.group_id != anchor.group_id or event.self_id != anchor.bot_user_id:
         return False
-    if event.user_id == event.self_id or event.reply is None:
+    if event.user_id == event.self_id:
         return False
     # The reply sender metadata is optional in OneBot events.  The tracked
     # message ID was obtained from the bot's own send result, so it is the
     # authoritative proof that this is a reply to the current bot menu.
-    return getattr(event.reply, "message_id", None) == anchor.message_id
+    return event_reply_message_id(event) == anchor.message_id
 
 
 @dataclass(slots=True)
@@ -98,9 +98,7 @@ class _QueuedConversation:
     _parallel_request_tokens: dict[int, object | None] = field(default_factory=dict)
     _parallel_ready_ticket: int | None = None
     _parallel_dispatched: set[int] = field(default_factory=set)
-    _parallel_waiters: deque[tuple[int, Future[bool]]] = field(
-        default_factory=deque
-    )
+    _parallel_waiters: deque[tuple[int, Future[bool]]] = field(default_factory=deque)
     _waiters: deque[tuple[int, Future[bool], object | None]] = field(
         default_factory=deque
     )
@@ -113,9 +111,8 @@ class _QueuedConversation:
         if not self.active:
             return False
         if self.pending:
-            return (
-                self.pending_reply_check is not None
-                and self.pending_reply_check(event)
+            return self.pending_reply_check is not None and self.pending_reply_check(
+                event
             )
         if self.reply_check(event):
             return True
@@ -301,9 +298,7 @@ class _QueuedConversation:
         if self._activation is not None and not self._activation.done():
             self._activation.set_result(False)
         if self.parallel:
-            pending_tickets = {
-                ticket for ticket, _future in self._parallel_waiters
-            }
+            pending_tickets = {ticket for ticket, _future in self._parallel_waiters}
             if self._parallel_ready_ticket is not None:
                 pending_tickets.add(self._parallel_ready_ticket)
             for ticket in pending_tickets:
@@ -516,9 +511,7 @@ class PromptSessionManager:
     def _cancel_queued_conversation(self, context: _QueuedConversation) -> None:
         if context.active_ticket_count:
             self._cancelled_queued_tokens.add(context.token)
-            self._cancelled_active_tickets[context.token] = (
-                context.active_ticket_count
-            )
+            self._cancelled_active_tickets[context.token] = context.active_ticket_count
         self._close_queued_conversation(context)
 
     def _finish_cancelled_ticket(self, token: str) -> None:
@@ -541,10 +534,7 @@ class PromptSessionManager:
         content_check: Callable[[Event], bool],
     ) -> Rule:
         def check(event: Event) -> bool:
-            return (
-                self._versions.get(session_id) == version
-                and content_check(event)
-            )
+            return self._versions.get(session_id) == version and content_check(event)
 
         return Rule(check)
 
