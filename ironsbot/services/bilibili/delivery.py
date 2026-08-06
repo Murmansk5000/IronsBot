@@ -7,6 +7,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.onebot_group_identity import (
+    format_group_label,
+    resolve_group_name,
+)
 from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.preferences import bili_push_subscription_key
 from ironsbot.services.bilibili.targets import BiliPushTargets
@@ -173,8 +177,20 @@ class BilibiliPushDeliveryService:
             )
             return
 
+        default_bot = getattr(self.delivery, "default_bot", None)
+        bot = default_bot() if callable(default_bot) else None
+        group_labels = await asyncio.gather(
+            *(resolve_group_name(bot, group_id) for group_id in failed_group_ids)
+        )
         target_lines = [
-            *(f"群：{group_id}" for group_id in failed_group_ids),
+            *(
+                f"群：{format_group_label(group_id, group_name)}"
+                for group_id, group_name in zip(
+                    failed_group_ids,
+                    group_labels,
+                    strict=True,
+                )
+            ),
             *(f"私聊：{user_id}" for user_id in failed_user_ids),
         ]
         await self.admin_notices.send_private_to_superusers(

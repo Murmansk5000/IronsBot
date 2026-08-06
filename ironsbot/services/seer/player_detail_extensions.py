@@ -27,6 +27,7 @@ class PlayerDetailExtensionAction:
     command_help_id: str
     query: PlayerDetailActionQuery
     action: ActionDefinition
+    work_unit: str = "lineup"
 
 
 class PlayerDetailExtensionRegistry:
@@ -90,6 +91,7 @@ class PlayerDetailExtensionRegistry:
             command_help_id=action.command_help_id.strip(),
             query=action.query,
             action=action.action,
+            work_unit=action.work_unit.strip() or "lineup",
         )
 
     def actions(self) -> tuple[PlayerDetailExtensionAction, ...]:

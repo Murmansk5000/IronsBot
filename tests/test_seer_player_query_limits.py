@@ -18,6 +18,7 @@ from ironsbot.services.seer.player_service import (
 )
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.query_work import QueryWorkResult
 from ironsbot.services.seer.rank_models import RankLookupCost, RankLookupResult
 
 if TYPE_CHECKING:
@@ -93,9 +94,9 @@ def test_unbound_daily_quota_is_recorded_only_when_consumed(tmp_path: Path) -> N
         action_key="peak",
     )
     assert not denied.allowed
-    assert "额度已用完（1 次）" in denied.message
+    assert "额度已用完（1 项逻辑操作）" in denied.message
     assert "仍可查看已有缓存" in denied.message
-    assert "可从 1 次提升至 10 次" in denied.message
+    assert "可从 1 项提升至 10 项" in denied.message
     assert "首次成功查询时可按提示设为默认米米号" in denied.message
 
 
@@ -157,7 +158,9 @@ def test_bound_default_budget_is_shared_by_player_actions(tmp_path: Path) -> Non
     ).allowed
 
 
-def test_other_player_budget_is_separate_by_player_and_action(tmp_path: Path) -> None:
+def test_other_player_budget_is_shared_across_targets_and_actions(
+    tmp_path: Path,
+) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
     bindings.bind(
         qq_user_id=USER_ID,
@@ -177,12 +180,12 @@ def test_other_player_budget_is_separate_by_player_and_action(tmp_path: Path) ->
         player_id=OTHER_PLAYER_ID,
         action_key="peak",
     ).allowed
-    assert quota.check(
+    assert not quota.check(
         qq_user_id=USER_ID,
         player_id=OTHER_PLAYER_ID,
         action_key="collection",
     ).allowed
-    assert quota.check(
+    assert not quota.check(
         qq_user_id=USER_ID,
         player_id=OTHER_PLAYER_ID + 1,
         action_key="peak",
@@ -203,6 +206,59 @@ def test_superuser_bypasses_persistent_budget(tmp_path: Path) -> None:
         qq_user_id=USER_ID,
         player_id=DEFAULT_PLAYER_ID,
         action_key="player",
+    ).allowed
+
+
+def test_logical_work_settlement_allows_one_request_to_finish_then_blocks_next(
+    tmp_path: Path,
+) -> None:
+    bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    quota = _quota(tmp_path, bindings, unbound_daily_limit=1)
+    work = QueryWorkResult(
+        scope="foreground",
+        successful_units=frozenset(
+            ("peak_base", "rank:peak_standard", "rank:peak_wild", "rank:peak_expert")
+        ),
+    )
+
+    assert quota.check(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="peak",
+    ).allowed
+    assert quota.record_successful_work(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="peak",
+        units=work.billable_units,
+    ).allowed
+    assert not quota.check(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="collection",
+    ).allowed
+
+
+def test_basic_work_units_are_billed_once(tmp_path: Path) -> None:
+    bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    quota = _quota(tmp_path, bindings, unbound_daily_limit=2)
+    work = QueryWorkResult(
+        scope="foreground",
+        successful_units=frozenset(
+            ("profile", "profile_extra", "online_status", "team_info")
+        ),
+    )
+    assert work.billable_units == frozenset(("basic_info",))
+    quota.record_successful_work(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="player",
+        units=work.billable_units,
+    )
+    assert quota.check(
+        qq_user_id=USER_ID,
+        player_id=DEFAULT_PLAYER_ID,
+        action_key="collection",
     ).allowed
 
 
@@ -401,9 +457,7 @@ def test_player_detail_uses_valid_cache_without_quota_or_live_request(
         cast(
             "Any",
             SimpleNamespace(
-                player=SimpleNamespace(
-                    binding=SimpleNamespace(change_cooldown_days=3)
-                )
+                player=SimpleNamespace(binding=SimpleNamespace(change_cooldown_days=3))
             ),
         ),
         cast("Any", object()),
@@ -471,9 +525,7 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
         cast(
             "Any",
             SimpleNamespace(
-                player=SimpleNamespace(
-                    binding=SimpleNamespace(change_cooldown_days=3)
-                )
+                player=SimpleNamespace(binding=SimpleNamespace(change_cooldown_days=3))
             ),
         ),
         cast("Any", object()),
@@ -561,6 +613,10 @@ def test_initial_binding_choice_uses_the_default_player_quota(
             more_info=object(),
             player_message="ok",
             section_plan=cast("Any", object()),
+            query_work=QueryWorkResult(
+                scope="foreground",
+                successful_units=frozenset(("profile", "online_status")),
+            ),
         )
         service.save_binding_choice(USER_ID, pending, accepted=True)
 
@@ -586,7 +642,7 @@ def test_initial_binding_choice_uses_the_default_player_quota(
     asyncio.run(run())
 
 
-def test_player_query_rechecks_budget_when_it_leaves_the_queue(
+def test_player_query_keeps_its_admission_when_it_leaves_the_queue(
     tmp_path: Path,
 ) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
@@ -639,7 +695,7 @@ def test_player_query_rechecks_budget_when_it_leaves_the_queue(
             explicit=True,
         )
 
-        assert "额度已用完" in result.message
-        assert not queried
+        assert result.pending is not None
+        assert queried
 
     asyncio.run(run())

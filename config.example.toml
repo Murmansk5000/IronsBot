@@ -835,18 +835,18 @@ sections = ["all"]
 change_cooldown_days = 3
 
 [seer.player.query_limits]
-# EN: Persistent daily budgets for live player-related queries, reset by Beijing date.
-# ZH: 玩家相关实时查询的每日额度，按北京时间自然日重置。
+# EN: Persistent daily budgets for foreground logical headless operations, reset by Beijing date.
+# ZH: 用户触发的无头逻辑服务器操作每日额度，按北京时间自然日重置；缓存、预热与后台刷新不计入。
 enabled = true
-# EN: Total daily live queries for a user's current default player ID. Complete cache hits remain available after exhaustion.
-# ZH: 查询当前默认米米号实时数据的每日总次数；额度耗尽后仍可读取已有完整缓存。
-bound_default_daily_limit = 10
-# EN: Daily live queries for one other player ID and one query type.
-# ZH: 实时查询同一个其他米米号的同一种数据，每日最多次数。
-other_target_action_daily_limit = 1
-# EN: Total daily live player-related queries before a default player ID is bound.
-# ZH: 尚未绑定默认米米号时，玩家相关实时查询的每日总次数。
-unbound_daily_limit = 1
+# EN: Daily logical-operation budget for the user's current default player ID.
+# ZH: 查询当前默认米米号时的每日逻辑操作额度。
+bound_default_daily_limit = 60
+# EN: Daily logical-operation budget for all non-default player IDs combined.
+# ZH: 查询其他米米号时共享的每日逻辑操作额度。
+bound_other_daily_limit = 60
+# EN: Daily logical-operation budget before a default player ID is bound.
+# ZH: 尚未绑定默认米米号时的每日逻辑操作额度。
+unbound_daily_limit = 30
 # EN: Whether superusers bypass these daily budgets.
 # ZH: 超级管理员是否绕过每日额度。
 superuser_bypass = true

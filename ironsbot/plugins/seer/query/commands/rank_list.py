@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
 )
+from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.permission import SUPERUSER
 from nonebot.rule import Rule
@@ -103,12 +104,27 @@ async def _handle_list(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    message = await service.list(
-        state[RANK_LIST_COMMAND_KEY],
+    command = state[RANK_LIST_COMMAND_KEY]
+    reply = await service.list_reply(
+        command,
         qq_user_id=event.user_id,
         group_id=event_group_id(event),
     )
-    await finish_event_reply(matcher, event, message)
+    try:
+        await finish_event_reply(matcher, event, reply.text)
+    except FinishedException:
+        service.record_returned_general_reply(
+            qq_user_id=event.user_id,
+            action_key=f"rank:list:{command.rank_key}",
+            reply=reply,
+        )
+        raise
+    else:
+        service.record_returned_general_reply(
+            qq_user_id=event.user_id,
+            action_key=f"rank:list:{command.rank_key}",
+            reply=reply,
+        )
 
 
 async def _handle_score(
@@ -117,12 +133,27 @@ async def _handle_score(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    message = await service.score(
-        state[RANK_SCORE_COMMAND_KEY],
+    command = state[RANK_SCORE_COMMAND_KEY]
+    reply = await service.score_reply(
+        command,
         group_id=event_group_id(event),
         qq_user_id=event.user_id,
     )
-    await finish_event_reply(matcher, event, message)
+    try:
+        await finish_event_reply(matcher, event, reply.text)
+    except FinishedException:
+        service.record_returned_general_reply(
+            qq_user_id=event.user_id,
+            action_key=f"rank:score:{command.rank_key}",
+            reply=reply,
+        )
+        raise
+    else:
+        service.record_returned_general_reply(
+            qq_user_id=event.user_id,
+            action_key=f"rank:score:{command.rank_key}",
+            reply=reply,
+        )
 
 
 async def _handle_player(
@@ -131,12 +162,19 @@ async def _handle_player(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    message = await service.player(
-        state[RANK_PLAYER_COMMAND_KEY],
+    command = state[RANK_PLAYER_COMMAND_KEY]
+    reply = await service.player_reply(
+        command,
         qq_user_id=event.user_id,
         group_id=event_group_id(event),
     )
-    await finish_event_reply(matcher, event, message)
+    try:
+        await finish_event_reply(matcher, event, reply.text)
+    except FinishedException:
+        service.record_returned_player(command, event.user_id, reply)
+        raise
+    else:
+        service.record_returned_player(command, event.user_id, reply)
 
 
 async def _progress(

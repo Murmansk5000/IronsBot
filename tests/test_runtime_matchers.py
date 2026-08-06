@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves it
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
@@ -247,6 +248,24 @@ def test_group_menu_reply_accepts_only_the_current_bot_menu() -> None:
         )
     )
     assert not context.matches(private_message_event("a", user_id=3))
+
+
+def test_group_menu_reply_accepts_napcat_reply_segment_without_metadata() -> None:
+    anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
+    message = Message(
+        [MessageSegment.reply(99), MessageSegment.at(1), MessageSegment.text("3")]
+    )
+    event = group_message_event(
+        "3",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message=message,
+        raw_message="[reply:id=99][at:qq=1]3",
+    )
+
+    assert event.reply is None
+    assert is_current_group_menu_reply(event, anchor)
 
 
 def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:

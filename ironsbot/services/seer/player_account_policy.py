@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_service_models import PendingPlayerQuery
+    from ironsbot.services.seer.query_result import QueryReply
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +132,11 @@ class PlayerAccountPolicyMixin:
     ) -> str:
         if self._quotas is None:
             return ""
-        decision = self._quotas.consume(
+        decision = self._quotas.record_successful_work(
             qq_user_id=qq_user_id,
             player_id=player_id,
             action_key=action_key,
+            units=frozenset((action_key,)),
         )
         return "" if decision.allowed else decision.message
 
@@ -158,6 +160,49 @@ class PlayerAccountPolicyMixin:
                 player_id,
                 action_key,
             )
+
+    def _settle_query_work(
+        self,
+        *,
+        qq_user_id: int,
+        player_id: int,
+        action_key: str,
+        units: frozenset[str],
+    ) -> None:
+        if self._quotas is None or not units:
+            return
+        decision = self._quotas.record_successful_work(
+            qq_user_id=qq_user_id,
+            player_id=player_id,
+            action_key=action_key,
+            units=units,
+        )
+        if not decision.allowed:
+            logger.warning(
+                "player query quota settlement changed unexpectedly: "
+                "user=%s player=%s action=%s",
+                qq_user_id,
+                player_id,
+                action_key,
+            )
+
+    def record_returned_detail_reply(
+        self,
+        *,
+        qq_user_id: int,
+        player_id: int,
+        action_key: str,
+        reply: QueryReply,
+    ) -> None:
+        work = reply.query_work
+        if work is None:
+            return
+        self._settle_query_work(
+            qq_user_id=qq_user_id,
+            player_id=player_id,
+            action_key=action_key,
+            units=work.billable_units,
+        )
 
     def _binding_change_error(
         self,
