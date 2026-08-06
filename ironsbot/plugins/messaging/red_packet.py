@@ -14,6 +14,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.log import logger
 from nonebot.rule import Rule
 
+from ironsbot.core.onebot_group_identity import resolve_group_name
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
 from ironsbot.services.messaging.red_packet import (
     RedPacketNoticeLimiter,
@@ -103,19 +104,6 @@ def summarize_red_packet_message(message: Message) -> str:
     return (plaintext or str(message).strip())[:80]
 
 
-async def _get_group_name(bot: Bot, group_id: int) -> str:
-    try:
-        info: dict[str, Any] = await bot.get_group_info(
-            group_id=group_id,
-            no_cache=True,
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.debug(f"red packet notice failed to get group info: {e}")
-        return ""
-
-    return str(info.get("group_name") or "").strip()
-
-
 async def _send_red_packet_notice(  # noqa: PLR0913
     *,
     bot: Bot,
@@ -130,7 +118,7 @@ async def _send_red_packet_notice(  # noqa: PLR0913
         return
 
     logger.info(f"red packet notice detected: group={group_id} sender={sender_id}")
-    group_name = await _get_group_name(bot, group_id)
+    group_name = await resolve_group_name(bot, group_id, no_cache=True)
     notice = build_red_packet_notice_message(
         group_id=group_id,
         group_name=group_name,

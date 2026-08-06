@@ -14,6 +14,7 @@ from ironsbot.runtime.matchers import (
     get_prompt_session_manager,
     get_queued_conversation,
 )
+from ironsbot.runtime.onebot_reply import event_reply_message_id
 from ironsbot.runtime.replies import build_message, event_sender_at_user_ids
 
 if TYPE_CHECKING:
@@ -52,7 +53,7 @@ def _owner_reply_check(
             return False
         if is_self_message_event(next_event):
             return False
-        if getattr(next_event, "reply", None) is not None:
+        if event_reply_message_id(next_event) is not None:
             return False
         return reply_check(next_event)
 

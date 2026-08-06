@@ -64,6 +64,7 @@ from ironsbot.services.seer.rank import RankPageCache, RankService
 from ironsbot.services.seer.rank_models import RankPageResult
 from ironsbot.services.seer.rank_page_cache_models import (
     CachedRankLookup,
+    CachedRankMiss,
 )
 
 if TYPE_CHECKING:
@@ -108,6 +109,9 @@ class RankRequestParam(Protocol):
 
 
 class FakeRankPageCache:
+    def __init__(self) -> None:
+        self.saved_misses: list[dict[str, object]] = []
+
     def page(self, **_kwargs: object) -> object | None:
         return None
 
@@ -125,6 +129,12 @@ class FakeRankPageCache:
 
     def save(self, **_kwargs: object) -> None:
         return
+
+    def miss(self, **_kwargs: object) -> object | None:
+        return None
+
+    def save_miss(self, **kwargs: object) -> None:
+        self.saved_misses.append(kwargs)
 
 
 def _build_rank(
@@ -228,6 +238,51 @@ def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
     assert result.rank is None
     assert result.searched_limit == online_limit
     assert requested_pages == [(0, 99), (100, 199), (200, 249)]
+    assert cache.saved_misses == [
+        {
+            "key": 240,
+            "sub_key": 1,
+            "user_id": 712345678,
+            "searched_limit": online_limit,
+        }
+    ]
+
+
+def test_cached_full_rank_miss_skips_a_repeat_scan(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT)
+    monkeypatch.setattr(
+        cache,
+        "miss",
+        lambda **_: CachedRankMiss(
+            user_id=712345678,
+            searched_limit=ONLINE_LIMIT,
+            fetched_at=FETCHED_AT,
+        ),
+    )
+    scanned: list[bool] = []
+
+    async def track_scan(*_args: object, **_kwargs: object) -> list[RankItem]:
+        scanned.append(True)
+        return []
+
+    monkeypatch.setattr(RankService, "fetch_page", track_scan)
+    result = asyncio.run(
+        rank.find_rank(
+            GAME,
+            user_id=712345678,
+            title="autocard",
+            score_name="score",
+            key=240,
+            sub_key=1,
+        )
+    )
+
+    assert result.rank is None
+    assert result.searched_limit == ONLINE_LIMIT
+    assert result.cost.cache_page_hits == 1
+    assert not scanned
 
 
 def test_score_rank_lookup_rejects_target_below_boundary(

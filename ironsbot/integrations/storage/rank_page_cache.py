@@ -10,6 +10,7 @@ from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.seer.rank_models import RankEntry
 from ironsbot.services.seer.rank_page_cache_models import (
     CachedRankLookup,
+    CachedRankMiss,
     CachedRankPage,
     CachedRankPageSummary,
 )
@@ -63,7 +64,20 @@ _SCHEMA = (
     ON player_rank_facts (key, sub_key, score DESC, rank_index)
     """,
 )
-_MIGRATIONS = (SqliteMigration(1, _SCHEMA),)
+_NEGATIVE_LOOKUP_SCHEMA = """
+CREATE TABLE IF NOT EXISTS player_rank_misses (
+    key INTEGER NOT NULL,
+    sub_key INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    searched_limit INTEGER NOT NULL,
+    fetched_at REAL NOT NULL,
+    PRIMARY KEY (key, sub_key, user_id)
+)
+"""
+_MIGRATIONS = (
+    SqliteMigration(1, _SCHEMA),
+    SqliteMigration(2, (_NEGATIVE_LOOKUP_SCHEMA,)),
+)
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -211,6 +225,45 @@ class SqliteRankPageCache:
                 rank_index,
                 fetched_at,
                 self._is_stale(fetched_at),
+            )
+        except sqlite3.Error as error:
+            self._log_read_error(error)
+            return None
+
+    def miss(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        minimum_limit: int,
+        allow_stale: bool | None = None,
+    ) -> CachedRankMiss | None:
+        if not self.enabled:
+            return None
+        try:
+            with self._database.connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT searched_limit, fetched_at
+                    FROM player_rank_misses
+                    WHERE key = ? AND sub_key = ? AND user_id = ?
+                    """,
+                    (key, sub_key, user_id),
+                ).fetchone()
+            if row is None:
+                return None
+            searched_limit, fetched_at = int(row[0]), float(row[1])
+            if searched_limit < minimum_limit or self._reject_stale(
+                fetched_at,
+                allow_stale=allow_stale,
+            ):
+                return None
+            return CachedRankMiss(
+                user_id=user_id,
+                searched_limit=searched_limit,
+                fetched_at=fetched_at,
+                is_stale=self._is_stale(fetched_at),
             )
         except sqlite3.Error as error:
             self._log_read_error(error)
@@ -385,6 +438,35 @@ class SqliteRankPageCache:
                 )
         except sqlite3.Error as error:
             _LOGGER.warning("failed to write Seer rank page cache: %s", error)
+
+    def save_miss(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        searched_limit: int,
+        fetched_at: float | None = None,
+    ) -> None:
+        if not self.enabled or searched_limit <= 0:
+            return
+        timestamp = time.time() if fetched_at is None else fetched_at
+        try:
+            with self._database.connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO player_rank_misses(
+                        key, sub_key, user_id, searched_limit, fetched_at
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(key, sub_key, user_id) DO UPDATE SET
+                        searched_limit = excluded.searched_limit,
+                        fetched_at = excluded.fetched_at
+                    """,
+                    (key, sub_key, user_id, searched_limit, timestamp),
+                )
+        except sqlite3.Error as error:
+            _LOGGER.warning("failed to write Seer rank miss cache: %s", error)
 
     @staticmethod
     def _remove_overlaps(  # noqa: PLR0913

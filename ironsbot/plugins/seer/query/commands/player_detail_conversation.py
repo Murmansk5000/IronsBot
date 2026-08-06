@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from dataclasses import replace
 from functools import partial
 from typing import TYPE_CHECKING, cast
 
@@ -53,6 +54,7 @@ from ironsbot.services.seer.player_shortcuts import (
     player_request_admission_message,
     player_shortcut_semantic_request,
 )
+from ironsbot.services.seer.query_work import QueryWorkMeter, query_work_scope
 
 from .player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
@@ -91,6 +93,9 @@ async def begin_player_detail_conversation(
 ) -> None:
     """Accept fast numeric detail choices while the base profile is loading."""
 
+    # A new player menu owns subsequent numeric input for this user. Retired
+    # help or subscription menus must not keep a stale temporary matcher alive.
+    get_prompt_session_manager(matcher).invalidate_event_conversations(event)
     await begin_event_reply_conversation(
         matcher,
         event,
@@ -189,6 +194,12 @@ async def handle_player_detail_reply(  # noqa: PLR0913
             event,
             state,
             prompt=_query_reply_message(reply),
+            on_sent=lambda: service.record_returned_detail_reply(
+                qq_user_id=event.user_id,
+                player_id=player_id,
+                action_key=extension_action.action.id,
+                reply=reply,
+            ),
         )
         return
 
@@ -227,6 +238,11 @@ async def handle_player_detail_reply(  # noqa: PLR0913
         event,
         state,
         prompt=message,
+        on_sent=lambda: service.record_returned_shortcut(
+            event.user_id,
+            PlayerShortcutCommand(kind=kind, player_id=player_id),
+            reply,
+        ),
     )
 
 
@@ -244,12 +260,19 @@ async def _query_extension_action(
             player_request_admission_message(label, queued=queued),
         )
 
-    with request_feedback_scope(action.action.label, send_status):
-        return await action.query(
+    meter = QueryWorkMeter("foreground")
+    with (
+        request_feedback_scope(action.action.label, send_status),
+        query_work_scope(meter),
+    ):
+        reply = await action.query(
             player_id,
             event.user_id,
             event_group_id(event),
         )
+    if reply.complete and (reply.text or reply.image is not None):
+        meter.succeeded(action.work_unit)
+    return replace(reply, query_work=meter.result())
 
 
 async def send_player_info_with_detail_prompt(  # noqa: PLR0913
@@ -336,31 +359,47 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
     state: T_State,
     *,
     prompt: str | Message | None,
+    on_sent: Callable[[], None] | None = None,
 ) -> None:
     commands = tuple(state.get(PLAYER_DETAIL_COMMANDS_KEY) or ())
     if not commands:
         if prompt is None:
             raise FinishedException
-        await finish_event_reply(matcher, event, prompt)
+        try:
+            await finish_event_reply(matcher, event, prompt)
+        except FinishedException:
+            if on_sent is not None:
+                on_sent()
+            raise
+        if on_sent is not None:
+            on_sent()
+        return
 
-    await enter_event_reply_conversation(
-        matcher,
-        event,
-        namespace=PLAYER_DETAIL_NAMESPACE,
-        handlers=[
-            bind_async(handle_player_detail_reply, service, extensions, features)
-        ],
-        reply_check=command_reply_check(commands),
-        prompt=prompt,
-        group_reply_check=_player_detail_group_reply_check(features, commands),
-        allow_group_reply_exit=True,
-        parallel=True,
-        queue_semantic_request_resolver=partial(
-            _player_detail_semantic_request,
-            extensions,
-            features,
-        ),
-    )
+    try:
+        await enter_event_reply_conversation(
+            matcher,
+            event,
+            namespace=PLAYER_DETAIL_NAMESPACE,
+            handlers=[
+                bind_async(handle_player_detail_reply, service, extensions, features)
+            ],
+            reply_check=command_reply_check(commands),
+            prompt=prompt,
+            group_reply_check=_player_detail_group_reply_check(features, commands),
+            allow_group_reply_exit=True,
+            parallel=True,
+            queue_semantic_request_resolver=partial(
+                _player_detail_semantic_request,
+                extensions,
+                features,
+            ),
+        )
+    except FinishedException:
+        if on_sent is not None:
+            on_sent()
+        raise
+    if on_sent is not None:
+        on_sent()
 
 
 def _reply_text(leading_text: str, text: str, image_error: str) -> str:
@@ -485,10 +524,9 @@ def _player_detail_semantic_request(
         state,
     )
     if extension_action is not None:
-        if (
-            state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY)
-            and not event_is_feature_allowed(features, event, extension_action.feature)
-        ):
+        if state.get(
+            QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY
+        ) and not event_is_feature_allowed(features, event, extension_action.feature):
             return None
         return SemanticRequest(
             action=extension_action.action,

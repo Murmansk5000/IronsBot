@@ -30,6 +30,12 @@ from ironsbot.services.seer.player_request_protection import (
     PlayerRequestReconnectError,
     player_request_protection_message,
 )
+from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.query_work import (
+    QueryWorkMeter,
+    query_work_scope,
+    record_rank_lookup_work,
+)
 from ironsbot.services.seer.rank_list_formatting import timestamp_text
 from ironsbot.services.seer.rank_list_global_messages import (
     format_global_rank_message,
@@ -111,11 +117,32 @@ class RankQueryService:
         qq_user_id: int | None = None,
         group_id: int | None = None,
     ) -> str:
+        return (await self.list_reply(
+            command,
+            qq_user_id=qq_user_id,
+            group_id=group_id,
+        )).text
+
+    async def list_reply(
+        self,
+        command: RankListCommand,
+        *,
+        qq_user_id: int | None = None,
+        group_id: int | None = None,
+    ) -> QueryReply:
         if command.kind == "local":
-            return self._local_message(command)
+            return QueryReply(text=self._local_message(command))
+        quota_message = self._check_general_quota(
+            qq_user_id,
+            action_key=f"rank:list:{command.rank_key}",
+        )
+        if quota_message:
+            return QueryReply(text=quota_message)
+        meter = QueryWorkMeter("foreground")
         try:
-            return await self._run_headless_request(
-                lambda: self._global_message(
+            text = await self._run_headless_request(
+                lambda: self._global_message_with_work(
+                    meter,
                     self._headless.get_game(),
                     command,
                     group_id=group_id,
@@ -124,7 +151,8 @@ class RankQueryService:
                 label="榜单查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return player_request_protection_message(error)
+            return QueryReply(text=player_request_protection_message(error))
+        return QueryReply(text=text, query_work=meter.result())
 
     async def score(
         self,
@@ -133,9 +161,30 @@ class RankQueryService:
         group_id: int | None,
         qq_user_id: int | None = None,
     ) -> str:
+        return (await self.score_reply(
+            command,
+            group_id=group_id,
+            qq_user_id=qq_user_id,
+        )).text
+
+    async def score_reply(
+        self,
+        command: RankScoreCommand,
+        *,
+        group_id: int | None,
+        qq_user_id: int | None = None,
+    ) -> QueryReply:
+        quota_message = self._check_general_quota(
+            qq_user_id,
+            action_key=f"rank:score:{command.rank_key}",
+        )
+        if quota_message:
+            return QueryReply(text=quota_message)
+        meter = QueryWorkMeter("foreground")
         try:
-            return await self._run_headless_request(
-                lambda: self._score_message(
+            text = await self._run_headless_request(
+                lambda: self._score_message_with_work(
+                    meter,
                     self._headless.get_game(),
                     command,
                     display_limit=self.default_limit(group_id),
@@ -145,27 +194,29 @@ class RankQueryService:
                 label="榜单分数查询",
             )
         except _PLAYER_REQUEST_ERRORS as error:
-            return player_request_protection_message(error)
+            return QueryReply(text=player_request_protection_message(error))
+        return QueryReply(text=text, query_work=meter.result())
 
-    async def player(  # noqa: PLR0911 - distinct query failure replies
+    async def player_reply(  # noqa: PLR0911 - distinct query failure replies
         self,
         command: RankPlayerCommand,
         *,
         qq_user_id: int | None = None,
         group_id: int | None = None,
-    ) -> str:
+    ) -> QueryReply:
         spec = GLOBAL_RANKS[command.rank_key]
         if not is_valid_player_id(command.player_id):
-            return PLAYER_ID_ERROR_MESSAGE
+            return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
         quota_message = self._check_player_quota(command, qq_user_id)
-        anchor_only = bool(quota_message)
+        if quota_message:
+            return QueryReply(text=quota_message)
+        meter = QueryWorkMeter("foreground")
         try:
             result = await self._run_headless_request(
-                lambda: self._fetch_player_message(
+                lambda: self._fetch_player_message_with_work(
+                    meter,
                     command,
-                    qq_user_id,
                     group_id=group_id,
-                    anchor_only=anchor_only,
                 ),
                 user_id=qq_user_id,
                 label="榜单玩家查询",
@@ -182,48 +233,117 @@ class RankQueryService:
                 ),
             )
         except PlayerQueryQuotaExceededError as error:
-            return error.message
+            return QueryReply(text=error.message)
         except _PLAYER_REQUEST_ERRORS as error:
-            return player_request_protection_message(error)
+            return QueryReply(text=player_request_protection_message(error))
         except TimeoutError:
-            return f"❌ {spec.title}玩家查询超时，请稍后再试。"
+            return QueryReply(text=f"❌ {spec.title}玩家查询超时，请稍后再试。")
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
-            return self._policy.player_error(command.player_id, error)
+            return QueryReply(text=self._policy.player_error(command.player_id, error))
         except Exception as error:  # noqa: BLE001
-            return f"❌ {spec.title}玩家查询失败：{error}"
-        if quota_message:
-            return (
-                result.message
-                if result.lookup.cost.lightweight_confirmed
-                else quota_message
+            return QueryReply(text=f"❌ {spec.title}玩家查询失败：{error}")
+        return QueryReply(text=result.message, query_work=meter.result())
+
+    async def player(
+        self,
+        command: RankPlayerCommand,
+        *,
+        qq_user_id: int | None = None,
+        group_id: int | None = None,
+    ) -> str:
+        """Compatibility text API for non-OneBot callers."""
+
+        return (await self.player_reply(
+            command,
+            qq_user_id=qq_user_id,
+            group_id=group_id,
+        )).text
+
+    def record_returned_player(
+        self,
+        command: RankPlayerCommand,
+        qq_user_id: int | None,
+        reply: QueryReply,
+    ) -> None:
+        if self._quotas is None or qq_user_id is None or reply.query_work is None:
+            return
+        self._quotas.record_successful_work(
+            qq_user_id=qq_user_id,
+            player_id=command.player_id,
+            action_key=f"rank:{command.rank_key}",
+            units=reply.query_work.billable_units,
+        )
+
+    def record_returned_general_reply(
+        self,
+        *,
+        qq_user_id: int | None,
+        action_key: str,
+        reply: QueryReply,
+    ) -> None:
+        if self._quotas is None or qq_user_id is None or reply.query_work is None:
+            return
+        self._quotas.record_general_work(
+            qq_user_id=qq_user_id,
+            action_key=action_key,
+            units=reply.query_work.billable_units,
+        )
+
+    async def _global_message_with_work(
+        self,
+        meter: QueryWorkMeter,
+        game: HeadlessGame,
+        command: RankListCommand,
+        *,
+        group_id: int | None,
+    ) -> str:
+        with query_work_scope(meter):
+            return await self._global_message(game, command, group_id=group_id)
+
+    async def _score_message_with_work(
+        self,
+        meter: QueryWorkMeter,
+        game: HeadlessGame,
+        command: RankScoreCommand,
+        *,
+        display_limit: int,
+        group_id: int | None,
+    ) -> str:
+        with query_work_scope(meter):
+            return await self._score_message(
+                game,
+                command,
+                display_limit=display_limit,
+                group_id=group_id,
             )
-        if (
-            result.lookup.failure is None
-            and not result.lookup.cost.lightweight_confirmed
-        ):
-            self._record_successful_player_quota(command, qq_user_id)
-        return result.message
 
     async def _fetch_player_message(
         self,
         command: RankPlayerCommand,
-        qq_user_id: int | None,
         *,
         group_id: int | None,
-        anchor_only: bool,
     ) -> RankPlayerQueryResult:
-        quota_message = self._check_player_quota(command, qq_user_id)
-        if quota_message and not anchor_only:
-            raise PlayerQueryQuotaExceededError(quota_message)
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             self._player_message(
                 self._headless.get_game(),
                 command,
                 group_id=group_id,
-                anchor_only=anchor_only,
+                anchor_only=False,
             ),
             timeout=self._policy.player_timeout_seconds,
         )
+        record_rank_lookup_work(command.rank_key, result.lookup)
+        return result
+
+    async def _fetch_player_message_with_work(
+        self,
+        meter: QueryWorkMeter,
+        command: RankPlayerCommand,
+        *,
+        group_id: int | None,
+    ) -> RankPlayerQueryResult:
+        with query_work_scope(meter):
+            return await self._fetch_player_message(command, group_id=group_id)
 
     def set_display_limit(
         self,
@@ -396,6 +516,20 @@ class RankQueryService:
             qq_user_id=qq_user_id,
             player_id=command.player_id,
             action_key=f"rank:{command.rank_key}",
+        )
+        return "" if decision.allowed else decision.message
+
+    def _check_general_quota(
+        self,
+        qq_user_id: int | None,
+        *,
+        action_key: str,
+    ) -> str:
+        if self._quotas is None or qq_user_id is None:
+            return ""
+        decision = self._quotas.check_general_query(
+            qq_user_id=qq_user_id,
+            action_key=action_key,
         )
         return "" if decision.allowed else decision.message
 

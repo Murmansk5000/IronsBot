@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
@@ -10,6 +10,7 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     MessageSegment,
 )
+from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.query_work import QueryWorkMeter, query_work_scope
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
 _EXTENSION_SHORTCUT_COMMAND_KEY = "_player_extension_shortcut_command"
@@ -154,11 +156,44 @@ async def handle_player_shortcut(
         group_id=event_group_id(event),
         send_status=send_status,
     )
-    await finish_event_reply(
+    await _finish_shortcut_reply(
+        service,
+        command,
         matcher,
         event,
-        _build_shortcut_reply_message(reply),
+        reply,
     )
+
+
+async def _finish_shortcut_reply(
+    service: PlayerService,
+    command: PlayerShortcutCommand,
+    matcher: Matcher,
+    event: MessageEvent,
+    reply: QueryReply,
+) -> None:
+    try:
+        await finish_event_reply(
+            matcher,
+            event,
+            _build_shortcut_reply_message(reply),
+        )
+    except FinishedException:
+        _record_shortcut_delivery(service, event.user_id, command, reply)
+        raise
+    else:
+        _record_shortcut_delivery(service, event.user_id, command, reply)
+
+
+def _record_shortcut_delivery(
+    service: PlayerService,
+    user_id: int,
+    command: PlayerShortcutCommand,
+    reply: QueryReply,
+) -> None:
+    record = getattr(service, "record_returned_shortcut", None)
+    if callable(record):
+        record(user_id, command, reply)
 
 
 async def handle_player_extension_shortcut(
@@ -181,6 +216,7 @@ async def handle_player_extension_shortcut(
     if target.player_id is None:
         await finish_event_reply(matcher, event, unbound_player_shortcut_message())
         return
+
     async def send_status(label: str, *, queued: bool) -> None:
         await send_event_reply(
             matcher,
@@ -188,13 +224,39 @@ async def handle_player_extension_shortcut(
             player_request_admission_message(label, queued=queued),
         )
 
-    with request_feedback_scope(command.action.action.label, send_status):
+    meter = QueryWorkMeter("foreground")
+    with (
+        request_feedback_scope(
+            command.action.action.label,
+            send_status,
+        ),
+        query_work_scope(meter),
+    ):
         reply = await command.action.query(
             target.player_id,
             event.user_id,
             event_group_id(event),
         )
-    await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
+    if reply.complete and (reply.text or reply.image is not None):
+        meter.succeeded(command.action.work_unit)
+    reply = replace(reply, query_work=meter.result())
+    try:
+        await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
+    except FinishedException:
+        dependencies.player.record_returned_detail_reply(
+            qq_user_id=event.user_id,
+            player_id=target.player_id,
+            action_key=command.action.action.id,
+            reply=reply,
+        )
+        raise
+    else:
+        dependencies.player.record_returned_detail_reply(
+            qq_user_id=event.user_id,
+            player_id=target.player_id,
+            action_key=command.action.action.id,
+            reply=reply,
+        )
 
 
 def _shortcut_command_id(
@@ -253,10 +315,7 @@ def _extension_shortcut_semantic_request(
         numeric_player_id=command.player_id,
         binding_for_user=service.default_player_id,
     )
-    if not (
-        isinstance(target.player_id, int)
-        and is_valid_player_id(target.player_id)
-    ):
+    if not (isinstance(target.player_id, int) and is_valid_player_id(target.player_id)):
         return None
     return SemanticRequest(
         action=command.action.action,
@@ -306,10 +365,7 @@ def install(group: SeerMatcherGroup) -> None:
     extension_matcher = group.on_message(
         policy=CommandPolicy.command(
             _extension_shortcut_command_id,
-            help_ids=tuple(
-                action.command_help_id
-                for action in extension_actions
-            ),
+            help_ids=tuple(action.command_help_id for action in extension_actions),
             semantic_request=lambda event, state: _extension_shortcut_semantic_request(
                 group.resources.player,
                 event,

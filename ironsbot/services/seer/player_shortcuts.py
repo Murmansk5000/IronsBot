@@ -31,6 +31,12 @@ from ironsbot.services.seer.player_query import (
     validate_player_peak_season,
 )
 from ironsbot.services.seer.query_result import QueryReply
+from ironsbot.services.seer.query_work import (
+    record_cached_query_work,
+    record_failed_query_work,
+    record_rank_lookup_work,
+    record_successful_query_work,
+)
 from ironsbot.services.seer.rank_models import (
     PeakSeasonRankSummary,
     PlayerRankSummary,
@@ -242,7 +248,12 @@ async def fetch_player_shortcut_reply(
             timeout_seconds=dependencies.timeout_seconds,
             anchor_only=anchor_only,
         )
-        return QueryReply(text=text, rank_lookups=rank_lookups)
+        _record_shortcut_rank_work("collection", rank_lookups)
+        return QueryReply(
+            text=text,
+            rank_lookups=rank_lookups,
+            complete=_is_complete_shortcut_reply(text, rank_lookups),
+        )
     if command.kind == "peak":
         text, rank_lookups = await _fetch_peak_message(
             dependencies.rank,
@@ -253,7 +264,12 @@ async def fetch_player_shortcut_reply(
             timeout_seconds=dependencies.timeout_seconds,
             anchor_only=anchor_only,
         )
-        return QueryReply(text=text, rank_lookups=rank_lookups)
+        _record_shortcut_rank_work("peak", rank_lookups)
+        return QueryReply(
+            text=text,
+            rank_lookups=rank_lookups,
+            complete=_is_complete_shortcut_reply(text, rank_lookups),
+        )
     text, rank_lookups = await _fetch_autocard_message(
         dependencies.rank,
         dependencies.local_rank,
@@ -263,7 +279,12 @@ async def fetch_player_shortcut_reply(
         timeout_seconds=dependencies.timeout_seconds,
         anchor_only=anchor_only,
     )
-    return QueryReply(text=text, rank_lookups=rank_lookups)
+    _record_shortcut_rank_work("autocard", rank_lookups)
+    return QueryReply(
+        text=text,
+        rank_lookups=rank_lookups,
+        complete=_is_complete_shortcut_reply(text, rank_lookups),
+    )
 
 
 async def _fetch_collection_message(  # noqa: PLR0913
@@ -294,12 +315,16 @@ async def _fetch_collection_message(  # noqa: PLR0913
         safe_player_extra(
             "图鉴基础数据",
             fetch_unity_part_one(game, player_id),
-            UnityPartOneInfo(),
+            None,
             extra_errors,
             on_error=_log_extra_error,
             timeout_seconds=timeout_seconds,
         ),
     )
+    if any(error.startswith("图鉴基础数据") for error in extra_errors):
+        record_failed_query_work("collection_unity")
+    else:
+        record_successful_query_work("collection_unity")
     rank_progress = RankSummaryProgress()
     rank_summary_fallback = PlayerRankSummary.empty()
 
@@ -316,8 +341,8 @@ async def _fetch_collection_message(  # noqa: PLR0913
             game,
             player_id,
             achieve_score=getattr(more_info, "total_achieve", None),
-            pet_kind_count=unity_part_one.pet_kind_num,
-            skin_score=unity_part_one.skin_num,
+            pet_kind_count=int(getattr(unity_part_one, "pet_kind_num", 0) or 0),
+            skin_score=int(getattr(unity_part_one, "skin_num", 0) or 0),
             progress=rank_progress,
             anchor_only=anchor_only,
         ),
@@ -329,7 +354,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
     )
     metrics = collect_metrics(
         more_info=more_info,
-        unity_part_one=unity_part_one,
+        unity_part_one=unity_part_one or UnityPartOneInfo(),
         unity_peak=UnityPeakInfo(),
         rank_summary=rank_summary,
         autocard_rank_summary=None,
@@ -395,6 +420,10 @@ async def _fetch_peak_message(  # noqa: PLR0913
         ),
     )
     unity_peak = peak_result.info
+    if peak_result.available_modes:
+        record_successful_query_work("peak_base")
+    else:
+        record_failed_query_work("peak_base")
     for mode, error in peak_result.mode_errors:
         logger.warning("米米号详情字段获取失败：巅峰%s基础数据：%s", mode, error)
     peak_sub_key = rank.current_peak_sub_key()
@@ -566,6 +595,7 @@ async def _resolve_shortcut_nick(
     timeout_seconds: float,
 ) -> tuple[str, str | None]:
     if base_snapshot is not None and base_snapshot.player_id == player_id:
+        record_cached_query_work("profile")
         return base_snapshot.nick, None
     try:
         user_info = await asyncio.wait_for(
@@ -574,7 +604,9 @@ async def _resolve_shortcut_nick(
         )
     except Exception as error:  # noqa: BLE001
         _log_extra_error("玩家昵称", error)
+        record_failed_query_work("profile")
         return "", format_player_extra_error(error)
+    record_successful_query_work("profile")
     return str(getattr(user_info, "nick", "")), None
 
 
@@ -591,14 +623,55 @@ async def _resolve_collection_more_info(
         and base_snapshot.player_id == player_id
         and _has_collection_more_info(base_snapshot.more_info)
     ):
+        record_cached_query_work("profile_extra")
         return base_snapshot.more_info
-    return await safe_player_extra(
+    result = await safe_player_extra(
         "收集基础数据",
         game.get_more_user_info(player_id),
-        SimpleNamespace(total_achieve=0, pet_all_num=0),
+        None,
         extra_errors,
         on_error=_log_extra_error,
         timeout_seconds=timeout_seconds,
+    )
+    if any(error.startswith("收集基础数据") for error in extra_errors):
+        record_failed_query_work("profile_extra")
+    else:
+        record_successful_query_work("profile_extra")
+    return result
+
+
+def _record_shortcut_rank_work(
+    kind: PlayerShortcutKind,
+    results: tuple[RankLookupResult, ...],
+) -> None:
+    keys = {
+        "collection": (
+            "book_score",
+            "achievement_score",
+            "pet_kind",
+            "skin",
+            "mintmark",
+            "suit",
+            "equip",
+            "mount",
+        ),
+        "peak": ("peak_standard", "peak_wild", "peak_expert"),
+        "autocard": ("autocard",),
+    }[kind]
+    for rank_key, result in zip(keys, results, strict=False):
+        record_rank_lookup_work(rank_key, result)
+
+
+def _is_complete_shortcut_reply(
+    text: str,
+    results: tuple[RankLookupResult, ...],
+) -> bool:
+    return (
+        "⚠️ 部分数据查询失败" not in text
+        and all(
+            result.failure is None and not result.cost.restricted_miss
+            for result in results
+        )
     )
 
 

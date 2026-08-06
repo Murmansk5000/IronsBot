@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
     from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
+    from ironsbot.services.seer.query_work import QueryWorkResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,7 @@ class PendingPlayerQuery:
     player_message: str
     section_plan: PlayerQuerySectionPlan
     quota_recorded: bool = False
+    query_work: QueryWorkResult | None = None
     base_snapshot: PlayerBaseSnapshot | None = None
 
 

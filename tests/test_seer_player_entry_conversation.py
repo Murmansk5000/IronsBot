@@ -18,7 +18,7 @@ from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
-from ironsbot.services.seer.player_service import PendingPlayerQuery
+from ironsbot.services.seer.player_service import PendingPlayerQuery, PlayerQueryResult
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
@@ -90,6 +90,43 @@ def test_pending_confirmation_reuses_the_fetched_player(
         state,
         pending,
     )
+
+
+def test_binding_offer_keeps_its_confirmation_session_before_detail_menu(
+    monkeypatch: Any,
+) -> None:
+    pending = PendingPlayerQuery(
+        player_id=949105380,
+        user_info=SimpleNamespace(nick="测试玩家"),
+        more_info=object(),
+        player_message="玩家详情",
+        section_plan=cast("Any", object()),
+    )
+    service = SimpleNamespace(binding_offer=Mock(return_value="是否绑定"))
+    enter_conversation = AsyncMock()
+    send_pending = AsyncMock()
+    monkeypatch.setattr(player, "enter_event_reply_conversation", enter_conversation)
+    monkeypatch.setattr(player, "_send_pending_player_query", send_pending)
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", object()),
+    )
+    event = group_message_event("米米号123456")
+    state: dict[str, object] = {}
+
+    asyncio.run(
+        player._handle_player_query_result(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+            PlayerQueryResult(pending=pending, offer_binding=True),
+        )
+    )
+
+    enter_conversation.assert_awaited_once()
+    send_pending.assert_not_awaited()
+    assert state[player.PLAYER_BINDING_PENDING_KEY] is pending
 
 
 def test_pending_replacement_confirmation_marks_the_existing_binding(
