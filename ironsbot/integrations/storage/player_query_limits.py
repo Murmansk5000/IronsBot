@@ -72,7 +72,7 @@ class SqlitePlayerQueryLimitStore:
             limit=limit,
         )
 
-    def consume(  # noqa: PLR0913
+    def record(  # noqa: PLR0913
         self,
         *,
         local_date: date,
@@ -80,10 +80,17 @@ class SqlitePlayerQueryLimitStore:
         scope: PlayerQueryQuotaScope,
         player_id: int,
         action_key: str,
-        limit: int,
+        amount: int,
     ) -> PlayerQueryUsage:
-        if limit <= 0:
-            return PlayerQueryUsage(allowed=False, used_count=0, limit=limit)
+        if amount <= 0:
+            return self.status(
+                local_date=local_date,
+                qq_user_id=qq_user_id,
+                scope=scope,
+                player_id=player_id,
+                action_key=action_key,
+                limit=0,
+            )
 
         key = (
             local_date.isoformat(),
@@ -104,14 +111,7 @@ class SqlitePlayerQueryLimitStore:
                 key,
             ).fetchone()
             used_count = 0 if row is None else int(row[0])
-            if used_count >= limit:
-                return PlayerQueryUsage(
-                    allowed=False,
-                    used_count=used_count,
-                    limit=limit,
-                )
-
-            next_count = used_count + 1
+            next_count = used_count + amount
             if row is None:
                 conn.execute(
                     """
@@ -136,7 +136,7 @@ class SqlitePlayerQueryLimitStore:
         return PlayerQueryUsage(
             allowed=True,
             used_count=next_count,
-            limit=limit,
+            limit=0,
         )
 
 

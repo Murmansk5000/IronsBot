@@ -60,6 +60,11 @@ from ironsbot.services.seer.rank_score_segments import (
 from ironsbot.services.seer.rank_score_segments import (
     fetch_rank_score_segment as fetch_rank_score_segment_online,
 )
+from ironsbot.services.seer.rank_work_cache import (
+    cached_rank_miss,
+    record_rank_page_work,
+    save_rank_miss,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -76,6 +81,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.rank_page_cache_models import (
         CachedRankLookup,
+        CachedRankMiss,
         CachedRankPage,
         CachedRankPageSummary,
     )
@@ -113,6 +119,16 @@ class RankPageCache(Protocol):
         allow_stale: bool | None = None,
     ) -> CachedRankLookup | None: ...
 
+    def miss(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        minimum_limit: int,
+        allow_stale: bool | None = None,
+    ) -> CachedRankMiss | None: ...
+
     def summary(self, *, key: int, sub_key: int) -> list[CachedRankPageSummary]: ...
 
     def score_indexes(
@@ -133,6 +149,16 @@ class RankPageCache(Protocol):
         start: int,
         end: int,
         items: Sequence[object],
+        fetched_at: float | None = None,
+    ) -> None: ...
+
+    def save_miss(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        searched_limit: int,
         fetched_at: float | None = None,
     ) -> None: ...
 
@@ -201,6 +227,12 @@ class RankService:
                 end=end,
             )
             if cached is not None:
+                record_rank_page_work(
+                    self.exclusion_policy,
+                    key=key,
+                    sub_key=sub_key,
+                    cached=True,
+                )
                 return RankPageResult(
                     list(cached.items),
                     cached.fetched_at,
@@ -232,6 +264,12 @@ class RankService:
             end=end,
             items=items,
             fetched_at=fetched_at,
+        )
+        record_rank_page_work(
+            self.exclusion_policy,
+            key=key,
+            sub_key=sub_key,
+            cached=False,
         )
         return RankPageResult(items, fetched_at, from_cache=False)
 
@@ -415,6 +453,18 @@ class RankService:
             result.excluded = True
             result.score = score_target
             return result
+        if score_target is None and (
+            cached_miss := cached_rank_miss(
+                self.cache,
+                key=key,
+                sub_key=sub_key,
+                user_id=user_id,
+                minimum_limit=limit,
+            )
+        ) is not None:
+            result.searched_limit = cached_miss.searched_limit
+            result.cost.cache_page_hits += 1
+            return result
         cached = await find_rank_by_cached_position(
             game,
             user_id=user_id,
@@ -467,7 +517,7 @@ class RankService:
                 result=result,
                 fetch_rank_page=self.fetch_page,
             )
-        return await finalize_visible_lookup(
+        result = await finalize_visible_lookup(
             self,
             game,
             rank_key=rank_key,
@@ -475,6 +525,20 @@ class RankService:
             sub_key=sub_key,
             result=result,
         )
+        if (
+            score_target is None
+            and result.rank is None
+            and result.cost.used_full_scan
+            and result.failure is None
+        ):
+            save_rank_miss(
+                self.cache,
+                key=key,
+                sub_key=sub_key,
+                user_id=user_id,
+                searched_limit=result.searched_limit,
+            )
+        return result
 
     async def find_pet_kind_rank(
         self,
