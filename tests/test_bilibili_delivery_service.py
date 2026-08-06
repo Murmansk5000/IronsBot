@@ -460,9 +460,16 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
     async def no_sleep(_delay: float) -> None:
         return None
 
+    async def group_name(_bot: object, _group_id: int, **_kwargs: object) -> str:
+        return "投递失败群"
+
     monkeypatch.setattr(
         "ironsbot.services.bilibili.delivery.asyncio.sleep",
         no_sleep,
+    )
+    monkeypatch.setattr(
+        "ironsbot.services.bilibili.delivery.resolve_group_name",
+        group_name,
     )
     service = BilibiliPushDeliveryService(
         cast("MessageDelivery", AlwaysFailingDelivery()),
@@ -485,7 +492,7 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
     assert f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次" in str(
         admin_notices[0]["message"]
     )
-    assert "群：1001" in str(admin_notices[0]["message"])
+    assert "群：投递失败群（1001）" in str(admin_notices[0]["message"])
     assert "私聊：2001" in str(admin_notices[0]["message"])
 
 
