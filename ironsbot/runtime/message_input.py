@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
+from ironsbot.runtime.onebot_reply import event_reply_message_id
+
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
@@ -101,7 +103,7 @@ def message_input_context(event: Event) -> MessageInputContext:
         text = ""
     return MessageInputContext(
         text=text,
-        is_reply=getattr(event, "reply", None) is not None,
+        is_reply=event_reply_message_id(event) is not None,
         has_any_mention=has_any_mention,
         mentions_bot=mentions_bot,
         member_user_ids=tuple(member_ids),
