@@ -25,6 +25,8 @@ NEW_EQUIPS_COMMANDS = ("新增部件", "每周部件", "本周部件", "更新�
 NEW_MOUNTS_COMMANDS = ("新增座驾", "每周座驾", "本周座驾", "更新座驾")
 NEW_AUTOCARD_CARDS_COMMANDS = (
     "新增群星牌",
+    "新增群星牌卡牌",
+    "新增卡牌",
     "每周群星牌",
     "本周群星牌",
     "更新群星牌",

@@ -112,6 +112,7 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
         ),
     )
 
+    assert prompt.title == "🆕【新增群星牌】输入编号查看详情：\n"
     assert [item.name for item in prompt.items if item.is_visible] == [
         "▼ 新增群星牌",
         "测试卡牌",
@@ -162,7 +163,7 @@ def test_new_content_root_menu_expands_short_categories_with_numeric_keys() -> N
     assert prompt.get_item_by_input("1").value.item == pet
     assert prompt.get_item_by_input("2").value.item == skill
     assert "1. 超级噗纽" in prompt.build_message()
-    assert "a. ▼ 新增精灵（1 项）" in prompt.build_message()
+    assert "a. ▼ 新增精灵（1 项新增）" in prompt.build_message()
 
 
 def test_new_content_root_menu_collapses_categories_over_five_items() -> None:
@@ -199,6 +200,39 @@ def test_new_content_root_menu_collapses_categories_over_five_items() -> None:
     assert prompt.get_item_by_input("1").value.item == pet
     assert all(prompt.get_item_by_input(str(index)) is None for index in range(2, 8))
     assert prompt.get_item_by_input("b").value.category == "skill"
+
+
+def test_new_content_root_menu_separates_added_and_modified_counts() -> None:
+    pet = NewContentItem("pet", 4929, "鬼地行者", 4929, {})
+    skills = tuple(
+        NewContentItem("skill", 29417 + index, f"新增技能 {index}", index, {})
+        for index in range(15)
+    ) + tuple(
+        NewContentItem(
+            "skill",
+            29413 + index,
+            f"修改技能 {index}",
+            index,
+            {},
+            "modified",
+        )
+        for index in range(4)
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260806",
+        weekly_cycle="2026-07-31",
+        items=(pet, *skills),
+    )
+
+    prompt = _content_prompt(
+        snapshot,
+        _NewContentMenuLayout(display_categories=("pet", "skill")),
+    )
+
+    skill_category = prompt.get_item_by_input("b")
+    assert skill_category is not None
+    assert skill_category.desc == "15 项新增｜4 项修改"
 
 
 def test_new_content_category_selection_opens_a_numeric_menu() -> None:
