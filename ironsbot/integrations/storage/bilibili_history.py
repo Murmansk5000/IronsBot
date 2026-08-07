@@ -37,6 +37,11 @@ _SCHEMA = (
     "ON dynamics (uid, pub_ts DESC)",
 )
 
+_DELIVERY_CLAIM_COLUMNS = {
+    "delivery_claimed_at": "delivery_claimed_at REAL NOT NULL DEFAULT 0",
+}
+DEFAULT_DELIVERY_CLAIM_SECONDS = 120.0
+
 
 def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
     ensure_sqlite_columns(
@@ -49,7 +54,18 @@ def _ensure_dynamic_columns(conn: sqlite3.Connection) -> None:
     )
 
 
-_MIGRATIONS = (SqliteMigration(1, _SCHEMA, _ensure_dynamic_columns),)
+def _ensure_delivery_claim_columns(conn: sqlite3.Connection) -> None:
+    ensure_sqlite_columns(
+        conn,
+        table_name="dynamics",
+        columns=_DELIVERY_CLAIM_COLUMNS,
+    )
+
+
+_MIGRATIONS = (
+    SqliteMigration(1, _SCHEMA, _ensure_dynamic_columns),
+    SqliteMigration(2, callback=_ensure_delivery_claim_columns),
+)
 
 
 def _record_from_row(row: sqlite3.Row) -> DynamicHistoryRecord | None:
@@ -153,6 +169,10 @@ class SqliteBiliDynamicHistoryStore:
                             THEN excluded.suppression_reason
                             ELSE dynamics.suppression_reason
                         END,
+                        delivery_claimed_at = CASE
+                            WHEN excluded.pushed = 1 THEN 0
+                            ELSE dynamics.delivery_claimed_at
+                        END,
                         updated_at = excluded.updated_at
                     """,
                     (
@@ -252,3 +272,44 @@ class SqliteBiliDynamicHistoryStore:
             _LOGGER.warning("failed to read Bilibili dynamic history item: %s", e)
             return None
         return _record_from_row(row) if row is not None else None
+
+    def try_claim_delivery(
+        self,
+        dynamic_id: str,
+        *,
+        claim_seconds: float = DEFAULT_DELIVERY_CLAIM_SECONDS,
+    ) -> bool:
+        """Atomically reserve an unpushed dynamic for one delivery attempt."""
+
+        now = time.time()
+        expired_before = now - max(float(claim_seconds), 0.0)
+        try:
+            with self._database.connect() as conn:
+                result = conn.execute(
+                    """
+                    UPDATE dynamics
+                    SET delivery_claimed_at = ?
+                    WHERE dynamic_id = ?
+                      AND pushed = 0
+                      AND delivery_claimed_at <= ?
+                    """,
+                    (now, dynamic_id, expired_before),
+                )
+                return result.rowcount == 1
+        except sqlite3.Error as e:
+            _LOGGER.warning("failed to claim Bilibili dynamic delivery: %s", e)
+            return False
+
+    def release_delivery_claim(self, dynamic_id: str) -> None:
+        try:
+            with self._database.connect() as conn:
+                conn.execute(
+                    """
+                    UPDATE dynamics
+                    SET delivery_claimed_at = 0
+                    WHERE dynamic_id = ? AND pushed = 0
+                    """,
+                    (dynamic_id,),
+                )
+        except sqlite3.Error as e:
+            _LOGGER.warning("failed to release Bilibili dynamic delivery claim: %s", e)

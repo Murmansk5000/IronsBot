@@ -41,6 +41,10 @@ class BiliDynamicHistoryStore(Protocol):
 
     def get(self, dynamic_id: str) -> DynamicHistoryRecord | None: ...
 
+    def try_claim_delivery(self, dynamic_id: str) -> bool: ...
+
+    def release_delivery_claim(self, dynamic_id: str) -> None: ...
+
 
 def save_target_dynamics(
     store: BiliDynamicHistoryStore,
