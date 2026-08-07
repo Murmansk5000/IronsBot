@@ -50,5 +50,6 @@ def test_new_content_categories_use_prefix_aliases_only() -> None:
         assert any(command == f"本周{category}" for command in commands)
         assert any(command == f"更新{category}" for command in commands)
 
+    assert {"新增群星牌卡牌", "新增卡牌"}.issubset(NEW_AUTOCARD_CARDS_COMMANDS)
     assert "新成就" not in NEW_ACHIEVEMENTS_COMMANDS
     assert "皮肤更新" not in NEW_SKINS_COMMANDS

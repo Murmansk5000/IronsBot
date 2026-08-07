@@ -35,6 +35,7 @@ class NewContentMenuRenderer(Protocol):
         snapshot: NewContentSnapshot,
         display_categories: tuple[NewContentCategory, ...],
         focused_category: NewContentCategory | None,
+        menu_title: str,
     ) -> bytes: ...
 
 

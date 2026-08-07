@@ -262,6 +262,47 @@ async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> 
 
 
 @pytest.mark.asyncio
+async def test_missing_mount_image_uses_pending_notice_without_cache() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    cache = _Cache()
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260806",
+        weekly_cycle="2026-07-31",
+        items=(_item("mount", 1301170),),
+    )
+
+    await render_new_content_menu(
+        cache,  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        _Images(fail_keys={("equip", "1301170")}),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("mount",),
+        "mount",
+    )
+
+    item_row = next(row for row in captured["items"] if row["code"] == "1")
+    assert item_row["image"] is None
+    assert item_row["image_notice"] == "官方图片暂未上线"
+    assert cache.saved is None
+
+
+@pytest.mark.asyncio
 async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> None:
     captured: dict[str, Any] = {}
 
@@ -304,7 +345,49 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         True,
         False,
     ]
+    assert [row["description"] for row in captured["items"] if row["is_category"]] == [
+        "2 项新增",
+        "6 项新增",
+    ]
     assert captured["focused_category"] is None
+
+
+@pytest.mark.asyncio
+async def test_autocard_root_menu_uses_group_title() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260807",
+        weekly_cycle="2026-08-07",
+        items=(_item("autocard_card", 1),),
+    )
+
+    await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("autocard_card",),
+        None,
+        "新增群星牌",
+    )
+
+    assert captured["menu_title"] == "新增群星牌"
 
 
 def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
@@ -441,7 +524,11 @@ def test_skill_menu_details_format_official_rich_text() -> None:
 
 
 def test_suit_and_equip_menu_details_prefer_official_descriptions() -> None:
-    suit = SimpleNamespace(id=447, suit_desc="晨曦之星战甲官方简介")
+    suit = SimpleNamespace(
+        id=447,
+        suit_desc="晨曦之星战甲官方简介",
+        bonus=SimpleNamespace(desc="晨曦之星战甲套装效果"),
+    )
     equip = SimpleNamespace(
         id=333,
         part_type=SimpleNamespace(name="头部"),
@@ -466,9 +553,9 @@ def test_suit_and_equip_menu_details_prefer_official_descriptions() -> None:
         _item("equip", 333),
     )
 
-    assert suit_details.description == ""
+    assert suit_details.description == "晨曦之星战甲官方简介"
     assert suit_details.side_title == "套装效果"
-    assert suit_details.side_description == "晨曦之星战甲官方简介"
+    assert suit_details.side_description == "晨曦之星战甲套装效果"
     assert equip_details.metadata == "ID：333｜类型：头部｜套装：晨曦之星战甲"
     assert equip_details.description == "部件官方效果"
 
