@@ -42,6 +42,8 @@ FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
 FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
 FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
+BILIBILI_SUMMARY_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
+BILIBILI_SUMMARY_FAILURE_ACTION = "Bilibili dynamic summary failure"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
 
@@ -102,7 +104,11 @@ class BilibiliPushDeliveryService:
         )
 
         content = dynamic_content(item)
-        content_override = await self._content_override(content)
+        content_override = await self._content_override(
+            item,
+            author_mid,
+            content,
+        )
         content_message = self.render_content(item, content_override)
         if content_message is None:
             return
@@ -236,23 +242,69 @@ class BilibiliPushDeliveryService:
             subscription_key=bili_push_subscription_key(author_mid),
         )
 
-    async def _content_override(self, content: str) -> str | None:
+    async def _content_override(
+        self,
+        item: dict[str, Any],
+        author_mid: int,
+        content: str,
+    ) -> str | None:
         if len(content) <= self.content_max_chars:
             return None
         summary: str | None = None
+        failure_reason: str | None = None
         if self.summary_use_ai and self.summarize is not None:
             try:
                 summary = await self.summarize(
                     content,
                     max_chars=self.summary_max_chars,
                 )
-            except Exception:
+            except Exception as error:
                 # A summary is optional. The link was already delivered and a
                 # bad AI integration must not make this dynamic repeat forever.
                 logger.exception(
                     "Bilibili dynamic summary failed; using truncated content"
                 )
+                failure_reason = f"调用异常：{type(error).__name__}"
+            else:
+                if summary is None:
+                    failure_reason = "AI 未返回有效摘要"
+        if failure_reason is not None:
+            await self._notify_summary_failure(
+                item,
+                author_mid,
+                failure_reason,
+            )
         return summary or content[: self.summary_max_chars].rstrip()
+
+    async def _notify_summary_failure(
+        self,
+        item: dict[str, Any],
+        author_mid: int,
+        reason: str,
+    ) -> None:
+        if self.admin_notices is None:
+            logger.warning(
+                "Bilibili dynamic summary failed without an admin notice service: "
+                "author=%s dynamic=%s reason=%s",
+                author_mid,
+                item.get("id_str", "unknown"),
+                reason,
+            )
+            return
+
+        try:
+            await self.admin_notices.send_private_to_superusers(
+                "⚠️ B站动态 AI 摘要失败\n"
+                f"UID：{author_mid}\n"
+                f"动态ID：{item.get('id_str', '未知')}\n"
+                f"原因：{reason}\n"
+                f"已降级发送前 {self.summary_max_chars} 字原文。",
+                subscription_key=BILIBILI_SUMMARY_FAILURE_SUBSCRIPTION_KEY,
+                action_name=BILIBILI_SUMMARY_FAILURE_ACTION,
+            )
+        except Exception:
+            # This alert must not block marking the dynamic as delivered.
+            logger.exception("failed to send Bilibili dynamic summary failure notice")
 
     def _subscribed_full_targets(
         self,
