@@ -12,6 +12,10 @@ from ironsbot.services.operations.headless_errors import (
     SocketRecvError,
 )
 from ironsbot.services.seer.errors import format_socket_recv_error
+from ironsbot.services.seer.external_references import (
+    SeerInfoReference,
+    SeerInfoReferences,
+)
 from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
 
 if TYPE_CHECKING:
@@ -36,17 +40,20 @@ class SeerTeamQueryService:
         headless: HeadlessService,
         error_message: ErrorMessageLookup,
         team_resource: TeamResourceService,
+        *,
+        external_references: SeerInfoReferences | None = None,
     ) -> None:
         self._config = config
         self._headless = headless
         self._error_message = error_message
         self._team_resource = team_resource
+        self._external_references = external_references
 
     @staticmethod
     def parse_team_ids(text: str) -> tuple[int, ...]:
         return tuple(dict.fromkeys(int(item) for item in re.findall(r"\d+", text)))
 
-    async def query(
+    async def query(  # noqa: C901 - distinct query failures retain their messages
         self,
         team_ids: tuple[int, ...],
         actor: TeamQueryActor,
@@ -55,6 +62,7 @@ class SeerTeamQueryService:
             return f"一次最多查询 {MAX_TEAM_QUERY_IDS} 个战队，请分开查询。"
         messages: list[str] = []
         subscription_prompt: str | None = None
+        has_successful_reply = False
         for team_id in team_ids:
             if not is_valid_team_id(team_id):
                 messages.append(TEAM_ID_ERROR_MESSAGE)
@@ -86,12 +94,16 @@ class SeerTeamQueryService:
                 continue
 
             messages.append(message)
+            has_successful_reply = True
             if subscription_prompt is None:
                 subscription_prompt = self._subscription_prompt(actor, team_info)
 
         if subscription_prompt is not None:
             messages.append(subscription_prompt)
-        return "\n\n".join(messages)
+        reply = "\n\n".join(messages)
+        if not has_successful_reply or self._external_references is None:
+            return reply
+        return self._external_references.append(reply, SeerInfoReference.TEAM_QUERY)
 
     async def _query_one(
         self,

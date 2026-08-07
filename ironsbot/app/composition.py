@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
-from zoneinfo import ZoneInfo
 
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
+from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.app.private_extensions import (
@@ -48,7 +47,6 @@ from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.integrations.sendpic import SendpicBackendProvider
-from ironsbot.integrations.storage.activity import ActivitySentStore
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
@@ -87,17 +85,6 @@ from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
-from ironsbot.services.activity.delivery import (
-    ActivityReminderDelivery,
-    ActivityReminderTargets,
-)
-from ironsbot.services.activity.models import ActivityInfoCache
-from ironsbot.services.activity.repository import ActivityRepository
-from ironsbot.services.activity.service import (
-    ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-    ActivityService,
-    TargetType,
-)
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
 from ironsbot.services.bilibili.login import BilibiliLoginService
@@ -107,9 +94,6 @@ from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.help_hint import HelpHintService
 from ironsbot.services.messaging.sendpic import SendpicService
-from ironsbot.services.messaging.subscriptions import (
-    ACTIVITY_LEAD_HOURS_PREFERENCE,
-)
 from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
@@ -124,6 +108,7 @@ from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
 from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
+from ironsbot.services.seer.external_references import SeerInfoReferences
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 from ironsbot.services.seer.mintmark import MintmarkQueryService
@@ -168,22 +153,10 @@ from ironsbot.services.team.audit import TeamAuditService
 from ironsbot.services.team.resource import TeamResourceService
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from nonebot.internal.driver import Driver
 
-    from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.settings import Settings
     from ironsbot.runtime.plugins import PluginDefinition
-    from ironsbot.services.messaging.delivery import (
-        MessageDelivery,
-        MessageLimiter,
-    )
-
-LOCAL_TZ = ZoneInfo("Asia/Shanghai")
-SEERAPI_DB_NAME = "seerapi"
-ACTIVITY_INFO_CACHE_TTL = timedelta(seconds=60)
-SOON_ENDING_THRESHOLD = timedelta(days=7)
 @dataclass(slots=True)
 class Application:
     settings: Settings
@@ -212,84 +185,6 @@ class Application:
         self._installed = True
 
 
-def _build_activity_service(  # noqa: PLR0913 - composition root
-    config: ActivityConfig,
-    runtime_state_path: Path,
-    features: FeatureService,
-    message_delivery: MessageDelivery,
-    databases: DatabaseManager,
-    subscriptions: PushUnsubscribeStore,
-    notice_source: UnityNoticeSource,
-    message_limiter: MessageLimiter,
-) -> ActivityService:
-    sent_store = ActivitySentStore(runtime_state_path)
-    repository = ActivityRepository()
-
-    def load_rows():
-        with databases.session(SEERAPI_DB_NAME) as session:
-            return repository.load(session, only_shown=config.only_shown)
-
-    def preference_values():
-        return (
-            preference.value
-            for preference in subscriptions.all_time_preferences(
-                subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-                preference_type=ACTIVITY_LEAD_HOURS_PREFERENCE,
-            )
-        )
-
-    def preference_for_target(
-        target_type: TargetType,
-        target_id: int,
-    ) -> str | None:
-        return subscriptions.get_time_preference(
-            target_type,
-            target_id,
-            ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-            ACTIVITY_LEAD_HOURS_PREFERENCE,
-        )
-
-    def targets() -> ActivityReminderTargets:
-        return ActivityReminderTargets(
-            group_ids=tuple(
-                features.groups_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
-            ),
-            private_user_ids=tuple(
-                features.users_with_superusers(
-                    features.users_for_feature(ACTIVITY_PUSH_SUBSCRIPTION_KEY)
-                )
-            ),
-        )
-
-    async def broadcast(reminder: ActivityReminderDelivery) -> bool:
-        summary = await message_delivery.broadcast(
-            reminder.message,
-            group_ids=reminder.group_ids,
-            private_user_ids=reminder.private_user_ids,
-            action_name=reminder.action_name,
-            interval_seconds=1.2,
-            message_limiter=message_limiter,
-            subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
-        )
-        return bool(summary.succeeded)
-
-    return ActivityService(
-        config=config,
-        cache=ActivityInfoCache(),
-        load_rows=load_rows,
-        load_notice_text=notice_source.fetch,
-        cache_ttl=ACTIVITY_INFO_CACHE_TTL,
-        soon_ending_threshold=SOON_ENDING_THRESHOLD,
-        filter_unsent=sent_store.filter_unsent,
-        mark_sent=sent_store.mark_sent,
-        preference_values=preference_values,
-        preference_for_target=preference_for_target,
-        targets=targets,
-        broadcast=broadcast,
-        now=lambda: datetime.now(LOCAL_TZ),
-    )
-
-
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
 
@@ -300,6 +195,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     http_clients = HttpClients()
     databases = DatabaseManager()
     cache_paths = CachePaths(settings.paths.cache_root)
+    external_references = SeerInfoReferences(settings.seer.external_references)
     database_sync = DatabaseSync(databases, cache_paths=cache_paths)
     task_owner = TaskOwner()
     for name, source in settings.operations.data_sync.sources.items():
@@ -336,7 +232,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     admin_notices = AdminNoticeService(features, delivery)
     install_outbound_rate_limit_hooks(outbound)
 
-    activity = _build_activity_service(
+    activity = build_activity_service(
         settings.activity,
         settings.paths.runtime_state,
         features,
@@ -419,6 +315,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.bilibili.storage.history_max_items,
         ),
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
+        external_references=external_references,
     )
     bilibili_login = BilibiliLoginService(
         settings.bilibili.login_notice_cooldown_seconds,
@@ -490,6 +387,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_bindings,
         features,
         SqlitePlayerQueryLimitStore(settings.paths.qq_state),
+        external_references=external_references,
     )
     player_requests = PlayerRequestProtectionService(
         settings.seer.player.request_protection,
@@ -594,6 +492,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             headless,
             seer_database.error_message,
             team_resource,
+            external_references=external_references,
         ),
         EquipmentQueryService(seer_database, seer_images),
         TypeQueryService(
@@ -653,6 +552,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             autocard,
             render_scheduler.render,
         ),
+        external_references,
     )
     ai = AiService(
         settings.ai,
@@ -726,6 +626,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             headless,
             HttpServerNoticeSource(http_clients.origin),
             dedicated_sessions=headless_sessions,
+            external_references=external_references,
         ),
         subscriptions=subscriptions,
         bilibili=bilibili,

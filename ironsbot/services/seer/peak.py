@@ -23,6 +23,10 @@ from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.services.seer.external_references import (
+    SeerInfoReference,
+    peak_rank_reference,
+)
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 
 if TYPE_CHECKING:
@@ -292,6 +296,7 @@ class PeakQueryResult:
     text: str = ""
     image: bytes | None = None
     message: str = ""
+    reference: SeerInfoReference | None = None
 
 
 def normalize_peak_vote_time(value: datetime) -> datetime:
@@ -365,7 +370,7 @@ class PeakQueryService:
             pools,
             f"{label} / {start_time} ~ {end_time}",
         )
-        return PeakQueryResult(image=image)
+        return PeakQueryResult(image=image, reference=SeerInfoReference.PEAK_POOL)
 
     async def vote(
         self,
@@ -417,7 +422,7 @@ class PeakQueryService:
         except Exception:
             logger.exception("peak vote render failed: pools=%s", len(pools))
             return PeakQueryResult(message="❌巅峰投票图片生成失败，请稍后再试。")
-        return PeakQueryResult(image=image)
+        return PeakQueryResult(image=image, reference=SeerInfoReference.PEAK_VOTE)
 
     async def item_rank(
         self,
@@ -467,7 +472,11 @@ class PeakQueryService:
                 )
         timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
         return PeakQueryResult(
-            text=f"{name}{kind}榜（截至{timestamp}）\n" + "\n".join(lines)
+            text=f"{name}{kind}榜（截至{timestamp}）\n" + "\n".join(lines),
+            reference=peak_rank_reference(
+                peak_type=peak_type.value,
+                category="suit" if kind == "套装" else "title",
+            ),
         )
 
     async def pet_rank(
@@ -517,7 +526,13 @@ class PeakQueryService:
             ban_items=ban_rank,
             pet_map=pet_map,
         )
-        return PeakQueryResult(image=image)
+        return PeakQueryResult(
+            image=image,
+            reference=peak_rank_reference(
+                peak_type=peak_type.value,
+                category="pet",
+            ),
+        )
 
     def _game(self) -> tuple[PeakGame | None, str]:
         try:
