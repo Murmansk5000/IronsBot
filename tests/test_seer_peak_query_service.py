@@ -11,6 +11,7 @@ import pytest
 from ironsbot.core import time
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
+from ironsbot.services.seer.external_references import SeerInfoReference
 from ironsbot.services.seer.peak import (
     PeakItemData,
     PeakPetSnapshot,
@@ -176,6 +177,7 @@ async def test_peak_pool_query_renders_with_progress() -> None:
             pets=(),
         ),
     )
+    assert result.reference is SeerInfoReference.PEAK_POOL
 
 
 @pytest.mark.asyncio
@@ -221,6 +223,7 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
             type_id=4,
         )
     }
+    assert result.reference is SeerInfoReference.PEAK_STANDARD_PET_RANK
 
 
 @pytest.mark.asyncio

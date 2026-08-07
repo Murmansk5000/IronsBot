@@ -19,6 +19,11 @@ from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import explicit_command
+from ironsbot.services.seer.external_references import (
+    SeerInfoReference,
+    SeerInfoReferences,
+    peak_rank_reference,
+)
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
@@ -49,6 +54,22 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
+
+
+def _rank_reference(command: object) -> SeerInfoReference | None:
+    kind = getattr(command, "kind", "global")
+    if kind != "global":
+        return None
+    rank_key = str(getattr(command, "rank_key", ""))
+    peak_type = {
+        "竞技段位": 1,
+        "狂野段位": 2,
+        "专家段位": 3,
+    }.get(rank_key)
+    if peak_type is None:
+        return None
+    return peak_rank_reference(peak_type=peak_type, category="player")
+
 
 def _is_rank_list_command(
     service: RankQueryService,
@@ -100,6 +121,7 @@ def _is_rank_player_command(
 
 async def _handle_list(
     service: RankQueryService,
+    references: SeerInfoReferences,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -111,7 +133,14 @@ async def _handle_list(
         group_id=event_group_id(event),
     )
     try:
-        await finish_event_reply(matcher, event, reply.text)
+        await finish_event_reply(
+            matcher,
+            event,
+            references.append(
+                reply.text,
+                _rank_reference(command) if reply.query_work is not None else None,
+            ),
+        )
     except FinishedException:
         service.record_returned_general_reply(
             qq_user_id=event.user_id,
@@ -129,6 +158,7 @@ async def _handle_list(
 
 async def _handle_score(
     service: RankQueryService,
+    references: SeerInfoReferences,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -140,7 +170,14 @@ async def _handle_score(
         qq_user_id=event.user_id,
     )
     try:
-        await finish_event_reply(matcher, event, reply.text)
+        await finish_event_reply(
+            matcher,
+            event,
+            references.append(
+                reply.text,
+                _rank_reference(command) if reply.query_work is not None else None,
+            ),
+        )
     except FinishedException:
         service.record_returned_general_reply(
             qq_user_id=event.user_id,
@@ -158,6 +195,7 @@ async def _handle_score(
 
 async def _handle_player(
     service: RankQueryService,
+    references: SeerInfoReferences,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -169,7 +207,14 @@ async def _handle_player(
         group_id=event_group_id(event),
     )
     try:
-        await finish_event_reply(matcher, event, reply.text)
+        await finish_event_reply(
+            matcher,
+            event,
+            references.append(
+                reply.text,
+                _rank_reference(command) if reply.query_work is not None else None,
+            ),
+        )
     except FinishedException:
         service.record_returned_player(command, event.user_id, reply)
         raise
@@ -280,6 +325,7 @@ async def _handle_display_limit(
 
 def install(group: SeerMatcherGroup) -> None:
     query = group.resources.rank_queries
+    references = group.resources.external_references
     admin = group.resources.rank_admin
     feature_rule = seer_feature_rule(group.features, "seer_rank") & explicit_command()
     priority = group.matcher_priority("seer_rank")
@@ -298,7 +344,7 @@ def install(group: SeerMatcherGroup) -> None:
         & Rule(bind(_is_rank_list_command, query)),
         priority=priority,
     )
-    list_matcher.append_handler(bind_async(_handle_list, query))
+    list_matcher.append_handler(bind_async(_handle_list, query, references))
 
     player_matcher = group.on_message(
         policy=CommandPolicy.command(
@@ -309,7 +355,7 @@ def install(group: SeerMatcherGroup) -> None:
         & Rule(bind(_is_rank_player_command, group)),
         priority=priority,
     )
-    player_matcher.append_handler(bind_async(_handle_player, query))
+    player_matcher.append_handler(bind_async(_handle_player, query, references))
 
     score_matcher = group.on_message(
         policy=CommandPolicy.command(
@@ -326,7 +372,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         priority=priority,
     )
-    score_matcher.append_handler(bind_async(_handle_score, query))
+    score_matcher.append_handler(bind_async(_handle_score, query, references))
 
     cache_status = group.on_fullmatch(
         with_admin_prefix(("样本情况", "样本状态")),
