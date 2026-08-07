@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 
+from ironsbot.config.models.seer import ExternalReferencesConfig
 from ironsbot.core.features import FeatureConfig
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
@@ -15,6 +16,7 @@ from ironsbot.services.bilibili.menu import (
     select_cached_dynamic_id,
 )
 from ironsbot.services.bilibili.service import BiliFeedResponse
+from ironsbot.services.seer.external_references import SeerInfoReferences
 from tests.helpers.bilibili import build_test_bilibili_service
 
 
@@ -159,3 +161,24 @@ def test_bilibili_service_owns_dynamic_query_and_history(
     assert result.dynamic_ids == ("dynamic-1",)
     assert "赛尔号发布了一条动态" in result.prompt
     assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"
+
+
+def test_bilibili_history_reference_is_added_only_when_enabled(
+    tmp_path: Path,
+) -> None:
+    service = build_test_bilibili_service(
+        tmp_path,
+        external_references=SeerInfoReferences(ExternalReferencesConfig()),
+    )
+
+    assert "https://seerinfo.yuyuqaq.cn/bilibili" in service.history_reference_message(
+        "📭 没有可展示的历史动态。"
+    )
+
+    disabled = build_test_bilibili_service(
+        tmp_path / "disabled",
+        external_references=SeerInfoReferences(
+            ExternalReferencesConfig(bilibili_history=False)
+        ),
+    )
+    assert disabled.history_reference_message("历史动态") == "历史动态"

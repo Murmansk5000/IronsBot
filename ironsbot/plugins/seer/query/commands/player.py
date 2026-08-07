@@ -21,6 +21,10 @@ from ironsbot.runtime.rules import (
     explicit_command,
     member_target_command,
 )
+from ironsbot.services.seer.external_references import (
+    SeerInfoReference,
+    SeerInfoReferences,
+)
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
@@ -63,6 +67,7 @@ class PlayerCommandDependencies:
     player_accounts: PlayerAccountRegistry = field(
         default_factory=lambda: PlayerAccountRegistry(())
     )
+    external_references: SeerInfoReferences | None = None
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
@@ -303,7 +308,14 @@ async def _send_pending_player_query(
         event,
         state,
         player_id=pending.player_id,
-        player_message=pending.player_message,
+        player_message=(
+            pending.player_message
+            if dependencies.external_references is None
+            else dependencies.external_references.append(
+                pending.player_message,
+                SeerInfoReference.PLAYER_QUERY,
+            )
+        ),
         has_collection=plan.has_collection,
         has_peak=plan.needs_peak_section,
         has_autocard=plan.has_autocard_rank,
@@ -331,6 +343,7 @@ def install(group: SeerMatcherGroup) -> None:
         group.features,
         group.resources.player_detail_extensions,
         group.player_accounts,
+        group.resources.external_references,
     )
     binding_matcher = group.on_message(
         policy=CommandPolicy.command(

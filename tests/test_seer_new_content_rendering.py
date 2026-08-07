@@ -261,6 +261,52 @@ async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> 
     assert item_row["image"] is None
 
 
+@pytest.mark.asyncio
+async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260807",
+        weekly_cycle="2026-08-07",
+        items=(
+            _item("autocard_sanctuary_effect", 1),
+            _item("autocard_sanctuary_effect", 2),
+            *(_item("skill", 100 + index) for index in range(6)),
+        ),
+    )
+
+    await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("autocard_sanctuary_effect", "skill"),
+        None,
+    )
+
+    assert [row["code"] for row in captured["items"]] == ["a", "1", "2", "b"]
+    assert [row["expanded"] for row in captured["items"] if row["is_category"]] == [
+        True,
+        False,
+    ]
+    assert captured["focused_category"] is None
+
+
 def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
     water_type_id = 3
     attributes = _attributes()
