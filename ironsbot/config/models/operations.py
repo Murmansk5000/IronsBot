@@ -49,6 +49,7 @@ class RemoteBuildStepConfig(BaseModel):
 
 class RemoteBuildConfig(RemoteBuildStepConfig):
     enabled: bool = False
+    downstream_publication_pending: bool = False
     steps: list[RemoteBuildStepConfig] = Field(default_factory=list)
 
     def build_steps(self) -> list[RemoteBuildStepConfig]:
@@ -98,7 +99,7 @@ class DataSyncConfig(BaseModel):
                     f"{SEERAPI_DATA_RELEASE}/seerapi-data-latest/"
                     "seerapi-data.sqlite.sha256"
                 ),
-                interval_minutes=60,
+                interval_minutes=5,
                 local_path="data/seerapi-data.sqlite",
             ),
             "aliases": DataSourceConfig(

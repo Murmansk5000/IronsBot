@@ -1239,8 +1239,8 @@ image_dir = "data/pet_configs"
 [operations.data_sync]
 # 数据同步分两层：
 # - 普通启动/定时同步默认只下载 GitHub Release 里已经构建好的 SQLite。
-# - /更新数据 会先让 Actions 检查官方/上游是否有变化，有变化才重建；随后下载新库。
-# - /强制更新数据 会传 force=true，强制 Actions 重建，用于排查或 parser 修复后重跑。
+# - /更新数据 会顺序检查官方/上游并构建 api-data；api-data 发布后自动派发 SeerAPI，下游完成后由 5 分钟轮询热同步。
+# - /强制更新数据 会传 force=true，强制上游 Actions 重建；新周一致性闸门仍不会发布旧 api-data 生成的空索引。
 # 如果只是想避免开机慢，改 on_startup=false；如果想开机也检查远程构建，改 startup_trigger_remote_build=true。
 # Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。
 on_startup = true
@@ -1254,8 +1254,8 @@ interval_enabled = true
 url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite"
 # Default: SeerAPI data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
 fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite.sha256"
-# Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
-interval_minutes = 60
+# Default: 5; EN: Sync interval minutes. ZH: 同步间隔分钟。
+interval_minutes = 5
 # Default: "data/seerapi-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
 local_path = "data/seerapi-data.sqlite"
 
@@ -1264,6 +1264,9 @@ local_path = "data/seerapi-data.sqlite"
 # EN: Each step reuses a recent queued/running workflow by default to avoid duplicate builds.
 # ZH: 每个步骤默认会复用最近正在排队/运行的同 workflow，避免重复触发导致排队变慢。
 enabled = true
+# Default: false; EN: api-data publishes and dispatches the downstream SeerAPI build asynchronously.
+# ZH: api-data 发布后会异步派发 SeerAPI 构建；机器人随后按 5 分钟轮询热同步，不再重复强制构建。
+downstream_publication_pending = true
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "refresh_official_sources"
@@ -1301,15 +1304,6 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { debug_enabled = false, force = false }
-
-[[operations.data_sync.sources.seerapi.remote_build.steps]]
-name = "build_ironsbot_data"
-repository = "Murmansk-Seer/seerapi"
-workflow_id = "build-seerapi-data-db.yml"
-ref = "main"
-timeout_seconds = 1800
-poll_interval_seconds = 10
-inputs = { force = false }
 
 [operations.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
