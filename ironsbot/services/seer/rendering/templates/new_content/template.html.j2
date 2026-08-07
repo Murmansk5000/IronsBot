@@ -48,6 +48,11 @@
     }
     .thumbnail-frame.square { flex: 0 0 110px; height: 110px; }
     .thumbnail-frame.portrait { flex: 0 0 82px; height: 110px; }
+    .thumbnail-frame.pending {
+      padding: 12px; text-align: center; color: #a9cde8;
+      background: linear-gradient(135deg, #102f50, #0b2038);
+    }
+    .thumbnail-notice { font-size: 13px; line-height: 1.45; }
     .thumbnail {
       display: block; max-width: 100%; max-height: 100%; width: auto; height: auto;
       object-fit: contain;
@@ -105,7 +110,7 @@
 <body>
   <main class="panel">
     <header class="header">
-      <div class="title">🆕 新增内容</div>
+      <div class="title">🆕 {{ menu_title }}</div>
       <div class="cycle">内容版本：{{ content_date }}</div>
     </header>
     <section class="list">
@@ -118,7 +123,7 @@
             <div class="category-count">{{ item.description }}</div>
           </div>
         {% else %}
-          <div class="item{% if not item.image %} no-image{% endif %}{% if item.skill %} skill-item{% endif %}">
+          <div class="item{% if not item.image and not item.image_notice %} no-image{% endif %}{% if item.skill %} skill-item{% endif %}">
             <div class="key">{{ item.code }}</div>
             {% if item.skill %}
               <div class="skill-content">
@@ -127,8 +132,14 @@
                 {% if item.description %}<div class="skill-links">{{ item.description }}</div>{% endif %}
               </div>
             {% else %}
-            {% if item.image %}
-              <div class="thumbnail-frame {{ item.image_layout }}"><img class="thumbnail" src="{{ item.image }}"></div>
+            {% if item.image or item.image_notice %}
+              <div class="thumbnail-frame {{ item.image_layout }}{% if item.image_notice %} pending{% endif %}">
+                {% if item.image %}
+                  <img class="thumbnail" src="{{ item.image }}">
+                {% else %}
+                  <div class="thumbnail-notice">{{ item.image_notice }}</div>
+                {% endif %}
+              </div>
             {% endif %}
             <div class="content">
               <div class="content-main">
