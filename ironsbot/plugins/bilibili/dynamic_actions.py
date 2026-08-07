@@ -81,7 +81,7 @@ async def handle_dynamic_menu_action(
             await finish_event_reply(
                 matcher,
                 event,
-                "📭 没有可展示的历史动态。",
+                service.history_reference_message("📭 没有可展示的历史动态。"),
             )
 
         state[DYNAMIC_IDS_STATE_KEY] = list(result.dynamic_ids)

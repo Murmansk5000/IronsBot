@@ -183,7 +183,13 @@
         {% endif %}
       {% endfor %}
     </section>
-    <footer class="footer">发送 <kbd>a</kbd> 展开分类，发送 <kbd>a1</kbd> 查看详情，发送 <kbd>0</kbd> 退出</footer>
+    <footer class="footer">
+      {% if focused_category %}
+        发送数字查看详情，发送 <kbd>0</kbd> 退出
+      {% else %}
+        发送字母展开分类，发送数字查看详情，发送 <kbd>0</kbd> 退出
+      {% endif %}
+    </footer>
   </main>
 </body>
 </html>

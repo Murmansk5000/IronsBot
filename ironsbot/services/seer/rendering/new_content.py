@@ -15,9 +15,11 @@ from ironsbot.services.seer.autocard import (
 from ironsbot.services.seer.images import ImageSourceError, SeerImageSource, to_data_uri
 from ironsbot.services.seer.new_content import (
     CATEGORY_NAMES,
+    DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS,
     NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
+    is_new_content_category_expanded_by_default,
 )
 from ironsbot.services.seer.render_paths import (
     NEW_CONTENT_TEMPLATE_PATH,
@@ -128,9 +130,11 @@ async def render_new_content_menu(  # noqa: PLR0913
             )
             item_rows.append((len(rows) - 1, item, details))
     else:
+        item_number = 1
         for index, category in enumerate(display_categories):
             code = chr(ord("a") + index)
             items = snapshot.items_for(category)
+            expanded = is_new_content_category_expanded_by_default(snapshot, category)
             rows.append(
                 {
                     "code": code,
@@ -148,12 +152,40 @@ async def render_new_content_menu(  # noqa: PLR0913
                     "gender_icon": None,
                     "image_layout": "square",
                     "is_category": True,
-                    "expanded": False,
+                    "expanded": expanded,
                     "image": None,
                     "skill": None,
                     "friend_skill": None,
                 }
             )
+            if expanded:
+                for item in items:
+                    details = _item_details(data, autocard, item)
+                    rows.append(
+                        {
+                            "code": str(item_number),
+                            "name": item.name,
+                            "description": details.description,
+                            "metadata": details.metadata,
+                            "side_title": details.side_title,
+                            "side_description": details.side_description,
+                            "stats": details.stats,
+                            "stats_layout": details.stats_layout,
+                            "stats_total": details.stats_total,
+                            "type_name": details.type_name,
+                            "gender_name": details.gender_name,
+                            "type_icon": None,
+                            "gender_icon": _gender_icon_data_uri(details.gender_id),
+                            "image_layout": _item_image_layout(item),
+                            "is_category": False,
+                            "expanded": False,
+                            "image": None,
+                            "skill": details.skill,
+                            "friend_skill": details.friend_skill,
+                        }
+                    )
+                    item_rows.append((len(rows) - 1, item, details))
+                    item_number += 1
 
     image_results = await asyncio.gather(
         *(
@@ -185,6 +217,7 @@ async def render_new_content_menu(  # noqa: PLR0913
             "content_date": snapshot.weekly_cycle,
             "items": rows,
             "skill_type_icons": skill_type_icons,
+            "focused_category": focused_category,
         },
         max_width=1080,
         allow_refit=False,
@@ -522,6 +555,7 @@ def _cache_key(
             snapshot.config_version,
             ",".join(categories),
             focused_category or "root",
+            f"auto-fold-{DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS}",
         )
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

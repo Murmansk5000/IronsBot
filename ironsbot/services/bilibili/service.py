@@ -17,6 +17,10 @@ from ironsbot.services.bilibili.menu import (
 )
 from ironsbot.services.bilibili.parser import target_dynamics_from_response
 from ironsbot.services.bilibili.schedule import AutoCheckState
+from ironsbot.services.seer.external_references import (
+    SeerInfoReference,
+    SeerInfoReferences,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -48,6 +52,7 @@ class BilibiliService:
     cookie_store: BiliCookieStore
     history: BiliDynamicHistoryStore
     fetch_feed: Callable[[str], Awaitable[BiliFeedResponse]]
+    external_references: SeerInfoReferences | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
 
@@ -101,7 +106,15 @@ class BilibiliService:
         return DynamicMenuResult(
             status="ok",
             dynamic_ids=tuple(dynamic_record_ids(records)),
-            prompt=build_dynamic_menu_text(records),
+            prompt=self.history_reference_message(build_dynamic_menu_text(records)),
+        )
+
+    def history_reference_message(self, message: str) -> str:
+        if self.external_references is None:
+            return message
+        return self.external_references.append(
+            message,
+            SeerInfoReference.BILIBILI_HISTORY,
         )
 
     def select_dynamic(
