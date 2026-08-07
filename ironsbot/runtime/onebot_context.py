@@ -21,6 +21,13 @@ def event_group_id(event: MessageEvent) -> int | None:
     return int(group_id) if group_id is not None else None
 
 
+def event_request_scope(event: MessageEvent) -> str:
+    """Keep duplicate user actions isolated to the current OneBot conversation."""
+
+    group_id = event_group_id(event)
+    return "private" if group_id is None else f"group:{group_id}"
+
+
 def command_context(event: MessageEvent) -> CommandContext:
     """Adapt a OneBot message event to the platform-neutral command context."""
 

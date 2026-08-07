@@ -14,6 +14,7 @@ from nonebot.log import logger
 from nonebot.matcher import Matcher
 from nonebot.typing import T_State
 
+from ironsbot.runtime.onebot_context import event_request_scope
 from ironsbot.runtime.prompt_sessions import (
     IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
@@ -160,7 +161,11 @@ def _admit_semantic_request(
     request_service = context.request_service
     if request is None or request_service is None:
         return request, None, None
-    decision = request_service.admit(user_id=event.user_id, request=request)
+    decision = request_service.admit(
+        user_id=event.user_id,
+        request=request,
+        scope=event_request_scope(event),
+    )
     if decision.allowed:
         return request, decision.token, None
     return request, None, decision.feedback
