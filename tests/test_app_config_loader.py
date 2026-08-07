@@ -295,7 +295,11 @@ def test_example_config_parses() -> None:
     _assert_example_bot_routing(config)
     assert not config.operations.data_sync.startup_trigger_remote_build
     assert config.operations.data_sync.sources["seerapi"].local_path
+    assert config.operations.data_sync.sources["seerapi"].interval_minutes == 5
     assert config.operations.data_sync.sources["seerapi"].remote_build.enabled
+    assert config.operations.data_sync.sources[
+        "seerapi"
+    ].remote_build.downstream_publication_pending
     _assert_default_docker_update(config.operations.docker_update)
     assert config.paths.log_file == Path("logs/ironsbot.log")
     assert config.paths.error_log_file == Path("logs/ironsbot.error.log")
@@ -310,10 +314,9 @@ def test_example_config_parses() -> None:
         "refresh_unity_config",
         "sync_config_sources",
         "build_api_data",
-        "build_ironsbot_data",
     ]
-    assert remote_build_steps[-1].repository == "Murmansk-Seer/seerapi"
-    assert remote_build_steps[-1].workflow_id == "build-seerapi-data-db.yml"
+    assert remote_build_steps[-1].repository == "Murmansk-Seer/api-data"
+    assert remote_build_steps[-1].workflow_id == "main.yml"
     assert remote_build_steps[0].inputs == {
         "force-update-assets": False,
         "force-update-config": False,
@@ -325,7 +328,6 @@ def test_example_config_parses() -> None:
         "debug_enabled": False,
         "force": False,
     }
-    assert remote_build_steps[4].inputs == {"force": False}
 
 
 def test_example_config_pet_config_defaults() -> None:
@@ -1289,6 +1291,31 @@ display_limit = "not an integer"
     )
 
     with pytest.raises(ValidationError):
+        load_settings(config_path)
+
+
+def test_rank_lookup_limits_accept_known_global_ranks_and_reject_unknown_keys(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.rank]
+lookup_limits = { "群星牌" = 10000 }
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert load_settings(config_path).seer.rank.lookup_limits == {"群星牌": 10000}
+
+    config_path.write_text(
+        """
+[seer.rank]
+lookup_limits = { "不存在的榜" = 10000 }
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="unsupported global rank key"):
         load_settings(config_path)
 
 

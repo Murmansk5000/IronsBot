@@ -308,12 +308,13 @@ async def _start_new_content(  # noqa: PLR0913
         prompt,
         _resolve_new_content_selection,
         _is_new_content_input,
-        prompt_message=_render_content_prompt(
+        prompt_message=_render_content_prompt_with_notice(
             prompt,
             snapshot,
             layout,
             group.resources.new_content_menu,
             event,
+            matcher,
         ),
     )
 
@@ -504,6 +505,7 @@ async def _replace_prompt(
     ) or not isinstance(services, _NewContentServices):
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
+    await matcher.send(_new_content_rendering_notice(event))
     send_result = await matcher.send(
         await _render_content_prompt(
             prompt,
@@ -514,6 +516,25 @@ async def _replace_prompt(
         )
     )
     update_queued_menu_anchor(matcher, event, send_result)
+
+
+async def _render_content_prompt_with_notice(  # noqa: PLR0913
+    prompt: Prompt[_NewContentAction],
+    snapshot: NewContentSnapshot,
+    layout: _NewContentMenuLayout,
+    renderer: Any,
+    event: Event,
+    matcher: Matcher,
+) -> str | Message:
+    await matcher.send(_new_content_rendering_notice(event))
+    return await _render_content_prompt(prompt, snapshot, layout, renderer, event)
+
+
+def _new_content_rendering_notice(event: Event) -> str | Message:
+    text = "⏳ 正在生成新增内容图片，请稍候。"
+    if not isinstance(event, GroupMessageEvent):
+        return text
+    return MessageSegment.at(event.user_id) + MessageSegment.text(f" {text}")
 
 
 async def _render_content_prompt(

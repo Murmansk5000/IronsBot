@@ -131,6 +131,31 @@ def test_in_flight_request_keeps_users_actions_and_targets_independent() -> None
     ).allowed
 
 
+def test_in_flight_request_keeps_the_same_user_independent_per_group() -> None:
+    service = _service()
+    request = _request("meeting_reply", "default")
+
+    first = service.admit(
+        user_id=USER_ID,
+        request=request,
+        scope="group:10001",
+    )
+    second_group = service.admit(
+        user_id=USER_ID,
+        request=request,
+        scope="group:10002",
+    )
+    repeated_group = service.admit(
+        user_id=USER_ID,
+        request=request,
+        scope="group:10001",
+    )
+
+    assert first.allowed
+    assert second_group.allowed
+    assert not repeated_group.allowed
+
+
 def test_in_flight_request_superusers_bypass_reservations() -> None:
     service = _service(_Features(frozenset({USER_ID})))
 

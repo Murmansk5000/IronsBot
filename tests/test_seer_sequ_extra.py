@@ -31,12 +31,16 @@ class _PeakGame:
             124802: (4 << 16) + 1,
             124804: 12,
             124805: 20,
+            129441: 1200,
+            129443: 1500,
+            129446: 8,
+            129447: 10,
         }
         return None, SimpleNamespace(value=values[param])
 
 
 @pytest.mark.asyncio
-async def test_peak_partial_preserves_completed_mode_and_marks_remaining_modes(
+async def test_peak_partial_continues_to_later_modes_after_one_mode_times_out(
 ) -> None:
     result = await fetch_unity_peak_partial(
         _PeakGame(),
@@ -44,9 +48,9 @@ async def test_peak_partial_preserves_completed_mode_and_marks_remaining_modes(
         timeout_seconds=0.1,
     )
 
-    assert result.available_modes == frozenset(("standard",))
+    assert result.available_modes == frozenset(("standard", "expert"))
     assert result.info.current_j_star == _EXPECTED_STAR
     assert result.info.current_j_rank == _EXPECTED_RANK
     assert result.info.current_j_all == _EXPECTED_MATCHES
     assert result.error_for("wild") == "查询超时"
-    assert result.error_for("expert") == "查询未完成"
+    assert result.error_for("expert") is None

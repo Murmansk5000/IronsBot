@@ -75,7 +75,14 @@ class DataSyncService:
         )
         if not did_run:
             return BUSY_MESSAGE
-        return self._format_manual_result(results)
+        return self._format_manual_result(
+            results,
+            downstream_publication_pending=any(
+                source.remote_build.enabled
+                and source.remote_build.downstream_publication_pending
+                for source in self._config.sources.values()
+            ),
+        )
 
     async def startup(self, scheduler: Scheduler) -> str | None:
         if not self._backend.has_databases():
@@ -117,7 +124,12 @@ class DataSyncService:
                 replace_existing=True,
             )
 
-    def _format_manual_result(self, results: dict[str, bool]) -> str:
+    def _format_manual_result(
+        self,
+        results: dict[str, bool],
+        *,
+        downstream_publication_pending: bool = False,
+    ) -> str:
         failed = [name for name, ok in results.items() if not ok]
         succeeded = [name for name, ok in results.items() if ok]
         status = self._backend.format_sync_statuses(results)
@@ -138,4 +150,10 @@ class DataSyncService:
             if skipped and len(skipped) == len(results)
             else f"数据更新完成：{', '.join(succeeded)}"
         )
-        return f"{title}{status_extra}"
+        downstream_notice = (
+            "\napi-data 发布后会自动派发下游 SeerAPI 构建；"
+            "新数据库发布后，机器人会在最多 5 分钟内热同步。"
+            if downstream_publication_pending
+            else ""
+        )
+        return f"{title}{status_extra}{downstream_notice}"
