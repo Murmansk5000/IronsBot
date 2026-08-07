@@ -126,6 +126,8 @@ services:
 - 自定义刻印系列维护在 `tables_custom/mintmark_series_members.csv`。当前支持 `刻印十年`、`十年01`、`刻印V10`、`V10物速`；同步并构建 alias SQLite 后生效。
 - `[seer.mintmark].merge_connected = true` 会把关联刻印合并并显示全部 ID；设为 `false` 会保留原始记录并标注关联 ID，适合排查上游数据。
 
+- 周更新群星牌卡牌查询也可发送 `新增群星牌卡牌` 或 `新增卡牌`；沿用原菜单和图片策略。
+
 ## 插件架构
 
 通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展由独立扩展清单加载。
@@ -320,11 +322,6 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 `admin_notice` 的管理群不计入群额度。
 
 行为配置只属于 `ironsbot.toml`；`.env` 和 Unraid 模板只保存部署参数与密钥。
-
-### 查询结果的资料链接
-
-`[seer.external_references]` 控制已接线查询结果的资料链接，例如玩家、战队、开服、周报、动态历史和巅峰相关结果。
-链接按具体结果分支追加，不承诺所有错误回复或菜单统一附链；关闭链接不改变查询权限和数据来源。
 
 ### Feature 对照表
 
