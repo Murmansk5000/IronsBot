@@ -8,6 +8,8 @@ import pytest
 
 from ironsbot.services.seer.equipment import EquipmentQueryService
 
+NOT_FOUND_IMAGE_ERROR = "404 Not Found"
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -64,10 +66,27 @@ class FakeImages:
         return f"image:{key}".encode()
 
 
-def _service(data: FakeData) -> EquipmentQueryService:
+class MissingImages:
+    async def fetch(
+        self,
+        _kind: object,
+        _key: str,
+        *,
+        fallback: bool = True,
+    ) -> bytes:
+        from ironsbot.services.seer.images import ImageSourceError
+
+        assert fallback is False
+        raise ImageSourceError(NOT_FOUND_IMAGE_ERROR)
+
+
+def _service(
+    data: FakeData,
+    images: object | None = None,
+) -> EquipmentQueryService:
     return EquipmentQueryService(
         cast("SeerDataAccess", data),
-        cast("SeerImageSource", FakeImages()),
+        cast("SeerImageSource", images or FakeImages()),
     )
 
 
@@ -196,3 +215,44 @@ async def test_equipment_selection_reports_missing_item() -> None:
     assert result.message == (
         "❌未找到装备部件 99（这是一个bug，请反馈给开发者）"
     )
+
+
+@pytest.mark.asyncio
+async def test_mount_without_official_image_uses_pending_message() -> None:
+    data = FakeData()
+    data.values[data.equip] = (
+        SimpleNamespace(
+            id=1301170,
+            name="帝皇驹",
+            part_type=SimpleNamespace(id=6),
+            suit=None,
+            bonus=None,
+        ),
+    )
+
+    result = await _service(data, MissingImages()).select("equip", 1301170)
+
+    assert result.reply is not None
+    assert result.reply.image is None
+    assert result.reply.image_error == ""
+    assert result.reply.text.endswith("图片：官方图片暂未上线，暂无法展示。")
+
+
+@pytest.mark.asyncio
+async def test_non_mount_missing_image_keeps_existing_error() -> None:
+    data = FakeData()
+    data.values[data.equip] = (
+        SimpleNamespace(
+            id=400,
+            name="普通部件",
+            part_type=SimpleNamespace(id=0),
+            suit=None,
+            bonus=None,
+        ),
+    )
+
+    result = await _service(data, MissingImages()).select("equip", 400)
+
+    assert result.reply is not None
+    assert result.reply.image is None
+    assert "原因：404 Not Found" in result.reply.image_error

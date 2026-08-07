@@ -136,6 +136,21 @@ def is_new_content_category_expanded_by_default(
     return 0 < item_count <= DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS
 
 
+def format_new_content_category_count(
+    items: tuple[NewContentItem, ...],
+) -> str:
+    """Show additions and corrections separately in weekly category menus."""
+
+    added = sum(item.change_kind == "added" for item in items)
+    modified = sum(item.change_kind == "modified" for item in items)
+    parts = []
+    if added:
+        parts.append(f"{added} 项新增")
+    if modified:
+        parts.append(f"{modified} 项修改")
+    return "｜".join(parts) or "0 项"
+
+
 class NewContentService:
     """Read-only access to the publication index; no local baseline is kept."""
 
