@@ -126,8 +126,6 @@ services:
 - 自定义刻印系列维护在 `tables_custom/mintmark_series_members.csv`。当前支持 `刻印十年`、`十年01`、`刻印V10`、`V10物速`；同步并构建 alias SQLite 后生效。
 - `[seer.mintmark].merge_connected = true` 会把关联刻印合并并显示全部 ID；设为 `false` 会保留原始记录并标注关联 ID，适合排查上游数据。
 
-- 周更新群星牌卡牌查询也可发送 `新增群星牌卡牌` 或 `新增卡牌`；沿用原菜单和图片策略。
-
 ## 插件架构
 
 通用用户功能位于 `ironsbot/plugins`，部署者自行维护的扩展由独立扩展清单加载。
