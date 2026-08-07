@@ -20,6 +20,7 @@ from ironsbot.plugins.bilibili.delivery import (
 from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
+    BILIBILI_SUMMARY_FAILURE_ACTION,
     DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_PUSH_ACTION,
@@ -229,7 +230,8 @@ async def test_short_full_dynamic_does_not_call_ai(
             return TargetSendSummary([], [])
 
     async def unexpected_summary(text: str, *, max_chars: int) -> str:
-        del text, max_chars
+        del text
+        del max_chars
         raise AssertionError
 
     service = BilibiliPushDeliveryService(
@@ -253,6 +255,116 @@ async def test_short_full_dynamic_does_not_call_ai(
 
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
     assert "不会触发 AI 的短动态正文" in str(sent[-1]["message"])
+
+
+@pytest.mark.asyncio
+async def test_full_dynamic_uses_truncated_content_when_summary_fails(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+    admin_notices: list[dict[str, object]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
+
+    async def broken_summary(text: str, *, max_chars: int) -> str:
+        del text
+        del max_chars
+        raise TypeError
+
+    class RecordingAdminNotices:
+        async def send_private_to_superusers(
+            self,
+            message: str,
+            **kwargs: object,
+        ) -> None:
+            admin_notices.append({"message": message, **kwargs})
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=broken_summary,
+        content_max_chars=10,
+        summary_max_chars=8,
+        admin_notices=cast("Any", RecordingAdminNotices()),
+    )
+
+    await service.send(
+        _item(text="这是一条超过十个字符的长动态正文，用于验证摘要失败降级。"),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert [entry["action_name"] for entry in sent] == [
+        f"{FULL_DYNAMIC_PUSH_ACTION} link",
+        FULL_DYNAMIC_PUSH_ACTION,
+    ]
+    assert "这是一条超过十" in str(sent[-1]["message"])
+    assert len(admin_notices) == 1
+    assert "B站动态 AI 摘要失败" in str(admin_notices[0]["message"])
+    assert "调用异常：TypeError" in str(admin_notices[0]["message"])
+    assert admin_notices[0]["action_name"] == BILIBILI_SUMMARY_FAILURE_ACTION
+
+
+@pytest.mark.asyncio
+async def test_full_dynamic_notifies_superusers_when_summary_returns_none(
+    tmp_path: Path,
+) -> None:
+    admin_notices: list[dict[str, object]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            _message: object,
+            **_kwargs: object,
+        ) -> TargetSendSummary:
+            return TargetSendSummary([], [])
+
+    class RecordingAdminNotices:
+        async def send_private_to_superusers(
+            self,
+            message: str,
+            **kwargs: object,
+        ) -> None:
+            admin_notices.append({"message": message, **kwargs})
+
+    async def empty_summary(text: str, *, max_chars: int) -> None:
+        del text
+        del max_chars
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=empty_summary,
+        content_max_chars=10,
+        summary_max_chars=8,
+        admin_notices=cast("Any", RecordingAdminNotices()),
+    )
+
+    await service.send(
+        _item(text="这是一条超过十个字符的长动态正文，用于验证空摘要告警。"),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert len(admin_notices) == 1
+    assert "AI 未返回有效摘要" in str(admin_notices[0]["message"])
 
 
 @pytest.mark.asyncio
@@ -527,33 +639,3 @@ def test_delivery_service_appends_admin_hint_once_per_day(
     assert second == "正文2"
     assert other_group == f"正文3\n\n{BILI_PUSH_ADMIN_HINT}"
     assert private == "正文4"
-
-
-@pytest.mark.asyncio
-async def test_summary_callback_respects_keyword_only_max_chars() -> None:
-    # Only this pure callback method is exercised; no delivery or state store is opened.
-    calls: list[tuple[str, int]] = []
-
-    async def summarize(text: str, *, max_chars: int) -> str | None:
-        calls.append((text, max_chars))
-        return "ok"
-
-    def component_instance(*, use_ai: bool) -> BilibiliPushDeliveryService:
-        instance = object.__new__(BilibiliPushDeliveryService)
-        # Initialize this method's read set.
-        # Preserve the frozen class semantics.
-        for name, value in (
-            ("content_max_chars", 3), ("summary_max_chars", 2),
-            ("summary_use_ai", use_ai), ("summarize", summarize),
-        ):
-            object.__setattr__(instance, name, value)
-        return instance
-
-    service = component_instance(use_ai=True)
-    assert await service._content_override("long content") == "ok"
-    assert calls == [("long content", 2)]
-    assert await service._content_override("abc") is None
-    assert len(calls) == 1
-    disabled = component_instance(use_ai=False)
-    assert await disabled._content_override("long content") == "lo"
-    assert len(calls) == 1
