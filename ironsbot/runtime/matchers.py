@@ -39,6 +39,7 @@ from ironsbot.runtime.matcher_contracts import (
     default_semantic_request,
     static_command_id,
 )
+from ironsbot.runtime.onebot_context import event_request_scope
 from ironsbot.runtime.prompt_errors import (
     PromptLoopConfigurationError,
     PromptSessionManagerMissingError,
@@ -719,6 +720,7 @@ class MatcherRegistry:
                     request_decision = self.in_flight_requests.admit(
                         user_id=event.user_id,
                         request=request,
+                        scope=event_request_scope(event),
                     )
                     if request_decision.token is not None:
                         state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_decision.token
