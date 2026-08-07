@@ -69,6 +69,7 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
 }
 _CONFIG_VERSION_DATE_LENGTH = 8
 _CONFIG_VERSION_TIMESTAMP_LENGTH = 14
+DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS = 5
 
 
 class NewContentIndexUnavailableError(RuntimeError):
@@ -123,6 +124,31 @@ class NewContentSnapshot:
 
     def is_category_comparable(self, category: NewContentCategory) -> bool:
         return self.category_state(category).comparison_ready
+
+
+def is_new_content_category_expanded_by_default(
+    snapshot: NewContentSnapshot,
+    category: NewContentCategory,
+) -> bool:
+    """Expand short category lists while keeping large weekly changes compact."""
+
+    item_count = len(snapshot.items_for(category))
+    return 0 < item_count <= DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS
+
+
+def format_new_content_category_count(
+    items: tuple[NewContentItem, ...],
+) -> str:
+    """Show additions and corrections separately in weekly category menus."""
+
+    added = sum(item.change_kind == "added" for item in items)
+    modified = sum(item.change_kind == "modified" for item in items)
+    parts = []
+    if added:
+        parts.append(f"{added} 项新增")
+    if modified:
+        parts.append(f"{modified} 项修改")
+    return "｜".join(parts) or "0 项"
 
 
 class NewContentService:

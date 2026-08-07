@@ -6,6 +6,10 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from ironsbot.core.time import TZ_CN
+from ironsbot.services.seer.external_references import (
+    SeerInfoReference,
+    SeerInfoReferences,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -73,19 +77,21 @@ class PlayerQueryQuotaDecision:
 class PlayerQueryQuotaService:
     """Persistent daily budgets for foreground logical server work."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - composed persistence and reference services
         self,
         config: PlayerQueryLimitsConfig,
         bindings: PlayerBindingStore,
         features: SuperuserLookup,
         store: PlayerQueryLimitStore,
         *,
+        external_references: SeerInfoReferences | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._config = config
         self._bindings = bindings
         self._features = features
         self._store = store
+        self._external_references = external_references
         self._now = now or _now_cn
 
     def check(
@@ -120,7 +126,7 @@ class PlayerQueryQuotaService:
             return PlayerQueryQuotaDecision(allowed=True)
         return PlayerQueryQuotaDecision(
             allowed=False,
-            message=_quota_exhausted_message(
+            message=self._quota_exhausted_message(
                 scope=scope,
                 player_id=player_id,
                 limit=usage.limit,
@@ -249,6 +255,27 @@ class PlayerQueryQuotaService:
 
     def _bound_player_id(self, qq_user_id: int) -> int:
         return int(self._bindings.get(qq_user_id).player_id or 0)
+
+    def _quota_exhausted_message(
+        self,
+        *,
+        scope: PlayerQueryQuotaScope,
+        player_id: int,
+        limit: int,
+        bound_default_daily_limit: int,
+    ) -> str:
+        message = _quota_exhausted_message(
+            scope=scope,
+            player_id=player_id,
+            limit=limit,
+            bound_default_daily_limit=bound_default_daily_limit,
+        )
+        if self._external_references is None:
+            return message
+        return self._external_references.append(
+            message,
+            SeerInfoReference.PLAYER_QUERY,
+        )
 
 
 def _now_cn() -> datetime:

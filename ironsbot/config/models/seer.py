@@ -9,6 +9,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     field_validator,
     model_validator,
 )
@@ -646,6 +647,24 @@ class LuckySkinWindowConfig(BaseModel):
         return normalized
 
 
+class ExternalReferencesConfig(BaseModel):
+    """Optional SeerInfo companion links for matching query replies."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    player_query: StrictBool = True
+    team_query: StrictBool = True
+    server_status: StrictBool = True
+    weekly_preview: StrictBool = True
+    bilibili_history: StrictBool = True
+    peak_pool: StrictBool = True
+    peak_vote: StrictBool = True
+    peak_player_rank: StrictBool = True
+    peak_suit_rank: StrictBool = True
+    peak_title_rank: StrictBool = True
+    peak_pet_rank: StrictBool = True
+
+
 class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -659,6 +678,25 @@ class SeerConfig(BaseModel):
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
+    external_references: ExternalReferencesConfig = Field(
+        default_factory=ExternalReferencesConfig
+    )
     lucky_skin_window: LuckySkinWindowConfig = Field(
         default_factory=LuckySkinWindowConfig
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_unknown_external_references(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        references = value.get("external_references")
+        if not isinstance(references, dict):
+            return value
+        unknown = set(references).difference(ExternalReferencesConfig.model_fields)
+        if unknown:
+            message = ", ".join(sorted(str(key) for key in unknown))
+            raise ValueError(
+                "seer.external_references contains unknown key(s): " + message
+            )
+        return value

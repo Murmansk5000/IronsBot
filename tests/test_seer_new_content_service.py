@@ -9,7 +9,9 @@ from sqlmodel import Session, create_engine
 from ironsbot.services.seer.new_content import (
     NEW_CONTENT_CATEGORIES,
     NewContentIndexUnavailableError,
+    NewContentItem,
     NewContentService,
+    format_new_content_category_count,
 )
 
 if TYPE_CHECKING:
@@ -114,6 +116,18 @@ def test_new_content_order_places_skills_before_mintmarks() -> None:
         "mintmark",
         "suit",
     )
+
+
+def test_category_count_separates_additions_and_modifications() -> None:
+    items = (
+        NewContentItem("skill", 1, "新增技能", 1, {}, "added"),
+        NewContentItem("skill", 2, "修改技能一", 2, {}, "modified"),
+        NewContentItem("skill", 3, "修改技能二", 3, {}, "modified"),
+    )
+
+    assert format_new_content_category_count(items) == "1 项新增｜2 项修改"
+    assert format_new_content_category_count(items[:1]) == "1 项新增"
+    assert format_new_content_category_count(items[1:]) == "2 项修改"
 
 
 def test_current_content_version_uses_shanghai_date_not_baseline() -> None:
