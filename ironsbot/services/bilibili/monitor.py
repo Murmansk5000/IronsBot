@@ -9,7 +9,10 @@ from ironsbot.services.bilibili.checkpoints import (
     initialize_missing_checkpoints,
     mark_checkpoint,
 )
-from ironsbot.services.bilibili.parser import target_dynamics_from_response
+from ironsbot.services.bilibili.parser import (
+    dynamic_id,
+    target_dynamics_from_response,
+)
 from ironsbot.services.bilibili.push import (
     DynamicHistorySnapshot,
     build_dynamic_history_snapshot_for_item,
@@ -95,6 +98,22 @@ async def _push_new_dynamics(
         author_mid = snapshot.author_mid
         last_saved_time = checkpoints.get(author_mid, 0)
         service.history.save_snapshot(snapshot)
+        history_id = dynamic_id(item) or f"{author_mid}:{pub_ts}"
+        previous = service.history.get(history_id)
+        if previous is not None and previous.pushed:
+            logger.info(
+                "Bilibili dynamic already marked pushed; restoring checkpoint for "
+                "%s (%s): %s",
+                snapshot.author_name,
+                author_mid,
+                history_id,
+            )
+            checkpoint_changed = (
+                mark_checkpoint(checkpoints, author_mid, pub_ts)
+                or checkpoint_changed
+            )
+            continue
+
         targets: BiliPushTargets | None = None
         decision = decide_dynamic_push_before_targets(
             pub_ts=pub_ts,
@@ -121,12 +140,25 @@ async def _push_new_dynamics(
         if targets is None:
             targets = service.targets.push_targets_for_uid(author_mid)
 
-        await send_push(
-            item,
-            pub_ts,
-            author_mid,
-            targets,
-        )
+        if not service.history.try_claim_delivery(history_id):
+            logger.info(
+                "Bilibili dynamic delivery is already claimed; skipping %s (%s): %s",
+                snapshot.author_name,
+                author_mid,
+                history_id,
+            )
+            continue
+
+        try:
+            await send_push(
+                item,
+                pub_ts,
+                author_mid,
+                targets,
+            )
+        except BaseException:
+            service.history.release_delivery_claim(history_id)
+            raise
         service.history.save_snapshot(mark_history_snapshot_pushed(snapshot))
         checkpoint_changed = (
             mark_checkpoint(checkpoints, author_mid, pub_ts)
