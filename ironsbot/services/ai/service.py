@@ -39,9 +39,11 @@ MISSING_KEY_REPLY = "AI聊天还没有配置 API Key。请先设置 AI_KEY。"
 TIMEOUT_REPLY = "AI接口响应超时，我已经通知超级管理员。"
 UNEXPECTED_ERROR_REPLY = "AI聊天出错了，我已经通知超级管理员。"
 TEAM_ACTIONS = frozenset({"team_recommend", "team_resource"})
-BILIBILI_SUMMARY_PROMPT = (
+BILIBILI_SUMMARY_PROMPT_TEMPLATE = (
     "你是 B 站动态摘要助手。请忠实概括原文，不编造任何内容；"
-    "保留活动时间、截止时间、奖励、规则和重要事项。"
+    "优先覆盖活动时间、截止时间、奖励、规则和重要事项。"
+    "输出必须在 {max_chars} 个中文字符以内；内容很多时合并同类事项，"
+    "不要按原文逐条罗列，更不能写到一半留下未完成的编号、句子或列表。"
     "只输出简洁中文摘要，不要标题、寒暄、Markdown 或链接。"
 )
 logger = logging.getLogger(__name__)
@@ -189,7 +191,9 @@ class AiService:
             return None
 
         messages = build_messages(
-            system_prompt=BILIBILI_SUMMARY_PROMPT,
+            system_prompt=BILIBILI_SUMMARY_PROMPT_TEMPLATE.format(
+                max_chars=max_chars
+            ),
             history_turns=0,
             history=[],
             memory=[],
@@ -210,7 +214,7 @@ class AiService:
                 result.error_detail,
             )
             return None
-        return _truncate_plain_text(result.reply, max_chars)
+        return _truncate_bilibili_summary(result.reply, max_chars)
 
     @staticmethod
     def is_team_action(action: AiIntentAction) -> bool:
@@ -424,3 +428,16 @@ def _truncate_reply(text: str, max_chars: int) -> str:
 
 def _truncate_plain_text(text: str, max_chars: int) -> str:
     return text.strip()[:max_chars].rstrip()
+
+
+def _truncate_bilibili_summary(text: str, max_chars: int) -> str:
+    """Keep a mis-sized model summary readable instead of cutting a list mid-item."""
+
+    normalized = " ".join(text.split())
+    if len(normalized) <= max_chars:
+        return normalized
+    clipped = normalized[:max_chars]
+    sentence_end = max(clipped.rfind(mark) for mark in "。！？；")
+    if sentence_end >= max_chars // 3:
+        return clipped[: sentence_end + 1].rstrip()
+    return clipped.rstrip("，、：:；;-. ") + "……"

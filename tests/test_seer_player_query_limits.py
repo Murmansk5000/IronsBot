@@ -450,7 +450,9 @@ def test_player_detail_uses_valid_cache_without_quota_or_live_request(
     latest = QueryReply(text="old-cache")
 
     class _Details:
-        async def cached_or_inflight_reply(self, *_args: object) -> QueryReply:
+        async def cached_or_inflight_reply(
+            self, *_args: object, **_kwargs: object
+        ) -> QueryReply:
             return latest
 
     service = PlayerService(
@@ -518,7 +520,9 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
     latest = QueryReply(text="cached reply")
 
     class _Details:
-        async def cached_or_inflight_reply(self, *_args: object) -> QueryReply:
+        async def cached_or_inflight_reply(
+            self, *_args: object, **_kwargs: object
+        ) -> QueryReply:
             return latest
 
     service = PlayerService(

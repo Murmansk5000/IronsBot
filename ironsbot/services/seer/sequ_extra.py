@@ -145,12 +145,15 @@ async def fetch_unity_peak_partial(
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout_seconds
     chunks: list[bytes] = []
     available_modes: list[str] = []
     mode_errors: list[tuple[str, str]] = []
 
-    for mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
+    for _mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
+        # A slow or unavailable mode must not consume the complete peak-stage
+        # budget.  Each mode is an independently useful result and later modes
+        # should still be queried after an earlier timeout.
+        deadline = loop.time() + timeout_seconds
         mode_chunks: list[bytes] = []
         try:
             for param in params:
@@ -171,11 +174,7 @@ async def fetch_unity_peak_partial(
             else:
                 error_text = str(error) or type(error).__name__
             mode_errors.append((mode, error_text))
-            mode_errors.extend(
-                (remaining_mode, "查询未完成")
-                for remaining_mode, _ in PEAK_PARAMS_BY_MODE[mode_index + 1 :]
-            )
-            break
+            continue
         chunks.extend(mode_chunks)
         available_modes.append(mode)
 
