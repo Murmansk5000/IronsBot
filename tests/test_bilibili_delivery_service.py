@@ -165,8 +165,8 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
             sent.append({"message": message, **kwargs})
             return TargetSendSummary([], [])
 
-    async def summarize(content: str, max_chars: int) -> str:
-        summaries.append((content, max_chars))
+    async def summarize(text: str, *, max_chars: int) -> str:
+        summaries.append((text, max_chars))
         return "这是忠实摘要。"
 
     service = BilibiliPushDeliveryService(
@@ -228,7 +228,9 @@ async def test_short_full_dynamic_does_not_call_ai(
             sent.append({"message": message, **kwargs})
             return TargetSendSummary([], [])
 
-    async def unexpected_summary(_content: str, _max_chars: int) -> str:
+    async def unexpected_summary(text: str, *, max_chars: int) -> str:
+        del text
+        del max_chars
         raise AssertionError
 
     service = BilibiliPushDeliveryService(
@@ -252,6 +254,52 @@ async def test_short_full_dynamic_does_not_call_ai(
 
     assert len(sent) == EXPECTED_FULL_PUSH_COUNT
     assert "不会触发 AI 的短动态正文" in str(sent[-1]["message"])
+
+
+@pytest.mark.asyncio
+async def test_full_dynamic_uses_truncated_content_when_summary_fails(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
+
+    async def broken_summary(text: str, *, max_chars: int) -> str:
+        del text
+        del max_chars
+        raise TypeError
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=broken_summary,
+        content_max_chars=10,
+        summary_max_chars=8,
+    )
+
+    await service.send(
+        _item(text="这是一条超过十个字符的长动态正文，用于验证摘要失败降级。"),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert [entry["action_name"] for entry in sent] == [
+        f"{FULL_DYNAMIC_PUSH_ACTION} link",
+        FULL_DYNAMIC_PUSH_ACTION,
+    ]
+    assert "这是一条超过十" in str(sent[-1]["message"])
 
 
 @pytest.mark.asyncio

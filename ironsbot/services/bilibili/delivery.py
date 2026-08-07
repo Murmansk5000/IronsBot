@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.core.onebot_group_identity import (
     format_group_label,
@@ -44,7 +44,17 @@ FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
-DynamicSummarizer = Callable[[str, int], Awaitable[str | None]]
+
+
+class DynamicSummarizer(Protocol):
+    async def __call__(
+        self,
+        text: str,
+        *,
+        max_chars: int,
+    ) -> str | None: ...
+
+
 HintAppender = Callable[[Any, str], Any]
 logger = logging.getLogger(__name__)
 
@@ -229,11 +239,19 @@ class BilibiliPushDeliveryService:
     async def _content_override(self, content: str) -> str | None:
         if len(content) <= self.content_max_chars:
             return None
-        summary = (
-            await self.summarize(content, self.summary_max_chars)
-            if self.summary_use_ai and self.summarize is not None
-            else None
-        )
+        summary: str | None = None
+        if self.summary_use_ai and self.summarize is not None:
+            try:
+                summary = await self.summarize(
+                    content,
+                    max_chars=self.summary_max_chars,
+                )
+            except Exception:
+                # A summary is optional. The link was already delivered and a
+                # bad AI integration must not make this dynamic repeat forever.
+                logger.exception(
+                    "Bilibili dynamic summary failed; using truncated content"
+                )
         return summary or content[: self.summary_max_chars].rstrip()
 
     def _subscribed_full_targets(
