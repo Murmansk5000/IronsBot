@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.data_queries import SeerDataQueryService
     from ironsbot.services.seer.equipment import EquipmentQueryService
+    from ironsbot.services.seer.external_references import SeerInfoReferences
     from ironsbot.services.seer.mintmark import MintmarkQueryService
     from ironsbot.services.seer.new_content import (
         NewContentCategory,
@@ -54,3 +55,4 @@ class SeerQueryResources:
     rank_queries: RankQueryService
     rank_admin: RankAdminService
     new_content_menu: NewContentMenuRenderer
+    external_references: SeerInfoReferences

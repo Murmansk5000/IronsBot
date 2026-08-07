@@ -45,6 +45,10 @@ from ironsbot.services.seer.data_query_commands import (
     WEEKLY_PREVIEW_COMMANDS,
 )
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.external_references import (
+    SeerInfoReference,
+    SeerInfoReferences,
+)
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     CATEGORY_NAMES,
@@ -99,6 +103,8 @@ async def _finish_query(
     operation: Callable[[], Awaitable[DataQueryReply]],
     *,
     matcher: Matcher,
+    references: SeerInfoReferences,
+    reference: SeerInfoReference | None = None,
 ) -> None:
     try:
         reply: DataQueryReply = await operation()
@@ -106,24 +112,34 @@ async def _finish_query(
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
     if isinstance(reply, bytes):
-        await MessageFactory(Image(reply)).finish()
+        message = MessageFactory(Image(reply))
+        if url := references.url_for(reference):
+            message += f"\n相关查询：{url}"
+        await message.finish()
         return
     await matcher.finish(reply)
 
 
 def install(group: SeerMatcherGroup) -> None:
     service: SeerDataQueryService = group.resources.data_queries
+    references = group.resources.external_references
     commands = (
-        (WEEKLY_PREVIEW_COMMANDS, "seer_data_preview", service.weekly_preview),
-        (DATA_VERSION_COMMANDS, "seer_data_version", service.data_version),
+        (
+            WEEKLY_PREVIEW_COMMANDS,
+            "seer_data_preview",
+            service.weekly_preview,
+            SeerInfoReference.WEEKLY_PREVIEW,
+        ),
+        (DATA_VERSION_COMMANDS, "seer_data_version", service.data_version, None),
         (
             SEASON_COUNTDOWN_COMMANDS,
             "seer_season_countdown",
             service.season_countdown,
+            None,
         ),
     )
     rule = seer_feature_rule(group.features, "seer_data") & explicit_command()
-    for messages, command_id, operation in commands:
+    for messages, command_id, operation, reference in commands:
         matcher = group.on_fullmatch(
             messages,
             policy=CommandPolicy.command(
@@ -133,7 +149,14 @@ def install(group: SeerMatcherGroup) -> None:
             rule=rule,
             priority=group.matcher_priority("seer_data"),
         )
-        matcher.append_handler(bind_async(_finish_query, operation))
+        matcher.append_handler(
+            bind_async(
+                _finish_query,
+                operation,
+                references=references,
+                reference=reference,
+            )
+        )
 
     _install_new_content_commands(group, service)
 

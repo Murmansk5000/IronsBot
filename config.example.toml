@@ -820,6 +820,35 @@ mention_initial_max_responses = 3
 # group_a = ["sample_worker"]
 # group_b = ["all"]
 
+[seer.external_references]
+# Default: true for every option below.
+# EN: Append the matching SeerInfo companion page to successful query replies.
+# ZH: 在对应查询成功回复末尾附加 SeerInfo 查询页面；每项可单独关闭。
+# These links are only attached to matching commands, never to unrelated replies.
+# 这些链接只会附在语义对应的结果上，不会附加到无关命令。
+# player_query: 米米号/查询玩家信息与无头额度用尽提示。
+# team_query: 战队查询。
+# server_status: 开服查询与 /开服查询。
+# weekly_preview: 下周预告。
+# bilibili_history: “动态”历史菜单和无历史提示；单条动态仍只保留原文链接。
+# peak_pool: 竞技池和专家池。
+# peak_vote: 巅峰投票。
+# peak_player_rank: 竞技/狂野/专家全服段位榜。
+# peak_suit_rank: 竞技/狂野/专家套装榜。
+# peak_title_rank: 竞技/狂野/专家称号榜。
+# peak_pet_rank: 竞技/狂野/专家精灵月榜和总榜。
+player_query = true
+team_query = true
+server_status = true
+weekly_preview = true
+bilibili_history = true
+peak_pool = true
+peak_vote = true
+peak_player_rank = true
+peak_suit_rank = true
+peak_title_rank = true
+peak_pet_rank = true
+
 [seer.player]
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
 timeout_seconds = 30.0

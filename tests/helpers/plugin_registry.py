@@ -204,6 +204,10 @@ def build_test_plugin_registry(
                     cache_status=lambda _group_id: "",
                     cache_refresh=_noop_query,
                 ),
+                external_references=SimpleNamespace(
+                    append=lambda text, _reference: text,
+                    url_for=lambda _reference: "",
+                ),
             ),
             ai=object(),
             data_sync=SimpleNamespace(startup=_noop_startup),

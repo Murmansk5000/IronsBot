@@ -18,6 +18,7 @@ from ironsbot.services.bilibili.service import (
     BiliFeedResponse,
 )
 from ironsbot.services.bilibili.targets import BiliTargetService
+from ironsbot.services.seer.external_references import SeerInfoReferences
 from tests.helpers.runtime import build_test_runtime
 
 
@@ -31,6 +32,7 @@ def build_test_bilibili_service(
     config: BiliConfig | None = None,
     feature_config: FeatureConfig | None = None,
     superuser_ids: tuple[int, ...] = (),
+    external_references: SeerInfoReferences | None = None,
 ) -> BilibiliService:
     resolved = config or BiliConfig()
     resolved = resolved.model_copy(
@@ -64,4 +66,5 @@ def build_test_bilibili_service(
             resolved.storage.history_max_items,
         ),
         fetch_feed=_unused_feed,
+        external_references=external_references,
     )
