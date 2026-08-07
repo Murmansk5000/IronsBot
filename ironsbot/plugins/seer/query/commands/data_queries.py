@@ -57,6 +57,7 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentSnapshot,
+    format_new_content_category_count,
     format_new_content_item_description,
     is_new_content_category_expanded_by_default,
     new_content_category_unavailable_message,
@@ -95,6 +96,7 @@ class _NewContentMenuLayout:
 
     display_categories: tuple[NewContentCategory, ...]
     focused_category: NewContentCategory | None = None
+    root_title: str | None = None
 
 
 _NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-z]|[1-9]\d*|0)", re.IGNORECASE)
@@ -283,6 +285,11 @@ async def _start_new_content(  # noqa: PLR0913
         focused_category=(
             visible_categories[0] if len(visible_categories) == 1 else None
         ),
+        root_title=(
+            "新增群星牌"
+            if categories == AUTOCARD_NEW_CONTENT_CATEGORIES
+            else "新增内容"
+        ),
     )
     prompt = _content_prompt(snapshot, layout)
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
@@ -382,7 +389,7 @@ def _content_prompt(
         choices.append(
             PromptItem(
                 f"{'▼' if expanded else '▶'} {CATEGORY_NAMES[category]}",
-                f"{len(items)} 项",
+                format_new_content_category_count(items),
                 _NewContentAction("category", category),
                 key=code,
             )
@@ -400,9 +407,23 @@ def _content_prompt(
                 )
                 item_number += 1
     return Prompt(
-        title="🆕【新增内容】输入编号查看详情：",
+        title=f"🆕【{_new_content_root_title(layout)}】输入编号查看详情：",
         items=choices,
     )
+
+
+def _new_content_root_title(layout: _NewContentMenuLayout) -> str:
+    if layout.root_title:
+        return layout.root_title
+    if layout.display_categories == AUTOCARD_NEW_CONTENT_CATEGORIES:
+        return "新增群星牌"
+    return "新增内容"
+
+
+def _new_content_menu_title(layout: _NewContentMenuLayout) -> str:
+    if layout.focused_category is not None:
+        return CATEGORY_NAMES[layout.focused_category]
+    return _new_content_root_title(layout)
 
 
 def _focused_content_prompt(
@@ -509,6 +530,7 @@ async def _render_content_prompt(
             snapshot,
             layout.display_categories,
             layout.focused_category,
+            _new_content_menu_title(layout),
         )
     except Exception:
         logger.exception("new content menu rendering failed; falling back to text")
