@@ -58,6 +58,7 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentSnapshot,
     format_new_content_item_description,
+    is_new_content_category_expanded_by_default,
     new_content_category_unavailable_message,
     new_content_unavailable_message,
 )
@@ -280,9 +281,7 @@ async def _start_new_content(  # noqa: PLR0913
     layout = _NewContentMenuLayout(
         display_categories=visible_categories,
         focused_category=(
-            categories[0]
-            if categories is not None and len(categories) == 1
-            else None
+            visible_categories[0] if len(visible_categories) == 1 else None
         ),
     )
     prompt = _content_prompt(snapshot, layout)
@@ -375,17 +374,31 @@ def _content_prompt(
         return _focused_content_prompt(snapshot, layout)
 
     choices: list[PromptItem[_NewContentAction]] = []
+    item_number = 1
     for index, category in enumerate(layout.display_categories):
         code = chr(ord("a") + index)
         items = snapshot.items_for(category)
+        expanded = is_new_content_category_expanded_by_default(snapshot, category)
         choices.append(
             PromptItem(
-                f"▶ {CATEGORY_NAMES[category]}",
+                f"{'▼' if expanded else '▶'} {CATEGORY_NAMES[category]}",
                 f"{len(items)} 项",
                 _NewContentAction("category", category),
                 key=code,
             )
         )
+        if expanded:
+            for item in items:
+                choices.append(
+                    PromptItem(
+                        item.name,
+                        _item_description(item),
+                        _NewContentAction("item", category, item),
+                        is_sub_prompt=True,
+                        key=str(item_number),
+                    )
+                )
+                item_number += 1
     return Prompt(
         title="🆕【新增内容】输入编号查看详情：",
         items=choices,

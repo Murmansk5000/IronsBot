@@ -112,14 +112,17 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
         ),
     )
 
-    assert [item.name for item in prompt.items] == [
-        "▶ 新增群星牌",
-        "▶ 新增群星牌角色",
-        "▶ 新增群星牌圣域",
+    assert [item.name for item in prompt.items if item.is_visible] == [
+        "▼ 新增群星牌",
+        "测试卡牌",
+        "▼ 新增群星牌角色",
+        "测试角色",
+        "▼ 新增群星牌圣域",
+        "潮涌",
     ]
 
 
-def test_new_content_root_menu_only_lists_categories() -> None:
+def test_new_content_root_menu_expands_short_categories_with_numeric_keys() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -149,13 +152,53 @@ def test_new_content_root_menu_only_lists_categories() -> None:
     )
 
     assert [item.name for item in prompt.items if item.is_visible] == [
-        "▶ 新增精灵",
-        "▶ 新增技能",
+        "▼ 新增精灵",
+        "超级噗纽",
+        "▼ 新增技能",
+        "金属缠绕",
     ]
     assert prompt.get_item_by_input("a1") is None
     assert prompt.get_item_by_input("b1") is None
-    assert "a1. 超级噗纽" not in prompt.build_message()
-    assert "a. ▶ 新增精灵（1 项）" in prompt.build_message()
+    assert prompt.get_item_by_input("1").value.item == pet
+    assert prompt.get_item_by_input("2").value.item == skill
+    assert "1. 超级噗纽" in prompt.build_message()
+    assert "a. ▼ 新增精灵（1 项）" in prompt.build_message()
+
+
+def test_new_content_root_menu_collapses_categories_over_five_items() -> None:
+    pet = NewContentItem(
+        category="pet",
+        entity_id=4927,
+        name="超级噗纽",
+        sort_value=4927,
+        payload={},
+    )
+    skills = tuple(
+        NewContentItem(
+            category="skill",
+            entity_id=38000 + index,
+            name=f"技能 {index}",
+            sort_value=38000 + index,
+            payload={},
+        )
+        for index in range(1, 7)
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(pet, *skills),
+    )
+
+    prompt = _content_prompt(
+        snapshot,
+        _NewContentMenuLayout(display_categories=("pet", "skill")),
+    )
+
+    assert [item.key for item in prompt.items if item.is_visible] == ["a", "1", "b"]
+    assert prompt.get_item_by_input("1").value.item == pet
+    assert all(prompt.get_item_by_input(str(index)) is None for index in range(2, 8))
+    assert prompt.get_item_by_input("b").value.category == "skill"
 
 
 def test_new_content_category_selection_opens_a_numeric_menu() -> None:
