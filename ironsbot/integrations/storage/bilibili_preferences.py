@@ -22,6 +22,19 @@ _SCHEMA = (
 )
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA),
+    SqliteMigration(
+        2,
+        (
+            "CREATE TABLE IF NOT EXISTS bili_push_category_preferences ("
+            "target_type TEXT NOT NULL, target_id INTEGER NOT NULL, "
+            "uid INTEGER NOT NULL, category TEXT NOT NULL, muted INTEGER NOT NULL, "
+            "updated_at TEXT NOT NULL, "
+            "PRIMARY KEY (target_type, target_id, uid, category)"
+            ")",
+            "CREATE INDEX IF NOT EXISTS idx_bili_push_category_preferences_uid "
+            "ON bili_push_category_preferences (uid, target_type, target_id)",
+        ),
+    ),
 )
 MIGRATION_NAMESPACE = "bilibili_preferences"
 
@@ -85,4 +98,45 @@ class SqliteBiliPushPreferenceStore:
                 "DELETE FROM bili_push_preferences "
                 "WHERE target_type = ? AND target_id = ? AND uid = ?",
                 (target_type, target_id, uid),
+            )
+
+    def category_muted(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+        category: str,
+    ) -> bool | None:
+        with self._database.connect() as connection:
+            row = connection.execute(
+                "SELECT muted FROM bili_push_category_preferences "
+                "WHERE target_type = ? AND target_id = ? AND uid = ? AND category = ?",
+                (target_type, target_id, uid, category),
+            ).fetchone()
+        return None if row is None else bool(row[0])
+
+    def set_category_muted(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+        category: str,
+        *,
+        muted: bool,
+    ) -> None:
+        with self._database.connect() as connection:
+            connection.execute(
+                "INSERT INTO bili_push_category_preferences "
+                "(target_type, target_id, uid, category, muted, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(target_type, target_id, uid, category) DO UPDATE SET "
+                "muted = excluded.muted, updated_at = excluded.updated_at",
+                (
+                    target_type,
+                    target_id,
+                    uid,
+                    category,
+                    int(muted),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
             )

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
 PUSH_SUBSCRIPTION_OPTIONS_KEY = "_message_push_subscription_options"
+PUSH_SUBSCRIPTION_PARENT_OPTION_KEY = "_message_push_subscription_parent_option"
 PUSH_SUBSCRIPTION_TARGET_ID_KEY = "_message_push_subscription_target_id"
 PUSH_TIME_OPTIONS_KEY = "_message_push_time_options"
 PUSH_TIME_SELECTED_KEY = "_message_push_time_selected"

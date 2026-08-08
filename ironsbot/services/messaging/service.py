@@ -42,6 +42,25 @@ if TYPE_CHECKING:
 
     from .push_time import PushTimeOption
 
+
+class PushSubscriptionSubmenuProvider(Protocol):
+    def subscription_submenu(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool = False,
+    ) -> tuple[list[PushSubscriptionOption], str] | None: ...
+
+    def toggle_subscription_option(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        option: PushSubscriptionOption,
+    ) -> str | None: ...
+
+
 ActionT = TypeVar("ActionT", bound="CommandAction")
 KeywordActionT = TypeVar("KeywordActionT", bound="KeywordReplyAction")
 logger = logging.getLogger(__name__)
@@ -65,6 +84,7 @@ class MessagingService:
     _prepare_extra_push_options: (
         Callable[[PushTargetType, int], Awaitable[str | None]] | None
     ) = None
+    _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
 
     def match_private_action(
         self,
@@ -178,6 +198,13 @@ class MessagingService:
         target_id: int,
         option: PushSubscriptionOption,
     ) -> str:
+        for provider in self._subscription_submenu_providers:
+            if result := provider.toggle_subscription_option(
+                target_type,
+                target_id,
+                option,
+            ):
+                return result
         if self._store.is_target_unsubscribed(target_type, target_id, option.key):
             self._store.restore_target(target_type, target_id, option.key)
             return f"已恢复订阅：{option.label}。"
@@ -188,6 +215,25 @@ class MessagingService:
             option.feature,
         )
         return f"已退订：{option.label}。"
+
+    def subscription_submenu(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool = False,
+    ) -> tuple[list[PushSubscriptionOption], str] | None:
+        for provider in self._subscription_submenu_providers:
+            submenu = provider.subscription_submenu(
+                target_type,
+                target_id,
+                option,
+                read_only=read_only,
+            )
+            if submenu is not None:
+                return submenu
+        return None
 
     def push_time_options(
         self,

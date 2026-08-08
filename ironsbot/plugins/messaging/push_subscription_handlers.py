@@ -11,19 +11,18 @@ from ironsbot.runtime.replies import message_event_target
 from ironsbot.services.messaging.service import (  # noqa: TC001
     MessagingService,
 )
+from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 
 from .matcher_rules import is_group_push_subscription_manager
 from .push_management_runtime import (
     PUSH_SUBSCRIPTION_FLOW,
     PUSH_SUBSCRIPTION_OPTIONS_KEY,
+    PUSH_SUBSCRIPTION_PARENT_OPTION_KEY,
     PUSH_SUBSCRIPTION_TARGET_ID_KEY,
 )
 
 if TYPE_CHECKING:
-    from ironsbot.services.messaging.subscriptions import (
-        PushSubscriptionOption,
-        PushTargetType,
-    )
+    from ironsbot.services.messaging.subscriptions import PushTargetType
 
 
 async def handle_push_subscription_menu(
@@ -98,7 +97,33 @@ async def handle_push_subscription_select(
     options: list[PushSubscriptionOption] = raw_options
 
     text = event.get_plaintext().strip()
+    target_type = state.get(PUSH_SUBSCRIPTION_FLOW.target_type_key)
+    target_id = state.get(PUSH_SUBSCRIPTION_TARGET_ID_KEY)
+    if target_type not in {"private", "group"} or not isinstance(target_id, int):
+        await matcher.finish()
+    target_type = cast("PushTargetType", target_type)
+
+    parent_option = state.get(PUSH_SUBSCRIPTION_PARENT_OPTION_KEY)
     if text == "0":
+        if isinstance(parent_option, PushSubscriptionOption):
+            state.pop(PUSH_SUBSCRIPTION_PARENT_OPTION_KEY, None)
+            read_only = target_type == "group" and not (
+                isinstance(event, GroupMessageEvent)
+                and is_group_push_subscription_manager(messaging, event)
+            )
+            root_options, root_prompt = messaging.subscription_menu(
+                target_type,
+                target_id,
+                read_only=read_only,
+            )
+            state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = root_options
+            await PUSH_SUBSCRIPTION_FLOW.reject(
+                matcher,
+                state,
+                f"已返回推送订阅。\n\n{root_prompt}",
+                replace_menu_anchor=True,
+            )
+            return
         await matcher.finish("已退出。")
     index = int(text)
     if index < 1 or index > len(options):
@@ -109,20 +134,45 @@ async def handle_push_subscription_select(
         )
 
     option = options[index - 1]
-    target_type = state.get(PUSH_SUBSCRIPTION_FLOW.target_type_key)
-    target_id = state.get(PUSH_SUBSCRIPTION_TARGET_ID_KEY)
-    if target_type not in {"private", "group"} or not isinstance(target_id, int):
-        await matcher.finish()
-    target_type = cast("PushTargetType", target_type)
+    if option.submenu_key is not None:
+        read_only = target_type == "group" and not (
+            isinstance(event, GroupMessageEvent)
+            and is_group_push_subscription_manager(messaging, event)
+        )
+        submenu = messaging.subscription_submenu(
+            target_type,
+            target_id,
+            option,
+            read_only=read_only,
+        )
+        if submenu is not None:
+            submenu_options, submenu_prompt = submenu
+            state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = submenu_options
+            state[PUSH_SUBSCRIPTION_PARENT_OPTION_KEY] = option
+            await PUSH_SUBSCRIPTION_FLOW.reject(
+                matcher,
+                state,
+                submenu_prompt,
+                replace_menu_anchor=True,
+            )
+            return
 
     if target_type == "group" and (
         not isinstance(event, GroupMessageEvent)
         or not is_group_push_subscription_manager(messaging, event)
     ):
-        _, menu_prompt = messaging.subscription_menu(
-            target_type,
-            target_id,
-            read_only=True,
+        submenu = (
+            messaging.subscription_submenu(
+                target_type,
+                target_id,
+                parent_option,
+                read_only=True,
+            )
+            if isinstance(parent_option, PushSubscriptionOption)
+            else None
+        )
+        _, menu_prompt = submenu or messaging.subscription_menu(
+            target_type, target_id, read_only=True
         )
         prompt = (
             "普通群成员只能查看本群推送订阅，不能修改；需要群主或管理员操作。\n\n"
@@ -134,15 +184,24 @@ async def handle_push_subscription_select(
             prompt,
             replace_menu_anchor=True,
         )
+        return
 
     result_message = messaging.toggle_subscription(
         target_type,
         target_id,
         option,
     )
-    refreshed_options, menu_prompt = messaging.subscription_menu(
-        target_type,
-        target_id,
+    submenu = (
+        messaging.subscription_submenu(
+            target_type,
+            target_id,
+            parent_option,
+        )
+        if isinstance(parent_option, PushSubscriptionOption)
+        else None
+    )
+    refreshed_options, menu_prompt = submenu or messaging.subscription_menu(
+        target_type, target_id
     )
     state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = refreshed_options
     prompt = f"{result_message}\n\n{menu_prompt}"

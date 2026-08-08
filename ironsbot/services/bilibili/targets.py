@@ -1,9 +1,11 @@
 from dataclasses import dataclass, field
 
 from ironsbot.core.bilibili import (
+    SEER_DYNAMIC_CATEGORIES,
     BiliConfig,
     BiliPushMode,
     BiliPushTargetConfig,
+    SeerDynamicCategory,
 )
 from ironsbot.core.features import FeatureService
 from ironsbot.core.messaging import MessageTarget
@@ -11,6 +13,13 @@ from ironsbot.services.bilibili.accounts import (
     BiliAccountNames,
     account_uid,
     normalize_account_alias,
+)
+from ironsbot.services.bilibili.categories import (
+    SEER_CATEGORY_LABELS,
+    classify_seer_dynamic,
+    parse_seer_category_option_key,
+    seer_category_option_key,
+    seer_category_submenu_key,
 )
 from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
@@ -54,6 +63,7 @@ class BiliTargetRule:
         configured_mode = self.modes.get(uid)
         return configured_mode if configured_mode is not None else self.target_mode
 
+
 @dataclass(frozen=True, slots=True)
 class BiliPushTargets:
     full_group_ids: list[int]
@@ -89,10 +99,7 @@ def _resolve_modes(
     modes: dict[str, BiliPushMode],
     config: BiliConfig,
 ) -> dict[int, BiliPushMode]:
-    return {
-        config.accounts[alias].uid: mode
-        for alias, mode in modes.items()
-    }
+    return {config.accounts[alias].uid: mode for alias, mode in modes.items()}
 
 
 def _resolve_rule(
@@ -135,9 +142,7 @@ def _resolve_group_rules(
         rule = _resolve_rule(target_config, config)
         for group_id in features.resolve_group_refs([ref]):
             rules[group_id] = (
-                _merge_rules(rules[group_id], rule)
-                if group_id in rules
-                else rule
+                _merge_rules(rules[group_id], rule) if group_id in rules else rule
             )
     return rules
 
@@ -151,9 +156,7 @@ def _resolve_user_rules(
         rule = _resolve_rule(target_config, config)
         for user_id in features.resolve_user_refs([ref]):
             rules[user_id] = (
-                _merge_rules(rules[user_id], rule)
-                if user_id in rules
-                else rule
+                _merge_rules(rules[user_id], rule) if user_id in rules else rule
             )
     return rules
 
@@ -285,17 +288,164 @@ class BiliTargetService:
             target_id,
         )
         return [
-            PushSubscriptionOption(
-                key=(key := bili_push_subscription_key(uid)),
-                label=bili_push_subscription_label(
-                    uid,
-                    self.account_names.name_for_uid(uid),
-                ),
+            self._subscription_option(uid, unsubscribed) for uid in sorted(rule.uids)
+        ]
+
+    def _subscription_option(
+        self,
+        uid: int,
+        unsubscribed: set[str],
+    ) -> PushSubscriptionOption:
+        key = bili_push_subscription_key(uid)
+        if self.is_seer_category_uid(uid):
+            return PushSubscriptionOption(
+                key=key,
+                label="赛尔号动态订阅",
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
+                submenu_key=seer_category_submenu_key(uid),
             )
-            for uid in sorted(rule.uids)
+        return PushSubscriptionOption(
+            key=key,
+            label=bili_push_subscription_label(
+                uid,
+                self.account_names.name_for_uid(uid),
+            ),
+            feature="bili_push",
+            unsubscribed=key in unsubscribed,
+        )
+
+    def subscription_submenu(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool = False,
+    ) -> tuple[list[PushSubscriptionOption], str] | None:
+        uid = self._seer_category_uid()
+        if (
+            uid is None
+            or option.submenu_key != seer_category_submenu_key(uid)
+            or self.mode_for_uid(target_type, target_id, uid) is None
+        ):
+            return None
+
+        unsubscribed = self.unsubscribe_store.is_target_unsubscribed(
+            target_type,
+            target_id,
+            bili_push_subscription_key(uid),
+        )
+        options = [
+            PushSubscriptionOption(
+                key=bili_push_subscription_key(uid),
+                label="全部赛尔号动态",
+                feature="bili_push",
+                unsubscribed=unsubscribed,
+            ),
+            *(
+                PushSubscriptionOption(
+                    key=seer_category_option_key(uid, category),
+                    label=SEER_CATEGORY_LABELS[category],
+                    feature="bili_push",
+                    unsubscribed=self.category_muted(
+                        target_type,
+                        target_id,
+                        uid,
+                        category,
+                    ),
+                )
+                for category in SEER_DYNAMIC_CATEGORIES
+            ),
         ]
+        scope = "本群" if target_type == "group" else "当前私聊"
+        title = (
+            f"{scope}赛尔号动态订阅状态："
+            if read_only
+            else f"请选择要切换的{scope}赛尔号动态订阅："
+        )
+        lines = [title]
+        for index, child in enumerate(options, start=1):
+            state = "❌" if child.unsubscribed else "✅"
+            lines.append(f"{index}. {state} {child.label}")
+        lines.append("\n✅ 已订阅 · ❌ 已 TD，输入序号切换；输入 0 返回推送订阅")
+        return options, "\n".join(lines)
+
+    def toggle_subscription_option(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        option: PushSubscriptionOption,
+    ) -> str | None:
+        parsed = parse_seer_category_option_key(option.key)
+        if parsed is None:
+            return None
+        uid, category = parsed
+        if uid != self._seer_category_uid():
+            return None
+        muted = not self.category_muted(target_type, target_id, uid, category)
+        self.preferences.set_category_muted(
+            target_type,
+            target_id,
+            uid,
+            category,
+            muted=muted,
+        )
+        action = "已 TD" if muted else "已恢复订阅"
+        return f"{action}：赛尔号动态 - {SEER_CATEGORY_LABELS[category]}。"
+
+    def _seer_category_uid(self) -> int | None:
+        categories = self.config.seer_categories
+        account = self.config.accounts.get(categories.account)
+        return account.uid if categories.enabled and account is not None else None
+
+    def is_seer_category_uid(self, uid: int) -> bool:
+        return uid == self._seer_category_uid()
+
+    def classify_dynamic(
+        self,
+        uid: int,
+        item: dict[str, object],
+        pub_ts: int,
+    ) -> tuple[SeerDynamicCategory, ...]:
+        if not self.is_seer_category_uid(uid):
+            return ()
+        return classify_seer_dynamic(
+            item,
+            pub_ts=pub_ts,
+            config=self.config.seer_categories,
+        )
+
+    def category_muted(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+        category: SeerDynamicCategory,
+    ) -> bool:
+        stored = self.preferences.category_muted(
+            target_type,
+            target_id,
+            uid,
+            category,
+        )
+        return (
+            category in self.config.seer_categories.default_muted_categories
+            if stored is None
+            else stored
+        )
+
+    def _category_allowed(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+        categories: tuple[SeerDynamicCategory, ...],
+    ) -> bool:
+        return not categories or any(
+            not self.category_muted(target_type, target_id, uid, category)
+            for category in categories
+        )
 
     async def prepare_account_names(
         self,
@@ -332,21 +482,14 @@ class BiliTargetService:
         for uid in sorted(rule.uids):
             mode_display = self.mode_display_for_uid(target_type, target_id, uid)
             td_text = (
-                "，已 TD"
-                if bili_push_subscription_key(uid) in unsubscribed
-                else ""
+                "，已 TD" if bili_push_subscription_key(uid) in unsubscribed else ""
             )
             account_name = self.account_names.name_for_uid(uid)
             if account_name is None:
                 return "\n".join([*lines, ACCOUNT_NAMES_UNAVAILABLE])
-            lines.append(
-                f"- {account_name}：{mode_display}{td_text}"
-            )
+            lines.append(f"- {account_name}：{mode_display}{td_text}")
         manager = "群主/管理员可发送" if target_type == "group" else "可发送"
-        lines.append(
-            f"{manager}：B站推送模式 <账号别名|公开昵称|UID> "
-            "<内容|链接|默认>"
-        )
+        lines.append(f"{manager}：B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>")
         return "\n".join(lines)
 
     async def update_push_mode(  # noqa: PLR0911 - command errors return directly
@@ -364,11 +507,7 @@ class BiliTargetService:
             return "❌ 当前会话未开启 B站推送。"
 
         alias = normalize_account_alias(account_ref)
-        uid = (
-            account_uid(alias, self.config)
-            if alias in rule.aliases
-            else None
-        )
+        uid = account_uid(alias, self.config) if alias in rule.aliases else None
         if uid is None:
             uid = self.account_names.resolve(account_ref, rule.uids)
         if uid is None:
@@ -379,10 +518,7 @@ class BiliTargetService:
                 return error
             uid = self.account_names.resolve(account_ref, rule.uids)
         if uid is None or self.mode_for_uid(target_type, target_id, uid) is None:
-            return (
-                "❌ 当前会话没有订阅该 B站账号。\n"
-                "可发送“B站账号”查看当前会话订阅。"
-            )
+            return "❌ 当前会话没有订阅该 B站账号。\n可发送“B站账号”查看当前会话订阅。"
 
         try:
             mode = normalize_push_mode_text(raw_mode)
@@ -410,11 +546,18 @@ class BiliTargetService:
             f"当前生效模式：{effective_display}。"
         )
 
-    def push_targets_for_uid(self, uid: int) -> BiliPushTargets:
+    def push_targets_for_uid(
+        self,
+        uid: int,
+        *,
+        categories: tuple[SeerDynamicCategory, ...] = (),
+    ) -> BiliPushTargets:
         full_group_ids: list[int] = []
         link_group_ids: list[int] = []
         for group_id in self.push_group_rules():
             mode = self.mode_for_uid("group", group_id, uid)
+            if not self._category_allowed("group", group_id, uid, categories):
+                continue
             if mode == "full":
                 full_group_ids.append(group_id)
             elif mode == "link":
@@ -424,6 +567,8 @@ class BiliTargetService:
         link_user_ids: list[int] = []
         for user_id in self.push_user_rules():
             mode = self.mode_for_uid("private", user_id, uid)
+            if not self._category_allowed("private", user_id, uid, categories):
+                continue
             if mode == "full":
                 full_user_ids.append(user_id)
             elif mode == "link":
