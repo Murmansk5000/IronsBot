@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING, Any, Generic, NoReturn, TypeVar
 from anyio import create_task_group
 
 from ironsbot.core.rank_lookup_context import rank_page_request_timeout
+from ironsbot.services.seer.rank_models import RankLookupResult
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Generator, Sequence
 
     from ironsbot.config.models.seer import PlayerRankLookupConfig
-    from ironsbot.services.seer.rank_models import RankLookupResult
 
 
 _LOGGER = logging.getLogger("ironsbot.seer.rank_player_scheduler")
@@ -270,11 +270,34 @@ async def run_player_rank_lookup_jobs(
                 )
             finally:
                 await scheduler.close()
-        successful_results: list[tuple[str, RankLookupResult]] = []
-        for result in results:
-            if isinstance(result, BaseException):
+        completed: list[tuple[str, RankLookupResult]] = []
+        for job, result in zip(ordered_jobs, results, strict=True):
+            if not isinstance(result, BaseException):
+                completed.append(result)
+                continue
+            if isinstance(result, asyncio.CancelledError):
                 raise result
-            successful_results.append(result)
-        return dict(successful_results)
+            _LOGGER.warning(
+                "player rank lookup failed: id=%s title=%s",
+                job.id,
+                job.title,
+                exc_info=result,
+            )
+            completed.append((job.id, _failed_lookup_result(job, result)))
+        return dict(completed)
     finally:
         _CURRENT_SCHEDULER.reset(token)
+
+
+def _failed_lookup_result(
+    job: PlayerRankLookupJob,
+    error: BaseException,
+) -> RankLookupResult:
+    failure = "查询超时" if isinstance(error, TimeoutError) else "查询失败"
+    return RankLookupResult(
+        title=job.title,
+        score_name="",
+        score=job.target_score,
+        searched_limit=0,
+        failure=failure,
+    )

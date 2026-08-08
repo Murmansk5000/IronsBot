@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.bilibili import truncate_bilibili_text
 from ironsbot.services.ai.client import AiRequestTimeoutError
 from ironsbot.services.ai.history import (
     HistoryMessage,
@@ -433,11 +434,4 @@ def _truncate_plain_text(text: str, max_chars: int) -> str:
 def _truncate_bilibili_summary(text: str, max_chars: int) -> str:
     """Keep a mis-sized model summary readable instead of cutting a list mid-item."""
 
-    normalized = " ".join(text.split())
-    if len(normalized) <= max_chars:
-        return normalized
-    clipped = normalized[:max_chars]
-    sentence_end = max(clipped.rfind(mark) for mark in "。！？；")
-    if sentence_end >= max_chars // 3:
-        return clipped[: sentence_end + 1].rstrip()
-    return clipped.rstrip("，、：:；;-. ") + "……"
+    return truncate_bilibili_text(text, max_chars)

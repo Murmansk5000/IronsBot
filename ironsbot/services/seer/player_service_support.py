@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestBusyError,
@@ -45,3 +45,22 @@ def shortcut_operation_label(kind: PlayerShortcutKind) -> str:
         "peak": "巅峰查询",
         "autocard": "群星牌查询",
     }[kind]
+
+
+def shortcut_timeout_seconds(config: object, kind: PlayerShortcutKind) -> float:
+    """Reserve the rank scheduler's bounded budget for peak details."""
+
+    resolved_config = cast("Any", config)
+    detail_timeout = float(resolved_config.player.detail_timeout_seconds)
+    if kind != "peak":
+        return detail_timeout
+
+    rank = getattr(config, "rank", None)
+    lookup = getattr(rank, "player_lookup", None)
+    total_timeout = getattr(lookup, "total_timeout_seconds", None)
+    page_timeout = getattr(lookup, "page_timeout_seconds", None)
+    if total_timeout is None or page_timeout is None:
+        return detail_timeout
+    # Peak base data is collected before the three independently scheduled
+    # season boards. Let those boards return their own partial failures.
+    return detail_timeout + float(total_timeout) + float(page_timeout)

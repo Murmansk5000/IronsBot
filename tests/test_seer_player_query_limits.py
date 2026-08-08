@@ -94,9 +94,10 @@ def test_unbound_daily_quota_is_recorded_only_when_consumed(tmp_path: Path) -> N
         action_key="peak",
     )
     assert not denied.allowed
-    assert "额度已用完（1 项逻辑操作）" in denied.message
+    assert "额度已用完（1 项）" in denied.message
     assert "仍可查看已有缓存" in denied.message
     assert "可从 1 项提升至 10 项" in denied.message
+    assert "额度按成功获取的数据项目结算" in denied.message
     assert "首次成功查询时可按提示设为默认米米号" in denied.message
 
 

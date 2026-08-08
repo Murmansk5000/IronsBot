@@ -48,6 +48,7 @@ from ironsbot.services.seer.player_service_support import (
     PLAYER_REQUEST_ERRORS,
     background_refresh_kinds,
     shortcut_operation_label,
+    shortcut_timeout_seconds,
     utc_now,
 )
 from ironsbot.services.seer.player_shortcuts import (
@@ -737,7 +738,7 @@ class PlayerService(PlayerAccountPolicyMixin):
                     use_cache=False,
                     anchor_only=anchor_only,
                 ),
-                timeout=self._config.player.detail_timeout_seconds,
+                timeout=shortcut_timeout_seconds(self._config, command.kind),
             )
         await self._headless.mark_available(
             source="米米号快捷详情查询",

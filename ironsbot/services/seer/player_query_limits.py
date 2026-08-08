@@ -292,23 +292,24 @@ def _quota_exhausted_message(
     del player_id
     if scope == "bound_default":
         return (
-            f"今日默认米米号无头查询额度已用完（{limit} 项逻辑操作）。"
+            f"今日默认米米号的查询额度已用完（{limit} 项）。"
             "仍可查看已有缓存；没有缓存的数据请明天再试。"
         )
     if scope == "bound_other":
         return (
-            f"今日查询其他米米号的无头查询额度已用完（{limit} 项逻辑操作）。"
+            f"今日查询其他米米号的额度已用完（{limit} 项）。"
             "仍可查看已有缓存；没有缓存的数据请明天再试。"
         )
     message = (
-        f"今日未绑定米米号的无头查询额度已用完（{limit} 项逻辑操作）。"
+        f"今日未绑定米米号的查询额度已用完（{limit} 项）。"
         "仍可查看已有缓存；没有缓存的数据请明天再试。"
     )
     if bound_default_daily_limit <= limit:
         return message
     return (
         f"{message}\n"
-        "绑定默认米米号后，查询该米米号的每日无头查询额度可从 "
+        "绑定默认米米号后，查询该米米号的每日查询额度可从 "
         f"{limit} 项提升至 {bound_default_daily_limit} 项。\n"
+        "额度按成功获取的数据项目结算；缓存、预热和超时不计入。\n"
         "首次成功查询时可按提示设为默认米米号。"
     )
