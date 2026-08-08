@@ -15,6 +15,7 @@ from ironsbot.services.seer.player_service import (
     _BackgroundRefresh,
 )
 from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
+from ironsbot.services.seer.player_service_support import shortcut_timeout_seconds
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 
@@ -305,6 +306,39 @@ def test_player_shortcut_live_prefers_live_data_while_quota_is_available() -> No
         )
 
     asyncio.run(run())
+
+
+def test_peak_shortcut_reserves_the_rank_lookup_budget() -> None:
+    detail_timeout_seconds = 90.0
+    rank_timeout_seconds = 68.0
+    service = PlayerService(
+        config=cast(
+            "Any",
+            SimpleNamespace(
+                player=SimpleNamespace(
+                    detail_timeout_seconds=detail_timeout_seconds
+                ),
+                rank=SimpleNamespace(
+                    player_lookup=SimpleNamespace(
+                        total_timeout_seconds=60.0,
+                        page_timeout_seconds=8.0,
+                    )
+                ),
+            ),
+        ),
+        headless=cast("Any", object()),
+        bindings=cast("Any", object()),
+        error_message=cast("Any", object()),
+        details=cast("Any", object()),
+    )
+
+    assert shortcut_timeout_seconds(service._config, "peak") == (
+        detail_timeout_seconds + rank_timeout_seconds
+    )
+    assert (
+        shortcut_timeout_seconds(service._config, "collection")
+        == detail_timeout_seconds
+    )
 
 
 def test_background_refresh_expiration_releases_inflight_section(

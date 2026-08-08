@@ -499,15 +499,15 @@ accounts = ["seer"]
 # ZH: 群主/管理员或私聊用户可用别名、公开昵称或 UID 修改推送模式：
 #     B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>
 
-# Default: 400
-# EN: Full pushes longer than this are sent as a link followed by a summary.
-# ZH: 全文动态超过此字符数时，先发送链接，再发送摘要。
-content_max_chars = 400
+# Default: 800
+# EN: Full pushes longer than this are sent as a link followed by an AI summary.
+# ZH: 全文动态超过此字符数时，先发送链接，再发送 AI 摘要；不超过时完整发送原文。
+content_max_chars = 800
 
-# Default: 250
-# EN: Maximum characters in a long dynamic summary.
-# ZH: 长动态摘要最大字符数。
-summary_max_chars = 250
+# Default: 500
+# EN: Maximum characters in an AI summary or failed-summary excerpt for a long dynamic.
+# ZH: 超长动态的 AI 摘要或摘要失败原文节选最大字符数。
+summary_max_chars = 500
 
 # Default: true
 # EN: Use AI to summarize long full-text dynamic pushes. When false, send an original text excerpt instead.
@@ -866,6 +866,8 @@ change_cooldown_days = 3
 [seer.player.query_limits]
 # EN: Persistent daily budgets for foreground logical headless operations, reset by Beijing date.
 # ZH: 用户触发的无头逻辑服务器操作每日额度，按北京时间自然日重置；缓存、预热与后台刷新不计入。
+# ZH: 每条指令只要当天还剩至少 1 项即可完整执行；结果成功发送后，按实际成功获取的数据项目结算，
+#     因此收集、巅峰和榜单查询一次可能计入多项。基础资料和阵容每次最多计 1 项。
 enabled = true
 # EN: Daily logical-operation budget for the user's current default player ID.
 # ZH: 查询当前默认米米号时的每日逻辑操作额度。

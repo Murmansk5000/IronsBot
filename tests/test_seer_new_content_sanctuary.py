@@ -1,4 +1,5 @@
-from typing import Literal
+import asyncio
+from typing import Any, Literal
 
 import nonebot
 
@@ -8,11 +9,17 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.plugins.seer.query.commands.data_queries import (
+    NEW_CONTENT_MENU_LAYOUT_KEY,
+    NEW_CONTENT_SERVICES_KEY,
+    NEW_CONTENT_SNAPSHOT_KEY,
     _autocard_sanctuary_effect_detail,
     _content_prompt,
     _focus_new_content_category,
     _item_description,
     _NewContentMenuLayout,
+    _NewContentServices,
+    _render_content_prompt_with_notice,
+    _replace_prompt,
     _skill_detail,
 )
 from ironsbot.services.seer.new_content import (
@@ -20,6 +27,7 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentSnapshot,
 )
+from tests.helpers.onebot_events import group_message_event
 
 
 def _effect(
@@ -42,6 +50,94 @@ def _effect(
         },
         change_kind=change_kind,
     )
+
+
+class _RecordingMatcher:
+    def __init__(self, state: dict[str, object] | None = None) -> None:
+        self.state = {} if state is None else state
+        self.sent: list[object] = []
+
+    async def send(self, message: object) -> dict[str, int]:
+        self.sent.append(message)
+        return {"message_id": len(self.sent)}
+
+    async def finish(self, message: object) -> None:
+        raise AssertionError(message)
+
+
+def _render_prompt_state() -> tuple[
+    NewContentSnapshot,
+    _NewContentMenuLayout,
+    Any,
+]:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(_effect(),),
+    )
+    layout = _NewContentMenuLayout(
+        display_categories=("autocard_sanctuary_effect",),
+        focused_category="autocard_sanctuary_effect",
+    )
+
+    async def renderer(*_args: object) -> bytes:
+        return b"menu-image"
+
+    return snapshot, layout, renderer
+
+
+def test_new_content_initial_render_sends_notice_before_menu_image() -> None:
+    snapshot, layout, renderer = _render_prompt_state()
+    matcher = _RecordingMatcher()
+    event = group_message_event(user_id=123)
+    prompt = _content_prompt(snapshot, layout)
+
+    rendered = asyncio.run(
+        _render_content_prompt_with_notice(
+            prompt,
+            snapshot,
+            layout,
+            renderer,
+            event,
+            matcher,  # type: ignore[arg-type]
+        )
+    )
+
+    assert len(matcher.sent) == 1
+    assert "正在生成新增内容图片" in str(matcher.sent[0])
+    assert "[CQ:image" in str(rendered)
+
+
+def test_new_content_category_render_sends_notice_before_replacement_menu(
+    monkeypatch: Any,
+) -> None:
+    snapshot, layout, renderer = _render_prompt_state()
+    prompt = _content_prompt(snapshot, layout)
+    matcher = _RecordingMatcher(
+        {
+            NEW_CONTENT_SNAPSHOT_KEY: snapshot,
+            NEW_CONTENT_MENU_LAYOUT_KEY: layout,
+            NEW_CONTENT_SERVICES_KEY: _NewContentServices(
+                pet=object(),
+                mintmark=object(),
+                equipment=object(),
+                autocard=object(),
+                menu_renderer=renderer,
+            ),
+        }
+    )
+    anchors: list[object] = []
+    monkeypatch.setattr(
+        "ironsbot.plugins.seer.query.commands.data_queries.update_queued_menu_anchor",
+        lambda _matcher, _event, send_result: anchors.append(send_result),
+    )
+
+    asyncio.run(_replace_prompt(matcher, group_message_event(), prompt))  # type: ignore[arg-type]
+
+    assert "正在生成新增内容图片" in str(matcher.sent[0])
+    assert "[CQ:image" in str(matcher.sent[1])
+    assert anchors == [{"message_id": 2}]
 
 
 def test_sanctuary_effect_list_preserves_sanctuary_context() -> None:
@@ -160,8 +256,10 @@ def test_new_content_root_menu_expands_short_categories_with_numeric_keys() -> N
     ]
     assert prompt.get_item_by_input("a1") is None
     assert prompt.get_item_by_input("b1") is None
-    assert prompt.get_item_by_input("1").value.item == pet
-    assert prompt.get_item_by_input("2").value.item == skill
+    first_item = prompt.get_item_by_input("1")
+    second_item = prompt.get_item_by_input("2")
+    assert first_item is not None and first_item.value.item == pet
+    assert second_item is not None and second_item.value.item == skill
     assert "1. 超级噗纽" in prompt.build_message()
     assert "a. ▼ 新增精灵（1 项新增）" in prompt.build_message()
 
@@ -197,9 +295,11 @@ def test_new_content_root_menu_collapses_categories_over_five_items() -> None:
     )
 
     assert [item.key for item in prompt.items if item.is_visible] == ["a", "1", "b"]
-    assert prompt.get_item_by_input("1").value.item == pet
+    first_item = prompt.get_item_by_input("1")
+    skill_category = prompt.get_item_by_input("b")
+    assert first_item is not None and first_item.value.item == pet
     assert all(prompt.get_item_by_input(str(index)) is None for index in range(2, 8))
-    assert prompt.get_item_by_input("b").value.category == "skill"
+    assert skill_category is not None and skill_category.value.category == "skill"
 
 
 def test_new_content_root_menu_separates_added_and_modified_counts() -> None:
