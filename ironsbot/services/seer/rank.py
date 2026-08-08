@@ -438,9 +438,9 @@ class RankService:
             else None
         )
         limit = (
-            self._score_search_limit(search_limit)
+            self._score_search_limit(rank_key, search_limit)
             if score_target is not None
-            else self._online_search_limit(search_limit)
+            else self._online_search_limit(rank_key, search_limit)
         )
         page_size = self.page_size()
         result = RankLookupResult(
@@ -591,7 +591,7 @@ class RankService:
                 search_limit=search_limit,
             )
         dependencies = RankScoreSegmentDependencies(
-            score_search_limit=self._score_search_limit,
+            score_search_limit=partial(self._score_search_limit, rank_key),
             rank_page_size=self.page_size,
             rank_page_start=self.page_start,
             cached_score_candidate_page_starts=partial(
@@ -745,28 +745,47 @@ class RankService:
         if cached is not None:
             return 0, cached.rank_index, "缓存名次"
         if job.target_score is not None and job.target_score > 0:
+            rank_key = self.exclusion_policy.rank_key_for_protocol(
+                key=job.key,
+                sub_key=job.sub_key,
+            )
             indexes = self.cache.score_indexes(
                 key=job.key,
                 sub_key=job.sub_key,
                 score=job.target_score,
                 start_index=0,
-                end_index=self._score_search_limit(),
+                end_index=self._score_search_limit(rank_key),
             )
             if indexes:
                 return 1, min(indexes), "缓存同分位置"
             return 2, 2**31 - 1, "已知分数"
         return 3, 2**31 - 1, "无分数线性查找"
 
-    def _online_search_limit(self, search_limit: int | None = None) -> int:
-        requested = (
-            max(0, self.config.limit)
-            if search_limit is None
-            else max(0, search_limit)
+    def _online_search_limit(
+        self,
+        rank_key: str | None,
+        search_limit: int | None = None,
+    ) -> int:
+        configured = max(
+            0,
+            self.config.lookup_limits.get(rank_key, self.config.online_limit)
+            if rank_key is not None
+            else self.config.online_limit,
         )
-        return min(requested, max(0, self.config.online_limit))
+        requested = configured if search_limit is None else max(0, search_limit)
+        return min(requested, configured)
 
-    def _score_search_limit(self, search_limit: int | None = None) -> int:
-        configured = max(0, self.config.limit)
+    def _score_search_limit(
+        self,
+        rank_key: str | None,
+        search_limit: int | None = None,
+    ) -> int:
+        configured = max(
+            0,
+            self.config.lookup_limits.get(rank_key, self.config.limit)
+            if rank_key is not None
+            else self.config.limit,
+        )
         requested = configured if search_limit is None else max(0, search_limit)
         return min(requested, configured)
 

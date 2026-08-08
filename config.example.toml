@@ -989,6 +989,13 @@ limit = 10000
 # EN: Score-unknown linear online scan limit.
 # ZH: 未知分数时允许从前往后线性扫描的在线查询范围。
 online_limit = 2000
+# lookup_limits 默认 {}：按规范榜名覆盖玩家排名查询范围，值为非负整数。
+# 未覆盖：已有正分数时用 limit（默认 10000），否则用 online_limit（默认 2000）。
+# 合法键：图鉴积分、成就点数、精灵图鉴、皮肤图鉴、套装图鉴、部件图鉴、座驾图鉴、刻印图鉴、群星牌、竞技段位、狂野段位、专家段位。
+# 0 是范围为零而非无限；缓存锚点/结果核验仍有独立路径，不保证零网络。
+# 仅影响玩家排名查询，不设置全服榜展示行数、后台预热范围或群权限。
+# 示例（需要覆盖时取消下一行注释；默认保持空映射）：
+# lookup_limits = { "群星牌" = 10000 }
 # Default: 100; EN: Rank page size. ZH: 榜单分页大小。
 page_size = 100
 # Default: true; EN: Enable rank page cache. ZH: 启用榜单分页缓存。
