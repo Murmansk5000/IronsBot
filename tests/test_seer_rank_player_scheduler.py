@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from ironsbot.config.models.seer import PlayerRankLookupConfig
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.rank_player_scheduler import (
@@ -126,7 +124,7 @@ def test_player_rank_scheduler_retries_timed_out_page() -> None:
     assert events == ["a1", "a1"]
 
 
-def test_player_rank_scheduler_stops_active_pages_after_total_budget() -> None:
+def test_player_rank_scheduler_keeps_other_jobs_after_one_job_exceeds_budget() -> None:
     events: list[str] = []
 
     async def slow_page() -> None:
@@ -139,7 +137,7 @@ def test_player_rank_scheduler_stops_active_pages_after_total_budget() -> None:
         await scheduler.fetch_page("a", slow_page)
         return RankLookupResult(title="a", score_name="分")
 
-    job = PlayerRankLookupJob(
+    slow_job = PlayerRankLookupJob(
         id="a",
         title="a",
         key=1,
@@ -149,16 +147,30 @@ def test_player_rank_scheduler_stops_active_pages_after_total_budget() -> None:
         operation=operation,
     )
 
-    with pytest.raises(TimeoutError):
-        asyncio.run(
-            run_player_rank_lookup_jobs(
-                [job],
-                PlayerRankLookupConfig(
-                    page_timeout_seconds=0.05,
-                    total_timeout_seconds=0.05,
-                    page_retry_count=0,
-                ),
-            )
+    async def complete_operation() -> RankLookupResult:
+        return RankLookupResult(title="b", score_name="分", rank=1)
+
+    complete_job = PlayerRankLookupJob(
+        id="b",
+        title="b",
+        key=1,
+        sub_key=1,
+        user_id=1,
+        target_score=None,
+        operation=complete_operation,
+    )
+
+    results = asyncio.run(
+        run_player_rank_lookup_jobs(
+            [slow_job, complete_job],
+            PlayerRankLookupConfig(
+                page_timeout_seconds=0.05,
+                total_timeout_seconds=0.05,
+                page_retry_count=0,
+            ),
         )
+    )
 
     assert events == ["a1"]
+    assert results["a"].failure == "查询超时"
+    assert results["b"].rank == 1

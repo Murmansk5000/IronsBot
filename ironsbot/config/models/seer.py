@@ -109,6 +109,9 @@ RANK_EXCLUSION_USER_ID_ERROR = "seer.rank.exclusions user IDs must be positive"
 RANK_EXCLUSION_RANK_KEY_ERROR = (
     "seer.rank.exclusions.user_ids_by_rank contains an unsupported rank key"
 )
+RANK_LOOKUP_LIMIT_RANK_KEY_ERROR = (
+    "seer.rank.lookup_limits contains an unsupported global rank key"
+)
 
 
 class RankExclusionRankKeyError(ValueError):
@@ -116,6 +119,18 @@ class RankExclusionRankKeyError(ValueError):
         super().__init__(
             f"{RANK_EXCLUSION_RANK_KEY_ERROR}: {', '.join(sorted(unknown))}"
         )
+
+
+class RankLookupLimitRankKeyError(ValueError):
+    def __init__(self, unknown: set[str]) -> None:
+        super().__init__(
+            f"{RANK_LOOKUP_LIMIT_RANK_KEY_ERROR}: {', '.join(sorted(unknown))}"
+        )
+
+
+class RankLookupLimitValueError(ValueError):
+    def __init__(self) -> None:
+        super().__init__("seer.rank.lookup_limits values must be non-negative")
 
 
 def _coerce_sections(value: object) -> object:
@@ -428,6 +443,7 @@ class RankQueryConfig(BaseModel):
 
     limit: int = Field(default=10000, ge=0)
     online_limit: int = Field(default=2000, ge=0)
+    lookup_limits: dict[str, int] = Field(default_factory=dict)
     page_size: int = Field(default=100, ge=1)
     display_limit: int = Field(default=10, ge=1, le=MAX_RANK_DISPLAY_LIMIT)
     max_display_limit: int = Field(
@@ -469,6 +485,21 @@ class RankQueryConfig(BaseModel):
             for key, limit in value.items()
             if key and 1 <= limit <= MAX_RANK_DISPLAY_LIMIT
         }
+
+    @field_validator("lookup_limits", mode="before")
+    @classmethod
+    def normalize_lookup_limits(cls, value: object) -> object:
+        return _normalize_int_mapping(value)
+
+    @field_validator("lookup_limits")
+    @classmethod
+    def validate_lookup_limits(cls, value: dict[str, int]) -> dict[str, int]:
+        unknown = set(value).difference(DEFAULT_RANK_PAGE_REFRESH_KEYS)
+        if unknown:
+            raise RankLookupLimitRankKeyError(unknown)
+        if any(limit < 0 for limit in value.values()):
+            raise RankLookupLimitValueError
+        return {key: limit for key, limit in value.items() if key}
 
     @model_validator(mode="after")
     def validate_display_limit_bounds(self) -> "RankQueryConfig":
