@@ -16,7 +16,10 @@ from ironsbot.services.operations.headless_pool import (
     headless_request_priority_scope,
     headless_workflow_scope,
 )
-from ironsbot.services.operations.request_feedback import send_request_feedback
+from ironsbot.services.operations.request_feedback import (
+    current_request_feedback,
+    send_request_feedback,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -164,6 +167,7 @@ class PlayerRequestProtectionService:
             label=label,
             user_id=user_id,
             priority_state=priority_state,
+            feedback=current_request_feedback(),
         )
         self._workflow_sequence += 1
         item = _QueuedRequest(
