@@ -182,11 +182,12 @@ class PlayerDetailService:
 
     async def cached_or_inflight_reply(
         self,
-        player_id: int,
-        kind: PlayerShortcutKind,
+        player_id: int, kind: PlayerShortcutKind, *, wait_for_inflight: bool = True,
     ) -> QueryReply | None:
         if (cached := self._cached_reply(player_id, kind)) is not None:
             return cached
+        if not wait_for_inflight:
+            return None
         refresh = self._background_refreshes.get(player_id)
         if refresh is not None and self._refresh_expired(refresh):
             self._expire_background_refresh(player_id, refresh)
@@ -645,8 +646,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         if not is_valid_player_id(player_id):
             return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
         cached = await self._details.cached_or_inflight_reply(
-            player_id,
-            command.kind,
+            player_id, command.kind, wait_for_inflight=False
         )
         if cached is not None:
             return cached

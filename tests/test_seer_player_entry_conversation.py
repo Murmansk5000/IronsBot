@@ -45,6 +45,26 @@ def test_pending_binding_choice_accepts_only_confirmation_replies() -> None:
     assert player._parse_pending_binding_choice("绑定米米号123456", 949105380) is None
 
 
+def test_pending_binding_choice_accepts_an_optional_bot_mention() -> None:
+    event = group_message_event(
+        user_id=123,
+        self_id=1,
+        message=Message(MessageSegment.at(1) + MessageSegment.text(" y")),
+    )
+
+    assert player._parse_pending_binding_event(event, 949105380) is True
+
+
+def test_pending_binding_choice_rejects_member_mentions() -> None:
+    event = group_message_event(
+        user_id=123,
+        self_id=1,
+        message=Message(MessageSegment.at(456) + MessageSegment.text(" 是")),
+    )
+
+    assert player._parse_pending_binding_event(event, 949105380) is None
+
+
 def test_pending_confirmation_reuses_the_fetched_player(
     monkeypatch: Any,
 ) -> None:
@@ -127,6 +147,23 @@ def test_binding_offer_keeps_its_confirmation_session_before_detail_menu(
     enter_conversation.assert_awaited_once()
     send_pending.assert_not_awaited()
     assert state[player.PLAYER_BINDING_PENDING_KEY] is pending
+    call = enter_conversation.await_args
+    assert call is not None
+    options = call.kwargs
+    assert options["reply_check"](
+        group_message_event(
+            user_id=event.user_id,
+            self_id=1,
+            message=Message(MessageSegment.at(1) + MessageSegment.text(" y")),
+        )
+    )
+    assert not options["group_reply_check"](
+        group_message_event(
+            user_id=event.user_id + 1,
+            self_id=1,
+            message=Message(MessageSegment.at(1) + MessageSegment.text(" y")),
+        )
+    )
 
 
 def test_pending_replacement_confirmation_marks_the_existing_binding(
