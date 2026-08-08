@@ -52,6 +52,18 @@ def request_feedback_scope(
         _request_feedback.reset(token)
 
 
-async def send_request_feedback(*, queued: bool) -> None:
-    if feedback := _request_feedback.get():
+def current_request_feedback() -> RequestFeedback | None:
+    """Return the admission feedback associated with the current request."""
+
+    return _request_feedback.get()
+
+
+async def send_request_feedback(
+    *,
+    queued: bool,
+    feedback: RequestFeedback | None = None,
+) -> None:
+    if feedback is None:
+        feedback = current_request_feedback()
+    if feedback is not None:
         await feedback.send(queued=queued)
