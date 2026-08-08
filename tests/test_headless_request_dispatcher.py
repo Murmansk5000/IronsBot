@@ -18,7 +18,10 @@ from ironsbot.services.operations.headless_pool import (
     headless_request_priority_scope,
     headless_workflow_scope,
 )
-from ironsbot.services.operations.request_feedback import request_feedback_scope
+from ironsbot.services.operations.request_feedback import (
+    RequestFeedback,
+    request_feedback_scope,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -235,6 +238,39 @@ async def test_request_feedback_is_sent_only_for_the_first_packet() -> None:
     with request_feedback_scope("workflow", send_feedback):
         await game.step("first")
         await game.step("second")
+
+    assert feedback == [("workflow", False)]
+
+
+@pytest.mark.asyncio
+async def test_workflow_feedback_survives_the_caller_context() -> None:
+    game, _events, _started = _pool(1)
+    feedback: list[tuple[str, bool]] = []
+
+    async def send_feedback(label: str, *, queued: bool) -> None:
+        feedback.append((label, queued))
+
+    workflow = HeadlessWorkflowState(
+        sequence=1,
+        label="workflow",
+        user_id=1,
+        priority_state=HeadlessRequestPriorityState(
+            HeadlessRequestPriority.INTERACTIVE
+        ),
+        feedback=RequestFeedback("workflow", send_feedback),
+    )
+
+    async def submit() -> None:
+        with (
+            headless_workflow_scope(workflow),
+            headless_request_priority_scope(
+                HeadlessRequestPriority.INTERACTIVE,
+                state=workflow.priority_state,
+            ),
+        ):
+            await game.step("first")
+
+    await submit()
 
     assert feedback == [("workflow", False)]
 
