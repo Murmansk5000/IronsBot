@@ -22,6 +22,7 @@ from ironsbot.runtime.replies import append_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
     BILIBILI_SUMMARY_FAILURE_ACTION,
+    BILIBILI_SUMMARY_MAX_ATTEMPTS,
     DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_PUSH_ACTION,
@@ -346,6 +347,57 @@ def test_bilibili_fallback_truncation_keeps_a_complete_list_item() -> None:
     text = "一、第一项内容。\n二、第二项内容。\n三、第三项内容。"
 
     assert truncate_bilibili_text(text, 10) == "一、第一项内容。"
+
+
+@pytest.mark.asyncio
+async def test_delivery_retries_an_oversized_ai_summary_until_it_fits(
+    tmp_path: Path,
+) -> None:
+    summary_limit = 15
+    attempts: list[int] = []
+    admin_notices: list[str] = []
+
+    async def oversized_summary(text: str, *, max_chars: int) -> str:
+        del text
+        del max_chars
+        attempts.append(1)
+        return (
+            "一、第一项。二、第二项。三、第三项。" * 20
+            if len(attempts) < BILIBILI_SUMMARY_MAX_ATTEMPTS
+            else "一、第一项。二、第二项。"
+        )
+
+    class RecordingAdminNotices:
+        async def send_private_to_superusers(
+            self,
+            message: str,
+            **_kwargs: object,
+        ) -> None:
+            admin_notices.append(message)
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", object()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=oversized_summary,
+        content_max_chars=10,
+        summary_max_chars=summary_limit,
+        admin_notices=cast("Any", RecordingAdminNotices()),
+    )
+
+    summary = await service._content_override(
+        _item(text="这是一条需要摘要的长动态正文。"),
+        1310714247,
+        "这是一条需要摘要的长动态正文。",
+    )
+
+    assert summary == "一、第一项。二、第二项。"
+    assert len(summary) <= summary_limit
+    assert len(attempts) == BILIBILI_SUMMARY_MAX_ATTEMPTS
+    assert admin_notices == []
 
 
 @pytest.mark.asyncio

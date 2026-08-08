@@ -205,6 +205,8 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                 features,
                 resources.commands,
                 config.player_accounts,
+                tuple(config.seer.new_content.expanded_categories),
+                config.seer.new_content.auto_expand_max_items,
             )
         )
 

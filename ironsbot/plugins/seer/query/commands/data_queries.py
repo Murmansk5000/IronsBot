@@ -59,7 +59,7 @@ from ironsbot.services.seer.new_content import (
     NewContentSnapshot,
     format_new_content_category_count,
     format_new_content_item_description,
-    is_new_content_category_expanded_by_default,
+    is_new_content_category_auto_expanded,
     new_content_category_unavailable_message,
     new_content_unavailable_message,
 )
@@ -92,9 +92,11 @@ class _NewContentAction:
 
 @dataclass(frozen=True, slots=True)
 class _NewContentMenuLayout:
-    """Describe either the category root or one focused numeric category list."""
+    """Keep stable root keys while optionally focusing one numeric child menu."""
 
     display_categories: tuple[NewContentCategory, ...]
+    expanded_categories: frozenset[NewContentCategory] = frozenset()
+    auto_expand_max_items: int = 5
     focused_category: NewContentCategory | None = None
     root_title: str | None = None
 
@@ -282,6 +284,10 @@ async def _start_new_content(  # noqa: PLR0913
         return
     layout = _NewContentMenuLayout(
         display_categories=visible_categories,
+        expanded_categories=frozenset(group.new_content_expanded_categories).intersection(
+            visible_categories
+        ),
+        auto_expand_max_items=group.new_content_auto_expand_max_items,
         focused_category=(
             visible_categories[0] if len(visible_categories) == 1 else None
         ),
@@ -382,11 +388,16 @@ def _content_prompt(
         return _focused_content_prompt(snapshot, layout)
 
     choices: list[PromptItem[_NewContentAction]] = []
-    item_number = 1
     for index, category in enumerate(layout.display_categories):
         code = chr(ord("a") + index)
         items = snapshot.items_for(category)
-        expanded = is_new_content_category_expanded_by_default(snapshot, category)
+        expanded = category in layout.expanded_categories or (
+            is_new_content_category_auto_expanded(
+                snapshot,
+                category,
+                layout.auto_expand_max_items,
+            )
+        )
         choices.append(
             PromptItem(
                 f"{'▼' if expanded else '▶'} {CATEGORY_NAMES[category]}",
@@ -395,18 +406,17 @@ def _content_prompt(
                 key=code,
             )
         )
-        if expanded:
-            for item in items:
-                choices.append(
-                    PromptItem(
-                        item.name,
-                        _item_description(item),
-                        _NewContentAction("item", category, item),
-                        is_sub_prompt=True,
-                        key=str(item_number),
-                    )
+        for item_index, item in enumerate(items, start=1):
+            choices.append(
+                PromptItem(
+                    item.name,
+                    _item_description(item),
+                    _NewContentAction("item", category, item),
+                    is_sub_prompt=True,
+                    key=f"{code}{item_index}",
+                    is_visible=expanded,
                 )
-                item_number += 1
+            )
     return Prompt(
         title=f"🆕【{_new_content_root_title(layout)}】输入编号查看详情：",
         items=choices,
@@ -455,7 +465,6 @@ def _focus_new_content_category(
 ) -> _NewContentMenuLayout:
     return replace(
         layout,
-        display_categories=(category,),
         focused_category=category,
     )
 
@@ -552,6 +561,8 @@ async def _render_content_prompt(
             layout.display_categories,
             layout.focused_category,
             _new_content_menu_title(layout),
+            layout.expanded_categories,
+            layout.auto_expand_max_items,
         )
     except Exception:
         logger.exception("new content menu rendering failed; falling back to text")

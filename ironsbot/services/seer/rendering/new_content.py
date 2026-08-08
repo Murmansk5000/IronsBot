@@ -16,12 +16,11 @@ from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
 from ironsbot.services.seer.images import ImageSourceError, SeerImageSource, to_data_uri
 from ironsbot.services.seer.new_content import (
     CATEGORY_NAMES,
-    DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS,
     NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
     format_new_content_category_count,
-    is_new_content_category_expanded_by_default,
+    is_new_content_category_auto_expanded,
 )
 from ironsbot.services.seer.render_paths import (
     NEW_CONTENT_TEMPLATE_PATH,
@@ -94,6 +93,8 @@ async def render_new_content_menu(  # noqa: PLR0913
     display_categories: tuple[NewContentCategory, ...],
     focused_category: NewContentCategory | None,
     menu_title: str = "新增内容",
+    expanded_categories: frozenset[NewContentCategory] = frozenset(),
+    auto_expand_max_items: int = 5,
 ) -> bytes:
     """Render the active categories and items without requiring every asset."""
 
@@ -102,6 +103,8 @@ async def render_new_content_menu(  # noqa: PLR0913
         display_categories,
         focused_category,
         menu_title,
+        expanded_categories,
+        auto_expand_max_items,
     )
     if cached := cache.get("new_content", content_key):
         return cached
@@ -137,11 +140,16 @@ async def render_new_content_menu(  # noqa: PLR0913
             )
             item_rows.append((len(rows) - 1, item, details))
     else:
-        item_number = 1
         for index, category in enumerate(display_categories):
             code = chr(ord("a") + index)
             items = snapshot.items_for(category)
-            expanded = is_new_content_category_expanded_by_default(snapshot, category)
+            expanded = category in expanded_categories or (
+                is_new_content_category_auto_expanded(
+                    snapshot,
+                    category,
+                    auto_expand_max_items,
+                )
+            )
             rows.append(
                 {
                     "code": code,
@@ -167,11 +175,11 @@ async def render_new_content_menu(  # noqa: PLR0913
                 }
             )
             if expanded:
-                for item in items:
+                for item_index, item in enumerate(items, start=1):
                     details = _item_details(data, autocard, item)
                     rows.append(
                         {
-                            "code": str(item_number),
+                            "code": f"{code}{item_index}",
                             "name": item.name,
                             "description": details.description,
                             "metadata": details.metadata,
@@ -194,7 +202,6 @@ async def render_new_content_menu(  # noqa: PLR0913
                         }
                     )
                     item_rows.append((len(rows) - 1, item, details))
-                    item_number += 1
 
     image_results = await asyncio.gather(
         *(
@@ -563,11 +570,13 @@ def _gender_name(value: str) -> str:
     }.get(value.casefold(), value)
 
 
-def _cache_key(
+def _cache_key(  # noqa: PLR0913
     snapshot: NewContentSnapshot,
     categories: tuple[NewContentCategory, ...],
     focused_category: NewContentCategory | None,
     menu_title: str,
+    expanded_categories: frozenset[NewContentCategory],
+    auto_expand_max_items: int,
 ) -> str:
     raw = "|".join(
         (
@@ -575,7 +584,8 @@ def _cache_key(
             ",".join(categories),
             focused_category or "root",
             menu_title,
-            f"auto-fold-{DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS}",
+            "expanded=" + ",".join(sorted(expanded_categories)),
+            f"auto-expand={auto_expand_max_items}",
         )
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]

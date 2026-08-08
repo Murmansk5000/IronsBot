@@ -45,6 +45,7 @@ FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 BILIBILI_SUMMARY_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 BILIBILI_SUMMARY_FAILURE_ACTION = "Bilibili dynamic summary failure"
+BILIBILI_SUMMARY_MAX_ATTEMPTS = 3
 SUMMARY_FAILURE_FALLBACK_HINT = "（摘要生成失败，完整内容请见传送门）"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
@@ -69,6 +70,13 @@ def _summary_failure_fallback(content: str, max_chars: int) -> str:
     excerpt_limit = max_chars - len(SUMMARY_FAILURE_FALLBACK_HINT) - 1
     excerpt = truncate_bilibili_text(content, excerpt_limit)
     return f"{excerpt}\n{SUMMARY_FAILURE_FALLBACK_HINT}"
+
+
+def _valid_summary(summary: str, max_chars: int) -> str | None:
+    """Accept only a complete model response that fits the configured limit."""
+
+    candidate = summary.strip()
+    return candidate if candidate and len(candidate) <= max_chars else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,21 +271,44 @@ class BilibiliPushDeliveryService:
         summary: str | None = None
         failure_reason: str | None = None
         if self.summary_use_ai and self.summarize is not None:
-            try:
-                summary = await self.summarize(
-                    content,
-                    max_chars=self.summary_max_chars,
+            for attempt in range(1, BILIBILI_SUMMARY_MAX_ATTEMPTS + 1):
+                try:
+                    candidate = await self.summarize(
+                        content,
+                        max_chars=self.summary_max_chars,
+                    )
+                except Exception as error:  # noqa: BLE001 - optional summary retry
+                    failure_reason = f"调用异常：{type(error).__name__}"
+                    logger.warning(
+                        "Bilibili dynamic summary attempt failed: attempt=%s/%s "
+                        "error=%s",
+                        attempt,
+                        BILIBILI_SUMMARY_MAX_ATTEMPTS,
+                        type(error).__name__,
+                    )
+                    continue
+                if candidate is not None and (
+                    summary := _valid_summary(
+                        candidate,
+                        self.summary_max_chars,
+                    )
+                ) is not None:
+                    failure_reason = None
+                    break
+                failure_reason = (
+                    "AI 未返回有效摘要"
+                    if candidate is None or not candidate.strip()
+                    else (
+                        "AI 摘要超过 "
+                        f"{self.summary_max_chars} 字（第 {attempt} 次）"
+                    )
                 )
-            except Exception as error:
-                # A summary is optional. The link was already delivered and a
-                # bad AI integration must not make this dynamic repeat forever.
-                logger.exception(
-                    "Bilibili dynamic summary failed; using truncated content"
+                logger.warning(
+                    "Bilibili dynamic summary rejected: attempt=%s/%s reason=%s",
+                    attempt,
+                    BILIBILI_SUMMARY_MAX_ATTEMPTS,
+                    failure_reason,
                 )
-                failure_reason = f"调用异常：{type(error).__name__}"
-            else:
-                if summary is None:
-                    failure_reason = "AI 未返回有效摘要"
         if failure_reason is not None:
             await self._notify_summary_failure(
                 item,
