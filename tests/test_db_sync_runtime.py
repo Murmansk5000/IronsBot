@@ -113,13 +113,14 @@ def _config(
     on_startup: bool = True,
     startup_trigger_remote_build: bool = False,
     interval_enabled: bool = True,
+    sources: dict[str, DataSourceConfig] | None = None,
 ) -> DataSyncConfig:
     return DataSyncConfig(
         github_token=github_token,
         on_startup=on_startup,
         startup_trigger_remote_build=startup_trigger_remote_build,
         interval_enabled=interval_enabled,
-        sources={},
+        sources={} if sources is None else sources,
     )
 
 
@@ -134,6 +135,7 @@ def _remote_build_config() -> RemoteBuildConfig:
 def _remote_build_pipeline_config() -> RemoteBuildConfig:
     return RemoteBuildConfig(
         enabled=True,
+        downstream_publication_pending=True,
         steps=[
             RemoteBuildStepConfig(
                 name="refresh_official_sources",
@@ -159,11 +161,6 @@ def _remote_build_pipeline_config() -> RemoteBuildConfig:
                 name="build_api_data",
                 repository="Murmansk-Seer/api-data",
                 workflow_id="main.yml",
-            ),
-            RemoteBuildStepConfig(
-                name="build_ironsbot_data",
-                repository="Murmansk-Seer/seerapi",
-                workflow_id="build-seerapi-data-db.yml",
             ),
         ],
     )
@@ -320,9 +317,31 @@ def test_manual_sync_runs_remote_build_pipeline_before_download(
         "build:refresh_unity_config:token",
         "build:sync_config_sources:token",
         "build:build_api_data:token",
-        "build:build_ironsbot_data:token",
         "sync:seerapi",
     ]
+
+
+def test_manual_sync_reports_async_downstream_publication(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    source = _source(remote_build=_remote_build_pipeline_config())
+    sync = DatabaseSync(DatabaseManager())
+    sync.register("seerapi", source)
+
+    async def run_all(
+        _self: DatabaseSync,
+        **_kwargs: object,
+    ) -> tuple[bool, dict[str, bool]]:
+        return True, {"seerapi": True}
+
+    monkeypatch.setattr(DatabaseSync, "run_sync_all_databases", run_all)
+    service = DataSyncService(_config(sources={"seerapi": source}), sync)
+
+    message = asyncio.run(service.run_manual(force=False))
+
+    assert "api-data" in message
+    assert "SeerAPI" in message
+    assert "5 分钟" in message
 
 
 def test_force_remote_build_overrides_supported_inputs(
@@ -371,7 +390,6 @@ def test_force_remote_build_overrides_supported_inputs(
         "refresh_unity_config": {},
         "sync_config_sources": {"force": True},
         "build_api_data": {"force": True},
-        "build_ironsbot_data": {"force": True},
     }
 
 
