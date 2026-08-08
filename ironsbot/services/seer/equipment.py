@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
 from ironsbot.services.seer.formatting import format_sub_lines
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.query_result import (
@@ -138,6 +139,17 @@ class EquipmentQueryService:
             reply_data.kind,
             str(reply_data.item_id),
         )
+        if (
+            reply_data.is_mount
+            and image.data is None
+            and (
+                flash_image := load_flash_mount_image(
+                    self._data,
+                    reply_data.item_id,
+                )
+            )
+        ):
+            return QueryReply(text=reply_data.text, image=flash_image)
         if (
             reply_data.is_mount
             and image.data is None
