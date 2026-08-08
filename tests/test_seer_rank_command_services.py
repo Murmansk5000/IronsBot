@@ -6,11 +6,25 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
+from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaDecision
 from ironsbot.services.seer.rank_admin import (
     RankAdminPolicy,
     RankAdminService,
 )
-from ironsbot.services.seer.rank_list_models import RankListCommand, RankPlayerCommand
+from ironsbot.services.seer.rank_list_models import (
+    GLOBAL_RANKS,
+    RankListCommand,
+    RankPlayerCommand,
+    RankScoreCommand,
+)
+from ironsbot.services.seer.rank_models import (
+    RankEntry,
+    RankLookupResult,
+    RankPageResult,
+    RankScoreSearchItem,
+    RankScoreSearchResult,
+)
+from ironsbot.services.seer.rank_page_cache_models import CachedRankLookup
 from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
@@ -73,6 +87,79 @@ class NoHeadlessAccess:
         pytest.fail("local rank query must not require headless")
 
 
+class ExhaustedQuota:
+    @staticmethod
+    def check_general_query(**_kwargs: object) -> PlayerQueryQuotaDecision:
+        return PlayerQueryQuotaDecision(allowed=False, message="额度已用完")
+
+    @staticmethod
+    def check(**_kwargs: object) -> PlayerQueryQuotaDecision:
+        return PlayerQueryQuotaDecision(allowed=False, message="额度已用完")
+
+
+class CachedGlobalRank:
+    @staticmethod
+    def get_spec(rank_key: str) -> object:
+        return GLOBAL_RANKS[rank_key]
+
+    @staticmethod
+    def spec_needs_sub_key(_spec: object) -> bool:
+        return False
+
+    @staticmethod
+    def cached_visible_range_result(**_kwargs: object) -> RankPageResult:
+        return RankPageResult(
+            items=[RankEntry(id=1, nick="cached", score=999)],
+            fetched_at=1_781_234_567.0,
+            from_cache=True,
+        )
+
+    @staticmethod
+    def cached_score_segment(**_kwargs: object) -> RankScoreSearchResult:
+        return RankScoreSearchResult(
+            title="图鉴积分榜",
+            score_name="分",
+            target_score=999,
+            searched_limit=10_000,
+            queried=True,
+            start_rank=1,
+            end_rank=1,
+            total_count=1,
+            scanned_count=1,
+            fetched_at=1_781_234_567.0,
+            items=[
+                RankScoreSearchItem(
+                    id=1,
+                    nick="cached",
+                    score=999,
+                    rank_index=0,
+                )
+            ],
+        )
+
+    @staticmethod
+    def cached_player_lookup(
+        **_kwargs: object,
+    ) -> tuple[CachedRankLookup, RankLookupResult]:
+        return (
+            CachedRankLookup(
+                id=123456789,
+                nick="cached",
+                score=999,
+                rank_index=0,
+                fetched_at=1_781_234_567.0,
+            ),
+            RankLookupResult(
+                title="图鉴积分",
+                score_name="分",
+                rank=1,
+                score=999,
+                searched_limit=10_000,
+                queried=True,
+            ),
+        )
+
+
 def _query_service(
     local_rank: FakeLocalRank,
     display: FakeDisplay,
@@ -131,6 +218,40 @@ def test_rank_display_limit_is_validated_and_saved_by_service() -> None:
 
     assert display.saved == (123, 456, 30)
     assert message.startswith("✅ 本群榜单默认显示条数已设置为 30 名")
+
+
+@pytest.mark.asyncio
+async def test_exhausted_quota_returns_cache_without_headless_access() -> None:
+    service = RankQueryService(
+        cast("RankService", CachedGlobalRank()),
+        cast("LocalRankService", FakeLocalRank()),
+        cast("RankDisplayService", FakeDisplay()),
+        cast("HeadlessService", NoHeadlessAccess()),
+        RankQueryPolicy(
+            player_error=lambda _player_id, error: str(error),
+            player_timeout_seconds=5,
+        ),
+        cast("Any", ExhaustedQuota()),
+    )
+
+    list_reply = await service.list_reply(
+        RankListCommand(kind="global", rank_key="图鉴积分"),
+        qq_user_id=1,
+    )
+    score_reply = await service.score_reply(
+        RankScoreCommand(rank_key="图鉴积分", score=999),
+        group_id=None,
+        qq_user_id=1,
+    )
+    player_reply = await service.player_reply(
+        RankPlayerCommand(rank_key="图鉴积分", player_id=123456789),
+        qq_user_id=1,
+    )
+
+    assert "缓存数据" in list_reply.text
+    assert "缓存数据" in score_reply.text
+    assert "缓存数据" in player_reply.text
+    assert "cached" in player_reply.text
 
 
 @pytest.mark.asyncio
