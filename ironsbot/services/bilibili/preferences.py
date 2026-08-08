@@ -34,6 +34,24 @@ class BiliPushPreferenceStore(Protocol):
         uid: int,
     ) -> None: ...
 
+    def category_muted(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+        category: str,
+    ) -> bool | None: ...
+
+    def set_category_muted(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+        category: str,
+        *,
+        muted: bool,
+    ) -> None: ...
+
 
 def bili_push_subscription_key(uid: int) -> str:
     return f"{BILI_PUSH_SUBSCRIPTION_PREFIX}{int(uid)}"

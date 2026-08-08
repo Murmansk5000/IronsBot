@@ -15,7 +15,10 @@ from ironsbot.services.bilibili.menu import (
     build_dynamic_menu_text,
     dynamic_record_ids,
 )
-from ironsbot.services.bilibili.parser import target_dynamics_from_response
+from ironsbot.services.bilibili.parser import (
+    item_author_mid,
+    target_dynamics_from_response,
+)
 from ironsbot.services.bilibili.schedule import AutoCheckState
 from ironsbot.services.seer.external_references import (
     SeerInfoReference,
@@ -85,10 +88,25 @@ class BilibiliService:
             newest_first=True,
         )
         if target_dynamics:
+            official_dynamics = [
+                (pub_ts, item)
+                for pub_ts, item in target_dynamics
+                if self.targets.is_seer_category_uid(item_author_mid(item))
+            ]
+            other_dynamics = [
+                (pub_ts, item)
+                for pub_ts, item in target_dynamics
+                if not self.targets.is_seer_category_uid(item_author_mid(item))
+            ]
             save_target_dynamics(
                 self.history,
-                target_dynamics,
+                other_dynamics,
                 suppress_patterns=self.config.filters.suppress_push_patterns,
+            )
+            save_target_dynamics(
+                self.history,
+                official_dynamics,
+                suppress_patterns=[],
             )
 
         records = self.history.list(

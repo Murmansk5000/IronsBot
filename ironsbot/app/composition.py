@@ -336,6 +336,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
         _push_message_limiter=push_message_limiter,
         _prepare_extra_push_options=bilibili.targets.prepare_account_names,
+        _subscription_submenu_providers=(bilibili.targets,),
     )
     sendpic = SendpicService(
         settings.messaging.sendpic,

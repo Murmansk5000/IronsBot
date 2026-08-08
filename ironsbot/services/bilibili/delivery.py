@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ironsbot.core.bilibili import truncate_bilibili_text
+from ironsbot.core.bilibili import SeerDynamicCategory, truncate_bilibili_text
 from ironsbot.core.onebot_group_identity import (
     format_group_label,
     resolve_group_name,
@@ -31,8 +31,7 @@ if TYPE_CHECKING:
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic content push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
 BILI_PUSH_ADMIN_HINT = (
-    "群主/管理员可发送：B站账号 / "
-    "B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
+    "群主/管理员可发送：B站账号 / B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
@@ -61,6 +60,7 @@ class DynamicSummarizer(Protocol):
 
 
 HintAppender = Callable[[Any, str], Any]
+DynamicLinkTagger = Callable[[int, tuple[SeerDynamicCategory, ...]], str | None]
 logger = logging.getLogger(__name__)
 
 
@@ -93,6 +93,8 @@ class BilibiliPushDeliveryService:
     summary_use_ai: bool = True
     can_query_history: Callable[[MessageTarget], bool] | None = None
     admin_notices: AdminNoticeService | None = None
+    link_tag_for: DynamicLinkTagger | None = None
+    prepend_link_tag: HintAppender | None = None
 
     async def send(
         self,
@@ -100,15 +102,22 @@ class BilibiliPushDeliveryService:
         pub_ts: int,
         author_mid: int,
         targets: BiliPushTargets,
+        categories: tuple[SeerDynamicCategory, ...] = (),
     ) -> None:
         subscription_key = bili_push_subscription_key(author_mid)
-        await self._send_link_only_targets(item, pub_ts, author_mid, targets)
+        await self._send_link_only_targets(
+            item,
+            pub_ts,
+            author_mid,
+            targets,
+            categories,
+        )
 
         full_targets = self._subscribed_full_targets(targets, subscription_key)
         if not full_targets.has_targets:
             return
 
-        link_message = self.render_link(item, pub_ts)
+        link_message = self._render_link(item, pub_ts, author_mid, categories)
         if link_message is None:
             return
         await self.delivery.broadcast(
@@ -244,10 +253,11 @@ class BilibiliPushDeliveryService:
         pub_ts: int,
         author_mid: int,
         targets: BiliPushTargets,
+        categories: tuple[SeerDynamicCategory, ...],
     ) -> None:
         if not targets.link_group_ids and not targets.link_user_ids:
             return
-        message = self.render_link(item, pub_ts)
+        message = self._render_link(item, pub_ts, author_mid, categories)
         if message is None:
             return
         await self.delivery.broadcast(
@@ -259,6 +269,23 @@ class BilibiliPushDeliveryService:
             message_limiter=self._transform_target_message,
             subscription_key=bili_push_subscription_key(author_mid),
         )
+
+    def _render_link(
+        self,
+        item: dict[str, Any],
+        pub_ts: int,
+        author_mid: int,
+        categories: tuple[SeerDynamicCategory, ...],
+    ) -> Any | None:
+        message = self.render_link(item, pub_ts)
+        if (
+            message is None
+            or self.link_tag_for is None
+            or self.prepend_link_tag is None
+        ):
+            return message
+        tag = self.link_tag_for(author_mid, categories)
+        return self.prepend_link_tag(message, tag) if tag else message
 
     async def _content_override(
         self,
@@ -287,21 +314,22 @@ class BilibiliPushDeliveryService:
                         type(error).__name__,
                     )
                     continue
-                if candidate is not None and (
-                    summary := _valid_summary(
-                        candidate,
-                        self.summary_max_chars,
+                if (
+                    candidate is not None
+                    and (
+                        summary := _valid_summary(
+                            candidate,
+                            self.summary_max_chars,
+                        )
                     )
-                ) is not None:
+                    is not None
+                ):
                     failure_reason = None
                     break
                 failure_reason = (
                     "AI 未返回有效摘要"
                     if candidate is None or not candidate.strip()
-                    else (
-                        "AI 摘要超过 "
-                        f"{self.summary_max_chars} 字（第 {attempt} 次）"
-                    )
+                    else (f"AI 摘要超过 {self.summary_max_chars} 字（第 {attempt} 次）")
                 )
                 logger.warning(
                     "Bilibili dynamic summary rejected: attempt=%s/%s reason=%s",

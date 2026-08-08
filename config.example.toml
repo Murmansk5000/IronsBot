@@ -812,10 +812,42 @@ users = {}
 
 [bilibili.filters]
 # Default: built-in lottery/result suppression patterns.
-# EN: Regex patterns that suppress automatic pushes.
-# ZH: 抑制自动推送的正则表达式。
+# EN: Regex patterns that suppress automatic pushes for non-Seer accounts.
+# ZH: 非赛尔号官号自动推送的全局抑制正则；赛尔号官号改由下方分类订阅控制。
 # Example: ["恭喜", "中奖", "抽奖结果"]
 suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信通知", "中奖", "抽奖结果"]
+
+[bilibili.seer_categories]
+# The official account receives target-level category subscriptions through TD.
+# 赛尔号官号动态按当前群/私聊分别分类订阅；发送 TD 后进入“赛尔号动态订阅”管理。
+# Default: true
+enabled = true
+# Default: "seer"; EN: Account alias defined above. ZH: 上方定义的赛尔号官号账号别名。
+account = "seer"
+# Default: "Asia/Shanghai"; EN: Timezone used by preview schedule matching. ZH: 预告发布时间判断使用的时区。
+timezone = "Asia/Shanghai"
+# New targets mute lottery/result pushes by default. All other categories subscribe by default.
+# 新群/私聊默认 TD 抽奖/中奖，其余分类默认订阅；TD 菜单中的设置会单独保存。
+default_muted_categories = ["lottery"]
+# Monday/Wednesday afternoon is only an extra hint. A preview still needs a text match.
+# 周一、周三 17:00-18:00 仅辅助识别预告，不能单独将动态判为预告。
+preview_windows = [{ weekdays = ["mon", "wed"], start = "17:00", end = "18:00" }]
+# Text patterns used together with preview_windows.
+preview_window_patterns = ["新版本", "即将到来", "长图"]
+# The twelve TD categories are lottery, version_preview, version_guide, pet, skin,
+# skill_showcase, autocard, competition, story, event, interaction, other.
+# 下列正则可按官方文案变化自行增减；other 只在没有命中其他分类时自动使用。
+lottery_patterns = ["抽奖", "中奖", "私信通知", "抽奖结果"]
+version_preview_patterns = ["新版本.*即将到来", "查看下方长图"]
+version_guide_patterns = ["一图掌握", "版本更新指引", "版本福利"]
+pet_patterns = ["全新精灵", "精灵觉醒", "精灵.*即将登场"]
+skin_patterns = ["全新皮肤", "限定皮肤", "皮肤.*返场", "皮肤.*即将登场"]
+skill_showcase_patterns = ["技能特效抢先看"]
+autocard_patterns = ["群星牌", "元素王座", "卡牌", "小小精灵"]
+competition_patterns = ["大师赛", "小师赛", "赛事", "比赛", "赛程", "直播"]
+story_patterns = ["灵渊", "玄武复活", "全新剧情", "主线故事"]
+event_patterns = ["联动", "主题站", "通行证", "限时活动", "活动福利"]
+interaction_patterns = ["投票", "应援", "报名", "问卷", "创作激励", "征集"]
 
 # =============================================================================
 # Seer real-time headless queries

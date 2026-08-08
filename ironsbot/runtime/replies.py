@@ -56,6 +56,15 @@ def append_text_hint(message: str | Message, hint: str) -> str | Message:
     return text if hint in text else hint if not text else f"{text}\n\n{hint}"
 
 
+def prepend_text_hint(message: str | Message, hint: str) -> str | Message:
+    if isinstance(message, Message):
+        if hint not in str(message):
+            message = MessageSegment.text(f"{hint}\n") + message
+        return message
+    text = message.lstrip()
+    return text if hint in text else hint if not text else f"{hint}\n{text}"
+
+
 def event_sender_at_user_ids(event: MessageEvent | None) -> tuple[int, ...]:
     if not isinstance(event, GroupMessageEvent):
         return ()

@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from ironsbot.core.bilibili import SeerDynamicCategory
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.checkpoints import (
     DynamicItem,
@@ -11,6 +12,7 @@ from ironsbot.services.bilibili.checkpoints import (
 )
 from ironsbot.services.bilibili.parser import (
     dynamic_id,
+    item_author_mid,
     target_dynamics_from_response,
 )
 from ironsbot.services.bilibili.push import (
@@ -34,7 +36,7 @@ logger = logging.getLogger(__name__)
 HTTP_OK = 200
 AuthInvalidHandler = Callable[[str], Awaitable[None]]
 DynamicPushSender = Callable[
-    [dict[str, Any], int, int, BiliPushTargets],
+    [dict[str, Any], int, int, BiliPushTargets, tuple[SeerDynamicCategory, ...]],
     Awaitable[None],
 ]
 
@@ -87,15 +89,26 @@ async def _push_new_dynamics(
 ) -> bool:
     checkpoint_changed = False
     for pub_ts, item in valid_dynamics:
+        author_mid = item_author_mid(item)
+        category_managed = service.targets.is_seer_category_uid(author_mid)
         snapshot = build_dynamic_history_snapshot_for_item(
             item,
             pub_ts=pub_ts,
-            suppress_patterns=service.config.filters.suppress_push_patterns,
+            suppress_patterns=(
+                []
+                if category_managed
+                else service.config.filters.suppress_push_patterns
+            ),
         )
         if snapshot is None:
             continue
 
         author_mid = snapshot.author_mid
+        categories = service.targets.classify_dynamic(
+            author_mid,
+            item,
+            pub_ts,
+        )
         last_saved_time = checkpoints.get(author_mid, 0)
         service.history.save_snapshot(snapshot)
         history_id = dynamic_id(item) or f"{author_mid}:{pub_ts}"
@@ -109,8 +122,7 @@ async def _push_new_dynamics(
                 history_id,
             )
             checkpoint_changed = (
-                mark_checkpoint(checkpoints, author_mid, pub_ts)
-                or checkpoint_changed
+                mark_checkpoint(checkpoints, author_mid, pub_ts) or checkpoint_changed
             )
             continue
 
@@ -121,7 +133,10 @@ async def _push_new_dynamics(
             suppression_reason=snapshot.suppression_reason,
         )
         if decision is None:
-            targets = service.targets.push_targets_for_uid(author_mid)
+            targets = service.targets.push_targets_for_uid(
+                author_mid,
+                categories=categories,
+            )
             decision = decide_dynamic_push_after_targets(
                 has_targets=targets.has_targets
             )
@@ -131,14 +146,17 @@ async def _push_new_dynamics(
 
         if decision.status in {"suppressed", "no_targets"}:
             _log_non_delivery_decision(decision.status, snapshot)
+            service.history.save_snapshot(mark_history_snapshot_pushed(snapshot))
             checkpoint_changed = (
-                mark_checkpoint(checkpoints, author_mid, pub_ts)
-                or checkpoint_changed
+                mark_checkpoint(checkpoints, author_mid, pub_ts) or checkpoint_changed
             )
             continue
 
         if targets is None:
-            targets = service.targets.push_targets_for_uid(author_mid)
+            targets = service.targets.push_targets_for_uid(
+                author_mid,
+                categories=categories,
+            )
 
         if not service.history.try_claim_delivery(history_id):
             logger.info(
@@ -155,14 +173,14 @@ async def _push_new_dynamics(
                 pub_ts,
                 author_mid,
                 targets,
+                categories,
             )
         except BaseException:
             service.history.release_delivery_claim(history_id)
             raise
         service.history.save_snapshot(mark_history_snapshot_pushed(snapshot))
         checkpoint_changed = (
-            mark_checkpoint(checkpoints, author_mid, pub_ts)
-            or checkpoint_changed
+            mark_checkpoint(checkpoints, author_mid, pub_ts) or checkpoint_changed
         )
 
     return checkpoint_changed

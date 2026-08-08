@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.core.bilibili import truncate_bilibili_text
+from ironsbot.core.bilibili import (
+    DEFAULT_BILI_ACCOUNT_UID,
+    truncate_bilibili_text,
+)
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import (
     FIRE_MANUAL_LINK_MESSAGE,
@@ -18,7 +21,7 @@ from ironsbot.plugins.bilibili.delivery import (
     build_dynamic_content_message,
     build_dynamic_link_message,
 )
-from ironsbot.runtime.replies import append_text_hint
+from ironsbot.runtime.replies import append_text_hint, prepend_text_hint
 from ironsbot.services.bilibili.delivery import (
     BILI_PUSH_ADMIN_HINT,
     BILIBILI_SUMMARY_FAILURE_ACTION,
@@ -64,9 +67,7 @@ def _item(
                 "major": {
                     "opus": {
                         "summary": {"text": text},
-                        "pics": [
-                            {"url": "http://i0.hdslb.com/bfs/new_dyn/test.jpg]"}
-                        ],
+                        "pics": [{"url": "http://i0.hdslb.com/bfs/new_dyn/test.jpg]"}],
                     }
                 }
             },
@@ -214,6 +215,47 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
     assert "这是忠实摘要。" in str(sent[2]["message"])
     assert "[CQ:image" in str(sent[2]["message"])
     assert "传送门：" not in str(sent[2]["message"])
+
+
+@pytest.mark.asyncio
+async def test_dynamic_category_tag_only_appears_in_the_first_link_message(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
+
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        link_tag_for=lambda uid, categories: (
+            "🏷️ 标签：新精灵 / 新皮肤"
+            if uid == DEFAULT_BILI_ACCOUNT_UID and categories == ("pet", "skin")
+            else None
+        ),
+        prepend_link_tag=prepend_text_hint,
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        DEFAULT_BILI_ACCOUNT_UID,
+        BiliPushTargets([1001], [], [], []),
+        categories=("pet", "skin"),
+    )
+
+    assert str(sent[0]["message"]).startswith("🏷️ 标签：新精灵 / 新皮肤")
+    assert "🏷️ 标签：" not in str(sent[1]["message"])
 
 
 @pytest.mark.asyncio
@@ -526,9 +568,7 @@ async def test_full_dynamic_excludes_unsubscribed_targets_from_both_messages(
             sent.append({"message": message, **kwargs})
             return TargetSendSummary([], [])
 
-    subscriptions = PushUnsubscribeStore(
-        tmp_path / "push_unsubscriptions.sqlite"
-    )
+    subscriptions = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
     subscription_key = bili_push_subscription_key(1310714247)
     subscriptions.unsubscribe_target(
         "group",
@@ -585,14 +625,10 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
             limiter = kwargs.get("message_limiter")
             for group_id in group_ids:
                 target = MessageTarget("group", group_id)
-                sent.append(
-                    limiter(message, target) if callable(limiter) else message
-                )
+                sent.append(limiter(message, target) if callable(limiter) else message)
             for user_id in private_user_ids:
                 target = MessageTarget("private", user_id)
-                sent.append(
-                    limiter(message, target) if callable(limiter) else message
-                )
+                sent.append(limiter(message, target) if callable(limiter) else message)
             return TargetSendSummary([], [])
 
     runtime = build_test_runtime(
@@ -672,9 +708,7 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         entry
         for entry in sent
         if str(entry["action_name"]) == FULL_DYNAMIC_PUSH_ACTION
-        or str(entry["action_name"]).startswith(
-            f"{FULL_DYNAMIC_PUSH_ACTION} retry "
-        )
+        or str(entry["action_name"]).startswith(f"{FULL_DYNAMIC_PUSH_ACTION} retry ")
     ]
     assert len(content_attempts) == EXPECTED_RETRIED_CONTENT_PUSH_COUNT
     assert content_attempts[1]["group_ids"] == []
@@ -766,9 +800,7 @@ def test_content_message_for_image_only_dynamic_omits_synthetic_notice() -> None
 def test_delivery_service_appends_admin_hint_once_per_day(
     tmp_path: Path,
 ) -> None:
-    store = PushUnsubscribeStore(
-        tmp_path / "push_unsubscriptions.sqlite"
-    )
+    store = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
 
     service = _delivery_service(build_test_runtime().features, store)
     first = service._transform_target_message("正文", MessageTarget("group", 1001))
