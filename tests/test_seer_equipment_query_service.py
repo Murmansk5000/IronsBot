@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.services.seer import equipment as equipment_service
 from ironsbot.services.seer.equipment import EquipmentQueryService
 
 NOT_FOUND_IMAGE_ERROR = "404 Not Found"
+FLASH_TEST_MOUNT_ID = 1301170
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -218,7 +220,9 @@ async def test_equipment_selection_reports_missing_item() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mount_without_official_image_uses_pending_message() -> None:
+async def test_mount_without_official_image_uses_pending_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     data = FakeData()
     data.values[data.equip] = (
         SimpleNamespace(
@@ -230,12 +234,48 @@ async def test_mount_without_official_image_uses_pending_message() -> None:
         ),
     )
 
+    monkeypatch.setattr(
+        equipment_service,
+        "load_flash_mount_image",
+        lambda _data, _mount_id: None,
+    )
+
     result = await _service(data, MissingImages()).select("equip", 1301170)
 
     assert result.reply is not None
     assert result.reply.image is None
     assert result.reply.image_error == ""
     assert result.reply.text.endswith("图片：官方图片暂未上线，暂无法展示。")
+
+
+@pytest.mark.asyncio
+async def test_mount_without_unity_image_uses_flash_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = FakeData()
+    data.values[data.equip] = (
+        SimpleNamespace(
+            id=1301170,
+            name="帝皇驹",
+            part_type=SimpleNamespace(id=6),
+            suit=None,
+            bonus=None,
+        ),
+    )
+    monkeypatch.setattr(
+        equipment_service,
+        "load_flash_mount_image",
+        lambda _data, mount_id: (
+            b"flash-mount" if mount_id == FLASH_TEST_MOUNT_ID else None
+        ),
+    )
+
+    result = await _service(data, MissingImages()).select("equip", 1301170)
+
+    assert result.reply is not None
+    assert result.reply.image == b"flash-mount"
+    assert result.reply.image_error == ""
+    assert "暂未上线" not in result.reply.text
 
 
 @pytest.mark.asyncio
