@@ -1,4 +1,5 @@
 from ironsbot.services.ai.responses import parse_ai_response
+from ironsbot.services.ai.service import _truncate_bilibili_summary
 
 
 def test_parse_ai_response_extracts_reply() -> None:
@@ -42,3 +43,12 @@ def test_parse_ai_response_rejects_missing_content() -> None:
     assert not result.ok
     assert result.error_kind == "empty_reply"
     assert "choices[0].message.content" in result.error_detail
+
+
+def test_bilibili_summary_fallback_does_not_cut_a_numbered_item_midway() -> None:
+    summary = _truncate_bilibili_summary(
+        "一、联动开启。二、活动奖励丰富。三、这是没有结束的长条目内容",
+        18,
+    )
+
+    assert summary == "一、联动开启。二、活动奖励丰富。"

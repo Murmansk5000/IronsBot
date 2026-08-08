@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.core.bilibili import truncate_bilibili_text
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import (
     FIRE_MANUAL_LINK_MESSAGE,
@@ -258,6 +259,96 @@ async def test_short_full_dynamic_does_not_call_ai(
 
 
 @pytest.mark.asyncio
+async def test_800_character_dynamic_sends_the_complete_original_without_ai(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
+
+    async def unexpected_summary(text: str, *, max_chars: int) -> str:
+        del text
+        del max_chars
+        raise AssertionError
+
+    content = "甲" * 800
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=unexpected_summary,
+        content_max_chars=800,
+        summary_max_chars=500,
+    )
+
+    await service.send(
+        _item(text=content),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert content in str(sent[-1]["message"])
+
+
+@pytest.mark.asyncio
+async def test_801_character_dynamic_uses_a_500_character_ai_summary(
+    tmp_path: Path,
+) -> None:
+    summaries: list[tuple[str, int]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            _message: object,
+            **_kwargs: object,
+        ) -> TargetSendSummary:
+            return TargetSendSummary([], [])
+
+    async def summarize(text: str, *, max_chars: int) -> str:
+        summaries.append((text, max_chars))
+        return "摘要。"
+
+    content = "甲" * 801
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=summarize,
+        content_max_chars=800,
+        summary_max_chars=500,
+    )
+
+    await service.send(
+        _item(text=content),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert summaries == [(content, 500)]
+
+
+def test_bilibili_fallback_truncation_keeps_a_complete_list_item() -> None:
+    text = "一、第一项内容。\n二、第二项内容。\n三、第三项内容。"
+
+    assert truncate_bilibili_text(text, 10) == "一、第一项内容。"
+
+
+@pytest.mark.asyncio
 async def test_full_dynamic_uses_truncated_content_when_summary_fails(
     tmp_path: Path,
 ) -> None:
@@ -295,7 +386,7 @@ async def test_full_dynamic_uses_truncated_content_when_summary_fails(
         None,
         summarize=broken_summary,
         content_max_chars=10,
-        summary_max_chars=8,
+        summary_max_chars=50,
         admin_notices=cast("Any", RecordingAdminNotices()),
     )
 
@@ -315,6 +406,7 @@ async def test_full_dynamic_uses_truncated_content_when_summary_fails(
     assert "B站动态 AI 摘要失败" in str(admin_notices[0]["message"])
     assert "调用异常：TypeError" in str(admin_notices[0]["message"])
     assert admin_notices[0]["action_name"] == BILIBILI_SUMMARY_FAILURE_ACTION
+    assert "摘要生成失败，完整内容请见传送门" in str(sent[-1]["message"])
 
 
 @pytest.mark.asyncio

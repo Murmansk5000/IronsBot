@@ -25,8 +25,8 @@ INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
 DEFAULT_BILI_ACCOUNT_UID = 1310714247
-DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 400
-DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 250
+DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 800
+DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 500
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "恭喜",
     "恭喜.*获得",
@@ -35,6 +35,25 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
+
+
+def truncate_bilibili_text(text: str, max_chars: int) -> str:
+    """Keep a long dynamic readable without splitting a sentence or list item."""
+
+    normalized = "\n".join(
+        line.strip() for line in text.splitlines() if line.strip()
+    )
+    if len(normalized) <= max_chars:
+        return normalized
+    clipped = normalized[:max_chars]
+    boundaries = [
+        index
+        for index, character in enumerate(clipped)
+        if character in "。！？；\n"
+    ]
+    if boundaries and boundaries[-1] >= max_chars // 3:
+        return clipped[: boundaries[-1] + 1].rstrip()
+    return clipped.rstrip("，、：:；;-. ") + "……"
 
 
 class BiliPushTargetConfigError(ValueError):
