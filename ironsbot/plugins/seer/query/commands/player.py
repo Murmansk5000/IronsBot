@@ -14,6 +14,7 @@ from ironsbot.config.player_accounts import PlayerAccountRegistry
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import (
@@ -71,6 +72,18 @@ class PlayerCommandDependencies:
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
+
+
+def _parse_pending_binding_event(
+    event: MessageEvent,
+    player_id: int,
+) -> bool | None:
+    """Accept confirmation tokens from the active owner's current message."""
+
+    context = message_input_context(event)
+    if context.has_member_mentions:
+        return None
+    return _parse_pending_binding_choice(context.text, player_id)
 
 
 async def prompt_for_unbound_player_id(
@@ -232,10 +245,15 @@ async def _handle_player_query_result(
             namespace=PLAYER_BINDING_NAMESPACE,
             handlers=[bind_async(handle_player_binding_choice, dependencies)],
             reply_check=lambda reply: (
-                _parse_pending_binding_choice(
-                    reply.get_plaintext(),
+                _parse_pending_binding_event(
+                    reply,
                     pending.player_id,
                 )
+                is not None
+            ),
+            group_reply_check=lambda reply: (
+                reply.user_id == event.user_id
+                and _parse_pending_binding_event(reply, pending.player_id)
                 is not None
             ),
             prompt=dependencies.player.binding_offer(
@@ -262,10 +280,7 @@ async def handle_player_binding_choice(
     pending = state.get(PLAYER_BINDING_PENDING_KEY)
     if not isinstance(pending, PendingPlayerQuery):
         return
-    choice = _parse_pending_binding_choice(
-        event.get_plaintext(),
-        pending.player_id,
-    )
+    choice = _parse_pending_binding_event(event, pending.player_id)
     if choice is None:
         return
     replacement = state.get(PLAYER_BINDING_REPLACEMENT_KEY)

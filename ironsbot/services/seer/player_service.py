@@ -283,8 +283,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         if not is_valid_player_id(player_id):
             return QueryReply(text=PLAYER_ID_ERROR_MESSAGE)
         cached = await self._details.cached_or_inflight_reply(
-            player_id,
-            command.kind,
+            player_id, command.kind, wait_for_inflight=False
         )
         if cached is not None:
             return cached

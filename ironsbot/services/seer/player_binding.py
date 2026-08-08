@@ -53,8 +53,9 @@ def player_binding_offer_message(
         and bound_default_daily_limit > unbound_daily_limit
     ):
         quota_hint = (
-            "设为默认米米号后，查询该米米号的每日无头查询额度可从 "
+            "设为默认米米号后，查询该米米号的每日查询额度可从 "
             f"{unbound_daily_limit} 项提升至 {bound_default_daily_limit} 项。\n"
+            "额度按成功获取的数据项目结算；缓存、预热和超时不计入。\n"
         )
     return (
         f"已查到米米号：{player_id}（{nick}）\n\n"
