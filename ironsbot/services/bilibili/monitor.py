@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 
+from ironsbot.core.bilibili import SeerDynamicCategory
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.checkpoints import (
     DynamicItem,
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 HTTP_OK = 200
 AuthInvalidHandler = Callable[[str], Awaitable[None]]
 DynamicPushSender = Callable[
-    [dict[str, Any], int, int, BiliPushTargets],
+    [dict[str, Any], int, int, BiliPushTargets, tuple[SeerDynamicCategory, ...]],
     Awaitable[None],
 ]
 
@@ -172,6 +173,7 @@ async def _push_new_dynamics(
                 pub_ts,
                 author_mid,
                 targets,
+                categories,
             )
         except BaseException:
             service.history.release_delivery_claim(history_id)

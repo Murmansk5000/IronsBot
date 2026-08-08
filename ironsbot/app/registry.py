@@ -38,7 +38,7 @@ from ironsbot.runtime.plugins import (
     PluginDefinition,
     PluginHooks,
 )
-from ironsbot.runtime.replies import append_text_hint
+from ironsbot.runtime.replies import append_text_hint, prepend_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
@@ -155,6 +155,8 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         config.bilibili.push.summary_use_ai,
         bilibili_service.targets.can_target_query_history,
         admin_notices,
+        bilibili_service.targets.dynamic_link_tag,
+        prepend_text_hint,
     )
     bili_monitor = BilibiliMonitorService(
         bilibili_service,

@@ -50,6 +50,7 @@ def test_monitor_does_not_redeliver_persisted_dynamic_when_checkpoint_is_missing
         _pub_ts: int,
         _author_mid: int,
         _targets: object,
+        _categories: object,
     ) -> None:
         sent.append("sent")
 
@@ -85,6 +86,7 @@ def test_monitor_marks_category_muted_seer_dynamic_as_processed(
         _pub_ts: int,
         _author_mid: int,
         _targets: object,
+        _categories: object,
     ) -> None:
         sent.append("sent")
 

@@ -416,6 +416,17 @@ class BiliTargetService:
             config=self.config.seer_categories,
         )
 
+    def dynamic_link_tag(
+        self,
+        uid: int,
+        categories: tuple[SeerDynamicCategory, ...],
+    ) -> str | None:
+        if not self.is_seer_category_uid(uid) or not categories:
+            return None
+        return "🏷️ 标签：" + " / ".join(
+            SEER_CATEGORY_LABELS[category] for category in categories
+        )
+
     def category_muted(
         self,
         target_type: PushTargetType,
