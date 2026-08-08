@@ -15,6 +15,8 @@ from ironsbot.services.seer.new_content import (
 from ironsbot.services.seer.rendering import new_content as new_content_rendering
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 
+FLASH_TEST_MOUNT_ID = 1301170
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
@@ -300,6 +302,56 @@ async def test_missing_mount_image_uses_pending_notice_without_cache() -> None:
     assert item_row["image"] is None
     assert item_row["image_notice"] == "官方图片暂未上线"
     assert cache.saved is None
+
+
+@pytest.mark.asyncio
+async def test_missing_unity_mount_image_uses_flash_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    monkeypatch.setattr(
+        new_content_rendering,
+        "load_flash_mount_image",
+        lambda _data, mount_id: (
+            b"flash-mount" if mount_id == FLASH_TEST_MOUNT_ID else None
+        ),
+    )
+    cache = _Cache()
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260808",
+        weekly_cycle="2026-08-07",
+        items=(_item("mount", 1301170),),
+    )
+
+    await render_new_content_menu(
+        cache,  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        _Images(fail_keys={("equip", "1301170")}),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("mount",),
+        "mount",
+    )
+
+    item_row = next(row for row in captured["items"] if row["code"] == "1")
+    assert item_row["image"] == "data:image/png;base64,Zmxhc2gtbW91bnQ="
+    assert item_row["image_notice"] == ""
+    assert cache.saved == b"menu-image"
 
 
 @pytest.mark.asyncio
