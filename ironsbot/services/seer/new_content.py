@@ -69,7 +69,7 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
 }
 _CONFIG_VERSION_DATE_LENGTH = 8
 _CONFIG_VERSION_TIMESTAMP_LENGTH = 14
-DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS = 5
+DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 
 
 class NewContentIndexUnavailableError(RuntimeError):
@@ -126,14 +126,15 @@ class NewContentSnapshot:
         return self.category_state(category).comparison_ready
 
 
-def is_new_content_category_expanded_by_default(
+def is_new_content_category_auto_expanded(
     snapshot: NewContentSnapshot,
     category: NewContentCategory,
+    max_items: int,
 ) -> bool:
-    """Expand short category lists while keeping large weekly changes compact."""
+    """Expand short root-menu categories; zero disables automatic expansion."""
 
     item_count = len(snapshot.items_for(category))
-    return 0 < item_count <= DEFAULT_EXPANDED_CATEGORY_MAX_ITEMS
+    return 0 < item_count <= max_items
 
 
 def format_new_content_category_count(

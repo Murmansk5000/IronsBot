@@ -148,6 +148,10 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 - 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
   `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
+示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
+[配置布局与新增功能指南](docs/configuration-layout.md)，确认它应归入消息推送、赛尔实时无头查询、
+赛尔本地资料，还是数据同步与生命周期。
+
 示例环境变量：
 
 ```env

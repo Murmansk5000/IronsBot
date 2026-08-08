@@ -30,12 +30,14 @@ if TYPE_CHECKING:
 
 
 class NewContentMenuRenderer(Protocol):
-    async def __call__(
+    async def __call__(  # noqa: PLR0913
         self,
         snapshot: NewContentSnapshot,
         display_categories: tuple[NewContentCategory, ...],
         focused_category: NewContentCategory | None,
         menu_title: str,
+        expanded_categories: frozenset[NewContentCategory],
+        auto_expand_max_items: int,
     ) -> bytes: ...
 
 
