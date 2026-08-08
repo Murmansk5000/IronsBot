@@ -47,6 +47,7 @@ LARGE_SEGMENT_PAGE_SIZE = 100
 LARGE_SEGMENT_START_INDEX = 856
 LARGE_SEGMENT_END_INDEX = 1156
 LARGE_SEGMENT_SAMPLE_LIMIT = 50
+AUTOCARD_LOOKUP_LIMIT = 10_000
 
 try:
     nonebot.get_driver()
@@ -61,6 +62,10 @@ except RuntimeError as e:
 from ironsbot.config.models.seer import RankQueryConfig
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.services.seer.rank import RankPageCache, RankService
+from ironsbot.services.seer.rank_constants import (
+    AUTOCARD_RANK_KEY,
+    AUTOCARD_RANK_SUB_KEY,
+)
 from ironsbot.services.seer.rank_models import RankPageResult
 from ironsbot.services.seer.rank_page_cache_models import (
     CachedRankLookup,
@@ -246,6 +251,36 @@ def test_rank_lookup_without_score_uses_online_limit_for_linear_scan(
             "searched_limit": online_limit,
         }
     ]
+
+
+def test_autocard_lookup_limit_overrides_only_autocard_searches(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    rank, _cache = _build_rank(
+        online_limit=ONLINE_LIMIT,
+        rank_limit=ONLINE_LIMIT,
+    )
+    rank.config.lookup_limits["群星牌"] = AUTOCARD_LOOKUP_LIMIT
+
+    async def fake_fetch_rank_page(*_args: object, **_kwargs: object) -> list[RankItem]:
+        return []
+
+    monkeypatch.setattr(RankService, "fetch_page", fake_fetch_rank_page)
+
+    result = asyncio.run(
+        rank.find_rank(
+            GAME,
+            user_id=712345678,
+            title="autocard",
+            score_name="score",
+            key=AUTOCARD_RANK_KEY,
+            sub_key=AUTOCARD_RANK_SUB_KEY,
+        )
+    )
+
+    assert result.searched_limit == AUTOCARD_LOOKUP_LIMIT
+    assert rank._score_search_limit("群星牌") == AUTOCARD_LOOKUP_LIMIT
+    assert rank._online_search_limit("图鉴积分") == ONLINE_LIMIT
 
 
 def test_cached_full_rank_miss_skips_a_repeat_scan(

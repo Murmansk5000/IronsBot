@@ -1294,6 +1294,31 @@ display_limit = "not an integer"
         load_settings(config_path)
 
 
+def test_rank_lookup_limits_accept_known_global_ranks_and_reject_unknown_keys(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[seer.rank]
+lookup_limits = { "群星牌" = 10000 }
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert load_settings(config_path).seer.rank.lookup_limits == {"群星牌": 10000}
+
+    config_path.write_text(
+        """
+[seer.rank]
+lookup_limits = { "不存在的榜" = 10000 }
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="unsupported global rank key"):
+        load_settings(config_path)
+
+
 def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
     config = TeamResourceConfig(
         times="08:30,23:00",  # type: ignore[arg-type]
