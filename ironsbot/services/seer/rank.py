@@ -7,6 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.seer import rank_summary
+from ironsbot.services.seer.rank_cache_service import RankCacheQueryMixin
 from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
     AUTOCARD_RANK_SUB_KEY,
@@ -164,7 +165,7 @@ class RankPageCache(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class RankService:
+class RankService(RankCacheQueryMixin):
     config: RankQueryConfig
     cache: RankPageCache
     peak_season_start: Callable[[], datetime | None]
@@ -433,9 +434,7 @@ class RankService:
             sub_key=sub_key,
         )
         score_target = (
-            target_score
-            if target_score is not None and target_score > 0
-            else None
+            target_score if target_score is not None and target_score > 0 else None
         )
         limit = (
             self._score_search_limit(rank_key, search_limit)
@@ -453,15 +452,19 @@ class RankService:
             result.excluded = True
             result.score = score_target
             return result
-        if score_target is None and (
-            cached_miss := cached_rank_miss(
-                self.cache,
-                key=key,
-                sub_key=sub_key,
-                user_id=user_id,
-                minimum_limit=limit,
+        if (
+            score_target is None
+            and (
+                cached_miss := cached_rank_miss(
+                    self.cache,
+                    key=key,
+                    sub_key=sub_key,
+                    user_id=user_id,
+                    minimum_limit=limit,
+                )
             )
-        ) is not None:
+            is not None
+        ):
             result.searched_limit = cached_miss.searched_limit
             result.cost.cache_page_hits += 1
             return result
@@ -709,10 +712,7 @@ class RankService:
         self,
         jobs: Sequence[PlayerRankLookupJob],
     ) -> dict[str, RankLookupResult]:
-        prioritized_jobs = tuple(
-            self._with_player_lookup_priority(job)
-            for job in jobs
-        )
+        prioritized_jobs = tuple(self._with_player_lookup_priority(job) for job in jobs)
         return await run_player_rank_lookup_jobs(
             prioritized_jobs,
             self.config.player_lookup,
