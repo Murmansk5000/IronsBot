@@ -94,9 +94,10 @@ def test_unbound_daily_quota_is_recorded_only_when_consumed(tmp_path: Path) -> N
         action_key="peak",
     )
     assert not denied.allowed
-    assert "额度已用完（1 项逻辑操作）" in denied.message
+    assert "额度已用完（1 项）" in denied.message
     assert "仍可查看已有缓存" in denied.message
     assert "可从 1 项提升至 10 项" in denied.message
+    assert "额度按成功获取的数据项目结算" in denied.message
     assert "首次成功查询时可按提示设为默认米米号" in denied.message
 
 
@@ -450,7 +451,9 @@ def test_player_detail_uses_valid_cache_without_quota_or_live_request(
     latest = QueryReply(text="old-cache")
 
     class _Details:
-        async def cached_or_inflight_reply(self, *_args: object) -> QueryReply:
+        async def cached_or_inflight_reply(
+            self, *_args: object, **_kwargs: object
+        ) -> QueryReply:
             return latest
 
     service = PlayerService(
@@ -518,7 +521,9 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
     latest = QueryReply(text="cached reply")
 
     class _Details:
-        async def cached_or_inflight_reply(self, *_args: object) -> QueryReply:
+        async def cached_or_inflight_reply(
+            self, *_args: object, **_kwargs: object
+        ) -> QueryReply:
             return latest
 
     service = PlayerService(
