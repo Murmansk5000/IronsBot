@@ -499,15 +499,15 @@ accounts = ["seer"]
 # ZH: 群主/管理员或私聊用户可用别名、公开昵称或 UID 修改推送模式：
 #     B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>
 
-# Default: 400
-# EN: Full pushes longer than this are sent as a link followed by a summary.
-# ZH: 全文动态超过此字符数时，先发送链接，再发送摘要。
-content_max_chars = 400
+# Default: 800
+# EN: Full pushes longer than this are sent as a link followed by an AI summary.
+# ZH: 全文动态超过此字符数时，先发送链接，再发送 AI 摘要；不超过时完整发送原文。
+content_max_chars = 800
 
-# Default: 250
-# EN: Maximum characters in a long dynamic summary.
-# ZH: 长动态摘要最大字符数。
-summary_max_chars = 250
+# Default: 500
+# EN: Maximum characters in an AI summary or failed-summary excerpt for a long dynamic.
+# ZH: 超长动态的 AI 摘要或摘要失败原文节选最大字符数。
+summary_max_chars = 500
 
 # Default: true
 # EN: Use AI to summarize long full-text dynamic pushes. When false, send an original text excerpt instead.
@@ -866,6 +866,8 @@ change_cooldown_days = 3
 [seer.player.query_limits]
 # EN: Persistent daily budgets for foreground logical headless operations, reset by Beijing date.
 # ZH: 用户触发的无头逻辑服务器操作每日额度，按北京时间自然日重置；缓存、预热与后台刷新不计入。
+# ZH: 每条指令只要当天还剩至少 1 项即可完整执行；结果成功发送后，按实际成功获取的数据项目结算，
+#     因此收集、巅峰和榜单查询一次可能计入多项。基础资料和阵容每次最多计 1 项。
 enabled = true
 # EN: Daily logical-operation budget for the user's current default player ID.
 # ZH: 查询当前默认米米号时的每日逻辑操作额度。
@@ -989,13 +991,13 @@ limit = 10000
 # EN: Score-unknown linear online scan limit.
 # ZH: 未知分数时允许从前往后线性扫描的在线查询范围。
 online_limit = 2000
-# lookup_limits 默认 {}：按规范榜名覆盖玩家排名查询范围，值为非负整数。
-# 未覆盖：已有正分数时用 limit（默认 10000），否则用 online_limit（默认 2000）。
-# 合法键：图鉴积分、成就点数、精灵图鉴、皮肤图鉴、套装图鉴、部件图鉴、座驾图鉴、刻印图鉴、群星牌、竞技段位、狂野段位、专家段位。
-# 0 是范围为零而非无限；缓存锚点/结果核验仍有独立路径，不保证零网络。
-# 仅影响玩家排名查询，不设置全服榜展示行数、后台预热范围或群权限。
-# 示例（需要覆盖时取消下一行注释；默认保持空映射）：
-# lookup_limits = { "群星牌" = 10000 }
+# Default: {}. EN: Optional per-global-rank lookup caps. A configured rank uses
+# this value for both score-based binary lookup and score-unknown page scans.
+# ZH: 可选的按全服榜单查询上限覆盖；已配置榜单会同时覆盖按分数二分和未知分数翻页。
+# 可选键：图鉴积分、成就点数、精灵图鉴、皮肤图鉴、套装图鉴、部件图鉴、座驾图鉴、
+# 刻印图鉴、群星牌、竞技段位、狂野段位、专家段位。
+# Example: lookup_limits = { "群星牌" = 10000 }
+lookup_limits = {}
 # Default: 100; EN: Rank page size. ZH: 榜单分页大小。
 page_size = 100
 # Default: true; EN: Enable rank page cache. ZH: 启用榜单分页缓存。
@@ -1246,8 +1248,8 @@ image_dir = "data/pet_configs"
 [operations.data_sync]
 # 数据同步分两层：
 # - 普通启动/定时同步默认只下载 GitHub Release 里已经构建好的 SQLite。
-# - /更新数据 会先让 Actions 检查官方/上游是否有变化，有变化才重建；随后下载新库。
-# - /强制更新数据 会传 force=true，强制 Actions 重建，用于排查或 parser 修复后重跑。
+# - /更新数据 会顺序检查官方/上游并构建 api-data；api-data 发布后自动派发 SeerAPI，下游完成后由 5 分钟轮询热同步。
+# - /强制更新数据 会传 force=true，强制上游 Actions 重建；新周一致性闸门仍不会发布旧 api-data 生成的空索引。
 # 如果只是想避免开机慢，改 on_startup=false；如果想开机也检查远程构建，改 startup_trigger_remote_build=true。
 # Default: true; EN: Download existing release SQLite DBs on startup. ZH: 启动时下载现有 release SQLite，并把结果追加到开机通知；设为 false 可关闭。
 on_startup = true
@@ -1261,8 +1263,8 @@ interval_enabled = true
 url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite"
 # Default: SeerAPI data SHA URL. EN: Optional fingerprint URL. ZH: 可选 SHA256 指纹地址。
 fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite.sha256"
-# Default: 60; EN: Sync interval minutes. ZH: 同步间隔分钟。
-interval_minutes = 60
+# Default: 5; EN: Sync interval minutes. ZH: 同步间隔分钟。
+interval_minutes = 5
 # Default: "data/seerapi-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
 local_path = "data/seerapi-data.sqlite"
 
@@ -1271,6 +1273,9 @@ local_path = "data/seerapi-data.sqlite"
 # EN: Each step reuses a recent queued/running workflow by default to avoid duplicate builds.
 # ZH: 每个步骤默认会复用最近正在排队/运行的同 workflow，避免重复触发导致排队变慢。
 enabled = true
+# Default: false; EN: api-data publishes and dispatches the downstream SeerAPI build asynchronously.
+# ZH: api-data 发布后会异步派发 SeerAPI 构建；机器人随后按 5 分钟轮询热同步，不再重复强制构建。
+downstream_publication_pending = true
 
 [[operations.data_sync.sources.seerapi.remote_build.steps]]
 name = "refresh_official_sources"
@@ -1308,15 +1313,6 @@ ref = "main"
 timeout_seconds = 1800
 poll_interval_seconds = 10
 inputs = { debug_enabled = false, force = false }
-
-[[operations.data_sync.sources.seerapi.remote_build.steps]]
-name = "build_ironsbot_data"
-repository = "Murmansk-Seer/seerapi"
-workflow_id = "build-seerapi-data-db.yml"
-ref = "main"
-timeout_seconds = 1800
-poll_interval_seconds = 10
-inputs = { force = false }
 
 [operations.data_sync.sources.aliases]
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
