@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.core.bilibili import truncate_bilibili_text
 from ironsbot.core.onebot_group_identity import (
     format_group_label,
     resolve_group_name,
@@ -44,6 +45,7 @@ FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 BILIBILI_SUMMARY_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 BILIBILI_SUMMARY_FAILURE_ACTION = "Bilibili dynamic summary failure"
+SUMMARY_FAILURE_FALLBACK_HINT = "（摘要生成失败，完整内容请见传送门）"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
 
@@ -61,6 +63,14 @@ HintAppender = Callable[[Any, str], Any]
 logger = logging.getLogger(__name__)
 
 
+def _summary_failure_fallback(content: str, max_chars: int) -> str:
+    if max_chars <= len(SUMMARY_FAILURE_FALLBACK_HINT):
+        return truncate_bilibili_text(content, max_chars)
+    excerpt_limit = max_chars - len(SUMMARY_FAILURE_FALLBACK_HINT) - 1
+    excerpt = truncate_bilibili_text(content, excerpt_limit)
+    return f"{excerpt}\n{SUMMARY_FAILURE_FALLBACK_HINT}"
+
+
 @dataclass(frozen=True, slots=True)
 class BilibiliPushDeliveryService:
     delivery: MessageDelivery
@@ -70,8 +80,8 @@ class BilibiliPushDeliveryService:
     append_hint: HintAppender
     message_limiter: MessageLimiter | None = None
     summarize: DynamicSummarizer | None = None
-    content_max_chars: int = 400
-    summary_max_chars: int = 250
+    content_max_chars: int = 800
+    summary_max_chars: int = 500
     summary_use_ai: bool = True
     can_query_history: Callable[[MessageTarget], bool] | None = None
     admin_notices: AdminNoticeService | None = None
@@ -274,7 +284,9 @@ class BilibiliPushDeliveryService:
                 author_mid,
                 failure_reason,
             )
-        return summary or content[: self.summary_max_chars].rstrip()
+        if summary is not None:
+            return summary
+        return _summary_failure_fallback(content, self.summary_max_chars)
 
     async def _notify_summary_failure(
         self,
@@ -298,7 +310,7 @@ class BilibiliPushDeliveryService:
                 f"UID：{author_mid}\n"
                 f"动态ID：{item.get('id_str', '未知')}\n"
                 f"原因：{reason}\n"
-                f"已降级发送前 {self.summary_max_chars} 字原文。",
+                f"已降级发送不超过 {self.summary_max_chars} 字的原文节选。",
                 subscription_key=BILIBILI_SUMMARY_FAILURE_SUBSCRIPTION_KEY,
                 action_name=BILIBILI_SUMMARY_FAILURE_ACTION,
             )

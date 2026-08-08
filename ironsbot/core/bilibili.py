@@ -25,8 +25,8 @@ INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 BiliPushMode = Literal["full", "link"]
 DEFAULT_BILI_ACCOUNT_ALIAS = "seer"
 DEFAULT_BILI_ACCOUNT_UID = 1310714247
-DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 400
-DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 250
+DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS = 800
+DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS = 500
 DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "恭喜",
     "恭喜.*获得",
@@ -35,6 +35,26 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
+
+
+def truncate_bilibili_text(text: str, max_chars: int) -> str:
+    """Keep a long dynamic readable without splitting a sentence or list item."""
+
+    normalized = "\n".join(line.strip() for line in text.splitlines() if line.strip())
+    if len(normalized) <= max_chars:
+        return normalized
+    clipped = normalized[:max_chars]
+    boundaries = [
+        index
+        for index, character in enumerate(clipped)
+        if character in "。\uff01\uff1f\uff1b\n"
+    ]
+    if boundaries and boundaries[-1] >= max_chars // 3:
+        return clipped[: boundaries[-1] + 1].rstrip()
+    return (
+        clipped[: max(0, max_chars - len("……"))].rstrip("\uff0c、\uff1a:\uff1b;-. ")
+        + "……"[:max_chars]
+    )
 
 
 class BiliPushTargetConfigError(ValueError):
@@ -120,8 +140,8 @@ class BiliPollingConfig(BaseModel):
     default_minutes: int = Field(default=30, gt=0)
     windows: list[BiliIntervalWindow] = Field(
         default_factory=lambda: [
-            BiliIntervalWindow(start="07:00", end="23:00", minutes=5)
-        ]
+            BiliIntervalWindow(start="07:00", end="23:00", minutes=5),
+        ],
     )
 
 
@@ -144,7 +164,7 @@ class BiliPushConfig(BaseModel):
 
     mode: _RequiredBiliPushMode = "full"
     accounts: _BiliAccountAliases = Field(
-        default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS]
+        default_factory=lambda: [DEFAULT_BILI_ACCOUNT_ALIAS],
     )
     # Per-account modes are opt-in TOML overrides. Targets otherwise inherit mode.
     modes: _BiliPushModes = Field(default_factory=dict)
@@ -181,7 +201,7 @@ class BiliFilterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     suppress_push_patterns: NormalizedStringList = Field(
-        default_factory=lambda: list(DEFAULT_BILI_SUPPRESS_PATTERNS)
+        default_factory=lambda: list(DEFAULT_BILI_SUPPRESS_PATTERNS),
     )
 
 
@@ -190,8 +210,8 @@ class BiliConfig(BaseModel):
 
     accounts: dict[str, BiliAccountConfig] = Field(
         default_factory=lambda: {
-            DEFAULT_BILI_ACCOUNT_ALIAS: BiliAccountConfig(uid=DEFAULT_BILI_ACCOUNT_UID)
-        }
+            DEFAULT_BILI_ACCOUNT_ALIAS: BiliAccountConfig(uid=DEFAULT_BILI_ACCOUNT_UID),
+        },
     )
     storage: BiliStorageConfig = Field(default_factory=BiliStorageConfig)
     polling: BiliPollingConfig = Field(default_factory=BiliPollingConfig)
@@ -209,7 +229,7 @@ class BiliConfig(BaseModel):
         result: dict[str, object] = {
             DEFAULT_BILI_ACCOUNT_ALIAS: {
                 "uid": DEFAULT_BILI_ACCOUNT_UID,
-            }
+            },
         }
         for raw_alias, raw_config in parsed.items():
             alias = _normalize_account_alias(raw_alias)
@@ -252,7 +272,7 @@ def _validate_account_ref(
 ) -> None:
     if alias not in accounts:
         raise ValueError(  # noqa: TRY003
-            f"unknown Bilibili account alias at {location}: {alias}"
+            f"unknown Bilibili account alias at {location}: {alias}",
         )
 
 
