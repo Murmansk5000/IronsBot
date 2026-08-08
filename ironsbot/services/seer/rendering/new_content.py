@@ -12,6 +12,7 @@ from ironsbot.services.seer.autocard import (
     AutocardPromptValue,
     AutocardService,
 )
+from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
 from ironsbot.services.seer.images import ImageSourceError, SeerImageSource, to_data_uri
 from ironsbot.services.seer.new_content import (
     CATEGORY_NAMES,
@@ -596,6 +597,8 @@ async def _item_image(
             image = await _achievement_title_image(images, item)
         elif item.category in {"autocard_card", "autocard_role"}:
             image = await _autocard_item_image(images, autocard, item)
+        elif item.category == "mount":
+            image = await _mount_item_image(data, images, item)
         elif image_request := _item_image_request(data, item):
             kind, resource_id = image_request
             image = await _fetch_data_uri(images, kind, resource_id)
@@ -603,6 +606,18 @@ async def _item_image(
         return None
     else:
         return image
+
+
+async def _mount_item_image(
+    data: SeerDataAccess,
+    images: SeerImageSource,
+    item: NewContentItem,
+) -> str | None:
+    try:
+        return await _fetch_data_uri(images, "equip", item.entity_id)
+    except ImageSourceError:
+        fallback = load_flash_mount_image(data, item.entity_id)
+        return None if fallback is None else to_data_uri(fallback)
 
 
 def _item_image_request(
