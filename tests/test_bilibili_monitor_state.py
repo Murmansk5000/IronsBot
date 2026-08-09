@@ -459,7 +459,7 @@ def test_bili_push_subscription_options_are_per_uid(
     ]
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号动态订阅",
+        "赛尔号 B站动态设置",
     ]
 
     cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
@@ -505,7 +505,7 @@ def test_bili_push_subscription_options_use_public_account_names(
 
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号动态订阅",
+        "赛尔号 B站动态设置",
     ]
 
 
@@ -521,14 +521,15 @@ def test_seer_category_subscription_submenu_and_target_filtering(
     )
     option = service.subscription_options("group", group_id)[0]
 
-    assert option.label == "赛尔号动态订阅"
+    assert option.label == "赛尔号 B站动态设置"
     assert option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
 
     submenu = service.subscription_submenu("group", group_id, option)
     assert submenu is not None
     children, prompt = submenu
-    assert children[0].label == "全部赛尔号动态"
+    assert children[0].label == "赛尔号动态总开关"
     assert "请选择要切换" in prompt
+    assert "总开关为 ❌ 时" in prompt
     assert [child.label for child in children[1:]] == [
         SEER_CATEGORY_LABELS[category] for category in SEER_CATEGORY_LABELS
     ]
@@ -566,6 +567,18 @@ def test_seer_category_subscription_submenu_and_target_filtering(
         seer_category_option_key(DEFAULT_BILI_ACCOUNT_UID, "pet")
         == children[1 + list(SEER_CATEGORY_LABELS).index("pet")].key
     )
+
+    cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
+        "group",
+        group_id,
+        bili_push_subscription_key(DEFAULT_BILI_ACCOUNT_UID),
+        "bili_push",
+    )
+    preserved_submenu = service.subscription_submenu("group", group_id, option)
+    assert preserved_submenu is not None
+    preserved_children, _preserved_prompt = preserved_submenu
+    assert preserved_children[0].unsubscribed
+    assert preserved_children[1 + list(SEER_CATEGORY_LABELS).index("pet")].unsubscribed
 
     readonly_submenu = service.subscription_submenu(
         "group",

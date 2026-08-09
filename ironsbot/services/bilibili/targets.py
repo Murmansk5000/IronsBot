@@ -300,7 +300,7 @@ class BiliTargetService:
         if self.is_seer_category_uid(uid):
             return PushSubscriptionOption(
                 key=key,
-                label="赛尔号动态订阅",
+                label="赛尔号 B站动态设置",
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
                 submenu_key=seer_category_submenu_key(uid),
@@ -339,7 +339,7 @@ class BiliTargetService:
         options = [
             PushSubscriptionOption(
                 key=bili_push_subscription_key(uid),
-                label="全部赛尔号动态",
+                label="赛尔号动态总开关",
                 feature="bili_push",
                 unsubscribed=unsubscribed,
             ),
@@ -368,7 +368,8 @@ class BiliTargetService:
         for index, child in enumerate(options, start=1):
             state = "❌" if child.unsubscribed else "✅"
             lines.append(f"{index}. {state} {child.label}")
-        lines.append("\n✅ 已订阅 · ❌ 已 TD，输入序号切换；输入 0 返回推送订阅")
+        lines.append("\n总开关为 ❌ 时，本群不接收任何赛尔号动态；分类开关设置会保留。")
+        lines.append("✅ 已订阅 · ❌ 已 TD，输入序号切换；输入 0 返回推送订阅")
         return options, "\n".join(lines)
 
     def toggle_subscription_option(
