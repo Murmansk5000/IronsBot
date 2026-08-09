@@ -211,7 +211,7 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
     assert "【赛尔号】发布了一条B站动态" in str(sent[1]["message"])
     assert "传送门：" in str(sent[1]["message"])
     assert sent[1]["subscription_key"] == bili_push_subscription_key(1310714247)
-    assert "subscription_key" not in sent[2]
+    assert sent[2]["subscription_key"] == bili_push_subscription_key(1310714247)
     assert "这是忠实摘要。" in str(sent[2]["message"])
     assert "[CQ:image" in str(sent[2]["message"])
     assert "传送门：" not in str(sent[2]["message"])

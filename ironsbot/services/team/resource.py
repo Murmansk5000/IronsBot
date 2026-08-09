@@ -472,6 +472,7 @@ class TeamResourceService:
     async def scan(self) -> None:
         if not self.enabled:
             return
+        notices: list[tuple[MessageTarget, str]] = []
         for target, subscription in self._all_subscriptions():
             if not self._target_has_feature(target):
                 continue
@@ -490,11 +491,16 @@ class TeamResourceService:
             )
             if result.resource >= subscription.threshold:
                 continue
-            await self._delivery.send_targets(
-                [MessageTarget(target.kind, target.target_id, target.at_user_ids)],
-                self._resource_notice(result, subscription),
+            notices.append(
+                (
+                    MessageTarget(target.kind, target.target_id, target.at_user_ids),
+                    self._resource_notice(result, subscription),
+                )
+            )
+        if notices:
+            await self._delivery.send_target_messages(
+                notices,
                 action_name="team resource subscription notice",
-                interval_seconds=0,
             )
 
     def register_jobs(self, scheduler: Scheduler) -> None:
