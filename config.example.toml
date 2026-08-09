@@ -430,7 +430,7 @@ enabled = true
 # Like command actions, the feature key must be enabled for the current group
 # or private user. Keywords are not regular commands and are shown as automatic
 # replies in help.
-# 与口令动作相同，feature 必须在当前群或私聊权限中启用；关键词不是普通指令，
+# 与口令动作相同，feature 必须在对应会话权限中启用；关键词不是普通指令，
 # 帮助中会显示为自动回复。
 #
 # [[messaging.keyword_replies]]
@@ -478,7 +478,7 @@ hint = "回复 TD 可管理推送订阅。"
 # Default: built-in group hint.
 # EN: Hint appended to group pushes.
 # ZH: 追加到群推送末尾的退订提示。
-group_hint = "发送 TD、订阅 或 推送管理 可查看本群推送订阅；群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
+group_hint = "发送 TD、订阅 或 推送管理 可查看推送订阅；群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
 
 [messaging.red_packet_notice]
 # Default: true
@@ -511,7 +511,7 @@ windows = [
 # Default: built-in cooldown notice.
 # EN: Appended to the last allowed message when a window reaches its limit.
 # ZH: 某个窗口达到上限时，附加在最后一条允许消息末尾的提示。
-cooldown_message = "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
+cooldown_message = "机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
 
 [messaging.meeting]
 # Default: ""
@@ -819,7 +819,7 @@ suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信�
 
 [bilibili.seer_categories]
 # The official account receives target-level category subscriptions through TD.
-# 赛尔号官号动态按当前群/私聊分别分类订阅；发送 TD 后进入“赛尔号动态订阅”管理。
+# 赛尔号官号动态按不同会话分别分类订阅；发送 TD 后进入“赛尔号动态订阅”管理。
 # Default: true
 enabled = true
 # Default: "seer"; EN: Account alias defined above. ZH: 上方定义的赛尔号官号账号别名。
@@ -1050,7 +1050,7 @@ enabled = true
 # Default: []; EN: Daily low-resource scan times. Empty disables scheduled notices.
 # ZH: 每日资源扫描时间；为空时不定时提醒，只保留群内“战队”订阅查询。
 times = []
-# Default: ["战队"]; EN: Subscribed team query commands. ZH: 本群订阅战队查询口令。
+# Default: ["战队"]; EN: Subscribed team query commands. ZH: 已订阅战队查询口令。
 commands = ["战队"]
 # Default: 1000; EN: Default low-resource threshold for new QQ-managed subscriptions.
 # ZH: 群里新增订阅时的默认资源阈值；命令里可追加数字覆盖。

@@ -35,7 +35,6 @@ BILI_PUSH_ADMIN_HINT = (
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
-DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 # The first send counts toward the total.  Failed rich-media delivery therefore
 # receives at most two retries before a single administrator notice is sent.
 FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
@@ -125,7 +124,6 @@ class BilibiliPushDeliveryService:
             group_ids=full_targets.full_group_ids,
             private_user_ids=full_targets.full_user_ids,
             action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
-            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             message_limiter=self._transform_target_message,
             subscription_key=subscription_key,
         )
@@ -144,6 +142,7 @@ class BilibiliPushDeliveryService:
             author_mid,
             content_message,
             full_targets,
+            subscription_key=subscription_key,
         )
 
     async def _send_content_with_retries(
@@ -152,6 +151,8 @@ class BilibiliPushDeliveryService:
         author_mid: int,
         content_message: Any,
         targets: BiliPushTargets,
+        *,
+        subscription_key: str,
     ) -> None:
         remaining_group_ids = targets.full_group_ids
         remaining_user_ids = targets.full_user_ids
@@ -167,7 +168,7 @@ class BilibiliPushDeliveryService:
                 group_ids=remaining_group_ids,
                 private_user_ids=remaining_user_ids,
                 action_name=action_name,
-                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+                subscription_key=subscription_key,
             )
             remaining_group_ids = [
                 target.target_id
@@ -265,7 +266,6 @@ class BilibiliPushDeliveryService:
             group_ids=targets.link_group_ids,
             private_user_ids=targets.link_user_ids,
             action_name=LINK_DYNAMIC_PUSH_ACTION,
-            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
             message_limiter=self._transform_target_message,
             subscription_key=bili_push_subscription_key(author_mid),
         )

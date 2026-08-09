@@ -37,6 +37,5 @@ async def send_bili_login_notice(
     await admin_notices.send(
         build_bili_login_message(notice),
         action_name="Bilibili login notice",
-        interval_seconds=1.2,
         subscription_key="bili_login_notice",
     )

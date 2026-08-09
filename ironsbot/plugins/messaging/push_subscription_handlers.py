@@ -175,7 +175,7 @@ async def handle_push_subscription_select(
             target_type, target_id, read_only=True
         )
         prompt = (
-            "普通群成员只能查看本群推送订阅，不能修改；需要群主或管理员操作。\n\n"
+            "普通群成员只能查看推送订阅，不能修改；需要群主或管理员操作。\n\n"
             f"{menu_prompt}"
         )
         await PUSH_SUBSCRIPTION_FLOW.reject(

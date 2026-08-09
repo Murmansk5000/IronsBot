@@ -459,7 +459,7 @@ def test_bili_push_subscription_options_are_per_uid(
     ]
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号动态订阅",
+        "赛尔号 B站动态设置",
     ]
 
     cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
@@ -505,7 +505,7 @@ def test_bili_push_subscription_options_use_public_account_names(
 
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号动态订阅",
+        "赛尔号 B站动态设置",
     ]
 
 
@@ -521,14 +521,15 @@ def test_seer_category_subscription_submenu_and_target_filtering(
     )
     option = service.subscription_options("group", group_id)[0]
 
-    assert option.label == "赛尔号动态订阅"
+    assert option.label == "赛尔号 B站动态设置"
     assert option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
 
     submenu = service.subscription_submenu("group", group_id, option)
     assert submenu is not None
     children, prompt = submenu
-    assert children[0].label == "全部赛尔号动态"
+    assert children[0].label == "赛尔号动态总开关"
     assert "请选择要切换" in prompt
+    assert "总开关为 ❌ 时" in prompt
     assert [child.label for child in children[1:]] == [
         SEER_CATEGORY_LABELS[category] for category in SEER_CATEGORY_LABELS
     ]
@@ -566,6 +567,18 @@ def test_seer_category_subscription_submenu_and_target_filtering(
         seer_category_option_key(DEFAULT_BILI_ACCOUNT_UID, "pet")
         == children[1 + list(SEER_CATEGORY_LABELS).index("pet")].key
     )
+
+    cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
+        "group",
+        group_id,
+        bili_push_subscription_key(DEFAULT_BILI_ACCOUNT_UID),
+        "bili_push",
+    )
+    preserved_submenu = service.subscription_submenu("group", group_id, option)
+    assert preserved_submenu is not None
+    preserved_children, _preserved_prompt = preserved_submenu
+    assert preserved_children[0].unsubscribed
+    assert preserved_children[1 + list(SEER_CATEGORY_LABELS).index("pet")].unsubscribed
 
     readonly_submenu = service.subscription_submenu(
         "group",
@@ -611,7 +624,7 @@ async def test_bili_account_summary_and_push_mode_update_use_target_service(
     assert str(FIRE_BILI_UID) not in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
     assert str(unused_uid) not in summary
-    assert "当前群订阅：" in summary
+    assert "已订阅：" in summary
     assert "默认（内容）" in summary
     assert "账号库：" not in summary
 
@@ -664,7 +677,7 @@ async def test_bili_mode_display_distinguishes_default_config_and_runtime(
         DEFAULT_BILI_ACCOUNT_ALIAS,
         "默认",
     )
-    assert "已恢复当前群" in result
+    assert "已恢复 B站账号" in result
     assert "当前生效模式：配置（链接）" in result
 
 
@@ -740,7 +753,7 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
 
     summary = await service.account_summary("private", user_id)
 
-    assert "当前私聊订阅：" in summary
+    assert "已订阅：" in summary
     assert DEFAULT_BILI_ACCOUNT_NAME in summary
     assert FIRE_BILI_ACCOUNT_NAME in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
@@ -755,7 +768,7 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
         "内容",
     )
 
-    assert "已设置当前私聊" in result
+    assert "已设置 B站账号" in result
     assert service.mode_for_uid("private", user_id, FIRE_BILI_UID) == "full"
 
 

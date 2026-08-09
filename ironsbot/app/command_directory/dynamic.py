@@ -103,7 +103,7 @@ def configured_message_commands(
                 (
                     "messaging.push_subscription",
                     subscription_commands,
-                    "查看当前会话的推送订阅；群主和管理员可切换本群订阅",
+                    "查看推送订阅；群主和管理员可切换订阅",
                     {
                         "show_in_poke": True,
                         "interaction": "conversation",
@@ -113,13 +113,13 @@ def configured_message_commands(
         ),
         *commands_from_rows(
             "messaging",
-            "本群管理",
+            "群管理",
             None,
             (
                 (
                     "messaging.push_time",
                     ("推送时间", "提醒时间"),
-                    "管理本群定时推送和活动提醒时间",
+                    "管理定时推送和活动提醒时间",
                     {
                         "access": (CommandAccess("group", "group_manager"),),
                         "show_in_poke": True,

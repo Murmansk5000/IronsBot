@@ -61,7 +61,7 @@ def test_catalog_filters_scope_feature_and_audience() -> None:
             plugin_id="example",
             section="管理",
             examples=("/管理",),
-            description="管理本群",
+            description="群管理",
             features_any=("example_feature",),
             access=(CommandAccess("group", "group_manager"),),
             show_in_poke=True,
