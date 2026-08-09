@@ -624,7 +624,7 @@ async def test_bili_account_summary_and_push_mode_update_use_target_service(
     assert str(FIRE_BILI_UID) not in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
     assert str(unused_uid) not in summary
-    assert "当前群订阅：" in summary
+    assert "已订阅：" in summary
     assert "默认（内容）" in summary
     assert "账号库：" not in summary
 
@@ -677,7 +677,7 @@ async def test_bili_mode_display_distinguishes_default_config_and_runtime(
         DEFAULT_BILI_ACCOUNT_ALIAS,
         "默认",
     )
-    assert "已恢复当前群" in result
+    assert "已恢复 B站账号" in result
     assert "当前生效模式：配置（链接）" in result
 
 
@@ -753,7 +753,7 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
 
     summary = await service.account_summary("private", user_id)
 
-    assert "当前私聊订阅：" in summary
+    assert "已订阅：" in summary
     assert DEFAULT_BILI_ACCOUNT_NAME in summary
     assert FIRE_BILI_ACCOUNT_NAME in summary
     assert str(DEFAULT_BILI_ACCOUNT_UID) not in summary
@@ -768,7 +768,7 @@ async def test_private_account_summary_and_push_mode_use_current_user_only(
         "内容",
     )
 
-    assert "已设置当前私聊" in result
+    assert "已设置 B站账号" in result
     assert service.mode_for_uid("private", user_id, FIRE_BILI_UID) == "full"
 
 

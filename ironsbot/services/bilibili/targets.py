@@ -358,17 +358,16 @@ class BiliTargetService:
                 for category in SEER_DYNAMIC_CATEGORIES
             ),
         ]
-        scope = "本群" if target_type == "group" else "当前私聊"
         title = (
-            f"{scope}赛尔号动态订阅状态："
+            "赛尔号动态订阅状态："
             if read_only
-            else f"请选择要切换的{scope}赛尔号动态订阅："
+            else "请选择要切换的赛尔号动态订阅："
         )
         lines = [title]
         for index, child in enumerate(options, start=1):
             state = "❌" if child.unsubscribed else "✅"
             lines.append(f"{index}. {state} {child.label}")
-        lines.append("\n总开关为 ❌ 时，本群不接收任何赛尔号动态；分类开关设置会保留。")
+        lines.append("\n总开关为 ❌ 时，不接收任何赛尔号动态；分类开关设置会保留。")
         lines.append("✅ 已订阅 · ❌ 已 TD，输入序号切换；输入 0 返回推送订阅")
         return options, "\n".join(lines)
 
@@ -489,8 +488,7 @@ class BiliTargetService:
             target_type,
             target_id,
         )
-        scope = "当前群" if target_type == "group" else "当前私聊"
-        lines.append(f"{scope}订阅：")
+        lines.append("已订阅：")
         for uid in sorted(rule.uids):
             mode_display = self.mode_display_for_uid(target_type, target_id, uid)
             td_text = (
@@ -543,17 +541,16 @@ class BiliTargetService:
             self.preferences.set_mode(target_type, target_id, uid, mode)
 
         effective_display = self.mode_display_for_uid(target_type, target_id, uid)
-        scope = "当前群" if target_type == "group" else "当前私聊"
         await self.account_names.refresh([uid])
         account_name = self.account_names.name_for_uid(uid)
         account_text = f"“{account_name}”" if account_name else ""
         if mode is None:
             return (
-                f"已恢复{scope} B站账号{account_text}的默认推送方式。\n"
+                f"已恢复 B站账号{account_text}的默认推送方式。\n"
                 f"当前生效模式：{effective_display}。"
             )
         return (
-            f"已设置{scope} B站账号{account_text}的推送模式："
+            f"已设置 B站账号{account_text}的推送模式："
             f"{push_mode_label(mode)}。\n"
             f"当前生效模式：{effective_display}。"
         )

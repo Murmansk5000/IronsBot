@@ -183,17 +183,16 @@ def build_push_time_options(  # noqa: PLR0913 - explicit catalog dependencies
     return options
 
 
-def _push_time_menu_title(target_type: PushTargetType) -> str:
-    scope = "本群" if target_type == "group" else "私聊"
-    return f"请选择要修改时间的{scope}推送："
+def _push_time_menu_title() -> str:
+    return "请选择要修改时间的推送："
 
 
 def build_push_time_menu_prompt(
-    target_type: PushTargetType,
+    _target_type: PushTargetType,
     options: list[PushTimeOption],
 ) -> str:
     return format_selection_menu(
-        title=_push_time_menu_title(target_type),
+        title=_push_time_menu_title(),
         items=tuple(
             SelectionMenuItem(
                 label=option.label,

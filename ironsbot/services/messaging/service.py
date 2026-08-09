@@ -184,10 +184,7 @@ class MessagingService:
     ) -> tuple[list[PushSubscriptionOption], str]:
         options = self.subscription_options(target_type, target_id)
         return options, build_push_subscription_menu(
-            title=_push_subscription_menu_title(
-                target_type,
-                read_only=read_only,
-            ),
+            title=_push_subscription_menu_title(read_only=read_only),
             options=options,
             read_only=read_only,
         )
@@ -457,11 +454,9 @@ def find_keyword_reply_action(
 
 
 def _push_subscription_menu_title(
-    target_type: PushTargetType,
     *,
     read_only: bool,
 ) -> str:
-    if target_type == "group" and read_only:
-        return "本群推送订阅状态："
-    scope = "本群" if target_type == "group" else "私聊"
-    return f"请选择要切换的{scope}推送订阅："
+    if read_only:
+        return "推送订阅状态："
+    return "请选择要切换的推送订阅："

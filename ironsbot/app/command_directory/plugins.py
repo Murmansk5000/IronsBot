@@ -36,7 +36,7 @@ def bilibili_commands() -> tuple[CommandDescriptor, ...]:
                 (
                     "bilibili.accounts",
                     BILI_ACCOUNT_COMMANDS[:1],
-                    "查看当前会话订阅的账号",
+                    "查看已订阅的账号",
                     {
                         "features_any": (),
                         "access": (
@@ -54,7 +54,7 @@ def bilibili_commands() -> tuple[CommandDescriptor, ...]:
         ),
         *commands_from_rows(
             "bilibili",
-            "本群管理",
+            "群管理",
             "bili_push",
             (
                 (
@@ -63,7 +63,7 @@ def bilibili_commands() -> tuple[CommandDescriptor, ...]:
                         f"{command} <账号> <内容|链接|默认>"
                         for command in BILI_PUSH_MODE_COMMANDS[:1]
                     ),
-                    "调整当前会话指定账号的推送模式",
+                    "调整指定账号的推送模式",
                     {"access": (CommandAccess("group", "group_manager"),)},
                 ),
             ),
@@ -79,7 +79,7 @@ def bilibili_commands() -> tuple[CommandDescriptor, ...]:
                         f"{command} <账号> <内容|链接|默认>"
                         for command in BILI_PUSH_MODE_COMMANDS[:1]
                     ),
-                    "调整当前私聊订阅账号的推送模式",
+                    "调整订阅账号的推送模式",
                     {"access": (CommandAccess("private"),)},
                 ),
             ),
@@ -147,7 +147,7 @@ def team_resource_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
                 (
                     "team_resource.query",
                     ("战队",),
-                    "查看当前会话订阅战队的信息和资源",
+                    "查看已订阅战队的信息和资源",
                     {"show_in_poke": True},
                 ),
             ),
@@ -172,7 +172,7 @@ def team_resource_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
                 (
                     "team_resource.unsubscribe",
                     ("取消订阅战队123456",),
-                    "取消当前会话指定战队订阅",
+                    "取消指定战队订阅",
                     {
                         "access": (
                             CommandAccess("group", "group_manager"),
@@ -184,7 +184,7 @@ def team_resource_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
                 (
                     "team_resource.list",
                     ("战队订阅",),
-                    "查看和管理当前会话的战队订阅",
+                    "查看和管理战队订阅",
                     {
                         "access": (
                             CommandAccess("group", "group_manager"),

@@ -322,13 +322,13 @@ def rank_commands() -> tuple[CommandDescriptor, ...]:
         *regular,
         *commands_from_rows(
             "rank_help",
-            "本群管理",
+            "群管理",
             "seer_rank",
             (
                 (
                     "rank.display_limit",
                     ("/榜单显示 20",),
-                    "设置本群榜单默认显示名次",
+                    "设置榜单默认显示名次",
                     {
                         "access": (CommandAccess("group", "group_manager"),),
                         "show_in_poke": True,

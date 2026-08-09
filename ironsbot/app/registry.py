@@ -694,7 +694,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features=frozenset({Feature.HELP}),
             help=HelpEntry(
                 name="帮助",
-                description="按当前群/私聊权限显示可用功能",
+                description="按所在会话权限显示可用功能",
                 group="core",
                 order=10,
                 visible=always_help_visible,

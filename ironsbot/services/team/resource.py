@@ -300,9 +300,9 @@ class TeamResourceService:
         )
         label = f"{team_name}（{team_id}）" if team_name else str(team_id)
         return (
-            f"本群可以订阅战队 {label} 的资源提醒。\n"
+            f"可以订阅战队 {label} 的资源提醒。\n"
             "是否订阅这个战队？回复“是”或“y”订阅，回复“否”或“n”跳过。\n"
-            "本群只提示一次；之后群主/管理员仍可发送"
+            "仅提示一次；之后群主/管理员仍可发送"
             "“订阅战队123456”添加更多战队。"
         )
 
@@ -311,7 +311,7 @@ class TeamResourceService:
         if not subscriptions:
             return self._empty_subscriptions_message(target)
 
-        lines = ["本群战队订阅：" if target.is_group else "你的战队资源订阅："]
+        lines = ["战队资源订阅："]
         for index, subscription in enumerate(subscriptions, start=1):
             label = (
                 f"{subscription.team_name}（{subscription.team_id}）"
@@ -335,10 +335,8 @@ class TeamResourceService:
             return TEAM_ID_ERROR_MESSAGE
         deleted = self._delete_subscription(target, team_id)
         if deleted:
-            prefix = "已取消本群战队订阅" if target.is_group else "已取消战队订阅"
-            return f"{prefix}：{team_id}。"
-        prefix = "本群没有订阅战队" if target.is_group else "你没有订阅战队"
-        return f"{prefix}：{team_id}。"
+            return f"已取消战队订阅：{team_id}。"
+        return f"没有订阅战队：{team_id}。"
 
     async def add_target_subscription(
         self,
@@ -371,7 +369,7 @@ class TeamResourceService:
             threshold=effective_threshold,
             operator_id=operator_id,
         )
-        prefix = "已订阅本群战队" if target.is_group else "已订阅战队"
+        prefix = "已订阅战队"
         reminder = _format_user_ids(effective_users) if target.is_group else "你"
         return (
             f"{prefix}：{result.team_name}（{result.team_id}）。\n"
@@ -396,7 +394,7 @@ class TeamResourceService:
         )
         if not accepted:
             return (
-                "已跳过本群战队订阅提示。以后需要时，群主/管理员仍可发送"
+                "已跳过战队订阅提示。以后需要时，群主/管理员仍可发送"
                 "“订阅战队123456”添加。"
             )
 
@@ -419,7 +417,7 @@ class TeamResourceService:
         )
         label = prompt.team_name or str(prompt.team_id)
         return (
-            f"已订阅本群战队：{label}（{prompt.team_id}）。\n"
+            f"已订阅战队：{label}（{prompt.team_id}）。\n"
             f"资源阈值：{self._config.default_threshold}\n"
             f"提醒对象：{_format_user_ids(at_user_ids)}\n"
             "还可以继续发送“订阅战队123456”添加更多战队。"
@@ -674,7 +672,7 @@ class TeamResourceService:
     ) -> str:
         if target.is_group:
             return (
-                "本群还没有订阅战队。\n"
+                "还没有订阅战队。\n"
                 "群主/管理员可发送：订阅战队123456\n"
                 "也可发送：订阅战队123456 1000 @提醒人"
             )

@@ -256,7 +256,7 @@ async def _start_new_content(  # noqa: PLR0913
 
     available = _available_categories(group, event)
     if categories is not None and not set(categories).issubset(available):
-        await matcher.finish("当前群未开放此新增内容分类。")
+        await matcher.finish("当前会话未开放此新增内容分类。")
         return
     requested_categories: tuple[NewContentCategory, ...] = (
         categories if categories is not None else available

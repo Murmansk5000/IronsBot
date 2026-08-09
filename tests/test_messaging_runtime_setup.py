@@ -269,7 +269,7 @@ def test_push_subscription_menu_prompt_marks_current_state(tmp_path: Path) -> No
         1001,
     )
 
-    assert "请选择要切换的私聊推送订阅：" in prompt
+    assert "请选择要切换的推送订阅：" in prompt
     assert "1. ✅ 机器人启动通知" in prompt
     assert "2. ❌ 启动数据同步通知" in prompt
     assert "输入序号切换" in prompt
@@ -289,7 +289,7 @@ def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
         read_only=True,
     )
 
-    assert "本群推送订阅状态" in prompt
+    assert "推送订阅状态：" in prompt
     assert "1. ✅ 机器人启动通知" in prompt
     assert "普通群员仅可查看" in prompt
     assert "输入序号切换" not in prompt
