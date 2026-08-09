@@ -48,6 +48,21 @@ def build_reply(reply: QueryReply) -> MessageFactory:
     return message
 
 
+async def send_query_reply(
+    reply: QueryReply,
+    event: Event,
+    *,
+    finish: bool,
+) -> None:
+    """Send a query reply consistently for direct and menu selections."""
+    message = build_reply(reply)
+    kwargs = {"at_sender": isinstance(event, GroupMessageEvent)}
+    if finish:
+        await message.finish(**kwargs)
+    else:
+        await message.send(**kwargs)
+
+
 def make_query_handler(
     search: SearchQuery[T],
     select: SelectionQuery[T],
@@ -70,9 +85,7 @@ def make_query_handler(
             await matcher.finish(result.message)
             return
         if result.reply is not None:
-            await build_reply(result.reply).send(
-                at_sender=isinstance(event, GroupMessageEvent)
-            )
+            await send_query_reply(result.reply, event, finish=False)
 
     async def handle(
         matcher: Matcher,
@@ -87,7 +100,7 @@ def make_query_handler(
         if result.message:
             await matcher.finish(result.message)
         if result.reply is not None:
-            await build_reply(result.reply).finish()
+            await send_query_reply(result.reply, event, finish=True)
         if not result.choices:
             raise FinishedException
         await enter_prompt(
