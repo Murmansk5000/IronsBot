@@ -11,7 +11,7 @@ from ironsbot.core.bilibili import (
     BiliSeerCategoryConfig,
     SeerDynamicCategory,
 )
-from ironsbot.services.bilibili.parser import dynamic_content
+from ironsbot.services.bilibili.parser import dynamic_classification_text
 
 SEER_CATEGORY_LABELS: dict[SeerDynamicCategory, str] = {
     "lottery": "抽奖/中奖",
@@ -62,7 +62,7 @@ def classify_seer_dynamic(
     pub_ts: int,
     config: BiliSeerCategoryConfig,
 ) -> tuple[SeerDynamicCategory, ...]:
-    content = dynamic_content(item).strip()
+    content = dynamic_classification_text(item).strip()
     categories = [
         category
         for category, patterns in config.category_patterns().items()

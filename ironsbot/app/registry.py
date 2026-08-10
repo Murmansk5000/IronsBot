@@ -82,8 +82,9 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.bilibili.auth import send_bili_login_notice
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
     from ironsbot.plugins.bilibili.delivery import (
-        build_dynamic_content_message,
+        build_dynamic_images_message,
         build_dynamic_link_message,
+        build_dynamic_text_message,
     )
     from ironsbot.plugins.help.hint import install as install_help_hint
     from ironsbot.plugins.messaging.blacklist import install as install_blacklist
@@ -146,7 +147,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         delivery,
         resources.subscriptions,
         build_dynamic_link_message,
-        build_dynamic_content_message,
+        build_dynamic_text_message,
         append_text_hint,
         resources.push_message_limiter,
         getattr(ai_service, "summarize_bilibili_dynamic", None),
@@ -157,6 +158,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         admin_notices,
         bilibili_service.targets.dynamic_link_tag,
         prepend_text_hint,
+        build_dynamic_images_message,
     )
     bili_monitor = BilibiliMonitorService(
         bilibili_service,

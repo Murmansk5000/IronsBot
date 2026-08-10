@@ -4,6 +4,7 @@ nonebot.init()
 
 from ironsbot.plugins.bilibili.delivery import build_dynamic_link_message
 from ironsbot.services.bilibili.parser import (
+    dynamic_classification_text,
     dynamic_content,
     dynamic_items_from_response,
     dynamic_suppression_reason,
@@ -120,3 +121,11 @@ def test_dynamic_content_has_no_synthetic_text_for_image_only_dynamic() -> None:
     item = _dynamic_item(text="")
 
     assert dynamic_content(item) == ""
+
+
+def test_dynamic_content_prefers_opus_body_without_author_timestamp() -> None:
+    item = _dynamic_item(text="赛尔号2026大师赛年度总决赛即将开幕。")
+    item["modules"]["module_dynamic"]["topic"] = {"name": "赛尔号巅峰之战"}
+
+    assert dynamic_content(item) == "赛尔号2026大师赛年度总决赛即将开幕。"
+    assert dynamic_classification_text(item).endswith("赛尔号巅峰之战")

@@ -16,6 +16,11 @@ def _module_author(item: dict[str, Any]) -> Mapping[str, Any]:
     return _mapping(modules.get("module_author"))
 
 
+def _module_dynamic(item: dict[str, Any]) -> Mapping[str, Any]:
+    modules = _mapping(item.get("modules"))
+    return _mapping(modules.get("module_dynamic"))
+
+
 def item_pub_ts(item: dict[str, Any]) -> int:
     try:
         return int(_module_author(item).get("pub_ts", 0))
@@ -151,9 +156,39 @@ def _append_unique_piece(pieces: list[str], piece: str) -> None:
     pieces.append(piece)
 
 
+def _text_value(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, Mapping):
+        return str(value.get("text") or "").strip()
+    return ""
+
+
+def _topic_name(item: dict[str, Any]) -> str:
+    topic = _mapping(_module_dynamic(item).get("topic"))
+    return str(topic.get("name") or "").strip()
+
+
+def _structured_dynamic_text_pieces(item: dict[str, Any]) -> list[str]:
+    dynamic = _module_dynamic(item)
+    major = _mapping(dynamic.get("major"))
+    opus = _mapping(major.get("opus"))
+    archive = _mapping(major.get("archive"))
+    pieces = [
+        _text_value(opus.get("summary")),
+        _text_value(dynamic.get("desc")),
+        _text_value(archive.get("desc")),
+    ]
+    return [piece for piece in pieces if piece]
+
+
 def dynamic_text_pieces(item: dict[str, Any]) -> list[str]:
     unique_pieces: list[str] = []
-    for raw_piece in scan_and_swallow_all_long_strings(item):
+    structured_pieces = _structured_dynamic_text_pieces(item)
+    raw_pieces = structured_pieces or scan_and_swallow_all_long_strings(
+        _module_dynamic(item)
+    )
+    for raw_piece in raw_pieces:
         piece = raw_piece.strip()
         if piece:
             _append_unique_piece(unique_pieces, piece)
@@ -164,6 +199,22 @@ def dynamic_content(item: dict[str, Any]) -> str:
     """Return only text actually present in the dynamic itself."""
 
     return "\n".join(dynamic_text_pieces(item)).strip()
+
+
+def dynamic_classification_text(item: dict[str, Any]) -> str:
+    """Return dynamic body plus short semantic fields used only for matching."""
+
+    pieces = dynamic_text_pieces(item)
+    topic = _topic_name(item)
+    if topic:
+        _append_unique_piece(pieces, topic)
+    return "\n".join(pieces).strip()
+
+
+def has_dynamic_body(item: dict[str, Any]) -> bool:
+    """Whether an item has actual post text rather than author metadata."""
+
+    return bool(dynamic_text_pieces(item))
 
 
 def dynamic_brief(item: dict[str, Any]) -> str:
@@ -178,7 +229,7 @@ def dynamic_suppression_reason(
     item: dict[str, Any],
     patterns: list[str],
 ) -> str:
-    content = dynamic_content(item)
+    content = dynamic_classification_text(item)
     for pattern in patterns:
         try:
             regex = re.compile(pattern, flags=re.IGNORECASE | re.DOTALL)
