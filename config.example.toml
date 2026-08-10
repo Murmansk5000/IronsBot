@@ -784,13 +784,13 @@ accounts = ["seer"]
 #     B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>
 
 # Default: 800
-# EN: Full pushes longer than this are sent as a link followed by an AI summary.
-# ZH: 全文动态超过此字符数时，先发送链接，再发送 AI 摘要；不超过时完整发送原文。
+# EN: Full pushes longer than this use an AI summary for their text-only final message.
+# ZH: 全文动态超过此字符数时，最后一条文本消息发送 AI 摘要；不超过时发送完整原文。
 content_max_chars = 800
 
 # Default: 500
-# EN: Maximum characters in an AI summary or failed-summary excerpt for a long dynamic.
-# ZH: 超长动态的 AI 摘要或摘要失败原文节选最大字符数。
+# EN: Maximum characters in the text-only AI summary or failed-summary excerpt.
+# ZH: 超长动态最后一条文本消息中的 AI 摘要或原文节选最大字符数。
 summary_max_chars = 500
 
 # Default: true
@@ -844,7 +844,7 @@ pet_patterns = ["全新精灵", "精灵觉醒", "精灵.*即将登场"]
 skin_patterns = ["全新皮肤", "限定皮肤", "皮肤.*返场", "皮肤.*即将登场"]
 skill_showcase_patterns = ["技能特效抢先看"]
 autocard_patterns = ["群星牌", "元素王座", "卡牌", "小小精灵"]
-competition_patterns = ["大师赛", "小师赛", "赛事", "比赛", "赛程", "直播"]
+competition_patterns = ["大师赛", "小师赛", "赛事", "比赛", "赛程", "直播", "巅峰之战", "总决赛"]
 story_patterns = ["灵渊", "玄武复活", "全新剧情", "主线故事"]
 event_patterns = ["联动", "主题站", "通行证", "限时活动", "活动福利"]
 interaction_patterns = ["投票", "应援", "报名", "问卷", "创作激励", "征集"]

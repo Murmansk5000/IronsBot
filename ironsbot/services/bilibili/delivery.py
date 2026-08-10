@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 
 FULL_DYNAMIC_PUSH_ACTION = "Bilibili dynamic content push"
+FULL_DYNAMIC_IMAGE_PUSH_ACTION = "Bilibili dynamic image push"
 LINK_DYNAMIC_PUSH_ACTION = "Bilibili dynamic link push"
 BILI_PUSH_ADMIN_HINT = (
     "群主/管理员可发送：B站账号 / B站推送模式 <账号别名|公开昵称|UID> <内容|链接|默认>"
@@ -47,6 +48,7 @@ BILIBILI_SUMMARY_MAX_ATTEMPTS = 3
 SUMMARY_FAILURE_FALLBACK_HINT = "（摘要生成失败，完整内容请见传送门）"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
+DynamicImageRenderer = Callable[[dict[str, Any]], Any | None]
 
 
 class DynamicSummarizer(Protocol):
@@ -94,6 +96,7 @@ class BilibiliPushDeliveryService:
     admin_notices: AdminNoticeService | None = None
     link_tag_for: DynamicLinkTagger | None = None
     prepend_link_tag: HintAppender | None = None
+    render_images: DynamicImageRenderer | None = None
 
     async def send(
         self,
@@ -128,6 +131,18 @@ class BilibiliPushDeliveryService:
             subscription_key=subscription_key,
         )
 
+        image_message = (
+            self.render_images(item) if self.render_images is not None else None
+        )
+        if image_message is not None:
+            await self._send_images_with_retries(
+                item,
+                author_mid,
+                image_message,
+                full_targets,
+                subscription_key=subscription_key,
+            )
+
         content = dynamic_content(item)
         content_override = await self._content_override(
             item,
@@ -137,15 +152,15 @@ class BilibiliPushDeliveryService:
         content_message = self.render_content(item, content_override)
         if content_message is None:
             return
-        await self._send_content_with_retries(
-            item,
-            author_mid,
+        await self.delivery.broadcast(
             content_message,
-            full_targets,
+            group_ids=full_targets.full_group_ids,
+            private_user_ids=full_targets.full_user_ids,
+            action_name=FULL_DYNAMIC_PUSH_ACTION,
             subscription_key=subscription_key,
         )
 
-    async def _send_content_with_retries(
+    async def _send_images_with_retries(
         self,
         item: dict[str, Any],
         author_mid: int,
@@ -158,9 +173,9 @@ class BilibiliPushDeliveryService:
         remaining_user_ids = targets.full_user_ids
         for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
             action_name = (
-                FULL_DYNAMIC_PUSH_ACTION
+                FULL_DYNAMIC_IMAGE_PUSH_ACTION
                 if attempt == 1
-                else f"{FULL_DYNAMIC_PUSH_ACTION} retry {attempt}/"
+                else f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry {attempt}/"
                 f"{FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS}"
             )
             summary = await self.delivery.broadcast(
@@ -186,7 +201,7 @@ class BilibiliPushDeliveryService:
                 logger.warning(
                     "%s failed for %s group and %s private targets; retrying "
                     "attempt %s/%s",
-                    FULL_DYNAMIC_PUSH_ACTION,
+                    FULL_DYNAMIC_IMAGE_PUSH_ACTION,
                     len(remaining_group_ids),
                     len(remaining_user_ids),
                     attempt + 1,
@@ -238,7 +253,7 @@ class BilibiliPushDeliveryService:
             *(f"私聊：{user_id}" for user_id in failed_user_ids),
         ]
         await self.admin_notices.send_private_to_superusers(
-            "⚠️ B站动态正文/图片发送失败\n"
+            "⚠️ B站动态图片发送失败\n"
             f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次，仍未完成。\n"
             f"UID：{author_mid}\n"
             f"动态ID：{item.get('id_str', '未知')}\n"

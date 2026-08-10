@@ -19,7 +19,9 @@ from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_ta
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import (
     build_dynamic_content_message,
+    build_dynamic_images_message,
     build_dynamic_link_message,
+    build_dynamic_text_message,
 )
 from ironsbot.runtime.replies import append_text_hint, prepend_text_hint
 from ironsbot.services.bilibili.delivery import (
@@ -28,6 +30,7 @@ from ironsbot.services.bilibili.delivery import (
     BILIBILI_SUMMARY_MAX_ATTEMPTS,
     DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
+    FULL_DYNAMIC_IMAGE_PUSH_ACTION,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliPushDeliveryService,
@@ -92,6 +95,8 @@ def _delivery_service(
 def test_dynamic_renderers_split_link_from_compact_content() -> None:
     link_rendered = str(build_dynamic_link_message(_item(), PUB_TS))
     content_rendered = str(build_dynamic_content_message(_item()))
+    image_rendered = str(build_dynamic_images_message(_item()))
+    text_rendered = str(build_dynamic_text_message(_item()))
 
     assert "传送门：" in link_rendered
     assert "正文内容" not in link_rendered
@@ -101,6 +106,10 @@ def test_dynamic_renderers_split_link_from_compact_content() -> None:
     assert "[CQ:image" in content_rendered
     assert "传送门:" not in content_rendered
     assert "账号：" not in content_rendered
+    assert "正文内容" not in image_rendered
+    assert "[CQ:image" in image_rendered
+    assert "正文内容" in text_rendered
+    assert "[CQ:image" not in text_rendered
 
 
 def test_delivery_service_appends_fire_manual_ad_per_target(
@@ -154,7 +163,7 @@ def test_delivery_service_only_appends_history_hint_for_query_targets(
 
 
 @pytest.mark.asyncio
-async def test_full_dynamic_always_sends_link_then_compact_content(
+async def test_full_dynamic_sends_link_then_images_then_text(
     tmp_path: Path,
 ) -> None:
     sent: list[dict[str, Any]] = []
@@ -177,12 +186,13 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
         cast("MessageDelivery", RecordingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
-        build_dynamic_content_message,
+        build_dynamic_text_message,
         append_text_hint,
         None,
         summarize=summarize,
         content_max_chars=10,
         summary_max_chars=8,
+        render_images=build_dynamic_images_message,
     )
 
     await service.send(
@@ -203,6 +213,7 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
     assert [entry["action_name"] for entry in sent] == [
         LINK_DYNAMIC_PUSH_ACTION,
         f"{FULL_DYNAMIC_PUSH_ACTION} link",
+        FULL_DYNAMIC_IMAGE_PUSH_ACTION,
         FULL_DYNAMIC_PUSH_ACTION,
     ]
     assert sent[0]["group_ids"] == [1002]
@@ -212,9 +223,11 @@ async def test_full_dynamic_always_sends_link_then_compact_content(
     assert "传送门：" in str(sent[1]["message"])
     assert sent[1]["subscription_key"] == bili_push_subscription_key(1310714247)
     assert sent[2]["subscription_key"] == bili_push_subscription_key(1310714247)
-    assert "这是忠实摘要。" in str(sent[2]["message"])
     assert "[CQ:image" in str(sent[2]["message"])
-    assert "传送门：" not in str(sent[2]["message"])
+    assert "这是忠实摘要。" not in str(sent[2]["message"])
+    assert "这是忠实摘要。" in str(sent[3]["message"])
+    assert "[CQ:image" not in str(sent[3]["message"])
+    assert "传送门：" not in str(sent[3]["message"])
 
 
 @pytest.mark.asyncio
@@ -236,8 +249,9 @@ async def test_dynamic_category_tag_only_appears_in_the_first_link_message(
         cast("MessageDelivery", RecordingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
-        build_dynamic_content_message,
+        build_dynamic_text_message,
         append_text_hint,
+        render_images=build_dynamic_images_message,
         link_tag_for=lambda uid, categories: (
             "🏷️ 标签：新精灵 / 新皮肤"
             if uid == DEFAULT_BILI_ACCOUNT_UID and categories == ("pet", "skin")
@@ -675,7 +689,7 @@ async def test_full_dynamic_retries_only_failed_content_targets(
             **kwargs: object,
         ) -> TargetSendSummary:
             sent.append({"message": message, **kwargs})
-            if kwargs["action_name"] == FULL_DYNAMIC_PUSH_ACTION:
+            if kwargs["action_name"] == FULL_DYNAMIC_IMAGE_PUSH_ACTION:
                 return TargetSendSummary(
                     [MessageTarget("group", 1001)],
                     [MessageTarget("private", 2001)],
@@ -693,8 +707,9 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         cast("MessageDelivery", PartiallyFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
-        build_dynamic_content_message,
+        build_dynamic_text_message,
         append_text_hint,
+        render_images=build_dynamic_images_message,
     )
 
     await service.send(
@@ -704,15 +719,17 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         BiliPushTargets([1001], [], [2001], []),
     )
 
-    content_attempts = [
+    image_attempts = [
         entry
         for entry in sent
-        if str(entry["action_name"]) == FULL_DYNAMIC_PUSH_ACTION
-        or str(entry["action_name"]).startswith(f"{FULL_DYNAMIC_PUSH_ACTION} retry ")
+        if str(entry["action_name"]) == FULL_DYNAMIC_IMAGE_PUSH_ACTION
+        or str(entry["action_name"]).startswith(
+            f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry "
+        )
     ]
-    assert len(content_attempts) == EXPECTED_RETRIED_CONTENT_PUSH_COUNT
-    assert content_attempts[1]["group_ids"] == []
-    assert content_attempts[1]["private_user_ids"] == [2001]
+    assert len(image_attempts) == EXPECTED_RETRIED_CONTENT_PUSH_COUNT
+    assert image_attempts[1]["group_ids"] == []
+    assert image_attempts[1]["private_user_ids"] == [2001]
 
 
 @pytest.mark.asyncio
@@ -720,7 +737,8 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    content_attempts: list[dict[str, object]] = []
+    image_attempts: list[dict[str, object]] = []
+    sent_actions: list[str] = []
     admin_notices: list[dict[str, object]] = []
 
     class AlwaysFailingDelivery:
@@ -730,10 +748,11 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
             **kwargs: object,
         ) -> TargetSendSummary:
             action_name = str(kwargs["action_name"])
-            if action_name == FULL_DYNAMIC_PUSH_ACTION or action_name.startswith(
-                f"{FULL_DYNAMIC_PUSH_ACTION} retry "
+            sent_actions.append(action_name)
+            if action_name == FULL_DYNAMIC_IMAGE_PUSH_ACTION or action_name.startswith(
+                f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry "
             ):
-                content_attempts.append(kwargs)
+                image_attempts.append(kwargs)
                 return TargetSendSummary(
                     [],
                     [MessageTarget("group", 1001), MessageTarget("private", 2001)],
@@ -766,9 +785,10 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         cast("MessageDelivery", AlwaysFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
         build_dynamic_link_message,
-        build_dynamic_content_message,
+        build_dynamic_text_message,
         append_text_hint,
         admin_notices=cast("Any", RecordingAdminNotices()),
+        render_images=build_dynamic_images_message,
     )
 
     await service.send(
@@ -778,13 +798,14 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         BiliPushTargets([1001], [], [2001], []),
     )
 
-    assert len(content_attempts) == FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS
+    assert len(image_attempts) == FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS
     assert len(admin_notices) == 1
     assert f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次" in str(
         admin_notices[0]["message"]
     )
     assert "群：投递失败群（1001）" in str(admin_notices[0]["message"])
     assert "私聊：2001" in str(admin_notices[0]["message"])
+    assert FULL_DYNAMIC_PUSH_ACTION in sent_actions
 
 
 def test_content_message_for_image_only_dynamic_omits_synthetic_notice() -> None:

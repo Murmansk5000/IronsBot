@@ -28,6 +28,7 @@ from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.bilibili import (
     fetch_bili_account_name,
+    fetch_bili_dynamic_detail,
     fetch_bili_feed,
     poll_bili_login_qr,
     request_bili_login_qr,
@@ -318,6 +319,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.bilibili.storage.history_max_items,
         ),
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
+        fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
+        spawn=task_owner.create,
         external_references=external_references,
     )
     bilibili_login = BilibiliLoginService(

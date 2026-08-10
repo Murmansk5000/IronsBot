@@ -67,3 +67,14 @@ def test_seer_dynamic_classification_covers_gameplay_and_fallback_categories() -
         pub_ts=_timestamp(3, 12, 0),
         config=config,
     ) == ("lottery",)
+
+
+def test_seer_dynamic_classification_uses_short_topic_name() -> None:
+    item = _item("")
+    item["modules"]["module_dynamic"]["topic"] = {"name": "赛尔号巅峰之战"}
+
+    assert classify_seer_dynamic(
+        item,
+        pub_ts=_timestamp(3, 12, 0),
+        config=BiliConfig().seer_categories,
+    ) == ("competition",)

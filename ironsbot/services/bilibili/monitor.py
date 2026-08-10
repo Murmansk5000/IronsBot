@@ -86,9 +86,12 @@ async def _push_new_dynamics(
     valid_dynamics: list[DynamicItem],
     checkpoints: dict[int, int],
     send_push: DynamicPushSender,
+    *,
+    cookie: str = "",
 ) -> bool:
     checkpoint_changed = False
-    for pub_ts, item in valid_dynamics:
+    for pub_ts, feed_item in valid_dynamics:
+        item = await service.resolve_dynamic_item(feed_item, cookie=cookie)
         author_mid = item_author_mid(item)
         category_managed = service.targets.is_seer_category_uid(author_mid)
         snapshot = build_dynamic_history_snapshot_for_item(
@@ -192,12 +195,15 @@ async def _do_check_logic(
     send_push: DynamicPushSender,
 ) -> None:
     try:
-        feed = await service.fetch_feed(service.cookie_store.load())
+        cookie = service.cookie_store.load()
+        feed = await service.fetch_feed(cookie)
         if not await _is_valid_dynamic_response(
             feed,
             on_auth_invalid,
         ):
             return
+
+        await service.backfill_recent_empty_bodies()
 
         valid_dynamics = target_dynamics_from_response(
             feed.data,
@@ -224,6 +230,7 @@ async def _do_check_logic(
             valid_dynamics,
             checkpoints,
             send_push,
+            cookie=cookie,
         ):
             checkpoint_changed = True
 
