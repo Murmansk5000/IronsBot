@@ -2,12 +2,15 @@ import asyncio
 from typing import Any, Literal
 
 import nonebot
+import pytest
+from pydantic import ValidationError
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
 
+from ironsbot.config.models.seer import SeerConfig
 from ironsbot.plugins.seer.query.commands.data_queries import (
     NEW_CONTENT_MENU_LAYOUT_KEY,
     NEW_CONTENT_SERVICES_KEY,
@@ -28,6 +31,20 @@ from ironsbot.services.seer.new_content import (
     NewContentSnapshot,
 )
 from tests.helpers.onebot_events import group_message_event
+
+
+def test_new_content_expanded_categories_are_validated_and_deduplicated() -> None:
+    config = SeerConfig.model_validate(
+        {"new_content": {"expanded_categories": ["pet", "skill", "pet"]}}
+    )
+
+    assert config.new_content.expanded_categories == ["pet", "skill"]
+    assert config.new_content.auto_expand_max_items > 0
+
+    with pytest.raises(ValidationError, match="expanded_categories"):
+        SeerConfig.model_validate(
+            {"new_content": {"expanded_categories": ["unknown"]}}
+        )
 
 
 def _effect(
@@ -205,6 +222,7 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
         snapshot,
         _NewContentMenuLayout(
             display_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
+            expanded_categories=frozenset(AUTOCARD_NEW_CONTENT_CATEGORIES),
         ),
     )
 
@@ -219,7 +237,7 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
     ]
 
 
-def test_new_content_root_menu_expands_short_categories_with_numeric_keys() -> None:
+def test_new_content_root_menu_uses_configured_explicit_item_keys() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -245,26 +263,25 @@ def test_new_content_root_menu_expands_short_categories_with_numeric_keys() -> N
         snapshot,
         _NewContentMenuLayout(
             display_categories=("pet", "skill"),
+            expanded_categories=frozenset({"pet"}),
+            auto_expand_max_items=0,
         ),
     )
 
     assert [item.name for item in prompt.items if item.is_visible] == [
         "▼ 新增精灵",
         "超级噗纽",
-        "▼ 新增技能",
-        "金属缠绕",
+        "▶ 新增技能",
     ]
-    assert prompt.get_item_by_input("a1") is None
-    assert prompt.get_item_by_input("b1") is None
-    first_item = prompt.get_item_by_input("1")
-    second_item = prompt.get_item_by_input("2")
+    first_item = prompt.get_item_by_input("a1")
+    second_item = prompt.get_item_by_input("b1")
     assert first_item is not None and first_item.value.item == pet
     assert second_item is not None and second_item.value.item == skill
-    assert "1. 超级噗纽" in prompt.build_message()
+    assert "a1. 超级噗纽" in prompt.build_message()
     assert "a. ▼ 新增精灵（1 项新增）" in prompt.build_message()
 
 
-def test_new_content_root_menu_collapses_categories_over_five_items() -> None:
+def test_new_content_root_menu_keeps_folded_items_selectable() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -291,15 +308,39 @@ def test_new_content_root_menu_collapses_categories_over_five_items() -> None:
 
     prompt = _content_prompt(
         snapshot,
-        _NewContentMenuLayout(display_categories=("pet", "skill")),
+        _NewContentMenuLayout(
+            display_categories=("pet", "skill"),
+            auto_expand_max_items=0,
+        ),
     )
 
-    assert [item.key for item in prompt.items if item.is_visible] == ["a", "1", "b"]
-    first_item = prompt.get_item_by_input("1")
+    assert [item.key for item in prompt.items if item.is_visible] == ["a", "b"]
+    first_item = prompt.get_item_by_input("a1")
     skill_category = prompt.get_item_by_input("b")
     assert first_item is not None and first_item.value.item == pet
-    assert all(prompt.get_item_by_input(str(index)) is None for index in range(2, 8))
+    assert all(
+        prompt.get_item_by_input(f"b{index}") is not None
+        for index in range(1, 7)
+    )
     assert skill_category is not None and skill_category.value.category == "skill"
+
+
+def test_new_content_root_menu_auto_expands_short_categories() -> None:
+    pet = NewContentItem("pet", 4927, "超级噗纽", 4927, {})
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260731",
+        weekly_cycle="2026-07-31",
+        items=(pet,),
+    )
+
+    prompt = _content_prompt(
+        snapshot,
+        _NewContentMenuLayout(display_categories=("pet",)),
+    )
+
+    assert "a. ▼ 新增精灵（1 项新增）" in prompt.build_message()
+    assert "a1. 超级噗纽" in prompt.build_message()
 
 
 def test_new_content_root_menu_separates_added_and_modified_counts() -> None:
