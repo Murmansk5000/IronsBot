@@ -390,9 +390,10 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         snapshot,
         ("autocard_sanctuary_effect", "skill"),
         None,
+        expanded_categories=frozenset({"autocard_sanctuary_effect"}),
     )
 
-    assert [row["code"] for row in captured["items"]] == ["a", "1", "2", "b"]
+    assert [row["code"] for row in captured["items"]] == ["a", "a1", "a2", "b"]
     assert [row["expanded"] for row in captured["items"] if row["is_category"]] == [
         True,
         False,
@@ -402,6 +403,34 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         "6 项新增",
     ]
     assert captured["focused_category"] is None
+
+
+def test_new_content_render_cache_key_includes_expanded_categories() -> None:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260807",
+        weekly_cycle="2026-08-07",
+        items=(),
+    )
+
+    folded = new_content_rendering._cache_key(
+        snapshot,
+        ("pet", "skill"),
+        None,
+        "新增内容",
+        frozenset(),
+        5,
+    )
+    expanded = new_content_rendering._cache_key(
+        snapshot,
+        ("pet", "skill"),
+        None,
+        "新增内容",
+        frozenset({"pet"}),
+        5,
+    )
+
+    assert folded != expanded
 
 
 @pytest.mark.asyncio
