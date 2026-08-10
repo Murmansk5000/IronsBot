@@ -344,6 +344,7 @@ class BiliTargetService:
                 feature="bili_push",
                 unsubscribed=unsubscribed,
             ),
+            *self._media_subscription_options(target_type, target_id, uid),
             *(
                 PushSubscriptionOption(
                     key=seer_category_option_key(uid, category),
@@ -358,7 +359,6 @@ class BiliTargetService:
                 )
                 for category in SEER_DYNAMIC_CATEGORIES
             ),
-            *self._media_subscription_options(target_type, target_id, uid),
         ]
         title = (
             "赛尔号动态订阅状态："

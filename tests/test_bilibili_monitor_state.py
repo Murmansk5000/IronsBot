@@ -536,16 +536,32 @@ def test_seer_category_subscription_submenu_and_target_filtering(
     assert "请选择要切换" in prompt
     assert "总开关为 ❌ 时" in prompt
     assert "仅影响赛尔号官方 B站动态" in prompt
-    assert [child.label for child in children[1:-2]] == [
+    media_options = {
+        child.label: child
+        for child in children
+        if child.label in {"动态正文", "动态图片"}
+    }
+    assert [child.label for child in children[:3]] == [
+        "赛尔号动态总开关",
+        "动态正文",
+        "动态图片",
+    ]
+    assert [child.label for child in children[3:]] == [
         SEER_CATEGORY_LABELS[category] for category in SEER_CATEGORY_LABELS
     ]
-    assert [child.label for child in children[-2:]] == ["动态正文", "动态图片"]
-    assert children[1].unsubscribed
+    lottery_option = next(
+        child for child in children if child.label == SEER_CATEGORY_LABELS["lottery"]
+    )
+    assert lottery_option.unsubscribed
 
-    assert service.toggle_subscription_option("group", group_id, children[-2]) == (
+    assert service.toggle_subscription_option(
+        "group",
+        group_id,
+        media_options["动态正文"],
+    ) == (
         "已 TD：赛尔号动态 - 动态正文。"
     )
-    assert children[-2].key == bili_push_media_subscription_key(
+    assert media_options["动态正文"].key == bili_push_media_subscription_key(
         DEFAULT_BILI_ACCOUNT_UID,
         "text",
     )
@@ -569,7 +585,11 @@ def test_seer_category_subscription_submenu_and_target_filtering(
     service.toggle_subscription_option(
         "group",
         group_id,
-        children[1 + list(SEER_CATEGORY_LABELS).index("pet")],
+        next(
+            child
+            for child in children
+            if child.label == SEER_CATEGORY_LABELS["pet"]
+        ),
     )
     assert (
         service.push_targets_for_uid(
@@ -580,7 +600,11 @@ def test_seer_category_subscription_submenu_and_target_filtering(
     )
     assert (
         seer_category_option_key(DEFAULT_BILI_ACCOUNT_UID, "pet")
-        == children[1 + list(SEER_CATEGORY_LABELS).index("pet")].key
+        == next(
+            child
+            for child in children
+            if child.label == SEER_CATEGORY_LABELS["pet"]
+        ).key
     )
 
     cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
@@ -593,7 +617,11 @@ def test_seer_category_subscription_submenu_and_target_filtering(
     assert preserved_submenu is not None
     preserved_children, _preserved_prompt = preserved_submenu
     assert preserved_children[0].unsubscribed
-    assert preserved_children[1 + list(SEER_CATEGORY_LABELS).index("pet")].unsubscribed
+    assert next(
+        child
+        for child in preserved_children
+        if child.label == SEER_CATEGORY_LABELS["pet"]
+    ).unsubscribed
 
     readonly_submenu = service.subscription_submenu(
         "group",
