@@ -23,6 +23,7 @@ from ironsbot.services.bilibili.categories import (
 )
 from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
+    bili_push_media_subscription_key,
     bili_push_subscription_key,
     bili_push_subscription_label,
     normalize_push_mode_text,
@@ -343,6 +344,7 @@ class BiliTargetService:
                 feature="bili_push",
                 unsubscribed=unsubscribed,
             ),
+            *self._media_subscription_options(target_type, target_id, uid),
             *(
                 PushSubscriptionOption(
                     key=seer_category_option_key(uid, category),
@@ -368,6 +370,8 @@ class BiliTargetService:
             state = "❌" if child.unsubscribed else "✅"
             lines.append(f"{index}. {state} {child.label}")
         lines.append("\n总开关为 ❌ 时，不接收任何赛尔号动态；分类开关设置会保留。")
+        lines.append("以下内容开关仅影响赛尔号官方 B站动态：")
+        lines.append("正文为 ❌ 时，不接收纯文本动态；图片为 ❌ 时，不接收纯图片动态。")
         lines.append("✅ 已订阅 · ❌ 已 TD，输入序号切换；输入 0 返回推送订阅")
         return options, "\n".join(lines)
 
@@ -377,6 +381,31 @@ class BiliTargetService:
         target_id: int,
         option: PushSubscriptionOption,
     ) -> str | None:
+        uid = self._seer_category_uid()
+        if uid is not None and option.key in {
+            bili_push_media_subscription_key(uid, "text"),
+            bili_push_media_subscription_key(uid, "image"),
+        }:
+            muted = self.unsubscribe_store.is_target_unsubscribed(
+                target_type,
+                target_id,
+                option.key,
+            )
+            if muted:
+                self.unsubscribe_store.restore_target(
+                    target_type,
+                    target_id,
+                    option.key,
+                )
+                return f"已恢复订阅：赛尔号动态 - {option.label}。"
+            self.unsubscribe_store.unsubscribe_target(
+                target_type,
+                target_id,
+                option.key,
+                option.feature,
+            )
+            return f"已 TD：赛尔号动态 - {option.label}。"
+
         parsed = parse_seer_category_option_key(option.key)
         if parsed is None:
             return None
@@ -393,6 +422,38 @@ class BiliTargetService:
         )
         action = "已 TD" if muted else "已恢复订阅"
         return f"{action}：赛尔号动态 - {SEER_CATEGORY_LABELS[category]}。"
+
+    def _media_subscription_options(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        uid: int,
+    ) -> list[PushSubscriptionOption]:
+        return [
+            PushSubscriptionOption(
+                key=bili_push_media_subscription_key(uid, "text"),
+                label="动态正文",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_target_unsubscribed(
+                    target_type,
+                    target_id,
+                    bili_push_media_subscription_key(uid, "text"),
+                ),
+            ),
+            PushSubscriptionOption(
+                key=bili_push_media_subscription_key(uid, "image"),
+                label="动态图片",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_target_unsubscribed(
+                    target_type,
+                    target_id,
+                    bili_push_media_subscription_key(uid, "image"),
+                ),
+            ),
+        ]
+
+    def seer_category_uid(self) -> int | None:
+        return self._seer_category_uid()
 
     def _seer_category_uid(self) -> int | None:
         categories = self.config.seer_categories

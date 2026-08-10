@@ -19,6 +19,7 @@ from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_ta
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import (
     build_dynamic_content_message,
+    build_dynamic_detail_messages,
     build_dynamic_images_message,
     build_dynamic_link_message,
     build_dynamic_text_message,
@@ -35,7 +36,10 @@ from ironsbot.services.bilibili.delivery import (
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliPushDeliveryService,
 )
-from ironsbot.services.bilibili.preferences import bili_push_subscription_key
+from ironsbot.services.bilibili.preferences import (
+    bili_push_media_subscription_key,
+    bili_push_subscription_key,
+)
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.runtime import build_test_runtime
 
@@ -112,6 +116,15 @@ def test_dynamic_renderers_split_link_from_compact_content() -> None:
     assert "[CQ:image" not in text_rendered
 
 
+def test_dynamic_detail_messages_send_text_before_images() -> None:
+    text_message, image_message = build_dynamic_detail_messages(_item())
+
+    assert "正文内容" in str(text_message)
+    assert "[CQ:image" not in str(text_message)
+    assert "正文内容" not in str(image_message)
+    assert "[CQ:image" in str(image_message)
+
+
 def test_delivery_service_appends_fire_manual_ad_per_target(
     tmp_path: Path,
 ) -> None:
@@ -163,7 +176,7 @@ def test_delivery_service_only_appends_history_hint_for_query_targets(
 
 
 @pytest.mark.asyncio
-async def test_full_dynamic_sends_link_then_images_then_text(
+async def test_full_dynamic_sends_link_then_text_then_images(
     tmp_path: Path,
 ) -> None:
     sent: list[dict[str, Any]] = []
@@ -213,8 +226,8 @@ async def test_full_dynamic_sends_link_then_images_then_text(
     assert [entry["action_name"] for entry in sent] == [
         LINK_DYNAMIC_PUSH_ACTION,
         f"{FULL_DYNAMIC_PUSH_ACTION} link",
-        FULL_DYNAMIC_IMAGE_PUSH_ACTION,
         FULL_DYNAMIC_PUSH_ACTION,
+        FULL_DYNAMIC_IMAGE_PUSH_ACTION,
     ]
     assert sent[0]["group_ids"] == [1002]
     assert sent[1]["group_ids"] == [1001]
@@ -223,11 +236,156 @@ async def test_full_dynamic_sends_link_then_images_then_text(
     assert "传送门：" in str(sent[1]["message"])
     assert sent[1]["subscription_key"] == bili_push_subscription_key(1310714247)
     assert sent[2]["subscription_key"] == bili_push_subscription_key(1310714247)
-    assert "[CQ:image" in str(sent[2]["message"])
-    assert "这是忠实摘要。" not in str(sent[2]["message"])
-    assert "这是忠实摘要。" in str(sent[3]["message"])
-    assert "[CQ:image" not in str(sent[3]["message"])
-    assert "传送门：" not in str(sent[3]["message"])
+    assert "这是忠实摘要。" in str(sent[2]["message"])
+    assert "[CQ:image" not in str(sent[2]["message"])
+    assert "[CQ:image" in str(sent[3]["message"])
+    assert "这是忠实摘要。" not in str(sent[3]["message"])
+    assert "传送门：" not in str(sent[2]["message"])
+
+
+@pytest.mark.asyncio
+async def test_full_dynamic_media_preferences_filter_text_and_images_per_target(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
+
+    subscriptions = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
+    subscriptions.unsubscribe_target(
+        "group",
+        1001,
+        bili_push_media_subscription_key(DEFAULT_BILI_ACCOUNT_UID, "text"),
+        "bili_push",
+    )
+    subscriptions.unsubscribe_target(
+        "group",
+        1002,
+        bili_push_media_subscription_key(DEFAULT_BILI_ACCOUNT_UID, "image"),
+        "bili_push",
+    )
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        subscriptions,
+        build_dynamic_link_message,
+        build_dynamic_text_message,
+        append_text_hint,
+        render_images=build_dynamic_images_message,
+        media_preferences_uid=DEFAULT_BILI_ACCOUNT_UID,
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        DEFAULT_BILI_ACCOUNT_UID,
+        BiliPushTargets([1001, 1002], [], [], []),
+    )
+
+    assert [entry["action_name"] for entry in sent] == [
+        f"{FULL_DYNAMIC_PUSH_ACTION} link",
+        FULL_DYNAMIC_PUSH_ACTION,
+        FULL_DYNAMIC_IMAGE_PUSH_ACTION,
+    ]
+    assert sent[0]["group_ids"] == [1001, 1002]
+    assert sent[1]["group_ids"] == [1002]
+    assert sent[2]["group_ids"] == [1001]
+
+
+@pytest.mark.asyncio
+async def test_text_muted_pure_text_dynamic_is_not_delivered(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
+
+    subscriptions = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
+    subscriptions.unsubscribe_target(
+        "group",
+        1001,
+        bili_push_media_subscription_key(DEFAULT_BILI_ACCOUNT_UID, "text"),
+        "bili_push",
+    )
+    item = _item()
+    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = []
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        subscriptions,
+        build_dynamic_link_message,
+        build_dynamic_text_message,
+        append_text_hint,
+        render_images=build_dynamic_images_message,
+        media_preferences_uid=DEFAULT_BILI_ACCOUNT_UID,
+    )
+
+    await service.send(
+        item,
+        PUB_TS,
+        DEFAULT_BILI_ACCOUNT_UID,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_seer_media_preferences_do_not_filter_other_bili_accounts(
+    tmp_path: Path,
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append({"message": message, **kwargs})
+            return TargetSendSummary([], [])
+
+    subscriptions = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
+    subscriptions.unsubscribe_target(
+        "group",
+        1001,
+        bili_push_media_subscription_key(DEFAULT_BILI_ACCOUNT_UID, "text"),
+        "bili_push",
+    )
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        subscriptions,
+        build_dynamic_link_message,
+        build_dynamic_text_message,
+        append_text_hint,
+        render_images=build_dynamic_images_message,
+        media_preferences_uid=DEFAULT_BILI_ACCOUNT_UID,
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        375750254,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    assert [entry["action_name"] for entry in sent] == [
+        f"{FULL_DYNAMIC_PUSH_ACTION} link",
+        FULL_DYNAMIC_PUSH_ACTION,
+        FULL_DYNAMIC_IMAGE_PUSH_ACTION,
+    ]
 
 
 @pytest.mark.asyncio

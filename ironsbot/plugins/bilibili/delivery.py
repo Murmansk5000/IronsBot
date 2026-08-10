@@ -93,3 +93,13 @@ def build_dynamic_text_message(
     except (TypeError, ValueError, KeyError) as error:
         logger.error(f"failed to render Bilibili dynamic text: {error}")
         return None
+
+
+def build_dynamic_detail_messages(item: dict[str, Any]) -> tuple[Message, ...]:
+    """Render a history detail with text and images as separate messages."""
+
+    messages = (
+        build_dynamic_text_message(item),
+        build_dynamic_images_message(item),
+    )
+    return tuple(message for message in messages if message is not None)

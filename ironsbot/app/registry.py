@@ -159,6 +159,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         bilibili_service.targets.dynamic_link_tag,
         prepend_text_hint,
         build_dynamic_images_message,
+        bilibili_service.targets.seer_category_uid(),
     )
     bili_monitor = BilibiliMonitorService(
         bilibili_service,
