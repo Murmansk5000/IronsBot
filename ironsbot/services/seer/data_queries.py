@@ -1,25 +1,33 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta, timezone
 from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.data import load_data_generated_at
-from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.season_countdown import format_season_countdown
 from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
+from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageError
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeasonCountdownConfig
     from ironsbot.services.seer.data import SeerDataAccess
-    from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.new_content import (
         NewContentService,
         NewContentSnapshot,
     )
+    from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageSource
 
-DataQueryReply = str | bytes
+
+@dataclass(frozen=True, slots=True)
+class DataQueryImageReply:
+    image: bytes
+    notice: str = ""
+
+
+DataQueryReply = str | bytes | DataQueryImageReply
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 
 
@@ -27,12 +35,12 @@ class SeerDataQueryService:
     def __init__(
         self,
         data: SeerDataAccess,
-        images: SeerImageSource,
+        preview_images: WeeklyPreviewImageSource,
         season: SeasonCountdownConfig,
         new_content: NewContentService,
     ) -> None:
         self._data = data
-        self._images = images
+        self._preview_images = preview_images
         self._season = season
         self._new_content = new_content
 
@@ -43,9 +51,17 @@ class SeerDataQueryService:
         with self._data.query(load_weekly_preview_links) as links:
             image_url, _source_url = links
         try:
-            return await self._images.fetch_url(image_url)
-        except ImageSourceError:
-            return await self._fallback_preview()
+            preview = await self._preview_images.fetch(image_url)
+        except WeeklyPreviewImageError as error:
+            return f"❌获取图片失败！原因：{error}"
+        notice = ""
+        if preview.stale:
+            cached_at = preview.cached_at.astimezone(CHINA_TIMEZONE)
+            notice = (
+                "⚠️ 网络刷新失败，当前为缓存图片；"
+                f"缓存时间：{cached_at:%Y-%m-%d %H:%M:%S}"
+            )
+        return DataQueryImageReply(preview.data, notice)
 
     async def data_version(self) -> str:
         with self._data.query(load_data_generated_at) as generated_at:
@@ -63,9 +79,3 @@ class SeerDataQueryService:
         operation = partial(format_season_countdown, config=self._season)
         with self._data.query(operation) as message:
             return message
-
-    async def _fallback_preview(self) -> DataQueryReply:
-        try:
-            return await self._images.fetch("preview", "", fallback=False)
-        except ImageSourceError as error:
-            return f"❌获取图片失败！原因：{error}"

@@ -35,6 +35,9 @@ from ironsbot.integrations.http.bilibili import (
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
+from ironsbot.integrations.http.weekly_preview_images import (
+    CachedWeeklyPreviewImageSource,
+)
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.outbound import (
@@ -374,6 +377,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         fetch_rank_page,
     )
     seer_images = HttpSeerImageSource(http_clients)
+    weekly_preview_images = CachedWeeklyPreviewImageSource(
+        http_clients.origin,
+        cache_paths.assets_dir(),
+        spawn=task_owner.create,
+    )
     render_cache = FileRenderCache(
         cache_paths.render_dir(),
         settings.seer.render.cache_max_size_mb * 1024 * 1024,
@@ -482,7 +490,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     seer = SeerQueryResources(
         SeerDataQueryService(
             seer_database,
-            seer_images,
+            weekly_preview_images,
             settings.seer.season,
             NewContentService(seer_database),
         ),
