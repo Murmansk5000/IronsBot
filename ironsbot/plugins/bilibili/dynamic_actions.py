@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from typing import Any
+
 from nonebot.adapters.onebot.v11 import (
     Message,
     MessageEvent,
@@ -24,7 +26,7 @@ from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 
 from .command_rules import is_dynamic_select_reply
-from .delivery import build_dynamic_content_message
+from .delivery import build_dynamic_detail_messages
 
 DYNAMIC_CONVERSATION_NAMESPACE = "bilibili_dynamic_menu"
 
@@ -41,6 +43,20 @@ async def wait_dynamic_select(
         handlers=[bind_async(handle_dynamic_select_action, service=service)],
         reply_check=is_dynamic_select_reply,
     )
+
+
+async def _send_dynamic_detail(
+    matcher: Matcher,
+    event: MessageEvent,
+    item: dict[str, Any],
+) -> bool:
+    messages = build_dynamic_detail_messages(item)
+    if not messages:
+        return False
+    for message in messages:
+        await send_event_reply(matcher, event, message)
+    return True
+
 
 async def handle_dynamic_menu_action(
     matcher: Matcher,
@@ -104,6 +120,7 @@ async def handle_dynamic_menu_action(
             "❌ 获取动态列表失败。",
         )
 
+
 async def handle_dynamic_select_action(
     matcher: Matcher,
     event: MessageEvent,
@@ -151,20 +168,17 @@ async def handle_dynamic_select_action(
                 "❌ 没找到这条历史动态，请重新发送“动态”。",
             )
 
-        if selection.record is not None:
-            message = build_dynamic_content_message(selection.record.item)
-            if message is None:
-                await finish_event_reply(
-                    matcher,
-                    event,
-                    "❌ 动态详情解析失败。",
-                )
-                return
-            await send_event_reply(
+        if selection.record is not None and not await _send_dynamic_detail(
+            matcher,
+            event,
+            selection.record.item,
+        ):
+            await finish_event_reply(
                 matcher,
                 event,
-                message,
+                "❌ 动态详情解析失败。",
             )
+            return
 
         await wait_dynamic_select(matcher, event, service)
 

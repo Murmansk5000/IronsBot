@@ -13,7 +13,11 @@ from ironsbot.core.onebot_group_identity import (
     resolve_group_name,
 )
 from ironsbot.services.bilibili.parser import dynamic_content
-from ironsbot.services.bilibili.preferences import bili_push_subscription_key
+from ironsbot.services.bilibili.preferences import (
+    BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
+    BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
+    bili_push_subscription_key,
+)
 from ironsbot.services.bilibili.targets import BiliPushTargets
 
 if TYPE_CHECKING:
@@ -119,43 +123,65 @@ class BilibiliPushDeliveryService:
         if not full_targets.has_targets:
             return
 
+        content = dynamic_content(item)
+        text_targets = self._media_targets(
+            full_targets,
+            BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
+        )
+        content_message = None
+        if content and text_targets.has_targets:
+            content_override = await self._content_override(
+                item,
+                author_mid,
+                content,
+            )
+            content_message = self.render_content(item, content_override)
+
+        image_targets = self._media_targets(
+            full_targets,
+            BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
+        )
+        image_message = (
+            self.render_images(item) if self.render_images is not None else None
+        )
+        if image_message is None:
+            image_targets = BiliPushTargets([], [], [], [])
+
+        visible_targets = self._combined_targets(
+            full_targets,
+            text_targets,
+            image_targets,
+        )
+        if not visible_targets.has_targets:
+            return
+
         link_message = self._render_link(item, pub_ts, author_mid, categories)
         if link_message is None:
             return
         await self.delivery.broadcast(
             link_message,
-            group_ids=full_targets.full_group_ids,
-            private_user_ids=full_targets.full_user_ids,
+            group_ids=visible_targets.full_group_ids,
+            private_user_ids=visible_targets.full_user_ids,
             action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
             message_limiter=self._transform_target_message,
             subscription_key=subscription_key,
         )
 
-        content = dynamic_content(item)
-        content_override = await self._content_override(
-            item,
-            author_mid,
-            content,
-        )
-        content_message = self.render_content(item, content_override)
         if content_message is not None:
             await self.delivery.broadcast(
                 content_message,
-                group_ids=full_targets.full_group_ids,
-                private_user_ids=full_targets.full_user_ids,
+                group_ids=text_targets.full_group_ids,
+                private_user_ids=text_targets.full_user_ids,
                 action_name=FULL_DYNAMIC_PUSH_ACTION,
                 subscription_key=subscription_key,
             )
 
-        image_message = (
-            self.render_images(item) if self.render_images is not None else None
-        )
         if image_message is not None:
             await self._send_images_with_retries(
                 item,
                 author_mid,
                 image_message,
-                full_targets,
+                image_targets,
                 subscription_key=subscription_key,
             )
 
@@ -406,6 +432,54 @@ class BilibiliPushDeliveryService:
                 targets.full_user_ids,
                 subscription_key,
             ),
+            link_user_ids=[],
+        )
+
+    def _media_targets(
+        self,
+        targets: BiliPushTargets,
+        subscription_key: str,
+    ) -> BiliPushTargets:
+        return BiliPushTargets(
+            full_group_ids=self.subscriptions.filter_subscribed_group_ids(
+                targets.full_group_ids,
+                subscription_key,
+            ),
+            link_group_ids=[],
+            full_user_ids=self.subscriptions.filter_subscribed_user_ids(
+                targets.full_user_ids,
+                subscription_key,
+            ),
+            link_user_ids=[],
+        )
+
+    @staticmethod
+    def _combined_targets(
+        available_targets: BiliPushTargets,
+        *targets: BiliPushTargets,
+    ) -> BiliPushTargets:
+        group_ids = {
+            group_id
+            for targets_item in targets
+            for group_id in targets_item.full_group_ids
+        }
+        user_ids = {
+            user_id
+            for targets_item in targets
+            for user_id in targets_item.full_user_ids
+        }
+        return BiliPushTargets(
+            full_group_ids=[
+                group_id
+                for group_id in available_targets.full_group_ids
+                if group_id in group_ids
+            ],
+            link_group_ids=[],
+            full_user_ids=[
+                user_id
+                for user_id in available_targets.full_user_ids
+                if user_id in user_ids
+            ],
             link_user_ids=[],
         )
 

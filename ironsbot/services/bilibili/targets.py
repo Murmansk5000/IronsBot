@@ -22,6 +22,9 @@ from ironsbot.services.bilibili.categories import (
     seer_category_submenu_key,
 )
 from ironsbot.services.bilibili.preferences import (
+    BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
+    BILI_PUSH_MEDIA_SUBMENU_KEY,
+    BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
     BiliPushPreferenceStore,
     bili_push_subscription_key,
     bili_push_subscription_label,
@@ -288,7 +291,16 @@ class BiliTargetService:
             target_id,
         )
         return [
-            self._subscription_option(uid, unsubscribed) for uid in sorted(rule.uids)
+            PushSubscriptionOption(
+                key=BILI_PUSH_MEDIA_SUBMENU_KEY,
+                label="B站动态内容设置",
+                feature="bili_push",
+                submenu_key=BILI_PUSH_MEDIA_SUBMENU_KEY,
+            ),
+            *(
+                self._subscription_option(uid, unsubscribed)
+                for uid in sorted(rule.uids)
+            ),
         ]
 
     def _subscription_option(
@@ -323,6 +335,13 @@ class BiliTargetService:
         *,
         read_only: bool = False,
     ) -> tuple[list[PushSubscriptionOption], str] | None:
+        if option.submenu_key == BILI_PUSH_MEDIA_SUBMENU_KEY:
+            return self._media_subscription_submenu(
+                target_type,
+                target_id,
+                read_only=read_only,
+            )
+
         uid = self._seer_category_uid()
         if (
             uid is None
@@ -377,6 +396,30 @@ class BiliTargetService:
         target_id: int,
         option: PushSubscriptionOption,
     ) -> str | None:
+        if option.key in {
+            BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
+            BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
+        }:
+            muted = self.unsubscribe_store.is_target_unsubscribed(
+                target_type,
+                target_id,
+                option.key,
+            )
+            if muted:
+                self.unsubscribe_store.restore_target(
+                    target_type,
+                    target_id,
+                    option.key,
+                )
+                return f"已恢复订阅：B站动态 - {option.label}。"
+            self.unsubscribe_store.unsubscribe_target(
+                target_type,
+                target_id,
+                option.key,
+                option.feature,
+            )
+            return f"已 TD：B站动态 - {option.label}。"
+
         parsed = parse_seer_category_option_key(option.key)
         if parsed is None:
             return None
@@ -393,6 +436,46 @@ class BiliTargetService:
         )
         action = "已 TD" if muted else "已恢复订阅"
         return f"{action}：赛尔号动态 - {SEER_CATEGORY_LABELS[category]}。"
+
+    def _media_subscription_submenu(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+        *,
+        read_only: bool,
+    ) -> tuple[list[PushSubscriptionOption], str]:
+        options = [
+            PushSubscriptionOption(
+                key=BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
+                label="动态正文",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_target_unsubscribed(
+                    target_type,
+                    target_id,
+                    BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
+                ),
+            ),
+            PushSubscriptionOption(
+                key=BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
+                label="动态图片",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_target_unsubscribed(
+                    target_type,
+                    target_id,
+                    BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
+                ),
+            ),
+        ]
+        title = "B站动态内容设置：" if read_only else "请选择要切换的 B站动态内容："
+        lines = [title]
+        for index, child in enumerate(options, start=1):
+            state = "❌" if child.unsubscribed else "✅"
+            lines.append(f"{index}. {state} {child.label}")
+        lines.append(
+            "\n正文为 ❌ 时，不接收纯文本动态；图片为 ❌ 时，不接收纯图片动态。"
+        )
+        lines.append("✅ 已订阅 · ❌ 已 TD，输入序号切换；输入 0 返回推送订阅")
+        return options, "\n".join(lines)
 
     def _seer_category_uid(self) -> int | None:
         categories = self.config.seer_categories

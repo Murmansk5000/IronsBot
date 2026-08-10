@@ -33,6 +33,7 @@ from ironsbot.services.bilibili.categories import (
     seer_category_submenu_key,
 )
 from ironsbot.services.bilibili.preferences import (
+    BILI_PUSH_MEDIA_SUBMENU_KEY,
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.targets import BiliTargetService
@@ -454,10 +455,12 @@ def test_bili_push_subscription_options_are_per_uid(
     options = service.subscription_options("group", 987654321)
 
     assert [option.key for option in options] == [
+        BILI_PUSH_MEDIA_SUBMENU_KEY,
         bili_push_subscription_key(375750254),
         bili_push_subscription_key(1310714247),
     ]
     assert [option.label for option in options] == [
+        "B站动态内容设置",
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
         "赛尔号 B站动态设置",
     ]
@@ -472,10 +475,11 @@ def test_bili_push_subscription_options_are_per_uid(
     options = service.subscription_options("group", 987654321)
 
     assert [option.key for option in options] == [
+        BILI_PUSH_MEDIA_SUBMENU_KEY,
         bili_push_subscription_key(375750254),
         bili_push_subscription_key(1310714247),
     ]
-    assert [option.unsubscribed for option in options] == [True, False]
+    assert [option.unsubscribed for option in options] == [False, True, False]
 
 
 def test_bili_push_subscription_options_use_public_account_names(
@@ -504,9 +508,40 @@ def test_bili_push_subscription_options_use_public_account_names(
     options = service.subscription_options("group", 987654321)
 
     assert [option.label for option in options] == [
+        "B站动态内容设置",
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
         "赛尔号 B站动态设置",
     ]
+
+
+def test_bili_push_media_subscription_submenu_persists_per_target(
+    tmp_path: Path,
+) -> None:
+    group_id = 987654321
+    service = _target_service(
+        BiliConfig(),
+        _features({str(group_id): ["bili_push"]}),
+        tmp_path,
+    )
+    option = service.subscription_options("group", group_id)[0]
+
+    assert option.key == BILI_PUSH_MEDIA_SUBMENU_KEY
+    submenu = service.subscription_submenu("group", group_id, option)
+    assert submenu is not None
+    children, prompt = submenu
+    assert [child.label for child in children] == ["动态正文", "动态图片"]
+    assert not any(child.unsubscribed for child in children)
+    assert "纯文本动态" in prompt
+    assert "纯图片动态" in prompt
+
+    assert service.toggle_subscription_option("group", group_id, children[0]) == (
+        "已 TD：B站动态 - 动态正文。"
+    )
+    updated_submenu = service.subscription_submenu("group", group_id, option)
+    assert updated_submenu is not None
+    updated_children, _updated_prompt = updated_submenu
+    assert updated_children[0].unsubscribed
+    assert not updated_children[1].unsubscribed
 
 
 def test_seer_category_subscription_submenu_and_target_filtering(
@@ -519,7 +554,11 @@ def test_seer_category_subscription_submenu_and_target_filtering(
         tmp_path,
         account_names={DEFAULT_BILI_ACCOUNT_UID: DEFAULT_BILI_ACCOUNT_NAME},
     )
-    option = service.subscription_options("group", group_id)[0]
+    option = next(
+        option
+        for option in service.subscription_options("group", group_id)
+        if option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
+    )
 
     assert option.label == "赛尔号 B站动态设置"
     assert option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
