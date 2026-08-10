@@ -243,25 +243,24 @@ def dynamic_suppression_reason(
 
 
 def dynamic_image_urls(item: dict[str, Any]) -> list[str]:
-    image_urls: list[str] = []
     module_dynamic = _mapping(_mapping(item.get("modules")).get("module_dynamic"))
     major = _mapping(module_dynamic.get("major"))
 
-    if "draw" in major:
-        image_urls.extend(
-            pic["src"]
-            for pic in _mapping(major.get("draw")).get("items", [])
-            if isinstance(pic, Mapping) and pic.get("src")
-        )
-    elif "opus" in major:
-        image_urls.extend(
-            pic["url"]
-            for pic in _mapping(major.get("opus")).get("pics", [])
-            if isinstance(pic, Mapping) and pic.get("url")
-        )
-    elif "archive" in major:
-        cover = _mapping(major.get("archive")).get("cover")
-        if cover:
-            image_urls.append(str(cover))
+    draw_urls = [
+        str(pic["src"])
+        for pic in _mapping(major.get("draw")).get("items", [])
+        if isinstance(pic, Mapping) and pic.get("src")
+    ]
+    if draw_urls:
+        return draw_urls
 
-    return image_urls
+    opus_urls = [
+        str(pic["url"])
+        for pic in _mapping(major.get("opus")).get("pics", [])
+        if isinstance(pic, Mapping) and pic.get("url")
+    ]
+    if opus_urls:
+        return opus_urls
+
+    cover = _mapping(major.get("archive")).get("cover")
+    return [str(cover)] if cover else []

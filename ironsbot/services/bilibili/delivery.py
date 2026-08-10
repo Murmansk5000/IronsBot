@@ -131,6 +131,22 @@ class BilibiliPushDeliveryService:
             subscription_key=subscription_key,
         )
 
+        content = dynamic_content(item)
+        content_override = await self._content_override(
+            item,
+            author_mid,
+            content,
+        )
+        content_message = self.render_content(item, content_override)
+        if content_message is not None:
+            await self.delivery.broadcast(
+                content_message,
+                group_ids=full_targets.full_group_ids,
+                private_user_ids=full_targets.full_user_ids,
+                action_name=FULL_DYNAMIC_PUSH_ACTION,
+                subscription_key=subscription_key,
+            )
+
         image_message = (
             self.render_images(item) if self.render_images is not None else None
         )
@@ -142,23 +158,6 @@ class BilibiliPushDeliveryService:
                 full_targets,
                 subscription_key=subscription_key,
             )
-
-        content = dynamic_content(item)
-        content_override = await self._content_override(
-            item,
-            author_mid,
-            content,
-        )
-        content_message = self.render_content(item, content_override)
-        if content_message is None:
-            return
-        await self.delivery.broadcast(
-            content_message,
-            group_ids=full_targets.full_group_ids,
-            private_user_ids=full_targets.full_user_ids,
-            action_name=FULL_DYNAMIC_PUSH_ACTION,
-            subscription_key=subscription_key,
-        )
 
     async def _send_images_with_retries(
         self,

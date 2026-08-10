@@ -163,7 +163,7 @@ def test_delivery_service_only_appends_history_hint_for_query_targets(
 
 
 @pytest.mark.asyncio
-async def test_full_dynamic_sends_link_then_images_then_text(
+async def test_full_dynamic_sends_link_then_text_then_images(
     tmp_path: Path,
 ) -> None:
     sent: list[dict[str, Any]] = []
@@ -213,8 +213,8 @@ async def test_full_dynamic_sends_link_then_images_then_text(
     assert [entry["action_name"] for entry in sent] == [
         LINK_DYNAMIC_PUSH_ACTION,
         f"{FULL_DYNAMIC_PUSH_ACTION} link",
-        FULL_DYNAMIC_IMAGE_PUSH_ACTION,
         FULL_DYNAMIC_PUSH_ACTION,
+        FULL_DYNAMIC_IMAGE_PUSH_ACTION,
     ]
     assert sent[0]["group_ids"] == [1002]
     assert sent[1]["group_ids"] == [1001]
@@ -223,11 +223,11 @@ async def test_full_dynamic_sends_link_then_images_then_text(
     assert "传送门：" in str(sent[1]["message"])
     assert sent[1]["subscription_key"] == bili_push_subscription_key(1310714247)
     assert sent[2]["subscription_key"] == bili_push_subscription_key(1310714247)
-    assert "[CQ:image" in str(sent[2]["message"])
-    assert "这是忠实摘要。" not in str(sent[2]["message"])
-    assert "这是忠实摘要。" in str(sent[3]["message"])
-    assert "[CQ:image" not in str(sent[3]["message"])
-    assert "传送门：" not in str(sent[3]["message"])
+    assert "这是忠实摘要。" in str(sent[2]["message"])
+    assert "[CQ:image" not in str(sent[2]["message"])
+    assert "[CQ:image" in str(sent[3]["message"])
+    assert "这是忠实摘要。" not in str(sent[3]["message"])
+    assert "传送门：" not in str(sent[2]["message"])
 
 
 @pytest.mark.asyncio
