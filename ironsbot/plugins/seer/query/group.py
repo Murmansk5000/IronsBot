@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry
+    from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.resources import SeerQueryResources
 
 
@@ -33,6 +34,8 @@ class SeerMatcherGroup:
     features: FeatureService
     commands: CommandCatalog
     player_accounts: PlayerAccountRegistry
+    new_content_expanded_categories: tuple[NewContentCategory, ...] = ()
+    new_content_auto_expand_max_items: int = 5
 
     def on_message(
         self,

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import (
     AfterValidator,
@@ -112,6 +112,35 @@ RANK_EXCLUSION_RANK_KEY_ERROR = (
 RANK_LOOKUP_LIMIT_RANK_KEY_ERROR = (
     "seer.rank.lookup_limits contains an unsupported global rank key"
 )
+NEW_CONTENT_CATEGORY_KEYS = (
+    "achievement",
+    "pet",
+    "pet_skin",
+    "skill",
+    "mintmark",
+    "suit",
+    "equip",
+    "mount",
+    "autocard_card",
+    "autocard_role",
+    "autocard_sanctuary_effect",
+)
+NEW_CONTENT_CATEGORY_ERROR = (
+    "seer.new_content.expanded_categories contains an unsupported category"
+)
+NewContentCategoryKey = Literal[
+    "achievement",
+    "pet",
+    "pet_skin",
+    "skill",
+    "mintmark",
+    "suit",
+    "equip",
+    "mount",
+    "autocard_card",
+    "autocard_role",
+    "autocard_sanctuary_effect",
+]
 
 
 class RankExclusionRankKeyError(ValueError):
@@ -131,6 +160,11 @@ class RankLookupLimitRankKeyError(ValueError):
 class RankLookupLimitValueError(ValueError):
     def __init__(self) -> None:
         super().__init__("seer.rank.lookup_limits values must be non-negative")
+
+
+class NewContentCategoryConfigError(ValueError):
+    def __init__(self, unknown: list[str]) -> None:
+        super().__init__(f"{NEW_CONTENT_CATEGORY_ERROR}: {', '.join(unknown)}")
 
 
 def _coerce_sections(value: object) -> object:
@@ -696,6 +730,37 @@ class ExternalReferencesConfig(BaseModel):
     peak_pet_rank: StrictBool = True
 
 
+class NewContentConfig(BaseModel):
+    """Control which weekly-content categories expand on the root menu."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expanded_categories: list[NewContentCategoryKey] = Field(default_factory=list)
+    auto_expand_max_items: int = Field(default=5, ge=0)
+
+    @field_validator("expanded_categories", mode="before")
+    @classmethod
+    def validate_expanded_categories(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        unknown = [
+            str(category)
+            for category in value
+            if category not in NEW_CONTENT_CATEGORY_KEYS
+        ]
+        if unknown:
+            raise NewContentCategoryConfigError(unknown)
+        return value
+
+    @field_validator("expanded_categories")
+    @classmethod
+    def deduplicate_expanded_categories(
+        cls,
+        value: list[NewContentCategoryKey],
+    ) -> list[NewContentCategoryKey]:
+        return list(dict.fromkeys(value))
+
+
 class SeerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -709,6 +774,7 @@ class SeerConfig(BaseModel):
     team_resource: TeamResourceConfig = Field(default_factory=TeamResourceConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     season: SeasonCountdownConfig = Field(default_factory=SeasonCountdownConfig)
+    new_content: NewContentConfig = Field(default_factory=NewContentConfig)
     external_references: ExternalReferencesConfig = Field(
         default_factory=ExternalReferencesConfig
     )
