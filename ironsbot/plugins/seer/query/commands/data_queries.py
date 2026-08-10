@@ -27,6 +27,7 @@ from ironsbot.runtime.prompts import PROMPT_STATE_KEY, Prompt, PromptItem, enter
 from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.seer.autocard import AutocardPromptValue
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.data_query_commands import (
     DATA_VERSION_COMMANDS,
     NEW_ACHIEVEMENTS_COMMANDS,
@@ -116,8 +117,11 @@ async def _finish_query(
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    if isinstance(reply, bytes):
-        message = MessageFactory(Image(reply))
+    if isinstance(reply, (bytes, DataQueryImageReply)):
+        image = reply if isinstance(reply, bytes) else reply.image
+        message = MessageFactory(Image(image))
+        if isinstance(reply, DataQueryImageReply) and reply.notice:
+            message += f"\n{reply.notice}"
         if url := references.url_for(reference):
             message += f"\n相关查询：{url}"
         await message.finish()
