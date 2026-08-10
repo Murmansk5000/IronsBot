@@ -14,8 +14,8 @@ from ironsbot.core.onebot_group_identity import (
 )
 from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.preferences import (
-    BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
-    BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
+    BiliPushMedia,
+    bili_push_media_subscription_key,
     bili_push_subscription_key,
 )
 from ironsbot.services.bilibili.targets import BiliPushTargets
@@ -101,6 +101,7 @@ class BilibiliPushDeliveryService:
     link_tag_for: DynamicLinkTagger | None = None
     prepend_link_tag: HintAppender | None = None
     render_images: DynamicImageRenderer | None = None
+    media_preferences_uid: int | None = None
 
     async def send(
         self,
@@ -124,10 +125,7 @@ class BilibiliPushDeliveryService:
             return
 
         content = dynamic_content(item)
-        text_targets = self._media_targets(
-            full_targets,
-            BILI_PUSH_TEXT_SUBSCRIPTION_KEY,
-        )
+        text_targets = self._media_targets(full_targets, author_mid, "text")
         content_message = None
         if content and text_targets.has_targets:
             content_override = await self._content_override(
@@ -137,10 +135,7 @@ class BilibiliPushDeliveryService:
             )
             content_message = self.render_content(item, content_override)
 
-        image_targets = self._media_targets(
-            full_targets,
-            BILI_PUSH_IMAGE_SUBSCRIPTION_KEY,
-        )
+        image_targets = self._media_targets(full_targets, author_mid, "image")
         image_message = (
             self.render_images(item) if self.render_images is not None else None
         )
@@ -438,8 +433,15 @@ class BilibiliPushDeliveryService:
     def _media_targets(
         self,
         targets: BiliPushTargets,
-        subscription_key: str,
+        author_mid: int,
+        media: BiliPushMedia,
     ) -> BiliPushTargets:
+        if author_mid != self.media_preferences_uid:
+            return targets
+        subscription_key = bili_push_media_subscription_key(
+            author_mid,
+            media,
+        )
         return BiliPushTargets(
             full_group_ids=self.subscriptions.filter_subscribed_group_ids(
                 targets.full_group_ids,

@@ -7,9 +7,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
 BILI_PUSH_SUBSCRIPTION_PREFIX = "bili_push:"
-BILI_PUSH_TEXT_SUBSCRIPTION_KEY = "bili_push:text"
-BILI_PUSH_IMAGE_SUBSCRIPTION_KEY = "bili_push:image"
-BILI_PUSH_MEDIA_SUBMENU_KEY = "bili_push_media"
+BiliPushMedia = Literal["text", "image"]
 BiliRuntimePushMode = Literal["full", "link"]
 INVALID_PUSH_MODE_ERROR = "push mode must be content/full, link, or default"
 
@@ -58,6 +56,10 @@ class BiliPushPreferenceStore(Protocol):
 
 def bili_push_subscription_key(uid: int) -> str:
     return f"{BILI_PUSH_SUBSCRIPTION_PREFIX}{int(uid)}"
+
+
+def bili_push_media_subscription_key(uid: int, media: BiliPushMedia) -> str:
+    return f"{bili_push_subscription_key(uid)}:{media}"
 
 
 def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
