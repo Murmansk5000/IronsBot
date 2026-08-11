@@ -96,6 +96,7 @@ class AiConfig(BaseModel):
     api_key: str = Field(default="", exclude=True, repr=False)
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-pro"
+    fallback_models: list[str] = Field(default_factory=list)
     prompt: str = DEFAULT_AI_PROMPT
     history_turns: int = Field(default=6, ge=0, le=20)
     memory: bool = True
@@ -121,6 +122,32 @@ class AiConfig(BaseModel):
     @classmethod
     def normalize_base_url(cls, value: str) -> str:
         return value.strip().rstrip("/")
+
+    @field_validator("model")
+    @classmethod
+    def normalize_model(cls, value: str) -> str:
+        model = value.strip()
+        if not model:
+            raise ValueError("ai.model must not be empty")  # noqa: TRY003
+        return model
+
+    @field_validator("fallback_models")
+    @classmethod
+    def normalize_fallback_models(cls, value: list[str]) -> list[str]:
+        models: list[str] = []
+        for index, raw_model in enumerate(value):
+            model = raw_model.strip()
+            if not model:
+                raise ValueError(  # noqa: TRY003
+                    f"ai.fallback_models[{index}] must not be empty"
+                )
+            if model not in models:
+                models.append(model)
+        return models
+
+    @property
+    def models(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((self.model, *self.fallback_models)))
 
     @field_validator("intent_actions", mode="before")
     @classmethod
