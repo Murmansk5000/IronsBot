@@ -26,6 +26,10 @@ from tests.helpers.onebot_events import group_message_event
 _ACCOUNT_PLAYER_ID = 949105380
 
 
+def _features(*, superuser: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(is_superuser=lambda _user_id: superuser)
+
+
 def test_player_conversation_flows_share_one_session() -> None:
     assert {
         PLAYER_BINDING_NAMESPACE,
@@ -85,7 +89,7 @@ def test_pending_confirmation_reuses_the_fetched_player(
     }
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
-        cast("Any", object()),
+        cast("Any", _features()),
     )
 
     asyncio.run(
@@ -214,7 +218,7 @@ def test_unbound_player_prompt_requires_an_explicit_full_player_id(
     monkeypatch.setattr(player, "finish_event_reply", finish_reply)
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),
-        cast("Any", object()),
+        cast("Any", _features()),
     )
     asyncio.run(
         player.prompt_for_unbound_player_id(
@@ -267,7 +271,7 @@ def test_player_commands_resolve_configured_account_names() -> None:
     service = SimpleNamespace(default_player_id=lambda _user_id: _ACCOUNT_PLAYER_ID)
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
-        cast("Any", object()),
+        cast("Any", _features()),
         player_accounts=registry,
     )
     state: dict[str, object] = {}
@@ -324,7 +328,7 @@ def test_player_commands_resolve_configured_account_names() -> None:
 def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),
-        cast("Any", object()),
+        cast("Any", _features()),
     )
 
     assert not asyncio.run(
@@ -346,7 +350,7 @@ def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
 def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),
-        cast("Any", object()),
+        cast("Any", _features()),
     )
     event = group_message_event(
         "米米号是多少",
@@ -362,7 +366,7 @@ def test_player_query_with_member_at_does_not_accept_natural_language() -> None:
 def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),
-        cast("Any", object()),
+        cast("Any", _features()),
     )
     state: dict[str, object] = {}
 
@@ -379,7 +383,7 @@ def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> Non
 def test_player_shortcut_ignores_unknown_account_suffix() -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),
-        cast("Any", object()),
+        cast("Any", _features()),
     )
 
     assert not asyncio.run(
@@ -419,7 +423,7 @@ def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
     )
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),
-        cast("Any", object()),
+        cast("Any", _features()),
         extensions,
         accounts,
     )
@@ -433,6 +437,57 @@ def test_extension_shortcut_resolves_account_alias_in_public_command_layer(
     assert asyncio.run(
         player_shortcuts._is_player_extension_shortcut(
             group_message_event("阵容示例账号"),
+            state,
+            dependencies=dependencies,
+        )
+    )
+    command = state[player_shortcuts._EXTENSION_SHORTCUT_COMMAND_KEY]
+    assert isinstance(command, player_shortcuts.PlayerExtensionShortcutCommand)
+    assert command.player_id == _ACCOUNT_PLAYER_ID
+
+
+def test_superuser_resolves_private_lineup_alias_outside_allowed_groups(
+    monkeypatch: Any,
+) -> None:
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="private_player",
+                aliases=("爱酱",),
+                password=None,
+                public=False,
+            ),
+        )
+    )
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="private_lineup",
+            feature="player_lineup_private",
+            label="阵容",
+            aliases=("阵容",),
+            command_help_id="private_player_lineup.query",
+            query=AsyncMock(return_value=QueryReply(text="ok")),
+            action=ActionDefinition("private_lineup", "阵容"),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", object()),
+        cast("Any", _features(superuser=True)),
+        extensions,
+        accounts,
+    )
+    monkeypatch.setattr(
+        player_shortcuts,
+        "event_is_feature_allowed",
+        lambda *_args: True,
+    )
+    state: dict[str, object] = {}
+
+    assert asyncio.run(
+        player_shortcuts._is_player_extension_shortcut(
+            group_message_event("阵容爱酱", group_id=987654321),
             state,
             dependencies=dependencies,
         )
