@@ -19,7 +19,7 @@ from ironsbot.services.seer.player_detail_extensions import (
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from ironsbot.app.composition import ApplicationResources
+    from ironsbot.app.resources import ApplicationResources
     from ironsbot.runtime.plugins import PluginDefinition
 
 

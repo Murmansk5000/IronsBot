@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.history import HistoryMessage
 
 AI_TEST_PROMPT = "请只回复 OK"
+AI_MODELS_EMPTY_ERROR = "AI model list is empty"
+logger = logging.getLogger(__name__)
 
 
 class HttpAiCompletionClient:
@@ -26,17 +29,37 @@ class HttpAiCompletionClient:
         self,
         messages: list[HistoryMessage],
     ) -> AiResponseResult:
-        try:
-            response = await self._client.post(
-                f"{self._config.base_url}/chat/completions",
-                headers=_authorization_headers(self._config.api_key),
-                json=_completion_payload(self._config, messages),
-                timeout=self._config.timeout,
-                follow_redirects=True,
+        last_failure: Exception | AiResponseResult | None = None
+        for model in self._config.models:
+            try:
+                response = await self._client.post(
+                    f"{self._config.base_url}/chat/completions",
+                    headers=_authorization_headers(self._config.api_key),
+                    json=_completion_payload(self._config, messages, model=model),
+                    timeout=self._config.timeout,
+                    follow_redirects=True,
+                )
+            except httpx.HTTPError as exc:
+                logger.warning("AI model request failed: model=%s error=%s", model, exc)
+                last_failure = exc
+                continue
+            result = replace(_parse_http_response(response), model=model)
+            if result.ok:
+                return result
+            logger.warning(
+                "AI model returned an error: model=%s HTTP=%s detail=%s",
+                model,
+                result.status_code,
+                result.error_detail,
             )
-        except httpx.TimeoutException as exc:
-            raise AiRequestTimeoutError from exc
-        return _parse_http_response(response)
+            last_failure = result
+        if isinstance(last_failure, AiResponseResult):
+            return last_failure
+        if isinstance(last_failure, httpx.TimeoutException):
+            raise AiRequestTimeoutError from last_failure
+        if last_failure is not None:
+            raise last_failure
+        raise RuntimeError(AI_MODELS_EMPTY_ERROR)
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,9 +142,11 @@ def _authorization_headers(api_key: str) -> dict[str, str]:
 def _completion_payload(
     config: AiConfig,
     messages: list[HistoryMessage],
+    *,
+    model: str,
 ) -> dict[str, Any]:
     return {
-        "model": config.model,
+        "model": model,
         "messages": messages,
         "temperature": config.temperature,
         "max_tokens": config.max_tokens,
