@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     from nonebot.typing import T_State
 
-    from ironsbot.runtime.in_flight_requests import InFlightRequestService
+    from ironsbot.core.request_coordination import RequestCoordinator
     from ironsbot.runtime.matcher_contracts import QueuedSemanticRequestResolver
 
 TEMP_MATCHER_STATE_TOKEN_KEY = "_ironsbot_temp_matcher_state_token"
@@ -34,7 +34,7 @@ QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY = (
     "_ironsbot_queued_conversation_shared_reply"
 )
 COMMAND_COOLDOWN_TOKEN_STATE_KEY = "_ironsbot_command_cooldown_token"  # nosec B105
-IN_FLIGHT_REQUEST_TOKEN_STATE_KEY = "_ironsbot_in_flight_request_token"  # nosec B105
+REQUEST_RESPONSE_TOKEN_STATE_KEY = "_ironsbot_request_response_token"  # nosec B105
 MAX_CLAIMED_MENU_INPUTS = 4096
 
 
@@ -86,7 +86,7 @@ class _QueuedConversation:
     menu_anchor: GroupMenuAnchor | None = None
     allow_group_reply_exit: bool = False
     semantic_request_resolver: QueuedSemanticRequestResolver | None = None
-    request_service: InFlightRequestService | None = None
+    request_coordinator: RequestCoordinator | None = None
     active: bool = True
     parallel: bool = False
     pending_reply_check: Callable[[Event], bool] | None = None
@@ -317,14 +317,14 @@ class _QueuedConversation:
         self._waiters.clear()
 
     def _release_request_token(self, token: object | None) -> None:
-        if token is not None and self.request_service is not None:
-            self.request_service.release(token)
+        if token is not None and self.request_coordinator is not None:
+            self.request_coordinator.release(token)
 
     @staticmethod
     def _saved_state(state: T_State) -> T_State:
         saved_state = dict(state)
         saved_state.pop(COMMAND_COOLDOWN_TOKEN_STATE_KEY, None)
-        saved_state.pop(IN_FLIGHT_REQUEST_TOKEN_STATE_KEY, None)
+        saved_state.pop(REQUEST_RESPONSE_TOKEN_STATE_KEY, None)
         saved_state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY, None)
         saved_state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
         return saved_state
@@ -379,7 +379,7 @@ class PromptSessionManager:
         group_reply_check: Callable[[Event], bool] | None = None,
         handlers: list[Any],
         semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
-        request_service: InFlightRequestService | None = None,
+        request_coordinator: RequestCoordinator | None = None,
         conversation_session_id: str | None = None,
         menu_anchor: GroupMenuAnchor | None = None,
         allow_group_reply_exit: bool = False,
@@ -407,7 +407,7 @@ class PromptSessionManager:
             pending_reply_check=pending_reply_check,
             pending=pending,
             semantic_request_resolver=semantic_request_resolver,
-            request_service=request_service,
+            request_coordinator=request_coordinator,
         )
         self._queued_by_key[key] = context
         self._queued_by_token[context.token] = context

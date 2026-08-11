@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
+from ironsbot.core.request_coordination import (
+    RequestCoordinator,
+    RequestDecisionKind,
+)
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -24,8 +27,8 @@ def _request(action_id: str, target_key: str) -> SemanticRequest:
     )
 
 
-def _service(features: _Features | None = None) -> InFlightRequestService:
-    return InFlightRequestService(
+def _service(features: _Features | None = None) -> RequestCoordinator:
+    return RequestCoordinator(
         features or _Features(),
         CommandCooldownConfig(
             duplicate_window_seconds=60,
@@ -58,15 +61,18 @@ def test_in_flight_request_replies_once_warns_once_then_stays_silent(
     )
 
     assert first.allowed
+    assert first.kind is RequestDecisionKind.ADMITTED
     assert first.token is not None
     assert not second.allowed
+    assert second.kind is RequestDecisionKind.DUPLICATE
     assert second.feedback == DUPLICATE_MESSAGE
 
-    assert not service.admit(
+    silent = service.admit(
         user_id=USER_ID,
         request=_request("seer_pet_info", "5000"),
         now=2,
-    ).allowed
+    )
+    assert silent.kind is RequestDecisionKind.SILENT
 
     service.finish(first.token, now=5)
 
