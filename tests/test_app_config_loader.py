@@ -1438,6 +1438,10 @@ allowed_group = ["private_account"]
     assert accounts.resolve_player_id("私有账号") is None
     assert accounts.resolve_player_id("private_account") is None
     assert (
+        accounts.resolve_player_id("私有账号", allow_private=True)
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
+    assert (
         accounts.resolve_player_id("私有账号", group_id=PLAYER_ALIAS_GROUP_ID)
         == PRIVATE_ALIAS_PLAYER_ID
     )

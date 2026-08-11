@@ -90,6 +90,9 @@ async def _is_player_shortcut(
             dependencies.player_accounts,
             event,
             player_reference,
+            allow_private=dependencies.features.is_superuser(
+                int(event.get_user_id())
+            ),
         )
         if player_id is None:
             return False
@@ -121,6 +124,9 @@ async def _is_player_extension_shortcut(
             dependencies.player_accounts,
             event,
             player_reference,
+            allow_private=dependencies.features.is_superuser(
+                int(event.get_user_id())
+            ),
         )
         if player_id is None:
             return False
