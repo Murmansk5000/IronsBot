@@ -16,13 +16,13 @@ from ironsbot.core.features import (
     FeatureService,
 )
 from ironsbot.core.onebot_references import OneBotReferenceResolver
+from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
 )
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
@@ -34,7 +34,7 @@ class TestRuntime:
     delivery: OneBotDelivery
     admin_notices: AdminNoticeService
     cooldown: CommandCooldownService
-    in_flight_requests: InFlightRequestService
+    request_coordinator: RequestCoordinator
     matcher_priorities: MatcherPriorityConfig
     prompt_sessions: PromptSessionManager
     tasks: TaskOwner
@@ -44,7 +44,7 @@ class TestRuntime:
             self.cooldown,
             self.matcher_priorities,
             prompt_session_manager=self.prompt_sessions,
-            in_flight_requests=self.in_flight_requests,
+            request_coordinator=self.request_coordinator,
         )
 
 
@@ -93,7 +93,7 @@ def build_test_runtime(  # noqa: PLR0913
             cooldown_config or CommandCooldownConfig(),
             features,
         ),
-        in_flight_requests=InFlightRequestService(
+        request_coordinator=RequestCoordinator(
             features,
             cooldown_config or CommandCooldownConfig(),
         ),
