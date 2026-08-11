@@ -217,7 +217,7 @@ def test_rank_display_limit_is_validated_and_saved_by_service() -> None:
     )
 
     assert display.saved == (123, 456, 30)
-    assert message.startswith("✅ 本群榜单默认显示条数已设置为 30 名")
+    assert message.startswith("✅ 榜单默认显示条数已设置为 30 名")
 
 
 @pytest.mark.asyncio

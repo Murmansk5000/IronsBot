@@ -22,6 +22,7 @@ from ironsbot.integrations.onebot.router import BotRouter
 GROUP_ID = 10
 PRIVATE_USER_ID = 20
 MENTION_USER_ID = 30
+FANOUT_TARGET_COUNT = 2
 
 
 class FakeSendError(RuntimeError):
@@ -66,6 +67,20 @@ class FakeBot:
         if group_id in self.failed_group_ids:
             raise FakeSendError
         self.group_messages.append((group_id, message))
+
+
+@dataclass
+class CoordinatedBot(FakeBot):
+    started_group_ids: set[int] = field(default_factory=set)
+    both_started: asyncio.Event = field(default_factory=asyncio.Event)
+    release: asyncio.Event = field(default_factory=asyncio.Event)
+
+    async def send_group_msg(self, *, group_id: int, message: Message) -> None:
+        self.started_group_ids.add(group_id)
+        if len(self.started_group_ids) == FANOUT_TARGET_COUNT:
+            self.both_started.set()
+        await self.release.wait()
+        await super().send_group_msg(group_id=group_id, message=message)
 
 
 class FakeSubscriptions:
@@ -241,3 +256,55 @@ def test_send_target_messages_reports_push_queue_suppression() -> None:
     assert summary.succeeded == [MessageTarget("group", GROUP_ID)]
     assert summary.failed == [MessageTarget("group", GROUP_ID + 1)]
     assert [str(message) for _group_id, message in bot.group_messages] == ["hello"]
+
+
+def test_subscription_fanout_does_not_stagger_targets() -> None:
+    bot = CoordinatedBot()
+    delivery = _delivery()
+
+    async def send() -> None:
+        task = asyncio.create_task(
+            delivery.send_targets(
+                [
+                    MessageTarget("group", GROUP_ID),
+                    MessageTarget("group", GROUP_ID + 1),
+                ],
+                "hello",
+                bot=bot,
+                interval_seconds=60.0,
+                subscription_key="scheduled_message",
+            )
+        )
+        await asyncio.wait_for(bot.both_started.wait(), timeout=0.1)
+        bot.release.set()
+        summary = await task
+        assert summary.failed == []
+
+    asyncio.run(send())
+    assert bot.started_group_ids == {GROUP_ID, GROUP_ID + 1}
+
+
+def test_target_messages_fan_out_distinct_payloads() -> None:
+    bot = FakeBot()
+
+    summary = asyncio.run(
+        _delivery().send_target_messages(
+            [
+                (MessageTarget("group", GROUP_ID), "first"),
+                (MessageTarget("private", PRIVATE_USER_ID), "second"),
+            ],
+            bot=bot,
+            subscription_key="scheduled_message",
+        )
+    )
+
+    assert summary.succeeded == [
+        MessageTarget("group", GROUP_ID),
+        MessageTarget("private", PRIVATE_USER_ID),
+    ]
+    assert str(bot.group_messages[0][1]) == (
+        "first\n\n"
+        "发送 TD、订阅 或 推送管理 可查看推送订阅；"
+        "群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
+    )
+    assert str(bot.private_messages[0][1]) == "second\n\n回复 TD 可管理推送订阅。"

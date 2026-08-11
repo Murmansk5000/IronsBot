@@ -6,7 +6,6 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ironsbot.core.bilibili import DEFAULT_BILI_ACCOUNT_ALIAS
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.dynamic_history import save_target_dynamics
 from ironsbot.services.bilibili.hydration import (
@@ -110,8 +109,8 @@ class BilibiliService:
 
         if self._history_backfill_attempted:
             return 0
-        account = self.config.accounts.get(DEFAULT_BILI_ACCOUNT_ALIAS)
-        if account is None:
+        account = self.config.accounts.get(self.config.seer_categories.account)
+        if not self.config.seer_categories.enabled or account is None:
             return 0
 
         cutoff = int(time.time()) - max(days, 0) * 24 * 60 * 60
