@@ -110,7 +110,7 @@ def _assert_default_push_unsubscribe(
         ["订阅", "恢复订阅", "推送管理"],
     )
     assert "TD" in push_unsubscribe.hint
-    assert "可查看本群推送订阅" in push_unsubscribe.group_hint
+    assert "可查看推送订阅" in push_unsubscribe.group_hint
 
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:

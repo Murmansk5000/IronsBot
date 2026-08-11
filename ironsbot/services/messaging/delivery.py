@@ -27,6 +27,16 @@ class MessageDelivery(Protocol):
         subscription_key: str | None = None,
     ) -> TargetSendSummary: ...
 
+    async def send_target_messages(
+        self,
+        target_messages: Iterable[tuple[MessageTarget, Any]],
+        *,
+        bot: Any | None = None,
+        action_name: str = "message action",
+        message_limiter: MessageLimiter | None = None,
+        subscription_key: str | None = None,
+    ) -> TargetSendSummary: ...
+
     async def broadcast(  # noqa: PLR0913
         self,
         message: Any,

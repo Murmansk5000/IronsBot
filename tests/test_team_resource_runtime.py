@@ -300,15 +300,23 @@ async def test_team_resource_notice_leaves_bot_selection_to_router(
 
     async def fake_send_target_messages(
         _delivery: object,
-        targets: list[MessageTarget],
-        message: str | Message,
+        target_messages: list[tuple[MessageTarget, str | Message]],
         **kwargs: object,
     ) -> TargetSendSummary:
-        sent.append((targets, message, kwargs))
-        return TargetSendSummary(targets, [])
+        sent.extend(
+            ([target], message, kwargs) for target, message in target_messages
+        )
+        return TargetSendSummary(
+            [target for target, _message in target_messages],
+            [],
+        )
 
     monkeypatch.setattr(TeamResourceService, "query", fake_query)
-    monkeypatch.setattr(OneBotDelivery, "send_targets", fake_send_target_messages)
+    monkeypatch.setattr(
+        OneBotDelivery,
+        "send_target_messages",
+        fake_send_target_messages,
+    )
 
     await service.scan()
 

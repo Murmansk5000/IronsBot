@@ -93,7 +93,7 @@ async def handle_team_resource_manage(
         await finish_event_reply(
             matcher,
             event,
-            "只有群主、管理员或超级管理员可以修改本群战队订阅。",
+            "只有群主、管理员或超级管理员可以修改战队订阅。",
         )
         return
 

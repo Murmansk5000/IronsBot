@@ -369,7 +369,7 @@ class OutboundRateLimitConfig(BaseModel):
     windows: list[OutboundRateLimitWindowConfig] = Field(
         default_factory=_default_outbound_rate_limit_windows
     )
-    cooldown_message: str = "本群机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
+    cooldown_message: str = "机器人消息已达到发送额度，后续消息可能延迟或被抑制。"
 
     @field_validator("cooldown_message")
     @classmethod
@@ -404,7 +404,7 @@ class PushUnsubscribeConfig(BaseModel):
     )
     hint: str = "回复 TD 可管理推送订阅。"
     group_hint: str = (
-        "发送 TD、订阅 或 推送管理 可查看本群推送订阅；"
+        "发送 TD、订阅 或 推送管理 可查看推送订阅；"
         "群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
     )
 
