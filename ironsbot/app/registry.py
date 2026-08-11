@@ -4,10 +4,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from ironsbot.app.bilibili_runtime import (
-    build_bilibili_connect_hook,
-    build_bilibili_monitor,
-)
+from ironsbot.app.bilibili_runtime import build_bilibili_monitor
 from ironsbot.app.command_directory.dynamic import (
     ai_intent_commands,
     configured_image_commands,
@@ -48,11 +45,12 @@ from ironsbot.services.operations.docker_preflight import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.app.resources import ApplicationResources
+    from nonebot.adapters.onebot.v11 import Bot
+
+    from ironsbot.app.composition import ApplicationResources
     from ironsbot.config.models.settings import Settings
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.matchers import MatcherRegistry
-    from nonebot.adapters.onebot.v11 import Bot
 
 
 class PluginRegistryError(ValueError):
@@ -66,7 +64,7 @@ OPTIONAL_PRIVATE_FEATURES = frozenset(
 )
 
 
-def build_plugin_registry(  # noqa: PLR0915 - declarative registry
+def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
     *,
     settings: Settings,
     resources: ApplicationResources,
@@ -131,7 +129,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     bot_mention_block_service = BotMentionBlockService(
         config.messaging.command_cooldown
     )
-    bili_monitor = build_bilibili_monitor(settings, resources)
+    bili_monitor = build_bilibili_monitor(config, resources)
     messaging_commands = configured_message_commands(config.messaging)
     ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginDefinition, ...] = ()
@@ -162,7 +160,8 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     async def check_headless_on_connect(_bot: Bot) -> None:
         await headless.check_on_connect()
 
-    check_bilibili_on_connect = build_bilibili_connect_hook(bili_monitor)
+    async def check_bilibili_on_connect(bot: Bot) -> None:
+        await bili_monitor.check_on_connect(str(bot.self_id))
 
     async def check_ai_api_on_connect(_bot: Bot) -> None:
         await check_configured_ai_api(config.ai, startup_notice_service)
