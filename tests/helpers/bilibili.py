@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.features import FeatureConfig
@@ -23,6 +24,10 @@ from tests.helpers.runtime import build_test_runtime
 
 
 async def _unused_feed(_cookie: str) -> BiliFeedResponse:
+    raise AssertionError
+
+
+async def _unused_detail(_cookie: str, _dynamic_id: str) -> BiliFeedResponse:
     raise AssertionError
 
 
@@ -66,5 +71,7 @@ def build_test_bilibili_service(
             resolved.storage.history_max_items,
         ),
         fetch_feed=_unused_feed,
+        fetch_detail=_unused_detail,
+        spawn=TaskOwner().create,
         external_references=external_references,
     )
