@@ -12,6 +12,10 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.features import FeatureService  # noqa: TC001
+from ironsbot.core.request_coordination import (
+    RequestDecision,
+    request_response_scope,
+)
 from ironsbot.runtime.conversations import (
     begin_event_reply_conversation,
     command_reply_check,
@@ -31,7 +35,6 @@ from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (  # noqa: TC001
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -253,16 +256,19 @@ async def _query_extension_action(
     *,
     player_id: int,
 ) -> QueryReply:
-    async def send_status(label: str, *, queued: bool) -> None:
+    async def send_status(decision: RequestDecision) -> None:
         await send_event_reply(
             matcher,
             event,
-            player_request_admission_message(label, queued=queued),
+            player_request_admission_message(
+                decision.label,
+                queued=decision.queued,
+            ),
         )
 
     meter = QueryWorkMeter("foreground")
     with (
-        request_feedback_scope(action.action.label, send_status),
+        request_response_scope(action.action.label, send_status),
         query_work_scope(meter),
     ):
         reply = await action.query(
