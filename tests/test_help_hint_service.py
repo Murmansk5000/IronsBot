@@ -112,7 +112,7 @@ def _catalog() -> CommandCatalog:
                     plugin_id="team_resource",
                     section="查询",
                     examples=("战队",),
-                    description="查看本群战队订阅",
+                    description="查看战队订阅",
                     features_any=("team_resource_subscription",),
                     access=(CommandAccess(scope="group"),),
                     show_in_poke=True,
@@ -139,9 +139,9 @@ def _catalog() -> CommandCatalog:
                 CommandDescriptor(
                     id="rank.display_limit",
                     plugin_id="rank_help",
-                    section="本群管理",
+                    section="群管理",
                     examples=("/榜单显示 20",),
-                    description="设置本群榜单默认显示名次",
+                    description="设置榜单默认显示名次",
                     features_any=("seer_rank",),
                     access=(CommandAccess("group", "group_manager"),),
                     show_in_poke=True,
@@ -337,7 +337,7 @@ def test_team_resource_poke_hint_is_group_only() -> None:
     )
 
     assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
-        "发送“战队”查看本群战队订阅。\n发送“帮助”可查看全部指令。"
+        "发送“战队”查看战队订阅。\n发送“帮助”可查看全部指令。"
     )
     assert service.get_default_poke_hint(group_id=None, user_id=1234567890) is None
 
@@ -385,7 +385,7 @@ def test_group_manager_poke_hint_can_include_group_management_command() -> None:
         user_id=1,
         group_role="owner",
     ) == (
-        "发送“/榜单显示 20”设置本群榜单默认显示名次。\n"
+        "发送“/榜单显示 20”设置榜单默认显示名次。\n"
         "发送“帮助”可查看全部指令。"
     )
 
@@ -400,6 +400,6 @@ def test_superuser_poke_hint_can_include_group_management_command() -> None:
     )
 
     assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
-        "发送“/榜单显示 20”设置本群榜单默认显示名次。\n"
+        "发送“/榜单显示 20”设置榜单默认显示名次。\n"
         "发送“帮助”可查看全部指令。"
     )

@@ -194,6 +194,11 @@ class OneBotDelivery:
         if subscription_key:
             selected = self._filter_subscribed_targets(selected, subscription_key)
 
+        # Subscription fan-out mirrors QQ's multi-target forwarding: every
+        # eligible target enters the send pipeline together. Group-level rate
+        # limiting still delays only the affected group when necessary.
+        effective_interval_seconds = 0.0 if subscription_key else interval_seconds
+
         results = await asyncio.gather(
             *(
                 self._send_target(
@@ -202,7 +207,7 @@ class OneBotDelivery:
                     index=index,
                     bot=bot,
                     action_name=action_name,
-                    interval_seconds=interval_seconds,
+                    interval_seconds=effective_interval_seconds,
                     message_limiter=message_limiter,
                     subscription_key=subscription_key,
                 )
@@ -218,6 +223,57 @@ class OneBotDelivery:
             [
                 target
                 for target, sent in zip(selected, results, strict=True)
+                if not sent
+            ],
+        )
+
+    async def send_target_messages(
+        self,
+        target_messages: Iterable[tuple[MessageTarget, str | Message]],
+        *,
+        bot: OneBotMessageSender | None = None,
+        action_name: str = "message action",
+        message_limiter: MessageLimiter | None = None,
+        subscription_key: str | None = None,
+    ) -> TargetSendSummary:
+        selected = list(target_messages)
+        if subscription_key:
+            allowed = set(
+                self._filter_subscribed_targets(
+                    [target for target, _message in selected],
+                    subscription_key,
+                )
+            )
+            selected = [
+                (target, message)
+                for target, message in selected
+                if target in allowed
+            ]
+
+        results = await asyncio.gather(
+            *(
+                self._send_target(
+                    target,
+                    message,
+                    index=0,
+                    bot=bot,
+                    action_name=action_name,
+                    interval_seconds=0.0,
+                    message_limiter=message_limiter,
+                    subscription_key=subscription_key,
+                )
+                for target, message in selected
+            )
+        )
+        return TargetSendSummary(
+            [
+                target
+                for (target, _message), sent in zip(selected, results, strict=True)
+                if sent
+            ],
+            [
+                target
+                for (target, _message), sent in zip(selected, results, strict=True)
                 if not sent
             ],
         )

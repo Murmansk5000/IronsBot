@@ -9,6 +9,7 @@ from tests.helpers.bilibili import build_test_bilibili_service
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ironsbot.core.bilibili import SeerDynamicCategory
     from ironsbot.services.operations.scheduler import Scheduler
 
 
@@ -29,6 +30,7 @@ async def _ignore_push(
     _pub_ts: int,
     _author_mid: int,
     _targets: object,
+    _categories: tuple[SeerDynamicCategory, ...] = (),
 ) -> None:
     return None
 

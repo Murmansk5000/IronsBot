@@ -38,7 +38,7 @@ from ironsbot.runtime.plugins import (
     PluginDefinition,
     PluginHooks,
 )
-from ironsbot.runtime.replies import append_text_hint
+from ironsbot.runtime.replies import append_text_hint, prepend_text_hint
 from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
@@ -83,8 +83,9 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.bilibili.auth import send_bili_login_notice
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
     from ironsbot.plugins.bilibili.delivery import (
-        build_dynamic_content_message,
+        build_dynamic_images_message,
         build_dynamic_link_message,
+        build_dynamic_text_message,
     )
     from ironsbot.plugins.help.hint import install as install_help_hint
     from ironsbot.plugins.messaging.blacklist import install as install_blacklist
@@ -147,7 +148,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         delivery,
         resources.subscriptions,
         build_dynamic_link_message,
-        build_dynamic_content_message,
+        build_dynamic_text_message,
         append_text_hint,
         resources.push_message_limiter,
         getattr(ai_service, "summarize_bilibili_dynamic", None),
@@ -156,6 +157,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
         config.bilibili.push.summary_use_ai,
         bilibili_service.targets.can_target_query_history,
         admin_notices,
+        bilibili_service.targets.dynamic_link_tag,
+        prepend_text_hint,
+        build_dynamic_images_message,
+        bilibili_service.targets.seer_category_uid(),
     )
     bili_monitor = BilibiliMonitorService(
         bilibili_service,
@@ -707,7 +712,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
             features=frozenset({Feature.HELP}),
             help=HelpEntry(
                 name="帮助",
-                description="按当前群/私聊权限显示可用功能",
+                description="按所在会话权限显示可用功能",
                 group="core",
                 order=10,
                 visible=always_help_visible,
