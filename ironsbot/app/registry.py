@@ -4,6 +4,10 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.app.bilibili_runtime import (
+    build_bilibili_connect_hook,
+    build_bilibili_monitor,
+)
 from ironsbot.app.command_directory.dynamic import (
     ai_intent_commands,
     configured_image_commands,
@@ -38,21 +42,17 @@ from ironsbot.runtime.plugins import (
     PluginDefinition,
     PluginHooks,
 )
-from ironsbot.runtime.replies import append_text_hint
-from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
-from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import Bot
-
-    from ironsbot.app.composition import ApplicationResources
+    from ironsbot.app.resources import ApplicationResources
     from ironsbot.config.models.settings import Settings
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
     from ironsbot.runtime.matchers import MatcherRegistry
+    from nonebot.adapters.onebot.v11 import Bot
 
 
 class PluginRegistryError(ValueError):
@@ -72,6 +72,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     resources: ApplicationResources,
     scheduler: SchedulerFacade,
 ) -> tuple[PluginDefinition, ...]:
+    from ironsbot.app.ai_health import check_configured_ai_api
     from ironsbot.custom_plugins.pet_config import (
         plugin_definition as pet_config_definition,
     )
@@ -79,12 +80,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.activity import install as install_activity
     from ironsbot.plugins.ai import install as install_ai
     from ironsbot.plugins.ai.intent import install as install_ai_intent
-    from ironsbot.plugins.bilibili.auth import send_bili_login_notice
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
-    from ironsbot.plugins.bilibili.delivery import (
-        build_dynamic_content_message,
-        build_dynamic_link_message,
-    )
     from ironsbot.plugins.help.hint import install as install_help_hint
     from ironsbot.plugins.messaging.blacklist import install as install_blacklist
     from ironsbot.plugins.messaging.matchers import install as install_messaging
@@ -118,7 +114,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     headless = resources.headless
     server_status = resources.server_status
     bilibili_service = resources.bilibili
-    bilibili_login = resources.bilibili_login
     messaging = resources.messaging
     sendpic_service = resources.sendpic
     team_audit_service = resources.team_audit
@@ -136,31 +131,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     bot_mention_block_service = BotMentionBlockService(
         config.messaging.command_cooldown
     )
-    bili_notice_sender = partial(send_bili_login_notice, admin_notices)
-    bili_auth_invalid = partial(
-        bilibili_login.notify_required,
-        send_notice=bili_notice_sender,
-        is_online=lambda: delivery.default_bot() is not None,
-    )
-    bili_push_delivery = BilibiliPushDeliveryService(
-        delivery,
-        resources.subscriptions,
-        build_dynamic_link_message,
-        build_dynamic_content_message,
-        append_text_hint,
-        resources.push_message_limiter,
-        getattr(ai_service, "summarize_bilibili_dynamic", None),
-        config.bilibili.push.content_max_chars,
-        config.bilibili.push.summary_max_chars,
-        config.bilibili.push.summary_use_ai,
-        bilibili_service.targets.can_target_query_history,
-        admin_notices,
-    )
-    bili_monitor = BilibiliMonitorService(
-        bilibili_service,
-        bili_auth_invalid,
-        bili_push_delivery.send,
-    )
+    bili_monitor = build_bilibili_monitor(settings, resources)
     messaging_commands = configured_message_commands(config.messaging)
     ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginDefinition, ...] = ()
@@ -191,8 +162,10 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     async def check_headless_on_connect(_bot: Bot) -> None:
         await headless.check_on_connect()
 
-    async def check_bilibili_on_connect(bot: Bot) -> None:
-        await bili_monitor.check_on_connect(str(bot.self_id))
+    check_bilibili_on_connect = build_bilibili_connect_hook(bili_monitor)
+
+    async def check_ai_api_on_connect(_bot: Bot) -> None:
+        await check_configured_ai_api(config.ai, startup_notice_service)
 
     def install_seer_query(registry: MatcherRegistry) -> None:
         from ironsbot.plugins.seer.query.commands.install import install
@@ -508,6 +481,17 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     (
                         "team_resource_jobs",
                         partial(team_resource_service.register_jobs, scheduler),
+                    ),
+                ),
+            ),
+        ),
+        PluginDefinition(
+            id="ai_api_startup_check",
+            hooks=PluginHooks(
+                first_bot_connect=(
+                    (
+                        "ai_api_startup_check",
+                        check_ai_api_on_connect,
                     ),
                 ),
             ),
