@@ -175,7 +175,13 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                 (
                     "seer.autocard.query",
                     ("群星牌布布种子", "布布种子群星牌", "群星牌卡98"),
-                    "查询群星牌资料",
+                    "查询群星牌卡牌或角色资料",
+                    {"show_in_poke": True},
+                ),
+                (
+                    "seer.autocard.sanctuary",
+                    ("场地沧岚", "场地潮涌", "祝印碧流"),
+                    "查询群星牌元素场地、关联精灵王与祝印效果",
                     {"show_in_poke": True},
                 ),
             ),
