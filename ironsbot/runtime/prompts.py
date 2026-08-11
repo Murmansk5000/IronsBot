@@ -56,6 +56,7 @@ class Prompt(Generic[T]):
     items: list[PromptItem[T]]
     at_user_id: int | None = None
     action: ActionDefinition | None = None
+    page_id: str = "root"
 
     def __post_init__(self) -> None:
         if not self.title.endswith("\n"):
@@ -199,6 +200,7 @@ async def enter_prompt(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             queue_reply_check=queue_reply_check,
             queue_group_reply_check=input_check,
+            queue_page_id=prompt.page_id,
             queue_semantic_request_resolver=_prompt_semantic_request,
         )
         try:
@@ -219,6 +221,7 @@ async def enter_prompt(  # noqa: PLR0913
         queue_namespace="selection_prompt",
         queue_reply_check=queue_reply_check,
         queue_group_reply_check=input_check,
+        queue_page_id=prompt.page_id,
         queue_semantic_request_resolver=_prompt_semantic_request,
     )
 

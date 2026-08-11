@@ -142,6 +142,20 @@ runtime_state = "data/state/runtime_state.sqlite"
 # Existing deployments must migrate the old small state databases while the
 # bot is stopped. See README "状态库迁移"; do not move files by hand.
 
+[runtime.menu]
+# Default: 3
+# EN: Minutes available after the root menu is successfully sent.
+# ZH: 根菜单发送成功后可操作的分钟数。
+root_timeout_minutes = 3
+# Default: 1
+# EN: Minutes added when navigating to a different menu page.
+# ZH: 每次切换到不同菜单页时追加的分钟数。
+page_extension_minutes = 1
+# Default: 5
+# EN: Maximum total minutes from the root menu; page changes never reset it.
+# ZH: 从根菜单开始计算的最长分钟数；切换页面不会重新开始计时。
+max_timeout_minutes = 5
+
 # =============================================================================
 # Feature aliases, bundles, and access policies
 # 功能别名、组合与授权策略

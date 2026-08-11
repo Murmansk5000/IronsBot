@@ -264,6 +264,7 @@ async def _handle_player_query_result(
                 pending,
                 replacement=result.binding_replacement,
             ),
+            page_id="player:binding",
         )
         return
     await _send_pending_player_query(

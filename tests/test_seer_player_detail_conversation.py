@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
+import pytest
 from nonebot.exception import FinishedException
 
 from ironsbot.core.request_coordination import send_request_response
@@ -334,22 +335,19 @@ def test_shared_player_menu_exit_only_exits_the_replying_member(
         PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
     }
 
-    asyncio.run(
-        player_detail_conversation.handle_player_detail_reply(
-            cast("Any", object()),
-            PlayerDetailExtensionRegistry(),
-            cast("Any", features),
-            matcher,
-            event,
-            cast("Any", state),
+    with pytest.raises(FinishedException):
+        asyncio.run(
+            player_detail_conversation.handle_player_detail_reply(
+                cast("Any", object()),
+                PlayerDetailExtensionRegistry(),
+                cast("Any", features),
+                matcher,
+                event,
+                cast("Any", state),
+            )
         )
-    )
 
-    finish_reply.assert_awaited_once_with(
-        matcher,
-        event,
-        "已退出米米号详情查询。",
-    )
+    finish_reply.assert_not_awaited()
 
 
 def test_shared_player_menu_cannot_use_an_extension_hidden_from_the_replying_member(

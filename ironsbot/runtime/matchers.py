@@ -14,6 +14,7 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
 )
 from nonebot.consts import REJECT_CACHE_TARGET, REJECT_TARGET
+from nonebot.dependencies import Dependent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.matcher import Matcher, current_bot, current_event, current_handler
@@ -162,6 +163,23 @@ def get_queued_conversation(
         return None
 
 
+def _matches_active_queued_conversation(
+    event: Event,
+    state: T_State,
+) -> bool:
+    """Attach the menu context that exclusively owns this message."""
+
+    try:
+        prompt_sessions = get_prompt_session_manager(state)
+    except PromptSessionManagerMissingError:
+        return False
+    context = prompt_sessions.matching_queued_conversation(event)
+    if context is None:
+        return False
+    state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
+    return True
+
+
 def queued_conversation_is_cancelled(
     source: Matcher | dict[Any, Any],
 ) -> bool:
@@ -189,12 +207,19 @@ def update_queued_menu_anchor(
     matcher: Matcher,
     event: Event,
     send_result: object,
+    *,
+    page_id: str | None = None,
 ) -> None:
     """Replace the shared-reply anchor after emitting a new group menu."""
 
     context = get_queued_conversation(matcher)
     if context is not None:
         context.update_menu_anchor(_group_menu_anchor(event, send_result))
+        if page_id is not None:
+            get_prompt_session_manager(matcher).record_menu_page(
+                context,
+                page_id=page_id,
+            )
 
 
 def _group_menu_anchor(
@@ -240,12 +265,18 @@ async def reject_with_rule(
     **kwargs: Any,
 ) -> None:
     replace_menu_anchor = bool(kwargs.pop("replace_menu_anchor", False))
+    page_id = kwargs.pop("page_id", None)
     if queued_conversation_is_cancelled(matcher):
         raise FinishedException
     if prompt is not None:
         send_result = await matcher.send(prompt, **kwargs)
         if replace_menu_anchor:
-            update_queued_menu_anchor(matcher, current_event.get(), send_result)
+            update_queued_menu_anchor(
+                matcher,
+                current_event.get(),
+                send_result,
+                page_id=page_id,
+            )
 
     if get_queued_conversation(matcher) is not None:
         matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
@@ -269,6 +300,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
     queue_group_reply_check: Callable[[Event], bool] | None = None,
     queue_allow_group_reply_exit: bool = False,
     queue_parallel: bool = False,
+    queue_page_id: str = "root",
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
     queue_event_session_id: str | None = None,
     queue_conversation_session_id: str | None = None,
@@ -286,13 +318,18 @@ async def enter_prompt_loop(  # noqa: PLR0913
                 if prompt is not None:
                     send_result = await matcher.send(prompt, **kwargs)
                     menu_anchor = _group_menu_anchor(event, send_result)
-                context.activate(
+                get_prompt_session_manager(matcher).activate_queued_conversation(
+                    context,
                     state=matcher.state,
                     reply_check=queue_reply_check,
                     group_reply_check=queue_group_reply_check,
                     menu_anchor=menu_anchor,
                     allow_group_reply_exit=queue_allow_group_reply_exit,
                     semantic_request_resolver=queue_semantic_request_resolver,
+                    handlers=handlers,
+                    parallel=queue_parallel,
+                    page_id=queue_page_id,
+                    menu_sent=prompt is not None,
                 )
                 matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
                 raise FinishedException
@@ -328,7 +365,6 @@ async def enter_prompt_loop(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             pending=True,
         )
-        await _create_queued_temp_matcher(matcher, queued)
         menu_anchor = None
         try:
             if prompt is not None:
@@ -337,13 +373,18 @@ async def enter_prompt_loop(  # noqa: PLR0913
         except BaseException:
             prompt_sessions.cancel_queued_context(queued)
             raise
-        queued.activate(
+        prompt_sessions.activate_queued_conversation(
+            queued,
             state=matcher.state,
             reply_check=queue_reply_check,
             group_reply_check=queue_group_reply_check,
             menu_anchor=menu_anchor,
             allow_group_reply_exit=queue_allow_group_reply_exit,
             semantic_request_resolver=queue_semantic_request_resolver,
+            handlers=handlers,
+            parallel=queue_parallel,
+            page_id=queue_page_id,
+            menu_sent=prompt is not None,
         )
         raise FinishedException
     if prompt is not None:
@@ -362,6 +403,7 @@ async def begin_queued_conversation(  # noqa: PLR0913
     queue_group_reply_check: Callable[[Event], bool] | None = None,
     queue_allow_group_reply_exit: bool = False,
     queue_parallel: bool = False,
+    queue_page_id: str = "root",
     queue_semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
     queue_event_session_id: str | None = None,
     queue_conversation_session_id: str | None = None,
@@ -388,6 +430,7 @@ async def begin_queued_conversation(  # noqa: PLR0913
         reply_check=queue_reply_check,
         group_reply_check=queue_group_reply_check,
         handlers=handlers,
+        page_id=queue_page_id,
         semantic_request_resolver=queue_semantic_request_resolver,
         request_coordinator=(
             None if runtime_context is None else runtime_context.request_coordinator
@@ -399,9 +442,6 @@ async def begin_queued_conversation(  # noqa: PLR0913
         pending=True,
     )
     matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = queued.token
-    await _create_queued_temp_matcher(matcher, queued)
-
-
 async def _create_temp_matcher(
     matcher: Matcher,
     rule: Rule,
@@ -435,38 +475,6 @@ async def _create_temp_matcher(
     )
 
 
-async def _create_queued_temp_matcher(
-    matcher: Matcher,
-    context: _QueuedConversation,
-) -> None:
-    bot = current_bot.get()
-    event = current_event.get()
-    permission = await matcher.update_permission(bot, event)
-    get_prompt_session_manager(matcher).refresh_queued_conversation_expiry(
-        context,
-        expires_after=bot.config.session_expire_timeout,
-    )
-    default_state: T_State = {
-        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
-    }
-    if runtime_token := matcher.state.get(RUNTIME_CONTEXT_TOKEN_STATE_KEY):
-        default_state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = runtime_token
-    matcher.__class__.new(
-        "message",
-        Rule(context.matches),
-        permission,
-        [_capture_queued_conversation_input, *context.handlers],
-        temp=True,
-        priority=0,
-        block=True,
-        source=matcher.__class__._source,
-        expire_time=bot.config.session_expire_timeout,
-        default_state=default_state,
-        default_type_updater=matcher.__class__._default_type_updater,
-        default_permission_updater=matcher.__class__._default_permission_updater,
-    )
-
-
 async def _capture_queued_conversation_input(
     matcher: Matcher,
     event: Event,
@@ -477,8 +485,25 @@ async def _capture_queued_conversation_input(
         event,
         _state,
         get_prompt_sessions=get_prompt_session_manager,
-        create_temporary_matcher=_create_queued_temp_matcher,
+        dispatch_handlers=_dispatch_queued_conversation_handlers,
     )
+
+
+def _dispatch_queued_conversation_handlers(
+    matcher: Matcher,
+    context: _QueuedConversation,
+) -> None:
+    """Append this input's current menu handler after stable routing."""
+
+    for handler in context.handlers:
+        matcher.remain_handlers.append(
+            handler
+            if isinstance(handler, Dependent)
+            else Dependent[Any].parse(
+                call=handler,
+                allow_types=matcher.__class__.HANDLER_PARAM_TYPES,
+            )
+        )
 
 
 async def _restore_temporary_matcher_state(state: T_State) -> None:
@@ -624,6 +649,22 @@ class MatcherRegistry:
             token = state.pop(_COMMAND_COOLDOWN_TOKEN_KEY, None)
             if token is not None:
                 self.cooldown.finish(token)
+
+    def install_queued_conversation_router(self) -> None:
+        """Install one durable ingress matcher for every active menu session."""
+
+        if self.prompt_session_manager is None:
+            return
+
+        matcher = self.on_message(
+            policy=CommandPolicy.exempt("active queued conversation input"),
+            rule=Rule(_matches_active_queued_conversation),
+            # This follows the blacklist but precedes AI mention routing.  A
+            # menu confirmation such as "@机器人 y" must remain a menu input.
+            priority=-20,
+            block=True,
+        )
+        matcher.append_handler(_capture_queued_conversation_input)
 
     def priority(self, name: str) -> int:
         return int(getattr(self.priorities, name))

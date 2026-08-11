@@ -82,6 +82,7 @@ class _QueuedConversation:
     reply_check: Callable[[Event], bool]
     group_reply_check: Callable[[Event], bool] | None
     handlers: list[Any]
+    current_page_id: str = "root"
     conversation_session_id: str | None = None
     menu_anchor: GroupMenuAnchor | None = None
     allow_group_reply_exit: bool = False
@@ -91,6 +92,8 @@ class _QueuedConversation:
     parallel: bool = False
     pending_reply_check: Callable[[Event], bool] | None = None
     pending: bool = False
+    root_menu_opened_at: float | None = None
+    deadline: float | None = None
     _activation: Future[bool] | None = field(default=None, init=False, repr=False)
     _next_ticket: int = 0
     _active_ticket: int | None = None
@@ -120,7 +123,6 @@ class _QueuedConversation:
             self.owner_user_id is not None
             and getattr(event, "user_id", None) != self.owner_user_id
             and event.get_plaintext().strip() == "0"
-            and not self.allow_group_reply_exit
         ):
             return False
         return (
@@ -135,6 +137,7 @@ class _QueuedConversation:
         return (
             self.owner_user_id is not None
             and getattr(event, "user_id", None) != self.owner_user_id
+            and event.get_plaintext().strip() != "0"
             and self.group_reply_check is not None
             and is_current_group_menu_reply(event, self.menu_anchor)
             and self.group_reply_check(event)
@@ -160,6 +163,12 @@ class _QueuedConversation:
     ) -> None:
         self.semantic_request_resolver = resolver
 
+    def update_handlers(self, handlers: list[Any]) -> None:
+        self.handlers = handlers
+
+    def update_parallel(self, *, parallel: bool) -> None:
+        self.parallel = parallel
+
     def activate(  # noqa: PLR0913
         self,
         *,
@@ -169,6 +178,8 @@ class _QueuedConversation:
         menu_anchor: GroupMenuAnchor | None,
         allow_group_reply_exit: bool,
         semantic_request_resolver: QueuedSemanticRequestResolver | None,
+        handlers: list[Any] | None = None,
+        parallel: bool | None = None,
     ) -> None:
         """Make a pre-menu conversation ready after its prompt is sent."""
 
@@ -177,6 +188,10 @@ class _QueuedConversation:
         self.update_menu_anchor(menu_anchor)
         self.update_allow_group_reply_exit(allowed=allow_group_reply_exit)
         self.update_semantic_request_resolver(semantic_request_resolver)
+        if handlers is not None:
+            self.update_handlers(handlers)
+        if parallel is not None:
+            self.update_parallel(parallel=parallel)
         self.pending = False
         if self._activation is not None and not self._activation.done():
             self._activation.set_result(self.active)
@@ -345,7 +360,16 @@ class _QueuedConversation:
 class PromptSessionManager:
     _temporary_matcher_states: ClassVar[dict[str, _TemporaryMatcherState]] = {}
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        root_timeout_seconds: float = 180.0,
+        page_extension_seconds: float = 60.0,
+        max_timeout_seconds: float = 300.0,
+    ) -> None:
+        self._root_timeout_seconds = root_timeout_seconds
+        self._page_extension_seconds = page_extension_seconds
+        self._max_timeout_seconds = max_timeout_seconds
         self._versions: dict[str, int] = {}
         self._queued_by_key: dict[str, _QueuedConversation] = {}
         self._queued_by_token: dict[str, _QueuedConversation] = {}
@@ -378,6 +402,7 @@ class PromptSessionManager:
         reply_check: Callable[[Event], bool],
         group_reply_check: Callable[[Event], bool] | None = None,
         handlers: list[Any],
+        page_id: str = "root",
         semantic_request_resolver: QueuedSemanticRequestResolver | None = None,
         request_coordinator: RequestCoordinator | None = None,
         conversation_session_id: str | None = None,
@@ -400,6 +425,7 @@ class PromptSessionManager:
             reply_check=reply_check,
             group_reply_check=group_reply_check,
             handlers=handlers,
+            current_page_id=page_id,
             conversation_session_id=conversation_session_id,
             menu_anchor=menu_anchor,
             allow_group_reply_exit=allow_group_reply_exit,
@@ -412,6 +438,49 @@ class PromptSessionManager:
         self._queued_by_key[key] = context
         self._queued_by_token[context.token] = context
         return context
+
+    def matching_queued_conversation(
+        self,
+        event: Event,
+    ) -> _QueuedConversation | None:
+        """Return the one active menu that owns this input event."""
+
+        return next(
+            (
+                context
+                for context in self._queued_by_token.values()
+                if context.matches(event)
+            ),
+            None,
+        )
+
+    def activate_queued_conversation(  # noqa: PLR0913
+        self,
+        context: _QueuedConversation,
+        *,
+        state: T_State,
+        reply_check: Callable[[Event], bool],
+        group_reply_check: Callable[[Event], bool] | None,
+        menu_anchor: GroupMenuAnchor | None,
+        allow_group_reply_exit: bool,
+        semantic_request_resolver: QueuedSemanticRequestResolver | None,
+        handlers: list[Any],
+        parallel: bool,
+        page_id: str,
+        menu_sent: bool,
+    ) -> None:
+        context.activate(
+            state=state,
+            reply_check=reply_check,
+            group_reply_check=group_reply_check,
+            menu_anchor=menu_anchor,
+            allow_group_reply_exit=allow_group_reply_exit,
+            semantic_request_resolver=semantic_request_resolver,
+            handlers=handlers,
+            parallel=parallel,
+        )
+        if menu_sent:
+            self.record_menu_page(context, page_id=page_id)
 
     def queued_conversation(self, state: T_State) -> _QueuedConversation | None:
         token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
@@ -487,16 +556,30 @@ class PromptSessionManager:
         token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
         return isinstance(token, str) and token in self._cancelled_queued_tokens
 
-    def refresh_queued_conversation_expiry(
+    def record_menu_page(
         self,
         context: _QueuedConversation,
         *,
-        expires_after: timedelta,
+        page_id: str,
     ) -> None:
+        """Start a root deadline or extend it for a real page transition."""
+
+        now = get_running_loop().time()
+        if context.root_menu_opened_at is None or context.deadline is None:
+            context.root_menu_opened_at = now
+            context.deadline = now + self._root_timeout_seconds
+        elif page_id != context.current_page_id:
+            context.deadline = min(
+                context.deadline + self._page_extension_seconds,
+                context.root_menu_opened_at + self._max_timeout_seconds,
+            )
+        context.current_page_id = page_id
         if previous := self._queued_expiry_handles.pop(context.token, None):
             previous.cancel()
+        if context.deadline is None:
+            return
         self._queued_expiry_handles[context.token] = get_running_loop().call_later(
-            max(expires_after.total_seconds(), 0),
+            max(context.deadline - now, 0),
             self._expire_queued_conversation,
             context.token,
         )
