@@ -15,6 +15,10 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.core.request_coordination import (
+    RequestDecision,
+    request_response_scope,
+)
 from ironsbot.runtime.feature_policy import event_is_feature_allowed
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.onebot_context import event_group_id
@@ -24,7 +28,6 @@ from ironsbot.runtime.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
 )
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.ids import is_valid_player_id
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_shortcuts import (
@@ -217,16 +220,19 @@ async def handle_player_extension_shortcut(
         await finish_event_reply(matcher, event, unbound_player_shortcut_message())
         return
 
-    async def send_status(label: str, *, queued: bool) -> None:
+    async def send_status(decision: RequestDecision) -> None:
         await send_event_reply(
             matcher,
             event,
-            player_request_admission_message(label, queued=queued),
+            player_request_admission_message(
+                decision.label,
+                queued=decision.queued,
+            ),
         )
 
     meter = QueryWorkMeter("foreground")
     with (
-        request_feedback_scope(
+        request_response_scope(
             command.action.action.label,
             send_status,
         ),

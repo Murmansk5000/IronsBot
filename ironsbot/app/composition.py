@@ -18,6 +18,7 @@ from ironsbot.app.private_extensions import (
 from ironsbot.app.registry import build_plugin_registry
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.core.features import Feature, FeatureService
+from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.integrations.docker.client import DockerClient
@@ -87,7 +88,6 @@ from ironsbot.integrations.storage.team_resources import (
 )
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.commands import CommandCatalog, CommandContext
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.matchers import MatcherRegistry, PromptSessionManager
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.bilibili.accounts import BiliAccountNames
@@ -682,7 +682,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         CommandCooldownService(settings.messaging.command_cooldown, features),
         settings.bot.matcher_priority,
         prompt_session_manager=prompt_sessions,
-        in_flight_requests=InFlightRequestService(
+        request_coordinator=RequestCoordinator(
             features,
             settings.messaging.command_cooldown,
         ),

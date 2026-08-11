@@ -6,8 +6,8 @@ from typing import Any, cast
 import pytest
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
+from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.runtime import prompts
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.runtime.prompts import Prompt, PromptItem, _prompt_semantic_request
 from ironsbot.runtime.semantic_requests import ActionDefinition, SemanticTarget
 from tests.helpers.onebot_events import group_message_event
@@ -60,7 +60,7 @@ def test_prompt_reservation_keeps_1_then_2_and_drops_repeated_1() -> None:
             ),
         ],
     )
-    service = InFlightRequestService(Features(), CommandCooldownConfig())
+    service = RequestCoordinator(Features(), CommandCooldownConfig())
     state = cast("Any", {"prompt": prompt})
 
     first_identity = _prompt_semantic_request(group_message_event("1"), state)

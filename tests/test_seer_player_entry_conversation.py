@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, Mock
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
+from ironsbot.core.request_coordination import send_request_response
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.plugins.seer.query.commands import player, player_shortcuts
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_DETAIL_NAMESPACE,
 )
-from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -503,7 +503,7 @@ def test_shortcut_sends_loading_reply_before_query(
     monkeypatch: Any,
 ) -> None:
     async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
-        await send_request_feedback(queued=False)
+        await send_request_response(queued=False)
         return QueryReply(text="查询结果")
 
     service = SimpleNamespace(
@@ -551,7 +551,7 @@ def test_shortcut_reports_when_the_first_packet_is_queued(
     monkeypatch: Any,
 ) -> None:
     async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
-        await send_request_feedback(queued=True)
+        await send_request_response(queued=True)
         return QueryReply(text="查询结果")
 
     service = SimpleNamespace(

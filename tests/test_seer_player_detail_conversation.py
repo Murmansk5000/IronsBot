@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 from nonebot.exception import FinishedException
 
+from ironsbot.core.request_coordination import send_request_response
 from ironsbot.plugins.seer.query.commands import player_detail_conversation
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_DETAIL_MENU_CONTEXT_KEY,
@@ -18,7 +19,6 @@ from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.runtime.semantic_requests import ActionDefinition
-from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -101,7 +101,7 @@ def test_player_detail_uses_the_shared_shortcut_executor(
     monkeypatch: Any,
 ) -> None:
     async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
-        await send_request_feedback(queued=False)
+        await send_request_response(queued=False)
         return QueryReply(text="peak")
 
     service = SimpleNamespace(shortcut=AsyncMock(side_effect=shortcut))
@@ -417,7 +417,7 @@ def test_player_detail_delegates_a_registered_private_action(
     monkeypatch: Any,
 ) -> None:
     async def query(*_args: object) -> QueryReply:
-        await send_request_feedback(queued=True)
+        await send_request_response(queued=True)
         return QueryReply(text="private reply")
 
     action_query = AsyncMock(side_effect=query)

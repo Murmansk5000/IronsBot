@@ -16,11 +16,11 @@ from nonebot.typing import T_State
 
 from ironsbot.runtime.onebot_context import event_request_scope
 from ironsbot.runtime.prompt_sessions import (
-    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY,
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
+    REQUEST_RESPONSE_TOKEN_STATE_KEY,
     PromptSessionManager,
     _QueuedConversation,
 )
@@ -127,7 +127,7 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
             await _send_in_flight_feedback(matcher, event, feedback)
             raise FinishedException
     if request_token is not None:
-        state[IN_FLIGHT_REQUEST_TOKEN_STATE_KEY] = request_token
+        state[REQUEST_RESPONSE_TOKEN_STATE_KEY] = request_token
     context.mark_dispatched(ticket)
     action_id = request.action.id if request is not None else "none"
     logger.info(
@@ -158,10 +158,10 @@ def _admit_semantic_request(
         request = context.semantic_request_resolver(event, context.state)
     finally:
         context.state.pop(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY, None)
-    request_service = context.request_service
-    if request is None or request_service is None:
+    coordinator = context.request_coordinator
+    if request is None or coordinator is None:
         return request, None, None
-    decision = request_service.admit(
+    decision = coordinator.admit(
         user_id=event.user_id,
         request=request,
         scope=event_request_scope(event),
