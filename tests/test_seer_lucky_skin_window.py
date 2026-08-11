@@ -160,6 +160,7 @@ class _Sessions:
 class _Delivery:
     def __init__(self) -> None:
         self.messages: list[tuple[list[MessageTarget], str, str | None]] = []
+        self.batches = 0
 
     async def send_targets(  # noqa: PLR0913 - MessageDelivery protocol signature
         self,
@@ -190,6 +191,24 @@ class _Delivery:
     ) -> TargetSendSummary:
         del message
         return TargetSendSummary([], [])
+
+    async def send_target_messages(
+        self,
+        target_messages: Iterable[tuple[MessageTarget, Any]],
+        *,
+        bot: Any | None = None,
+        action_name: str = "message action",
+        message_limiter: MessageLimiter | None = None,
+        subscription_key: str | None = None,
+    ) -> TargetSendSummary:
+        del bot, action_name, message_limiter
+        selected = list(target_messages)
+        self.batches += 1
+        self.messages.extend(
+            ([target], str(message), subscription_key)
+            for target, message in selected
+        )
+        return TargetSendSummary([target for target, _message in selected], [])
 
     def default_bot(self) -> None:
         return None
@@ -494,6 +513,7 @@ def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
     assert {command_id for command_id, _body in game.calls} == {EXPECTED_COMMAND_ID}
     assert all(body == EXPECTED_REQUEST for _command_id, body in game.calls)
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
+    assert delivery.batches == 1
     messages = {
         targets[0].target_id: message
         for targets, message, _key in delivery.messages

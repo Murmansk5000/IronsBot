@@ -96,7 +96,6 @@ def build_activity_service(  # noqa: PLR0913 - composition root
             group_ids=reminder.group_ids,
             private_user_ids=reminder.private_user_ids,
             action_name=reminder.action_name,
-            interval_seconds=1.2,
             message_limiter=message_limiter,
             subscription_key=ACTIVITY_PUSH_SUBSCRIPTION_KEY,
         )

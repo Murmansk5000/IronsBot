@@ -366,12 +366,12 @@ class RankQueryService:
         if group_id is None:
             return "❌ 这个设置只能在群聊中修改。"
         if not can_manage:
-            return "❌ 只有本群群主、管理员或超级管理员可以修改榜单默认显示条数。"
+            return "❌ 只有群主、管理员或超级管理员可以修改榜单默认显示条数。"
         max_limit = self._display.config.max_display_limit
         if limit < 1 or limit > max_limit:
             return f"❌ 榜单默认显示条数必须在 1~{max_limit} 之间，当前输入：{limit}。"
         self._display.set_group_limit(group_id, user_id, limit)
-        return f"✅ 本群榜单默认显示条数已设置为 {limit} 名（群号：{group_id}）。"
+        return f"✅ 榜单默认显示条数已设置为 {limit} 名（群号：{group_id}）。"
 
     async def _global_message(
         self,
