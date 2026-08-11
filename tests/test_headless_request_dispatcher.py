@@ -6,6 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from ironsbot.core.request_coordination import (
+    RequestDecision,
+    RequestExecutionFeedback,
+    request_response_scope,
+)
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.operations.headless_pool import (
@@ -17,10 +22,6 @@ from ironsbot.services.operations.headless_pool import (
     PooledHeadlessGame,
     headless_request_priority_scope,
     headless_workflow_scope,
-)
-from ironsbot.services.operations.request_feedback import (
-    RequestFeedback,
-    request_feedback_scope,
 )
 
 if TYPE_CHECKING:
@@ -211,14 +212,14 @@ async def test_request_feedback_reflects_actual_worker_dispatch_state() -> None:
     release = asyncio.Event()
     feedback: list[tuple[str, bool]] = []
 
-    async def send_feedback(label: str, *, queued: bool) -> None:
-        feedback.append((label, queued))
+    async def send_feedback(decision: RequestDecision) -> None:
+        feedback.append((decision.label, decision.queued))
 
-    with request_feedback_scope("first", send_feedback):
+    with request_response_scope("first", send_feedback):
         first = asyncio.create_task(game.step("first", release))
     await started.setdefault("first", asyncio.Event()).wait()
 
-    with request_feedback_scope("second", send_feedback):
+    with request_response_scope("second", send_feedback):
         second = asyncio.create_task(game.step("second"))
     await asyncio.sleep(0)
 
@@ -232,10 +233,10 @@ async def test_request_feedback_is_sent_only_for_the_first_packet() -> None:
     game, _events, _started = _pool(1)
     feedback: list[tuple[str, bool]] = []
 
-    async def send_feedback(label: str, *, queued: bool) -> None:
-        feedback.append((label, queued))
+    async def send_feedback(decision: RequestDecision) -> None:
+        feedback.append((decision.label, decision.queued))
 
-    with request_feedback_scope("workflow", send_feedback):
+    with request_response_scope("workflow", send_feedback):
         await game.step("first")
         await game.step("second")
 
@@ -247,8 +248,8 @@ async def test_workflow_feedback_survives_the_caller_context() -> None:
     game, _events, _started = _pool(1)
     feedback: list[tuple[str, bool]] = []
 
-    async def send_feedback(label: str, *, queued: bool) -> None:
-        feedback.append((label, queued))
+    async def send_feedback(decision: RequestDecision) -> None:
+        feedback.append((decision.label, decision.queued))
 
     workflow = HeadlessWorkflowState(
         sequence=1,
@@ -257,7 +258,7 @@ async def test_workflow_feedback_survives_the_caller_context() -> None:
         priority_state=HeadlessRequestPriorityState(
             HeadlessRequestPriority.INTERACTIVE
         ),
-        feedback=RequestFeedback("workflow", send_feedback),
+        feedback=RequestExecutionFeedback("workflow", send_feedback),
     )
 
     async def submit() -> None:
