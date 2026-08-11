@@ -61,3 +61,45 @@ def build_dynamic_content_message(
         return None
     else:
         return message or None
+
+
+def build_dynamic_images_message(item: dict[str, Any]) -> Message | None:
+    """Render only a dynamic's images for the second full-push message."""
+
+    try:
+        message = Message()
+        for image_url in dynamic_image_urls(item):
+            sanitized_url = image_url.strip().rstrip("]")
+            if not sanitized_url:
+                continue
+            if message:
+                message += MessageSegment.text("\n")
+            message += MessageSegment.image(sanitized_url)
+    except (TypeError, ValueError, KeyError) as error:
+        logger.error(f"failed to render Bilibili dynamic images: {error}")
+        return None
+    return message or None
+
+
+def build_dynamic_text_message(
+    item: dict[str, Any],
+    content_override: str | None = None,
+) -> Message | None:
+    """Render only a dynamic's body or AI summary for the final full push."""
+
+    try:
+        content = (content_override or dynamic_content(item)).strip()
+        return Message(MessageSegment.text(content)) if content else None
+    except (TypeError, ValueError, KeyError) as error:
+        logger.error(f"failed to render Bilibili dynamic text: {error}")
+        return None
+
+
+def build_dynamic_detail_messages(item: dict[str, Any]) -> tuple[Message, ...]:
+    """Render a history detail with text and images as separate messages."""
+
+    messages = (
+        build_dynamic_text_message(item),
+        build_dynamic_images_message(item),
+    )
+    return tuple(message for message in messages if message is not None)

@@ -315,6 +315,7 @@ class LuckySkinWindowService:
         )
         if not target_ids:
             return
+        notices: list[tuple[MessageTarget, str]] = []
         for user_id in target_ids:
             _subscription, account = self._accounts[user_id]
             try:
@@ -326,28 +327,19 @@ class LuckySkinWindowService:
                     account.player_id,
                 )
                 message = "❌ 幸运橱窗数据暂时不可用，请稍后使用“橱窗”查询。"
-            await self._send_daily_notice(delivery, user_id, message)
-
-    async def _send_daily_notice(
-        self,
-        delivery: MessageDelivery,
-        user_id: int,
-        message: str,
-    ) -> None:
-        if not self._subscriptions.mark_daily_hint_sent(
-            "private",
-            user_id,
-            "lucky_skin_window_delivery",
-            today=self.day_key(),
-        ):
-            return
-        await delivery.send_targets(
-            [MessageTarget("private", user_id)],
-            message,
-            action_name="lucky skin window daily notice",
-            interval_seconds=0,
-            subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
-        )
+            if self._subscriptions.mark_daily_hint_sent(
+                "private",
+                user_id,
+                "lucky_skin_window_delivery",
+                today=self.day_key(),
+            ):
+                notices.append((MessageTarget("private", user_id), message))
+        if notices:
+            await delivery.send_target_messages(
+                notices,
+                action_name="lucky skin window daily notice",
+                subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+            )
 
     def _validated_account_for_user(
         self,

@@ -5,7 +5,6 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.bilibili import truncate_bilibili_text
 from ironsbot.services.ai.client import AiRequestTimeoutError
 from ironsbot.services.ai.history import (
     HistoryMessage,
@@ -215,7 +214,9 @@ class AiService:
                 result.error_detail,
             )
             return None
-        return _truncate_bilibili_summary(result.reply, max_chars)
+        # The delivery service validates the completed model output and retries
+        # generation when it exceeds the configured limit.
+        return result.reply.strip()
 
     @staticmethod
     def is_team_action(action: AiIntentAction) -> bool:
@@ -429,9 +430,3 @@ def _truncate_reply(text: str, max_chars: int) -> str:
 
 def _truncate_plain_text(text: str, max_chars: int) -> str:
     return text.strip()[:max_chars].rstrip()
-
-
-def _truncate_bilibili_summary(text: str, max_chars: int) -> str:
-    """Keep a mis-sized model summary readable instead of cutting a list mid-item."""
-
-    return truncate_bilibili_text(text, max_chars)

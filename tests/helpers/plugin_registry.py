@@ -98,6 +98,8 @@ def build_test_plugin_registry(
             bilibili=SimpleNamespace(
                 targets=SimpleNamespace(
                     can_target_query_history=lambda _target: False,
+                    dynamic_link_tag=lambda _uid, _categories: None,
+                    seer_category_uid=lambda: None,
                 ),
             ),
             bilibili_login=SimpleNamespace(
