@@ -145,6 +145,7 @@ def build_test_plugin_registry(
                     ),
                     select=lambda _value: None,
                 ),
+                autocard_sanctuary=object(),
                 team_query=SimpleNamespace(
                     parse_team_ids=lambda _text: (),
                     query=_noop_query,
