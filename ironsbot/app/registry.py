@@ -78,7 +78,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.about import install as install_about
     from ironsbot.plugins.activity import install as install_activity
     from ironsbot.plugins.ai import install as install_ai
-    from ironsbot.plugins.ai.health import check_configured_ai_api
+    from ironsbot.app.ai_health import check_configured_ai_api
     from ironsbot.plugins.ai.intent import install as install_ai_intent
     from ironsbot.plugins.bilibili.auth import send_bili_login_notice
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
