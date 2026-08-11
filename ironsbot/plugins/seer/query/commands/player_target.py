@@ -30,12 +30,15 @@ def resolve_event_player_reference(
     accounts: PlayerAccountRegistry,
     event: Event,
     reference: object,
+    *,
+    allow_private: bool = False,
 ) -> int | None:
     """Resolve one numeric or configured player reference in event scope."""
 
     return accounts.resolve_player_id(
         reference,
         group_id=event_group_id(event) if isinstance(event, MessageEvent) else None,
+        allow_private=allow_private,
     )
 
 

@@ -113,6 +113,9 @@ async def _is_player_id_query(
         dependencies.player_accounts,
         event,
         arg,
+        allow_private=dependencies.features.is_superuser(
+            int(event.get_user_id())
+        ),
     ) is None:
         return False
     state[BOT_COMMAND_ARG_KEY] = arg
@@ -142,6 +145,7 @@ async def validate_player_id(
             dependencies.player_accounts,
             event,
             player_reference,
+            allow_private=dependencies.features.is_superuser(event.user_id),
         )
         if numeric_player_id is None:
             await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
