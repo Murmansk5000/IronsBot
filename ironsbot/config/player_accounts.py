@@ -131,8 +131,9 @@ class PlayerAccountRegistry:
         value: object,
         *,
         group_id: int | None = None,
+        allow_private: bool = False,
     ) -> int | None:
-        """Resolve a user command target without exposing private aliases globally."""
+        """Resolve a command target under public, group, or privileged visibility."""
 
         text = str(value).strip()
         if not text:
@@ -141,7 +142,11 @@ class PlayerAccountRegistry:
             player_id = int(text)
             return player_id if is_valid_player_id(player_id) else None
         normalized = normalize_command_text(text)
-        account = self._public_by_name.get(normalized)
+        account = (
+            self._by_reference.get(normalized)
+            if allow_private
+            else self._public_by_name.get(normalized)
+        )
         if account is None and group_id is not None:
             account = self._private_by_group.get(group_id, {}).get(normalized)
         return account.player_id if account is not None else None

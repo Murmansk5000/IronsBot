@@ -55,6 +55,7 @@ DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
+DEFAULT_DATA_SYNC_INTERVAL_MINUTES = 5
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
 _REFRESH_TTL_SECONDS = 120.0
@@ -246,7 +247,7 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert config.times == []
 
 
-def test_example_config_parses() -> None:
+def test_example_config_parses() -> None:  # noqa: PLR0915
     config = load_settings(ROOT / "config.example.toml")
 
     assert config.features.superuser_bypass
@@ -295,7 +296,9 @@ def test_example_config_parses() -> None:
     _assert_example_bot_routing(config)
     assert not config.operations.data_sync.startup_trigger_remote_build
     assert config.operations.data_sync.sources["seerapi"].local_path
-    assert config.operations.data_sync.sources["seerapi"].interval_minutes == 5
+    assert config.operations.data_sync.sources["seerapi"].interval_minutes == (
+        DEFAULT_DATA_SYNC_INTERVAL_MINUTES
+    )
     assert config.operations.data_sync.sources["seerapi"].remote_build.enabled
     assert config.operations.data_sync.sources[
         "seerapi"
@@ -1437,6 +1440,10 @@ allowed_group = ["private_account"]
     assert accounts.resolve_player_id("public_account") == ADDITIONAL_HEADLESS_USER_ID
     assert accounts.resolve_player_id("私有账号") is None
     assert accounts.resolve_player_id("private_account") is None
+    assert (
+        accounts.resolve_player_id("私有账号", allow_private=True)
+        == PRIVATE_ALIAS_PLAYER_ID
+    )
     assert (
         accounts.resolve_player_id("私有账号", group_id=PLAYER_ALIAS_GROUP_ID)
         == PRIVATE_ALIAS_PLAYER_ID

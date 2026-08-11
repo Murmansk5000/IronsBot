@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
 
-from ironsbot.services.operations.request_feedback import send_request_feedback
+from ironsbot.core.request_coordination import send_request_response
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -29,7 +29,7 @@ async def run_player_live_request(  # noqa: PLR0913
     """Dispatch a previously admitted foreground request to the worker pool."""
 
     if requests is None:
-        await send_request_feedback(queued=False)
+        await send_request_response(queued=False)
         return await operation()
     return await requests.run(
         operation,

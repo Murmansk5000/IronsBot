@@ -111,6 +111,9 @@ def _is_rank_player_command(
                 resolve_event_player_reference,
                 group.player_accounts,
                 event,
+                allow_private=group.features.is_superuser(
+                    int(event.get_user_id())
+                ),
             ),
         ),
         RANK_PLAYER_COMMAND_KEY,

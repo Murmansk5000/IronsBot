@@ -309,7 +309,7 @@ class AiService:
                 "empty_reply",
                 _append_notice_source(
                     "AI聊天接口返回了空内容。\n"
-                    f"模型：{self._config.model}\n"
+                    f"模型：{result.model or self._config.model}\n"
                     "请检查模型配置或稍后重试。",
                     source_context,
                 ),
@@ -331,7 +331,7 @@ class AiService:
                 "AI聊天接口异常。\n"
                 f"类型：{result.error_title}\n"
                 f"HTTP：{result.status_code}\n"
-                f"模型：{self._config.model}\n"
+                f"模型：{result.model or self._config.model}\n"
                 f"接口：{self._config.base_url}\n"
                 f"详情：{result.error_detail}\n"
                 "请检查 AI_KEY、账户额度、模型名和网络连接。",

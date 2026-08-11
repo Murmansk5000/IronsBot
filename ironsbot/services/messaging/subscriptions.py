@@ -174,6 +174,11 @@ BUILTIN_PUSH_OPTIONS: tuple[PushSubscriptionOption, ...] = (
     PushSubscriptionOption("startup_notice", "机器人启动通知", "admin_notice"),
     PushSubscriptionOption("startup_docker_update", "启动镜像检查通知", "admin_notice"),
     PushSubscriptionOption("startup_data_sync", "启动数据同步通知", "admin_notice"),
+    PushSubscriptionOption(
+        "startup_ai_api_check",
+        "启动AI接口检查通知",
+        "admin_notice",
+    ),
     PushSubscriptionOption("ai_chat_error_notice", "AI聊天异常通知", "admin_notice"),
     PushSubscriptionOption("bili_login_notice", "B站登录通知", "admin_notice"),
     PushSubscriptionOption("headless_seer_notice", "无头赛尔号通知", "admin_notice"),

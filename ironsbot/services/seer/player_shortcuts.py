@@ -9,13 +9,16 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal
 
+from ironsbot.core.request_coordination import (
+    RequestDecision,
+    request_response_scope,
+)
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_collection_formatting import (
@@ -197,13 +200,16 @@ async def execute_player_shortcut(
 ) -> QueryReply:
     """Run numeric-menu and text shortcuts through the same query path."""
 
-    async def send_admission(label: str, *, queued: bool) -> None:
+    async def send_admission(decision: RequestDecision) -> None:
         if send_status is not None:
             await send_status(
-                player_request_admission_message(label, queued=queued)
+                player_request_admission_message(
+                    decision.label,
+                    queued=decision.queued,
+                )
             )
 
-    with request_feedback_scope(
+    with request_response_scope(
         PLAYER_SHORTCUT_ACTIONS[command.kind].label,
         send_admission if send_status is not None else None,
     ):

@@ -23,10 +23,8 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves handler annotations
 
 if TYPE_CHECKING:
+    from ironsbot.core.request_coordination import RequestCoordinator
     from ironsbot.runtime.commands import CommandCatalog
-    from ironsbot.runtime.in_flight_requests import (
-        InFlightRequestService,
-    )
     from ironsbot.runtime.matcher_contracts import (
         CommandCooldown,
         CommandIdSource,
@@ -48,15 +46,15 @@ from ironsbot.runtime.prompt_sessions import (
     COMMAND_COOLDOWN_TOKEN_STATE_KEY as _COMMAND_COOLDOWN_TOKEN_KEY,
 )
 from ironsbot.runtime.prompt_sessions import (
-    IN_FLIGHT_REQUEST_TOKEN_STATE_KEY as _IN_FLIGHT_REQUEST_TOKEN_KEY,
-)
-from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
     GroupMenuAnchor,
     PromptSessionManager,
+)
+from ironsbot.runtime.prompt_sessions import (
+    REQUEST_RESPONSE_TOKEN_STATE_KEY as _REQUEST_RESPONSE_TOKEN_KEY,
 )
 from ironsbot.runtime.queued_conversation_input import (
     capture_queued_conversation_input,
@@ -127,7 +125,7 @@ def bind_async(
 @dataclass(frozen=True, slots=True)
 class _MatcherRuntimeContext:
     prompt_session_manager: PromptSessionManager | None
-    in_flight_requests: InFlightRequestService | None
+    request_coordinator: RequestCoordinator | None
 
 
 _MATCHER_RUNTIME_CONTEXTS: dict[str, _MatcherRuntimeContext] = {}
@@ -318,10 +316,10 @@ async def enter_prompt_loop(  # noqa: PLR0913
             group_reply_check=queue_group_reply_check,
             handlers=handlers,
             semantic_request_resolver=queue_semantic_request_resolver,
-            request_service=(
+            request_coordinator=(
                 None
                 if runtime_context is None
-                else runtime_context.in_flight_requests
+                else runtime_context.request_coordinator
             ),
             conversation_session_id=queue_conversation_session_id,
             menu_anchor=None,
@@ -391,8 +389,8 @@ async def begin_queued_conversation(  # noqa: PLR0913
         group_reply_check=queue_group_reply_check,
         handlers=handlers,
         semantic_request_resolver=queue_semantic_request_resolver,
-        request_service=(
-            None if runtime_context is None else runtime_context.in_flight_requests
+        request_coordinator=(
+            None if runtime_context is None else runtime_context.request_coordinator
         ),
         conversation_session_id=queue_conversation_session_id,
         allow_group_reply_exit=queue_allow_group_reply_exit,
@@ -552,7 +550,7 @@ class MatcherRegistry:
     cooldown: CommandCooldown
     priorities: object
     prompt_session_manager: PromptSessionManager | None = None
-    in_flight_requests: InFlightRequestService | None = None
+    request_coordinator: RequestCoordinator | None = None
     _message_matchers: list[type[Matcher]] = field(default_factory=list)
     _notice_matchers: list[type[Matcher]] = field(default_factory=list)
     _cooldown_registrations: dict[type[Matcher], tuple[str, str]] = field(
@@ -565,13 +563,13 @@ class MatcherRegistry:
     def __post_init__(self) -> None:
         if (
             self.prompt_session_manager is None
-            and self.in_flight_requests is None
+            and self.request_coordinator is None
         ):
             return
         token = token_urlsafe(18)
         _MATCHER_RUNTIME_CONTEXTS[token] = _MatcherRuntimeContext(
             prompt_session_manager=self.prompt_session_manager,
-            in_flight_requests=self.in_flight_requests,
+            request_coordinator=self.request_coordinator,
         )
         self._runtime_context_token = token
 
@@ -620,9 +618,9 @@ class MatcherRegistry:
         async def finalize(state: T_State) -> None:
             with suppress(PromptSessionManagerMissingError):
                 get_prompt_session_manager(state).finish_queued_conversation(state)
-            token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
-            if token is not None and self.in_flight_requests is not None:
-                self.in_flight_requests.finish(token)
+            token = state.pop(_REQUEST_RESPONSE_TOKEN_KEY, None)
+            if token is not None and self.request_coordinator is not None:
+                self.request_coordinator.finish(token)
             token = state.pop(_COMMAND_COOLDOWN_TOKEN_KEY, None)
             if token is not None:
                 self.cooldown.finish(token)
@@ -716,14 +714,14 @@ class MatcherRegistry:
             )
             if request is not None:
                 state[SEMANTIC_REQUEST_STATE_KEY] = request
-                if self.in_flight_requests is not None:
-                    request_decision = self.in_flight_requests.admit(
+                if self.request_coordinator is not None:
+                    request_decision = self.request_coordinator.admit(
                         user_id=event.user_id,
                         request=request,
                         scope=event_request_scope(event),
                     )
                     if request_decision.token is not None:
-                        state[_IN_FLIGHT_REQUEST_TOKEN_KEY] = request_decision.token
+                        state[_REQUEST_RESPONSE_TOKEN_KEY] = request_decision.token
                     if not request_decision.allowed:
                         await matcher.finish(request_decision.feedback)
 
@@ -732,9 +730,9 @@ class MatcherRegistry:
                 command_id=normalized_id,
             )
             if not decision.allowed:
-                request_token = state.pop(_IN_FLIGHT_REQUEST_TOKEN_KEY, None)
-                if request_token is not None and self.in_flight_requests is not None:
-                    self.in_flight_requests.release(request_token)
+                request_token = state.pop(_REQUEST_RESPONSE_TOKEN_KEY, None)
+                if request_token is not None and self.request_coordinator is not None:
+                    self.request_coordinator.release(request_token)
             if decision.token is not None:
                 state[_COMMAND_COOLDOWN_TOKEN_KEY] = decision.token
             if not decision.allowed:

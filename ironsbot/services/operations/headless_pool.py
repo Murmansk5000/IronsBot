@@ -11,13 +11,13 @@ from enum import IntEnum
 from time import monotonic
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
 
+from ironsbot.core.request_coordination import (
+    RequestExecutionFeedback,
+    send_request_response,
+)
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
-)
-from ironsbot.services.operations.request_feedback import (
-    RequestFeedback,
-    send_request_feedback,
 )
 
 if TYPE_CHECKING:
@@ -91,7 +91,7 @@ class HeadlessWorkflowState:
     label: str
     user_id: int | None
     priority_state: HeadlessRequestPriorityState
-    feedback: RequestFeedback | None = None
+    feedback: RequestExecutionFeedback | None = None
     queued_at: float = field(default_factory=monotonic)
     first_packet_at: float | None = None
     queued_packet_count: int = 0
@@ -245,7 +245,7 @@ class HeadlessRequestDispatcher:
         self._sequence += 1
         self._pending.append(request)
         self.dispatch()
-        await send_request_feedback(
+        await send_request_response(
             queued=request.active_worker is None,
             feedback=None if workflow is None else workflow.feedback,
         )
