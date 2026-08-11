@@ -86,3 +86,18 @@ def test_data_query_examples_use_matcher_command_sources() -> None:
     seer = _by_id(seer_query_commands())
 
     assert seer["seer.data.query"].examples == DATA_QUERY_HELP_EXAMPLES
+
+
+def test_autocard_sanctuary_command_is_listed_separately_from_cards() -> None:
+    seer = _by_id(seer_query_commands())
+
+    assert seer["seer.autocard.query"].examples == (
+        "群星牌布布种子",
+        "布布种子群星牌",
+        "群星牌卡98",
+    )
+    assert seer["seer.autocard.sanctuary"].examples == (
+        "场地沧岚",
+        "场地潮涌",
+        "祝印碧流",
+    )

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.autocard import AutocardService
+    from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
     from ironsbot.services.seer.battle_effect import BattleEffectQueryService
     from ironsbot.services.seer.countermark_stat_rank import (
         CountermarkStatRankService,
@@ -46,6 +47,7 @@ class SeerQueryResources:
     data_queries: SeerDataQueryService
     countermark_rank: CountermarkStatRankService
     autocard: AutocardService
+    autocard_sanctuary: AutocardSanctuaryService
     team_query: SeerTeamQueryService
     equipment: EquipmentQueryService
     type_query: TypeQueryService
