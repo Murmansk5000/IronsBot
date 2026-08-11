@@ -3,6 +3,7 @@
 from ..group import SeerMatcherGroup
 from . import (
     autocard,
+    autocard_sanctuary,
     countermark_stat_rank,
     data_queries,
     equipment_queries,
@@ -19,6 +20,7 @@ from . import (
 
 def install(group: SeerMatcherGroup) -> None:
     autocard.install(group)
+    autocard_sanctuary.install(group)
     countermark_stat_rank.install(group)
     data_queries.install(group)
     equipment_queries.install(group)
