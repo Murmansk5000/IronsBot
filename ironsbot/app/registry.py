@@ -78,6 +78,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     from ironsbot.plugins.about import install as install_about
     from ironsbot.plugins.activity import install as install_activity
     from ironsbot.plugins.ai import install as install_ai
+    from ironsbot.plugins.ai.health import check_configured_ai_api
     from ironsbot.plugins.ai.intent import install as install_ai_intent
     from ironsbot.plugins.bilibili.auth import send_bili_login_notice
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
@@ -198,6 +199,9 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
 
     async def check_bilibili_on_connect(bot: Bot) -> None:
         await bili_monitor.check_on_connect(str(bot.self_id))
+
+    async def check_ai_api_on_connect(_bot: Bot) -> None:
+        await check_configured_ai_api(config.ai, startup_notice_service)
 
     def install_seer_query(registry: MatcherRegistry) -> None:
         from ironsbot.plugins.seer.query.commands.install import install
@@ -513,6 +517,17 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
                     (
                         "team_resource_jobs",
                         partial(team_resource_service.register_jobs, scheduler),
+                    ),
+                ),
+            ),
+        ),
+        PluginDefinition(
+            id="ai_api_startup_check",
+            hooks=PluginHooks(
+                first_bot_connect=(
+                    (
+                        "ai_api_startup_check",
+                        check_ai_api_on_connect,
                     ),
                 ),
             ),
