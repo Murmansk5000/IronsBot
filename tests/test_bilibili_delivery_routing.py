@@ -50,7 +50,13 @@ async def test_bilibili_dynamic_push_leaves_bot_selection_to_router(
         partial(append_fire_manual_ad_for_target, runtime.features),
     )
     await service.send(
-        {},
+        {
+            "modules": {
+                "module_dynamic": {
+                    "desc": {"text": "动态正文"},
+                }
+            }
+        },
         1,
         1310714247,
         BiliPushTargets([987654321], [], [1234567890], []),

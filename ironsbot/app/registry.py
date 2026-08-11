@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.app.bilibili_runtime import build_bilibili_monitor
 from ironsbot.app.command_directory.dynamic import (
     ai_intent_commands,
     configured_image_commands,
@@ -38,9 +39,6 @@ from ironsbot.runtime.plugins import (
     PluginDefinition,
     PluginHooks,
 )
-from ironsbot.runtime.replies import append_text_hint, prepend_text_hint
-from ironsbot.services.bilibili.delivery import BilibiliPushDeliveryService
-from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
@@ -66,27 +64,21 @@ OPTIONAL_PRIVATE_FEATURES = frozenset(
 )
 
 
-def build_plugin_registry(  # noqa: PLR0915 - declarative registry
+def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
     *,
     settings: Settings,
     resources: ApplicationResources,
     scheduler: SchedulerFacade,
 ) -> tuple[PluginDefinition, ...]:
+    from ironsbot.app.ai_health import check_configured_ai_api
     from ironsbot.custom_plugins.pet_config import (
         plugin_definition as pet_config_definition,
     )
     from ironsbot.plugins.about import install as install_about
     from ironsbot.plugins.activity import install as install_activity
     from ironsbot.plugins.ai import install as install_ai
-    from ironsbot.app.ai_health import check_configured_ai_api
     from ironsbot.plugins.ai.intent import install as install_ai_intent
-    from ironsbot.plugins.bilibili.auth import send_bili_login_notice
     from ironsbot.plugins.bilibili.commands import install as install_bilibili
-    from ironsbot.plugins.bilibili.delivery import (
-        build_dynamic_images_message,
-        build_dynamic_link_message,
-        build_dynamic_text_message,
-    )
     from ironsbot.plugins.help.hint import install as install_help_hint
     from ironsbot.plugins.messaging.blacklist import install as install_blacklist
     from ironsbot.plugins.messaging.matchers import install as install_messaging
@@ -120,7 +112,6 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     headless = resources.headless
     server_status = resources.server_status
     bilibili_service = resources.bilibili
-    bilibili_login = resources.bilibili_login
     messaging = resources.messaging
     sendpic_service = resources.sendpic
     team_audit_service = resources.team_audit
@@ -138,35 +129,7 @@ def build_plugin_registry(  # noqa: PLR0915 - declarative registry
     bot_mention_block_service = BotMentionBlockService(
         config.messaging.command_cooldown
     )
-    bili_notice_sender = partial(send_bili_login_notice, admin_notices)
-    bili_auth_invalid = partial(
-        bilibili_login.notify_required,
-        send_notice=bili_notice_sender,
-        is_online=lambda: delivery.default_bot() is not None,
-    )
-    bili_push_delivery = BilibiliPushDeliveryService(
-        delivery,
-        resources.subscriptions,
-        build_dynamic_link_message,
-        build_dynamic_text_message,
-        append_text_hint,
-        resources.push_message_limiter,
-        getattr(ai_service, "summarize_bilibili_dynamic", None),
-        config.bilibili.push.content_max_chars,
-        config.bilibili.push.summary_max_chars,
-        config.bilibili.push.summary_use_ai,
-        bilibili_service.targets.can_target_query_history,
-        admin_notices,
-        bilibili_service.targets.dynamic_link_tag,
-        prepend_text_hint,
-        build_dynamic_images_message,
-        bilibili_service.targets.seer_category_uid(),
-    )
-    bili_monitor = BilibiliMonitorService(
-        bilibili_service,
-        bili_auth_invalid,
-        bili_push_delivery.send,
-    )
+    bili_monitor = build_bilibili_monitor(config, resources)
     messaging_commands = configured_message_commands(config.messaging)
     ai_intent_command_descriptors = ai_intent_commands(config)
     definitions: tuple[PluginDefinition, ...] = ()
