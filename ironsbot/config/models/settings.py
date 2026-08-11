@@ -72,6 +72,14 @@ class MatcherPriorityConfigError(ValueError):
         return cls("bot.matcher_priority.ai_group_at must run before bot_mention_block")
 
 
+class RuntimeMenuConfigError(ValueError):
+    @classmethod
+    def root_timeout_exceeds_maximum(cls) -> RuntimeMenuConfigError:
+        return cls(
+            "runtime.menu.root_timeout_minutes must not exceed max_timeout_minutes"
+        )
+
+
 def _command_starts(value: object) -> list[str]:
     if value is None:
         return []
@@ -233,12 +241,29 @@ class RuntimeConcurrencyConfig(BaseModel):
     render_max_concurrent: int = Field(default=1, ge=1, le=4)
 
 
+class RuntimeMenuConfig(BaseModel):
+    """Lifetime policy for interactive multi-level menus, in minutes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    root_timeout_minutes: int = Field(default=3, ge=1)
+    page_extension_minutes: int = Field(default=1, ge=1)
+    max_timeout_minutes: int = Field(default=5, ge=1)
+
+    @model_validator(mode="after")
+    def validate_timeouts(self) -> RuntimeMenuConfig:
+        if self.root_timeout_minutes > self.max_timeout_minutes:
+            raise RuntimeMenuConfigError.root_timeout_exceeds_maximum()
+        return self
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     concurrency: RuntimeConcurrencyConfig = Field(
         default_factory=RuntimeConcurrencyConfig
     )
+    menu: RuntimeMenuConfig = Field(default_factory=RuntimeMenuConfig)
 
 
 class Settings(BaseModel):

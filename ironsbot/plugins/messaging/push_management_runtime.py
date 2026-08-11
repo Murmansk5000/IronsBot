@@ -111,7 +111,7 @@ class PromptFlow:
         text = event.get_plaintext().strip()
         return text.isdigit() if selection else bool(text)
 
-    async def reject(
+    async def reject(  # noqa: PLR0913
         self,
         matcher: Matcher,
         state: T_State,
@@ -119,6 +119,7 @@ class PromptFlow:
         *,
         selection: bool = True,
         replace_menu_anchor: bool = False,
+        page_id: str | None = None,
     ) -> None:
         session_id = state.get(self.session_key)
         version = state.get(self.version_key)
@@ -155,6 +156,7 @@ class PromptFlow:
             ),
             prompt=prompt,
             replace_menu_anchor=replace_menu_anchor,
+            page_id=page_id,
         )
 
 

@@ -81,6 +81,7 @@ def build_push_time_menu_handler(
                 next_event,
                 target_type,
             ),
+            queue_page_id="push_time:root",
         )
 
     async def handle_push_time_select(
@@ -148,6 +149,7 @@ async def _handle_push_time_index(
         push_time_value_prompt(option),
         selection=False,
         replace_menu_anchor=True,
+        page_id=f"push_time:value:{option.key}",
     )
 
 
@@ -166,6 +168,7 @@ async def _handle_push_time_value(
             state,
             build_push_time_menu_prompt(context.target_type, options),
             replace_menu_anchor=True,
+            page_id="push_time:root",
         )
 
     if text == "0":
@@ -201,4 +204,5 @@ async def _handle_push_time_value(
         state,
         prompt,
         replace_menu_anchor=True,
+        page_id="push_time:root",
     )

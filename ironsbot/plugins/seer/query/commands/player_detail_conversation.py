@@ -119,6 +119,7 @@ async def begin_player_detail_conversation(
             extensions,
             features,
         ),
+        page_id="player:detail",
     )
 
 
@@ -130,6 +131,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
     event: MessageEvent,
     state: T_State,
 ) -> None:
+    _ignore_shared_player_detail_exit(event, state)
     is_shared_reply = bool(state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY))
     shared_reply = _take_shared_menu_reply(matcher, state)
     source_selection = _selected_player_detail_action(
@@ -341,6 +343,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
                 ),
                 allow_group_reply_exit=True,
                 parallel=True,
+                page_id="player:detail",
                 queue_semantic_request_resolver=partial(
                     _player_detail_semantic_request,
                     extensions,
@@ -394,6 +397,7 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
             group_reply_check=_player_detail_group_reply_check(features, commands),
             allow_group_reply_exit=True,
             parallel=True,
+            page_id="player:detail",
             queue_semantic_request_resolver=partial(
                 _player_detail_semantic_request,
                 extensions,
@@ -406,6 +410,18 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
         raise
     if on_sent is not None:
         on_sent()
+
+
+def _ignore_shared_player_detail_exit(
+    event: MessageEvent,
+    state: T_State,
+) -> None:
+    """Never let a member replying to another user's menu close it."""
+
+    if bool(state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY)) and (
+        is_player_detail_exit(event.get_plaintext())
+    ):
+        raise FinishedException
 
 
 def _reply_text(leading_text: str, text: str, image_error: str) -> str:
