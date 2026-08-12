@@ -71,6 +71,7 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
     scheduler: SchedulerFacade,
 ) -> tuple[PluginDefinition, ...]:
     from ironsbot.app.ai_health import check_configured_ai_api
+    from ironsbot.app.clock_check import check_configured_clock
     from ironsbot.custom_plugins.pet_config import (
         plugin_definition as pet_config_definition,
     )
@@ -165,6 +166,12 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
 
     async def check_ai_api_on_connect(_bot: Bot) -> None:
         await check_configured_ai_api(config.ai, startup_notice_service)
+
+    async def check_clock_on_connect(_bot: Bot) -> None:
+        await check_configured_clock(
+            config.runtime.scheduler,
+            startup_notice_service,
+        )
 
     def install_seer_query(registry: MatcherRegistry) -> None:
         from ironsbot.plugins.seer.query.commands.install import install
@@ -491,6 +498,17 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                     (
                         "ai_api_startup_check",
                         check_ai_api_on_connect,
+                    ),
+                ),
+            ),
+        ),
+        PluginDefinition(
+            id="clock_startup_check",
+            hooks=PluginHooks(
+                first_bot_connect=(
+                    (
+                        "clock_startup_check",
+                        check_clock_on_connect,
                     ),
                 ),
             ),

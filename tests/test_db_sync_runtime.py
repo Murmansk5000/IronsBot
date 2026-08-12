@@ -220,11 +220,12 @@ def test_startup_prepares_database_and_interval_job() -> None:
         assert scheduler.jobs == [
             {
                 "func": sync.run_sync_database,
-                "trigger": "interval",
+                "trigger": "cron",
                 "args": ["unit"],
-                "minutes": 15,
                 "id": "db_sync_unit",
                 "replace_existing": True,
+                "minute": "*/15",
+                "second": 0,
             }
         ]
     finally:

@@ -49,4 +49,9 @@ def build_bilibili_monitor(
         build_dynamic_images_message,
         service.targets.seer_category_uid(),
     )
-    return BilibiliMonitorService(service, auth_invalid, push.send)
+    return BilibiliMonitorService(
+        service,
+        auth_invalid,
+        push.send,
+        check_second=settings.bilibili.polling.check_second,
+    )

@@ -22,9 +22,9 @@ from ironsbot.core.commands import (
 )
 from ironsbot.core.time import normalize_daily_time
 
-INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
+INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM:SS"
 INVALID_SEER_PREVIEW_TIME_ERROR = (
-    "bilibili.seer_categories.preview_windows time must use HH:MM"
+    "bilibili.seer_categories.preview_windows time must use HH:MM:SS"
 )
 
 BiliPushMode = Literal["full", "link"]
@@ -190,9 +190,10 @@ class BiliPollingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_minutes: int = Field(default=30, gt=0)
+    check_second: int = Field(default=5, ge=0, le=59)
     windows: list[BiliIntervalWindow] = Field(
         default_factory=lambda: [
-            BiliIntervalWindow(start="07:00", end="23:00", minutes=5)
+            BiliIntervalWindow(start="07:00:00", end="23:00:00", minutes=5)
         ]
     )
 
@@ -304,8 +305,8 @@ class BiliSeerPreviewWindow(BaseModel):
     weekdays: NormalizedStringList = Field(
         default_factory=lambda: list(DEFAULT_SEER_PREVIEW_WEEKDAYS)
     )
-    start: str = "17:00"
-    end: str = "18:00"
+    start: str = "17:00:00"
+    end: str = "18:00:00"
 
     @field_validator("weekdays")
     @classmethod

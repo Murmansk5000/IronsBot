@@ -131,6 +131,24 @@ class SqliteBiliDynamicHistoryStore:
         except sqlite3.Error as e:
             _LOGGER.warning("failed to write Bilibili checkpoints: %s", e)
 
+    def advance_checkpoint(self, uid: int, pub_ts: int) -> None:
+        if uid <= 0 or pub_ts <= 0:
+            return
+        try:
+            with self._database.connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO checkpoints (uid, pub_ts, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(uid) DO UPDATE SET
+                        pub_ts = MAX(checkpoints.pub_ts, excluded.pub_ts),
+                        updated_at = excluded.updated_at
+                    """,
+                    (uid, pub_ts, time.time()),
+                )
+        except sqlite3.Error as e:
+            _LOGGER.warning("failed to advance Bilibili checkpoint: %s", e)
+
     def save_item(  # noqa: PLR0913
         self,
         item: dict,

@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     BaseModel,
@@ -32,6 +34,7 @@ from ironsbot.core.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
 )
+from ironsbot.core.time import normalize_daily_time
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -154,7 +157,7 @@ class LoggingConfig(BaseModel):
     file_enabled: bool = False
     file_level: str = "INFO"
     error_file_enabled: bool = False
-    rotation: str = "00:00"
+    rotation: str = "00:00:00"
     retention: str = "30 days"
     compression: str | None = None
 
@@ -167,13 +170,27 @@ class LoggingConfig(BaseModel):
             raise ValueError(msg)
         return level
 
-    @field_validator("rotation", "retention")
+    @field_validator("retention")
     @classmethod
     def normalize_required_strings(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             msg = "bot.logging fields must not be empty"
             raise ValueError(msg)
+        return normalized
+
+    @field_validator("rotation")
+    @classmethod
+    def normalize_rotation(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "bot.logging.rotation must not be empty"
+            raise ValueError(msg)
+        if re.fullmatch(r"\d{1,2}:\d{1,2}(?::\d{1,2})?", normalized):
+            return normalize_daily_time(
+                normalized,
+                error_message="bot.logging.rotation clock time must use HH:MM:SS",
+            )
         return normalized
 
     @field_validator("compression", mode="before")
@@ -241,6 +258,27 @@ class RuntimeConcurrencyConfig(BaseModel):
     render_max_concurrent: int = Field(default=1, ge=1, le=4)
 
 
+class RuntimeSchedulerConfig(BaseModel):
+    """Wall-clock policy shared by all first-party recurring jobs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    timezone: str = "Asia/Shanghai"
+    clock_check_on_startup: bool = True
+    clock_warning_threshold_seconds: float = Field(default=3.0, ge=0)
+    clock_check_timeout_seconds: float = Field(default=3.0, gt=0)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            msg = f"runtime.scheduler.timezone is invalid: {value}"
+            raise ValueError(msg) from exc
+        return value
+
+
 class RuntimeMenuConfig(BaseModel):
     """Lifetime policy for interactive multi-level menus, in minutes."""
 
@@ -262,6 +300,9 @@ class RuntimeConfig(BaseModel):
 
     concurrency: RuntimeConcurrencyConfig = Field(
         default_factory=RuntimeConcurrencyConfig
+    )
+    scheduler: RuntimeSchedulerConfig = Field(
+        default_factory=RuntimeSchedulerConfig
     )
     menu: RuntimeMenuConfig = Field(default_factory=RuntimeMenuConfig)
 

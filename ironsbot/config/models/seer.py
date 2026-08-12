@@ -26,6 +26,11 @@ from ironsbot.core.rank_exclusions import (
 from ironsbot.core.seer_ids import PLAYER_ID_MAX, PLAYER_ID_MIN
 from ironsbot.core.time import normalize_daily_time, normalized_daily_times
 
+from .seer_lucky import (  # noqa: F401 - compatibility re-export
+    LuckySkinWindowAccountConfig,
+    LuckySkinWindowConfig,
+)
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -54,9 +59,9 @@ TEAM_SECTION_KEYS: tuple[str, ...] = (
     "text",
 )
 RANK_PAGE_REFRESH_TIME_ERROR = (
-    "seer.rank.page_refresh.times must contain daily HH:MM times"
+    "seer.rank.page_refresh.times must contain daily HH:MM:SS times"
 )
-LOCAL_RANK_REFRESH_TIME_ERROR = "seer.local_rank.time must use HH:MM"
+LOCAL_RANK_REFRESH_TIME_ERROR = "seer.local_rank.time must use HH:MM:SS"
 RANK_PAGE_REFRESH_INTERVAL_OFFSET_ERROR = (
     "seer.rank.page_refresh.interval_offset_minutes must be smaller than "
     "interval_minutes"
@@ -65,30 +70,28 @@ RANK_PAGE_REFRESH_PAGES_PER_RUN_MIN_ERROR = (
     "seer.rank.page_refresh.pages_per_run_min must not be greater than pages_per_run"
 )
 RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR = (
-    "seer.rank.page_refresh active_start/active_end must be HH:MM times"
+    "seer.rank.page_refresh active_start/active_end must be HH:MM:SS times"
 )
 RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
     "seer.rank.page_refresh.active_start and active_end must be configured together"
 )
 PLAYER_RANK_LOOKUP_TIMEOUT_ERROR = "player lookup total timeout must cover one page"
-TEAM_RESOURCE_TIME_ERROR = "seer.team_resource.times must contain daily HH:MM times"
-LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR = (
-    "seer.lucky_skin_window watched_skin_ids must be positive"
+TEAM_RESOURCE_TIME_ERROR = (
+    "seer.team_resource.times must contain daily HH:MM:SS times"
 )
-LUCKY_SKIN_WINDOW_TIME_ERROR = "seer.lucky_skin_window.time must use HH:MM"
 PLAYER_ACCOUNT_NAME_ERROR = "seer.player_accounts name must not be empty"
 PLAYER_ACCOUNT_ALIASES_ERROR = (
     "seer.player_accounts aliases must not contain empty values"
 )
 DEFAULT_RANK_PAGE_REFRESH_TIMES = (
-    "01:15",
-    "01:45",
-    "02:15",
-    "02:45",
-    "03:15",
-    "03:45",
-    "04:15",
-    "04:45",
+    "01:15:00",
+    "01:45:00",
+    "02:15:00",
+    "02:45:00",
+    "03:15:00",
+    "03:45:00",
+    "04:15:00",
+    "04:45:00",
 )
 DEFAULT_RANK_PAGE_REFRESH_KEYS = (
     "图鉴积分",
@@ -350,6 +353,7 @@ class RankPageRefreshConfig(BaseModel):
     pages_per_run_min: int = Field(default=0, ge=0)
     interval_minutes: int = Field(default=0, ge=0, le=59)
     interval_offset_minutes: int = Field(default=0, ge=0, le=59)
+    interval_offset_seconds: int = Field(default=0, ge=0, le=59)
     schedule_jitter_seconds: int = Field(default=0, ge=0)
     request_interval_seconds: float = Field(default=0.0, ge=0)
     request_jitter_seconds: float = Field(default=0.0, ge=0)
@@ -552,7 +556,7 @@ class LocalRankConfig(BaseModel):
     max_players: int = Field(default=5000, ge=1)
     batch_limit: int = Field(default=100, ge=1)
     auto_refresh: bool = True
-    time: str = "03:30"
+    time: str = "03:30:00"
     refresh_limit: int = Field(default=300, ge=1)
     refresh_max_age_hours: int = Field(default=24, ge=0)
     refresh_interval_seconds: float = Field(default=0.5, ge=0)
@@ -667,49 +671,6 @@ def _normalize_player_account_aliases(
     if any(not alias for alias in normalized):
         raise ValueError(error)
     return list(dict.fromkeys(normalized))
-
-
-class LuckySkinWindowAccountConfig(BaseModel):
-    """One QQ user's account-library subscription for lucky-window checks."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    user: str | int
-    account: str | int
-    watched_skin_ids: list[int] = Field(default_factory=list)
-
-    @field_validator("watched_skin_ids")
-    @classmethod
-    def normalize_watched_skin_ids(cls, value: list[int]) -> list[int]:
-        if any(skin_id <= 0 for skin_id in value):
-            raise ValueError(LUCKY_SKIN_WINDOW_WATCHED_SKIN_IDS_ERROR)
-        return list(dict.fromkeys(value))
-
-
-class LuckySkinWindowConfig(BaseModel):
-    """Daily public lucky-window lookup and per-user delivery policy."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = False
-    time: str = "00:02"
-    timezone: str = "Asia/Shanghai"
-    timeout_seconds: float = Field(default=15.0, gt=0)
-    accounts: list[LuckySkinWindowAccountConfig] = Field(default_factory=list)
-
-    @field_validator("time")
-    @classmethod
-    def normalize_time(cls, value: str) -> str:
-        return normalize_daily_time(value, error_message=LUCKY_SKIN_WINDOW_TIME_ERROR)
-
-    @field_validator("timezone")
-    @classmethod
-    def validate_timezone(cls, value: str) -> str:
-        from zoneinfo import ZoneInfo
-
-        normalized = value.strip()
-        ZoneInfo(normalized)
-        return normalized
 
 
 class ExternalReferencesConfig(BaseModel):

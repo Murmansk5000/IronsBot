@@ -57,13 +57,12 @@ def test_register_reconnect_checks_uses_standard_scheduler_fields() -> None:
         {
             "func": service.reconnect,
             "trigger": "cron",
-            "id": "headless_reconnect_check:00:05",
+            "id": "headless_reconnect_check:00:05:00",
             "replace_existing": True,
-            "args": ["00:05"],
+            "args": ["00:05:00"],
             "hour": 0,
             "minute": 5,
             "second": 0,
-            "timezone": "Asia/Shanghai",
         },
     ]
 

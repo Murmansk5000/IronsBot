@@ -47,10 +47,12 @@ if TYPE_CHECKING:
 
     from ironsbot.core.features import FeatureService
     from ironsbot.services.messaging.delivery import MessageDelivery, MessageLimiter
+    from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.seer.data import SeerDataAccess
 
 EXPECTED_COMMAND_ID = 45866
 EXPECTED_DAILY_NOTICES = 2
+EXPECTED_SCHEDULE_SECOND = 5
 EXPECTED_REQUEST = (
     0,
     0,
@@ -191,7 +193,6 @@ class _Delivery:
     ) -> TargetSendSummary:
         del message
         return TargetSendSummary([], [])
-
     async def send_target_messages(
         self,
         target_messages: Iterable[tuple[MessageTarget, Any]],
@@ -214,6 +215,20 @@ class _Delivery:
         return None
 
     def bot_for_target(self, _target: MessageTarget) -> None:
+        return None
+
+
+class _Scheduler:
+    def __init__(self) -> None:
+        self.jobs: list[dict[str, object]] = []
+
+    def add_job(self, func: object, trigger: str, **kwargs: object) -> None:
+        self.jobs.append({"func": func, "trigger": trigger, **kwargs})
+
+    def get_jobs(self) -> list[object]:
+        return []
+
+    def remove_job(self, _job_id: str) -> None:
         return None
 
 
@@ -296,6 +311,25 @@ def _service(
         today=lambda: date(2026, 8, 3),
     )
     return service, game, _Delivery(), bindings, sessions
+
+
+def test_daily_schedule_uses_configured_second(tmp_path: Path) -> None:
+    service, _game, delivery, _bindings, _sessions = _service(tmp_path)
+    scheduler = _Scheduler()
+
+    lucky_skin_window_plugin._register_schedule(
+        service,
+        cast("MessageDelivery", delivery),
+        cast("Scheduler", scheduler),
+    )
+
+    daily_job = next(
+        job for job in scheduler.jobs if job["id"] == "lucky_skin_window:daily"
+    )
+    assert daily_job["hour"] == 0
+    assert daily_job["minute"] == 1
+    assert daily_job["second"] == EXPECTED_SCHEDULE_SECOND
+    assert daily_job["timezone"] == "Asia/Shanghai"
 
 
 def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:

@@ -111,8 +111,9 @@ file_enabled = false
 file_level = "INFO"
 # Default: false; EN: Also write ERROR/CRITICAL logs to a separate file. ZH: 额外写入独立错误日志文件；只包含 ERROR/CRITICAL，便于排查崩溃。
 error_file_enabled = false
-# Default: "00:00"; EN: Rotate at local midnight, producing one file per day. ZH: 每天本地时间 00:00 轮转，便于按日期查日志。
-rotation = "00:00"
+# Default: "00:00:00"; EN: Rotate at local midnight. Clock values support HH:MM:SS; Loguru size and interval syntax also remains valid.
+# ZH: 每天本地时间 00:00:00 轮转；钟表时间支持 HH:MM:SS，Loguru 原有大小/周期语法仍可用。
+rotation = "00:00:00"
 # Default: "30 days"; EN: Keep daily logs for this duration. ZH: 每日日志保留时间。
 retention = "30 days"
 # Default: null; EN: Do not compress old daily logs. Set "zip" to save space. ZH: 默认不压缩旧日志；磁盘空间紧张时可改为 "zip"。
@@ -311,6 +312,20 @@ poke_new_command_half_life_days = 5.0
 # ZH: HTMLKit 图片渲染最大并发数。无头客户端查询始终单请求串行，和图片渲染可并行。
 render_max_concurrent = 1
 
+[runtime.scheduler]
+# Default: "Asia/Shanghai"; EN: Timezone used by first-party recurring jobs.
+# ZH: 第一方循环定时任务统一使用的时区。
+timezone = "Asia/Shanghai"
+# Default: true; EN: Read HTTPS Date headers at startup to check host-clock drift; never changes system time.
+# ZH: 启动时读取 HTTPS Date 响应头检查主机时钟偏差；不会修改系统时间。
+clock_check_on_startup = true
+# Default: 3.0; EN: Add an admin startup warning only when absolute clock drift exceeds this many seconds.
+# ZH: 仅当绝对时钟偏差超过此秒数时加入管理启动告警。
+clock_warning_threshold_seconds = 3.0
+# Default: 3.0; EN: Per-source timeout for the read-only clock check.
+# ZH: 只读时钟检查的每个来源超时秒数。
+clock_check_timeout_seconds = 3.0
+
 [ai]
 # Default: "https://api.deepseek.com"
 # EN: OpenAI-compatible AI API base URL.
@@ -492,10 +507,10 @@ enabled = true
 # EN: Commands that open the unsubscribe menu. Matching is case-insensitive.
 # ZH: 打开退订菜单的口令；大小写不敏感，所以 TD 自动生效。
 # Built-in push categories include startup_notice, startup_docker_update,
-# startup_data_sync, startup_ai_api_check, ai_chat_error_notice, bili_login_notice,
+# startup_data_sync, startup_ai_api_check, startup_clock_check, ai_chat_error_notice, bili_login_notice,
 # headless_seer_notice, render_crash_notice, red_packet_notice, admin_notice,
 # per-account Bilibili dynamic pushes and seer_activity_push.
-# 内置推送项包括机器人启动、启动镜像检查、启动数据同步、启动AI接口检查、AI 聊天异常、
+# 内置推送项包括机器人启动、启动镜像检查、启动数据同步、启动AI接口检查、启动时钟偏差检查、AI 聊天异常、
 # B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、其它管理通知、
 # 按账号拆分的 B站动态和活动结束提醒。
 commands = ["td", "退订"]
@@ -781,17 +796,26 @@ data_dir = "data/bilibili_monitor"
 history_max_items = 1000
 
 [bilibili.polling]
+# The scheduler wakes on every exact wall-clock minute at check_second,
+# independent of the bot startup second. The intervals below decide whether that regular
+# wake-up performs a network request and are anchored to each window start.
+# 调度器固定在墙钟每分钟指定秒数唤醒，不继承机器人启动时的秒数；
+# 下方间隔决定该次常规唤醒是否真正请求 B站，并以各窗口起点作为时间槽锚点。
 # Default: 30
 # EN: Default polling interval in minutes.
 # ZH: 默认轮询间隔分钟数。
 # Example: 20
 default_minutes = 30
 
-# Default: [{ start = "07:00", end = "23:00", minutes = 5 }]
-# EN: Time windows with custom polling interval.
-# ZH: 分时轮询窗口。
-# Example: [{ start = "07:00", end = "23:00", minutes = 5 }]
-windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
+# Default: 5; EN: Wall-clock second used for the once-per-minute scheduler wake-up.
+# ZH: 每分钟轮询唤醒使用的墙钟秒数；设为 5 可给平台同步整点动态留出短暂缓冲。
+check_second = 5
+
+# Default: [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
+# EN: Time windows with custom polling interval. Boundaries support HH:MM:SS.
+# ZH: 分时轮询窗口；边界支持 HH:MM:SS。
+# Example: [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
+windows = [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
 
 [bilibili.push]
 # Default: "full"
@@ -863,7 +887,7 @@ timezone = "Asia/Shanghai"
 default_muted_categories = ["lottery"]
 # Monday/Wednesday afternoon is only an extra hint. A preview still needs a text match.
 # 周一、周三 17:00-18:00 仅辅助识别预告，不能单独将动态判为预告。
-preview_windows = [{ weekdays = ["mon", "wed"], start = "17:00", end = "18:00" }]
+preview_windows = [{ weekdays = ["mon", "wed"], start = "17:00:00", end = "18:00:00" }]
 # Text patterns used together with preview_windows.
 preview_window_patterns = ["新版本", "即将到来", "长图"]
 # The twelve TD categories are lottery, version_preview, version_guide, pet, skin,
@@ -950,7 +974,7 @@ state_offline_message = "无头米米号已掉线。\n米米号：{user_id}\n状
 # Default: built-in; EN: Online state notice template. ZH: 恢复在线通知模板。
 state_online_message = "无头米米号已恢复登录。\n米米号：{user_id}\n离线时长：{offline_duration}\n来源：{source}"
 # Default: "00:05"; EN: Daily reconnect check times. ZH: 每日重连检查时间。
-reconnect_check_times = "00:05"
+reconnect_check_times = "00:05:00"
 
 [seer.player]
 # Default: 30.0; EN: Player query timeout seconds. ZH: 玩家查询超时秒数。
@@ -1033,8 +1057,9 @@ cache_ttl_seconds = 300.0
 # worker。不同橱窗账号严格串行登录和查询；每个账号当天首次成功结果会落盘缓存，
 # 机器人重启后也不会重复登录。
 enabled = false
-# Default: "00:02"; EN: Daily check time in HH:MM. ZH: 每日检查时间，格式 HH:MM。
-time = "00:02"
+# Default: "00:01:05"; EN: Daily check time in HH:MM:SS. Legacy HH:MM is accepted as :00.
+# ZH: 每日检查时间，使用 HH:MM:SS；旧 HH:MM 会自动视为 :00。
+time = "00:01:05"
 # Default: "Asia/Shanghai"; EN: Timezone for the daily window. ZH: 每日橱窗的时区。
 timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
@@ -1079,8 +1104,8 @@ sections = ["basic", "resource"]
 [seer.team_resource]
 # Default: true; EN: Enable subscribed team query and resource notices. ZH: 启用战队订阅查询与资源提醒。
 enabled = true
-# Default: []; EN: Daily low-resource scan times. Empty disables scheduled notices.
-# ZH: 每日资源扫描时间；为空时不定时提醒，只保留群内“战队”订阅查询。
+# Default: []; EN: Daily low-resource scan times in HH:MM:SS. Empty disables scheduled notices.
+# ZH: 每日资源扫描时间，支持 HH:MM:SS；为空时不定时提醒，只保留群内“战队”订阅查询。
 times = []
 # Default: ["战队"]; EN: Subscribed team query commands. ZH: 已订阅战队查询口令。
 commands = ["战队"]
@@ -1262,9 +1287,12 @@ interval_minutes = 15
 # the bot schedules at :04, :19, :34, :49 before jitter is applied.
 # ZH: 间隔刷榜的分钟偏移；例如 interval_minutes=15、offset=4 时，每小时 04/19/34/49 分调度，之后再叠加随机抖动。
 interval_offset_minutes = 4
+# Default: 0; EN: Second offset paired with interval_offset_minutes. With 15/4/5, slots are :04:05, :19:05, :34:05, :49:05.
+# ZH: 与分钟偏移配套的秒偏移；15/4/5 时槽位为 :04:05、:19:05、:34:05、:49:05。
+interval_offset_seconds = 5
 # Default: 0
-# EN: Random scheduler delay in seconds. Keeps refresh jobs away from exact clock ticks.
-# ZH: 每轮调度额外随机延后秒数，避免总在整点/固定秒触发。
+# EN: Random scheduler delay after the nominal configured second. A nonzero value intentionally disables strict on-the-second execution.
+# ZH: 名义配置秒数后的随机延迟；非零时会刻意放弃严格整秒执行。
 schedule_jitter_seconds = 240
 # Default: 0.0
 # EN: Minimum seconds between scheduled rank-page slots. Scheduled runs also spread the selected batch across their interval.
@@ -1275,10 +1303,10 @@ request_interval_seconds = 8.0
 # ZH: 定时页槽位的最大随机偏移秒数；手动刷新则额外延后不超过该值，用于避免固定频率。
 request_jitter_seconds = 12.0
 # Default: ""; EN: Optional active refresh window start. ZH: 可选的刷榜活跃时间起点。
-active_start = "07:30"
+active_start = "07:30:00"
 # Default: ""; EN: Optional active refresh window end; may cross midnight.
 # ZH: 可选的刷榜活跃时间终点；允许跨过午夜，比如 07:30 到 01:30。
-active_end = "01:30"
+active_end = "01:30:00"
 # Default: 01:15 through 04:45 every half hour.
 # EN: Additional fixed daily refresh times. Keep empty when interval_minutes is used.
 # ZH: 额外的每日固定刷榜时间；使用 interval_minutes 时通常保持为空。
@@ -1301,8 +1329,8 @@ max_players = 5000
 batch_limit = 100
 # Default: true; EN: Enable scheduled refresh. ZH: 启用定时刷新。
 auto_refresh = true
-# Default: "03:30"; EN: Daily refresh time. ZH: 每日刷新时间。
-time = "03:30"
+# Default: "03:30:00"; EN: Daily refresh time in HH:MM:SS. ZH: 每日刷新时间，支持 HH:MM:SS。
+time = "03:30:00"
 # Default: 300; EN: Refresh count limit. ZH: 单次刷新数量上限。
 refresh_limit = 300
 # Default: 24; EN: Refresh entries older than this many hours. ZH: 刷新超过多少小时的样本。
@@ -1446,6 +1474,9 @@ url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-l
 fingerprint_url = "https://github.com/Murmansk-Seer/seerapi/releases/download/seerapi-data-latest/seerapi-data.sqlite.sha256"
 # Default: 5; EN: Sync interval minutes. ZH: 同步间隔分钟。
 interval_minutes = 5
+# Default: 0; EN: Wall-clock second used by this source's interval sync.
+# ZH: 此数据源间隔同步使用的墙钟秒数。
+interval_second = 5
 # Default: "data/seerapi-data.sqlite"; EN: Local cache path. ZH: 本地缓存路径。
 local_path = "data/seerapi-data.sqlite"
 
@@ -1499,6 +1530,7 @@ inputs = { debug_enabled = false, force = false }
 url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite"
 fingerprint_url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
 interval_minutes = 60
+interval_second = 0
 local_path = "data/aliases-data.sqlite"
 
 [operations.startup_notice]
@@ -1534,8 +1566,8 @@ timeout_seconds = 300.0
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
 enabled = false
-# Default: "04:30"; EN: Daily restart times. ZH: 每日重启时间。
-times = "04:30"
+# Default: "04:30:00"; EN: Daily restart times in HH:MM:SS. ZH: 每日重启时间，支持 HH:MM:SS。
+times = "04:30:00"
 # Default: 10.0; EN: Grace seconds before signaling. ZH: 发信号前宽限秒数。
 grace_seconds = 10.0
 # Default: true; EN: Signal parent process when restarting. ZH: 重启时优先结束父进程。

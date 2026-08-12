@@ -9,6 +9,7 @@ from ironsbot.services.bilibili.push import (
     mark_history_snapshot_pushed,
 )
 from ironsbot.services.bilibili.service import BiliFeedResponse
+from ironsbot.services.bilibili.targets import BiliPushTargets, BiliTargetService
 from tests.helpers.bilibili import build_test_bilibili_service
 
 AUTHOR_UID = 59224295
@@ -57,7 +58,7 @@ def test_monitor_does_not_redeliver_persisted_dynamic_when_checkpoint_is_missing
         sent.append("sent")
 
     checkpoints: dict[int, int] = {}
-    changed = asyncio.run(
+    batch = asyncio.run(
         _push_new_dynamics(
             service,
             [(PUB_TS, item)],
@@ -67,7 +68,7 @@ def test_monitor_does_not_redeliver_persisted_dynamic_when_checkpoint_is_missing
     )
 
     assert sent == []
-    assert changed
+    assert batch.checkpoint_changed
     assert checkpoints == {AUTHOR_UID: PUB_TS}
 
 
@@ -93,7 +94,7 @@ def test_monitor_marks_category_muted_seer_dynamic_as_processed(
         sent.append("sent")
 
     checkpoints: dict[int, int] = {}
-    changed = asyncio.run(
+    batch = asyncio.run(
         _push_new_dynamics(
             service,
             [(PUB_TS, item)],
@@ -104,7 +105,7 @@ def test_monitor_marks_category_muted_seer_dynamic_as_processed(
 
     saved = service.history.get("seer-lottery")
     assert sent == []
-    assert changed
+    assert batch.checkpoint_changed
     assert checkpoints == {SEER_UID: PUB_TS}
     assert saved is not None
     assert saved.pushed
@@ -154,3 +155,47 @@ def test_monitor_enriches_empty_seer_dynamic_before_saving(
     saved = service.history.get("seer-opus-detail")
     assert saved is not None
     assert dynamic_content(saved.item) == "巅峰之战年度总决赛即将开幕"
+
+
+def test_monitor_releases_discovery_before_slow_delivery(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    service = build_test_bilibili_service(tmp_path)
+    item = _item()
+    delivery_started = asyncio.Event()
+    release_delivery = asyncio.Event()
+    monkeypatch.setattr(
+        BiliTargetService,
+        "push_targets_for_uid",
+        lambda *_args, **_kwargs: BiliPushTargets([1001], [], [], []),
+    )
+
+    async def send_push(
+        _item: dict[str, Any],
+        _pub_ts: int,
+        _author_mid: int,
+        _targets: object,
+        _categories: object,
+    ) -> None:
+        delivery_started.set()
+        await release_delivery.wait()
+
+    async def scenario() -> None:
+        batch = await _push_new_dynamics(
+            service,
+            [(PUB_TS, item)],
+            {},
+            send_push,
+        )
+        assert len(batch.delivery_tasks) == 1
+        await delivery_started.wait()
+        assert not batch.delivery_tasks[0].done()
+        release_delivery.set()
+        await asyncio.gather(*batch.delivery_tasks)
+
+    asyncio.run(scenario())
+    saved = service.history.get(str(item["id_str"]))
+    assert saved is not None
+    assert saved.pushed
+    assert service.history.get_checkpoints() == {AUTHOR_UID: PUB_TS}

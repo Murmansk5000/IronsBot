@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot import logger
 
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import clock_window_contains, scheduled_clock_time
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
@@ -17,22 +17,19 @@ if TYPE_CHECKING:
 SEER_QUERY_JOB_PREFIX = "seer_"
 
 
-def _minute_of_day(value: str) -> int:
-    hour_text, minute_text = value.split(":", maxsplit=1)
-    return int(hour_text) * 60 + int(minute_text)
-
-
 def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) -> bool:
     if not rank_config.active_start or not rank_config.active_end:
         return True
 
     current_time = now or datetime.now(timezone.utc).astimezone()
-    current = current_time.hour * 60 + current_time.minute
-    start = _minute_of_day(rank_config.active_start)
-    end = _minute_of_day(rank_config.active_end)
-    if start <= end:
-        return start <= current <= end
-    return current >= start or current <= end
+    return clock_window_contains(
+        current_time,
+        start=rank_config.active_start,
+        end=rank_config.active_end,
+        error_message=(
+            "seer.rank.page_refresh active_start/active_end must be HH:MM:SS times"
+        ),
+    )
 
 
 async def _scheduled_local_rank_refresh(
@@ -59,13 +56,14 @@ def register_local_rank_refresh_job(
     service: LocalRankService,
 ) -> None:
     config = service.config
-    hour, minute = daily_time_parts(config.time)
-    JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add(
+    clock_time = scheduled_clock_time(
+        config.time,
+        error_message="seer.local_rank.time must use HH:MM:SS",
+    )
+    JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add_daily(
         _scheduled_local_rank_refresh,
-        "cron",
         args=[headless, service],
-        hour=hour,
-        minute=minute,
+        clock_time=clock_time,
         job_id="local_rank_refresh",
     )
 
@@ -113,24 +111,27 @@ def register_rank_page_refresh_jobs(
 
     registry = JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX)
     if config.interval_minutes > 0:
-        minute_pattern = f"{config.interval_offset_minutes}/{config.interval_minutes}"
-        registry.add(
+        registry.add_wall_clock_interval(
             _scheduled_rank_page_refresh,
-            "cron",
             args=[headless, service],
-            minute=minute_pattern,
+            minutes=config.interval_minutes,
+            offset_minutes=config.interval_offset_minutes,
+            offset_seconds=config.interval_offset_seconds,
             jitter=config.schedule_jitter_seconds,
             job_id="rank_page_refresh_interval",
         )
 
     for refresh_time in config.times:
-        hour_text, minute_text = refresh_time.split(":", maxsplit=1)
-        registry.add(
+        clock_time = scheduled_clock_time(
+            refresh_time,
+            error_message=(
+                "seer.rank.page_refresh.times must contain daily HH:MM:SS times"
+            ),
+        )
+        registry.add_daily(
             _scheduled_rank_page_refresh,
-            "cron",
             args=[headless, service],
-            hour=int(hour_text),
-            minute=int(minute_text),
+            clock_time=clock_time,
             jitter=config.schedule_jitter_seconds,
-            job_id=f"rank_page_refresh_{hour_text}{minute_text}",
+            job_id=f"rank_page_refresh_{str(clock_time).replace(':', '')}",
         )

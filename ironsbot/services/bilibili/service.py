@@ -34,7 +34,7 @@ from ironsbot.services.seer.external_references import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Coroutine
 
     from ironsbot.core.bilibili import BiliConfig
     from ironsbot.core.tasks import TaskSpawner
@@ -69,7 +69,13 @@ class BilibiliService:
     external_references: SeerInfoReferences | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
+    pending_check: bool = field(default=False, init=False)
     _detail_tasks: dict[str, asyncio.Task[dict[str, Any]]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _delivery_tasks: dict[str, asyncio.Task[None]] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -104,7 +110,36 @@ class BilibiliService:
             if task.done() and self._detail_tasks.get(item_id) is task:
                 self._detail_tasks.pop(item_id, None)
 
-    async def backfill_recent_empty_bodies(self, *, days: int = 7) -> int:
+    def delivery_in_progress(self, item_id: str) -> bool:
+        task = self._delivery_tasks.get(item_id)
+        return task is not None and not task.done()
+
+    def spawn_delivery(
+        self,
+        item_id: str,
+        coroutine: Coroutine[Any, Any, None],
+    ) -> asyncio.Task[None]:
+        task = self.spawn(coroutine, name=f"bilibili-delivery-{item_id}")
+        self._delivery_tasks[item_id] = task
+        task.add_done_callback(
+            lambda finished: self._remove_delivery_task(item_id, finished)
+        )
+        return task
+
+    def _remove_delivery_task(
+        self,
+        item_id: str,
+        task: asyncio.Task[None],
+    ) -> None:
+        if self._delivery_tasks.get(item_id) is task:
+            self._delivery_tasks.pop(item_id, None)
+
+    async def backfill_recent_empty_bodies(
+        self,
+        *,
+        days: int = 7,
+        limit: int = 20,
+    ) -> int:
         """Update recent saved official dynamics without re-delivering them."""
 
         if self._history_backfill_attempted:
@@ -125,6 +160,8 @@ class BilibiliService:
         ):
             if record.pub_ts < cutoff or dynamic_content(record.item):
                 continue
+            if updated >= max(limit, 0):
+                break
             resolved = await self.resolve_dynamic_item(record.item, cookie=cookie)
             if not dynamic_content(resolved):
                 continue
