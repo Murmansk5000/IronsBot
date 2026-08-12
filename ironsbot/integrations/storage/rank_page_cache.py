@@ -74,9 +74,35 @@ CREATE TABLE IF NOT EXISTS player_rank_misses (
     PRIMARY KEY (key, sub_key, user_id)
 )
 """
+_LAST_SEEN_SCHEMA = """
+CREATE TABLE IF NOT EXISTS player_rank_last_seen (
+    key INTEGER NOT NULL,
+    sub_key INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    rank_index INTEGER NOT NULL,
+    score INTEGER NOT NULL,
+    display TEXT NOT NULL DEFAULT '',
+    fetched_at REAL NOT NULL,
+    PRIMARY KEY (key, sub_key, user_id)
+)
+"""
+_LAST_SEEN_BACKFILL = """
+INSERT INTO player_rank_last_seen (
+    key, sub_key, user_id, rank_index, score, display, fetched_at
+)
+SELECT key, sub_key, user_id, rank_index, score, display, fetched_at
+FROM player_rank_facts
+WHERE 1
+ON CONFLICT(key, sub_key, user_id) DO UPDATE SET
+    rank_index = excluded.rank_index,
+    score = excluded.score,
+    display = excluded.display,
+    fetched_at = excluded.fetched_at
+"""
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA),
     SqliteMigration(2, (_NEGATIVE_LOOKUP_SCHEMA,)),
+    SqliteMigration(3, (_LAST_SEEN_SCHEMA, _LAST_SEEN_BACKFILL)),
 )
 _LOGGER = logging.getLogger(__name__)
 
@@ -176,6 +202,46 @@ class SqliteRankPageCache:
             nick, score, rank_index, fetched_at = row
             fetched_at = float(fetched_at)
             if self._reject_stale(fetched_at, allow_stale=allow_stale):
+                return None
+            return CachedRankLookup(
+                user_id,
+                str(nick),
+                int(score),
+                int(rank_index),
+                fetched_at,
+                self._is_stale(fetched_at),
+            )
+        except sqlite3.Error as error:
+            self._log_read_error(error)
+            return None
+
+    def last_seen_item(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        max_age_seconds: float,
+    ) -> CachedRankLookup | None:
+        if not self.enabled or max_age_seconds < 0:
+            return None
+        try:
+            with self._database.connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT COALESCE(NULLIF(f.display, ''), p.nick, ''),
+                           f.score, f.rank_index, f.fetched_at
+                    FROM player_rank_last_seen f
+                    LEFT JOIN rank_players p ON p.user_id = f.user_id
+                    WHERE f.key = ? AND f.sub_key = ? AND f.user_id = ?
+                    """,
+                    (key, sub_key, user_id),
+                ).fetchone()
+            if row is None:
+                return None
+            nick, score, rank_index, fetched_at = row
+            fetched_at = float(fetched_at)
+            if time.time() - fetched_at > max_age_seconds:
                 return None
             return CachedRankLookup(
                 user_id,
@@ -436,6 +502,23 @@ class SqliteRankPageCache:
                         for rank_index, user_id, nick, score in normalized
                     ],
                 )
+                conn.executemany(
+                    """
+                    INSERT INTO player_rank_last_seen (
+                        key, sub_key, user_id, rank_index, score, display, fetched_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(key, sub_key, user_id) DO UPDATE SET
+                        rank_index = excluded.rank_index,
+                        score = excluded.score,
+                        display = excluded.display,
+                        fetched_at = excluded.fetched_at
+                    """,
+                    [
+                        (key, sub_key, user_id, rank_index, score, nick, timestamp)
+                        for rank_index, user_id, nick, score in normalized
+                    ],
+                )
         except sqlite3.Error as error:
             _LOGGER.warning("failed to write Seer rank page cache: %s", error)
 
@@ -464,6 +547,14 @@ class SqliteRankPageCache:
                         fetched_at = excluded.fetched_at
                     """,
                     (key, sub_key, user_id, searched_limit, timestamp),
+                )
+                conn.execute(
+                    """
+                    DELETE FROM player_rank_last_seen
+                    WHERE key = ? AND sub_key = ? AND user_id = ?
+                      AND rank_index < ?
+                    """,
+                    (key, sub_key, user_id, searched_limit),
                 )
         except sqlite3.Error as error:
             _LOGGER.warning("failed to write Seer rank miss cache: %s", error)

@@ -9,6 +9,7 @@ from ironsbot.services.seer.player_formatting_common import (
     format_peak_rank_text,
     format_player_data_time,
     format_player_identity,
+    format_rank_cache_fallback,
     format_rank_star_compact,
     format_win_rate,
     join_metric_parts,
@@ -77,7 +78,12 @@ def format_peak_line(  # noqa: PLR0913
             f"{format_local_rank_suffix(local_summary, win_rate_key, label='样本胜率')}"
         )
     failure = rank_result.failure
-    if failure:
+    cached_fallback = format_rank_cache_fallback(rank_result)
+    if cached_fallback:
+        rank_text = (
+            f"{format_peak_rank_text(rank_result.rank)}（{cached_fallback}）"
+        )
+    elif failure:
         rank_text = f"赛季榜{failure}"
     elif rank_result.rank is not None:
         rank_text = (
