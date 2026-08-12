@@ -4,17 +4,14 @@ import asyncio
 import inspect
 from copy import deepcopy
 from datetime import timedelta
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import AsyncMock
 
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves it
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher, current_bot, current_event, matchers
-from nonebot.permission import Permission
+from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
@@ -22,8 +19,8 @@ from nonebot.utils import is_coroutine_callable
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.runtime.matchers import (
-    QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY,
-    QUEUED_CONVERSATION_FALLBACK_STATE_KEY,
+    QUEUED_CONVERSATION_EXIT_PRIORITY,
+    QUEUED_CONVERSATION_INPUT_PRIORITY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
@@ -32,6 +29,7 @@ from ironsbot.runtime.matchers import (
     PromptSessionManager,
     _capture_queued_conversation_input,
     _matches_active_queued_conversation,
+    _matches_active_queued_conversation_exit,
     _restore_temporary_matcher_state,
     bind,
     bind_async,
@@ -40,9 +38,6 @@ from ironsbot.runtime.matchers import (
 from ironsbot.runtime.prompt_sessions import (
     GroupMenuAnchor,
     is_current_group_menu_reply,
-)
-from ironsbot.runtime.queued_conversation_fallback import (
-    create_queued_conversation_fallback,
 )
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
@@ -430,10 +425,28 @@ def test_numeric_selection_prompt_accepts_owner_bot_mention_or_plain_choice() ->
     assert context.matches(plain_choice)
 
 
-@pytest.mark.asyncio
-async def test_session_bound_fallback_refreshes_before_capturing_input(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_queued_menu_uses_singleton_permanent_routers() -> None:
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+
+    registry.install_queued_conversation_router()
+    registry.install_queued_conversation_router()
+
+    assert len(registry.message_matchers) == len(
+        (QUEUED_CONVERSATION_EXIT_PRIORITY, QUEUED_CONVERSATION_INPUT_PRIORITY)
+    )
+    exit_router, input_router = registry.message_matchers
+    assert exit_router.priority == QUEUED_CONVERSATION_EXIT_PRIORITY
+    assert input_router.priority == QUEUED_CONVERSATION_INPUT_PRIORITY
+    assert not exit_router.temp
+    assert not input_router.temp
+
+
+def test_queued_menu_exit_has_a_dedicated_earlier_route() -> None:
     manager = PromptSessionManager()
     registry = MatcherRegistry(
         cooldown=cast("CommandCooldown", object()),
@@ -441,94 +454,41 @@ async def test_session_bound_fallback_refreshes_before_capturing_input(
         prompt_session_manager=manager,
     )
     state = registry._with_runtime_hooks({})["state"]
-    event = group_message_event("2", user_id=2, group_id=4, self_id=1)
+    origin = group_message_event("米米号1", user_id=2, group_id=4, self_id=1)
     context = manager.start_queued_conversation(
-        namespace="selection_prompt",
-        event_session_id=event.get_session_id(),
-        owner_user_id=event.user_id,
+        namespace="player_detail",
+        event_session_id=origin.get_session_id(),
+        owner_user_id=origin.user_id,
         state={},
-        reply_check=lambda next_event: next_event.get_session_id()
-        == event.get_session_id(),
+        reply_check=lambda event: event.get_session_id() == origin.get_session_id()
+        and event.get_plaintext().strip() in {"0", "1", "2", "3"},
         handlers=[],
+        parallel=True,
     )
-    state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
-    state[QUEUED_CONVERSATION_FALLBACK_STATE_KEY] = True
-    matcher = cast("Any", SimpleNamespace(state=state))
-    refresh = AsyncMock()
-    capture = AsyncMock()
-    monkeypatch.setattr(
-        "ironsbot.runtime.matchers.create_queued_conversation_fallback",
-        refresh,
+    exit_event = group_message_event(
+        "0",
+        user_id=2,
+        group_id=4,
+        self_id=1,
+        message_id=10,
     )
-    monkeypatch.setattr(
-        "ironsbot.runtime.matchers.capture_queued_conversation_input",
-        capture,
+    choice_event = group_message_event(
+        "3",
+        user_id=2,
+        group_id=4,
+        self_id=1,
+        message_id=11,
     )
 
-    await _capture_queued_conversation_input(matcher, event, state)
-
-    refresh.assert_awaited_once_with(
-        matcher,
-        context,
-        handler=_capture_queued_conversation_input,
-        runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-    )
-    capture.assert_awaited_once()
+    assert _matches_active_queued_conversation_exit(exit_event, state)
+    assert state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] == context.token
+    state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
+    assert not _matches_active_queued_conversation_exit(choice_event, state)
+    assert _matches_active_queued_conversation(choice_event, state)
 
 
 @pytest.mark.asyncio
-async def test_stale_session_bound_fallback_cannot_capture_or_replace_input(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    manager = PromptSessionManager()
-    registry = MatcherRegistry(
-        cooldown=cast("CommandCooldown", object()),
-        priorities=object(),
-        prompt_session_manager=manager,
-    )
-    state = registry._with_runtime_hooks({})["state"]
-    event = group_message_event("2", user_id=2, group_id=4, self_id=1)
-    context = manager.start_queued_conversation(
-        namespace="selection_prompt",
-        event_session_id=event.get_session_id(),
-        owner_user_id=event.user_id,
-        state={},
-        reply_check=lambda next_event: next_event.get_session_id()
-        == event.get_session_id(),
-        handlers=[],
-    )
-    context.fallback_generation = 2
-    state.update(
-        {
-            QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
-            QUEUED_CONVERSATION_FALLBACK_STATE_KEY: True,
-            QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY: 1,
-        }
-    )
-    matcher = cast("Any", SimpleNamespace(state=state))
-    refresh = AsyncMock()
-    capture = AsyncMock()
-    monkeypatch.setattr(
-        "ironsbot.runtime.matchers.create_queued_conversation_fallback",
-        refresh,
-    )
-    monkeypatch.setattr(
-        "ironsbot.runtime.matchers.capture_queued_conversation_input",
-        capture,
-    )
-
-    with pytest.raises(FinishedException):
-        await _capture_queued_conversation_input(matcher, event, state)
-
-    capture.assert_not_awaited()
-    refresh.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_queued_menu_router_wins_over_fallback_and_deduplicates_choices(  # noqa: PLR0915
-) -> None:
-    """Exercise real durable and temporary matchers for a rapid 1/2/3/3 burst."""
-
+async def test_permanent_router_accepts_parallel_choices_before_exit() -> None:
     class _Features:
         @staticmethod
         def is_superuser(user_id: int) -> bool:
@@ -539,6 +499,19 @@ async def test_queued_menu_router_wins_over_fallback_and_deduplicates_choices(  
         duplicate_window_seconds = 60.0
         duplicate_message = "该指令正在查询中，请勿重复发送。"
 
+    class _MatcherProbe:
+        def __init__(self, state: T_State) -> None:
+            self.state = state
+            self.remain_handlers: list[Any] = []
+            self.messages: list[str] = []
+
+        async def send(self, message: object) -> None:
+            self.messages.append(str(message))
+
+        async def finish(self, message: object) -> None:
+            self.messages.append(str(message))
+            raise FinishedException
+
     manager = PromptSessionManager()
     coordinator = RequestCoordinator(_Features(), _DuplicateConfig())
     registry = MatcherRegistry(
@@ -547,17 +520,14 @@ async def test_queued_menu_router_wins_over_fallback_and_deduplicates_choices(  
         prompt_session_manager=manager,
         request_coordinator=coordinator,
     )
-    registry.install_queued_conversation_router()
-    router = registry.message_matchers[-1]
-    origin_event = group_message_event("米米号1", user_id=2, group_id=4, self_id=1)
+    origin = group_message_event("米米号1", user_id=2, group_id=4, self_id=1)
     context = manager.start_queued_conversation(
         namespace="player_detail",
-        event_session_id=origin_event.get_session_id(),
-        owner_user_id=origin_event.user_id,
+        event_session_id=origin.get_session_id(),
+        owner_user_id=origin.user_id,
         state={},
-        reply_check=lambda event: event.get_session_id()
-        == origin_event.get_session_id()
-        and event.get_plaintext().strip() in {"1", "2", "3"},
+        reply_check=lambda event: event.get_session_id() == origin.get_session_id()
+        and event.get_plaintext().strip() in {"0", "1", "2", "3"},
         handlers=[],
         parallel=True,
         semantic_request_resolver=lambda event, _state: _semantic_request(
@@ -565,91 +535,53 @@ async def test_queued_menu_router_wins_over_fallback_and_deduplicates_choices(  
         ),
         request_coordinator=coordinator,
     )
-    origin = router()
-    origin.update_permission = AsyncMock(return_value=Permission())
-    bot = cast(
-        "Any",
-        SimpleNamespace(
-            config=SimpleNamespace(session_expire_timeout=timedelta(minutes=1))
-        ),
-    )
-    bot_token = current_bot.set(bot)
-    event_token = current_event.set(origin_event)
-    fallback_start = len(matchers[-19])
-    router_start = len(matchers[-20])
-    try:
-        await create_queued_conversation_fallback(
-            origin,
-            context,
-            handler=_capture_queued_conversation_input,
-            runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-        )
-        first_fallback = matchers[-19][-1]
-        await create_queued_conversation_fallback(
-            origin,
-            context,
-            handler=_capture_queued_conversation_input,
-            runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-        )
-        current_fallback = matchers[-19][-1]
 
-        async def choose_matcher(event: Event) -> tuple[type[Matcher], T_State]:
-            candidates: list[tuple[type[Matcher], T_State]] = []
-            for matcher_type in (router, first_fallback, current_fallback):
-                state = deepcopy(matcher_type._default_state)
-                if await matcher_type.rule(bot, event, state):
-                    candidates.append((matcher_type, state))
-            assert candidates
-            return min(candidates, key=lambda candidate: candidate[0].priority)
-
-        first_event = group_message_event(
-            "1",
+    async def dispatch(message_id: int, choice: str) -> str:
+        event = group_message_event(
+            choice,
             user_id=2,
             group_id=4,
             self_id=1,
-            message_id=10,
+            message_id=message_id,
         )
-        assert not await first_fallback.rule(bot, first_event, {})
-        assert await current_fallback.rule(bot, first_event, {})
+        state = registry._with_runtime_hooks({})["state"]
+        assert _matches_active_queued_conversation(event, state)
+        matcher = _MatcherProbe(state)
+        await _capture_queued_conversation_input(
+            cast("Matcher", matcher),
+            event,
+            state,
+        )
+        token = state["_ironsbot_request_response_token"]
+        return token.request.target.key
 
-        dispatched: list[str] = []
-        duplicate_feedback: list[str] = []
-        for message_id, choice in enumerate(("1", "2", "3", "3"), start=10):
-            event = group_message_event(
-                choice,
-                user_id=2,
-                group_id=4,
-                self_id=1,
-                message_id=message_id,
-            )
-            matcher_type, state = await choose_matcher(event)
-            assert matcher_type is router
-            matcher = matcher_type()
-            matcher.state.update(state)
-            matcher.send = AsyncMock(
-                side_effect=lambda message: duplicate_feedback.append(str(message))
-            )
-            if choice == "3" and dispatched.count("3") == 1:
-                with pytest.raises(FinishedException):
-                    await _capture_queued_conversation_input(
-                        matcher,
-                        event,
-                        matcher.state,
-                    )
-                continue
-            await _capture_queued_conversation_input(matcher, event, matcher.state)
-            token = matcher.state["_ironsbot_request_response_token"]
-            dispatched.append(token.request.target.key)
+    dispatched = await asyncio.gather(
+        dispatch(10, "1"),
+        dispatch(11, "2"),
+        dispatch(12, "3"),
+    )
+    assert dispatched == ["1", "2", "3"]
+    assert context.active_ticket_count == len(dispatched)
 
-        assert dispatched == ["1", "2", "3"]
-        assert len(duplicate_feedback) == 1
-        assert context.active
-        assert context.fallback_generation == len((first_fallback, current_fallback))
-    finally:
-        del matchers[-19][fallback_start:]
-        del matchers[-20][router_start:]
-        current_event.reset(event_token)
-        current_bot.reset(bot_token)
+    exit_event = group_message_event(
+        "0",
+        user_id=2,
+        group_id=4,
+        self_id=1,
+        message_id=13,
+    )
+    exit_state = registry._with_runtime_hooks({})["state"]
+    assert _matches_active_queued_conversation_exit(exit_event, exit_state)
+    exit_matcher = _MatcherProbe(exit_state)
+    with pytest.raises(FinishedException):
+        await _capture_queued_conversation_input(
+            cast("Matcher", exit_matcher),
+            exit_event,
+            exit_state,
+        )
+
+    assert not context.active
+    assert exit_matcher.messages == ["[CQ:at,qq=2] 已退出当前选择。"]
 
 
 def test_queued_conversation_activation_replaces_handlers_and_parallel_mode() -> None:

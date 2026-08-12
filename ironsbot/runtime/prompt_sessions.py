@@ -102,7 +102,6 @@ class _QueuedConversation:
     _parallel_ready_ticket: int | None = None
     _parallel_dispatched: set[int] = field(default_factory=set)
     _parallel_waiters: deque[tuple[int, Future[bool]]] = field(default_factory=deque)
-    fallback_generation: int = 0
     _waiters: deque[tuple[int, Future[bool], object | None]] = field(
         default_factory=deque
     )

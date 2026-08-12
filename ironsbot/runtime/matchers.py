@@ -56,17 +56,14 @@ from ironsbot.runtime.prompt_sessions import (
 from ironsbot.runtime.prompt_sessions import (
     REQUEST_RESPONSE_TOKEN_STATE_KEY as _REQUEST_RESPONSE_TOKEN_KEY,
 )
-from ironsbot.runtime.queued_conversation_fallback import (
-    QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY,
-    QUEUED_CONVERSATION_FALLBACK_STATE_KEY,
-    create_queued_conversation_fallback,
-)
 from ironsbot.runtime.queued_conversation_input import (
     capture_queued_conversation_input,
 )
 
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
+QUEUED_CONVERSATION_EXIT_PRIORITY = -999
+QUEUED_CONVERSATION_INPUT_PRIORITY = -998
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
 
 
@@ -125,6 +122,17 @@ def _matches_active_queued_conversation(
         return False
     state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
     return True
+
+
+def _matches_active_queued_conversation_exit(
+    event: Event,
+    state: T_State,
+) -> bool:
+    """Attach an active menu only for its owner's explicit exit input."""
+
+    if event.get_plaintext().strip() != "0":
+        return False
+    return _matches_active_queued_conversation(event, state)
 
 
 def queued_conversation_is_cancelled(
@@ -312,12 +320,6 @@ async def enter_prompt_loop(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             pending=True,
         )
-        await create_queued_conversation_fallback(
-            matcher,
-            queued,
-            handler=_capture_queued_conversation_input,
-            runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-        )
         menu_anchor = None
         try:
             if prompt is not None:
@@ -395,12 +397,8 @@ async def begin_queued_conversation(  # noqa: PLR0913
         pending=True,
     )
     matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = queued.token
-    await create_queued_conversation_fallback(
-        matcher,
-        queued,
-        handler=_capture_queued_conversation_input,
-        runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-    )
+
+
 async def _create_temp_matcher(
     matcher: Matcher,
     rule: Rule,
@@ -439,41 +437,13 @@ async def _capture_queued_conversation_input(
     event: Event,
     _state: T_State,
 ) -> None:
-    is_fallback = bool(_state.get(QUEUED_CONVERSATION_FALLBACK_STATE_KEY))
-    context = get_queued_conversation(_state) if is_fallback else None
-    generation = _state.get(QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY)
-    if (
-        context is not None
-        and isinstance(generation, int)
-        and generation != context.fallback_generation
-    ):
-        raise FinishedException
-
-    try:
-        await capture_queued_conversation_input(
-            matcher,
-            event,
-            _state,
-            get_prompt_sessions=get_prompt_session_manager,
-            dispatch_handlers=_dispatch_queued_conversation_handlers,
-        )
-    finally:
-        # A temporary matcher consumes one event. Replace only the fallback
-        # that actually handled it; stale generations must never multiply.
-        if (
-            context is not None
-            and context.active
-            and (
-                not isinstance(generation, int)
-                or generation == context.fallback_generation
-            )
-        ):
-            await create_queued_conversation_fallback(
-                matcher,
-                context,
-                handler=_capture_queued_conversation_input,
-                runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-            )
+    await capture_queued_conversation_input(
+        matcher,
+        event,
+        _state,
+        get_prompt_sessions=get_prompt_session_manager,
+        dispatch_handlers=_dispatch_queued_conversation_handlers,
+    )
 
 
 def _dispatch_queued_conversation_handlers(
@@ -571,6 +541,7 @@ class MatcherRegistry:
     _command_help_ids: set[str] = field(default_factory=set)
     _unclassified_command_labels: set[str] = field(default_factory=set)
     _runtime_context_token: str | None = field(default=None, init=False, repr=False)
+    _queued_router_installed: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -640,15 +611,25 @@ class MatcherRegistry:
     def install_queued_conversation_router(self) -> None:
         """Install one durable ingress matcher for every active menu session."""
 
-        if self.prompt_session_manager is None:
+        if self.prompt_session_manager is None or self._queued_router_installed:
             return
+
+        self._queued_router_installed = True
+
+        exit_matcher = self.on_message(
+            policy=CommandPolicy.exempt("active queued conversation exit"),
+            rule=Rule(_matches_active_queued_conversation_exit),
+            priority=QUEUED_CONVERSATION_EXIT_PRIORITY,
+            block=True,
+        )
+        exit_matcher.append_handler(_capture_queued_conversation_input)
 
         matcher = self.on_message(
             policy=CommandPolicy.exempt("active queued conversation input"),
             rule=Rule(_matches_active_queued_conversation),
-            # This follows the blacklist but precedes AI mention routing.  A
-            # menu confirmation such as "@机器人 y" must remain a menu input.
-            priority=-20,
+            # Blacklist is -1000. These permanent routers run immediately
+            # afterwards and never share a priority with configurable matchers.
+            priority=QUEUED_CONVERSATION_INPUT_PRIORITY,
             block=True,
         )
         matcher.append_handler(_capture_queued_conversation_input)
