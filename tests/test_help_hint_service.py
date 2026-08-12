@@ -1,4 +1,9 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
 
 from ironsbot.core.features import HelpConfig
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
@@ -11,9 +16,16 @@ from ironsbot.runtime.commands import (
 )
 from ironsbot.runtime.plugins import PluginDefinition
 from ironsbot.services.messaging.help_hint import (
+    CommandHintCandidate,
+    CommandHintChooser,
     HelpHintService,
     is_poke_at_bot,
 )
+from ironsbot.services.messaging.poke_promotions import PokePromotionService
+
+_INITIAL_PROMOTION_WEIGHT = 5.0
+_FIVE_DAY_PROMOTION_WEIGHT = 3.0
+_TEN_DAY_PROMOTION_WEIGHT = 2.0
 
 
 @dataclass(slots=True)
@@ -163,12 +175,14 @@ def _catalog() -> CommandCatalog:
     return catalog
 
 
-def _service(
+def _service(  # noqa: PLR0913 - concise test fixture options
     *,
     config: HelpConfig | None = None,
     group_aliases: dict[str, int] | None = None,
     user_aliases: dict[str, int] | None = None,
     features: FakeFeatures | None = None,
+    promotions: PokePromotionService | None = None,
+    chooser: CommandHintChooser | None = None,
 ) -> HelpHintService:
     catalog = _catalog()
 
@@ -197,7 +211,12 @@ def _service(
             user_aliases=user_aliases or {},
         ),
         poke_hint_candidates=candidates,
-        chooser=lambda candidates: candidates[0],
+        promotions=promotions,
+        chooser=(
+            chooser
+            if chooser is not None
+            else lambda candidates, _weights: candidates[0]
+        ),
     )
 
 
@@ -403,3 +422,74 @@ def test_superuser_poke_hint_can_include_group_management_command() -> None:
         "发送“/榜单显示 20”设置榜单默认显示名次。\n"
         "发送“帮助”可查看全部指令。"
     )
+
+
+def test_new_poke_command_weight_decays_from_five_to_three() -> None:
+    introduced_at = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    service = PokePromotionService(
+        introduced_at={"server_status.query": introduced_at},
+        initial_weight=_INITIAL_PROMOTION_WEIGHT,
+        half_life_days=5.0,
+    )
+
+    assert service.weight_for("pet_config.query", now=introduced_at) == 1.0
+    assert (
+        service.weight_for("server_status.query", now=introduced_at)
+        == _INITIAL_PROMOTION_WEIGHT
+    )
+    assert service.weight_for(
+        "server_status.query",
+        now=introduced_at + timedelta(days=5),
+    ) == _FIVE_DAY_PROMOTION_WEIGHT
+    assert service.weight_for(
+        "server_status.query",
+        now=introduced_at + timedelta(days=10),
+    ) == _TEN_DAY_PROMOTION_WEIGHT
+
+
+def test_help_config_rejects_invalid_new_command_promotion_weights() -> None:
+    with pytest.raises(ValueError):
+        HelpConfig(poke_new_command_initial_weight=0.5)
+    with pytest.raises(ValueError):
+        HelpConfig(poke_new_command_half_life_days=0.0)
+
+
+def test_missing_poke_promotion_manifest_uses_uniform_weights(
+    tmp_path: Path,
+) -> None:
+    service = PokePromotionService.from_path(HelpConfig(), tmp_path / "missing.json")
+
+    assert service.weight_for("seer.autocard.sanctuary") == 1.0
+
+
+def test_default_poke_hint_passes_recency_weights_to_chooser() -> None:
+    now = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    seen_weights: list[tuple[float, ...]] = []
+
+    def choose_highest(
+        candidates: Sequence[CommandHintCandidate],
+        weights: Sequence[float],
+    ) -> CommandHintCandidate:
+        candidate_list = tuple(candidates)
+        weight_list = tuple(weights)
+        seen_weights.append(weight_list)
+        return candidate_list[weight_list.index(max(weight_list))]
+
+    service = _service(
+        features=FakeFeatures(
+            group_features={987654321: {"pet_config", "server_status_query"}},
+            private_features={},
+        ),
+        promotions=PokePromotionService(
+            introduced_at={"server_status.query": now},
+            initial_weight=_INITIAL_PROMOTION_WEIGHT,
+            half_life_days=5.0,
+        ),
+        chooser=choose_highest,
+    )
+
+    assert service.get_default_poke_hint(group_id=987654321, user_id=1) == (
+        "发送“开服了吗”查询维护状态。\n发送“帮助”可查看全部指令。"
+    )
+    assert seen_weights[0][0] == 1.0
+    assert seen_weights[0][1] > 1.0
