@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import logging
 import struct
 from dataclasses import dataclass
 from typing import Any
 
 from ironsbot.core.binary import BufferReader
+
+logger = logging.getLogger(__name__)
 
 UNITY_INFO_CMD = 41298
 USER_FOREVER_VALUE_CMD = 40002
@@ -145,18 +148,23 @@ async def fetch_unity_peak_partial(
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
     loop = asyncio.get_running_loop()
-    chunks: list[bytes] = []
+    # Keep every mode in its protocol-defined slot. If an earlier mode times
+    # out, compacting later values would reinterpret wild/expert fields as a
+    # different mode when the complete structure is parsed below.
+    chunks: list[bytes] = [struct.pack("!I", 0)] * len(PEAK_PARAMS)
     available_modes: list[str] = []
     mode_errors: list[tuple[str, str]] = []
 
-    for _mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
+    for mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
         # A slow or unavailable mode must not consume the complete peak-stage
         # budget.  Each mode is an independently useful result and later modes
         # should still be queried after an earlier timeout.
         deadline = loop.time() + timeout_seconds
         mode_chunks: list[bytes] = []
+        failed_param = params[0]
         try:
             for param in params:
+                failed_param = param
                 remaining = max(0.0, deadline - loop.time())
                 _head, body = await asyncio.wait_for(
                     game.send_and_wait(
@@ -173,9 +181,19 @@ async def fetch_unity_peak_partial(
                 error_text = "查询超时"
             else:
                 error_text = str(error) or type(error).__name__
+            logger.warning(
+                "peak base mode failed: player_id=%s mode=%s param=%s "
+                "worker=%s error=%s",
+                player_id,
+                mode,
+                failed_param,
+                getattr(game, "user_id", None),
+                error_text,
+            )
             mode_errors.append((mode, error_text))
             continue
-        chunks.extend(mode_chunks)
+        start = mode_index * len(params)
+        chunks[start : start + len(params)] = mode_chunks
         available_modes.append(mode)
 
     return UnityPeakFetchResult(
