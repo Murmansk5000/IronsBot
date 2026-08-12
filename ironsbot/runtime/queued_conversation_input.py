@@ -49,8 +49,8 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
 
     if not prompt_sessions.claim_input(event):
         logger.debug(
-            "queued conversation input already claimed: namespace=%s "
-            "session=%s user=%s message_id=%s",
+            "queued conversation input already claimed: namespace={} "
+            "session={} user={} message_id={}",
             context.namespace,
             context.event_session_id,
             event.user_id,
@@ -125,8 +125,8 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     dispatch_handlers(matcher, context)
     action_id = request.action.id if request is not None else "none"
     logger.info(
-        "queued conversation input dispatched: namespace=%s session=%s "
-        "user=%s message_id=%s ticket=%s action=%s waited=%s queue_wait=%.3fs",
+        "queued conversation input dispatched: namespace={} session={} "
+        "user={} message_id={} ticket={} action={} waited={} queue_wait={:.3f}s",
         context.namespace,
         context.event_session_id,
         event.user_id,

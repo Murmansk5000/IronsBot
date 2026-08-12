@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -33,6 +34,7 @@ from ironsbot.core.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
 )
+from ironsbot.core.time import normalize_daily_time
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -110,37 +112,37 @@ class MatcherPriorityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     help_hint: int = Field(default=0, ge=0)
-    ai_group_at: int = Field(default=-10, ge=-100)
-    bot_mention_block: int = Field(default=-5, ge=-100)
-    server_status: int = Field(default=1, ge=0)
-    server_status_admin: int = Field(default=2, ge=0)
-    bilibili: int = Field(default=3, ge=0)
-    sendpic: int = Field(default=4, ge=0)
-    red_packet_notice: int = Field(default=5, ge=0)
-    seer_player: int = Field(default=10, ge=0)
-    seer_team: int = Field(default=11, ge=0)
-    seer_rank: int = Field(default=12, ge=0)
-    seer_rank_help: int = Field(default=13, ge=0)
-    seer_autocard: int = Field(default=14, ge=0)
-    lucky_skin_window: int = Field(default=15, ge=0)
-    seer_type: int = Field(default=20, ge=0)
-    seer_equipment: int = Field(default=21, ge=0)
-    seer_peak: int = Field(default=22, ge=0)
-    seer_data: int = Field(default=23, ge=0)
-    team_resource_subscription: int = Field(default=24, ge=0)
-    help: int = Field(default=30, ge=0)
-    about: int = Field(default=31, ge=0)
-    message_commands: int = Field(default=40, ge=0)
-    ai_intent: int = Field(default=50, ge=0)
-    meeting: int = Field(default=60, ge=0)
-    activity: int = Field(default=70, ge=0)
-    db_sync: int = Field(default=80, ge=0)
-    team_audit: int = Field(default=90, ge=0)
-    seer_mintmark: int = Field(default=100, ge=0)
-    pet_config: int = Field(default=109, ge=0)
-    seer_pet: int = Field(default=110, ge=0)
-    seer_query: int = Field(default=120, ge=0)
-    ai_chat: int = Field(default=200, ge=0)
+    ai_group_at: int = Field(default=-20, ge=-100)
+    bot_mention_block: int = Field(default=-19, ge=-100)
+    server_status: int = Field(default=10, ge=0)
+    server_status_admin: int = Field(default=11, ge=0)
+    bilibili: int = Field(default=20, ge=0)
+    sendpic: int = Field(default=30, ge=0)
+    red_packet_notice: int = Field(default=40, ge=0)
+    seer_player: int = Field(default=50, ge=0)
+    seer_team: int = Field(default=51, ge=0)
+    seer_rank: int = Field(default=52, ge=0)
+    seer_rank_help: int = Field(default=53, ge=0)
+    seer_autocard: int = Field(default=54, ge=0)
+    lucky_skin_window: int = Field(default=55, ge=0)
+    seer_type: int = Field(default=56, ge=0)
+    seer_equipment: int = Field(default=57, ge=0)
+    seer_peak: int = Field(default=58, ge=0)
+    seer_data: int = Field(default=59, ge=0)
+    team_resource_subscription: int = Field(default=60, ge=0)
+    help: int = Field(default=70, ge=0)
+    about: int = Field(default=71, ge=0)
+    message_commands: int = Field(default=80, ge=0)
+    ai_intent: int = Field(default=81, ge=0)
+    meeting: int = Field(default=82, ge=0)
+    activity: int = Field(default=83, ge=0)
+    db_sync: int = Field(default=84, ge=0)
+    team_audit: int = Field(default=85, ge=0)
+    seer_mintmark: int = Field(default=90, ge=0)
+    pet_config: int = Field(default=91, ge=0)
+    seer_pet: int = Field(default=92, ge=0)
+    seer_query: int = Field(default=93, ge=0)
+    ai_chat: int = Field(default=100, ge=0)
 
     @model_validator(mode="after")
     def validate_bot_mention_order(self) -> MatcherPriorityConfig:
@@ -155,7 +157,7 @@ class LoggingConfig(BaseModel):
     file_enabled: bool = False
     file_level: str = "INFO"
     error_file_enabled: bool = False
-    rotation: str = "00:00"
+    rotation: str = "00:00:00"
     retention: str = "30 days"
     compression: str | None = None
 
@@ -168,13 +170,27 @@ class LoggingConfig(BaseModel):
             raise ValueError(msg)
         return level
 
-    @field_validator("rotation", "retention")
+    @field_validator("retention")
     @classmethod
     def normalize_required_strings(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             msg = "bot.logging fields must not be empty"
             raise ValueError(msg)
+        return normalized
+
+    @field_validator("rotation")
+    @classmethod
+    def normalize_rotation(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "bot.logging.rotation must not be empty"
+            raise ValueError(msg)
+        if re.fullmatch(r"\d{1,2}:\d{1,2}(?::\d{1,2})?", normalized):
+            return normalize_daily_time(
+                normalized,
+                error_message="bot.logging.rotation clock time must use HH:MM:SS",
+            )
         return normalized
 
     @field_validator("compression", mode="before")

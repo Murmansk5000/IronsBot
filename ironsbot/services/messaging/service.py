@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches, normalize_command_text
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
@@ -408,12 +408,10 @@ def build_schedule_job_id(prefix: str, index: int, raw_id: str) -> str:
 
 
 def build_schedule_trigger_kwargs(task: ScheduledAction) -> dict[str, Any]:
-    hour, minute = daily_time_parts(task.time)
-    trigger_kwargs: dict[str, Any] = {
-        "hour": hour,
-        "minute": minute,
-        "second": 0,
-    }
+    trigger_kwargs: dict[str, Any] = scheduled_clock_time(
+        task.time,
+        error_message="messaging.schedules.time must use HH:MM:SS",
+    ).cron_kwargs()
     if task.day_of_week:
         trigger_kwargs["day_of_week"] = task.day_of_week
     return trigger_kwargs

@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Protocol
 
+from ironsbot.services.operations.scheduler import JobRegistry
+
 if TYPE_CHECKING:
     from ironsbot.config.models.operations import DataSyncConfig
     from ironsbot.services.operations.scheduler import Scheduler
@@ -16,7 +18,7 @@ class DataSyncBackend(Protocol):
     def has_databases(self) -> bool: ...
     def remote_names(self) -> tuple[str, ...]: ...
     def remote_build_names(self) -> tuple[str, ...]: ...
-    def schedules(self) -> tuple[tuple[str, int], ...]: ...
+    def schedules(self) -> tuple[tuple[str, int, int], ...]: ...
     def is_running(self) -> bool: ...
     def prepare_all(self) -> None: ...
     def load_all_cached(self) -> None: ...
@@ -111,17 +113,16 @@ class DataSyncService:
         )
 
     def _register_jobs(self, scheduler: Scheduler) -> None:
-        for name, minutes in self._backend.schedules():
+        for name, minutes, second in self._backend.schedules():
             if not self._config.interval_enabled:
                 logger.debug("已注册数据库 %r，自动定时同步已关闭", name)
                 continue
-            scheduler.add_job(
+            JobRegistry(scheduler).add_wall_clock_interval(
                 self._backend.run_sync_database,
-                "interval",
                 args=[name],
                 minutes=minutes,
-                id=f"db_sync_{name}",
-                replace_existing=True,
+                offset_seconds=second,
+                job_id=f"db_sync_{name}",
             )
 
     def _format_manual_result(

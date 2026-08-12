@@ -35,7 +35,7 @@ async def _ignore_push(
     return None
 
 
-def test_bili_monitor_service_registers_standard_scheduler_job(
+def test_bili_monitor_service_registers_wall_clock_job(
     tmp_path: Path,
 ) -> None:
     scheduler = FakeScheduler()
@@ -50,12 +50,14 @@ def test_bili_monitor_service_registers_standard_scheduler_job(
         monitor.register_job(cast("Scheduler", scheduler))
     )
 
+    assert len(scheduler.jobs) == 1
     job = scheduler.jobs[0]
     func = job.pop("func")
     assert func == monitor.check
     assert job == {
-        "trigger": "interval",
+        "trigger": "cron",
         "id": "bilibili_monitor_auto_check",
         "replace_existing": True,
-        "minutes": 1,
+        "minute": "*",
+        "second": 5,
     }
