@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import ScheduledClockTime
 from ironsbot.services.operations.scheduler import JobRegistry
 
 from .planning import group_by_send_time
@@ -44,13 +45,10 @@ def register_scan_jobs(
         next_run_time=now + STARTUP_SCAN_DELAY,
         misfire_grace_time=STARTUP_SCAN_MISFIRE_GRACE_SECONDS,
     )
-    registry.add(
+    registry.add_daily(
         scan_func,
-        "cron",
         job_id=DAILY_SCAN_JOB_SUFFIX,
-        hour=0,
-        minute=0,
-        second=0,
+        clock_time=ScheduledClockTime(0, 0),
         misfire_grace_time=DAILY_SCAN_MISFIRE_GRACE_SECONDS,
     )
 

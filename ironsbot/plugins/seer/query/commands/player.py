@@ -13,7 +13,11 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 from ironsbot.config.player_accounts import PlayerAccountRegistry
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.conversations import enter_event_reply_conversation
-from ironsbot.runtime.matchers import CommandPolicy, bind_async
+from ironsbot.runtime.matchers import (
+    QUEUED_CONVERSATION_RESERVATION_PRIORITY,
+    CommandPolicy,
+    bind_async,
+)
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.replies import finish_event_reply
@@ -50,6 +54,7 @@ from .player_context import (
 )
 from .player_detail_conversation import (
     begin_player_detail_conversation,
+    reserve_player_detail_conversation,
     send_player_info_with_detail_prompt,
 )
 from .player_target import resolve_event_player_reference, resolve_player_target
@@ -365,6 +370,23 @@ def install(group: SeerMatcherGroup) -> None:
         group.player_accounts,
         group.resources.external_references,
     )
+    reservation_matcher = group.on_message(
+        policy=CommandPolicy.exempt("pending player detail menu reservation"),
+        rule=seer_feature_rule(group.features, "seer_player")
+        & Rule(bind_async(_is_player_id_query, dependencies))
+        & member_target_command(),
+        priority=QUEUED_CONVERSATION_RESERVATION_PRIORITY,
+        block=False,
+    )
+    reservation_matcher.append_handler(
+        bind_async(
+            reserve_player_detail_conversation,
+            service,
+            group.resources.player_detail_extensions,
+            group.features,
+        )
+    )
+
     binding_matcher = group.on_message(
         policy=CommandPolicy.command(
             "seer_player_binding",

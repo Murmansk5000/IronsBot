@@ -15,6 +15,7 @@ class SchedulerStateError(RuntimeError):
 
 @dataclass(slots=True)
 class SchedulerFacade:
+    timezone: str | None = None
     _backend: AsyncIOScheduler | None = field(default=None, init=False, repr=False)
 
     def bind(self, backend: AsyncIOScheduler) -> None:
