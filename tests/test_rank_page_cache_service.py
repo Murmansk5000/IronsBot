@@ -12,6 +12,8 @@ CACHED_PAGE_LOOKUP_SCORE = 977
 OVERLAP_LOOKUP_INDEX = 14
 OVERLAP_NEW_USER_ID = 2000
 MISS_SEARCH_LIMIT = 2_000
+CROSS_PAGE_LAST_RANK_INDEX = 4_900
+CROSS_PAGE_LAST_SCORE = 999
 
 
 @dataclass(frozen=True)
@@ -86,7 +88,7 @@ def test_rank_page_cache_uses_player_rank_fact_schema(
         sub_key=2,
         start=0,
         end=99,
-        items=[RankItem(id=100, nick="Alice", score=999)],
+        items=[RankItem(id=100, nick="Alice", score=CROSS_PAGE_LAST_SCORE)],
     )
 
     with sqlite3.connect(cache_path) as conn:
@@ -102,9 +104,38 @@ def test_rank_page_cache_uses_player_rank_fact_schema(
         "rank_pages",
         "player_rank_facts",
         "player_rank_misses",
+        "player_rank_last_seen",
     } <= tables
     assert "pages" not in tables
     assert "items" not in tables
+
+
+def test_rank_page_cache_migration_backfills_last_seen_from_existing_facts(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / "rank_page_cache.sqlite"
+    cache = build_cache(cache_path)
+    cache.save(
+        key=1,
+        sub_key=2,
+        start=0,
+        end=0,
+        items=[RankItem(id=100, nick="Alice", score=CROSS_PAGE_LAST_SCORE)],
+    )
+    with sqlite3.connect(cache_path) as conn:
+        conn.execute("DROP TABLE player_rank_last_seen")
+        conn.execute("PRAGMA user_version = 2")
+
+    migrated = build_cache(cache_path).last_seen_item(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        max_age_seconds=24 * 60 * 60,
+    )
+
+    assert migrated is not None
+    assert migrated.rank_index == 0
+    assert migrated.score == CROSS_PAGE_LAST_SCORE
 
 
 def test_save_rank_page_replaces_overlapping_ranges(
@@ -149,6 +180,65 @@ def test_save_rank_page_replaces_overlapping_ranges(
     assert [(page.start_index, page.end_index) for page in summaries] == [
         (OVERLAP_LOOKUP_INDEX, OVERLAP_LOOKUP_INDEX),
     ]
+
+
+def test_overlapping_page_refresh_keeps_last_confirmed_player_rank(
+    tmp_path: Path,
+) -> None:
+    cache = build_cache(tmp_path / "rank_page_cache.sqlite")
+    cache.save(
+        key=1,
+        sub_key=2,
+        start=CROSS_PAGE_LAST_RANK_INDEX,
+        end=4_999,
+        items=[RankItem(id=100, nick="Alice", score=CROSS_PAGE_LAST_SCORE)],
+        fetched_at=FETCHED_AT,
+    )
+    cache.save(
+        key=1,
+        sub_key=2,
+        start=CROSS_PAGE_LAST_RANK_INDEX,
+        end=4_999,
+        items=[RankItem(id=200, nick="Bob", score=1_000)],
+        fetched_at=FETCHED_AT + 60,
+    )
+
+    assert cache.item(key=1, sub_key=2, user_id=100) is None
+    cached = cache.last_seen_item(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        max_age_seconds=float("inf"),
+    )
+    assert cached is not None
+    assert cached.rank_index == CROSS_PAGE_LAST_RANK_INDEX
+    assert cached.score == CROSS_PAGE_LAST_SCORE
+
+
+def test_confirmed_rank_miss_invalidates_last_seen_rank_inside_search_limit(
+    tmp_path: Path,
+) -> None:
+    cache = build_cache(tmp_path / "rank_page_cache.sqlite")
+    cache.save(
+        key=1,
+        sub_key=2,
+        start=0,
+        end=0,
+        items=[RankItem(id=100, nick="Alice", score=999)],
+    )
+    cache.save_miss(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        searched_limit=100,
+    )
+
+    assert cache.last_seen_item(
+        key=1,
+        sub_key=2,
+        user_id=100,
+        max_age_seconds=24 * 60 * 60,
+    ) is None
 
 
 def test_cached_rank_page_result_preserves_fetched_at(

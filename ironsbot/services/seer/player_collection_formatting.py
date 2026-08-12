@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.services.seer.player_formatting_common import (
     format_metric_line,
     format_player_data_time,
+    format_rank_cache_fallback,
     join_metric_parts,
     sample_rank_text,
 )
@@ -132,7 +133,15 @@ def format_autocard_rank_info(
         else ""
     )
     failure = getattr(result, "failure", None)
-    if failure:
+    cached_fallback = format_rank_cache_fallback(result)
+    if cached_fallback:
+        metric_text = join_metric_parts(
+            "" if result.score is None else f"{result.score}分",
+            f"{format_rank_position_text(result)}（{cached_fallback}）",
+            sample_text,
+        )
+        lines.append(f"群星之巅：{metric_text}")
+    elif failure:
         metric_text = join_metric_parts(
             "" if result.score is None else f"{result.score}分",
             f"全服排行失败：{failure}",

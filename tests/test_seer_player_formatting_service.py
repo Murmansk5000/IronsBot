@@ -313,6 +313,25 @@ def test_format_autocard_rank_starts_with_fetch_time() -> None:
     assert message.splitlines()[1].startswith("获取时间：")
 
 
+def test_format_autocard_rank_marks_cached_fallback_after_timeout() -> None:
+    message = format_autocard_rank_info(
+        RankLookupResult(
+            title="群星之巅榜",
+            score_name="分",
+            rank=15,
+            score=9525,
+            failure="查询超时",
+            fallback_cached_at=REG_TIME,
+        ),
+        player_identity="米米号：1269554（XJTLoveness）",
+        local_summary=_as_any(_LocalSummary()),
+    )
+
+    assert "9525分" in message
+    assert "前 15 名未上榜" not in message
+    assert "缓存于2000年1月1日 08:00:00，本次查询超时" in message
+
+
 def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     user_info = UserInfo(
         user_id=PLAYER_ID,
