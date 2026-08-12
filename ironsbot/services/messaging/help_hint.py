@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from random import choice
+from random import choices
 from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
@@ -11,15 +11,23 @@ from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 if TYPE_CHECKING:
     from ironsbot.core.features import HelpConfig
     from ironsbot.core.onebot_references import OneBotReferenceResolver
+    from ironsbot.services.messaging.poke_promotions import PokePromotionService
 
 
 class CommandHintCandidate(Protocol):
+    @property
+    def id(self) -> str: ...
+
     def poke_text(self) -> str: ...
 
 
 CommandHintCandidates = Callable[
     [int | None, int, str | None, tuple[str, ...]],
     Sequence[CommandHintCandidate],
+]
+CommandHintChooser = Callable[
+    [Sequence[CommandHintCandidate], Sequence[float]],
+    CommandHintCandidate,
 ]
 
 
@@ -29,6 +37,13 @@ class PokeLikeEvent(Protocol):
 
 
 POKE_HINT_HELP_SUFFIX = "发送“帮助”可查看全部指令。"
+
+
+def _choose_weighted_candidate(
+    candidates: Sequence[CommandHintCandidate],
+    weights: Sequence[float],
+) -> CommandHintCandidate:
+    return choices(candidates, weights=weights, k=1)[0]
 
 
 def is_poke_at_bot(event: PokeLikeEvent) -> bool:
@@ -56,9 +71,8 @@ class HelpHintService:
     config: HelpConfig
     references: OneBotReferenceResolver
     poke_hint_candidates: CommandHintCandidates | None = None
-    chooser: Callable[
-        [Sequence[CommandHintCandidate]], CommandHintCandidate
-    ] = choice
+    promotions: PokePromotionService | None = None
+    chooser: CommandHintChooser = _choose_weighted_candidate
     limiter: SlidingWindowRateLimiter = field(
         default_factory=SlidingWindowRateLimiter
     )
@@ -93,7 +107,12 @@ class HelpHintService:
         )
         if not candidates:
             return None
-        selected = self.chooser(candidates)
+        weights = (
+            self.promotions.weights_for(candidates)
+            if self.promotions is not None
+            else (1.0,) * len(candidates)
+        )
+        selected = self.chooser(candidates, weights)
         return f"{selected.poke_text()}\n{POKE_HINT_HELP_SUFFIX}"
 
     def can_send(self, group_id: int | None, *, now: float | None = None) -> bool:
