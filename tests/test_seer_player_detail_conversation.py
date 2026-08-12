@@ -4,7 +4,7 @@ import asyncio
 from contextlib import suppress
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import ANY, AsyncMock
 
 import pytest
 from nonebot.exception import FinishedException
@@ -106,11 +106,11 @@ def test_player_detail_uses_the_shared_shortcut_executor(
         return QueryReply(text="peak")
 
     service = SimpleNamespace(shortcut=AsyncMock(side_effect=shortcut))
-    continue_conversation = AsyncMock()
+    finish_result = AsyncMock()
     monkeypatch.setattr(
         player_detail_conversation,
-        "_continue_player_detail_conversation",
-        continue_conversation,
+        "_finish_player_detail_result",
+        finish_result,
     )
     send_status = AsyncMock()
     monkeypatch.setattr(player_detail_conversation, "send_event_reply", send_status)
@@ -148,7 +148,7 @@ def test_player_detail_uses_the_shared_shortcut_executor(
     )
 
     assert service.shortcut.await_count == EXPECTED_CONVERSATION_CONTINUES
-    assert continue_conversation.await_count == EXPECTED_CONVERSATION_CONTINUES
+    assert finish_result.await_count == EXPECTED_CONVERSATION_CONTINUES
     assert send_status.await_count == EXPECTED_CONVERSATION_CONTINUES
     assert all(
         call.args[2] == "⏳ 巅峰之战正在查询，完成后会直接发送结果。"
@@ -162,7 +162,7 @@ def test_player_detail_reuses_the_base_snapshot(
     service = SimpleNamespace(shortcut=AsyncMock(return_value=QueryReply(text="peak")))
     monkeypatch.setattr(
         player_detail_conversation,
-        "_continue_player_detail_conversation",
+        "_finish_player_detail_result",
         AsyncMock(),
     )
     monkeypatch.setattr(player_detail_conversation, "send_event_reply", AsyncMock())
@@ -216,7 +216,7 @@ def test_player_detail_uses_the_replying_member_for_shared_menu_actions(
     )
     monkeypatch.setattr(
         player_detail_conversation,
-        "_continue_player_detail_conversation",
+        "_finish_player_detail_result",
         AsyncMock(),
     )
     monkeypatch.setattr(
@@ -431,11 +431,11 @@ def test_player_detail_delegates_a_registered_private_action(
             action=ActionDefinition("private_action", "private action"),
         )
     )
-    continue_conversation = AsyncMock()
+    finish_result = AsyncMock()
     monkeypatch.setattr(
         player_detail_conversation,
-        "_continue_player_detail_conversation",
-        continue_conversation,
+        "_finish_player_detail_result",
+        finish_result,
     )
     send_status = AsyncMock()
     monkeypatch.setattr(player_detail_conversation, "send_event_reply", send_status)
@@ -457,7 +457,7 @@ def test_player_detail_delegates_a_registered_private_action(
     )
 
     action_query.assert_awaited_once_with(PLAYER_ID, event.user_id, event.group_id)
-    call = continue_conversation.await_args
+    call = finish_result.await_args
     assert call is not None
     assert call.kwargs["prompt"] == "private reply"
     send_status.assert_awaited_once()
@@ -466,6 +466,49 @@ def test_player_detail_delegates_a_registered_private_action(
     assert status_call.args[2] == (
         "⏳ 已收到：private action，已加入队列，完成后会直接发送结果。"
     )
+
+
+def test_player_detail_owner_result_does_not_reopen_the_menu(
+    monkeypatch: Any,
+) -> None:
+    finish_reply = AsyncMock(side_effect=FinishedException)
+    continue_conversation = AsyncMock()
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "finish_event_reply",
+        finish_reply,
+    )
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "_continue_player_detail_conversation",
+        continue_conversation,
+    )
+    event = group_message_event("1")
+    sent: list[bool] = []
+
+    with pytest.raises(FinishedException):
+        asyncio.run(
+            player_detail_conversation._deliver_player_detail_result(
+                cast("Any", object()),
+                PlayerDetailExtensionRegistry(),
+                cast("Any", object()),
+                cast("Any", object()),
+                event,
+                cast("Any", {}),
+                keep_menu_context=False,
+                action="collection",
+                prompt="collection result",
+                on_sent=lambda: sent.append(True),
+            )
+        )
+
+    finish_reply.assert_awaited_once_with(
+        ANY,
+        event,
+        "collection result",
+    )
+    continue_conversation.assert_not_awaited()
+    assert sent == [True]
 
 
 def test_player_detail_semantic_request_matches_direct_shortcuts() -> None:

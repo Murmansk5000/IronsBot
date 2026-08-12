@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from nonebot.adapters import Event  # noqa: TC002 - dynamic Rule callback annotation
 from nonebot.matcher import Matcher, current_bot, current_event
 from nonebot.rule import Rule
 
@@ -17,6 +18,9 @@ if TYPE_CHECKING:
 
 QUEUED_CONVERSATION_FALLBACK_STATE_KEY = (
     "_ironsbot_queued_conversation_fallback"
+)
+QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY = (
+    "_ironsbot_queued_conversation_fallback_generation"
 )
 
 
@@ -37,15 +41,28 @@ async def create_queued_conversation_fallback(
     bot = current_bot.get()
     event = current_event.get()
     permission = await matcher.update_permission(bot, event)
+    context.fallback_generation += 1
+    generation = context.fallback_generation
+
+    def matches_current_generation(next_event: Event) -> bool:
+        """Reject superseded temporary matchers before they can block input."""
+
+        return (
+            context.active
+            and context.fallback_generation == generation
+            and context.matches(next_event)
+        )
+
     default_state: T_State = {
         QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
         QUEUED_CONVERSATION_FALLBACK_STATE_KEY: True,
+        QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY: generation,
     }
     if runtime_token := matcher.state.get(runtime_context_key):
         default_state[runtime_context_key] = runtime_token
     matcher.__class__.new(
         "message",
-        Rule(context.matches),
+        Rule(matches_current_generation),
         permission,
         [handler],
         temp=True,

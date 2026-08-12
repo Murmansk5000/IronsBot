@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.exception import FinishedException
+from nonebot.log import logger
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
@@ -191,13 +192,15 @@ async def handle_player_detail_reply(  # noqa: PLR0913
             event,
             player_id=player_id,
         )
-        await _continue_player_detail_conversation(
+        await _deliver_player_detail_result(
             service,
             extensions,
             features,
             matcher,
             event,
             state,
+            keep_menu_context=is_shared_reply,
+            action=extension_action.action.id,
             prompt=_query_reply_message(reply),
             on_sent=lambda: service.record_returned_detail_reply(
                 qq_user_id=event.user_id,
@@ -235,13 +238,15 @@ async def handle_player_detail_reply(  # noqa: PLR0913
     )
     message = _reply_text(reply.leading_text, reply.text, reply.image_error)
 
-    await _continue_player_detail_conversation(
+    await _deliver_player_detail_result(
         service,
         extensions,
         features,
         matcher,
         event,
         state,
+        keep_menu_context=is_shared_reply,
+        action=kind,
         prompt=message,
         on_sent=lambda: service.record_returned_shortcut(
             event.user_id,
@@ -359,6 +364,76 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
             on_sent()
 
 
+async def _deliver_player_detail_result(  # noqa: PLR0913
+    service: PlayerService,
+    extensions: PlayerDetailExtensionRegistry,
+    features: FeatureService,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    *,
+    keep_menu_context: bool,
+    action: str,
+    prompt: str | Message | None,
+    on_sent: Callable[[], None] | None = None,
+) -> None:
+    if keep_menu_context:
+        await _continue_player_detail_conversation(
+            service,
+            extensions,
+            features,
+            matcher,
+            event,
+            state,
+            prompt=prompt,
+            on_sent=on_sent,
+        )
+        return
+    await _finish_player_detail_result(
+        matcher,
+        event,
+        action=action,
+        prompt=prompt,
+        on_sent=on_sent,
+    )
+
+
+async def _finish_player_detail_result(
+    matcher: Matcher,
+    event: MessageEvent,
+    *,
+    action: str,
+    prompt: str | Message | None,
+    on_sent: Callable[[], None] | None = None,
+) -> None:
+    """Send one parallel result without reopening the original player menu."""
+
+    if prompt is None:
+        raise FinishedException
+    try:
+        await finish_event_reply(matcher, event, prompt)
+    except FinishedException:
+        logger.info(
+            "player detail result sent without reopening menu: user={} "
+            "message_id={} action={}",
+            event.user_id,
+            event.message_id,
+            action,
+        )
+        if on_sent is not None:
+            on_sent()
+        raise
+    logger.info(
+        "player detail result sent without reopening menu: user={} "
+        "message_id={} action={}",
+        event.user_id,
+        event.message_id,
+        action,
+    )
+    if on_sent is not None:
+        on_sent()
+
+
 async def _continue_player_detail_conversation(  # noqa: PLR0913
     service: PlayerService,
     extensions: PlayerDetailExtensionRegistry,
@@ -370,6 +445,8 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
     prompt: str | Message | None,
     on_sent: Callable[[], None] | None = None,
 ) -> None:
+    """Open a separate menu only for a member using someone else's menu."""
+
     commands = tuple(state.get(PLAYER_DETAIL_COMMANDS_KEY) or ())
     if not commands:
         if prompt is None:

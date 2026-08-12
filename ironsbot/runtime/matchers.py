@@ -57,6 +57,7 @@ from ironsbot.runtime.prompt_sessions import (
     REQUEST_RESPONSE_TOKEN_STATE_KEY as _REQUEST_RESPONSE_TOKEN_KEY,
 )
 from ironsbot.runtime.queued_conversation_fallback import (
+    QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY,
     QUEUED_CONVERSATION_FALLBACK_STATE_KEY,
     create_queued_conversation_fallback,
 )
@@ -438,22 +439,41 @@ async def _capture_queued_conversation_input(
     event: Event,
     _state: T_State,
 ) -> None:
-    if _state.get(QUEUED_CONVERSATION_FALLBACK_STATE_KEY):
-        context = get_queued_conversation(_state)
-        if context is not None and context.active:
+    is_fallback = bool(_state.get(QUEUED_CONVERSATION_FALLBACK_STATE_KEY))
+    context = get_queued_conversation(_state) if is_fallback else None
+    generation = _state.get(QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY)
+    if (
+        context is not None
+        and isinstance(generation, int)
+        and generation != context.fallback_generation
+    ):
+        raise FinishedException
+
+    try:
+        await capture_queued_conversation_input(
+            matcher,
+            event,
+            _state,
+            get_prompt_sessions=get_prompt_session_manager,
+            dispatch_handlers=_dispatch_queued_conversation_handlers,
+        )
+    finally:
+        # A temporary matcher consumes one event. Replace only the fallback
+        # that actually handled it; stale generations must never multiply.
+        if (
+            context is not None
+            and context.active
+            and (
+                not isinstance(generation, int)
+                or generation == context.fallback_generation
+            )
+        ):
             await create_queued_conversation_fallback(
                 matcher,
                 context,
                 handler=_capture_queued_conversation_input,
                 runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
             )
-    await capture_queued_conversation_input(
-        matcher,
-        event,
-        _state,
-        get_prompt_sessions=get_prompt_session_manager,
-        dispatch_handlers=_dispatch_queued_conversation_handlers,
-    )
 
 
 def _dispatch_queued_conversation_handlers(
