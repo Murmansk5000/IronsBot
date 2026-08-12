@@ -536,6 +536,7 @@ def test_seer_category_subscription_submenu_and_target_filtering(
     assert "请选择要切换" in prompt
     assert "总开关为 ❌ 时" in prompt
     assert "仅影响赛尔号官方 B站动态" in prompt
+    assert "链接后的对应消息" in prompt
     media_options = {
         child.label: child
         for child in children
