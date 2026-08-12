@@ -6,13 +6,15 @@ from copy import deepcopy
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves it
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher, current_event
+from nonebot.matcher import Matcher, current_bot, current_event, matchers
+from nonebot.permission import Permission
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
@@ -42,6 +44,11 @@ from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     GroupMenuAnchor,
     is_current_group_menu_reply,
+)
+from ironsbot.runtime.queued_conversation_fallback import (
+    QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY,
+    QUEUED_CONVERSATION_FALLBACK_PRIORITY,
+    create_queued_conversation_fallback,
 )
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
@@ -195,7 +202,6 @@ async def test_parallel_queued_conversation_reserves_fifo_tickets_without_waitin
         handlers=[],
         parallel=True,
     )
-
     first_ticket = await context.acquire()
     assert first_ticket == 1
     context.mark_dispatched(first_ticket)
@@ -449,6 +455,182 @@ def test_queued_menu_uses_singleton_permanent_routers() -> None:
     assert not exit_router.temp
     assert not input_router.temp
     assert QUEUED_CONVERSATION_INPUT_PRIORITY < QUEUED_CONVERSATION_RESERVATION_PRIORITY
+    assert (
+        QUEUED_CONVERSATION_RESERVATION_PRIORITY
+        < QUEUED_CONVERSATION_FALLBACK_PRIORITY
+    )
+
+
+@pytest.mark.asyncio
+async def test_session_fallback_accepts_rapid_choices_while_menu_is_pending(  # noqa: PLR0915
+) -> None:
+    """A waiting query must not leave gaps between temporary menu matchers."""
+
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+    registry.install_queued_conversation_router()
+    origin_type = registry.message_matchers[-1]
+    origin_event = group_message_event(
+        "米米号",
+        user_id=2,
+        group_id=4,
+        self_id=1,
+        message_id=1,
+    )
+    runtime_state = registry._with_runtime_hooks({})["state"]
+    context = manager.start_queued_conversation(
+        namespace="player_detail",
+        event_session_id=origin_event.get_session_id(),
+        owner_user_id=origin_event.user_id,
+        state=runtime_state,
+        reply_check=lambda event: event.get_plaintext().strip()
+        in {"1", "2", "3", "4"},
+        pending_reply_check=lambda event: event.get_plaintext().strip().isdigit(),
+        handlers=[],
+        pending=True,
+        parallel=True,
+    )
+    origin = origin_type()
+    origin.state.update(runtime_state)
+    origin.update_permission = AsyncMock(return_value=Permission())
+    bot = cast(
+        "Any",
+        SimpleNamespace(
+            config=SimpleNamespace(session_expire_timeout=timedelta(minutes=1))
+        ),
+    )
+    bot_token = current_bot.set(bot)
+    event_token = current_event.set(origin_event)
+    fallback_start = len(matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY])
+
+    async def dispatch(message_id: int, choice: str) -> T_State:
+        event = group_message_event(
+            choice,
+            user_id=2,
+            group_id=4,
+            self_id=1,
+            message_id=message_id,
+        )
+        fallback_type = next(
+            matcher_type
+            for matcher_type in matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY]
+            if matcher_type._default_state.get(
+                QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY
+            )
+            == context.fallback_generation
+            and matcher_type._default_state.get(
+                QUEUED_CONVERSATION_TOKEN_STATE_KEY
+            )
+            == context.token
+        )
+        state = deepcopy(fallback_type._default_state)
+        assert await fallback_type.rule(bot, event, state)
+        fallback = fallback_type()
+        fallback.state.update(state)
+        task_event_token = current_event.set(event)
+        try:
+            await _capture_queued_conversation_input(
+                fallback,
+                event,
+                fallback.state,
+            )
+        finally:
+            current_event.reset(task_event_token)
+        return fallback.state
+
+    try:
+        await create_queued_conversation_fallback(
+            origin,
+            context,
+            handler=_capture_queued_conversation_input,
+            runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
+            priority=QUEUED_CONVERSATION_FALLBACK_PRIORITY,
+        )
+        first_fallback = next(
+            matcher_type
+            for matcher_type in matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY]
+            if matcher_type._default_state.get(
+                QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY
+            )
+            == context.fallback_generation
+            and matcher_type._default_state.get(
+                QUEUED_CONVERSATION_TOKEN_STATE_KEY
+            )
+            == context.token
+        )
+        tasks: list[asyncio.Task[T_State]] = []
+        choices = ("1", "2", "3", "4")
+        for message_id, choice in enumerate(choices, start=10):
+            previous_generation = context.fallback_generation
+            tasks.append(asyncio.create_task(dispatch(message_id, choice)))
+            for _ in range(100):
+                await asyncio.sleep(0.01)
+                if context.fallback_generation > previous_generation:
+                    break
+                if tasks[-1].done():
+                    await tasks[-1]
+            assert context.fallback_generation > previous_generation
+
+        expected_generation = len(choices) + 1
+        assert context.fallback_generation == expected_generation
+        assert not any(task.done() for task in tasks)
+        first_state: T_State = {}
+        first_event = group_message_event(
+            "1",
+            user_id=2,
+            group_id=4,
+            self_id=1,
+            message_id=99,
+        )
+        assert not await first_fallback.rule(bot, first_event, first_state)
+
+        manager.activate_queued_conversation(
+            context,
+            state=runtime_state,
+            reply_check=lambda event: event.get_plaintext().strip()
+            in {"1", "2", "3", "4"},
+            group_reply_check=None,
+            menu_anchor=None,
+            allow_group_reply_exit=False,
+            semantic_request_resolver=None,
+            handlers=[],
+            parallel=True,
+            page_id="player:detail",
+            menu_sent=True,
+        )
+        states = await asyncio.gather(*tasks)
+
+        assert [
+            state[QUEUED_CONVERSATION_TICKET_STATE_KEY] for state in states
+        ] == [1, 2, 3, 4]
+    finally:
+        manager.cancel_queued_context(context)
+        del matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY][fallback_start:]
+        current_event.reset(event_token)
+        current_bot.reset(bot_token)
+
+
+def test_queued_conversation_never_matches_another_session() -> None:
+    manager = PromptSessionManager()
+    origin = group_message_event("菜单", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="player_detail",
+        event_session_id=origin.get_session_id(),
+        owner_user_id=origin.user_id,
+        state={},
+        reply_check=lambda event: event.get_plaintext().strip().isdigit(),
+        handlers=[],
+    )
+
+    other_group = group_message_event("1", user_id=2, group_id=5, self_id=1)
+    other_user = group_message_event("1", user_id=3, group_id=4, self_id=1)
+
+    assert not context.matches(other_group)
+    assert not context.matches(other_user)
 
 
 def test_queued_menu_exit_has_a_dedicated_earlier_route() -> None:
@@ -979,6 +1161,7 @@ async def test_player_command_attaches_the_high_priority_pending_reservation() -
         pending=True,
         parallel=True,
     )
+    context.fallback_generation = 1
     state = registry._with_runtime_hooks({})["state"]
     matcher = cast("Matcher", SimpleNamespace(state=state))
     event_token = current_event.set(event)
@@ -999,6 +1182,7 @@ async def test_player_command_attaches_the_high_priority_pending_reservation() -
         namespace="seer_player",
         event_session_id=event.get_session_id(),
     ) is context
+    assert context.fallback_generation == 1
 
 
 @pytest.mark.asyncio

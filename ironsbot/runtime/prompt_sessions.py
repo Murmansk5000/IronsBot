@@ -92,6 +92,7 @@ class _QueuedConversation:
     parallel: bool = False
     pending_reply_check: Callable[[Event], bool] | None = None
     pending: bool = False
+    fallback_generation: int = 0
     root_menu_opened_at: float | None = None
     deadline: float | None = None
     _activation: Future[bool] | None = field(default=None, init=False, repr=False)
@@ -113,11 +114,14 @@ class _QueuedConversation:
     def matches(self, event: Event) -> bool:
         if not self.active:
             return False
+        is_owner_session = event.get_session_id() == self.event_session_id
         if self.pending:
-            return self.pending_reply_check is not None and self.pending_reply_check(
-                event
+            return (
+                is_owner_session
+                and self.pending_reply_check is not None
+                and self.pending_reply_check(event)
             )
-        if self.reply_check(event):
+        if is_owner_session and self.reply_check(event):
             return True
         if (
             self.owner_user_id is not None

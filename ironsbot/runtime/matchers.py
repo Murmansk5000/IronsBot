@@ -56,6 +56,11 @@ from ironsbot.runtime.prompt_sessions import (
 from ironsbot.runtime.prompt_sessions import (
     REQUEST_RESPONSE_TOKEN_STATE_KEY as _REQUEST_RESPONSE_TOKEN_KEY,
 )
+from ironsbot.runtime.queued_conversation_fallback import (
+    QUEUED_CONVERSATION_FALLBACK_STATE_KEY,
+    create_queued_conversation_fallback,
+    refresh_queued_conversation_fallback,
+)
 from ironsbot.runtime.queued_conversation_input import (
     capture_queued_conversation_input,
 )
@@ -321,6 +326,7 @@ async def enter_prompt_loop(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             pending=True,
         )
+        await _install_queued_conversation_fallback(matcher, queued)
         menu_anchor = None
         try:
             if prompt is not None:
@@ -407,6 +413,17 @@ async def begin_queued_conversation(  # noqa: PLR0913
         pending=True,
     )
     matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = queued.token
+    await _install_queued_conversation_fallback(matcher, queued)
+
+
+async def _install_queued_conversation_fallback(
+    matcher: Matcher, context: _QueuedConversation
+) -> None:
+    await create_queued_conversation_fallback(
+        matcher,
+        context,
+        handler=_capture_queued_conversation_input,
+    )
 
 
 async def _create_temp_matcher(
@@ -447,6 +464,16 @@ async def _capture_queued_conversation_input(
     event: Event,
     _state: T_State,
 ) -> None:
+    if _state.get(QUEUED_CONVERSATION_FALLBACK_STATE_KEY):
+        # A temporary matcher is consumed by this event. Install its successor
+        # before any activation wait or remote query creates an input gap.
+        await refresh_queued_conversation_fallback(
+            matcher,
+            event,
+            _state,
+            get_queued_conversation(_state),
+            handler=_capture_queued_conversation_input,
+        )
     await capture_queued_conversation_input(
         matcher,
         event,
