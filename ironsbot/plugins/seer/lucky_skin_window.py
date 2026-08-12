@@ -24,7 +24,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import ScheduledClockTime, scheduled_clock_time
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
@@ -648,22 +648,19 @@ def _register_schedule(
     if not service.enabled:
         return
     config = service.config
-    daily_hour, daily_minute = daily_time_parts(config.time)
-    JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
+    registry = JobRegistry(scheduler, prefix=_JOB_PREFIX)
+    registry.add_daily(
         service.clear_previous_days,
-        "cron",
         job_id="cache_cleanup",
-        hour=0,
-        minute=0,
-        second=0,
+        clock_time=ScheduledClockTime(0, 0, 0),
         timezone=config.timezone,
     )
-    JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
+    registry.add_daily(
         partial(service.send_daily_notifications, delivery),
-        "cron",
         job_id="daily",
-        hour=daily_hour,
-        minute=daily_minute,
-        second=0,
+        clock_time=scheduled_clock_time(
+            config.time,
+            error_message="seer.lucky_skin_window.time must use HH:MM:SS",
+        ),
         timezone=config.timezone,
     )
