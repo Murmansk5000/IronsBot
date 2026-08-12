@@ -84,7 +84,6 @@ DEFAULT_SEER_CATEGORY_PATTERNS: dict[str, list[str]] = {
         "比赛",
         "赛程",
         "直播",
-        "巅峰之战",
         "总决赛",
     ],
     "story": ["灵渊", "玄武复活", "全新剧情", "主线故事"],

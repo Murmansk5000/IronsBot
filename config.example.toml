@@ -867,7 +867,7 @@ preview_windows = [{ weekdays = ["mon", "wed"], start = "17:00", end = "18:00" }
 # Text patterns used together with preview_windows.
 preview_window_patterns = ["新版本", "即将到来", "长图"]
 # The twelve TD categories are lottery, version_preview, version_guide, pet, skin,
-# skill_showcase, autocard, competition, story, event, interaction, other.
+# skill_showcase, autocard, competition, story (main storyline), event, interaction, other.
 # 下列正则可按官方文案变化自行增减；other 只在没有命中其他分类时自动使用。
 lottery_patterns = ["抽奖", "中奖", "私信通知", "抽奖结果"]
 version_preview_patterns = ["新版本.*即将到来", "查看下方长图"]
@@ -876,7 +876,7 @@ pet_patterns = ["全新精灵", "精灵觉醒", "精灵.*即将登场"]
 skin_patterns = ["全新皮肤", "限定皮肤", "皮肤.*返场", "皮肤.*即将登场"]
 skill_showcase_patterns = ["技能特效抢先看"]
 autocard_patterns = ["群星牌", "元素王座", "卡牌", "小小精灵"]
-competition_patterns = ["大师赛", "小师赛", "赛事", "比赛", "赛程", "直播", "巅峰之战", "总决赛"]
+competition_patterns = ["大师赛", "小师赛", "赛事", "比赛", "赛程", "直播", "总决赛"]
 story_patterns = ["灵渊", "玄武复活", "全新剧情", "主线故事"]
 event_patterns = ["联动", "主题站", "通行证", "限时活动", "活动福利"]
 interaction_patterns = ["投票", "应援", "报名", "问卷", "创作激励", "征集"]
