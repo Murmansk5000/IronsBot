@@ -68,41 +68,41 @@ superusers = []
 
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
-# ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
+# ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认按功能分段并预留插入空间，同一优先级不要重复使用。
 help_hint = 0
-ai_group_at = -10
-bot_mention_block = -5
-server_status = 1
-server_status_admin = 2
-bilibili = 3
-sendpic = 4
-red_packet_notice = 5
-seer_player = 10
-seer_team = 11
-seer_rank = 12
-seer_rank_help = 13
-seer_autocard = 14
-lucky_skin_window = 15
-seer_type = 20
-seer_equipment = 21
-seer_peak = 22
-seer_data = 23
-team_resource_subscription = 24
-help = 30
-about = 31
-message_commands = 40
-ai_intent = 50
-meeting = 60
-activity = 70
-db_sync = 80
-team_audit = 90
+ai_group_at = -20
+bot_mention_block = -19
+server_status = 10
+server_status_admin = 11
+bilibili = 20
+sendpic = 30
+red_packet_notice = 40
+seer_player = 50
+seer_team = 51
+seer_rank = 52
+seer_rank_help = 53
+seer_autocard = 54
+lucky_skin_window = 55
+seer_type = 56
+seer_equipment = 57
+seer_peak = 58
+seer_data = 59
+team_resource_subscription = 60
+help = 70
+about = 71
+message_commands = 80
+ai_intent = 81
+meeting = 82
+activity = 83
+db_sync = 84
+team_audit = 85
 # EN: Broad fuzzy Seer matchers are intentionally late.
 # ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢“技能石”等固定图片/文本指令。
-seer_mintmark = 100
-pet_config = 109
-seer_pet = 110
-seer_query = 120
-ai_chat = 200
+seer_mintmark = 90
+pet_config = 91
+seer_pet = 92
+seer_query = 93
+ai_chat = 100
 
 [bot.logging]
 # Default: false; EN: Enable rotating file logs. ZH: 启用轮转文件日志。
