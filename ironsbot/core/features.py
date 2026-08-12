@@ -399,6 +399,8 @@ class HelpConfig(BaseModel):
     poke_user_replies: dict[str, str] = Field(default_factory=dict)
     hint_window_seconds: float = Field(default=60.0, gt=0)
     hint_max_per_window: int = Field(default=3, ge=1)
+    poke_new_command_initial_weight: float = Field(default=5.0, ge=1.0)
+    poke_new_command_half_life_days: float = Field(default=5.0, gt=0.0)
 
     @field_validator("poke_replies", "poke_user_replies")
     @classmethod
