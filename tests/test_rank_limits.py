@@ -127,6 +127,9 @@ class FakeRankPageCache:
     def item_by_index(self, **_kwargs: object) -> object | None:
         return None
 
+    def last_seen_item(self, **_kwargs: object) -> object | None:
+        return self.item(**_kwargs)
+
     def summary(self, **_kwargs: object) -> list[object]:
         return []
 
@@ -319,6 +322,42 @@ def test_cached_full_rank_miss_skips_a_repeat_scan(
     assert result.searched_limit == ONLINE_LIMIT
     assert result.cost.cache_page_hits == 1
     assert not scanned
+
+
+def test_rank_lookup_reuses_cached_rank_when_live_confirmation_times_out(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    rank, cache = _build_rank(online_limit=ONLINE_LIMIT)
+    cached = CachedRankLookup(
+        id=712345678,
+        nick="缓存玩家",
+        score=CACHED_SCORE,
+        rank_index=CACHED_RANK_INDEX,
+        fetched_at=FETCHED_AT,
+        is_stale=True,
+    )
+    monkeypatch.setattr(cache, "item", lambda **_: cached)
+
+    async def timeout_fetch(*_args: object, **_kwargs: object) -> list[RankItem]:
+        raise TimeoutError
+
+    monkeypatch.setattr(RankService, "fetch_page", timeout_fetch)
+
+    result = asyncio.run(
+        rank.find_rank(
+            GAME,
+            user_id=cached.id,
+            title="autocard",
+            score_name="score",
+            key=AUTOCARD_RANK_KEY,
+            sub_key=AUTOCARD_RANK_SUB_KEY,
+        )
+    )
+
+    assert result.rank == CACHED_RANK
+    assert result.score == CACHED_SCORE
+    assert result.failure == "查询超时"
+    assert result.fallback_cached_at == FETCHED_AT
 
 
 def test_cache_only_rank_queries_never_fetch_online_pages(
