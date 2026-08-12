@@ -1297,6 +1297,23 @@ display_limit = "not an integer"
         load_settings(config_path)
 
 
+def test_runtime_menu_rejects_a_root_timeout_above_its_maximum(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[runtime.menu]
+root_timeout_minutes = 6
+max_timeout_minutes = 5
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="root_timeout_minutes"):
+        load_settings(config_path)
+
+
 def test_rank_lookup_limits_accept_known_global_ranks_and_reject_unknown_keys(
     tmp_path: Path,
 ) -> None:
@@ -1669,6 +1686,9 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     app_config = load_settings(ROOT / "config.example.toml")
 
     assert app_config.ai.model == "deepseek-v4-pro"
+    assert app_config.runtime.menu.root_timeout_minutes == 3  # noqa: PLR2004
+    assert app_config.runtime.menu.page_extension_minutes == 1
+    assert app_config.runtime.menu.max_timeout_minutes == 5  # noqa: PLR2004
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (

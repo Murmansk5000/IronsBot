@@ -184,6 +184,7 @@ class Application:
         for plugin in self.plugins:
             if plugin.install is not None:
                 plugin.install(self.matchers)
+        self.matchers.install_queued_conversation_router()
         self.matchers.validate_command_catalog(self.resources.commands)
         self.matchers.install_postprocessor()
         self.lifecycle.install()
@@ -210,7 +211,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         databases,
         merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
     )
-    prompt_sessions = PromptSessionManager()
+    prompt_sessions = PromptSessionManager(
+        root_timeout_seconds=settings.runtime.menu.root_timeout_minutes * 60,
+        page_extension_seconds=settings.runtime.menu.page_extension_minutes * 60,
+        max_timeout_seconds=settings.runtime.menu.max_timeout_minutes * 60,
+    )
     features = FeatureService(
         settings.features,
         settings.superuser_ids,

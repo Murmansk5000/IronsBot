@@ -33,7 +33,7 @@ def test_default_ai_actions_include_team_recommend_and_fire_manual() -> None:
     manual_action = actions[1]
     assert manual_action.id == "fire_manual"
     assert manual_action.feature == "ai_intent_fire_manual"
-    assert manual_action.keywords == ["手册"]
+    assert manual_action.keywords == ["手册", "词典", "辞典", "火火词典"]
     assert manual_action.action == "message"
     assert manual_action.intent == DEFAULT_FIRE_MANUAL_INTENT
     assert manual_action.message == FIRE_MANUAL_LINK_MESSAGE
