@@ -80,6 +80,7 @@ def test_registry_is_the_lifecycle_order_authority() -> None:
         "headless_seer_check",
         "bilibili_check",
         "ai_api_startup_check",
+        "clock_startup_check",
         "startup_notice",
         "render_crash_report",
     ]
