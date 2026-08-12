@@ -147,14 +147,16 @@ def test_new_content_category_render_sends_notice_before_replacement_menu(
     anchors: list[object] = []
     monkeypatch.setattr(
         "ironsbot.plugins.seer.query.commands.data_queries.update_queued_menu_anchor",
-        lambda _matcher, _event, send_result: anchors.append(send_result),
+        lambda _matcher, _event, send_result, *, page_id=None: anchors.append(
+            (send_result, page_id)
+        ),
     )
 
     asyncio.run(_replace_prompt(matcher, group_message_event(), prompt))  # type: ignore[arg-type]
 
     assert "正在生成新增内容图片" in str(matcher.sent[0])
     assert "[CQ:image" in str(matcher.sent[1])
-    assert anchors == [{"message_id": 2}]
+    assert anchors == [({"message_id": 2}, prompt.page_id)]
 
 
 def test_sanctuary_effect_list_preserves_sanctuary_context() -> None:

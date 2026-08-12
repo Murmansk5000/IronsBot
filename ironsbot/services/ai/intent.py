@@ -54,7 +54,13 @@ FIRE_MANUAL_REQUEST_MARKERS = (
     "来个",
     "下载",
 )
-FIRE_MANUAL_SUBJECT_MARKERS = ("火火手册", "手册")
+FIRE_MANUAL_SUBJECT_MARKERS = (
+    "火火手册",
+    "手册",
+    "火火词典",
+    "词典",
+    "辞典",
+)
 
 
 class TemplateContext(dict[str, str]):
