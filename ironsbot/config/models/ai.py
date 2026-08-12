@@ -37,9 +37,10 @@ DEFAULT_FIRE_MANUAL_INTENT = (
     "Judge whether the QQ group message explicitly asks for the Fire manual "
     "entry, link, address, URL, download, or where to read it. Answer yes only "
     "when the sender is requesting the manual link/入口/地址/下载. Answer no when "
-    "the message only mentions 手册 or 火火手册, discusses manual content, cites the "
-    "manual as a source, asks why it has not updated or cannot open, announces "
-    "or shares a manual release/link, or is unrelated to asking for the link."
+    "the message only mentions 手册、词典、辞典、火火手册 or 火火词典, discusses "
+    "manual content, cites the manual as a source, asks why it has not updated "
+    "or cannot open, announces or shares a manual release/link, or is unrelated "
+    "to asking for the link."
 )
 DEFAULT_KEYWORD_INFO_PROMPT = (
     "You are IronsBot, a concise QQ group assistant.\n"
@@ -74,7 +75,7 @@ def builtin_ai_actions() -> dict[str, AiIntentAction]:
         "fire_manual": AiIntentAction(
             id="fire_manual",
             feature=FIRE_MANUAL_INTENT_FEATURE,
-            keywords=["手册"],
+            keywords=["手册", "词典", "辞典", "火火词典"],
             action="message",
             intent=DEFAULT_FIRE_MANUAL_INTENT,
             message=FIRE_MANUAL_LINK_MESSAGE,

@@ -279,6 +279,18 @@ hint_window_seconds = 60.0
 # ZH: 每个群在一个窗口内最多发送的戳一戳提示次数。
 hint_max_per_window = 3
 
+# Default: 5.0
+# EN: Initial random-selection weight for poke-eligible commands introduced after
+# the promotion baseline. Older commands always have weight 1.0.
+# ZH: 戳一戳可推荐的新命令初始随机权重；基线前已有命令始终为 1.0。
+poke_new_command_initial_weight = 5.0
+
+# Default: 5.0
+# EN: Days for half of a new command's extra poke weight to decay. The total
+# weight smoothly approaches 1.0 instead of dropping to zero.
+# ZH: 新命令额外戳一戳权重减半所需天数；总权重平滑趋近 1.0，不会降为 0。
+poke_new_command_half_life_days = 5.0
+
 # EN: Optional per-group poke replies. Keys may be group aliases or numeric group IDs.
 # Configured text replaces the default help hint when someone pokes the bot in that group.
 # ZH: 可选的群聊戳一戳回复。key 可写群别名或群号；用户专属回复优先，命中后覆盖默认的随机短指令提示。

@@ -97,6 +97,7 @@ from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.help_hint import HelpHintService
+from ironsbot.services.messaging.poke_promotions import PokePromotionService
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.operations.data_sync import DataSyncService
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
@@ -669,6 +670,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.features.help,
             settings.onebot_references,
             poke_hint_candidates,
+            promotions=PokePromotionService.from_packaged(settings.features.help),
         ),
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,

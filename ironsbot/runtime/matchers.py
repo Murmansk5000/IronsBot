@@ -1,13 +1,11 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from functools import partial
-from inspect import Signature, signature
 from secrets import token_urlsafe
-from typing import TYPE_CHECKING, Any, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from nonebot.adapters import Event, Message, MessageSegment, MessageTemplate
 from nonebot.adapters.onebot.v11 import (
@@ -33,6 +31,7 @@ if TYPE_CHECKING:
         SemanticRequestResolver,
     )
     from ironsbot.runtime.prompt_sessions import _QueuedConversation
+from ironsbot.runtime.bindings import bind, bind_async  # noqa: F401
 from ironsbot.runtime.matcher_contracts import (
     CommandPolicyError,
     default_semantic_request,
@@ -57,6 +56,10 @@ from ironsbot.runtime.prompt_sessions import (
 from ironsbot.runtime.prompt_sessions import (
     REQUEST_RESPONSE_TOKEN_STATE_KEY as _REQUEST_RESPONSE_TOKEN_KEY,
 )
+from ironsbot.runtime.queued_conversation_fallback import (
+    QUEUED_CONVERSATION_FALLBACK_STATE_KEY,
+    create_queued_conversation_fallback,
+)
 from ironsbot.runtime.queued_conversation_input import (
     capture_queued_conversation_input,
 )
@@ -64,63 +67,6 @@ from ironsbot.runtime.queued_conversation_input import (
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
-T = TypeVar("T")
-
-
-class _BoundPartial(partial):
-    @property
-    def __globals__(self) -> dict[str, Any]:
-        """Expose the wrapped function globals for NoneBot dependency parsing."""
-
-        return cast("dict[str, Any]", getattr(self.func, "__globals__", {}))
-
-    @property
-    def __signature__(self) -> Signature:
-        """Hide arguments already supplied by the application runtime."""
-
-        original = signature(self.func)
-        try:
-            supplied = original.bind_partial(*self.args, **(self.keywords or {}))
-        except TypeError:
-            return original
-        return original.replace(
-            parameters=[
-                parameter
-                for name, parameter in original.parameters.items()
-                if name not in supplied.arguments
-            ]
-        )
-
-
-class _AsyncPartial(_BoundPartial):
-    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        result: Awaitable[Any] = super().__call__(*args, **kwargs)
-        return await result
-
-
-def bind(
-    func: Callable[..., T],
-    /,
-    *args: Any,
-    **kwargs: Any,
-) -> Callable[..., T]:
-    """Bind a synchronous NoneBot callback without hiding its annotations."""
-
-    return cast("Callable[..., T]", _BoundPartial(func, *args, **kwargs))
-
-
-def bind_async(
-    func: Callable[..., Awaitable[T]],
-    /,
-    *args: Any,
-    **kwargs: Any,
-) -> Callable[..., Awaitable[T]]:
-    """Bind arguments while keeping the callable visibly asynchronous."""
-
-    return cast(
-        "Callable[..., Awaitable[T]]",
-        _AsyncPartial(func, *args, **kwargs),
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,6 +311,12 @@ async def enter_prompt_loop(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             pending=True,
         )
+        await create_queued_conversation_fallback(
+            matcher,
+            queued,
+            handler=_capture_queued_conversation_input,
+            runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
+        )
         menu_anchor = None
         try:
             if prompt is not None:
@@ -442,6 +394,12 @@ async def begin_queued_conversation(  # noqa: PLR0913
         pending=True,
     )
     matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = queued.token
+    await create_queued_conversation_fallback(
+        matcher,
+        queued,
+        handler=_capture_queued_conversation_input,
+        runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
+    )
 async def _create_temp_matcher(
     matcher: Matcher,
     rule: Rule,
@@ -480,6 +438,15 @@ async def _capture_queued_conversation_input(
     event: Event,
     _state: T_State,
 ) -> None:
+    if _state.get(QUEUED_CONVERSATION_FALLBACK_STATE_KEY):
+        context = get_queued_conversation(_state)
+        if context is not None and context.active:
+            await create_queued_conversation_fallback(
+                matcher,
+                context,
+                handler=_capture_queued_conversation_input,
+                runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
+            )
     await capture_queued_conversation_input(
         matcher,
         event,

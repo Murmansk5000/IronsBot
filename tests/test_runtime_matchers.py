@@ -4,7 +4,9 @@ import asyncio
 import inspect
 from copy import deepcopy
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves it
@@ -18,12 +20,14 @@ from nonebot.utils import is_coroutine_callable
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.runtime.matchers import (
+    QUEUED_CONVERSATION_FALLBACK_STATE_KEY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
     MatcherRegistry,
     PromptSessionManager,
+    _capture_queued_conversation_input,
     _matches_active_queued_conversation,
     _restore_temporary_matcher_state,
     bind,
@@ -388,6 +392,82 @@ def test_stable_menu_router_keeps_third_party_reply_support() -> None:
     assert _matches_active_queued_conversation(member_choice, state)
     assert state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] == context.token
     assert not _matches_active_queued_conversation(member_exit, state)
+
+
+def test_numeric_selection_prompt_accepts_owner_bot_mention_or_plain_choice() -> None:
+    manager = PromptSessionManager()
+    owner = group_message_event("魂帝技能", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="selection_prompt",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={},
+        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
+        and event.get_plaintext().strip().isdigit(),
+        handlers=[],
+    )
+    mentioned_choice = group_message_event(
+        user_id=owner.user_id,
+        group_id=4,
+        self_id=1,
+        message=Message([MessageSegment.at(1), MessageSegment.text(" 2")]),
+        raw_message="[CQ:at,qq=1] 2",
+    )
+    plain_choice = group_message_event(
+        "2",
+        user_id=owner.user_id,
+        group_id=4,
+        self_id=1,
+    )
+
+    assert context.matches(mentioned_choice)
+    assert context.matches(plain_choice)
+
+
+@pytest.mark.asyncio
+async def test_session_bound_fallback_refreshes_before_capturing_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+    state = registry._with_runtime_hooks({})["state"]
+    event = group_message_event("2", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="selection_prompt",
+        event_session_id=event.get_session_id(),
+        owner_user_id=event.user_id,
+        state={},
+        reply_check=lambda next_event: next_event.get_session_id()
+        == event.get_session_id(),
+        handlers=[],
+    )
+    state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
+    state[QUEUED_CONVERSATION_FALLBACK_STATE_KEY] = True
+    matcher = cast("Any", SimpleNamespace(state=state))
+    refresh = AsyncMock()
+    capture = AsyncMock()
+    monkeypatch.setattr(
+        "ironsbot.runtime.matchers.create_queued_conversation_fallback",
+        refresh,
+    )
+    monkeypatch.setattr(
+        "ironsbot.runtime.matchers.capture_queued_conversation_input",
+        capture,
+    )
+
+    await _capture_queued_conversation_input(matcher, event, state)
+
+    refresh.assert_awaited_once_with(
+        matcher,
+        context,
+        handler=_capture_queued_conversation_input,
+        runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
+    )
+    capture.assert_awaited_once()
 
 
 def test_queued_conversation_activation_replaces_handlers_and_parallel_mode() -> None:

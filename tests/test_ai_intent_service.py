@@ -52,7 +52,7 @@ def _manual_action() -> AiIntentAction:
     return AiIntentAction(
         id="fire_manual",
         feature="ai_intent_fire_manual",
-        keywords=["手册"],
+        keywords=["手册", "词典", "辞典", "火火词典"],
         action="message",
         message="ok",
         intent="manual",
@@ -78,6 +78,9 @@ def test_fire_manual_strong_request_prefilter_accepts_explicit_requests() -> Non
     accepted = [
         "火火手册链接",
         "手册在哪",
+        "火火词典在哪",
+        "求辞典链接",
+        "词典怎么下载",
         "求火火手册",
         "发我手册链接",
         "火火手册怎么下载",
@@ -92,6 +95,9 @@ def test_fire_manual_strong_request_prefilter_rejects_weak_mentions() -> None:
     rejected = [
         "火火手册",
         "手册",
+        "火火词典",
+        "词典",
+        "我在看火火词典里的精灵资料。",
         "我是抄火火手册里面说的。",
         "我这周火火手册怎么更新不了",
         "火火手册正式版已发布：http删s:/掉/seerin这fo.几yuyuqaq.个cn/字firedict",
