@@ -197,7 +197,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     driver = nonebot.get_driver()
     driver.register_adapter(OneBotV11Adapter)
-    scheduler = SchedulerFacade()
+    scheduler = SchedulerFacade(timezone=settings.runtime.scheduler.timezone)
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
     databases = DatabaseManager()

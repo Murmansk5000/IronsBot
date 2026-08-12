@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
 
 
-BLACKLIST_PRIORITY = -1_000
+BLACKLIST_PRIORITY = -40
 
 
 def event_is_blacklisted(

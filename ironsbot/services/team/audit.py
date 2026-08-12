@@ -98,9 +98,8 @@ class TeamAuditService:
 
     async def start(self, _bot: Any, *, scheduler: Scheduler) -> None:
         await self.schedule_pending(scheduler)
-        JobRegistry(scheduler, prefix=TEAM_AUDIT_JOB_PREFIX).add(
+        JobRegistry(scheduler, prefix=TEAM_AUDIT_JOB_PREFIX).add_wall_clock_interval(
             self.schedule_pending,
-            "interval",
             minutes=FOLLOWUP_SCAN_INTERVAL_MINUTES,
             args=[scheduler],
             job_id="scan",

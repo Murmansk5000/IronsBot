@@ -38,6 +38,7 @@ RESERVED_PRIVATE_COMMANDS = {
     "活动",
     "链接",
 }
+PRIVATE_MENU_CHOICES = {"y", "n", "是", "否", "上一页", "下一页", "返回"}
 
 
 def _group_id(event: MessageEvent) -> int | None:
@@ -45,9 +46,16 @@ def _group_id(event: MessageEvent) -> int | None:
 
 
 def _is_reserved_private_command(event: MessageEvent, prompt: str) -> bool:
+    if isinstance(event, GroupMessageEvent):
+        return False
+    command = normalize_command_text(prompt).lstrip("/")
+    is_index_choice = command.isdecimal() or (
+        len(command) > 1 and command[0].isalpha() and command[1:].isdecimal()
+    )
     return (
-        not isinstance(event, GroupMessageEvent)
-        and normalize_command_text(prompt).lstrip("/") in RESERVED_PRIVATE_COMMANDS
+        command in RESERVED_PRIVATE_COMMANDS
+        or command.lower() in PRIVATE_MENU_CHOICES
+        or is_index_choice
     )
 
 

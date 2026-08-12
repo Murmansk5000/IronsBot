@@ -11,6 +11,7 @@ from ironsbot.core.bilibili import (
     BiliSeerCategoryConfig,
     SeerDynamicCategory,
 )
+from ironsbot.core.time import clock_window_contains
 from ironsbot.services.bilibili.parser import dynamic_classification_text
 
 SEER_CATEGORY_LABELS: dict[SeerDynamicCategory, str] = {
@@ -93,9 +94,16 @@ def _matches_preview_window(
     ):
         return False
     local_time = datetime.fromtimestamp(pub_ts, tz=ZoneInfo(config.timezone))
-    current_time = local_time.strftime("%H:%M")
     weekday = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")[local_time.weekday()]
     return any(
-        weekday in window.weekdays and window.start <= current_time < window.end
+        weekday in window.weekdays
+        and clock_window_contains(
+            local_time,
+            start=window.start,
+            end=window.end,
+            error_message=(
+                "bilibili.seer_categories.preview_windows time must use HH:MM:SS"
+            ),
+        )
         for window in config.preview_windows
     )
