@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     BaseModel,
@@ -241,6 +242,27 @@ class RuntimeConcurrencyConfig(BaseModel):
     render_max_concurrent: int = Field(default=1, ge=1, le=4)
 
 
+class RuntimeSchedulerConfig(BaseModel):
+    """Wall-clock policy shared by all first-party recurring jobs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    timezone: str = "Asia/Shanghai"
+    clock_check_on_startup: bool = True
+    clock_warning_threshold_seconds: float = Field(default=3.0, ge=0)
+    clock_check_timeout_seconds: float = Field(default=3.0, gt=0)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            msg = f"runtime.scheduler.timezone is invalid: {value}"
+            raise ValueError(msg) from exc
+        return value
+
+
 class RuntimeMenuConfig(BaseModel):
     """Lifetime policy for interactive multi-level menus, in minutes."""
 
@@ -262,6 +284,9 @@ class RuntimeConfig(BaseModel):
 
     concurrency: RuntimeConcurrencyConfig = Field(
         default_factory=RuntimeConcurrencyConfig
+    )
+    scheduler: RuntimeSchedulerConfig = Field(
+        default_factory=RuntimeSchedulerConfig
     )
     menu: RuntimeMenuConfig = Field(default_factory=RuntimeMenuConfig)
 
