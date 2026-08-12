@@ -16,6 +16,9 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
             calls.append("validate")
             assert catalog is commands
 
+        def install_queued_conversation_router(self) -> None:
+            calls.append("queued_router")
+
         def install_postprocessor(self) -> None:
             calls.append("postprocessor")
 
@@ -47,4 +50,10 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
     application.install()
     application.install()
 
-    assert calls == ["plugin", "validate", "postprocessor", "lifecycle"]
+    assert calls == [
+        "plugin",
+        "queued_router",
+        "validate",
+        "postprocessor",
+        "lifecycle",
+    ]

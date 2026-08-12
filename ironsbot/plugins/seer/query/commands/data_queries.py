@@ -431,6 +431,7 @@ def _content_prompt(
     return Prompt(
         title=f"🆕【{_new_content_root_title(layout)}】输入编号查看详情：",
         items=choices,
+        page_id="new_content:root",
     )
 
 
@@ -467,6 +468,7 @@ def _focused_content_prompt(
     return Prompt(
         title=f"🆕【{CATEGORY_NAMES[category]}】输入编号查看详情：",
         items=choices,
+        page_id=f"new_content:category:{category}",
     )
 
 
@@ -535,7 +537,12 @@ async def _replace_prompt(
             event,
         )
     )
-    update_queued_menu_anchor(matcher, event, send_result)
+    update_queued_menu_anchor(
+        matcher,
+        event,
+        send_result,
+        page_id=prompt.page_id,
+    )
 
 
 async def _render_content_prompt_with_notice(  # noqa: PLR0913
