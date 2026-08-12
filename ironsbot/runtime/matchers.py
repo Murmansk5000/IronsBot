@@ -62,8 +62,9 @@ from ironsbot.runtime.queued_conversation_input import (
 
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
-QUEUED_CONVERSATION_EXIT_PRIORITY = -999
-QUEUED_CONVERSATION_INPUT_PRIORITY = -998
+QUEUED_CONVERSATION_EXIT_PRIORITY = -30
+QUEUED_CONVERSATION_INPUT_PRIORITY = -29
+QUEUED_CONVERSATION_RESERVATION_PRIORITY = -28
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
 
 
@@ -374,12 +375,21 @@ async def begin_queued_conversation(  # noqa: PLR0913
         matcher.state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
 
     prompt_sessions = get_prompt_session_manager(matcher)
+    event_session_id = queue_event_session_id or event.get_session_id()
+    if (
+        existing := prompt_sessions.queued_conversation_for(
+            namespace=namespace,
+            event_session_id=event_session_id,
+        )
+    ) and existing.pending:
+        matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = existing.token
+        return
     runtime_context = _runtime_context(matcher)
     raw_owner_user_id = getattr(event, "user_id", None)
     owner_user_id = raw_owner_user_id if isinstance(raw_owner_user_id, int) else None
     queued = prompt_sessions.start_queued_conversation(
         namespace=namespace,
-        event_session_id=queue_event_session_id or event.get_session_id(),
+        event_session_id=event_session_id,
         owner_user_id=owner_user_id,
         state=matcher.state,
         reply_check=queue_reply_check,
@@ -627,7 +637,7 @@ class MatcherRegistry:
         matcher = self.on_message(
             policy=CommandPolicy.exempt("active queued conversation input"),
             rule=Rule(_matches_active_queued_conversation),
-            # Blacklist is -1000. These permanent routers run immediately
+            # Blacklist is -40. These permanent routers run immediately
             # afterwards and never share a priority with configurable matchers.
             priority=QUEUED_CONVERSATION_INPUT_PRIORITY,
             block=True,

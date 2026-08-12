@@ -29,6 +29,7 @@ from ironsbot.runtime.matchers import (
 )
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.runtime.prompt_sessions import (
+    QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
@@ -97,9 +98,6 @@ async def begin_player_detail_conversation(
 ) -> None:
     """Accept fast numeric detail choices while the base profile is loading."""
 
-    # A new player menu owns subsequent numeric input for this user. Retired
-    # help or subscription menus must not keep a stale temporary matcher alive.
-    get_prompt_session_manager(matcher).invalidate_event_conversations(event)
     await begin_event_reply_conversation(
         matcher,
         event,
@@ -122,6 +120,27 @@ async def begin_player_detail_conversation(
         ),
         page_id="player:detail",
     )
+
+
+async def reserve_player_detail_conversation(
+    service: PlayerService,
+    extensions: PlayerDetailExtensionRegistry,
+    features: FeatureService,
+    matcher: Matcher,
+    event: MessageEvent,
+) -> None:
+    """Reserve numeric replies before the slower player command starts."""
+
+    prompt_sessions = get_prompt_session_manager(matcher)
+    prompt_sessions.invalidate_event_conversations(event)
+    await begin_player_detail_conversation(
+        service,
+        extensions,
+        features,
+        matcher,
+        event,
+    )
+    matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
 
 
 async def handle_player_detail_reply(  # noqa: PLR0913

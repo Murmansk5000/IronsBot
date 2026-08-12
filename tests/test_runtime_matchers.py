@@ -4,6 +4,7 @@ import asyncio
 import inspect
 from copy import deepcopy
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -11,7 +12,7 @@ from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher
+from nonebot.matcher import Matcher, current_event
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
@@ -21,6 +22,7 @@ from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.runtime.matchers import (
     QUEUED_CONVERSATION_EXIT_PRIORITY,
     QUEUED_CONVERSATION_INPUT_PRIORITY,
+    QUEUED_CONVERSATION_RESERVATION_PRIORITY,
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
@@ -31,11 +33,13 @@ from ironsbot.runtime.matchers import (
     _matches_active_queued_conversation,
     _matches_active_queued_conversation_exit,
     _restore_temporary_matcher_state,
+    begin_queued_conversation,
     bind,
     bind_async,
     get_prompt_session_manager,
 )
 from ironsbot.runtime.prompt_sessions import (
+    QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     GroupMenuAnchor,
     is_current_group_menu_reply,
 )
@@ -444,6 +448,7 @@ def test_queued_menu_uses_singleton_permanent_routers() -> None:
     assert input_router.priority == QUEUED_CONVERSATION_INPUT_PRIORITY
     assert not exit_router.temp
     assert not input_router.temp
+    assert QUEUED_CONVERSATION_INPUT_PRIORITY < QUEUED_CONVERSATION_RESERVATION_PRIORITY
 
 
 def test_queued_menu_exit_has_a_dedicated_earlier_route() -> None:
@@ -952,6 +957,137 @@ async def test_pending_conversation_holds_early_menu_input_until_activation() ->
     assert await activation
     assert context.state == {"player_id": 105_023_264, "choices": ("1", "2")}
     context.complete(ticket)
+
+
+@pytest.mark.asyncio
+async def test_player_command_attaches_the_high_priority_pending_reservation() -> None:
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+    event = private_message_event("米米号", user_id=2, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="seer_player",
+        event_session_id=event.get_session_id(),
+        owner_user_id=event.user_id,
+        state={},
+        reply_check=lambda _event: True,
+        pending_reply_check=lambda _event: True,
+        handlers=[],
+        pending=True,
+        parallel=True,
+    )
+    state = registry._with_runtime_hooks({})["state"]
+    matcher = cast("Matcher", SimpleNamespace(state=state))
+    event_token = current_event.set(event)
+    try:
+        await begin_queued_conversation(
+            matcher,
+            [],
+            namespace="seer_player",
+            pending_reply_check=lambda _event: True,
+            queue_reply_check=lambda _event: True,
+            queue_parallel=True,
+        )
+    finally:
+        current_event.reset(event_token)
+
+    assert state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] == context.token
+    assert manager.queued_conversation_for(
+        namespace="seer_player",
+        event_session_id=event.get_session_id(),
+    ) is context
+
+
+@pytest.mark.asyncio
+async def test_pending_player_reservation_accepts_rapid_1_2_3_4_before_menu() -> None:
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+    owner = private_message_event("米米号", user_id=2, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="seer_player",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={},
+        reply_check=lambda event: event.get_plaintext().strip() in {"1", "2", "3", "4"},
+        pending_reply_check=lambda event: event.get_session_id()
+        == owner.get_session_id()
+        and event.get_plaintext().strip().isdigit(),
+        handlers=[],
+        pending=True,
+        parallel=True,
+    )
+
+    async def dispatch(message_id: int, choice: str) -> int:
+        event = private_message_event(
+            choice,
+            user_id=owner.user_id,
+            self_id=owner.self_id,
+            message_id=message_id,
+        )
+        state = registry._with_runtime_hooks({})["state"]
+        assert _matches_active_queued_conversation(event, state)
+        matcher = cast(
+            "Matcher",
+            SimpleNamespace(state=state, remain_handlers=[]),
+        )
+        await _capture_queued_conversation_input(matcher, event, state)
+        return cast("int", state[QUEUED_CONVERSATION_TICKET_STATE_KEY])
+
+    choices = ("1", "2", "3", "4")
+    tasks = [
+        asyncio.create_task(dispatch(message_id, choice))
+        for message_id, choice in enumerate(choices, start=10)
+    ]
+    await asyncio.sleep(0)
+    assert not any(task.done() for task in tasks)
+
+    context.activate(
+        state={"player_id": 148_758_762},
+        reply_check=lambda event: event.get_plaintext().strip()
+        in {"1", "2", "3", "4"},
+        group_reply_check=None,
+        menu_anchor=None,
+        allow_group_reply_exit=False,
+        semantic_request_resolver=None,
+    )
+
+    assert await asyncio.gather(*tasks) == [1, 2, 3, 4]
+    assert context.active_ticket_count == len(choices)
+    for ticket in range(1, len(choices) + 1):
+        context.complete(ticket)
+
+
+def test_pending_reservation_survives_its_early_matcher_completion() -> None:
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="seer_player",
+        event_session_id="private_2",
+        state={},
+        reply_check=lambda _event: True,
+        pending_reply_check=lambda _event: True,
+        handlers=[],
+        pending=True,
+    )
+    state: T_State = {
+        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+        QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY: True,
+    }
+
+    manager.finish_queued_conversation(state)
+
+    assert context.active
+    assert context.pending
+    assert manager.queued_conversation_for(
+        namespace="seer_player",
+        event_session_id="private_2",
+    ) is context
 
 
 @pytest.mark.asyncio

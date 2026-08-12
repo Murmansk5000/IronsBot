@@ -454,6 +454,15 @@ class PromptSessionManager:
             None,
         )
 
+    def queued_conversation_for(
+        self,
+        *,
+        namespace: str,
+        event_session_id: str,
+    ) -> _QueuedConversation | None:
+        context = self._queued_by_key.get(f"{namespace}:{event_session_id}")
+        return context if context is not None and context.active else None
+
     def activate_queued_conversation(  # noqa: PLR0913
         self,
         context: _QueuedConversation,
@@ -495,7 +504,7 @@ class PromptSessionManager:
         state.pop(QUEUED_CONVERSATION_TICKET_STATE_KEY, None)
         keep_open = bool(state.pop(QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY, False))
         if context is None or not isinstance(ticket, int):
-            if context is not None and context.pending:
+            if context is not None and context.pending and not keep_open:
                 self._cancel_queued_conversation(context)
             if isinstance(token, str) and isinstance(ticket, int):
                 self._finish_cancelled_ticket(token)
