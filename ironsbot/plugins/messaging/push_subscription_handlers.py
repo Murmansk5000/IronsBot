@@ -81,6 +81,7 @@ async def handle_push_subscription_menu(
             next_event,
             target_type,
         ),
+        queue_page_id="push_subscription:root",
     )
 
 
@@ -122,6 +123,7 @@ async def handle_push_subscription_select(
                 state,
                 f"已返回推送订阅。\n\n{root_prompt}",
                 replace_menu_anchor=True,
+                page_id="push_subscription:root",
             )
             return
         await matcher.finish("已退出。")
@@ -154,6 +156,7 @@ async def handle_push_subscription_select(
                 state,
                 submenu_prompt,
                 replace_menu_anchor=True,
+                page_id=f"push_subscription:{option.submenu_key}",
             )
             return
 

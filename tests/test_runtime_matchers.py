@@ -24,6 +24,7 @@ from ironsbot.runtime.matchers import (
     TEMP_MATCHER_STATE_TOKEN_KEY,
     MatcherRegistry,
     PromptSessionManager,
+    _matches_active_queued_conversation,
     _restore_temporary_matcher_state,
     bind,
     bind_async,
@@ -320,7 +321,7 @@ def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:
     assert context.matches(owner_direct_exit)
 
 
-def test_group_menu_can_explicitly_allow_a_member_to_exit_their_own_copy() -> None:
+def test_group_menu_reply_zero_is_silent_even_when_exit_was_legacy_enabled() -> None:
     manager = PromptSessionManager()
     owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
     context = manager.start_queued_conversation(
@@ -343,8 +344,115 @@ def test_group_menu_can_explicitly_allow_a_member_to_exit_their_own_copy() -> No
         reply_sender_user_id=1,
     )
 
-    assert context.matches(member_exit)
-    assert context.is_shared_group_reply(member_exit)
+    assert not context.matches(member_exit)
+    assert not context.is_shared_group_reply(member_exit)
+
+
+def test_stable_menu_router_keeps_third_party_reply_support() -> None:
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+    state = registry._with_runtime_hooks({})["state"]
+    owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={},
+        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
+        and event.get_plaintext().strip() == "1",
+        group_reply_check=lambda event: event.get_plaintext().strip() in {"1", "0"},
+        handlers=[],
+        menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
+    )
+    member_choice = group_message_event(
+        "1",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        reply_sender_user_id=1,
+    )
+    member_exit = group_message_event(
+        "0",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        reply_sender_user_id=1,
+    )
+
+    assert _matches_active_queued_conversation(member_choice, state)
+    assert state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] == context.token
+    assert not _matches_active_queued_conversation(member_exit, state)
+
+
+def test_queued_conversation_activation_replaces_handlers_and_parallel_mode() -> None:
+    manager = PromptSessionManager()
+    first_handler = object()
+    second_handler = object()
+    context = manager.start_queued_conversation(
+        namespace="player_detail",
+        event_session_id="private_2",
+        state={"stage": "detail"},
+        reply_check=lambda _event: True,
+        handlers=[first_handler],
+        parallel=True,
+    )
+
+    manager.activate_queued_conversation(
+        context,
+        state={"stage": "binding"},
+        reply_check=lambda _event: True,
+        group_reply_check=None,
+        menu_anchor=None,
+        allow_group_reply_exit=False,
+        semantic_request_resolver=None,
+        handlers=[second_handler],
+        parallel=False,
+        page_id="player:binding",
+        menu_sent=False,
+    )
+
+    assert context.handlers == [second_handler]
+    assert not context.parallel
+    assert context.state == {"stage": "binding"}
+
+
+@pytest.mark.asyncio
+async def test_queued_menu_page_changes_extend_the_root_deadline_with_a_cap() -> None:
+    manager = PromptSessionManager(
+        root_timeout_seconds=180,
+        page_extension_seconds=60,
+        max_timeout_seconds=300,
+    )
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="private_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+    )
+
+    manager.record_menu_page(context, page_id="root")
+    assert context.root_menu_opened_at is not None
+    assert context.deadline == pytest.approx(context.root_menu_opened_at + 180)
+
+    manager.record_menu_page(context, page_id="root")
+    assert context.deadline == pytest.approx(context.root_menu_opened_at + 180)
+
+    manager.record_menu_page(context, page_id="detail")
+    assert context.deadline == pytest.approx(context.root_menu_opened_at + 240)
+
+    manager.record_menu_page(context, page_id="return")
+    assert context.deadline == pytest.approx(context.root_menu_opened_at + 300)
+
+    manager.record_menu_page(context, page_id="another")
+    assert context.deadline == pytest.approx(context.root_menu_opened_at + 300)
+    manager.cancel_queued_context(context)
 
 
 @pytest.mark.asyncio
