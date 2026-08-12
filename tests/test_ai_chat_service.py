@@ -7,12 +7,13 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.core.features import FeatureConfig
+from ironsbot.plugins.ai import _is_reserved_private_command
 from ironsbot.services.ai.history import HistoryMessage
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from tests.helpers.ai import FakeAiCompletionClient
-from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.runtime import build_test_runtime
 
 GROUP_ID = 456
@@ -39,6 +40,11 @@ class FakeBot:
     ) -> dict[str, object]:
         assert no_cache is False
         return {"group_id": group_id, "group_name": "示例群"}
+
+
+@pytest.mark.parametrize("choice", ("0", "1", "4", "a1", "B20", "y", "否"))
+def test_private_menu_choices_never_fall_through_to_ai_chat(choice: str) -> None:
+    assert _is_reserved_private_command(private_message_event(choice), choice)
 
 
 async def _successful_completion(

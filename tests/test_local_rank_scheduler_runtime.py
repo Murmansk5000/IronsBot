@@ -109,6 +109,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
             "args": [HEADLESS, service],
             "hour": 3,
             "minute": 30,
+            "second": 0,
         }
     ]
 
@@ -122,7 +123,7 @@ def test_local_rank_refresh_migrates_legacy_hour_and_minute(tmp_path: Path) -> N
         }
     )
 
-    assert config.time == "03:30"
+    assert config.time == "03:30:00"
 
 
 def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
@@ -147,16 +148,18 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
             "replace_existing": True,
             "args": [HEADLESS, service],
             "minute": "4/15",
+            "second": 0,
             "jitter": 240,
         },
         {
             "func": seer_runtime._scheduled_rank_page_refresh,
             "trigger": "cron",
-            "id": "seer_rank_page_refresh_0115",
+            "id": "seer_rank_page_refresh_011500",
             "replace_existing": True,
             "args": [HEADLESS, service],
             "hour": 1,
             "minute": 15,
+            "second": 0,
             "jitter": 240,
         },
     ]

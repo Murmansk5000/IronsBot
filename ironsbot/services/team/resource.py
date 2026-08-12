@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol
 
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -509,13 +510,16 @@ class TeamResourceService:
         jobs = JobRegistry(scheduler, prefix=TEAM_RESOURCE_JOB_PREFIX)
         scan = self.scan
         for time_text in self._config.times:
-            hour_text, minute_text = time_text.split(":", maxsplit=1)
-            jobs.add(
+            clock_time = scheduled_clock_time(
+                time_text,
+                error_message=(
+                    "seer.team_resource.times must contain daily HH:MM:SS times"
+                ),
+            )
+            jobs.add_daily(
                 scan,
-                "cron",
-                hour=int(hour_text),
-                minute=int(minute_text),
-                job_id=time_text.replace(":", ""),
+                clock_time=clock_time,
+                job_id=str(clock_time).replace(":", ""),
             )
 
     async def _fetch(

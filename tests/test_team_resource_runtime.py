@@ -132,18 +132,20 @@ def test_register_team_resource_jobs_uses_standard_scheduler_fields() -> None:
         {
             "func": scan,
             "trigger": "cron",
-            "id": "team_resource_scan_2230",
+            "id": "team_resource_scan_223000",
             "replace_existing": True,
             "hour": 22,
             "minute": 30,
+            "second": 0,
         },
         {
             "func": scan,
             "trigger": "cron",
-            "id": "team_resource_scan_2345",
+            "id": "team_resource_scan_234500",
             "replace_existing": True,
             "hour": 23,
             "minute": 45,
+            "second": 0,
         },
     ]
 
