@@ -41,7 +41,12 @@ COPY --from=requirements_stage /wheel /wheel
 
 RUN pip install --no-cache-dir --no-index --find-links=/wheel -r /wheel/requirements.txt \
     && rm -rf /wheel
-COPY . /app/
+
+# Keep the runtime layer independent from repository-only material.  Tests,
+# documentation, local data and build scripts are useful in source checkouts,
+# but are never imported by the container process.
+COPY ironsbot /app/ironsbot
+COPY docker-entrypoint.sh __version__ config.example.toml /app/
 
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["python", "-m", "ironsbot"]
