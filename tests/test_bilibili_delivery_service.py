@@ -34,6 +34,7 @@ from ironsbot.services.bilibili.delivery import (
     FULL_DYNAMIC_IMAGE_PUSH_ACTION,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
+    SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT,
     BilibiliPushDeliveryService,
 )
 from ironsbot.services.bilibili.preferences import (
@@ -994,3 +995,47 @@ def test_delivery_service_appends_admin_hint_once_per_day(
     assert second == "正文2"
     assert other_group == f"正文3\n\n{BILI_PUSH_ADMIN_HINT}"
     assert private == "正文4"
+
+
+def test_seer_dynamic_daily_hints_are_compact_and_per_target(
+    tmp_path: Path,
+) -> None:
+    store = PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite")
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", object()),
+        store,
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        can_query_history=lambda target: target.target_id == QUERY_ENABLED_GROUP_ID,
+        media_preferences_uid=DEFAULT_BILI_ACCOUNT_UID,
+    )
+
+    group_first = service._transform_target_message(
+        "正文",
+        MessageTarget("group", QUERY_ENABLED_GROUP_ID),
+        author_mid=DEFAULT_BILI_ACCOUNT_UID,
+    )
+    group_second = service._transform_target_message(
+        "正文2",
+        MessageTarget("group", QUERY_ENABLED_GROUP_ID),
+        author_mid=DEFAULT_BILI_ACCOUNT_UID,
+    )
+    private_first = service._transform_target_message(
+        "正文3",
+        MessageTarget("private", 2001),
+        author_mid=DEFAULT_BILI_ACCOUNT_UID,
+    )
+    other_author = service._transform_target_message(
+        "正文4",
+        MessageTarget("private", 2002),
+        author_mid=123456,
+    )
+
+    assert group_first == (
+        f"正文\n\n{DYNAMIC_HISTORY_HINT}\n"
+        f"{SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT}\n{BILI_PUSH_ADMIN_HINT}"
+    )
+    assert group_second == f"正文2\n\n{DYNAMIC_HISTORY_HINT}"
+    assert private_first == f"正文3\n\n{SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT}"
+    assert other_author == "正文4"

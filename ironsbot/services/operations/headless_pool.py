@@ -382,7 +382,7 @@ class HeadlessRequestDispatcher:
             result = await request.operation(game)
         except asyncio.CancelledError:
             raise
-        except (DisconnectedError, NotLoggedInError) as error:
+        except (DisconnectedError, NotLoggedInError, asyncio.TimeoutError) as error:
             request.excluded_workers.add(worker.name)
             retry = (
                 request.attempts < MAX_PACKET_ATTEMPTS

@@ -46,11 +46,13 @@ class _Game:
         started: dict[str, asyncio.Event],
         *,
         fail: bool = False,
+        timeout: bool = False,
     ) -> None:
         self.user_id = user_id
         self._events = events
         self._started = started
         self._fail = fail
+        self._timeout = timeout
 
     async def step(
         self,
@@ -62,6 +64,8 @@ class _Game:
         if self._fail:
             msg = f"worker {self.user_id} disconnected"
             raise DisconnectedError(msg)
+        if self._timeout:
+            raise asyncio.TimeoutError
         if release is not None:
             await release.wait()
         return f"{self.user_id}:{label}"
@@ -79,6 +83,7 @@ def _pool(
     count: int,
     *,
     failing_workers: frozenset[int] = frozenset(),
+    timing_out_workers: frozenset[int] = frozenset(),
 ) -> tuple[PooledHeadlessGame, list[tuple[int, str]], dict[str, asyncio.Event]]:
     events: list[tuple[int, str]] = []
     started: dict[str, asyncio.Event] = {}
@@ -92,6 +97,7 @@ def _pool(
                     events,
                     started,
                     fail=index in failing_workers,
+                    timeout=index in timing_out_workers,
                 )
             ),
         )
@@ -203,6 +209,23 @@ async def test_failed_packet_retries_on_another_healthy_worker() -> None:
 
     assert result == f"{SECOND_WORKER_ID}:retry"
     assert events == [(10000, "retry"), (SECOND_WORKER_ID, "retry")]
+    assert game.user_id == SECOND_WORKER_ID
+
+
+@pytest.mark.asyncio
+async def test_timed_out_packet_retries_on_another_healthy_worker() -> None:
+    game, events, _started = _pool(
+        2,
+        timing_out_workers=frozenset((0,)),
+    )
+
+    result = await game.step("retry-timeout")
+
+    assert result == f"{SECOND_WORKER_ID}:retry-timeout"
+    assert events == [
+        (10000, "retry-timeout"),
+        (SECOND_WORKER_ID, "retry-timeout"),
+    ]
     assert game.user_id == SECOND_WORKER_ID
 
 

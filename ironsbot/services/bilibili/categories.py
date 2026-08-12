@@ -22,7 +22,7 @@ SEER_CATEGORY_LABELS: dict[SeerDynamicCategory, str] = {
     "skill_showcase": "技能特效抢先看",
     "autocard": "群星牌",
     "competition": "赛事直播",
-    "story": "剧情世界观",
+    "story": "主线剧情",
     "event": "联动活动",
     "interaction": "互动征集",
     "other": "其他",
