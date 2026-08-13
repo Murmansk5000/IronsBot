@@ -137,8 +137,9 @@ class PlayerAccountRegistry:
         value: object,
         *,
         conversation: ConversationRef | None = None,
+        include_private: bool = False,
     ) -> int | None:
-        """Resolve a user command target without exposing private aliases globally."""
+        """Resolve a command target under public, local, or privileged visibility."""
 
         text = str(value).strip()
         if not text:
@@ -147,7 +148,11 @@ class PlayerAccountRegistry:
             player_id = int(text)
             return player_id if is_valid_player_id(player_id) else None
         normalized = normalize_command_text(text)
-        account = self._public_by_name.resolve_alias(normalized).unique_value
+        account = (
+            self._by_reference.resolve_alias(normalized).unique_value
+            if include_private
+            else self._public_by_name.resolve_alias(normalized).unique_value
+        )
         if account is None and conversation is not None:
             aliases = self._private_by_conversation.get(conversation)
             account = (
