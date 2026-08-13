@@ -61,7 +61,12 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     is_shared_group_reply = context.is_shared_group_reply(event)
     if event.get_plaintext().strip() == "0":
         if is_shared_group_reply:
-            raise FinishedException
+            if getattr(event, "group_id", None) is not None:
+                await matcher.finish(
+                    OneBotMessageSegment.at(event.user_id)
+                    + OneBotMessageSegment.text(" 已退出当前选择。")
+                )
+            await matcher.finish("已退出当前选择。")
         prompt_sessions.cancel_queued_conversation(state)
         if getattr(event, "group_id", None) is not None:
             await matcher.finish(
