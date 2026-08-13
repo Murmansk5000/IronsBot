@@ -8,6 +8,7 @@ import json
 import shutil
 import sqlite3
 import sys
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,6 +55,10 @@ from ironsbot.platform_state_migration import (
     PlatformStateMigrationError,
     format_platform_state_migration_result,
     migrate_platform_state_identities,
+)
+from ironsbot.state_migration_files import (
+    remove_sqlite_bundle,
+    remove_sqlite_bundles_under,
 )
 
 if TYPE_CHECKING:
@@ -273,12 +278,12 @@ def migrate_state_databases(  # noqa: PLR0913
         installed_targets.append(qq_state)
         temp_runtime.replace(runtime_state)
         installed_targets.append(runtime_state)
-        _archive_active_legacy_files(data_root, sources)
+        remove_sqlite_bundles_under(data_root, (path for _, path in sources))
     except BaseException:
-        _remove_sqlite_files(temp_qq)
-        _remove_sqlite_files(temp_runtime)
+        remove_sqlite_bundle(temp_qq)
+        remove_sqlite_bundle(temp_runtime)
         for installed in installed_targets:
-            _remove_sqlite_files(installed)
+            remove_sqlite_bundle(installed)
         raise
     return MigrationResult(
         applied=True,
@@ -366,7 +371,7 @@ def _copy_legacy_data(
         if source.target is None:
             continue
         target_path = qq_state if source.target == "qq" else runtime_state
-        with open_sqlite_connection(target_path) as target:
+        with closing(open_sqlite_connection(target_path)) as target:
             if source.target == "qq":
                 copy_qq_state(source_path, target)
             elif "pending_team_audit_reminders" in source.tables:
@@ -404,7 +409,7 @@ def _copy_compatible_table(
 ) -> int:
     """Copy an identity-free table after the target schema is initialized."""
 
-    with _read_only_connection(source_path) as source:
+    with closing(open_sqlite_connection(source_path, read_only=True)) as source:
         if not _table_exists(source, "main", table):
             return 0
         source_columns = _table_columns(source, "main", table)
@@ -425,8 +430,8 @@ def _copy_compatible_table(
 
 
 def _copy_private_unsubscriptions(target_path: Path, source_path: Path) -> int:
-    with open_sqlite_connection(target_path) as target:
-        with _read_only_connection(source_path) as source:
+    with closing(open_sqlite_connection(target_path)) as target:
+        with closing(open_sqlite_connection(source_path, read_only=True)) as source:
             if not _table_exists(source, "main", "private_push_unsubscriptions"):
                 return 0
             rows = source.execute(
@@ -499,7 +504,7 @@ def _legacy_row_counts(
     for source, path in sources:
         if not source.tables:
             continue
-        with _read_only_connection(path) as connection:
+        with closing(open_sqlite_connection(path, read_only=True)) as connection:
             for table in source.tables:
                 if not _table_exists(connection, "main", table):
                     continue
@@ -518,7 +523,9 @@ def _legacy_row_counts(
         None,
     )
     if legacy_private is not None:
-        with _read_only_connection(legacy_private) as connection:
+        with closing(
+            open_sqlite_connection(legacy_private, read_only=True)
+        ) as connection:
             if _table_exists(
                 connection,
                 "main",
@@ -535,7 +542,7 @@ def _legacy_row_counts(
 def _source_table_counts(path: Path, tables: tuple[str, ...]) -> dict[str, int]:
     if not tables:
         return {}
-    with _read_only_connection(path) as connection:
+    with closing(open_sqlite_connection(path, read_only=True)) as connection:
         return {
             table: int(
                 connection.execute(
@@ -556,7 +563,7 @@ def _expected_target_row_counts(
     push_keys: set[tuple[str, int, str]] = set()
     for source, path in sources:
         if source.relative_path == "messaging/push_unsubscriptions.sqlite":
-            with _read_only_connection(path) as connection:
+            with closing(open_sqlite_connection(path, read_only=True)) as connection:
                 if _table_exists(connection, "main", "push_unsubscriptions"):
                     rows = connection.execute(
                         "SELECT target_type, target_id, subscription_key "
@@ -567,7 +574,7 @@ def _expected_target_row_counts(
                         for target_type, target_id, subscription_key in rows
                     )
         elif source.relative_path == "messaging/private_push_unsubscriptions.sqlite":
-            with _read_only_connection(path) as connection:
+            with closing(open_sqlite_connection(path, read_only=True)) as connection:
                 if _table_exists(
                     connection,
                     "main",
@@ -590,7 +597,7 @@ def _state_row_counts(qq_state: Path, runtime_state: Path) -> dict[str, int]:
     for path in (qq_state, runtime_state):
         if not path.is_file():
             continue
-        with _read_only_connection(path) as connection:
+        with closing(open_sqlite_connection(path, read_only=True)) as connection:
             tables = connection.execute(
                 "SELECT name FROM sqlite_master "
                 "WHERE type = 'table' AND name != 'ironsbot_schema_migrations'"
@@ -637,7 +644,7 @@ def _validate_existing_targets(qq_state: Path, runtime_state: Path) -> None:
 
 
 def _validate_namespaces(path: Path, expected: frozenset[str]) -> None:
-    with _read_only_connection(path) as connection:
+    with closing(open_sqlite_connection(path, read_only=True)) as connection:
         if not _table_exists(
             connection,
             "main",
@@ -655,14 +662,14 @@ def _validate_namespaces(path: Path, expected: frozenset[str]) -> None:
 
 
 def _validate_integrity(path: Path) -> None:
-    with _read_only_connection(path) as connection:
+    with closing(open_sqlite_connection(path, read_only=True)) as connection:
         result = connection.execute("PRAGMA integrity_check").fetchone()
     if result is None or str(result[0]).lower() != "ok":
         raise StateMigrationError.integrity_failed(path)
 
 
 def _prepare_for_atomic_replace(path: Path) -> None:
-    with open_sqlite_connection(path) as connection:
+    with closing(open_sqlite_connection(path)) as connection:
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         connection.execute("PRAGMA journal_mode=DELETE")
         result = connection.execute("PRAGMA integrity_check").fetchone()
@@ -670,22 +677,6 @@ def _prepare_for_atomic_replace(path: Path) -> None:
         raise StateMigrationError.integrity_failed(path)
 
 
-def _archive_active_legacy_files(
-    data_root: Path,
-    sources: tuple[tuple[LegacySource, Path], ...],
-) -> None:
-    for _, source_path in sources:
-        if source_path.is_relative_to(data_root):
-            _remove_sqlite_files(source_path)
-
-
-def _remove_sqlite_files(path: Path) -> None:
-    for candidate in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
-        candidate.unlink(missing_ok=True)
-
-
-def _read_only_connection(path: Path) -> sqlite3.Connection:
-    return open_sqlite_connection(path, read_only=True)
 
 
 def _write_manifest(  # noqa: PLR0913
