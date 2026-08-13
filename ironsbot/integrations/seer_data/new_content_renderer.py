@@ -131,12 +131,49 @@ async def render_new_content_menu(  # noqa: PLR0913
         rows,
         await _load_skill_type_icons(images, prepared_items, visuals),
         menu_title,
-        focused_category,
     )
     result = await render_new_content_document(render_html, document)
     if cacheable:
         cache.put("new_content", request_key, result)
     return result
+
+
+def _with_mount_fallback(
+    data: SeerDataAccess,
+    prepared: NewContentPreparedItem,
+) -> NewContentPreparedItem:
+    asset = prepared.asset
+    if prepared.item.category != "mount" or asset is None:
+        return prepared
+    return replace(
+        prepared,
+        asset=replace(
+            asset,
+            fallback_data=load_flash_mount_image(data, prepared.item.entity_id),
+        ),
+    )
+
+
+def _cache_key(  # noqa: PLR0913
+    snapshot: NewContentSnapshot,
+    display_categories: tuple[NewContentCategory, ...],
+    focused_category: NewContentCategory | None,
+    menu_title: str,
+    expanded_categories: frozenset[NewContentCategory],
+    auto_expand_max_items: int,
+) -> str:
+    return render_request_cache_key(
+        "new_content",
+        (
+            snapshot.config_version,
+            snapshot.weekly_cycle,
+            display_categories,
+            focused_category,
+            menu_title,
+            tuple(sorted(expanded_categories)),
+            auto_expand_max_items,
+        ),
+    )
 
 
 def _initial_rows(
@@ -293,41 +330,3 @@ def _gender_icon_data_uri(gender_id: int | None) -> str | None:
     if not icon_path.exists():
         icon_path = PET_INFO_IMAGES_PATH / "0.png"
     return to_data_uri(icon_path.read_bytes())
-
-
-def _with_mount_fallback(
-    data: SeerDataAccess,
-    prepared: NewContentPreparedItem,
-) -> NewContentPreparedItem:
-    asset = prepared.asset
-    if prepared.item.category != "mount" or asset is None:
-        return prepared
-    return replace(
-        prepared,
-        asset=replace(
-            asset,
-            fallback_data=load_flash_mount_image(data, prepared.item.entity_id),
-        ),
-    )
-
-
-def _cache_key(  # noqa: PLR0913
-    snapshot: NewContentSnapshot,
-    display_categories: tuple[NewContentCategory, ...],
-    focused_category: NewContentCategory | None,
-    menu_title: str,
-    expanded_categories: frozenset[NewContentCategory],
-    auto_expand_max_items: int,
-) -> str:
-    return render_request_cache_key(
-        "new_content",
-        (
-            snapshot.config_version,
-            snapshot.weekly_cycle,
-            display_categories,
-            focused_category,
-            menu_title,
-            tuple(sorted(expanded_categories)),
-            auto_expand_max_items,
-        ),
-    )

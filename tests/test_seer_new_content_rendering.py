@@ -483,7 +483,6 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         "2 项新增",
         "6 项新增",
     ]
-    assert captured["focused_category"] is None
 
 
 def test_new_content_render_cache_key_includes_expanded_categories() -> None:
