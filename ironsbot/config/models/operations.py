@@ -126,7 +126,6 @@ class StartupConfig(BaseModel):
     delay: float = Field(default=0.0, ge=0)
 
 
-
 class ClockCheckConfig(BaseModel):
     """Read-only startup diagnostic for noticeable host clock drift."""
 
