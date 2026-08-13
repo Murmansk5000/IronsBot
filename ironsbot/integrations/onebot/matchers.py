@@ -54,8 +54,10 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     GroupMenuAnchor,
     PromptSessionManager,
 )
-from ironsbot.integrations.onebot.queued_conversation_input import (
-    capture_queued_conversation_input,
+from ironsbot.integrations.onebot.queued_conversation_router import (
+    capture_durable_queued_conversation_input,
+    matches_active_queued_conversation,
+    matches_active_queued_conversation_exit,
 )
 from ironsbot.runtime.prompt_errors import (
     PromptLoopConfigurationError,
@@ -64,6 +66,8 @@ from ironsbot.runtime.prompt_errors import (
 
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
+QUEUED_CONVERSATION_EXIT_PRIORITY = -30
+QUEUED_CONVERSATION_INPUT_PRIORITY = -29
 T_Message: TypeAlias = str | Message | MessageSegment | MessageTemplate
 T = TypeVar("T")
 
@@ -328,7 +332,10 @@ async def enter_prompt_loop(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             pending=True,
         )
-        await _create_queued_temp_matcher(matcher, queued)
+        prompt_sessions.refresh_queued_conversation_expiry(
+            queued,
+            expires_after=current_bot.get().config.session_expire_timeout,
+        )
         menu_anchor = None
         try:
             if prompt is not None:
@@ -398,8 +405,11 @@ async def begin_queued_conversation(  # noqa: PLR0913
         pending_reply_check=pending_reply_check,
         pending=True,
     )
+    prompt_sessions.refresh_queued_conversation_expiry(
+        queued,
+        expires_after=current_bot.get().config.session_expire_timeout,
+    )
     matcher.state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = queued.token
-    await _create_queued_temp_matcher(matcher, queued)
 
 
 async def _create_temp_matcher(
@@ -432,52 +442,6 @@ async def _create_temp_matcher(
         default_state={TEMP_MATCHER_STATE_TOKEN_KEY: token},
         default_type_updater=matcher.__class__._default_type_updater,
         default_permission_updater=matcher.__class__._default_permission_updater,
-    )
-
-
-async def _create_queued_temp_matcher(
-    matcher: Matcher,
-    context: _QueuedConversation,
-) -> None:
-    bot = current_bot.get()
-    event = current_event.get()
-    permission = await matcher.update_permission(bot, event)
-    get_prompt_session_manager(matcher).refresh_queued_conversation_expiry(
-        context,
-        expires_after=bot.config.session_expire_timeout,
-    )
-    default_state: T_State = {
-        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
-    }
-    if runtime_token := matcher.state.get(RUNTIME_CONTEXT_TOKEN_STATE_KEY):
-        default_state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = runtime_token
-    matcher.__class__.new(
-        "message",
-        Rule(context.matches),
-        permission,
-        [_capture_queued_conversation_input, *context.handlers],
-        temp=True,
-        priority=0,
-        block=True,
-        source=matcher.__class__._source,
-        expire_time=bot.config.session_expire_timeout,
-        default_state=default_state,
-        default_type_updater=matcher.__class__._default_type_updater,
-        default_permission_updater=matcher.__class__._default_permission_updater,
-    )
-
-
-async def _capture_queued_conversation_input(
-    matcher: Matcher,
-    event: Event,
-    _state: T_State,
-) -> None:
-    await capture_queued_conversation_input(
-        matcher,
-        event,
-        _state,
-        get_prompt_sessions=get_prompt_session_manager,
-        create_temporary_matcher=_create_queued_temp_matcher,
     )
 
 
@@ -564,6 +528,7 @@ class MatcherFactory:
     _command_help_ids: set[str] = field(default_factory=set)
     _unclassified_command_labels: set[str] = field(default_factory=set)
     _runtime_context_token: str | None = field(default=None, init=False, repr=False)
+    _queued_router_installed: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.prompt_session_manager is None and self.in_flight_requests is None:
@@ -626,6 +591,49 @@ class MatcherFactory:
             token = state.pop(_COMMAND_COOLDOWN_TOKEN_KEY, None)
             if token is not None:
                 self.cooldown.finish(token)
+
+    def install_queued_conversation_router(self) -> None:
+        """Install durable ingress matchers for every queued menu session."""
+
+        if self.prompt_session_manager is None or self._queued_router_installed:
+            return
+
+        self._queued_router_installed = True
+        exit_matcher = self.on_message(
+            policy=CommandPolicy.exempt("active queued conversation exit"),
+            rule=Rule(
+                bind(
+                    matches_active_queued_conversation_exit,
+                    self.prompt_session_manager,
+                )
+            ),
+            priority=QUEUED_CONVERSATION_EXIT_PRIORITY,
+            block=True,
+        )
+        exit_matcher.append_handler(
+            bind_async(
+                capture_durable_queued_conversation_input,
+                get_prompt_sessions=get_prompt_session_manager,
+            )
+        )
+
+        matcher = self.on_message(
+            policy=CommandPolicy.exempt("active queued conversation input"),
+            rule=Rule(
+                bind(
+                    matches_active_queued_conversation,
+                    self.prompt_session_manager,
+                )
+            ),
+            priority=QUEUED_CONVERSATION_INPUT_PRIORITY,
+            block=True,
+        )
+        matcher.append_handler(
+            bind_async(
+                capture_durable_queued_conversation_input,
+                get_prompt_sessions=get_prompt_session_manager,
+            )
+        )
 
     def priority(self, name: str) -> int:
         return int(getattr(self.priorities, name))

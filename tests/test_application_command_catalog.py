@@ -19,6 +19,9 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
         def install_postprocessor(self) -> None:
             calls.append("postprocessor")
 
+        def install_queued_conversation_router(self) -> None:
+            calls.append("queued_router")
+
     class Driver:
         def on_startup(self, _callback: Any) -> None:
             calls.append("lifecycle")
@@ -65,4 +68,10 @@ def test_application_validates_the_catalog_after_matcher_registration() -> None:
     application.install()
     application.install()
 
-    assert calls == ["plugin", "validate", "postprocessor", "lifecycle"]
+    assert calls == [
+        "plugin",
+        "queued_router",
+        "validate",
+        "postprocessor",
+        "lifecycle",
+    ]
