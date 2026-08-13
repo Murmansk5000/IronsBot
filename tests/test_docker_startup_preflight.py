@@ -283,6 +283,8 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert 'CMD ["python", "-m", "ironsbot"]' in dockerfile
     assert "COPY ironsbot /app/ironsbot" in dockerfile
     assert "COPY . /app/" not in dockerfile
+    assert "ENV PYTHONDONTWRITEBYTECODE=1" in dockerfile
+    assert "pip install --no-cache-dir --no-compile" in dockerfile
     assert "python -m ironsbot.app.docker_preflight" in entrypoint
     assert "while :; do" in entrypoint
     wait_offset = entrypoint.index("while :; do")
