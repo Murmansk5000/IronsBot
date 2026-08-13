@@ -50,6 +50,21 @@ def test_message_input_context_uses_fixed_routing_precedence() -> None:
     assert message_input_context(member).member_mentions[0].id == "456"
 
 
+def test_message_input_context_reads_reply_segment_without_reply_metadata() -> None:
+    event = group_message_event(
+        message=Message(
+            [MessageSegment.reply(99), MessageSegment.text("帮助")]
+        ),
+        original_message=Message(MessageSegment.text("帮助")),
+    )
+    event.reply = None
+
+    context = message_input_context(event)
+
+    assert context.kind is MessageInputKind.REPLY
+    assert context.message.reply_to_id == "99"
+
+
 def test_private_to_me_is_direct_input_not_a_bot_mention() -> None:
     event = private_message_event("帮助")
     event.to_me = True

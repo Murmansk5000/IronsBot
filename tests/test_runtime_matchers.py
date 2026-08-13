@@ -299,6 +299,31 @@ def test_group_menu_reply_normalizes_textual_bot_mention() -> None:
     assert event.get_plaintext() == "2"
 
 
+def test_group_menu_reply_accepts_current_napcat_reply_segment() -> None:
+    anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
+    event = group_message_event(
+        "2",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        message=Message(
+            [
+                MessageSegment.reply(99),
+                MessageSegment.at(1),
+                MessageSegment.text(" 2"),
+            ]
+        ),
+        original_message=Message(
+            [MessageSegment.at(1), MessageSegment.text(" 2")]
+        ),
+        raw_message="[reply:id=99][at:qq=1] 2",
+    )
+    event.reply = None
+
+    assert is_current_group_menu_reply(event, anchor)
+
+
 def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:
     manager = PromptSessionManager()
     owner = group_message_event("1", user_id=2, group_id=4, self_id=1)

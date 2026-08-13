@@ -14,6 +14,8 @@ from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
 from nonebot.rule import Rule
 
+from ironsbot.integrations.onebot.message_input import event_reply_message_id
+
 if TYPE_CHECKING:
     from asyncio import TimerHandle
     from collections.abc import Callable
@@ -57,12 +59,12 @@ def is_current_group_menu_reply(
         return False
     if event.group_id != anchor.group_id or event.self_id != anchor.bot_user_id:
         return False
-    if event.user_id == event.self_id or event.reply is None:
+    if event.user_id == event.self_id:
         return False
     # The reply sender metadata is optional in OneBot events.  The tracked
     # message ID was obtained from the bot's own send result, so it is the
     # authoritative proof that this is a reply to the current bot menu.
-    return getattr(event.reply, "message_id", None) == anchor.message_id
+    return event_reply_message_id(event) == str(anchor.message_id)
 
 
 def _normalize_textual_reply_mention(
