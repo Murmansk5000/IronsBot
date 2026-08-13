@@ -11,7 +11,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
-    from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 
@@ -158,6 +157,30 @@ class PlayerLineupQueryPort(Protocol):
     ) -> PlayerLineupQueryResult: ...
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerLineupCachedReply:
+    """Persistent private-lineup reply data owned by the public cache port."""
+
+    leading_text: str = ""
+    text: str = ""
+    image: bytes | None = None
+    image_error: str = ""
+
+
+class PlayerLineupCachePort(Protocol):
+    """Read and write completed lineup replies without exposing SQLite."""
+
+    def get(self, player_id: int) -> PlayerLineupCachedReply | None: ...
+
+    def put(self, player_id: int, reply: PlayerLineupCachedReply) -> None: ...
+
+
+class PlayerLineupCacheFactory(Protocol):
+    """Open a public cache port at the extension's declared cache path."""
+
+    def open(self, path: str) -> PlayerLineupCachePort: ...
+
+
 class PlayerLineupExtensionContext(Protocol):
     """Dependencies permitted to the optional player-lineup extension.
 
@@ -167,10 +190,10 @@ class PlayerLineupExtensionContext(Protocol):
     implementation modules to acquire those dependencies.
     """
 
-    headless: HeadlessService
     lineup_entries: PlayerLineupEntryResolver
     lineup_render: PlayerLineupRenderPort
     lineup_query: PlayerLineupQueryPort
+    lineup_cache: PlayerLineupCacheFactory
     player_id_resolver: PlayerIdResolver
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]: ...

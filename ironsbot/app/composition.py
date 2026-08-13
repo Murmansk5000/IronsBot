@@ -27,6 +27,7 @@ from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.extensions.player_lineup import (
+    PlayerLineupCacheServices,
     PlayerLineupExtensionServices,
     PlayerLineupQueryServices,
     PlayerLineupRenderServices,
@@ -183,7 +184,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     extension_contexts = {
         "player_lineup": PlayerLineupExtensionServices(
-            headless=headless,
             lineup_entries=PublishedPlayerLineupEntryResolver(seer_database),
             lineup_render=PlayerLineupRenderServices(
                 images=seer_images,
@@ -196,6 +196,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 quotas=player_query_quotas,
                 requests=player_requests,
             ),
+            lineup_cache=PlayerLineupCacheServices(),
             feature_visible=partial(event_is_feature_visible_in_help, features),
             _player_details=player_detail_extensions,
             player_id_resolver=player_id_resolver,

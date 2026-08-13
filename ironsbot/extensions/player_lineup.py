@@ -6,14 +6,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.extensions.contracts import (
+    PlayerLineupCachedReply,
     PlayerLineupImageAssets,
     PlayerLineupPacketFetcher,
     PlayerLineupQueryResult,
 )
 from ironsbot.integrations.seer_data.pet_image_assets import load_pet_image_assets
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -42,6 +45,7 @@ if TYPE_CHECKING:
 
     from ironsbot.extensions.contracts import (
         PlayerDetailActionRegistration,
+        PlayerLineupCacheFactory,
         PlayerLineupEntryResolver,
         PlayerLineupQueryPort,
         PlayerLineupRenderPort,
@@ -112,6 +116,78 @@ class PlayerLineupRenderServices:
             templates=templates,
             max_width=max_width,
             allow_refit=allow_refit,
+        )
+
+
+_LINEUP_CACHE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS player_lineup_cache (
+    player_id INTEGER PRIMARY KEY,
+    leading_text TEXT NOT NULL,
+    text TEXT NOT NULL,
+    image BLOB,
+    image_error TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+_LINEUP_CACHE_MIGRATIONS = (SqliteMigration(1, (_LINEUP_CACHE_SCHEMA,)),)
+
+
+@dataclass(frozen=True, slots=True)
+class _SqlitePlayerLineupCache:
+    database: SqliteDatabase
+
+    def get(self, player_id: int) -> PlayerLineupCachedReply | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT leading_text, text, image, image_error
+                FROM player_lineup_cache
+                WHERE player_id = ?
+                """,
+                (player_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return PlayerLineupCachedReply(
+            leading_text=str(row[0]),
+            text=str(row[1]),
+            image=None if row[2] is None else bytes(row[2]),
+            image_error=str(row[3]),
+        )
+
+    def put(self, player_id: int, reply: PlayerLineupCachedReply) -> None:
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO player_lineup_cache(
+                    player_id, leading_text, text, image, image_error, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(player_id) DO UPDATE SET
+                    leading_text = excluded.leading_text,
+                    text = excluded.text,
+                    image = excluded.image,
+                    image_error = excluded.image_error,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    player_id,
+                    reply.leading_text,
+                    reply.text,
+                    reply.image,
+                    reply.image_error,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerLineupCacheServices:
+    """Public SQLite factory for the optional lineup extension's reply cache."""
+
+    def open(self, path: str) -> _SqlitePlayerLineupCache:
+        return _SqlitePlayerLineupCache(
+            SqliteDatabase(path, migrations=_LINEUP_CACHE_MIGRATIONS)
         )
 
 
@@ -252,10 +328,10 @@ class PlayerLineupQueryServices:
 class PlayerLineupExtensionServices:
     """Dependencies intentionally available to the player-lineup extension."""
 
-    headless: HeadlessService
     lineup_entries: PlayerLineupEntryResolver
     lineup_render: PlayerLineupRenderPort
     lineup_query: PlayerLineupQueryPort
+    lineup_cache: PlayerLineupCacheFactory
     feature_visible: Callable[[object, str], bool]
     _player_details: PlayerDetailExtensionRegistry
     player_id_resolver: PlayerIdResolver
