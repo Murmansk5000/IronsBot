@@ -117,6 +117,16 @@ NapCat reply segment 事实。`event.reply` 缺失时，OneBot 输入适配器�
 原始消息读取 reply segment，命令输入分类与群菜单锚点共用同一解析结果。没有 cherry-pick
 旧 `main` 的 runtime 目录实现，也没有重新引入临时 fallback matcher。
 
+**主线功能吸收与镜像静态审计（2026-08-13）：** `22616886` 将当前 `main` 的
+启动时钟诊断、B站动态详情补全/异步投递、查询回复锚点与新增内容图片菜单吸收到 V5 的
+组合边界。B站后台任务由 `ApplicationLifecycle` 注入的 task owner 创建，领域服务不再自行
+调用 `asyncio.create_task`；新增内容的自动展开项与同一 `Prompt` 的 `a1`、`a2` 等输入键
+保持一致，不会出现图片中可见但会话无法选择的项目。完整 pytest 为 **1502 passed**，Ruff、
+compileall 与 diff 检查通过。静态 Docker 审计确认运行镜像仍只显式复制运行代码、配置模板、
+入口脚本和字体，仓库测试/文档/脚本/数据均被排除；二维码、HTML 渲染和 SVG 光栅化依赖
+均有真实调用，不能为压缩镜像而删除。此工作站 Docker daemon 未启动，实际镜像字节大小仍须
+由 CI 或 Docker 构建环境记录。
+
 **渲染版本快照（2026-08-13）：** `SeerDatabase` 在 SeerAPI 内存库原子换版完成时
 刷新发布版本；最终图片缓存读取该内存快照，不再为每个 `get`/`put` 额外开 SQLite
 session。未加载数据仍显式返回 `unknown`，因此不会写入无发布版本的缓存。该项是下一步
@@ -150,6 +160,48 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 网络下载、SQLite 写入与发布顺序；新模块不接触环境变量、网络或数据库，因而可由纯输入输出
 测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
 `build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
+
+**效果元数据来源边界（2026-08-13）：** SeerAPI `e82d738` 将官方
+`effectDes.json` 与 `signIconFight.json` 的纯解析和值对象迁入
+`scripts/effect_metadata_sources.py`。发布构建器继续持有 URL、下载、失败日志和 SQLite
+写入，新模块不依赖环境变量、网络或数据库。旧私有解析器入口已删除；构建相关 49 项、
+SeerAPI 全量 **259 passed**、Ruff、脚本 CLI 帮助、编译和 diff 检查均通过。该步骤让
+`build_seerapi_data_db.py` 净减少 81 行，为后续按来源继续拆出商店、契约和配置包二进制解析
+建立同一边界，不改变已发布表或 IronsBot 查询语义。
+
+**兑换商店来源边界（2026-08-13）：** SeerAPI `1699a74` 将战令商店、活动商店与
+微光秘境三种官方 JSON 格式的纯解析和值对象迁入
+`scripts/item_exchange_sources.py`。构建器只以来源 key/name 绑定通用解析器，并继续负责
+下载、货币名称补全、失败日志和 SQLite 写入；三个专用包装入口均已删除。构建相关 49 项、
+SeerAPI 全量 **259 passed**、Ruff、脚本 CLI 帮助、编译和 diff 检查均通过。此项没有改变
+兑换价格表或发布契约，但后续商店来源可以直接复用对应解析器，而不再在构建总脚本增加补丁。
+
+**伙伴契约来源边界（2026-08-13）：** SeerAPI `c143cfe` 将 ConfigPackage 提取出的
+伙伴契约 JSON 校验、v1 描述顺序规范化和值对象迁入
+`scripts/partner_contract_sources.py`。构建器继续提供 schema、契约类型和货币等发布参数，
+以及网络下载、错误包装和 SQLite 写入；来源模块不读取环境、不访问网络或数据库。构建相关
+49 项、SeerAPI 全量 **259 passed**、Ruff、编译和 diff 检查均通过。此项不改变已发布伙伴表，
+但使来源格式变动能够在独立模块和测试中处理，而不再膨胀发布编排脚本。
+
+**ConfigPackage 二进制解码边界（2026-08-13）：** SeerAPI `7b194ba` 将 Unity
+PackageManifest、刻印品质、皮肤商店、道具说明、魂印图标和群星牌赛季效果的字节协议解码迁入
+`scripts/config_package_sources.py`。发布构建器保留版本/manifest 下载、Unity TextAsset 提取、
+来源选择和 SQLite 写入；解码模块不依赖环境、网络、UnityPy 或数据库。构建相关 49 项、
+SeerAPI 全量 **259 passed**、Ruff、CLI 帮助、编译和 diff 检查均通过。构建主脚本从 4,671 行
+降至 4,218 行，模块本身 331 行，未改变发布 schema 或运行时消费语义。
+
+**私有扩展验证入口（2026-08-13）：** 私有仓库 `a278d11` 不再把测试 `pythonpath`
+固定为本机相邻的 `../IronsBot`。测试启动时优先读取 `IRONSBOT_PUBLIC_ROOT`，再回退到
+`public-runtime` 或传统 sibling 目录；因此 V5 工作树、CI 检出路径和标准本地布局均能验证同一
+公开扩展契约。以 V5 公共环境实测私有测试 **24 passed**、Ruff 通过。该项只改变开发验证路径，
+不改变运行时私有扩展安装或镜像内容。
+
+**命令与榜单缓存契约收口（2026-08-13）：** IronsBot `c2a6f85e` 删除榜单玩家查询对
+轻量测试桩的 `getattr()`/直接缓存读取回退，所有调用者现在必须实现
+`RankService.cached_player_lookup()` 正式接口。同期，Docker 打包的戳一戳命令引入时间清单从
+“每个命令一次 Git 子进程”改为单次顺序历史扫描；实测生成从约 **31.6 秒** 降至约 **7.2 秒**，
+修复 Windows 上 30 秒测试超时。相关定向测试 32 项、IronsBot 全量 **1503 passed**、Ruff、
+编译和 diff 检查均通过；这不改变用户可用命令或榜单查询语义。
 
 **镜像依赖审计（2026-08-13）：** 已删除 IronsBot 未导入、也不由 `seerapi`
 传递依赖的 `unitypy`。锁定闭包同步移除纹理解码、音频、压缩等 11 个运行时包；
