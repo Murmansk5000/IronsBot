@@ -506,6 +506,19 @@ default_minutes = 30
 # Example: [{ start = "07:00", end = "23:00", minutes = 5 }]
 windows = [{ start = "07:00", end = "23:00", minutes = 5 }]
 
+# Default: 5
+# EN: Second of each minute used for regular polling.
+# ZH: 常规轮询在每分钟的第几秒执行。
+# Example: 5
+check_second = 5
+
+# Default: []
+# EN: Optional short polling bursts around recurring release times. A burst ends
+#     early after a newly published dynamic is found.
+# ZH: 可选的定时发布加密轮询窗口；发现新动态后会提前结束当前窗口。
+# Example: [{ start = "10:00:00", end = "11:00:00", interval_minutes = 60, offset_seconds = [0, 5, 10, 15] }]
+boost_windows = []
+
 [bilibili.push]
 # Default: "full"
 # EN: Default push mode for accounts without an explicit mode.
