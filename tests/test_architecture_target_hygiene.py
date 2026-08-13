@@ -34,8 +34,10 @@ SEER_REQUEST_ACTOR_METHODS = {
     },
 }
 SEER_REQUEST_CONVERSATION_METHODS = {
-    "player_service.py": {
+    "player_detail_service.py": {
         "PlayerDetailService": ("start_background_refresh",),
+    },
+    "player_service.py": {
         "PlayerService": (
             "query",
             "bind_player",

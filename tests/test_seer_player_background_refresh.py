@@ -8,14 +8,14 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.services.seer.player_detail_service import PlayerDetailService
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
-from ironsbot.services.seer.player_service import (
+from ironsbot.services.seer.player_service import PlayerService
+from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
-    PlayerDetailService,
-    PlayerService,
+    PlayerBaseSnapshot,
     _BackgroundRefresh,
 )
-from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 
@@ -88,7 +88,7 @@ def test_background_refresh_is_disabled_by_default(
         return QueryReply(text=command.kind)
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 
@@ -116,11 +116,11 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
         return QueryReply(text=f"{command.kind} reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service."
+        "ironsbot.services.seer.player_detail_service."
         "_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS",
         0.01,
     )
@@ -190,7 +190,7 @@ def test_background_refresh_reports_inflight_section(
         return QueryReply(text=f"{command.kind} reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 
@@ -236,7 +236,7 @@ def test_direct_shortcut_bypasses_and_releases_pending_background_refresh(
         return QueryReply(text="collection reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 
@@ -329,7 +329,7 @@ def test_background_refresh_expiration_releases_inflight_section(
         return QueryReply(text=f"{command.kind} reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 

@@ -62,15 +62,13 @@ from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_detail_service import PlayerDetailService
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestProtectionService,
 )
-from ironsbot.services.seer.player_service import (
-    PlayerDetailService,
-    PlayerService,
-)
+from ironsbot.services.seer.player_service import PlayerService
 from ironsbot.services.seer.rank import RankService
 from ironsbot.services.seer.rank_admin import RankAdminPolicy, RankAdminService
 from ironsbot.services.seer.rank_display import RankDisplayService
