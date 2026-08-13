@@ -121,6 +121,8 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 SQLAlchemy/Session/JSON 访问，只通过 `integrations.seer_data.autocard_repository` 获取
 准备好的 `AutocardDataset`。当前 schema 查询、JSON 解包与数据错误属于集成层；服务层
 只保留命令语义、搜索和展示格式化。
+`AutocardSanctuaryService` 同样只接收
+`autocard_sanctuary_repository` 的结构化场地效果行；两个群星牌服务均不再直接执行 SQL。
 
 **Main 吸收记录（2026-08-13）：** 已以 V5 的类型化 B 站服务为唯一业务路径吸收
 `main` 的发布时段加密轮询需求。`BiliBoostWindow`、秒级时钟、槽位去重和 cron
