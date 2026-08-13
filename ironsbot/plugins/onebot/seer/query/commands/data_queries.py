@@ -73,10 +73,7 @@ from ..query_conversation import build_reply
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from ironsbot.services.seer.data_queries import (
-        DataQueryReply,
-        SeerDataQueryService,
-    )
+    from ironsbot.services.seer.data_queries import DataQueryReply, SeerDataQueryService
     from ironsbot.services.seer.external_references import SeerInfoReferences
 
 
