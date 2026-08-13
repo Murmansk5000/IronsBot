@@ -28,7 +28,7 @@ from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutTargetCommand,
     execute_player_shortcut,

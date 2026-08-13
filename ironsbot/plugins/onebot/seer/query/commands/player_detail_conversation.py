@@ -48,7 +48,7 @@ from ironsbot.services.seer.player_query import (
     resolve_player_detail_reply,
 )
 from ironsbot.services.seer.player_service import PlayerService  # noqa: TC001
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     execute_player_shortcut,
     player_request_admission_message,
@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
 
 _SHORTCUT_KINDS = {

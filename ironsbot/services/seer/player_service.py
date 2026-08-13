@@ -46,7 +46,7 @@ from ironsbot.services.seer.player_service_support import (
     shortcut_operation_label,
     utc_now,
 )
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     player_shortcut_semantic_request,
 )
@@ -71,7 +71,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
 
 logger = logging.getLogger(__name__)
 

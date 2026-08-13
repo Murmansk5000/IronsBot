@@ -155,6 +155,13 @@ HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而�
 收紧为 `ActorRef` / `ConversationRef`。私有实现无法再构造无身份的实时无头查询；
 公共队列、配额、操作追踪和未来平台适配均获得相同的类型化调用路径。
 
+**玩家快捷查询职责拆分（2026-08-13）：** `player_shortcut_contracts` 现在唯一拥有
+收集、巅峰和群星牌快捷命令的输入模型、语义请求和请求反馈；
+`player_shortcut_queries` 只负责线上数据组合、排名与本地样本写入。删除旧聚合模块后，
+OneBot 菜单、文本快捷入口、玩家服务与测试都直接依赖各自的窄边界。玩家 94 项、结构和
+导入卫生 4 项测试、Ruff、编译与 diff 检查通过。该项减少 Phase 5 的服务职责混杂，
+不改变用户命令或增加运行时依赖。
+
 **核心语义请求直连（2026-08-13）：** 删除 `runtime.semantic_requests` 的常驻重导出层；
 OneBot matcher、提示会话和测试均直接依赖 `core.semantic_requests`。这消除了 runtime 对 core
 模型的伪所有权，也避免未来平台适配因历史导入路径被迫依赖 NoneBot runtime。会话、matcher、

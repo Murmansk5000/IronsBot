@@ -16,7 +16,7 @@ from ironsbot.services.seer.player_service_models import (
     PlayerBaseSnapshot,
     _BackgroundRefresh,
 )
-from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 
 PLAYER_ID = 712345678

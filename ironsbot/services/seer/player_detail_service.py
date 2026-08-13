@@ -24,12 +24,12 @@ from ironsbot.services.seer.player_service_support import (
     background_refresh_kinds,
     shortcut_operation_label,
 )
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
-    fetch_player_shortcut_reply,
     player_shortcut_semantic_request,
 )
+from ironsbot.services.seer.player_shortcut_queries import fetch_player_shortcut_reply
 
 _BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
 _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
     from ironsbot.services.seer.rank import RankService
 

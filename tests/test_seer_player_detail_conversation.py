@@ -33,7 +33,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_PEAK_KEY,
 )
 from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
-from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
 
