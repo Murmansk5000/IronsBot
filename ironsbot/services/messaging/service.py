@@ -13,7 +13,7 @@ from ironsbot.core.platform import (
     ConversationRef,
     private_conversation_for_actor,
 )
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import daily_time_parts_with_seconds
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
@@ -391,11 +391,11 @@ def build_schedule_job_id(prefix: str, index: int, raw_id: str) -> str:
 
 
 def build_schedule_trigger_kwargs(task: ScheduledAction) -> dict[str, Any]:
-    hour, minute = daily_time_parts(task.time)
+    hour, minute, second = daily_time_parts_with_seconds(task.time)
     trigger_kwargs: dict[str, Any] = {
         "hour": hour,
         "minute": minute,
-        "second": 0,
+        "second": second,
     }
     if task.day_of_week:
         trigger_kwargs["day_of_week"] = task.day_of_week
