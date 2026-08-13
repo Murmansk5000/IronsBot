@@ -18,7 +18,10 @@ from ironsbot.core.commands import (
     json_object,
     string_list,
 )
-from ironsbot.core.time import normalize_daily_time
+from ironsbot.core.time import (
+    normalize_daily_time,
+    normalize_daily_time_with_seconds,
+)
 
 INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 
@@ -33,6 +36,7 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
+MAX_CLOCK_SECOND = 59
 
 
 class BiliPushTargetConfigError(ValueError):
@@ -107,6 +111,41 @@ class BiliIntervalWindow(BaseModel):
         )
 
 
+class BiliBoostWindow(BaseModel):
+    """Extra short polling burst around a recurring wall-clock release slot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start: str
+    end: str
+    interval_minutes: int = Field(gt=0)
+    offset_seconds: list[int] = Field(min_length=1)
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_hhmmss(cls, value: str) -> str:
+        return normalize_daily_time_with_seconds(
+            value,
+            error_message="bilibili.polling.boost_windows time must use HH:MM:SS",
+        )
+
+    @field_validator("offset_seconds")
+    @classmethod
+    def validate_offset_seconds(cls, value: list[int]) -> list[int]:
+        if any(not 0 <= second <= MAX_CLOCK_SECOND for second in value):
+            msg = (
+                "bilibili.polling.boost_windows offset_seconds must be between 0 and 59"
+            )
+            raise ValueError(msg)
+        if len(set(value)) != len(value):
+            msg = (
+                "bilibili.polling.boost_windows offset_seconds "
+                "must not contain duplicates"
+            )
+            raise ValueError(msg)
+        return sorted(value)
+
+
 class BiliStorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -118,11 +157,13 @@ class BiliPollingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_minutes: int = Field(default=30, gt=0)
+    check_second: int = Field(default=5, ge=0, le=MAX_CLOCK_SECOND)
     windows: list[BiliIntervalWindow] = Field(
         default_factory=lambda: [
             BiliIntervalWindow(start="07:00", end="23:00", minutes=5)
         ]
     )
+    boost_windows: list[BiliBoostWindow] = Field(default_factory=list)
 
 
 class BiliAccountConfig(BaseModel):

@@ -14,17 +14,17 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.context import build_notice_source
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import natural_language
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    active_plugin_install_context,
-)
 from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
 
 from .team_actions import run_team_action

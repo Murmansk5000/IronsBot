@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from nonebot.internal.driver import Driver
 
-    from ironsbot.runtime.plugins import (
+    from ironsbot.core.plugin_install import (
         BotLifecycleHook,
         LifecycleHook,
         NamedBotLifecycleHook,

@@ -19,6 +19,12 @@ from nonebot.typing import T_State
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    PluginHooks,
+    active_plugin_install_context,
+)
 from ironsbot.core.semantic_requests import (
     SemanticRequest,
     SemanticRequestSource,
@@ -39,12 +45,6 @@ from ironsbot.integrations.onebot.matchers import (
 from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_command
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_QUERY_ACTION,

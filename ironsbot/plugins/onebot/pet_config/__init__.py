@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.feature_policy import (
     event_is_feature_visible_in_help,
     feature_rule,
@@ -16,11 +21,6 @@ from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_e
 from ironsbot.plugins.onebot.seer.query.commands.query_rules import (
     not_exact_command,
     not_rank_query,
-)
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    active_plugin_install_context,
 )
 from ironsbot.runtime.semantic_requests import ActionDefinition
 from ironsbot.services.pet_config_commands import pet_config_command_contracts

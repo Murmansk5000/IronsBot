@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.runtime.plugins import PluginContribution
+    from ironsbot.core.plugin_install import PluginContribution
 
 HELP_ENTRIES_KEY = "_help_entries"
 HELP_GROUP_ORDER = (

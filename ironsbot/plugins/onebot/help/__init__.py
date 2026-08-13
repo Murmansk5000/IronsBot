@@ -11,6 +11,12 @@ from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    PluginContributionCatalog,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     enter_prompt_loop,
@@ -24,12 +30,6 @@ from ironsbot.integrations.onebot.replies import (
     send_event_reply,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    PluginContributionCatalog,
-    active_plugin_install_context,
-)
 from ironsbot.services.help_commands import help_command_contracts
 
 from .menu import (

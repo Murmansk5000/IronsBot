@@ -9,15 +9,15 @@ from nonebot.rule import Rule
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.messaging.meeting import (
     build_meeting_reply,
     meeting_command_contracts,

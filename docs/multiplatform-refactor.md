@@ -43,12 +43,12 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 
 示例中的数字不是当前状态；实际状态由本次任务报告和提交证据决定。
 
-## 当前验证进度（2026-08-06）
+## 当前验证进度（2026-08-13）
 
 ```text
-总任务  [██▌░░░░░░░] 25%  已完成阶段 2/8  剩余：跨仓库装载、数据事实、解析与错误语义；尚不能可靠估算
-Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：完整素材 manifest、早期 L3 命中和其余 renderer 数据边界验收
-当前任务[██████████] 100%  构建自产魂印 PNG 的 manifest 事实已发布；尚未覆盖远程素材或启用早期 L3 命中
+总任务  [██████░░░░] 63%  已完成阶段 3/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
+Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
+当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
 
 本次完成的跨仓库证据：
@@ -93,12 +93,28 @@ Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：完�
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `in_progress` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；真实 `ironsbot-private` 已迁到 `core.command_catalog` / `core.player_reference_commands`，并以其自身 `pyproject.toml` 经 `nonebot.load_from_toml()` 的隔离 smoke test 验证；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后的全量 `pytest` 为 1377 passed，静态检查通过 | 将私有阵容尚存的 OneBot 可见性与公共 service 依赖收进 `ironsbot.extensions` 的窄 context，证明外部包只依赖文档化的 extension/core/install 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
+| Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键和部分 SeerAPI 效果事实已验证 | SeerAPI 发布完整 render asset manifest；IronsBot 以 `RenderRequestKey` 在 SQL/HTTP/presenter 前命中 L3，并对每个 renderer 加零调用命中测试 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
+
+**Main 吸收记录（2026-08-13）：** 已以 V5 的类型化 B 站服务为唯一业务路径吸收
+`main` 的发布时段加密轮询需求。`BiliBoostWindow`、秒级时钟、槽位去重和 cron
+注册均不依赖 OneBot 数值 target；发现新动态后仅结束当前 burst，空响应或失败仍会继续
+后续偏移探测。未直接 cherry-pick `main` 的旧 monitor 实现，避免恢复数值身份、旧投递
+和旧 service API。
+
+**镜像依赖审计（2026-08-13）：** 已删除 IronsBot 未导入、也不由 `seerapi`
+传递依赖的 `unitypy`。锁定闭包同步移除纹理解码、音频、压缩等 11 个运行时包；
+HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而保留。Docker 引擎在本机未
+运行，故这一轮以 `uv export --no-dev` 闭包和启动/渲染 smoke 测试作为可复现证据；
+发布前 CI 或 Docker 环境仍应记录实际 image size。
+
+**身份边界收口（2026-08-13）：** 私有阵容的公开请求与查询 port 已从 `Any`
+收紧为 `ActorRef` / `ConversationRef`。私有实现无法再构造无身份的实时无头查询；
+公共队列、配额、操作追踪和未来平台适配均获得相同的类型化调用路径。
 
 开始持续任务时，报告必须同时给出总任务、当前阶段和当前小任务的进度及预计剩余时间；
 估算只描述当前可见范围，遇到新增依赖、发布阻塞或验证失败时必须立即重新估算。推荐

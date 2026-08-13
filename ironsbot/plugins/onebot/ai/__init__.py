@@ -13,6 +13,11 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 
 from ironsbot.core.features import Feature
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.context import (
     build_notice_source,
     command_context,
@@ -24,11 +29,6 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import bot_mention
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    active_plugin_install_context,
-)
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 

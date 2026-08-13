@@ -10,11 +10,11 @@ from ironsbot.core.command_catalog import (
 )
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.help_hint import (
     OneBotHelpHintService,
     is_onebot_poke_at_bot,
 )
-from ironsbot.runtime.plugins import PluginContribution
 
 
 @dataclass(slots=True)

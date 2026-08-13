@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.messaging import default_sendpic_configs
+from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.headless_seer.client import ClientManager
@@ -91,7 +92,6 @@ from ironsbot.plugins.onebot.team_audit import (
 from ironsbot.plugins.onebot.team_resource import (
     plugin_contribution as team_resource_plugin_contribution,
 )
-from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
@@ -103,7 +103,7 @@ from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
     from ironsbot.app.composition import ApplicationResources
-    from ironsbot.runtime.plugins import PluginContribution
+    from ironsbot.core.plugin_install import PluginContribution
 
 
 async def _noop_startup(_scheduler: object) -> None:
