@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, cast
 from ironsbot.config.models.seer import TeamResourceConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
-from ironsbot.services.team.resource import (
+from ironsbot.services.team.resource import TeamResourceService
+from ironsbot.services.team.resource_subscriptions import (
     TeamResourcePrivateSubscriptionUpdate,
-    TeamResourceService,
     TeamResourceSubscriptionTarget,
     TeamResourceSubscriptionUpdate,
 )

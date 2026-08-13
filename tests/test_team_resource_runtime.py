@@ -17,9 +17,11 @@ from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.team.resource import (
-    TeamResourcePrivateSubscriptionUpdate,
     TeamResourceResult,
     TeamResourceService,
+)
+from ironsbot.services.team.resource_subscriptions import (
+    TeamResourcePrivateSubscriptionUpdate,
     TeamResourceSubscriptionTarget,
     TeamResourceSubscriptionUpdate,
 )
