@@ -77,4 +77,12 @@ def test_seer_dynamic_classification_uses_short_topic_name() -> None:
         item,
         pub_ts=_timestamp(3, 12, 0),
         config=BiliConfig().seer_categories,
-    ) == ("competition",)
+    ) == ("other",)
+
+
+def test_seer_peak_battle_title_is_not_a_competition_category() -> None:
+    assert classify_seer_dynamic(
+        _item("赛尔号巅峰之战中，后续的故事还在继续。"),
+        pub_ts=_timestamp(3, 12, 0),
+        config=BiliConfig().seer_categories,
+    ) == ("other",)

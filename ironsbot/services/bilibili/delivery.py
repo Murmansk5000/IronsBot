@@ -5,6 +5,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.core.bilibili import SeerDynamicCategory, truncate_bilibili_text
@@ -40,6 +41,8 @@ BILI_PUSH_ADMIN_HINT = (
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
+SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT = "发送 TD 可按标签退订赛尔号动态。"
+SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT_KEY = "seer_dynamic_tag_unsubscribe_hint"
 # The first send counts toward the total.  Failed rich-media delivery therefore
 # receives at most two retries before a single administrator notice is sent.
 FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
@@ -158,7 +161,10 @@ class BilibiliPushDeliveryService:
             group_ids=visible_targets.full_group_ids,
             private_user_ids=visible_targets.full_user_ids,
             action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
-            message_limiter=self._transform_target_message,
+            message_limiter=partial(
+                self._transform_target_message,
+                author_mid=author_mid,
+            ),
             subscription_key=subscription_key,
         )
 
@@ -301,7 +307,10 @@ class BilibiliPushDeliveryService:
             group_ids=targets.link_group_ids,
             private_user_ids=targets.link_user_ids,
             action_name=LINK_DYNAMIC_PUSH_ACTION,
-            message_limiter=self._transform_target_message,
+            message_limiter=partial(
+                self._transform_target_message,
+                author_mid=author_mid,
+            ),
             subscription_key=bili_push_subscription_key(author_mid),
         )
 
@@ -489,18 +498,30 @@ class BilibiliPushDeliveryService:
         self,
         message: Any,
         target: MessageTarget,
+        *,
+        author_mid: int | None = None,
     ) -> Any:
         if self.message_limiter is not None:
             message = self.message_limiter(message, target)
+        hints: list[str] = []
         if self.can_query_history is not None and self.can_query_history(target):
-            message = self.append_hint(message, DYNAMIC_HISTORY_HINT)
-        if target.target_type != "group":
-            return message
-        group_id = target.target_id
-        if not self.subscriptions.mark_daily_hint_sent(
+            hints.append(DYNAMIC_HISTORY_HINT)
+        if (
+            self.media_preferences_uid is not None
+            and author_mid == self.media_preferences_uid
+            and self.subscriptions.mark_daily_hint_sent(
+                target.target_type,
+                target.target_id,
+                SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT_KEY,
+            )
+        ):
+            hints.append(SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT)
+        if target.target_type == "group" and self.subscriptions.mark_daily_hint_sent(
             "group",
-            group_id,
+            target.target_id,
             BILI_PUSH_ADMIN_HINT_KEY,
         ):
+            hints.append(BILI_PUSH_ADMIN_HINT)
+        if not hints:
             return message.rstrip() if isinstance(message, str) else message
-        return self.append_hint(message, BILI_PUSH_ADMIN_HINT)
+        return self.append_hint(message, "\n".join(hints))
