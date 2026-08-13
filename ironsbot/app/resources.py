@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from ironsbot.app.private_extensions import PrivateExtensionCatalog
     from ironsbot.core.command_catalog import CommandCatalog
@@ -64,6 +64,7 @@ class ApplicationResources:
     seer: SeerQueryResources
     pet_config: PetConfigQueryService
     ai: AiService
+    ai_startup_check: Callable[[], Awaitable[None]]
     data_sync: DataSyncService
     docker_update: DockerUpdateService
     startup_notice: StartupNoticeService
