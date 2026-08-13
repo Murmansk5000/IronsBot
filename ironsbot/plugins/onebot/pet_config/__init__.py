@@ -12,6 +12,7 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.feature_policy import (
     event_is_feature_visible_in_help,
     feature_rule,
@@ -22,7 +23,6 @@ from ironsbot.plugins.onebot.seer.query.commands.query_rules import (
     not_exact_command,
     not_rank_query,
 )
-from ironsbot.runtime.semantic_requests import ActionDefinition
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
 
 __plugin_meta__ = PluginMetadata(

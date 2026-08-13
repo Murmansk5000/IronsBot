@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 from nonebot.exception import FinishedException
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
@@ -18,7 +19,6 @@ from ironsbot.plugins.onebot.seer.query.commands.player_context import (
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,
 )
-from ironsbot.runtime.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,

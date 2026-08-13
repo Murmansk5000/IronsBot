@@ -424,3 +424,9 @@ def test_legacy_onebot_delivery_is_not_reintroduced_into_services_or_composition
 def test_runtime_does_not_reintroduce_command_contract_modules() -> None:
     assert not (RUNTIME / "commands.py").exists()
     assert not (RUNTIME / "player_reference_commands.py").exists()
+
+
+def test_runtime_does_not_reintroduce_core_semantic_request_bridge() -> None:
+    """Semantic request models belong to core, never to a runtime re-export."""
+
+    assert not (RUNTIME / "semantic_requests.py").exists()

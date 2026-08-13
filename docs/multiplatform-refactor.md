@@ -143,6 +143,11 @@ HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而�
 收紧为 `ActorRef` / `ConversationRef`。私有实现无法再构造无身份的实时无头查询；
 公共队列、配额、操作追踪和未来平台适配均获得相同的类型化调用路径。
 
+**核心语义请求直连（2026-08-13）：** 删除 `runtime.semantic_requests` 的常驻重导出层；
+OneBot matcher、提示会话和测试均直接依赖 `core.semantic_requests`。这消除了 runtime 对 core
+模型的伪所有权，也避免未来平台适配因历史导入路径被迫依赖 NoneBot runtime。会话、matcher、
+提示和玩家详情 45 项针对性测试、Ruff、编译及 diff 检查通过。
+
 **持续收口与镜像基线（2026-08-13）：** `b16c3dfc` 无损压缩四张内置固定图片，
 运行时资产减少约 2.58 MB，并移除六项仅由核心依赖传递提供的重复声明；Docker 继续
 显式复制运行时文件，且以 `--no-compile` / `PYTHONDONTWRITEBYTECODE=1` 避免把

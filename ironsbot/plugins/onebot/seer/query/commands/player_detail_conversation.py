@@ -11,6 +11,10 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.feature_policy import FeatureService  # noqa: TC001
+from ironsbot.core.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+)
 from ironsbot.integrations.onebot.conversations import (
     begin_event_reply_conversation,
     command_reply_check,
@@ -26,10 +30,6 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.semantic_requests import (
-    SemanticRequest,
-    SemanticRequestSource,
-)
 from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
