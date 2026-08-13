@@ -80,6 +80,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                 ).subscription_options,
             ),
             _prepare_extra_push_options=bili_targets.prepare_account_names,
+            _subscription_submenu_providers=(bili_targets,),
         ),
         sendpic=SendpicService(
             settings.messaging.sendpic,
