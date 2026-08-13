@@ -96,7 +96,13 @@ class PlayerLineupRenderPort(Protocol):
         type_ids: tuple[int, ...],
     ) -> PlayerLineupImageAssets: ...
 
-    def cache_key(self, document: object, *, renderer_fingerprint: str) -> str: ...
+    def request_cache_key(
+        self,
+        category: str,
+        request: object,
+        *,
+        renderer_fingerprint: str,
+    ) -> str: ...
 
     def cached_image(self, category: str, key: str) -> bytes | None: ...
 

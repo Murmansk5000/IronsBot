@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -15,10 +14,6 @@ if TYPE_CHECKING:
 
     from sqlmodel import Session
 
-logger = logging.getLogger(__name__)
-_missing_table_warning_logged = False
-
-
 @dataclass(frozen=True, slots=True)
 class SkinImageResolution:
     skin_id: int
@@ -29,11 +24,18 @@ class SkinImageResolution:
     source_pet_id: int | None
 
 
+class SkinImageResolutionSchemaError(RuntimeError):
+    """The published Seer release lacks required skin-resolution facts."""
+
+    def __init__(self) -> None:
+        super().__init__("published Seer data is missing skin image resolution facts")
+
+
 def load_skin_image_resolutions(
     session: Session,
     skin_ids: Iterable[int],
 ) -> dict[int, SkinImageResolution]:
-    """Load build-time resolutions, falling back cleanly for legacy databases."""
+    """Load required build-time skin image resolutions from the release."""
 
     resolved_skin_ids = tuple(sorted({int(skin_id) for skin_id in skin_ids if skin_id}))
     if not resolved_skin_ids:
@@ -57,8 +59,7 @@ def load_skin_image_resolutions(
             params={"skin_ids": resolved_skin_ids},
         ).all()
     except SQLAlchemyError as error:
-        _log_resolution_load_failure(error)
-        return {}
+        raise SkinImageResolutionSchemaError from error
 
     result: dict[int, SkinImageResolution] = {}
     for row in rows:
@@ -80,18 +81,3 @@ def load_skin_image_resolutions(
             ),
         )
     return result
-
-
-def _log_resolution_load_failure(error: SQLAlchemyError) -> None:
-    global _missing_table_warning_logged  # noqa: PLW0603 - process-wide legacy DB warning
-
-    message = str(error).lower()
-    if "skin_image_resolution" in message and "no such table" in message:
-        if not _missing_table_warning_logged:
-            logger.warning(
-                "skin image resolution table is absent; using original skin "
-                "resource IDs until data is updated"
-            )
-            _missing_table_warning_logged = True
-        return
-    logger.exception("failed to load build-time skin image resolutions")

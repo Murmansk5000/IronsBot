@@ -9,6 +9,7 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -17,6 +18,28 @@ if TYPE_CHECKING:
 
 class RenderDocumentCacheKeyError(ValueError):
     """A render document contains a value unsuitable for deterministic caching."""
+
+
+def render_request_cache_key(
+    category: str,
+    request: object,
+    *,
+    renderer_fingerprint: str = "",
+) -> str:
+    """Hash request semantics before repositories or assets are consulted.
+
+    ``FileRenderCache`` scopes this key with the published Seer release and
+    renderer source fingerprint. A hit can therefore skip SQLite, HTTP, and
+    native HTML rendering without making a result from another release valid.
+    """
+
+    return _hash_payload(
+        {
+            "category": category,
+            "request": _normalize(request),
+            "renderer_fingerprint": renderer_fingerprint,
+        }
+    )
 
 
 def render_document_cache_key(
@@ -31,10 +54,15 @@ def render_document_cache_key(
     upstream image cannot reuse a final image rendered with the old bytes.
     """
 
-    payload = {
-        "document": _normalize(document),
-        "renderer_fingerprint": renderer_fingerprint,
-    }
+    return _hash_payload(
+        {
+            "document": _normalize(document),
+            "renderer_fingerprint": renderer_fingerprint,
+        }
+    )
+
+
+def _hash_payload(payload: Mapping[str, Any]) -> str:
     encoded = json.dumps(
         payload,
         ensure_ascii=True,
@@ -44,13 +72,15 @@ def render_document_cache_key(
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _normalize(value: object) -> Any:  # noqa: PLR0911
+def _normalize(value: object) -> Any:  # noqa: C901, PLR0911
     if value is None or isinstance(value, (bool, int, str)):
         return value
     if isinstance(value, float):
         if not math.isfinite(value):
             raise RenderDocumentCacheKeyError
         return value
+    if isinstance(value, (datetime, date, time)):
+        return {"time": value.isoformat()}
     if isinstance(value, bytes):
         return {"bytes": base64.b64encode(value).decode("ascii")}
     if is_dataclass(value) and not isinstance(value, type):
@@ -64,8 +94,13 @@ def _normalize(value: object) -> Any:  # noqa: PLR0911
     if isinstance(value, Mapping):
         return {
             "mapping": tuple(
-                (_normalize(key), _normalize(item))
-                for key, item in value.items()
+                sorted(
+                    (
+                        (_normalize(key), _normalize(item))
+                        for key, item in value.items()
+                    ),
+                    key=lambda item: _mapping_key_sort_value(item[0]),
+                )
             )
         }
     if isinstance(value, tuple):
