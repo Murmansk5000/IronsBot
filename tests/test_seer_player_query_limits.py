@@ -45,7 +45,7 @@ def _config(**overrides: object) -> SimpleNamespace:
     values: dict[str, object] = {
         "enabled": True,
         "bound_default_daily_limit": 2,
-        "other_target_action_daily_limit": 1,
+        "bound_other_daily_limit": 1,
         "unbound_daily_limit": 1,
         "superuser_bypass": True,
     }

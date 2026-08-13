@@ -31,6 +31,7 @@ from ironsbot.config.models.operations import (
 )
 from ironsbot.config.models.seer import (
     LuckySkinWindowConfig,
+    PlayerQueryLimitsConfig,
     PlayerRequestProtectionConfig,
     RankPageRefreshConfig,
     TeamResourceConfig,
@@ -1557,6 +1558,13 @@ query_worker = true
 
     assert settings.headless_accounts == ()
     assert "seer.player_accounts[0].query_worker" in capsys.readouterr().err
+
+
+def test_player_query_limits_reject_legacy_limit_field() -> None:
+    with pytest.raises(ValidationError, match="other_target_action_daily_limit"):
+        PlayerQueryLimitsConfig.model_validate(
+            {"other_target_action_daily_limit": 1},
+        )
 
 
 def test_player_accounts_reject_inline_credentials(
