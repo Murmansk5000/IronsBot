@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.exception import FinishedException
@@ -30,7 +31,6 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
     PlayerDetailExtensionAction,

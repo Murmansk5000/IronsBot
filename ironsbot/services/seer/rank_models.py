@@ -45,6 +45,7 @@ class RankLookupResult:
     searched_limit: int = 0
     queried: bool = False
     failure: str | None = None
+    fallback_cached_at: float | None = None
     cost: RankLookupCost = field(default_factory=RankLookupCost)
 
 

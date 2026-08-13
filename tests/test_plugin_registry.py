@@ -505,6 +505,12 @@ def test_internal_plugins_use_only_the_matcher_factory() -> None:
                     / "onebot"
                     / "scheduler"
                     / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "clock_check"
+                    / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue
                 if imported:

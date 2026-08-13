@@ -82,7 +82,9 @@ async def fetch_rank_player_result(
     score = (
         result.score
         if command.rank_key in _PEAK_KEYS
-        else result.score if result.score is not None else target.value
+        else result.score
+        if result.score is not None
+        else target.value
     )
     if (
         command.rank_key not in _PEAK_KEYS
@@ -115,50 +117,6 @@ async def fetch_rank_player_result(
                 f"📊【{spec.title}玩家查询】",
                 format_player_identity(command.player_id, str(user_info.nick)),
                 f"{title}：{metric_text}",
-            )
-        ),
-        result,
-    )
-
-
-def fetch_cached_rank_player_result(
-    rank: RankService,
-    *,
-    command: RankPlayerCommand,
-) -> RankPlayerQueryResult | None:
-    """Format a cached rank fact without opening a live game request."""
-
-    spec = rank.get_spec(command.rank_key)
-    if rank.spec_needs_sub_key(spec):
-        return None
-    cached = rank.cache.item(
-        key=spec.key,
-        sub_key=spec.sub_key,
-        user_id=command.player_id,
-        allow_stale=True,
-    )
-    if cached is None:
-        return None
-
-    metric_key = LOCAL_RANKS[command.rank_key].metric_key
-    score = int(cached.score)
-    display = _format_score(metric_key, score, spec.unit)
-    result = RankLookupResult(
-        title=spec.title.removesuffix("榜"),
-        score_name=spec.unit,
-        rank=int(cached.rank_index) + 1,
-        score=score,
-    )
-    metric_text = join_metric_parts(
-        display or "暂无数据",
-        format_rank_position_text(result),
-    )
-    return RankPlayerQueryResult(
-        "\n".join(
-            (
-                f"📊【{spec.title}玩家查询】",
-                format_player_identity(command.player_id, cached.nick),
-                f"{spec.title.removesuffix('榜')}：{metric_text}",
             )
         ),
         result,
@@ -244,6 +202,52 @@ async def _find_player_rank(  # noqa: PLR0913
         sub_key=sub_key,
         target_score=target.value,
         anchor_only=anchor_only,
+    )
+
+
+def fetch_cached_rank_player_result(
+    rank: RankService,
+    *,
+    command: RankPlayerCommand,
+) -> RankPlayerQueryResult | None:
+    """Format an existing rank fact or full-miss proof without live profile IO."""
+
+    spec = rank.get_spec(command.rank_key)
+    if rank.spec_needs_sub_key(spec):
+        return None
+    cached = rank.cached_player_lookup(
+        rank_key=command.rank_key,
+        user_id=command.player_id,
+        title=spec.title.removesuffix("榜"),
+        score_name=spec.unit,
+        key=spec.key,
+        sub_key=spec.sub_key,
+    )
+    if cached is None:
+        return None
+    cached_item, result = cached
+    display = _format_score(
+        LOCAL_RANKS[command.rank_key].metric_key,
+        result.score,
+        spec.unit,
+    )
+    metric_text = join_metric_parts(
+        display or "暂无数据",
+        format_rank_position_text(result),
+    )
+    identity = format_player_identity(
+        command.player_id,
+        "" if cached_item is None else str(cached_item.nick),
+    )
+    return RankPlayerQueryResult(
+        "\n".join(
+            (
+                f"📊【{spec.title}玩家查询】",
+                identity,
+                f"{spec.title.removesuffix('榜')}：{metric_text}",
+            )
+        ),
+        result,
     )
 
 

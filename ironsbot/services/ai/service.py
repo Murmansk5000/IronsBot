@@ -38,9 +38,11 @@ MISSING_KEY_REPLY = "AI聊天还没有配置 API Key。请先设置 AI_KEY。"
 TIMEOUT_REPLY = "AI接口响应超时，我已经通知超级管理员。"
 UNEXPECTED_ERROR_REPLY = "AI聊天出错了，我已经通知超级管理员。"
 TEAM_ACTIONS = frozenset({"team_recommend", "team_resource"})
-BILIBILI_SUMMARY_PROMPT = (
+BILIBILI_SUMMARY_PROMPT_TEMPLATE = (
     "你是 B 站动态摘要助手。请忠实概括原文，不编造任何内容；"
-    "保留活动时间、截止时间、奖励、规则和重要事项。"
+    "优先覆盖活动时间、截止时间、奖励、规则和重要事项。"
+    "输出必须在 {max_chars} 个中文字符以内；内容很多时合并同类事项，"
+    "不要按原文逐条罗列，更不能写到一半留下未完成的编号、句子或列表。"
     "只输出简洁中文摘要，不要标题、寒暄、Markdown 或链接。"
 )
 logger = logging.getLogger(__name__)
@@ -195,7 +197,9 @@ class AiService:
             return None
 
         messages = build_messages(
-            system_prompt=BILIBILI_SUMMARY_PROMPT,
+            system_prompt=BILIBILI_SUMMARY_PROMPT_TEMPLATE.format(
+                max_chars=max_chars
+            ),
             history_turns=0,
             history=[],
             memory=[],
@@ -216,7 +220,9 @@ class AiService:
                 result.error_detail,
             )
             return None
-        return _truncate_plain_text(result.reply, max_chars)
+        # The delivery service validates the completed model output and retries
+        # generation when it exceeds the configured limit.
+        return result.reply.strip()
 
     @staticmethod
     def is_team_action(action: AiIntentAction) -> bool:
@@ -305,7 +311,7 @@ class AiService:
                 "empty_reply",
                 _append_notice_source(
                     "AI聊天接口返回了空内容。\n"
-                    f"模型：{self._config.model}\n"
+                    f"模型：{result.model or self._config.model}\n"
                     "请检查模型配置或稍后重试。",
                     source_context,
                 ),
@@ -327,7 +333,7 @@ class AiService:
                 "AI聊天接口异常。\n"
                 f"类型：{result.error_title}\n"
                 f"HTTP：{result.status_code}\n"
-                f"模型：{self._config.model}\n"
+                f"模型：{result.model or self._config.model}\n"
                 f"接口：{self._config.base_url}\n"
                 f"详情：{result.error_detail}\n"
                 "请检查 AI_KEY、账户额度、模型名和网络连接。",

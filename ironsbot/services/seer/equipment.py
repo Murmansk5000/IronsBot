@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
+from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
 from ironsbot.services.seer.formatting import format_sub_lines
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.query_result import (
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 
 EquipmentKind = Literal["suit", "equip", "title"]
 PROMPT_MAX_ITEMS = 20
+MOUNT_PART_TYPE_ID = 6
 EQUIP_PART_TYPE_MAP = {
     0: "头部",
     1: "眼部",
@@ -27,7 +29,7 @@ EQUIP_PART_TYPE_MAP = {
     3: "手部",
     4: "脚部",
     5: "背景",
-    6: "星际座驾",
+    MOUNT_PART_TYPE_ID: "星际座驾",
 }
 
 
@@ -36,6 +38,7 @@ class _EquipmentReplyData:
     kind: EquipmentKind
     item_id: int
     text: str
+    is_mount: bool = False
 
 
 class EquipmentQueryService:
@@ -120,6 +123,11 @@ class EquipmentQueryService:
             kind=kind,
             item_id=int(item.id),
             text=text,
+            is_mount=(
+                kind == "equip"
+                and int(getattr(getattr(item, "part_type", None), "id", -1))
+                == MOUNT_PART_TYPE_ID
+            ),
         )
 
     async def _build_reply(
@@ -131,6 +139,28 @@ class EquipmentQueryService:
             reply_data.kind,
             str(reply_data.item_id),
         )
+        if (
+            reply_data.is_mount
+            and image.data is None
+            and (
+                flash_image := load_flash_mount_image(
+                    self._data,
+                    reply_data.item_id,
+                )
+            )
+        ):
+            return QueryReply(text=reply_data.text, image=flash_image)
+        if (
+            reply_data.is_mount
+            and image.data is None
+            and "原因：404" in image.error
+        ):
+            return QueryReply(
+                text=(
+                    f"{reply_data.text}\n"
+                    "图片：官方图片暂未上线，暂无法展示。"
+                )
+            )
         return QueryReply(
             text=reply_data.text,
             image=image.data,

@@ -15,6 +15,7 @@ AiResponseErrorKind = Literal["http", "invalid_json", "empty_reply"]
 class AiResponseResult:
     status_code: int
     reply: str = ""
+    model: str = ""
     error_kind: AiResponseErrorKind | None = None
     error_title: str = ""
     error_detail: str = ""

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.integrations.http.bilibili import (
     fetch_bili_account_name,
+    fetch_bili_dynamic_detail,
     fetch_bili_feed,
     poll_bili_login_qr,
     request_bili_login_qr,
@@ -81,6 +82,8 @@ def build_onebot_bilibili_components(
             settings.bilibili.storage.history_max_items,
         ),
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
+        fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
+        spawn=task_owner.create,
     )
     return BilibiliComponents(
         service=service,
