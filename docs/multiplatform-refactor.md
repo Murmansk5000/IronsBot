@@ -20,6 +20,11 @@
 - `ironsbot/**/*.py` 的 800 行限制继续由
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
+- `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
+  `seerapi/scripts/build_seerapi_data_db.py`（5,453 行）与
+  `scripts/build_new_content_index.py`（1,292 行）是已登记的 transition 债务；新功能
+  不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
+  发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
 - 任何阶段都要保留当前 OneBot 用户行为，除非有明确产品决定和特征测试一并更新。
 
 ## 状态词与进度
@@ -46,7 +51,7 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 ## 当前验证进度（2026-08-13）
 
 ```text
-总任务  [██████░░░░] 63%  已完成阶段 3/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
+总任务  [████████░░] 79%  已完成阶段 3/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
 Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
 当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
@@ -95,7 +100,7 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
-| Phase 4 | `in_progress` | 资源准备、确定性文档内容键和部分 SeerAPI 效果事实已验证 | SeerAPI 发布完整 render asset manifest；IronsBot 以 `RenderRequestKey` 在 SQL/HTTP/presenter 前命中 L3，并对每个 renderer 加零调用命中测试 | 所有渲染都已迁移 |
+| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证 | SeerAPI 发布完整 render asset manifest，并对每一类素材做范围完整性验证 | 渲染数据发布契约完成 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
@@ -106,6 +111,46 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 后续偏移探测。未直接 cherry-pick `main` 的旧 monitor 实现，避免恢复数值身份、旧投递
 和旧 service API。
 
+**Main 菜单路由审计（2026-08-13）：** 审计 `49adfecd`、`0484e65a` 和
+`0e4b5c69` 后确认 V5 已有持久队列路由和文本化 @ 菜单选择兼容；本次仅吸收尚未覆盖的
+NapCat reply segment 事实。`event.reply` 缺失时，OneBot 输入适配器会从当前消息、再从
+原始消息读取 reply segment，命令输入分类与群菜单锚点共用同一解析结果。没有 cherry-pick
+旧 `main` 的 runtime 目录实现，也没有重新引入临时 fallback matcher。
+
+**渲染版本快照（2026-08-13）：** `SeerDatabase` 在 SeerAPI 内存库原子换版完成时
+刷新发布版本；最终图片缓存读取该内存快照，不再为每个 `get`/`put` 额外开 SQLite
+session。未加载数据仍显式返回 `unknown`，因此不会写入无发布版本的缓存。该项是下一步
+`RenderRequestKey` 在 SQL/HTTP 之前安全命中的版本基础，不代表早期缓存本身已经完成。
+
+**请求级渲染缓存（2026-08-13）：** `a167843a` 将已发布精灵信息、属性克制、巅峰池、
+巅峰票选、巅峰精灵榜和新内容菜单改为先构造确定性请求键，再查最终图片缓存。命中路径
+不读取 SQLite、不加载素材、不调用 presenter 或原生 HTML 渲染；针对性测试覆盖了零素材
+请求命中。发布版本现在同时要求 `ApiMetadata.generate_time` 和
+`render_asset_manifest_revision`，缺少 manifest 的旧 release 返回 `unknown` 并禁用最终图
+缓存，避免将不完整素材固定为图片。`9879c441` / 私有 `dbd30c0` 随后将私有阵容通过
+公开 `PlayerLineupRenderPort` 迁到同一早期命中顺序；现有最终图入口已无“先加载素材再查
+缓存”的路径。Phase 4 未完成门只剩 SeerAPI 完整 manifest 的范围验证，而非运行时顺序。
+
+**资源清单获取可靠性（2026-08-13）：** SeerAPI `8805abb` 在 GitHub REST API 的 commit/tree
+读取受匿名限流影响时，回退到 blob-filtered Git clone 和 `git ls-tree -r`。该路径只读取提交与
+目录对象，不下载 PNG blob；实测 REST 403 后仍从 `c562516e2e350c93810cf090599db2a117d5724c`
+读取 39,766 个资源 blob 条目。构建期 manifest 因此不再把公共 API 限流误判为素材不完整。
+尚未完成的是将每个 renderer 的全部素材家族都列入 scope 证明，不得把当前 pet/new-content
+inventory 泛化为所有未来渲染器。
+
+**构建职责拆分（2026-08-13）：** SeerAPI `6c2936d` 将 render asset repository 的 REST
+commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析迁出发布构建编排；构建器只
+保留素材清单的领域枚举和写库。构建脚本动态加载测试、直接 `python scripts/build_seerapi_data_db.py
+--help`、包导入、51 项构建测试、Ruff、编译和 diff 检查均通过。真实 smoke 在 REST 403 时
+仍从 Git tree 读取 39,766 个 blob 条目。此项只拆协议边界，不改变 manifest schema、发布字段
+或运行时消费契约。
+
+**群星牌来源边界（2026-08-13）：** SeerAPI `2480a8f` 将群星牌四份官方 JSON 的读取与
+`data` 信封规范化迁入 `scripts/autocard_sources.py`。构建编排层继续持有本地/远端来源选择、
+网络下载、SQLite 写入与发布顺序；新模块不接触环境变量、网络或数据库，因而可由纯输入输出
+测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
+`build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
+
 **镜像依赖审计（2026-08-13）：** 已删除 IronsBot 未导入、也不由 `seerapi`
 传递依赖的 `unitypy`。锁定闭包同步移除纹理解码、音频、压缩等 11 个运行时包；
 HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而保留。Docker 引擎在本机未
@@ -115,6 +160,61 @@ HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而�
 **身份边界收口（2026-08-13）：** 私有阵容的公开请求与查询 port 已从 `Any`
 收紧为 `ActorRef` / `ConversationRef`。私有实现无法再构造无身份的实时无头查询；
 公共队列、配额、操作追踪和未来平台适配均获得相同的类型化调用路径。
+
+**玩家快捷查询职责拆分（2026-08-13）：** `player_shortcut_contracts` 现在唯一拥有
+收集、巅峰和群星牌快捷命令的输入模型、语义请求和请求反馈；
+`player_shortcut_queries` 只负责线上数据组合、排名与本地样本写入。删除旧聚合模块后，
+OneBot 菜单、文本快捷入口、玩家服务与测试都直接依赖各自的窄边界。玩家 94 项、结构和
+导入卫生 4 项测试、Ruff、编译与 diff 检查通过。该项减少 Phase 5 的服务职责混杂，
+不改变用户命令或增加运行时依赖。
+
+**Matcher 装配职责拆分（2026-08-13）：** `matcher_support` 现在唯一拥有 NoneBot
+回调签名绑定、组合期 runtime-context token、菜单锚点与会话访问帮助函数；`matchers`
+只保留 matcher 注册、命令准入、冷却和持久菜单入口。工厂从 760 行降至 609 行，公共
+OneBot 导入面保持稳定但不创建第二套运行时路径。运行时、会话、插件导入卫生和生命周期
+36 项测试、Ruff、编译与 diff 检查通过。
+
+**核心语义请求直连（2026-08-13）：** 删除 `runtime.semantic_requests` 的常驻重导出层；
+OneBot matcher、提示会话和测试均直接依赖 `core.semantic_requests`。这消除了 runtime 对 core
+模型的伪所有权，也避免未来平台适配因历史导入路径被迫依赖 NoneBot runtime。会话、matcher、
+提示和玩家详情 45 项针对性测试、Ruff、编译及 diff 检查通过。
+
+**持续收口与镜像基线（2026-08-13）：** `b16c3dfc` 无损压缩四张内置固定图片，
+运行时资产减少约 2.58 MB，并移除六项仅由核心依赖传递提供的重复声明；Docker 继续
+显式复制运行时文件，且以 `--no-compile` / `PYTHONDONTWRITEBYTECODE=1` 避免把
+`.pyc` 写入镜像或运行时挂载目录。`4aa06839` 以 V5 的持久菜单会话吸收 main 的
+文本化机器人 @ 回复兼容，未恢复临时 matcher 路径。`b5ca2892` 删除 B站正文/图片
+投递之外无生产调用的合并渲染兼容函数；`596d13fc` 将图片网络并发测试改为显式栅栏，
+稳定验证四个并发槽位。全量 `pytest` 为 1392 passed，Ruff、编译和
+`git diff --check` 通过。Docker 引擎本机仍不可用，实际最终镜像大小必须由 CI 或
+Docker 环境记录，不得把源码资产差额误报为镜像实测值。
+
+**B站投递目标职责拆分（2026-08-13）：** `943dbe86` 将原本同时承载目标模型、
+TOML 规则编译和运行时目标解析的 `services.bilibili.targets` 分成
+`target_models`、`target_rules` 与编排模块三层；投递、监控和 OneBot 适配只导入各自
+需要的窄类型或规则函数，不保留旧的聚合渲染兼容入口。B站目标/投递相关 44 项测试与
+全量 1392 项 pytest、Ruff、编译和 `git diff --check` 均通过。该拆分是领域内职责
+收口，不代表已与 `main` 的大规模目录重排合并；主线后续更新必须逐项按目标契约审计。
+
+**Docker 协议边界拆分（2026-08-13）：** Docker 更新集成不再把 Unix socket daemon
+API、OCI Registry v2、镜像归档和管理员用例编排混在 `docker.client`。`daemon` 只负责
+本机 Docker API，`registry` 只负责镜像引用、认证和远程 manifest/config 查询，`client`
+只组合这两种协议实现重启、更新检查和私有扩展归档。测试改为直接从所属协议模块导入，
+不保留旧工具导出的兼容入口；Docker 更新相关 28 项和全量 1392 项 pytest、Ruff、编译及
+`git diff --check` 均通过。
+
+**玩家详情生命周期拆分（2026-08-13）：** `PlayerService` 不再同时维护默认米米号、
+绑定/额度、基础资料请求与后台详情预热。后者已迁到 `PlayerDetailService`，唯一拥有详情
+短期缓存、in-flight future、超时清理和后台任务；主服务只通过这个窄服务编排快捷详情。
+组合层、架构身份守卫和测试均直接依赖新边界，不保留旧模块导出。主服务从 794 行降至
+441 行；玩家详情、绑定和架构定向 53 项与全量 1392 项 pytest、Ruff、编译、
+`git diff --check` 均通过。
+
+**战队资源订阅边界拆分（2026-08-13）：** 订阅目标、群/私聊持久化 DTO、一次性群提示
+和订阅命令解析均已迁至 `services.team.resource_subscriptions`；SQLite store、OneBot
+适配与通知 sender 直接使用该模块。`TeamResourceService` 仅保留资源查询、阈值判断、
+扫描、功能策略和调度编排，未提供旧模型再导出。战队资源定向 24 项与全量 1392 项
+pytest、Ruff、编译、`git diff --check` 均通过。
 
 开始持续任务时，报告必须同时给出总任务、当前阶段和当前小任务的进度及预计剩余时间；
 估算只描述当前可见范围，遇到新增依赖、发布阻塞或验证失败时必须立即重新估算。推荐
@@ -160,8 +260,9 @@ HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而�
 **完成条件：**
 
 - feature、冷却、订阅、限流、管理通知和持久化公开 API 均使用类型化身份；
-- `ironsbot.state_migration` 支持 dry-run、备份、临时构建、事务复制、校验、原子替换
-  和幂等重跑；
+- `ironsbot.state_migration` 保持唯一部署 CLI；参数解析、退出码和输出在
+  `ironsbot.state_migration_cli`，而 dry-run、备份、临时构建、事务复制、校验、原子替换
+  和幂等重跑在迁移服务中；
 - 空库、正常旧库、重复记录、损坏记录和中断都有测试；
 - `ironsbot-private` 仅使用公开的身份/状态 contract；不读取应用 composition。
 

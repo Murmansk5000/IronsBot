@@ -252,6 +252,7 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
 
 def test_example_config_parses() -> None:
     config = load_settings(ROOT / "config.example.toml")
+    _assert_example_bili_category_subscriptions(config)
 
     assert config.features.superuser_bypass
     assert config.features.group_aliases == {
@@ -1709,3 +1710,13 @@ def test_app_config_defaults_cover_runtime_services() -> None:
         app_config.seer.render.asset_negative_ttl_seconds
         == DEFAULT_ASSET_NEGATIVE_TTL_SECONDS
     )
+
+
+def _assert_example_bili_category_subscriptions(config: Settings) -> None:
+    account = config.bilibili.category_subscriptions.accounts["example_account"]
+    assert account.default_muted_categories == ["lottery", "winning"]
+    assert account.categories["lottery"].label == "转发抽奖"
+    assert account.categories["winning"].label == "中奖"
+    assert account.categories["collaboration"].label == "联动"
+    assert account.categories["creation"].label == "创作"
+    assert "interaction" not in account.categories
