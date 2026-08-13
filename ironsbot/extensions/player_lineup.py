@@ -3,15 +3,57 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from math import isfinite
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from ironsbot.extensions.contracts import (
+    PlayerLineupCachedReply,
+    PlayerLineupImageAssets,
+    PlayerLineupPacketFetcher,
+    PlayerLineupQueryResult,
+)
+from ironsbot.integrations.seer_data.pet_image_assets import load_pet_image_assets
+from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.services.operations.headless_errors import (
+    DisconnectedError,
+    NotLoggedInError,
+    SocketRecvError,
+)
+from ironsbot.services.seer.errors import format_player_query_error
+from ironsbot.services.seer.player_detail_extensions import PlayerDetailExtensionAction
+from ironsbot.services.seer.player_formatting_common import (
+    format_player_data_time,
+    format_player_identity,
+)
+from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaExceededError
+from ironsbot.services.seer.player_request_protection import (
+    PlayerRequestBusyError,
+    PlayerRequestPausedError,
+    PlayerRequestReconnectError,
+    player_request_protection_message,
+)
+from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
 
-    from ironsbot.core.feature_policy import FeatureService
+logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+    from pathlib import Path
+
+    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.extensions.contracts import (
+        PlayerDetailActionRegistration,
+        PlayerLineupCacheFactory,
+        PlayerLineupEntryResolver,
+        PlayerLineupQueryPort,
+        PlayerLineupRenderPort,
+    )
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.player_detail_extensions import (
@@ -27,19 +69,325 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
+class PlayerLineupRenderServices:
+    """Concrete adapter for the public private-lineup rendering port."""
+
+    images: SeerImageSource
+    cache: RenderCache
+    render: HtmlTemplateRenderer
+
+    async def image_assets(
+        self,
+        *,
+        resource_ids: tuple[int, ...],
+        type_ids: tuple[int, ...],
+    ) -> PlayerLineupImageAssets:
+        assets = await load_pet_image_assets(
+            self.images,
+            resource_ids=resource_ids,
+            type_ids=type_ids,
+        )
+        return PlayerLineupImageAssets(
+            pet_heads=assets.pet_heads,
+            type_icons=assets.type_icons,
+        )
+
+    def cache_key(self, document: object, *, renderer_fingerprint: str) -> str:
+        return render_document_cache_key(
+            document,
+            renderer_fingerprint=renderer_fingerprint,
+        )
+
+    def cached_image(self, category: str, key: str) -> bytes | None:
+        return self.cache.get(category, key)
+
+    def cache_image(self, category: str, key: str, image: bytes) -> None:
+        self.cache.put(category, key, image)
+
+    async def render_html(
+        self,
+        *,
+        template_path: Path,
+        template_name: str,
+        templates: Mapping[str, object],
+        max_width: int,
+        allow_refit: bool,
+    ) -> bytes:
+        return await self.render(
+            template_path=template_path,
+            template_name=template_name,
+            templates=templates,
+            max_width=max_width,
+            allow_refit=allow_refit,
+        )
+
+
+def _remaining_lineup_ttl(
+    fetched_at: float | None, ttl_seconds: float, *, at: float
+) -> float:
+    if (
+        fetched_at is None
+        or not isfinite(fetched_at)
+        or not isfinite(at)
+        or fetched_at < 0
+        or fetched_at > at
+    ):
+        return 0.0
+    return max(0.0, ttl_seconds - (at - fetched_at))
+
+
+_LINEUP_CACHE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS player_lineup_cache (
+    player_id INTEGER PRIMARY KEY,
+    leading_text TEXT NOT NULL,
+    text TEXT NOT NULL,
+    image BLOB,
+    image_error TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+_LINEUP_CACHE_MIGRATIONS = (
+    SqliteMigration(1, (_LINEUP_CACHE_SCHEMA,)),
+    SqliteMigration(2, ("ALTER TABLE player_lineup_cache ADD COLUMN fetched_at REAL",)),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _SqlitePlayerLineupCache:
+    database: SqliteDatabase
+    ttl_seconds: float
+    now: Callable[[], float]
+
+    def get(self, player_id: int) -> PlayerLineupCachedReply | None:
+        with self.database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT leading_text, text, image, image_error, fetched_at
+                FROM player_lineup_cache
+                WHERE player_id = ?
+                """,
+                (player_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        fetched_at = row[4] if isinstance(row[4], (int, float)) else None
+        if _remaining_lineup_ttl(fetched_at, self.ttl_seconds, at=self.now()) <= 0:
+            return None
+        return PlayerLineupCachedReply(
+            leading_text=str(row[0]),
+            text=str(row[1]),
+            image=None if row[2] is None else bytes(row[2]),
+            image_error=str(row[3]),
+            fetched_at=fetched_at,
+        )
+
+    def put(self, player_id: int, reply: PlayerLineupCachedReply) -> None:
+        if (
+            not reply.image
+            or reply.image_error
+            or isinstance(reply.fetched_at, bool)
+            or _remaining_lineup_ttl(reply.fetched_at, self.ttl_seconds, at=self.now())
+            <= 0
+        ):
+            return
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO player_lineup_cache(
+                    player_id, leading_text, text, image, image_error, updated_at,
+                    fetched_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(player_id) DO UPDATE SET
+                    leading_text = excluded.leading_text,
+                    text = excluded.text,
+                    image = excluded.image,
+                    image_error = excluded.image_error,
+                    updated_at = excluded.updated_at,
+                    fetched_at = excluded.fetched_at
+                """,
+                (
+                    player_id,
+                    reply.leading_text,
+                    reply.text,
+                    reply.image,
+                    reply.image_error,
+                    datetime.now(timezone.utc).isoformat(),
+                    reply.fetched_at,
+                ),
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerLineupCacheServices:
+    """Public SQLite factory for the optional lineup extension's reply cache."""
+
+    ttl_seconds: float = 300.0
+    now: Callable[[], float] = time.time
+
+    def open(self, path: str) -> _SqlitePlayerLineupCache:
+        return _SqlitePlayerLineupCache(
+            SqliteDatabase(path, migrations=_LINEUP_CACHE_MIGRATIONS),
+            self.ttl_seconds,
+            self.now,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _HeadlessLineupPacketClient:
+    """Adapt the public headless client to the packet capability extensions need."""
+
+    game: Any
+
+    async def request(
+        self,
+        command_id: int,
+        player_id: int,
+        *,
+        timeout_seconds: float,
+    ) -> bytes:
+        _head, payload = await self.game.send_and_wait(
+            command_id,
+            player_id,
+            timeout=timeout_seconds,
+        )
+        return bytes(payload)
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerLineupQueryServices:
+    """Public request, quota, and error boundary for private lineup packets."""
+
+    headless: HeadlessService
+    error_message: ErrorMessageLookup
+    quotas: PlayerQueryQuotaService | None = None
+    requests: PlayerRequestProtectionService | None = None
+
+    async def query(  # noqa: C901, PLR0911 - each external failure has safe wording
+        self,
+        *,
+        player_id: int,
+        actor: ActorRef,
+        conversation: ConversationRef,
+        timeout_seconds: float,
+        fetch_packet: PlayerLineupPacketFetcher,
+    ) -> PlayerLineupQueryResult:
+        from ironsbot.services.seer.ids import (
+            PLAYER_ID_ERROR_MESSAGE,
+            is_valid_player_id,
+        )
+
+        if not is_valid_player_id(player_id):
+            return PlayerLineupQueryResult(error=PLAYER_ID_ERROR_MESSAGE)
+
+        def quota_message() -> str:
+            if self.quotas is None or actor is None:
+                return ""
+            decision = self.quotas.check(
+                actor=actor,
+                player_id=player_id,
+                action_key="lineup",
+            )
+            return "" if decision.allowed else decision.message
+
+        async def fetch() -> PlayerLineupQueryResult:
+            if message := quota_message():
+                raise PlayerQueryQuotaExceededError(message)
+            game = self.headless.get_game()
+            with game.operations.track(
+                "阵容数据查询",
+                f"米米号 {player_id}",
+                source="私有阵容插件",
+                conversation=conversation,
+            ):
+                user_info = await game.get_user_info(player_id)
+                payload = await asyncio.wait_for(
+                    fetch_packet(
+                        _HeadlessLineupPacketClient(game),
+                        player_id,
+                        timeout_seconds=timeout_seconds,
+                    ),
+                    timeout=timeout_seconds,
+                )
+            fetched_at = time.time()
+            await self.headless.mark_available(
+                source="私有阵容插件",
+                user_id=int(game.user_id),
+            )
+            return PlayerLineupQueryResult(
+                leading_text=(
+                    "🐾【公开阵容】\n"
+                    f"{format_player_data_time()}\n"
+                    f"{format_player_identity(player_id, str(user_info.nick))}\n"
+                ),
+                payload=payload,
+                fetched_at=fetched_at,
+            )
+
+        try:
+            result = (
+                await fetch()
+                if self.requests is None
+                else await self.requests.run(fetch, actor=actor, label="阵容查询")
+            )
+        except PlayerQueryQuotaExceededError as error:
+            return PlayerLineupQueryResult(error=error.message)
+        except (
+            PlayerRequestBusyError,
+            PlayerRequestPausedError,
+            PlayerRequestReconnectError,
+        ) as error:
+            return PlayerLineupQueryResult(
+                error=player_request_protection_message(error)
+            )
+        except TimeoutError:
+            return PlayerLineupQueryResult(
+                error=f"❌ 阵容查询超时：米米号 {player_id}。请稍后再试。",
+                cache_fallback_allowed=True,
+            )
+        except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
+            return PlayerLineupQueryResult(
+                error=format_player_query_error(player_id, error, self.error_message),
+                cache_fallback_allowed=not isinstance(error, SocketRecvError),
+            )
+        except ConnectionError:
+            return PlayerLineupQueryResult(
+                error=(
+                    f"❌ 米米号 {player_id} 暂时查不了："
+                    "查询需要连接赛尔号游戏服务器；请稍后再试。"
+                ),
+                cache_fallback_allowed=True,
+            )
+        except Exception:
+            logger.exception("private lineup query failed: player_id=%s", player_id)
+            return PlayerLineupQueryResult(error="❌ 阵容查询失败，请稍后再试。")
+
+        if self.quotas is not None and actor is not None:
+            decision = self.quotas.consume(
+                actor=actor,
+                player_id=player_id,
+                action_key="lineup",
+            )
+            if not decision.allowed:
+                logger.warning(
+                    "player lineup quota changed before successful record: "
+                    "actor=%s player=%s",
+                    actor,
+                    player_id,
+                )
+        return result
+
+
+@dataclass(frozen=True, slots=True)
 class PlayerLineupExtensionServices:
     """Dependencies intentionally available to the player-lineup extension."""
 
-    features: FeatureService
-    headless: HeadlessService
-    data: SeerDataAccess
-    images: SeerImageSource
-    render_cache: RenderCache
-    render_html: HtmlTemplateRenderer
-    error_message: ErrorMessageLookup
-    player_quotas: PlayerQueryQuotaService
-    player_requests: PlayerRequestProtectionService
-    player_details: PlayerDetailExtensionRegistry
+    lineup_entries: PlayerLineupEntryResolver
+    lineup_render: PlayerLineupRenderPort
+    lineup_query: PlayerLineupQueryPort
+    lineup_cache: PlayerLineupCacheFactory
+    feature_visible: Callable[[object, str], bool]
+    _player_details: PlayerDetailExtensionRegistry
     player_id_resolver: PlayerIdResolver
     settings: Mapping[str, Any]
 
@@ -47,3 +395,26 @@ class PlayerLineupExtensionServices:
         if extension_id != "player_lineup":
             return {}
         return self.settings
+
+    def is_feature_visible_in_help(self, event: object, feature: str) -> bool:
+        """Expose feature visibility without leaking platform policy internals."""
+
+        return self.feature_visible(event, feature)
+
+    def register_player_detail_action(
+        self, registration: PlayerDetailActionRegistration
+    ) -> None:
+        """Register an optional action through the public extension boundary."""
+
+        self._player_details.register(
+            PlayerDetailExtensionAction(
+                id=registration.action_id,
+                feature=registration.feature,
+                label=registration.label,
+                aliases=registration.aliases,
+                command_help_id=registration.command_help_id,
+                query=registration.query,
+                action=registration.action,
+                work_unit=registration.work_unit,
+            )
+        )

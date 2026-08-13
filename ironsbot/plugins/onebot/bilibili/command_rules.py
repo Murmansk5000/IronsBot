@@ -10,6 +10,12 @@ from ironsbot.core.commands import command_text_matches, strip_command_prefix
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.permissions import can_manage_conversation_event
+from ironsbot.services.bilibili.commands import (
+    BILI_ACCOUNT_COMMANDS,
+    DYNAMIC_MENU_COMMANDS,
+    DYNAMIC_UPDATE_COMMANDS,
+    parse_bili_push_mode_command,
+)
 
 from .account_commands import (
     BILI_PUSH_MODE_ACCOUNT_KEY,
@@ -18,11 +24,6 @@ from .account_commands import (
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
-
-DYNAMIC_MENU_COMMANDS = ("动态",)
-DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
-BILI_ACCOUNT_COMMANDS = ("B站账号", "B站账户", "b站账号", "b站账户")
-BILI_PUSH_MODE_COMMANDS = ("B站推送模式", "B站动态模式", "b站推送模式", "b站动态模式")
 
 
 def is_dynamic_menu_command(
@@ -70,27 +71,6 @@ def is_bili_account_command(
     ) and can_manage_conversation_event(features, event)
 
 
-def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
-    command = strip_command_prefix(text)
-    if command is None:
-        command = text.strip()
-
-    lowered = command.lower()
-    for prefix in BILI_PUSH_MODE_COMMANDS:
-        if not lowered.startswith(prefix.lower()):
-            continue
-        rest = command[len(prefix) :].strip()
-        if not rest:
-            return ("", "")
-
-        parts = rest.rsplit(maxsplit=1)
-        account = parts[0].strip()
-        mode_text = parts[1].strip() if len(parts) > 1 else ""
-        return (account, mode_text)
-
-    return None
-
-
 def is_bili_push_mode_command(
     features: FeatureService,
     event: MessageEvent,
@@ -106,7 +86,3 @@ def is_bili_push_mode_command(
     state[BILI_PUSH_MODE_ACCOUNT_KEY] = account
     state[BILI_PUSH_MODE_RAW_KEY] = raw_mode
     return True
-
-
-def is_dynamic_select_reply(event: MessageEvent) -> bool:
-    return event.get_plaintext().strip().isdigit()

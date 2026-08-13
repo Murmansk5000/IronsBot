@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ironsbot.services.seer.rendering.pet_info_models import (
+from ironsbot.services.seer.pet_info_views import (
     PetDerivedDisplayData,
     PetSoulmarkDisplayAddition,
     PetSpecialEffectView,
@@ -34,15 +34,18 @@ def load_pet_derived_display_data(
     """Load facts emitted by the SeerAPI build without renderer-side inference."""
     effect_rows = _load_effect_rows(session, pet_id)
     source_rows = _load_effect_source_rows(session, pet_id)
+    soulmark_display_order, soulmark_display_kinds = _load_soulmark_display_data(
+        session,
+        pet_id,
+    )
     return PetDerivedDisplayData(
         special_effects=_build_effect_views(effect_rows, source_rows),
-        soulmark_display_order=tuple(
-            _load_soulmark_display_order(session, pet_id).items()
-        ),
+        soulmark_display_order=tuple(soulmark_display_order.items()),
         soulmark_icons=tuple(
             _load_soulmark_icons(session, pet_id, soulmark_ids).items()
         ),
         soulmark_display_additions=_load_soulmark_display_additions(session, pet_id),
+        soulmark_display_kinds=tuple(soulmark_display_kinds.items()),
     )
 
 
@@ -143,23 +146,31 @@ def _format_effect_source(source: dict[str, object]) -> str:
     }.get(kind, kind)
 
 
-def _load_soulmark_display_order(session: Session, pet_id: int) -> dict[int, int]:
+def _load_soulmark_display_data(
+    session: Session,
+    pet_id: int,
+) -> tuple[dict[int, int], dict[int, str]]:
     try:
-        rows = session.execute(
-            text(
-                """
-                SELECT soulmark_id, display_order
-                FROM pet_soulmark_display
-                WHERE pet_id = :pet_id
-                ORDER BY display_order, soulmark_id
-                """
-            ),
-            {"pet_id": pet_id},
+        rows = tuple(
+            session.execute(
+                text(
+                    """
+                    SELECT soulmark_id, display_order, display_kind
+                    FROM pet_soulmark_display
+                    WHERE pet_id = :pet_id
+                    ORDER BY display_order, soulmark_id
+                    """
+                ),
+                {"pet_id": pet_id},
+            )
         )
     except SQLAlchemyError:
         logger.debug("pet soulmark display facts are unavailable", exc_info=True)
-        return {}
-    return {int(soulmark_id): int(display_order) for soulmark_id, display_order in rows}
+        return {}, {}
+    return (
+        {int(row[0]): int(row[1]) for row in rows},
+        {int(row[0]): str(row[2]) for row in rows},
+    )
 
 
 def _load_soulmark_icons(

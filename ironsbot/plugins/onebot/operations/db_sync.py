@@ -14,18 +14,18 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ironsbot.integrations.onebot.identity import onebot_actor_ref
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.operations.data_sync_commands import (
-    data_sync_command_descriptors,
+    data_sync_command_contracts,
     is_force_data_sync_command,
     is_manual_data_sync_command,
 )
@@ -44,6 +44,7 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
+
 
 def _help_visible(event: Event, *, features: FeatureService) -> bool:
     if isinstance(event, GroupMessageEvent):
@@ -123,7 +124,7 @@ def plugin_contribution(
             order=20,
             visible=partial(_help_visible, features=features),
         ),
-        commands=data_sync_command_descriptors(),
+        commands=data_sync_command_contracts(),
         install=partial(_install, service=service),
         hooks=PluginHooks(
             startup=(

@@ -9,7 +9,6 @@ from nonebot.adapters.onebot.v11 import Bot
 from nonebot.log import logger
 
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.integrations.onebot.targets import OneBotMessageTarget
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import BotRoutingConfig
@@ -30,8 +29,8 @@ class BotRouter:
     config: BotRoutingConfig
     references: OneBotReferenceResolver
 
-    def _configured_bot_id(self, target: OneBotMessageTarget) -> int | None:
-        if target.target_type == "group":
+    def _configured_bot_id(self, conversation: ConversationRef) -> int | None:
+        if conversation.kind == "group":
             routes = self.config.groups
             resolve = self.references.resolve_group
         else:
@@ -42,9 +41,9 @@ class BotRouter:
             if (
                 resolve(
                     target_ref,
-                    location=f"messaging.bot_routing.{target.target_type}s.{target_ref}",
+                    location=f"messaging.bot_routing.{conversation.kind}s.{target_ref}",
                 )
-                == target.target_id
+                == int(conversation.id)
             ):
                 return self.config.resolve_bot_reference(bot_ref)
         return None
@@ -65,17 +64,28 @@ class BotRouter:
             )
         return None
 
-    def for_target(self, target: OneBotMessageTarget) -> Bot | None:
+    def for_conversation(self, conversation: ConversationRef) -> Bot | None:
+        """Route one typed OneBot conversation at the integration edge."""
+
+        if (
+            conversation.platform is not Platform.ONEBOT
+            or conversation.kind not in {"private", "group"}
+            or not conversation.id.isdecimal()
+            or int(conversation.id) <= 0
+        ):
+            return None
         connected = _connected_onebot_bots()
-        routed_bot_id = self._configured_bot_id(target) if self.config.enabled else None
+        routed_bot_id = (
+            self._configured_bot_id(conversation) if self.config.enabled else None
+        )
         if routed_bot_id is not None:
             if bot := connected.get(routed_bot_id):
                 return bot
             logger.warning(
                 "routed bot is not connected: target_type={} target_id={} "
                 "bot_self_id={}; falling back to default bot",
-                target.target_type,
-                target.target_id,
+                conversation.kind,
+                conversation.id,
                 routed_bot_id,
             )
 
@@ -90,30 +100,13 @@ class BotRouter:
             logger.warning(
                 "default bot fallback is not connected: target_type={} target_id={} "
                 "bot_self_id={}; delivery will fail",
-                target.target_type,
-                target.target_id,
+                conversation.kind,
+                conversation.id,
                 default_bot_id,
             )
         logger.warning(
             "no configured OneBot bot is available: target_type={} target_id={}",
-            target.target_type,
-            target.target_id,
+            conversation.kind,
+            conversation.id,
         )
-        return None
-
-    def for_conversation(self, conversation: ConversationRef) -> Bot | None:
-        """Route a platform-neutral OneBot conversation at the adapter edge."""
-
-        if (
-            conversation.platform is not Platform.ONEBOT
-            or not conversation.id.isdecimal()
-        ):
-            return None
-        target_id = int(conversation.id)
-        if target_id <= 0:
-            return None
-        if conversation.kind == "private":
-            return self.for_target(OneBotMessageTarget("private", target_id))
-        if conversation.kind == "group":
-            return self.for_target(OneBotMessageTarget("group", target_id))
         return None

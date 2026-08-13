@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.core.semantic_requests import ActionDefinition
 
+
 @dataclass(frozen=True, slots=True)
 class PlayerDetailActionRequest:
     """Validated player target and platform context for an extension action."""
@@ -38,6 +39,7 @@ class PlayerDetailExtensionAction:
     command_help_id: str
     query: PlayerDetailActionQuery
     action: ActionDefinition
+    work_unit: str = "lineup"
 
 
 class PlayerDetailExtensionRegistry:
@@ -82,9 +84,7 @@ class PlayerDetailExtensionRegistry:
             msg = f"player detail extension repeats an id: {action.id}"
             raise ValueError(msg)
         claimed = {
-            alias
-            for current in self._actions.values()
-            for alias in current.aliases
+            alias for current in self._actions.values() for alias in current.aliases
         }
         overlap = sorted(set(aliases) & claimed)
         if overlap:
@@ -101,6 +101,7 @@ class PlayerDetailExtensionRegistry:
             command_help_id=action.command_help_id.strip(),
             query=action.query,
             action=action.action,
+            work_unit=action.work_unit,
         )
 
     def actions(self) -> tuple[PlayerDetailExtensionAction, ...]:

@@ -12,22 +12,22 @@ from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.integrations.onebot.identity import onebot_actor_ref
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.identity import onebot_actor_ref
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.operations.command_text import (
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
 )
-from ironsbot.services.operations.docker_commands import docker_command_descriptors
+from ironsbot.services.operations.docker_commands import docker_command_contracts
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
@@ -139,7 +139,7 @@ def plugin_contribution(
             order=10,
             visible=partial(_help_visible, features=features),
         ),
-        commands=docker_command_descriptors(),
+        commands=docker_command_contracts(),
         install=partial(_install, service=service),
         hooks=PluginHooks(
             startup=(

@@ -13,6 +13,11 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
@@ -21,11 +26,6 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    active_plugin_install_context,
-)
 from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     DISABLED_BARE_ADMIN_COMMAND,
@@ -33,7 +33,7 @@ from ironsbot.services.operations.command_text import (
     NORMAL_SERVER_STATUS_COMMAND,
 )
 from ironsbot.services.operations.server_status_commands import (
-    server_status_command_descriptors,
+    server_status_command_contracts,
 )
 
 from .status.commands import handle_admin_status, handle_normal_status
@@ -186,7 +186,7 @@ def plugin_contribution(
                 "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
             ),
         ),
-        commands=server_status_command_descriptors(),
+        commands=server_status_command_contracts(),
         install=partial(
             _install,
             server_status=service,

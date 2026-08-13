@@ -62,11 +62,11 @@ def _service(
         feature_config=FeatureConfig(
             group_policy={str(ADMIN_GROUP_ID): ["admin_notice"]},
         ),
-    ).delivery.outbound
+    ).outbound
 
 
 def test_outbound_rate_limit_is_disabled_by_default() -> None:
-    service = build_test_runtime().delivery.outbound
+    service = build_test_runtime().outbound
 
     assert service.acquire_reply(GROUP_ID, now=0).allowed
     assert service.acquire_reply(GROUP_ID, now=1).allowed
