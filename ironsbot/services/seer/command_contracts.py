@@ -183,6 +183,12 @@ def seer_command_contracts(
                     "查询群星牌资料",
                     {"show_in_poke": True},
                 ),
+                (
+                    "seer.autocard.sanctuary",
+                    ("群星牌场地", "圣域", "祝印"),
+                    "查询群星牌场地和回合祝印效果",
+                    {},
+                ),
             ),
         ),
         *commands_from_rows(
