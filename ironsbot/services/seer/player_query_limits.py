@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
-PlayerQueryQuotaScope = Literal["bound_default", "other_target_action", "unbound"]
+PlayerQueryQuotaScope = Literal["bound_default", "bound_other", "unbound"]
 
 
 class PlayerQueryQuotaExceededError(RuntimeError):
@@ -60,7 +60,7 @@ class SuperuserLookup(Protocol):
 class PlayerQueryLimitsConfig(Protocol):
     enabled: bool
     bound_default_daily_limit: int
-    other_target_action_daily_limit: int
+    bound_other_daily_limit: int
     unbound_daily_limit: int
     superuser_bypass: bool
 
@@ -196,10 +196,10 @@ class PlayerQueryQuotaService:
                 self._config.bound_default_daily_limit,
             )
         return (
-            "other_target_action",
+            "bound_other",
             player_id,
             action_key,
-            self._config.other_target_action_daily_limit,
+            self._config.bound_other_daily_limit,
         )
 
 
@@ -219,7 +219,7 @@ def _quota_exhausted_message(
             f"今日默认米米号实时数据查询额度已用完（{limit} 次）。"
             "仍可查看已有缓存；没有缓存的数据请明天再试。"
         )
-    if scope == "other_target_action":
+    if scope == "bound_other":
         return (
             f"今日已实时查询过米米号 {player_id} 的这项数据。"
             "仍可查看已有缓存；没有缓存的数据请明天再试。"
