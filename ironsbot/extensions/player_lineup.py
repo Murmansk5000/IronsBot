@@ -35,7 +35,7 @@ from ironsbot.services.seer.player_request_protection import (
     PlayerRequestReconnectError,
     player_request_protection_message,
 )
-from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
+from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +90,16 @@ class PlayerLineupRenderServices:
             type_icons=assets.type_icons,
         )
 
-    def cache_key(self, document: object, *, renderer_fingerprint: str) -> str:
-        return render_document_cache_key(
-            document,
+    def request_cache_key(
+        self,
+        category: str,
+        request: object,
+        *,
+        renderer_fingerprint: str,
+    ) -> str:
+        return render_request_cache_key(
+            category,
+            request,
             renderer_fingerprint=renderer_fingerprint,
         )
 
