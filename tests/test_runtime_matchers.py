@@ -330,6 +330,36 @@ def test_group_menu_reply_accepts_original_message_as_compatibility_fallback() -
     assert is_current_group_menu_reply(event, anchor)
 
 
+def test_group_menu_reply_normalizes_textual_bot_mention() -> None:
+    manager = PromptSessionManager()
+    owner = group_message_event("菜单", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={},
+        reply_check=lambda _event: False,
+        group_reply_check=lambda event: event.get_plaintext().strip() == "2",
+        handlers=[],
+        menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
+    )
+    event = group_message_event(
+        "2",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        message=Message(
+            [MessageSegment.reply(99), MessageSegment.text("@babyQ  2")]
+        ),
+        raw_message="[reply:id=99]@babyQ  2",
+    )
+
+    assert context.matches(event)
+    assert context.is_shared_group_reply(event)
+    assert event.get_plaintext() == "2"
+
+
 def test_group_menu_reply_zero_is_a_shared_exit_without_closing_owner() -> None:
     manager = PromptSessionManager()
     owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
@@ -718,18 +748,38 @@ async def test_permanent_router_transfers_reply_to_another_member() -> None:
         ),
         raw_message=f"[reply:id={menu_message_id}][at:qq={owner.self_id}] 2",
     )
+    textual_mention_choice = group_message_event(
+        "2",
+        user_id=4,
+        group_id=owner.group_id,
+        self_id=owner.self_id,
+        message_id=13,
+        message=Message(
+            [
+                MessageSegment.reply(menu_message_id),
+                MessageSegment.text("@babyQ  2"),
+            ]
+        ),
+        raw_message=f"[reply:id={menu_message_id}]@babyQ  2",
+    )
 
     try:
         await handle_event(bot, owner_choice)
         assert context.active
         await handle_event(bot, member_choice)
         assert context.active
+        await handle_event(bot, textual_mention_choice)
+        assert context.active
     finally:
         manager.cancel_queued_context(context)
         for router in routers:
             router.destroy()
 
-    assert dispatched == [(2, "1", False), (3, "2", True)]
+    assert dispatched == [
+        (2, "1", False),
+        (3, "2", True),
+        (4, "2", True),
+    ]
 
 
 def test_queued_conversation_never_matches_another_session() -> None:
