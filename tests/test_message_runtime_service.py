@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from ironsbot.config.models.messaging import MessageScheduledAction
 from ironsbot.core.commands import command_text_matches
 from ironsbot.services.messaging.service import (
     build_schedule_job_id,
@@ -96,3 +97,22 @@ def test_build_schedule_trigger_kwargs_keeps_day_of_week() -> None:
         "second": 0,
         "day_of_week": "fri",
     }
+
+
+def test_build_schedule_trigger_kwargs_preserves_seconds() -> None:
+    assert build_schedule_trigger_kwargs(FakeScheduleAction(time="08:30:45")) == {
+        "hour": 8,
+        "minute": 30,
+        "second": 45,
+    }
+
+
+def test_scheduled_action_normalizes_minute_input_with_seconds() -> None:
+    assert (
+        MessageScheduledAction(id="daily", message="text", time="08:30").time
+        == "08:30:00"
+    )
+    assert (
+        MessageScheduledAction(id="precise", message="text", time="08:30:45").time
+        == "08:30:45"
+    )
