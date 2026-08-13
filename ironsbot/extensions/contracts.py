@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 
@@ -19,8 +20,8 @@ class PlayerDetailActionRequest:
     """Validated player target and platform context for an extension action."""
 
     player_id: int
-    actor: Any
-    conversation: Any
+    actor: ActorRef
+    conversation: ConversationRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,8 +151,8 @@ class PlayerLineupQueryPort(Protocol):
         self,
         *,
         player_id: int,
-        actor: Any,
-        conversation: Any,
+        actor: ActorRef,
+        conversation: ConversationRef,
         timeout_seconds: float,
         fetch_packet: PlayerLineupPacketFetcher,
     ) -> PlayerLineupQueryResult: ...

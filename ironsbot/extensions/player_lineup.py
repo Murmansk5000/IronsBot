@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from pathlib import Path
 
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.extensions.contracts import (
         PlayerDetailActionRegistration,
         PlayerLineupCacheFactory,
@@ -225,8 +226,8 @@ class PlayerLineupQueryServices:
         self,
         *,
         player_id: int,
-        actor: Any,
-        conversation: Any,
+        actor: ActorRef,
+        conversation: ConversationRef,
         timeout_seconds: float,
         fetch_packet: PlayerLineupPacketFetcher,
     ) -> PlayerLineupQueryResult:
