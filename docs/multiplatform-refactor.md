@@ -46,7 +46,7 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 ## 当前验证进度（2026-08-13）
 
 ```text
-总任务  [███████░░░] 69%  已完成阶段 3/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
+总任务  [███████░░░] 72%  已完成阶段 3/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
 Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
 当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
@@ -95,7 +95,7 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
-| Phase 4 | `in_progress` | 资源准备、确定性文档内容键和部分 SeerAPI 效果事实已验证 | SeerAPI 发布完整 render asset manifest；IronsBot 以 `RenderRequestKey` 在 SQL/HTTP/presenter 前命中 L3，并对每个 renderer 加零调用命中测试 | 所有渲染都已迁移 |
+| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及六类公开 Seer 渲染器的请求级 L3 早期命中已验证 | SeerAPI 发布完整 render asset manifest，并让所有剩余渲染路径采用同一严格验证；私有阵容完成同等迁移 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
@@ -116,6 +116,14 @@ NapCat reply segment 事实。`event.reply` 缺失时，OneBot 输入适配器�
 刷新发布版本；最终图片缓存读取该内存快照，不再为每个 `get`/`put` 额外开 SQLite
 session。未加载数据仍显式返回 `unknown`，因此不会写入无发布版本的缓存。该项是下一步
 `RenderRequestKey` 在 SQL/HTTP 之前安全命中的版本基础，不代表早期缓存本身已经完成。
+
+**请求级渲染缓存（2026-08-13）：** `a167843a` 将已发布精灵信息、属性克制、巅峰池、
+巅峰票选、巅峰精灵榜和新内容菜单改为先构造确定性请求键，再查最终图片缓存。命中路径
+不读取 SQLite、不加载素材、不调用 presenter 或原生 HTML 渲染；针对性测试覆盖了零素材
+请求命中。发布版本现在同时要求 `ApiMetadata.generate_time` 和
+`render_asset_manifest_revision`，缺少 manifest 的旧 release 返回 `unknown` 并禁用最终图
+缓存，避免将不完整素材固定为图片。该证据只覆盖这六条公开路径；私有阵容与尚未迁移的
+渲染器仍是 Phase 4 的未完成门。
 
 **镜像依赖审计（2026-08-13）：** 已删除 IronsBot 未导入、也不由 `seerapi`
 传递依赖的 `unitypy`。锁定闭包同步移除纹理解码、音频、压缩等 11 个运行时包；
