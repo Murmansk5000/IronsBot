@@ -371,7 +371,9 @@ class BiliTargetService:
             lines.append(f"{index}. {state} {child.label}")
         lines.append("\n总开关为 ❌ 时，不接收任何赛尔号动态；分类开关设置会保留。")
         lines.append("以下内容开关仅影响赛尔号官方 B站动态：")
-        lines.append("正文为 ❌ 时，不接收纯文本动态；图片为 ❌ 时，不接收纯图片动态。")
+        lines.append(
+            "链接消息由总开关和分类开关控制；正文、图片可分别 TD 链接后的对应消息。"
+        )
         lines.append("✅ 已订阅 · ❌ 已 TD，输入序号切换；输入 0 返回推送订阅")
         return options, "\n".join(lines)
 
