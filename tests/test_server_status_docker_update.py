@@ -20,13 +20,15 @@ except ValueError:
 
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.operations import DockerUpdateConfig
-from ironsbot.integrations.docker.client import (
-    DockerClient,
+from ironsbot.integrations.docker.client import DockerClient
+from ironsbot.integrations.docker.daemon import (
     create_watchtower_container,
     ensure_watchtower_image,
-    inspect_registry_image_info,
     inspect_remote_image_digest,
     pull_docker_image,
+)
+from ironsbot.integrations.docker.registry import (
+    inspect_registry_image_info,
     split_docker_image,
 )
 from ironsbot.services.operations.docker_formatting import (
@@ -595,7 +597,7 @@ def test_target_image_pull_retries_transient_registry_eof(
         sleep_delays.append(delay)
 
     monkeypatch.setattr(
-        "ironsbot.integrations.docker.client.asyncio.sleep",
+        "ironsbot.integrations.docker.daemon.asyncio.sleep",
         fake_sleep,
     )
 
