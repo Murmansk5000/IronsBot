@@ -6,6 +6,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.runtime.conversations import begin_event_reply_conversation
 from ironsbot.runtime.matchers import bind_async, enter_prompt_loop
 from ironsbot.runtime.replies import message_event_target
 from ironsbot.services.messaging.service import (  # noqa: TC001
@@ -35,6 +36,27 @@ async def handle_push_subscription_menu(
     target_type, target_id, _ = message_event_target(event)
     read_only = isinstance(event, GroupMessageEvent) and not (
         is_group_push_subscription_manager(messaging, event)
+    )
+    def input_check(next_event: MessageEvent) -> bool:
+        return PUSH_SUBSCRIPTION_FLOW.input_check(
+            next_event,
+            target_type,
+        )
+    # Loading persisted subscription state can yield.  Keep numeric choices
+    # owned by this menu until its first page is ready, just like player and
+    # dynamic-history menus.
+    await begin_event_reply_conversation(
+        matcher,
+        event,
+        namespace=PUSH_SUBSCRIPTION_FLOW.namespace,
+        handlers=[
+            bind_async(
+                handle_push_subscription_select,
+                messaging=messaging,
+            )
+        ],
+        pending_reply_check=input_check,
+        reply_check=input_check,
     )
     if error := await messaging.prepare_subscription_options(
         target_type,

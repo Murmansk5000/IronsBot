@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 # NoneBot resolves Rule callback annotations when creating temporary matchers.
 from nonebot.adapters import Event  # noqa: TC002
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
+from nonebot.log import logger
 from nonebot.rule import Rule
 
 from ironsbot.runtime.onebot_reply import event_reply_message_id
@@ -65,6 +66,41 @@ def is_current_group_menu_reply(
     return event_reply_message_id(event) == anchor.message_id
 
 
+def _normalize_textual_reply_mention(
+    event: Event,
+    reply_check: Callable[[Event], bool],
+) -> bool:
+    """Handle transports that render the bot mention as plain reply text."""
+
+    if not isinstance(event, GroupMessageEvent):
+        return False
+    text = event.get_plaintext().strip()
+    parts = text.split()
+    if not parts or not parts[0].startswith("@"):
+        return False
+    candidates = parts[1:]
+    if not candidates:
+        return False
+
+    original_message = event.message
+    non_text_segments = [
+        segment for segment in original_message if segment.type != "text"
+    ]
+    for index in range(len(candidates)):
+        candidate = " ".join(candidates[index:])
+        event.message = Message(
+            [*non_text_segments, MessageSegment.text(candidate)]
+        )
+        try:
+            if reply_check(event):
+                return True
+        except BaseException:
+            event.message = original_message
+            raise
+    event.message = original_message
+    return False
+
+
 @dataclass(slots=True)
 class _TemporaryMatcherState:
     state: T_State
@@ -92,7 +128,6 @@ class _QueuedConversation:
     parallel: bool = False
     pending_reply_check: Callable[[Event], bool] | None = None
     pending: bool = False
-    fallback_generation: int = 0
     root_menu_opened_at: float | None = None
     deadline: float | None = None
     _activation: Future[bool] | None = field(default=None, init=False, repr=False)
@@ -123,17 +158,7 @@ class _QueuedConversation:
             )
         if is_owner_session and self.reply_check(event):
             return True
-        if (
-            self.owner_user_id is not None
-            and getattr(event, "user_id", None) != self.owner_user_id
-            and event.get_plaintext().strip() == "0"
-        ):
-            return False
-        return (
-            self.group_reply_check is not None
-            and is_current_group_menu_reply(event, self.menu_anchor)
-            and self.group_reply_check(event)
-        )
+        return self._matches_group_reply(event)
 
     def is_shared_group_reply(self, event: Event) -> bool:
         """Return whether this event is a different member using this menu."""
@@ -141,11 +166,18 @@ class _QueuedConversation:
         return (
             self.owner_user_id is not None
             and getattr(event, "user_id", None) != self.owner_user_id
-            and event.get_plaintext().strip() != "0"
-            and self.group_reply_check is not None
-            and is_current_group_menu_reply(event, self.menu_anchor)
-            and self.group_reply_check(event)
+            and self._matches_group_reply(event)
         )
+
+    def _matches_group_reply(self, event: Event) -> bool:
+        if self.group_reply_check is None or not is_current_group_menu_reply(
+            event,
+            self.menu_anchor,
+        ):
+            return False
+        if self.group_reply_check(event):
+            return True
+        return _normalize_textual_reply_mention(event, self.group_reply_check)
 
     def update_reply_check(
         self,
@@ -494,6 +526,15 @@ class PromptSessionManager:
         )
         if menu_sent:
             self.record_menu_page(context, page_id=page_id)
+            logger.info(
+                "queued conversation menu activated: namespace={} group={} "
+                "owner={} menu_message_id={} page={}",
+                context.namespace,
+                None if menu_anchor is None else menu_anchor.group_id,
+                context.owner_user_id,
+                None if menu_anchor is None else menu_anchor.message_id,
+                page_id,
+            )
 
     def queued_conversation(self, state: T_State) -> _QueuedConversation | None:
         token = state.get(QUEUED_CONVERSATION_TOKEN_STATE_KEY)

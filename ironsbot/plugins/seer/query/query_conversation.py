@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot_plugin_saa import Image, MessageFactory
 
+from ironsbot.runtime.conversations import begin_event_reply_conversation
 from ironsbot.runtime.matchers import queued_conversation_is_cancelled
 from ironsbot.runtime.params import parse_string_arg
 from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
@@ -28,6 +30,8 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 SearchQuery = Callable[[str], Awaitable[QueryResult[T]]]
 SelectionQuery = Callable[[T], Awaitable[QueryResult[Any]]]
+
+_QUERY_SELECTION_NAMESPACE = "selection_prompt"
 
 
 def _raise_if_selection_cancelled(matcher: Matcher) -> None:
@@ -69,29 +73,15 @@ def make_query_handler(
     prompt_title: str,
     action: ActionDefinition,
 ) -> Callable[[Matcher, T_State, Event], Awaitable[None]]:
-    async def resolve_selection(
-        item: PromptItem[T],
-        matcher: Matcher,
-        event: Event,
-    ) -> None:
-        try:
-            result = await select(item.value)
-        except DataUnavailableError:
-            _raise_if_selection_cancelled(matcher)
-            await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
-            return
-        _raise_if_selection_cancelled(matcher)
-        if result.message:
-            await matcher.finish(result.message)
-            return
-        if result.reply is not None:
-            await send_query_reply(result.reply, event, finish=False)
+    resolve_selection = partial(_resolve_query_selection, select=select)
 
     async def handle(
         matcher: Matcher,
         state: T_State,
         event: Event,
     ) -> None:
+        if isinstance(event, MessageEvent):
+            await _reserve_query_selection(matcher, event, resolve_selection)
         try:
             result = await search(parse_string_arg(state))
         except DataUnavailableError:
@@ -125,6 +115,48 @@ def make_query_handler(
         )
 
     return handle
+
+
+async def _resolve_query_selection(
+    item: PromptItem[T],
+    matcher: Matcher,
+    event: Event,
+    *,
+    select: SelectionQuery[T],
+) -> None:
+    try:
+        result = await select(item.value)
+    except DataUnavailableError:
+        _raise_if_selection_cancelled(matcher)
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    _raise_if_selection_cancelled(matcher)
+    if result.message:
+        await matcher.finish(result.message)
+        return
+    if result.reply is not None:
+        await send_query_reply(result.reply, event, finish=False)
+
+
+def _is_digit_selection_input(event: MessageEvent) -> bool:
+    return event.get_plaintext().strip().isdigit()
+
+
+async def _reserve_query_selection(
+    matcher: Matcher,
+    event: MessageEvent,
+    handler: Callable[..., Awaitable[None]],
+) -> None:
+    """Hold numeric input while a generic query determines its choices."""
+
+    await begin_event_reply_conversation(
+        matcher,
+        event,
+        namespace=_QUERY_SELECTION_NAMESPACE,
+        handlers=[handler],
+        pending_reply_check=_is_digit_selection_input,
+        reply_check=_is_digit_selection_input,
+    )
 
 
 def _query_choice_semantic_target(choice: object) -> SemanticTarget:
