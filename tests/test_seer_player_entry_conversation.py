@@ -28,7 +28,7 @@ from ironsbot.services.seer.player_id_resolver import (
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import PendingPlayerQuery
-from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
 

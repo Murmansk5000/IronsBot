@@ -17,7 +17,7 @@ from ironsbot.services.seer.player_service import (
     PlayerQueryResult,
     PlayerService,
 )
-from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.rank_models import RankLookupCost, RankLookupResult
 

@@ -17,6 +17,12 @@ from nonebot.utils import is_coroutine_callable
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.integrations.onebot.matchers import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
@@ -34,12 +40,6 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     is_current_group_menu_reply,
 )
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.semantic_requests import (
-    ActionDefinition,
-    SemanticRequest,
-    SemanticRequestSource,
-    SemanticTarget,
-)
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
