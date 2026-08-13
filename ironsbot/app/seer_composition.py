@@ -142,6 +142,16 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             conversation=conversation,
         )
 
+    def resolve_privileged_player_reference(
+        reference: str,
+        conversation: ConversationRef,
+    ) -> int | None:
+        return player_accounts.resolve_player_id(
+            reference,
+            conversation=conversation,
+            include_private=True,
+        )
+
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         build_onebot_lucky_skin_window_accounts(
@@ -253,6 +263,8 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
     player_id_resolver = PlayerIdResolver(
         resolve_configured_player_reference,
         player.default_player_id,
+        privileged_reference_lookup=resolve_privileged_player_reference,
+        is_privileged_actor=features.is_actor_superuser,
     )
     player_detail_extensions = PlayerDetailExtensionRegistry()
     rank_queries = RankQueryService(

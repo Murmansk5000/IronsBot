@@ -25,6 +25,7 @@ class PlayerIdResolution:
 
 
 PlayerBindingLookup = Callable[[ActorRef], int | None]
+ActorPrivilegeLookup = Callable[[ActorRef], bool]
 PLAYER_ID_RESOLVER_REQUIRED_ERROR = "player ID resolver is not configured"
 
 
@@ -35,9 +36,14 @@ class PlayerIdResolver:
         self,
         reference_lookup: PlayerReferenceLookup,
         binding_lookup: PlayerBindingLookup,
+        *,
+        privileged_reference_lookup: PlayerReferenceLookup | None = None,
+        is_privileged_actor: ActorPrivilegeLookup | None = None,
     ) -> None:
         self._reference_lookup = reference_lookup
         self._binding_lookup = binding_lookup
+        self._privileged_reference_lookup = privileged_reference_lookup
+        self._is_privileged_actor = is_privileged_actor or (lambda _actor: False)
 
     def resolve(
         self,
@@ -52,7 +58,13 @@ class PlayerIdResolver:
         if context.has_member_mentions:
             return self._resolve_member_mentions(context, normalized_reference)
         if normalized_reference:
-            player_id = self._reference_lookup(
+            lookup = (
+                self._privileged_reference_lookup
+                if self._privileged_reference_lookup is not None
+                and self._is_privileged_actor(context.message.actor)
+                else self._reference_lookup
+            )
+            player_id = lookup(
                 normalized_reference,
                 context.message.conversation,
             )
