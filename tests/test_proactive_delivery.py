@@ -32,8 +32,8 @@ from ironsbot.services.seer.lucky_skin_window import (
 from ironsbot.services.seer.lucky_skin_window_delivery import (
     LuckySkinWindowOutboundSender,
 )
-from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
+from ironsbot.services.team.resource_subscriptions import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
