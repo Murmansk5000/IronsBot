@@ -14,17 +14,17 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.services.activity.command_contracts import activity_command_descriptors
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
     is_soon_ending_seer_activity_text,
@@ -128,7 +128,7 @@ def plugin_contribution(
             order=10,
             notes=("自动提醒时间由 activity.lead_hours 配置。",),
         ),
-        commands=activity_command_descriptors(),
+        commands=activity_command_contracts(),
         install=partial(install, service=service, features=features),
         hooks=PluginHooks(
             startup=(

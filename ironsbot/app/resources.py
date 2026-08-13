@@ -12,10 +12,10 @@ if TYPE_CHECKING:
     from ironsbot.app.private_extensions import PrivateExtensionCatalog
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-    from ironsbot.runtime.plugins import PluginContributionCatalog
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.login import BilibiliLoginService

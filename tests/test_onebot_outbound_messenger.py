@@ -54,7 +54,7 @@ def _messenger(bot: _Bot | None = None) -> OneBotOutboundMessenger:
     )
     return OneBotOutboundMessenger(
         cast("Any", _Router(bot)),
-        runtime.delivery.outbound,
+        runtime.outbound,
     )
 
 
@@ -126,10 +126,10 @@ async def test_onebot_outbound_messenger_drops_rate_limited_proactive_send(
         assert source == "platform outbound"
         return OutboundRateLimitDecision(allowed=False, reason="rate_limit")
 
-    monkeypatch.setattr(runtime.delivery.outbound, "acquire_push", reject_push)
+    monkeypatch.setattr(runtime.outbound, "acquire_push", reject_push)
     messenger = OneBotOutboundMessenger(
         cast("Any", _Router(bot)),
-        runtime.delivery.outbound,
+        runtime.outbound,
     )
 
     result = await messenger.send(

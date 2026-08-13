@@ -1,6 +1,6 @@
 from ironsbot.services.messaging.meeting import (
     build_meeting_reply,
-    meeting_command_descriptors,
+    meeting_command_contracts,
 )
 
 
@@ -26,7 +26,7 @@ def test_build_meeting_reply_formats_tencent_meeting_number() -> None:
 
 
 def test_meeting_command_contract_uses_configured_examples() -> None:
-    commands = meeting_command_descriptors(("开播", "会议"))
+    commands = meeting_command_contracts(("开播", "会议"))
 
     assert len(commands) == 1
     assert commands[0].id == "meeting"

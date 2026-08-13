@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ironsbot.app.resources import ApplicationResources
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.features import Feature
+    from ironsbot.core.plugin_install import PluginContribution
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.onebot.matchers import (
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
         PromptSessionManager,
     )
     from ironsbot.integrations.scheduler.facade import SchedulerFacade
-    from ironsbot.runtime.plugins import PluginContribution
 
 
 @dataclass(slots=True)
@@ -58,7 +58,7 @@ class Application:
             msg = "application plugin contributions are already configured"
             raise RuntimeError(msg)
 
-        from ironsbot.runtime.plugins import validate_plugin_contributions
+        from ironsbot.core.plugin_install import validate_plugin_contributions
 
         self.contributions = validate_plugin_contributions(
             contributions,

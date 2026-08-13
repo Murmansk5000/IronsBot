@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
 
 
-def ai_chat_command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
+def ai_chat_command_contracts(*, enabled: bool) -> tuple[CommandContract, ...]:
     """Describe AI chat inputs only when an AI provider is configured."""
 
     if not enabled:
@@ -50,15 +50,15 @@ def ai_chat_command_descriptors(*, enabled: bool) -> tuple[CommandDescriptor, ..
     )
 
 
-def ai_intent_command_descriptors(
+def ai_intent_command_contracts(
     config: Settings,
-) -> tuple[CommandDescriptor, ...]:
+) -> tuple[CommandContract, ...]:
     """Describe configured automatic AI intent actions."""
 
     if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
         return ()
     return tuple(
-        CommandDescriptor(
+        CommandContract(
             id=f"ai_intent.{action_id}",
             plugin_id="ai_intent",
             section="关键词意图",

@@ -5,7 +5,7 @@ from typing import Any, cast
 from pytest import MonkeyPatch
 
 from ironsbot.integrations.seer_data.pet_info_repository import _load_activation_items
-from ironsbot.services.seer.rendering.pet_info_models import PetItemPriceSnapshot
+from ironsbot.services.seer.pet_info_views import PetItemPriceSnapshot
 
 SPECIAL_SKILL_ITEM_ID = 1728277
 

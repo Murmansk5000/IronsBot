@@ -13,7 +13,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, col, select
 
-from ironsbot.services.seer.rendering.pet_info_models import (
+from ironsbot.services.seer.pet_info_views import (
     PetCoreSnapshot,
     PetInfoSnapshot,
     PetItemPriceSnapshot,

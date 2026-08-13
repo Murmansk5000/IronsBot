@@ -19,7 +19,7 @@ from ironsbot.config.models.operations import (
     DockerUpdateConfig,
     PrivateExtensionsConfig,
 )
-from ironsbot.runtime.plugins import scoped_plugin_install_context
+from ironsbot.core.plugin_install import scoped_plugin_install_context
 from ironsbot.services.operations.docker_models import (
     DockerImageArchive,
     DockerImageArchiveRequest,
@@ -58,7 +58,7 @@ def _package_archive(
                 f"{PRIVATE_EXTENSIONS_ROOT}/{package_path}/{leaf}.py",
                 (
                     b"from nonebot.plugin import PluginMetadata\n"
-                    b"from ironsbot.runtime.plugins import (\n"
+                    b"from ironsbot.core.plugin_install import (\n"
                     b"    PluginContribution, active_plugin_install_context\n"
                     b")\n"
                     b"__plugin_meta__ = PluginMetadata(\n"

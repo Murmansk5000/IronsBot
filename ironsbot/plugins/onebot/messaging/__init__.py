@@ -10,14 +10,14 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.services.messaging.command_contracts import messaging_command_descriptors
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
+from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -92,7 +92,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
 ) -> PluginContribution:
     """Declare configured message commands and scheduled push lifecycle."""
 
-    commands = messaging_command_descriptors(config)
+    commands = messaging_command_contracts(config)
     return PluginContribution(
         id="messaging",
         features=frozenset(
