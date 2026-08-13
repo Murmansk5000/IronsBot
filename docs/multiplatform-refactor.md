@@ -20,6 +20,11 @@
 - `ironsbot/**/*.py` 的 800 行限制继续由
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
+- `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
+  `seerapi/scripts/build_seerapi_data_db.py`（5,453 行）与
+  `scripts/build_new_content_index.py`（1,292 行）是已登记的 transition 债务；新功能
+  不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
+  发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
 - 任何阶段都要保留当前 OneBot 用户行为，除非有明确产品决定和特征测试一并更新。
 
 ## 状态词与进度
