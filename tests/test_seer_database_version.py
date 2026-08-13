@@ -32,7 +32,9 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
         session.execute(
             text(
                 "INSERT INTO ironsbot_metadata (key, value) VALUES "
-                "('render_asset_manifest_revision', 'assets-v1')"
+                "('render_asset_manifest_revision', 'assets-v1'), "
+                "('render_asset_manifest_contract_version', '1'), "
+                "('render_asset_manifest_complete_scopes', '[\"pet_info\"]')"
             )
         )
         session.add(
@@ -56,6 +58,8 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
 
     expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
     assert data.version() == expected_version
+    assert data.render_category_available("pet_info")
+    assert not data.render_category_available("new_content")
 
 
 def test_seer_database_version_rejects_release_without_asset_manifest(
