@@ -1,5 +1,29 @@
 # ----- Project -----
 
+# The final image copies its runtime files explicitly.  Exclude repository-only
+# content here as well so local Docker builds do not upload caches, test data or
+# Git history as build context.
+.git/
+.github/
+data/
+docs/
+scripts/
+tables/
+tables_custom/
+templates/
+tests/
+.tmp/
+.test-tmp/
+.pytest-*/
+.ruff_cache/
+ARCHITECTURE.md
+README.md
+LICENSE*
+LICENSING.md
+icon.png
+icon.svg
+ca_profile.xml
+
 # .env
 .env.*
 .dockerignore
