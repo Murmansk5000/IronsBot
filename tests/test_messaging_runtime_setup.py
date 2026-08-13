@@ -324,6 +324,36 @@ def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
     assert "输入序号切换" not in prompt
 
 
+def test_push_subscription_menu_keeps_read_only_options_when_names_fail(
+    tmp_path: Path,
+) -> None:
+    warning = "⚠️ 暂时无法刷新公开昵称，使用 UID 显示。"
+
+    async def prepare(_conversation: ConversationRef) -> str:
+        return warning
+
+    options = [
+        PushSubscriptionOption("bili_push:123", "B站动态（UID：123）", "bili_push"),
+    ]
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        extra_push_options=lambda _conversation: options,
+    )
+    messaging = replace(messaging, _prepare_extra_push_options=prepare)
+
+    resolved_options, prompt = asyncio.run(
+        messaging.prepared_subscription_menu(
+            ConversationRef(Platform.ONEBOT, "group", "1001"),
+            read_only=True,
+        )
+    )
+
+    assert resolved_options == options
+    assert prompt.startswith(warning)
+    assert "1. ✅ B站动态（UID：123）" in prompt
+    assert "普通群员仅可查看" in prompt
+
+
 def test_group_push_subscription_command_allows_superuser_member(
     tmp_path: Path,
 ) -> None:

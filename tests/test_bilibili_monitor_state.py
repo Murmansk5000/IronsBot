@@ -540,6 +540,26 @@ def test_bili_push_subscription_options_use_public_account_names(
     ]
 
 
+def test_bili_push_subscription_options_fall_back_to_uid(
+    tmp_path: Path,
+) -> None:
+    service = _target_service(
+        _bili_config(
+            accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},
+            push={"groups": {"987654321": {"accounts": [FIRE_BILI_ALIAS]}}},
+        ),
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
+    )
+
+    options = service.subscription_options(_group(987654321))
+
+    assert [option.label for option in options] == [
+        f"B站动态（UID：{FIRE_BILI_UID}）",
+        f"B站动态（UID：{DEFAULT_BILI_ACCOUNT_UID}）",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_bili_account_summary_and_push_mode_update_use_target_service(
     tmp_path: Path,
