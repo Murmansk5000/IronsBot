@@ -137,6 +137,20 @@ async def handle_push_subscription_select(
             replace_menu_anchor=True,
         )
 
+    if submenu := messaging.subscription_submenu(
+        conversation,
+        option,
+        read_only=False,
+    ):
+        submenu_options, submenu_prompt = submenu
+        state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = submenu_options
+        await PUSH_SUBSCRIPTION_FLOW.reject(
+            matcher,
+            state,
+            submenu_prompt,
+            replace_menu_anchor=True,
+        )
+
     result_message = messaging.toggle_subscription(
         conversation,
         option,
