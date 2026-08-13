@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
 from struct import unpack
@@ -19,8 +20,6 @@ from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ironsbot.config.models.seer import LuckySkinWindowConfig
     from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
     from ironsbot.core.features import FeatureService
@@ -33,6 +32,20 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
 logger = logging.getLogger(__name__)
+
+LuckySkinWindowRenderer = Callable[
+    ["LuckySkinWindowResult", tuple["LuckySkinWindowOffer", ...]],
+    Awaitable[bytes],
+]
+
+
+class LuckySkinWindowMessageFormatter(Protocol):
+    async def __call__(
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        user_id: int,
+    ) -> object: ...
 
 LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY = "lucky_skin_window"
 _GET_LUCKY_SKIN_WINDOW = 45866
@@ -154,6 +167,7 @@ class LuckySkinWindowService:
         cache: LuckySkinWindowCache,
         *,
         today: Callable[[], date] | None = None,
+        renderer: LuckySkinWindowRenderer | None = None,
     ) -> None:
         self._config = config
         self._features = features
@@ -164,6 +178,7 @@ class LuckySkinWindowService:
         self._watch_preferences = watch_preferences
         self._cache = cache
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
+        self._renderer = renderer
         self._accounts = {
             references.resolve_user(
                 account.user,
@@ -298,7 +313,12 @@ class LuckySkinWindowService:
         account = self._validated_account_for_user(user_id)
         return self._cached_result(account.player_id)
 
-    async def send_daily_notifications(self, delivery: MessageDelivery) -> None:
+    async def send_daily_notifications(
+        self,
+        delivery: MessageDelivery,
+        *,
+        format_message: LuckySkinWindowMessageFormatter | None = None,
+    ) -> None:
         if not self.enabled:
             return
         target_ids = self._subscriptions.filter_subscribed_user_ids(
@@ -315,12 +335,16 @@ class LuckySkinWindowService:
         )
         if not target_ids:
             return
-        notices: list[tuple[MessageTarget, str]] = []
+        notices: list[tuple[MessageTarget, object]] = []
         for user_id in target_ids:
             _subscription, account = self._accounts[user_id]
             try:
                 result = await self._check(account, background=True)
-                message = self.format_result(result, user_id=user_id)
+                message = (
+                    await format_message(result, user_id=user_id)
+                    if format_message is not None
+                    else self.format_result(result, user_id=user_id)
+                )
             except Exception:
                 logger.exception(
                     "lucky skin window scheduled check failed: player_id=%s",
@@ -447,13 +471,46 @@ class LuckySkinWindowService:
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
     def format_result(self, result: LuckySkinWindowResult, *, user_id: int) -> str:
-        watched_ids = frozenset(self._watched_skin_ids(user_id))
+        offers = self._offers_for_user(result, user_id=user_id)
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
-        for index, offer in enumerate(result.offers, start=1):
-            marker = " ★ 关注" if offer.skin_id in watched_ids else ""
+        for index, offer in enumerate(offers, start=1):
+            marker = " ★ 关注" if offer.watched else ""
             identifiers = _skin_identifiers(offer.skin_id, offer.resource_id)
             lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
         return "\n".join(lines)
+
+    async def render_result(
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        user_id: int,
+    ) -> bytes | None:
+        if self._renderer is None:
+            return None
+        try:
+            return await self._renderer(
+                result,
+                self._offers_for_user(result, user_id=user_id),
+            )
+        except Exception:
+            logger.exception(
+                "lucky skin window render failed: player_id=%s day=%s",
+                result.player_id,
+                result.day,
+            )
+            return None
+
+    def _offers_for_user(
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        user_id: int,
+    ) -> tuple[LuckySkinWindowOffer, ...]:
+        watched_ids = frozenset(self._watched_skin_ids(user_id))
+        return tuple(
+            replace(offer, watched=offer.skin_id in watched_ids)
+            for offer in result.offers
+        )
 
     def _watched_skin_ids(self, user_id: int) -> tuple[int, ...]:
         self._validated_account_for_user(user_id)

@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
+    Message,
     MessageEvent,
+    MessageSegment,
     PrivateMessageEvent,
 )
 from nonebot.matcher import Matcher
@@ -38,6 +40,7 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowBindingError,
     LuckySkinWindowError,
     LuckySkinWindowNotConfiguredError,
+    LuckySkinWindowResult,
     LuckySkinWindowService,
 )
 
@@ -307,7 +310,7 @@ async def _handle_query(
         await finish_event_reply(
             matcher,
             event,
-            service.format_result(cached, user_id=event.user_id),
+            await _result_message(service, cached, user_id=event.user_id),
         )
         return
 
@@ -381,8 +384,20 @@ async def _query_and_reply(
     await finish_event_reply(
         matcher,
         event,
-        service.format_result(result, user_id=event.user_id),
+        await _result_message(service, result, user_id=event.user_id),
     )
+
+
+async def _result_message(
+    service: LuckySkinWindowService,
+    result: LuckySkinWindowResult,
+    *,
+    user_id: int,
+) -> str | Message:
+    image = await service.render_result(result, user_id=user_id)
+    if image is not None:
+        return Message(MessageSegment.image(image))
+    return service.format_result(result, user_id=user_id)
 
 
 async def _handle_watch_list(
@@ -656,7 +671,11 @@ def _register_schedule(
         timezone=config.timezone,
     )
     registry.add_daily(
-        partial(service.send_daily_notifications, delivery),
+        partial(
+            service.send_daily_notifications,
+            delivery,
+            format_message=partial(_result_message, service),
+        ),
         job_id="daily",
         clock_time=scheduled_clock_time(
             config.time,
