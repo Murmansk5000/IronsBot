@@ -5,13 +5,13 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
+from ironsbot.core.value_coercion import coerce_positive_int
 from ironsbot.integrations.storage.sqlite import (
     SqliteDatabase,
     SqliteMigration,
     ensure_sqlite_columns,
 )
 from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
-from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

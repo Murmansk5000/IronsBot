@@ -6,8 +6,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.skin_image_resolution import (
+    load_skin_image_resolutions,
+)
 from ironsbot.services.seer.autocard import AutocardPromptValue
-from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
 from .new_content_details import (
     NewContentItemDetails,

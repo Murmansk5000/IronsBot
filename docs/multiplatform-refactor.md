@@ -651,3 +651,10 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   `tests/test_messaging_runtime_setup.py` 共 46 项通过；全量测试 `1505 passed`，
   `ruff check ironsbot tests`、`python -m compileall -q ironsbot` 与
   `git diff --check` 均通过。
+
+## 数据读取边界记录
+
+- **2026-08-13：** 刻印角数、皮肤资源解析与每周预告元数据读取已迁入
+  `integrations.seer_data`；赛尔 service 仅保留命令编排与业务格式化。
+  跨领域的正整数转换同时迁入 `core.value_coercion`，避免 repository 反向依赖
+  `services.seer`。相关查询、皮肤、预告、榜单和本地排行测试共 32 项通过。
