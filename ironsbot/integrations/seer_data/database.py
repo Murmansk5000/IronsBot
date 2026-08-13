@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from seerapi_models import ApiMetadataORM, ErrorCodeORM, MintmarkORM, PeakSeasonORM
 from seerapi_models.mintmark import AbilityPartORM, UniversalPartORM
+from sqlalchemy import text
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, or_, select
 
@@ -42,6 +44,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.db_registry import DatabaseManager
 
 UNKNOWN_VERSION = "unknown"
+_RENDER_MANIFEST_CONTRACT_VERSION = "1"
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
 
@@ -65,9 +68,13 @@ class SeerDatabase:
         merge_connected_mintmarks: bool,
     ) -> None:
         self._databases = databases
+        self._published_version = UNKNOWN_VERSION
+        self._published_render_scopes: frozenset[str] = frozenset()
         self.mintmark = build_mintmark_data_getter(
             merge_connected=merge_connected_mintmarks
         )
+        databases.add_load_listener(SEERAPI_DB, self._refresh_published_version)
+        self._refresh_published_version()
 
     @contextmanager
     def query(self, operation: DataQuery[_T]) -> Iterator[_T]:
@@ -168,16 +175,85 @@ class SeerDatabase:
             return None
 
     def version(self) -> str:
+        """Return the release version cached when the in-memory DB was loaded."""
+
+        return self._published_version
+
+    def render_category_available(self, category: str) -> bool:
+        """Return whether the loaded release proves all assets for a renderer."""
+
+        scope = {
+            "pet_info": "pet_info",
+            "type_matchup": "type_matchup",
+            "peak_pool": "peak_pool",
+            "peak_pool_vote": "peak_pool",
+            "peak_pet_rank": "peak_pool",
+            "new_content": "new_content_standard",
+            "player_lineup": "pet_info",
+        }.get(category)
+        return scope is not None and scope in self._published_render_scopes
+
+    def _refresh_published_version(self) -> None:
+        """Refresh only after an atomic database load, never per cache lookup."""
         try:
             with self._databases.session(SEERAPI_DB) as session:
                 if session is None:
-                    return UNKNOWN_VERSION
+                    self._published_version = UNKNOWN_VERSION
+                    self._published_render_scopes = frozenset()
+                    return
                 metadata = session.exec(select(ApiMetadataORM)).first()
                 if metadata is not None:
-                    return metadata.generate_time.isoformat()
+                    manifest_metadata: dict[str, str] = {}
+                    try:
+                        metadata_rows = session.execute(
+                            text(
+                                "SELECT key, value FROM ironsbot_metadata WHERE key IN "
+                                "(:revision, :contract, :scopes)"
+                            ),
+                            {
+                                "revision": "render_asset_manifest_revision",
+                                "contract": "render_asset_manifest_contract_version",
+                                "scopes": "render_asset_manifest_complete_scopes",
+                            },
+                        ).all()
+                        manifest_metadata = {
+                            str(key): str(value) for key, value in metadata_rows
+                        }
+                        manifest_revision = manifest_metadata.get(
+                            "render_asset_manifest_revision"
+                        )
+                        scopes = frozenset(
+                            str(scope)
+                            for scope in json.loads(
+                                manifest_metadata.get(
+                                    "render_asset_manifest_complete_scopes", "[]"
+                                )
+                            )
+                        )
+                    except Exception:  # noqa: BLE001
+                        manifest_revision = None
+                        scopes = frozenset()
+                    if (
+                        not manifest_revision
+                        or manifest_metadata.get(
+                            "render_asset_manifest_contract_version"
+                        ) != _RENDER_MANIFEST_CONTRACT_VERSION
+                    ):
+                        self._published_version = UNKNOWN_VERSION
+                        self._published_render_scopes = frozenset()
+                        return
+                    self._published_render_scopes = scopes
+                    self._published_version = ":".join(
+                        (
+                            metadata.generate_time.isoformat(),
+                            str(manifest_revision),
+                        )
+                    )
+                    return
         except Exception:  # noqa: BLE001
             logger.debug("failed to query Seer database version", exc_info=True)
-        return UNKNOWN_VERSION
+        self._published_version = UNKNOWN_VERSION
+        self._published_render_scopes = frozenset()
 
 
 def _mintmark_class_member_ids(

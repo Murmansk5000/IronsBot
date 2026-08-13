@@ -20,11 +20,18 @@ class FileRenderCache:
         max_size_bytes: int,
         *,
         version_getter: Callable[[], str],
+        category_available: Callable[[str], bool] | None = None,
     ) -> None:
         self._cache = VerifiedFileCache(cache_dir, max_size_bytes)
         self._version_getter = version_getter
+        self._category_available = category_available
 
     def _key(self, category: str, content_key: str) -> str | None:
+        if (
+            self._category_available is not None
+            and not self._category_available(category)
+        ):
+            return None
         version = self._version_getter()
         if version == UNKNOWN_RENDER_CACHE_VERSION:
             return None
