@@ -5,7 +5,7 @@ from typing import Any, cast
 
 from ironsbot.app.application import Application
 from ironsbot.core.command_catalog import CommandCatalog
-from ironsbot.runtime.plugins import PluginContribution, PluginContributionCatalog
+from ironsbot.core.plugin_install import PluginContribution, PluginContributionCatalog
 
 
 def test_application_validates_the_catalog_after_matcher_registration() -> None:

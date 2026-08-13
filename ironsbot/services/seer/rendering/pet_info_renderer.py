@@ -6,8 +6,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ironsbot.services.seer.pet_info_views import PetInfoRenderDocument
+
     from . import HtmlTemplateRenderer, TemplatePath
-    from .pet_info_models import PetInfoRenderDocument
 
 
 async def render_pet_info_document(

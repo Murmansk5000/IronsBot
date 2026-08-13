@@ -25,13 +25,13 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.onebot.bilibili import command_descriptors as bilibili_commands
 from ironsbot.plugins.onebot.bilibili.command_rules import (
     is_bili_account_command,
     is_bili_push_mode_command,
-    parse_bili_push_mode_command,
 )
 from ironsbot.services.bilibili import accounts
+from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
+from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
 from ironsbot.services.bilibili.preferences import (
     bili_push_subscription_key,
 )
@@ -241,7 +241,9 @@ def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
 
 def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:
     command = next(
-        item for item in bilibili_commands() if item.id == "bilibili.private_push_mode"
+        item
+        for item in bilibili_command_contracts()
+        if item.id == "bilibili.private_push_mode"
     )
 
     assert command.section == "私聊管理"

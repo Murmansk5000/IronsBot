@@ -15,12 +15,12 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
-from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.message_input import message_input_context
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService

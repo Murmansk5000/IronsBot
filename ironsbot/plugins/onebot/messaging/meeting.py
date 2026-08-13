@@ -9,18 +9,18 @@ from nonebot.rule import Rule
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.messaging.meeting import (
     build_meeting_reply,
-    meeting_command_descriptors,
+    meeting_command_contracts,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -90,7 +90,7 @@ def plugin_contribution(
             group="message",
             order=40,
         ),
-        commands=meeting_command_descriptors(commands),
+        commands=meeting_command_contracts(commands),
         install=partial(
             install,
             commands=commands,

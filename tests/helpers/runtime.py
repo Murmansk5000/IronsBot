@@ -19,17 +19,19 @@ from ironsbot.config.models.messaging import (
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.config.onebot_references import OneBotReferenceResolver
-from ironsbot.integrations.onebot.admin_notice import OneBotAdminNoticeSender
-from ironsbot.integrations.onebot.delivery import OneBotDelivery
+from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.onebot.matchers import MatcherFactory, PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
     GroupOutboundRateLimitService,
 )
+from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -39,7 +41,8 @@ if TYPE_CHECKING:
 class TestRuntime:
     features: FeatureService
     onebot_references: OneBotReferenceResolver
-    delivery: OneBotDelivery
+    outbound: GroupOutboundRateLimitService
+    proactive_delivery: ProactiveMessageDelivery
     admin_notices: AdminNoticeService
     cooldown: CommandCooldownService
     in_flight_requests: InFlightRequestService
@@ -82,26 +85,31 @@ def build_test_runtime(  # noqa: PLR0913
         resolved_feature_config.group_aliases,
         resolved_feature_config.user_aliases,
     )
-    delivery = OneBotDelivery(
-        GroupOutboundRateLimitService(
-            outbound_config or OutboundRateLimitConfig(),
-            features,
-            tasks.create,
-        ),
+    outbound = GroupOutboundRateLimitService(
+        outbound_config or OutboundRateLimitConfig(),
+        features,
+        tasks.create,
+    )
+    router = BotRouter(
+        BotRoutingConfig(),
+        onebot_references,
+    )
+    subscriptions = PushUnsubscribeStore(isolated_state_path)
+    proactive_delivery = ProactiveMessageDelivery(
+        OneBotOutboundMessenger(router, outbound),
+        features,
+        PromotionCatalog({}),
+        subscriptions,
         push_config,
-        BotRouter(
-            BotRoutingConfig(),
-            onebot_references,
-        ),
-        PushUnsubscribeStore(isolated_state_path),
     )
     return TestRuntime(
         features=features,
         onebot_references=onebot_references,
-        delivery=delivery,
+        outbound=outbound,
+        proactive_delivery=proactive_delivery,
         admin_notices=AdminNoticeService(
             features,
-            OneBotAdminNoticeSender(delivery),
+            OutboundAdminNoticeSender(proactive_delivery),
         ),
         cooldown=CommandCooldownService(
             cooldown_config or CommandCooldownConfig(),

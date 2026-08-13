@@ -1,12 +1,29 @@
 from __future__ import annotations
 
 from ironsbot.config.models.features import FeatureConfig
-from ironsbot.integrations.onebot.promotions import (
-    promotion_enabled_for_target,
+from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.services.messaging.proactive_delivery import (
+    append_push_promotions,
 )
-from ironsbot.integrations.onebot.targets import OneBotMessageTarget
-from tests.helpers.promotions import FIRE_MANUAL_PROMOTION
+from tests.helpers.promotions import FIRE_MANUAL_PROMOTION, FIRE_MANUAL_PROMOTIONS
 from tests.helpers.runtime import build_test_runtime
+
+
+def _message_text(message: OutboundMessage) -> str:
+    return "".join(part.text for part in message.parts if isinstance(part, TextPart))
+
+
+def _with_promotions(
+    features: object,
+    conversation: ConversationRef,
+) -> OutboundMessage:
+    return append_push_promotions(
+        OutboundMessage((TextPart("正文"),)),
+        conversation=conversation,
+        features=features,  # type: ignore[arg-type]
+        promotions=FIRE_MANUAL_PROMOTIONS,
+    )
 
 
 def test_fire_manual_push_attachment_is_independent_from_ai_intents() -> None:
@@ -27,26 +44,22 @@ def test_fire_manual_push_attachment_is_independent_from_ai_intents() -> None:
         )
     ).features
 
-    assert not promotion_enabled_for_target(
+    assert FIRE_MANUAL_PROMOTION.message not in _message_text(_with_promotions(
         ai_only,
-        OneBotMessageTarget("group", 1001),
-        FIRE_MANUAL_PROMOTION,
-    )
-    assert not promotion_enabled_for_target(
+        ConversationRef(Platform.ONEBOT, "group", "1001"),
+    ))
+    assert FIRE_MANUAL_PROMOTION.message not in _message_text(_with_promotions(
         ai_only,
-        OneBotMessageTarget("private", 2001),
-        FIRE_MANUAL_PROMOTION,
-    )
-    assert promotion_enabled_for_target(
+        ConversationRef(Platform.ONEBOT, "private", "2001"),
+    ))
+    assert FIRE_MANUAL_PROMOTION.message in _message_text(_with_promotions(
         explicit_ad,
-        OneBotMessageTarget("group", 1001),
-        FIRE_MANUAL_PROMOTION,
-    )
-    assert promotion_enabled_for_target(
+        ConversationRef(Platform.ONEBOT, "group", "1001"),
+    ))
+    assert FIRE_MANUAL_PROMOTION.message in _message_text(_with_promotions(
         explicit_ad,
-        OneBotMessageTarget("private", 2001),
-        FIRE_MANUAL_PROMOTION,
-    )
+        ConversationRef(Platform.ONEBOT, "private", "2001"),
+    ))
 
 
 def test_fire_manual_push_attachment_respects_all_bundle_and_not_superuser_bypass() -> (
@@ -57,13 +70,11 @@ def test_fire_manual_push_attachment_respects_all_bundle_and_not_superuser_bypas
         superuser_ids=(1002,),
     ).features
 
-    assert promotion_enabled_for_target(
+    assert FIRE_MANUAL_PROMOTION.message in _message_text(_with_promotions(
         features,
-        OneBotMessageTarget("private", 2001),
-        FIRE_MANUAL_PROMOTION,
-    )
-    assert not promotion_enabled_for_target(
+        ConversationRef(Platform.ONEBOT, "private", "2001"),
+    ))
+    assert FIRE_MANUAL_PROMOTION.message not in _message_text(_with_promotions(
         features,
-        OneBotMessageTarget("private", 1002),
-        FIRE_MANUAL_PROMOTION,
-    )
+        ConversationRef(Platform.ONEBOT, "private", "1002"),
+    ))

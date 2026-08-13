@@ -5,12 +5,23 @@ from __future__ import annotations
 
 import base64
 import re
-from difflib import SequenceMatcher
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+from ironsbot.services.seer.pet_info_views import (
+    PetInfoAssets,
+    PetInfoRenderDocument,
+    PetInfoSnapshot,
+    PetItemSnapshot,
+    PetPartnerSnapshot,
+    PetSkillEffectSnapshot,
+    PetSkillSnapshot,
+    PetSoulmarkDisplayAddition,
+    PetSoulmarkSnapshot,
+)
 
 from .analyze_description import (
     format_analyze_description,
@@ -28,20 +39,8 @@ from .custom_pet_models import (
     SpecialEffectDict,
 )
 from .pet_effect_presentation import assign_special_effect_colors
-from .pet_info_models import (
-    PetInfoAssets,
-    PetInfoRenderDocument,
-    PetInfoSnapshot,
-    PetItemSnapshot,
-    PetPartnerSnapshot,
-    PetSkillEffectSnapshot,
-    PetSkillSnapshot,
-    PetSoulmarkDisplayAddition,
-    PetSoulmarkSnapshot,
-)
 
 _HIDDEN_SKILL_ID = 19002
-_PARTNER_UPGRADE_MIN_SIMILARITY = 0.8
 _RICH_TEXT_COLOR_OPEN_RE = re.compile(r"<color=(#[0-9a-fA-F]{6})>")
 _RICH_TEXT_TAG_RE = re.compile(r"</?[^>]+>")
 
@@ -72,7 +71,7 @@ def present_pet_info(
     partner = _partner_view(snapshot.partner, item_icons)
     base_soulmarks, upgraded_soulmarks = _partition_soulmarks(
         soulmarks,
-        snapshot.partner,
+        snapshot.display.soulmark_display_kind_by_id,
     )
     all_skills = [
         item
@@ -307,69 +306,19 @@ def _partner_item_view(
 
 def _partition_soulmarks(
     soulmarks: Sequence[SoulmarkDict],
-    partner: PetPartnerSnapshot | None,
+    display_kind_by_id: Mapping[int, str],
 ) -> tuple[list[SoulmarkDict], list[SoulmarkDict]]:
     upgraded = {
-        index for index, soulmark in enumerate(soulmarks) if soulmark["intensified"]
+        index
+        for index, soulmark in enumerate(soulmarks)
+        if soulmark["intensified"]
+        or display_kind_by_id.get(soulmark["id"])
+        in {"intensified", "partner_upgrade", "advance"}
     }
-    if partner is not None and (
-        index := _find_partner_upgrade_soulmark_index(soulmarks, partner)
-    ) is not None:
-        upgraded.add(index)
     return (
         [value for index, value in enumerate(soulmarks) if index not in upgraded],
         [value for index, value in enumerate(soulmarks) if index in upgraded],
     )
-
-
-def _find_partner_upgrade_soulmark_index(
-    soulmarks: Sequence[SoulmarkDict],
-    partner: PetPartnerSnapshot,
-) -> int | None:
-    indexes = {soulmark["id"]: index for index, soulmark in enumerate(soulmarks)}
-    for soulmark in soulmarks:
-        target = soulmark["intensified_to_id"]
-        if target is not None and target in indexes:
-            return indexes[target]
-    after = _normalize_soulmark_text(partner.after_description)
-    before = _normalize_soulmark_text(partner.before_description)
-    if not after:
-        return None
-    candidates = [
-        (
-            SequenceMatcher(
-                None, _normalize_soulmark_text(value["desc"]), after
-            ).ratio(),
-            SequenceMatcher(
-                None, _normalize_soulmark_text(value["desc"]), before
-            ).ratio(),
-            index,
-        )
-        for index, value in enumerate(soulmarks)
-    ]
-    if not candidates:
-        return None
-    after_score, _before_score, after_index = max(
-        candidates,
-        key=lambda value: (value[0] - value[1], value[0]),
-    )
-    if after_score < _PARTNER_UPGRADE_MIN_SIMILARITY:
-        return None
-    _after_score, before_score, before_index = max(
-        candidates,
-        key=lambda value: (value[1] - value[0], value[1]),
-    )
-    if (
-        before_score >= _PARTNER_UPGRADE_MIN_SIMILARITY
-        and before_index != after_index
-        and soulmarks[before_index]["id"] > soulmarks[after_index]["id"]
-    ):
-        return before_index
-    return after_index
-
-
-def _normalize_soulmark_text(value: str | None) -> str:
-    return re.sub(r"[\W_]+", "", re.sub(r"<[^>]+>", "", value or "")).casefold()
 
 
 def _skill_views(
