@@ -133,6 +133,13 @@ TOML 规则编译和运行时目标解析的 `services.bilibili.targets` 分成
 全量 1392 项 pytest、Ruff、编译和 `git diff --check` 均通过。该拆分是领域内职责
 收口，不代表已与 `main` 的大规模目录重排合并；主线后续更新必须逐项按目标契约审计。
 
+**Docker 协议边界拆分（2026-08-13）：** Docker 更新集成不再把 Unix socket daemon
+API、OCI Registry v2、镜像归档和管理员用例编排混在 `docker.client`。`daemon` 只负责
+本机 Docker API，`registry` 只负责镜像引用、认证和远程 manifest/config 查询，`client`
+只组合这两种协议实现重启、更新检查和私有扩展归档。测试改为直接从所属协议模块导入，
+不保留旧工具导出的兼容入口；Docker 更新相关 28 项和全量 1392 项 pytest、Ruff、编译及
+`git diff --check` 均通过。
+
 开始持续任务时，报告必须同时给出总任务、当前阶段和当前小任务的进度及预计剩余时间；
 估算只描述当前可见范围，遇到新增依赖、发布阻塞或验证失败时必须立即重新估算。推荐
 格式如下，百分比只使用已验证并提交的工作项计数：
