@@ -90,7 +90,7 @@ def message_input_context(event: Event) -> MessageInputContext:
             direct_mentions=tuple(
                 onebot_actor_ref(member_id) for member_id in member_ids
             ),
-            reply_to_id=_reply_message_id(event),
+            reply_to_id=event_reply_message_id(event),
         ),
         mentions_bot=mentions_bot,
     )
@@ -116,11 +116,30 @@ def _event_user_id(event: Event) -> str:
     return str(value)
 
 
-def _reply_message_id(event: Event) -> str | None:
+def event_reply_message_id(event: Event) -> str | None:
+    """Return the reply target from metadata or direct OneBot segments.
+
+    Some OneBot transports retain a reply segment in the current message while
+    omitting ``event.reply`` metadata. Both representations describe the same
+    incoming event, so routing must accept either one.
+    """
     reply = getattr(event, "reply", None)
-    if reply is None:
-        return None
-    value = getattr(reply, "message_id", None)
-    if value is None:
-        raise OneBotMessageInputError.missing_reply_message_id()
-    return str(value)
+    if reply is not None:
+        value = getattr(reply, "message_id", None)
+        if value is None:
+            raise OneBotMessageInputError.missing_reply_message_id()
+        return str(value)
+    for message in _message_candidates(event):
+        for segment in message:
+            if getattr(segment, "type", "") != "reply":
+                continue
+            value = getattr(segment, "data", {}).get("id")
+            if value is not None:
+                return str(value)
+    return None
+
+
+def _message_candidates(event: Event) -> tuple[Any, ...]:
+    current = getattr(event, "message", None)
+    original = getattr(event, "original_message", None)
+    return tuple(message for message in (current, original) if message is not None)
