@@ -117,6 +117,11 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 对应 SeerAPI 提交 `246f55c` 同步删除新内容索引对旧角色表的回退，并将索引 fixture
 统一为官方表和 sidecar；两个仓库不再对同一发布物接受不同 schema。
 
+**群星牌 repository 边界（2026-08-13）：** `AutocardService` 已移除直接
+SQLAlchemy/Session/JSON 访问，只通过 `integrations.seer_data.autocard_repository` 获取
+准备好的 `AutocardDataset`。当前 schema 查询、JSON 解包与数据错误属于集成层；服务层
+只保留命令语义、搜索和展示格式化。
+
 **Main 吸收记录（2026-08-13）：** 已以 V5 的类型化 B 站服务为唯一业务路径吸收
 `main` 的发布时段加密轮询需求。`BiliBoostWindow`、秒级时钟、槽位去重和 cron
 注册均不依赖 OneBot 数值 target；发现新动态后仅结束当前 burst，空响应或失败仍会继续
