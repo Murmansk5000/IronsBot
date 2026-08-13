@@ -44,6 +44,8 @@ BILI_PUSH_ADMIN_HINT = (
 )
 BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
+CATEGORY_SUBSCRIPTION_HINT = "发送 TD 可按标签管理动态订阅。"
+CATEGORY_SUBSCRIPTION_HINT_KEY = "bilibili_category_subscription_hint"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
 FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
@@ -67,6 +69,7 @@ class BilibiliDynamicOutboundSender:
     summary_use_ai: bool = True
     can_query_history: HistoryQueryChecker | None = None
     admin_notices: AdminNoticeService | None = None
+    has_category_subscriptions: Callable[[int], bool] | None = None
 
     async def send(
         self,
@@ -86,6 +89,7 @@ class BilibiliDynamicOutboundSender:
             targets.link_private_conversations,
             action_name=LINK_DYNAMIC_PUSH_ACTION,
             subscription_key=subscription_key,
+            author_mid=author_mid,
         )
 
         full_targets = self._subscribed_full_targets(targets, subscription_key)
@@ -97,6 +101,7 @@ class BilibiliDynamicOutboundSender:
             full_targets.full_private_conversations,
             action_name=f"{FULL_DYNAMIC_PUSH_ACTION} link",
             subscription_key=subscription_key,
+            author_mid=author_mid,
         )
 
         text_targets = self._subscribed_full_targets(
@@ -129,7 +134,7 @@ class BilibiliDynamicOutboundSender:
                 image_targets,
             )
 
-    async def _send_link_message(
+    async def _send_link_message(  # noqa: PLR0913 - separate target collections
         self,
         message: OutboundMessage,
         group_conversations: Iterable[ConversationRef],
@@ -137,12 +142,17 @@ class BilibiliDynamicOutboundSender:
         *,
         action_name: str,
         subscription_key: str,
+        author_mid: int,
     ) -> None:
         await self.delivery.send_many(
             (
                 ProactiveDeliveryRequest(
                     conversation,
-                    self._target_link_message(message, conversation),
+                    self._target_link_message(
+                        message,
+                        conversation,
+                        author_mid=author_mid,
+                    ),
                 )
                 for conversation in (*group_conversations, *private_conversations)
             ),
@@ -257,10 +267,22 @@ class BilibiliDynamicOutboundSender:
         self,
         message: OutboundMessage,
         conversation: ConversationRef,
+        *,
+        author_mid: int | None = None,
     ) -> OutboundMessage:
         result = message
         if self.can_query_history is not None and self.can_query_history(conversation):
             result = append_outbound_text_once(result, DYNAMIC_HISTORY_HINT)
+        if (
+            self.has_category_subscriptions is not None
+            and author_mid is not None
+            and self.has_category_subscriptions(author_mid)
+            and self.subscriptions.mark_daily_hint_sent(
+                conversation,
+                CATEGORY_SUBSCRIPTION_HINT_KEY,
+            )
+        ):
+            result = append_outbound_text_once(result, CATEGORY_SUBSCRIPTION_HINT)
         if conversation.kind == "group" and self.subscriptions.mark_daily_hint_sent(
             conversation,
             BILI_PUSH_ADMIN_HINT_KEY,

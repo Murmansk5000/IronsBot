@@ -10,6 +10,7 @@ from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.bilibili.outbound_delivery import (
     BILI_PUSH_ADMIN_HINT,
+    CATEGORY_SUBSCRIPTION_HINT,
     DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_PUSH_ACTION,
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
 
 
 PUB_TS = 1781004683
+AUTHOR_MID = 1310714247
 
 
 def _group(group_id: int) -> ConversationRef:
@@ -191,6 +193,32 @@ async def test_full_dynamic_sends_links_then_portable_content_with_hints(
     assert isinstance(image, OutboundMessage)
     assert isinstance(image.parts[0], RemoteImagePart)
     assert not delivery.content_calls[0].get("subscription_key")
+
+
+@pytest.mark.asyncio
+async def test_category_subscription_hint_is_sent_for_configured_accounts(
+    tmp_path: Path,
+) -> None:
+    delivery = _RecordingDelivery()
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
+        has_category_subscriptions=lambda uid: uid == AUTHOR_MID,
+    )
+
+    await sender.send(
+        _item(),
+        PUB_TS,
+        AUTHOR_MID,
+        _targets(link_groups=(1001,), link_users=(2001,)),
+    )
+
+    requests = delivery.link_calls[0]["requests"]
+    assert isinstance(requests, tuple)
+    assert all(
+        CATEGORY_SUBSCRIPTION_HINT in _message_text(request.message)
+        for request in requests
+    )
 
 
 @pytest.mark.asyncio
