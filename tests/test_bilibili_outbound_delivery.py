@@ -10,19 +10,21 @@ from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.bilibili.outbound_delivery import (
     BILI_PUSH_ADMIN_HINT,
+    CATEGORY_SUBSCRIPTION_HINT,
     DYNAMIC_HISTORY_HINT,
     FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliDynamicOutboundSender,
-    render_dynamic_content_message,
+    render_dynamic_image_message,
     render_dynamic_link_message,
+    render_dynamic_text_message,
 )
 from ironsbot.services.bilibili.preferences import (
     bili_media_subscription_key,
     bili_push_subscription_key,
 )
-from ironsbot.services.bilibili.targets import BiliPushTargets
+from ironsbot.services.bilibili.target_models import BiliPushTargets
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
     ProactiveDeliverySummary,
@@ -34,6 +36,7 @@ if TYPE_CHECKING:
 
 
 PUB_TS = 1781004683
+AUTHOR_MID = 1310714247
 
 
 def _group(group_id: int) -> ConversationRef:
@@ -137,14 +140,16 @@ class _RecordingAdminNotices:
 
 def test_portable_renderers_keep_text_and_remote_images() -> None:
     link = render_dynamic_link_message(_item(), PUB_TS)
-    content = render_dynamic_content_message(_item())
+    text = render_dynamic_text_message(_item())
+    images = render_dynamic_image_message(_item())
 
     assert link is not None
-    assert content is not None
+    assert text is not None
+    assert images is not None
     assert "传送门：" in str(link.parts[0])
-    assert "正文内容" in str(content.parts[0])
-    assert isinstance(content.parts[1], RemoteImagePart)
-    assert content.parts[1].url == "http://i0.hdslb.com/bfs/new_dyn/test.jpg"
+    assert "正文内容" in str(text.parts[0])
+    assert isinstance(images.parts[0], RemoteImagePart)
+    assert images.parts[0].url == "http://i0.hdslb.com/bfs/new_dyn/test.jpg"
 
 
 @pytest.mark.asyncio
@@ -188,6 +193,32 @@ async def test_full_dynamic_sends_links_then_portable_content_with_hints(
     assert isinstance(image, OutboundMessage)
     assert isinstance(image.parts[0], RemoteImagePart)
     assert not delivery.content_calls[0].get("subscription_key")
+
+
+@pytest.mark.asyncio
+async def test_category_subscription_hint_is_sent_for_configured_accounts(
+    tmp_path: Path,
+) -> None:
+    delivery = _RecordingDelivery()
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
+        has_category_subscriptions=lambda uid: uid == AUTHOR_MID,
+    )
+
+    await sender.send(
+        _item(),
+        PUB_TS,
+        AUTHOR_MID,
+        _targets(link_groups=(1001,), link_users=(2001,)),
+    )
+
+    requests = delivery.link_calls[0]["requests"]
+    assert isinstance(requests, tuple)
+    assert all(
+        CATEGORY_SUBSCRIPTION_HINT in _message_text(request.message)
+        for request in requests
+    )
 
 
 @pytest.mark.asyncio
@@ -412,11 +443,12 @@ async def test_full_dynamic_media_preferences_filter_text_and_images_separately(
 
 
 def test_image_only_dynamic_does_not_invent_content_text() -> None:
-    message = render_dynamic_content_message(_item(text=""))
+    text = render_dynamic_text_message(_item(text=""))
+    images = render_dynamic_image_message(_item(text=""))
 
-    assert message is not None
-    assert all(not isinstance(part, TextPart) for part in message.parts)
-    assert isinstance(message.parts[0], RemoteImagePart)
+    assert text is None
+    assert images is not None
+    assert isinstance(images.parts[0], RemoteImagePart)
 
 
 def test_bilibili_admin_hint_is_limited_once_per_group_per_day(

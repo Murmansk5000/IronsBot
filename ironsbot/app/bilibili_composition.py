@@ -121,5 +121,6 @@ def build_onebot_bilibili_monitor(  # noqa: PLR0913 - composition root
         config.push.summary_use_ai,
         service.targets.can_conversation_query_history,
         admin_notices,
+        lambda uid: service.targets.category_config_for_uid(uid) is not None,
     )
     return BilibiliMonitorService(service, auth_invalid, push_delivery.send)

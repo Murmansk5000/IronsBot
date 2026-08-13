@@ -35,8 +35,8 @@ from ironsbot.integrations.onebot.replies import (
     finish_message_sequence,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
-from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
+from ironsbot.services.team.resource_subscriptions import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
@@ -126,7 +126,7 @@ async def handle_team_resource_manage(
         await finish_event_reply(
             matcher,
             event,
-            "只有群主、管理员或超级管理员可以修改本群战队订阅。",
+            "只有群主、管理员或超级管理员可以修改战队订阅。",
         )
         return
 

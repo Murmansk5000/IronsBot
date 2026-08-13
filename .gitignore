@@ -8,6 +8,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 .codex/
+ironsbot/_generated/
 
 # C extensions
 *.so

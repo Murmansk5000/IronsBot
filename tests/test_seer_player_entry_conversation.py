@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -17,7 +18,6 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
-from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -28,7 +28,7 @@ from ironsbot.services.seer.player_id_resolver import (
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_service import PendingPlayerQuery
-from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.onebot_events import group_message_event
 

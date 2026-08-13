@@ -5,12 +5,14 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.autocard import AutocardService
+    from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
     from ironsbot.services.seer.battle_effect import BattleEffectQueryService
     from ironsbot.services.seer.countermark_stat_rank import (
         CountermarkStatRankService,
     )
     from ironsbot.services.seer.data_queries import SeerDataQueryService
     from ironsbot.services.seer.equipment import EquipmentQueryService
+    from ironsbot.services.seer.external_references import SeerInfoReferences
     from ironsbot.services.seer.mintmark import MintmarkQueryService
     from ironsbot.services.seer.new_content import (
         NewContentCategory,
@@ -29,11 +31,14 @@ if TYPE_CHECKING:
 
 
 class NewContentMenuRenderer(Protocol):
-    async def __call__(
+    async def __call__(  # noqa: PLR0913
         self,
         snapshot: NewContentSnapshot,
         display_categories: tuple[NewContentCategory, ...],
         focused_category: NewContentCategory | None,
+        menu_title: str,
+        expanded_categories: frozenset[NewContentCategory],
+        auto_expand_max_items: int,
     ) -> bytes: ...
 
 
@@ -42,6 +47,7 @@ class SeerQueryResources:
     data_queries: SeerDataQueryService
     countermark_rank: CountermarkStatRankService
     autocard: AutocardService
+    autocard_sanctuary: AutocardSanctuaryService
     team_query: SeerTeamQueryService
     equipment: EquipmentQueryService
     type_query: TypeQueryService
@@ -54,3 +60,4 @@ class SeerQueryResources:
     rank_queries: RankQueryService
     rank_admin: RankAdminService
     new_content_menu: NewContentMenuRenderer
+    external_references: SeerInfoReferences

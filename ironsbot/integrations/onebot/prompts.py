@@ -21,6 +21,12 @@ from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.integrations.onebot.matchers import (
     begin_queued_conversation,
     get_prompt_session_manager,
@@ -30,12 +36,6 @@ from ironsbot.integrations.onebot.matchers import (
     enter_prompt_loop as _enter_prompt_loop,
 )
 from ironsbot.runtime.prompt_errors import PromptSessionManagerMissingError
-from ironsbot.runtime.semantic_requests import (
-    ActionDefinition,
-    SemanticRequest,
-    SemanticRequestSource,
-    SemanticTarget,
-)
 
 T = TypeVar("T")
 
@@ -56,6 +56,7 @@ class Prompt(Generic[T]):
     items: list[PromptItem[T]]
     at_user_id: int | None = None
     action: ActionDefinition | None = None
+    page_id: str = "root"
 
     def __post_init__(self) -> None:
         if not self.title.endswith("\n"):
@@ -197,6 +198,7 @@ async def enter_prompt(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             queue_reply_check=queue_reply_check,
             queue_group_reply_check=input_check,
+            queue_page_id=prompt.page_id,
             queue_semantic_request_resolver=_prompt_semantic_request,
         )
         try:
@@ -217,6 +219,7 @@ async def enter_prompt(  # noqa: PLR0913
         queue_namespace="selection_prompt",
         queue_reply_check=queue_reply_check,
         queue_group_reply_check=input_check,
+        queue_page_id=prompt.page_id,
         queue_semantic_request_resolver=_prompt_semantic_request,
     )
 

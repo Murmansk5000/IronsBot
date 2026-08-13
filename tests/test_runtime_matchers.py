@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves it
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
@@ -16,6 +17,12 @@ from nonebot.utils import is_coroutine_callable
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.integrations.onebot.matchers import (
     QUEUED_CONVERSATION_TICKET_STATE_KEY,
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
@@ -33,12 +40,6 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     is_current_group_menu_reply,
 )
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.semantic_requests import (
-    ActionDefinition,
-    SemanticRequest,
-    SemanticRequestSource,
-    SemanticTarget,
-)
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
@@ -264,6 +265,63 @@ def test_group_menu_reply_accepts_only_the_current_bot_menu() -> None:
         )
     )
     assert not context.matches(private_message_event("a", user_id=3))
+
+
+def test_group_menu_reply_normalizes_textual_bot_mention() -> None:
+    manager = PromptSessionManager()
+    owner = group_message_event("菜单", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={},
+        reply_check=lambda _event: False,
+        group_reply_check=lambda event: event.get_plaintext().strip() == "2",
+        handlers=[],
+        menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
+    )
+    event = group_message_event(
+        "2",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        message=Message(
+            [MessageSegment.reply(99), MessageSegment.text("@babyQ  2")]
+        ),
+        raw_message="[reply:id=99]@babyQ  2",
+        reply_sender_user_id=1,
+        reply_message_id=99,
+    )
+
+    assert context.matches(event)
+    assert context.is_shared_group_reply(event)
+    assert event.get_plaintext() == "2"
+
+
+def test_group_menu_reply_accepts_current_napcat_reply_segment() -> None:
+    anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
+    event = group_message_event(
+        "2",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        message=Message(
+            [
+                MessageSegment.reply(99),
+                MessageSegment.at(1),
+                MessageSegment.text(" 2"),
+            ]
+        ),
+        original_message=Message(
+            [MessageSegment.at(1), MessageSegment.text(" 2")]
+        ),
+        raw_message="[reply:id=99][at:qq=1] 2",
+    )
+    event.reply = None
+
+    assert is_current_group_menu_reply(event, anchor)
 
 
 def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:

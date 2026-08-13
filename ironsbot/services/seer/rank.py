@@ -7,6 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.seer import rank_summary
+from ironsbot.services.seer.rank_cache_service import RankCacheQueryMixin
 from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_KEY,
     AUTOCARD_RANK_SUB_KEY,
@@ -16,10 +17,10 @@ from ironsbot.services.seer.rank_constants import (
 from ironsbot.services.seer.rank_exclusion_lookups import (
     fetch_visible_rank_range,
     fetch_visible_score_segment,
-    finalize_visible_lookup,
 )
 from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
+from ironsbot.services.seer.rank_live_lookup import execute_rank_lookup
 from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
 from ironsbot.services.seer.rank_pagination import (
     rank_page_size as configured_page_size,
@@ -27,16 +28,12 @@ from ironsbot.services.seer.rank_pagination import (
 from ironsbot.services.seer.rank_pagination import (
     rank_page_start as configured_page_start,
 )
-from ironsbot.services.seer.rank_pagination import (
-    rank_window_page_starts,
-)
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 from ironsbot.services.seer.rank_player_scheduler import (
     PlayerRankLookupJob,
     current_player_rank_page_scheduler,
     run_player_rank_lookup_jobs,
 )
-from ironsbot.services.seer.rank_position_cache import find_rank_by_cached_position
 from ironsbot.services.seer.rank_range import (
     fetch_rank_range,
     fetch_rank_range_result,
@@ -46,10 +43,6 @@ from ironsbot.services.seer.rank_score_cache import (
     fetch_rank_score_segment_from_cached_candidates,
 )
 from ironsbot.services.seer.rank_score_helpers import score_miss_proof_from_page
-from ironsbot.services.seer.rank_score_lookup import (
-    find_rank_by_linear_scan,
-    find_rank_by_score,
-)
 from ironsbot.services.seer.rank_score_search import (
     score_search_probe_limit,
     score_search_tie_page_limit,
@@ -59,6 +52,10 @@ from ironsbot.services.seer.rank_score_segments import (
 )
 from ironsbot.services.seer.rank_score_segments import (
     fetch_rank_score_segment as fetch_rank_score_segment_online,
+)
+from ironsbot.services.seer.rank_work_cache import (
+    cached_rank_miss,
+    record_rank_page_work,
 )
 
 if TYPE_CHECKING:
@@ -76,12 +73,13 @@ if TYPE_CHECKING:
     )
     from ironsbot.services.seer.rank_page_cache_models import (
         CachedRankLookup,
+        CachedRankMiss,
         CachedRankPage,
         CachedRankPageSummary,
     )
 
-_CACHED_LOOKUP_WINDOW_PAGES = 2
 _BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
+_LAST_CONFIRMED_RANK_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 class RankPageCache(Protocol):
@@ -113,6 +111,25 @@ class RankPageCache(Protocol):
         allow_stale: bool | None = None,
     ) -> CachedRankLookup | None: ...
 
+    def last_seen_item(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        max_age_seconds: float,
+    ) -> CachedRankLookup | None: ...
+
+    def miss(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        minimum_limit: int,
+        allow_stale: bool | None = None,
+    ) -> CachedRankMiss | None: ...
+
     def summary(self, *, key: int, sub_key: int) -> list[CachedRankPageSummary]: ...
 
     def score_indexes(
@@ -136,9 +153,19 @@ class RankPageCache(Protocol):
         fetched_at: float | None = None,
     ) -> None: ...
 
+    def save_miss(
+        self,
+        *,
+        key: int,
+        sub_key: int,
+        user_id: int,
+        searched_limit: int,
+        fetched_at: float | None = None,
+    ) -> None: ...
+
 
 @dataclass(frozen=True, slots=True)
-class RankService:
+class RankService(RankCacheQueryMixin):
     config: RankQueryConfig
     cache: RankPageCache
     peak_season_start: Callable[[], datetime | None]
@@ -201,6 +228,12 @@ class RankService:
                 end=end,
             )
             if cached is not None:
+                record_rank_page_work(
+                    self.exclusion_policy,
+                    key=key,
+                    sub_key=sub_key,
+                    cached=True,
+                )
                 return RankPageResult(
                     list(cached.items),
                     cached.fetched_at,
@@ -232,6 +265,12 @@ class RankService:
             end=end,
             items=items,
             fetched_at=fetched_at,
+        )
+        record_rank_page_work(
+            self.exclusion_policy,
+            key=key,
+            sub_key=sub_key,
+            cached=False,
         )
         return RankPageResult(items, fetched_at, from_cache=False)
 
@@ -395,14 +434,12 @@ class RankService:
             sub_key=sub_key,
         )
         score_target = (
-            target_score
-            if target_score is not None and target_score > 0
-            else None
+            target_score if target_score is not None and target_score > 0 else None
         )
         limit = (
-            self._score_search_limit(search_limit)
+            self._score_search_limit(rank_key, search_limit)
             if score_target is not None
-            else self._online_search_limit(search_limit)
+            else self._online_search_limit(rank_key, search_limit)
         )
         page_size = self.page_size()
         result = RankLookupResult(
@@ -415,65 +452,41 @@ class RankService:
             result.excluded = True
             result.score = score_target
             return result
-        cached = await find_rank_by_cached_position(
-            game,
-            user_id=user_id,
+        fallback_item = self.cache.last_seen_item(
             key=key,
             sub_key=sub_key,
-            page_size=page_size,
-            result=result,
-            get_cached_rank_item=partial(self.cache.item, allow_stale=True),
-            rank_window_page_starts=partial(
-                rank_window_page_starts,
-                window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
-            ),
-            fetch_rank_page=self._fetch_page_result_for_position_lookup,
-            anchor_only=anchor_only,
+            user_id=user_id,
+            max_age_seconds=_LAST_CONFIRMED_RANK_MAX_AGE_SECONDS,
         )
-        if cached is not None or limit <= 0 or anchor_only:
-            return await finalize_visible_lookup(
-                self,
-                game,
-                rank_key=rank_key,
-                key=key,
-                sub_key=sub_key,
-                result=cached or result,
+        if (
+            score_target is None
+            and (
+                cached_miss := cached_rank_miss(
+                    self.cache,
+                    key=key,
+                    sub_key=sub_key,
+                    user_id=user_id,
+                    minimum_limit=limit,
+                )
             )
-        if score_target is not None:
-            result.cost.used_score_search = True
-            result = await find_rank_by_score(
-                game,
-                user_id=user_id,
-                key=key,
-                sub_key=sub_key,
-                target_score=score_target,
-                limit=limit,
-                page_size=page_size,
-                result=result,
-                score_search_probe_limit=self._probe_limit,
-                score_search_tie_page_limit=self._tie_page_limit,
-                fetch_rank_item=self.fetch_item,
-                fetch_rank_page=self.fetch_page,
-            )
-        else:
-            result.cost.used_full_scan = True
-            result = await find_rank_by_linear_scan(
-                game,
-                user_id=user_id,
-                key=key,
-                sub_key=sub_key,
-                limit=limit,
-                page_size=page_size,
-                result=result,
-                fetch_rank_page=self.fetch_page,
-            )
-        return await finalize_visible_lookup(
+            is not None
+        ):
+            result.searched_limit = cached_miss.searched_limit
+            result.cost.cache_page_hits += 1
+            return result
+        return await execute_rank_lookup(
             self,
             game,
+            user_id=user_id,
             rank_key=rank_key,
             key=key,
             sub_key=sub_key,
+            score_target=score_target,
+            limit=limit,
+            page_size=page_size,
             result=result,
+            anchor_only=anchor_only,
+            fallback_item=fallback_item,
         )
 
     async def find_pet_kind_rank(
@@ -527,7 +540,7 @@ class RankService:
                 search_limit=search_limit,
             )
         dependencies = RankScoreSegmentDependencies(
-            score_search_limit=self._score_search_limit,
+            score_search_limit=partial(self._score_search_limit, rank_key),
             rank_page_size=self.page_size,
             rank_page_start=self.page_start,
             cached_score_candidate_page_starts=partial(
@@ -645,10 +658,7 @@ class RankService:
         self,
         jobs: Sequence[PlayerRankLookupJob],
     ) -> dict[str, RankLookupResult]:
-        prioritized_jobs = tuple(
-            self._with_player_lookup_priority(job)
-            for job in jobs
-        )
+        prioritized_jobs = tuple(self._with_player_lookup_priority(job) for job in jobs)
         return await run_player_rank_lookup_jobs(
             prioritized_jobs,
             self.config.player_lookup,
@@ -681,28 +691,47 @@ class RankService:
         if cached is not None:
             return 0, cached.rank_index, "缓存名次"
         if job.target_score is not None and job.target_score > 0:
+            rank_key = self.exclusion_policy.rank_key_for_protocol(
+                key=job.key,
+                sub_key=job.sub_key,
+            )
             indexes = self.cache.score_indexes(
                 key=job.key,
                 sub_key=job.sub_key,
                 score=job.target_score,
                 start_index=0,
-                end_index=self._score_search_limit(),
+                end_index=self._score_search_limit(rank_key),
             )
             if indexes:
                 return 1, min(indexes), "缓存同分位置"
             return 2, 2**31 - 1, "已知分数"
         return 3, 2**31 - 1, "无分数线性查找"
 
-    def _online_search_limit(self, search_limit: int | None = None) -> int:
-        requested = (
-            max(0, self.config.limit)
-            if search_limit is None
-            else max(0, search_limit)
+    def _online_search_limit(
+        self,
+        rank_key: str | None,
+        search_limit: int | None = None,
+    ) -> int:
+        configured = max(
+            0,
+            self.config.lookup_limits.get(rank_key, self.config.online_limit)
+            if rank_key is not None
+            else self.config.online_limit,
         )
-        return min(requested, max(0, self.config.online_limit))
+        requested = configured if search_limit is None else max(0, search_limit)
+        return min(requested, configured)
 
-    def _score_search_limit(self, search_limit: int | None = None) -> int:
-        configured = max(0, self.config.limit)
+    def _score_search_limit(
+        self,
+        rank_key: str | None,
+        search_limit: int | None = None,
+    ) -> int:
+        configured = max(
+            0,
+            self.config.lookup_limits.get(rank_key, self.config.limit)
+            if rank_key is not None
+            else self.config.limit,
+        )
         requested = configured if search_limit is None else max(0, search_limit)
         return min(requested, configured)
 

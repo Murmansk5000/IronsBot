@@ -348,6 +348,8 @@ def test_contributions_define_the_lifecycle_order() -> None:
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
         "render_crash_report",
         "bilibili_check",
+        "ai_api_startup_check",
+        "clock_startup_check",
         "startup_notice",
         "headless_seer_check",
     ]

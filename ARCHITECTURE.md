@@ -689,14 +689,17 @@ The current Phase 4 transition has the snapshot/presenter direction for
 published pet info, type matchup, peak-pool, peak-vote, peak-pet-rank, and the
 private player-lineup image. The new-content menu follows the same split: its
 Seer-data adapter prepares details and images, while the renderer consumes an
-immutable menu document. However, those adapters currently calculate their
-final-cache key only after asset materialization. They are **not** evidence for
-the L3 early-hit target above and new renderers must not copy that order. The
-private lineup keeps its own presentation module, but its adapter alone owns
-asset loading, final-cache access, and the HTML render port. Rank and any later
-renderer paths remain **transition** work. They may receive narrow correctness
-fixes, but new rendering features must start from the target pipeline above
-instead of copying their older data-loading patterns.
+immutable menu document. Published pet info, type matchup, peak-pool,
+peak-vote, peak-pet-rank and new-content now calculate their request key before
+asset materialization, and reject a release lacking an asset-manifest revision.
+Those paths, plus private lineup via `PlayerLineupRenderPort`, calculate their
+request key before data/asset preparation. The private lineup keeps its own
+presentation module, but its adapter alone owns asset loading, final-cache
+access, and the HTML render port. The remaining Phase 4 gate is complete,
+scope-aware SeerAPI asset-manifest validation, not another runtime cache order.
+Rank and any later renderer paths remain **transition** work. They may receive
+narrow correctness fixes, but new rendering features must start from the target
+pipeline above instead of copying their older data-loading patterns.
 
 Future data work follows these rules:
 
@@ -1369,7 +1372,9 @@ reference for users:
 - **State and subscriptions:** QQ user/group state is consolidated in
   `data/state/qq_state.sqlite`; runtime task state is in
   `data/state/runtime_state.sqlite`. `ironsbot.state_migration` is the
-  one-time tool that creates and validates these stores. Bindings, query
+  one-time CLI entry point; `ironsbot.state_migration_cli` owns argument
+  parsing and process output while the migration service owns state copying
+  and validation. Bindings, query
   quotas, push preferences, display limits, and subscriptions stay logically
   separate tables even when they share a file.
 - **Large content and caches:** Seer data, aliases, player samples, rank facts,

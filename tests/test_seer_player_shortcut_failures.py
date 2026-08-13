@@ -6,9 +6,11 @@ import pytest
 
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
+)
+from ironsbot.services.seer.player_shortcut_queries import (
     _rank_summary_timeout_seconds,
     fetch_player_shortcut_reply,
 )
@@ -114,7 +116,7 @@ async def test_collection_returns_partial_result_with_exact_timeout_stage(
         )
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_shortcuts.fetch_unity_part_one",
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",
         fetch_unity_part_one,
     )
     reply = await fetch_player_shortcut_reply(
@@ -152,7 +154,7 @@ async def test_successful_collection_shortcut_adds_player_to_local_sample(
         )
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_shortcuts.fetch_unity_part_one",
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",
         fetch_unity_part_one,
     )
     local_rank = _RecordingLocalRank()
@@ -194,7 +196,7 @@ async def test_collection_menu_snapshot_reuses_confirmed_nick_and_more_info(
         return UnityPartOneInfo(achievement_num=372, pet_kind_num=1326, skin_num=79)
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_shortcuts.fetch_unity_part_one",
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",
         fetch_unity_part_one,
     )
     snapshot = PlayerBaseSnapshot(
@@ -243,7 +245,7 @@ async def test_direct_collection_inlines_nickname_timeout(
         return UnityPartOneInfo(achievement_num=372, pet_kind_num=1326, skin_num=79)
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_shortcuts.fetch_unity_part_one",
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",
         fetch_unity_part_one,
     )
     reply = await fetch_player_shortcut_reply(

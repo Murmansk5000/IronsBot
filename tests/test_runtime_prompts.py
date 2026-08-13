@@ -7,6 +7,7 @@ import pytest
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.core.semantic_requests import ActionDefinition, SemanticTarget
 from ironsbot.integrations.onebot import prompts
 from ironsbot.integrations.onebot.prompts import (
     Prompt,
@@ -14,7 +15,6 @@ from ironsbot.integrations.onebot.prompts import (
     _prompt_semantic_request,
 )
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.semantic_requests import ActionDefinition, SemanticTarget
 from tests.helpers.onebot_events import group_message_event
 
 

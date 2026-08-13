@@ -18,6 +18,11 @@ from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
     PlayerBaseSnapshot,
 )
+from ironsbot.services.seer.query_work import (
+    record_cached_query_work,
+    record_failed_query_work,
+    record_successful_query_work,
+)
 from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
 from ironsbot.services.seer.sequ_extra import UnityPeakInfo
 
@@ -63,7 +68,9 @@ async def fetch_pending_player_query(
             source="米米号查询",
             conversation=conversation,
         ):
-            return await game.get_user_info(player_id)
+            result = await game.get_user_info(player_id)
+        record_successful_query_work("profile")
+        return result
 
     user_info = await asyncio.wait_for(
         fetch_user_info(),
@@ -73,6 +80,7 @@ async def fetch_pending_player_query(
 
     async def fetch_more_info() -> Any:
         if cached_reg_time is not None:
+            record_cached_query_work("profile_extra")
             return _CachedMoreInfo(
                 user_id=player_id,
                 nick=str(user_info.nick),
@@ -85,6 +93,7 @@ async def fetch_pending_player_query(
             conversation=conversation,
         ):
             result = await game.get_more_user_info(player_id)
+        record_successful_query_work("profile_extra")
         profile_cache.upsert_registration_time(
             player_id=player_id,
             nick=str(user_info.nick),
@@ -101,7 +110,7 @@ async def fetch_pending_player_query(
             source="米米号查询",
             conversation=conversation,
         ):
-            return await optional_player_extra(
+            result = await optional_player_extra(
                 label="在线状态",
                 enabled=True,
                 awaitable_factory=lambda: game.get_user_online_info(player_id),
@@ -109,6 +118,11 @@ async def fetch_pending_player_query(
                 extra_errors=extra_errors,
                 on_error=_log_player_extra_error,
             )
+        if getattr(result, "unavailable", False):
+            record_failed_query_work("online_status")
+        else:
+            record_successful_query_work("online_status")
+        return result
 
     async def fetch_team_name() -> str:
         if getattr(user_info, "team_id", 0) <= 0:
@@ -124,10 +138,12 @@ async def fetch_pending_player_query(
                     game.get_team_info(user_info.team_id),
                     timeout=min(5.0, config.team.timeout_seconds),
                 )
+            record_successful_query_work("team_info")
             return str(team_info.name)
         except Exception:
             logger.exception("米米号基础字段获取失败：战队资料")
             extra_errors.append("战队资料暂未获取")
+            record_failed_query_work("team_info")
             return "暂未获取"
 
     more_info, online_info, team_name = await asyncio.wait_for(

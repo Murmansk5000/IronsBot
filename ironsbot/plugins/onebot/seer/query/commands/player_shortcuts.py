@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.adapters.onebot.v11 import (
     Message,
@@ -14,21 +15,20 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
+from ironsbot.core.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+)
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import member_target_command
-from ironsbot.runtime.semantic_requests import (
-    SemanticRequest,
-    SemanticRequestSource,
-)
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutTargetCommand,
     execute_player_shortcut,

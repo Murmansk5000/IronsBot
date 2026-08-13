@@ -46,6 +46,7 @@ from ironsbot.integrations.storage.team_resources import (
 )
 from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
+from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
 from ironsbot.services.seer.data_queries import SeerDataQueryService
@@ -62,15 +63,13 @@ from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
+from ironsbot.services.seer.player_detail_service import PlayerDetailService
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestProtectionService,
 )
-from ironsbot.services.seer.player_service import (
-    PlayerDetailService,
-    PlayerService,
-)
+from ironsbot.services.seer.player_service import PlayerService
 from ironsbot.services.seer.rank import RankService
 from ironsbot.services.seer.rank_admin import RankAdminPolicy, RankAdminService
 from ironsbot.services.seer.rank_display import RankDisplayService
@@ -141,6 +140,16 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         return player_accounts.resolve_player_id(
             reference,
             conversation=conversation,
+        )
+
+    def resolve_privileged_player_reference(
+        reference: str,
+        conversation: ConversationRef,
+    ) -> int | None:
+        return player_accounts.resolve_player_id(
+            reference,
+            conversation=conversation,
+            include_private=True,
         )
 
     lucky_skin_window = LuckySkinWindowService(
@@ -254,6 +263,8 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
     player_id_resolver = PlayerIdResolver(
         resolve_configured_player_reference,
         player.default_player_id,
+        privileged_reference_lookup=resolve_privileged_player_reference,
+        is_privileged_actor=features.is_actor_superuser,
     )
     player_detail_extensions = PlayerDetailExtensionRegistry()
     rank_queries = RankQueryService(
@@ -284,6 +295,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         player_requests,
     )
     autocard = AutocardService(seer_database)
+    autocard_sanctuary = AutocardSanctuaryService(seer_database)
     return SeerComponents(
         seer=SeerQueryResources(
             SeerDataQueryService(
@@ -294,6 +306,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             ),
             CountermarkStatRankService(seer_database),
             autocard,
+            autocard_sanctuary,
             SeerTeamQueryService(
                 settings.seer.team,
                 headless,

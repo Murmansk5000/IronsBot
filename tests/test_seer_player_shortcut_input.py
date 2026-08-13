@@ -16,7 +16,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccountRegistry,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutTargetCommand,
     parse_player_shortcut_command,

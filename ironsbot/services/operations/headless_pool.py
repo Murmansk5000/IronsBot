@@ -11,11 +11,14 @@ from enum import IntEnum
 from time import monotonic
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
 
+from ironsbot.core.request_coordination import (
+    RequestExecutionFeedback,
+    send_request_response,
+)
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
-from ironsbot.services.operations.request_feedback import send_request_feedback
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -89,6 +92,7 @@ class HeadlessWorkflowState:
     label: str
     actor: ActorRef | None
     priority_state: HeadlessRequestPriorityState
+    feedback: RequestExecutionFeedback | None = None
     queued_at: float = field(default_factory=monotonic)
     first_packet_at: float | None = None
     queued_packet_count: int = 0
@@ -242,7 +246,10 @@ class HeadlessRequestDispatcher:
         self._sequence += 1
         self._pending.append(request)
         self.dispatch()
-        await send_request_feedback(queued=request.active_worker is None)
+        await send_request_response(
+            queued=request.active_worker is None,
+            feedback=None if workflow is None else workflow.feedback,
+        )
         try:
             outcome = await asyncio.shield(request.future)
         except asyncio.CancelledError:
@@ -376,7 +383,7 @@ class HeadlessRequestDispatcher:
             result = await request.operation(game)
         except asyncio.CancelledError:
             raise
-        except (DisconnectedError, NotLoggedInError) as error:
+        except (DisconnectedError, NotLoggedInError, asyncio.TimeoutError) as error:
             request.excluded_workers.add(worker.name)
             retry = (
                 request.attempts < MAX_PACKET_ATTEMPTS

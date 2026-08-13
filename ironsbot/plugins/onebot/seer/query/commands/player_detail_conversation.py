@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.exception import FinishedException
@@ -11,6 +12,10 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
 from ironsbot.core.feature_policy import FeatureService  # noqa: TC001
+from ironsbot.core.semantic_requests import (
+    SemanticRequest,
+    SemanticRequestSource,
+)
 from ironsbot.integrations.onebot.conversations import (
     begin_event_reply_conversation,
     command_reply_check,
@@ -26,11 +31,6 @@ from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.semantic_requests import (
-    SemanticRequest,
-    SemanticRequestSource,
-)
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
@@ -48,7 +48,7 @@ from ironsbot.services.seer.player_query import (
     resolve_player_detail_reply,
 )
 from ironsbot.services.seer.player_service import PlayerService  # noqa: TC001
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     execute_player_shortcut,
     player_request_admission_message,
@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
 
 _SHORTCUT_KINDS = {
