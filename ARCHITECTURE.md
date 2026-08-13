@@ -692,14 +692,14 @@ Seer-data adapter prepares details and images, while the renderer consumes an
 immutable menu document. Published pet info, type matchup, peak-pool,
 peak-vote, peak-pet-rank and new-content now calculate their request key before
 asset materialization, and reject a release lacking an asset-manifest revision.
-They are evidence only for those six public paths. The private lineup still
-calculates its final key after data and asset preparation, so it is **not**
-evidence for the L3 early-hit target. The private lineup keeps its own
+Those paths, plus private lineup via `PlayerLineupRenderPort`, calculate their
+request key before data/asset preparation. The private lineup keeps its own
 presentation module, but its adapter alone owns asset loading, final-cache
-access, and the HTML render port. Rank and any later renderer paths remain
-**transition** work. They may receive narrow correctness fixes, but new
-rendering features must start from the target pipeline above instead of copying
-their older data-loading patterns.
+access, and the HTML render port. The remaining Phase 4 gate is complete,
+scope-aware SeerAPI asset-manifest validation, not another runtime cache order.
+Rank and any later renderer paths remain **transition** work. They may receive
+narrow correctness fixes, but new rendering features must start from the target
+pipeline above instead of copying their older data-loading patterns.
 
 Future data work follows these rules:
 
