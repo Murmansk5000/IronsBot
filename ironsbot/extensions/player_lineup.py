@@ -3,13 +3,38 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.extensions.contracts import PlayerLineupImageAssets
+from ironsbot.extensions.contracts import (
+    PlayerLineupImageAssets,
+    PlayerLineupPacketFetcher,
+    PlayerLineupQueryResult,
+)
 from ironsbot.integrations.seer_data.pet_image_assets import load_pet_image_assets
+from ironsbot.services.operations.headless_errors import (
+    DisconnectedError,
+    NotLoggedInError,
+    SocketRecvError,
+)
+from ironsbot.services.seer.errors import format_player_query_error
 from ironsbot.services.seer.player_detail_extensions import PlayerDetailExtensionAction
+from ironsbot.services.seer.player_formatting_common import (
+    format_player_data_time,
+    format_player_identity,
+)
+from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaExceededError
+from ironsbot.services.seer.player_request_protection import (
+    PlayerRequestBusyError,
+    PlayerRequestPausedError,
+    PlayerRequestReconnectError,
+    player_request_protection_message,
+)
 from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -18,6 +43,7 @@ if TYPE_CHECKING:
     from ironsbot.extensions.contracts import (
         PlayerDetailActionRegistration,
         PlayerLineupEntryResolver,
+        PlayerLineupQueryPort,
         PlayerLineupRenderPort,
     )
     from ironsbot.services.operations.headless import HeadlessService
@@ -90,15 +116,146 @@ class PlayerLineupRenderServices:
 
 
 @dataclass(frozen=True, slots=True)
+class _HeadlessLineupPacketClient:
+    """Adapt the public headless client to the packet capability extensions need."""
+
+    game: Any
+
+    async def request(
+        self,
+        command_id: int,
+        player_id: int,
+        *,
+        timeout_seconds: float,
+    ) -> bytes:
+        _head, payload = await self.game.send_and_wait(
+            command_id,
+            player_id,
+            timeout=timeout_seconds,
+        )
+        return bytes(payload)
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerLineupQueryServices:
+    """Public request, quota, and error boundary for private lineup packets."""
+
+    headless: HeadlessService
+    error_message: ErrorMessageLookup
+    quotas: PlayerQueryQuotaService | None = None
+    requests: PlayerRequestProtectionService | None = None
+
+    async def query(  # noqa: C901, PLR0911 - each external failure has safe wording
+        self,
+        *,
+        player_id: int,
+        actor: Any,
+        conversation: Any,
+        timeout_seconds: float,
+        fetch_packet: PlayerLineupPacketFetcher,
+    ) -> PlayerLineupQueryResult:
+        from ironsbot.services.seer.ids import (
+            PLAYER_ID_ERROR_MESSAGE,
+            is_valid_player_id,
+        )
+
+        if not is_valid_player_id(player_id):
+            return PlayerLineupQueryResult(error=PLAYER_ID_ERROR_MESSAGE)
+
+        def quota_message() -> str:
+            if self.quotas is None or actor is None:
+                return ""
+            decision = self.quotas.check(
+                actor=actor,
+                player_id=player_id,
+                action_key="lineup",
+            )
+            return "" if decision.allowed else decision.message
+
+        async def fetch() -> PlayerLineupQueryResult:
+            if message := quota_message():
+                raise PlayerQueryQuotaExceededError(message)
+            game = self.headless.get_game()
+            with game.operations.track(
+                "阵容数据查询",
+                f"米米号 {player_id}",
+                source="私有阵容插件",
+                conversation=conversation,
+            ):
+                user_info = await game.get_user_info(player_id)
+                payload = await asyncio.wait_for(
+                    fetch_packet(
+                        _HeadlessLineupPacketClient(game),
+                        player_id,
+                        timeout_seconds,
+                    ),
+                    timeout=timeout_seconds,
+                )
+            await self.headless.mark_available(
+                source="私有阵容插件",
+                user_id=int(game.user_id),
+            )
+            return PlayerLineupQueryResult(
+                leading_text=(
+                    "🐾【公开阵容】\n"
+                    f"{format_player_data_time()}\n"
+                    f"{format_player_identity(player_id, str(user_info.nick))}\n"
+                ),
+                payload=payload,
+            )
+
+        try:
+            result = (
+                await fetch()
+                if self.requests is None
+                else await self.requests.run(fetch, actor=actor, label="阵容查询")
+            )
+        except PlayerQueryQuotaExceededError as error:
+            return PlayerLineupQueryResult(error=error.message)
+        except (
+            PlayerRequestBusyError,
+            PlayerRequestPausedError,
+            PlayerRequestReconnectError,
+        ) as error:
+            return PlayerLineupQueryResult(
+                error=player_request_protection_message(error)
+            )
+        except TimeoutError:
+            return PlayerLineupQueryResult(
+                error=f"❌ 阵容查询超时：米米号 {player_id}。请稍后再试。"
+            )
+        except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
+            return PlayerLineupQueryResult(
+                error=format_player_query_error(player_id, error, self.error_message)
+            )
+        except Exception:
+            logger.exception("private lineup query failed: player_id=%s", player_id)
+            return PlayerLineupQueryResult(error="❌ 阵容查询失败，请稍后再试。")
+
+        if self.quotas is not None and actor is not None:
+            decision = self.quotas.consume(
+                actor=actor,
+                player_id=player_id,
+                action_key="lineup",
+            )
+            if not decision.allowed:
+                logger.warning(
+                    "player lineup quota changed before successful record: "
+                    "actor=%s player=%s",
+                    actor,
+                    player_id,
+                )
+        return result
+
+
+@dataclass(frozen=True, slots=True)
 class PlayerLineupExtensionServices:
     """Dependencies intentionally available to the player-lineup extension."""
 
     headless: HeadlessService
     lineup_entries: PlayerLineupEntryResolver
     lineup_render: PlayerLineupRenderPort
-    error_message: ErrorMessageLookup
-    player_quotas: PlayerQueryQuotaService
-    player_requests: PlayerRequestProtectionService
+    lineup_query: PlayerLineupQueryPort
     feature_visible: Callable[[object, str], bool]
     _player_details: PlayerDetailExtensionRegistry
     player_id_resolver: PlayerIdResolver

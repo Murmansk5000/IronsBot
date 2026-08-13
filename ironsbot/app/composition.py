@@ -28,6 +28,7 @@ from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.extensions.player_lineup import (
     PlayerLineupExtensionServices,
+    PlayerLineupQueryServices,
     PlayerLineupRenderServices,
 )
 from ironsbot.integrations.db_registry import DatabaseManager
@@ -189,9 +190,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 cache=render_cache,
                 render=render_coordinator.render,
             ),
-            error_message=seer_database.error_message,
-            player_quotas=player_query_quotas,
-            player_requests=player_requests,
+            lineup_query=PlayerLineupQueryServices(
+                headless=headless,
+                error_message=seer_database.error_message,
+                quotas=player_query_quotas,
+                requests=player_requests,
+            ),
             feature_visible=partial(event_is_feature_visible_in_help, features),
             _player_details=player_detail_extensions,
             player_id_resolver=player_id_resolver,

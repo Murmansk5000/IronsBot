@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -11,12 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-    from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
-    from ironsbot.services.seer.player_request_protection import (
-        PlayerRequestProtectionService,
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +113,51 @@ class PlayerLineupRenderPort(Protocol):
     ) -> bytes: ...
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerLineupQueryResult:
+    """Safe public result of one private lineup data request."""
+
+    leading_text: str = ""
+    payload: bytes | None = None
+    error: str = ""
+
+    @property
+    def succeeded(self) -> bool:
+        return self.payload is not None and not self.error
+
+
+class PlayerLineupPacketClient(Protocol):
+    """Minimal packet capability needed by a private lineup parser."""
+
+    async def request(
+        self,
+        command_id: int,
+        player_id: int,
+        *,
+        timeout_seconds: float,
+    ) -> bytes: ...
+
+
+PlayerLineupPacketFetcher = Callable[
+    [PlayerLineupPacketClient, int, float],
+    Awaitable[bytes],
+]
+
+
+class PlayerLineupQueryPort(Protocol):
+    """Run a private lineup packet request through public player safeguards."""
+
+    async def query(
+        self,
+        *,
+        player_id: int,
+        actor: Any,
+        conversation: Any,
+        timeout_seconds: float,
+        fetch_packet: PlayerLineupPacketFetcher,
+    ) -> PlayerLineupQueryResult: ...
+
+
 class PlayerLineupExtensionContext(Protocol):
     """Dependencies permitted to the optional player-lineup extension.
 
@@ -129,9 +170,7 @@ class PlayerLineupExtensionContext(Protocol):
     headless: HeadlessService
     lineup_entries: PlayerLineupEntryResolver
     lineup_render: PlayerLineupRenderPort
-    error_message: ErrorMessageLookup
-    player_quotas: PlayerQueryQuotaService
-    player_requests: PlayerRequestProtectionService
+    lineup_query: PlayerLineupQueryPort
     player_id_resolver: PlayerIdResolver
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]: ...
