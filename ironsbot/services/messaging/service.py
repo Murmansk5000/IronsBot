@@ -54,6 +54,24 @@ PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS = ("推送管理",)
 PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 
 
+class PushSubscriptionSubmenuProvider(Protocol):
+    """Optional extension point for a nested, configuration-backed push menu."""
+
+    def subscription_submenu(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool,
+    ) -> tuple[list[PushSubscriptionOption], str] | None: ...
+
+    def toggle_subscription(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+    ) -> str | None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class MessagingService:
     _config: MessageConfig
@@ -69,6 +87,7 @@ class MessagingService:
     _prepare_extra_push_options: (
         Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
+    _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -176,6 +195,9 @@ class MessagingService:
         conversation: ConversationRef,
         option: PushSubscriptionOption,
     ) -> str:
+        for provider in self._subscription_submenu_providers:
+            if message := provider.toggle_subscription(conversation, option):
+                return message
         if self._store.is_unsubscribed(conversation, option.key):
             self._store.restore(conversation, option.key)
             return f"已恢复订阅：{option.label}。"
@@ -185,6 +207,22 @@ class MessagingService:
             option.feature,
         )
         return f"已退订：{option.label}。"
+
+    def subscription_submenu(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool,
+    ) -> tuple[list[PushSubscriptionOption], str] | None:
+        for provider in self._subscription_submenu_providers:
+            if submenu := provider.subscription_submenu(
+                conversation,
+                option,
+                read_only=read_only,
+            ):
+                return submenu
+        return None
 
     def push_time_options(
         self,

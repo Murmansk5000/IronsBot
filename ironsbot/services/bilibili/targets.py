@@ -1,10 +1,9 @@
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ironsbot.core.bilibili import (
+    BiliAccountCategorySubscriptionConfig,
     BiliConfig,
     BiliPushMode,
-    BiliPushTargetConfig,
 )
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import (
@@ -18,124 +17,28 @@ from ironsbot.services.bilibili.accounts import (
 )
 from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
+    bili_category_submenu_key,
+    bili_category_subscription_key,
+    bili_media_subscription_key,
     bili_push_subscription_key,
     bili_push_subscription_label,
     normalize_push_mode_text,
     push_mode_label,
+)
+from ironsbot.services.messaging.subscription_options import (
+    build_push_subscription_menu,
 )
 from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
     PushSubscriptionRepository,
 )
 
-
-def _unique_ints(values: list[int]) -> list[int]:
-    return list(dict.fromkeys(item for item in values if item > 0))
-
+from .target_models import BiliConfiguredTargets, BiliPushTargets, BiliTargetRule
+from .target_rules import default_bili_target_rule
 
 ACCOUNT_NAMES_UNAVAILABLE = (
     "❌ 暂时无法获取当前会话订阅账号的 B站公开昵称，请稍后重试。"
 )
-
-
-@dataclass(frozen=True, slots=True)
-class BiliTargetRule:
-    aliases: frozenset[str]
-    uids: frozenset[int]
-    default_mode: BiliPushMode
-    target_mode: BiliPushMode | None
-    modes: dict[int, BiliPushMode]
-
-    def mode_for_uid(self, uid: int) -> BiliPushMode | None:
-        if uid not in self.uids:
-            return None
-        return self.modes.get(uid, self.target_mode or self.default_mode)
-
-    def configured_mode_for_uid(self, uid: int) -> BiliPushMode | None:
-        if uid not in self.uids:
-            return None
-        configured_mode = self.modes.get(uid)
-        return configured_mode if configured_mode is not None else self.target_mode
-
-
-@dataclass(frozen=True, slots=True)
-class BiliPushTargets:
-    full_group_conversations: list[ConversationRef]
-    link_group_conversations: list[ConversationRef]
-    full_private_conversations: list[ConversationRef]
-    link_private_conversations: list[ConversationRef]
-
-    @property
-    def has_targets(self) -> bool:
-        return any(
-            (
-                self.full_group_conversations,
-                self.link_group_conversations,
-                self.full_private_conversations,
-                self.link_private_conversations,
-            )
-        )
-
-
-def _target_aliases(
-    target_config: BiliPushTargetConfig,
-    config: BiliConfig,
-) -> frozenset[str]:
-    return frozenset(
-        [
-            *config.push.accounts,
-            *target_config.accounts,
-        ]
-    )
-
-
-def _resolve_modes(
-    modes: dict[str, BiliPushMode],
-    config: BiliConfig,
-) -> dict[int, BiliPushMode]:
-    return {config.accounts[alias].uid: mode for alias, mode in modes.items()}
-
-
-def build_bili_target_rule(
-    target_config: BiliPushTargetConfig,
-    config: BiliConfig,
-) -> BiliTargetRule:
-    aliases = _target_aliases(target_config, config)
-    return BiliTargetRule(
-        aliases=aliases,
-        uids=frozenset(config.accounts[alias].uid for alias in aliases),
-        default_mode=config.push.mode,
-        target_mode=target_config.mode,
-        modes={
-            **_resolve_modes(config.push.modes, config),
-            **_resolve_modes(target_config.modes, config),
-        },
-    )
-
-
-def _default_rule(config: BiliConfig) -> BiliTargetRule:
-    return build_bili_target_rule(BiliPushTargetConfig(), config)
-
-
-def merge_bili_target_rules(
-    old_rule: BiliTargetRule,
-    new_rule: BiliTargetRule,
-) -> BiliTargetRule:
-    return BiliTargetRule(
-        aliases=old_rule.aliases | new_rule.aliases,
-        uids=old_rule.uids | new_rule.uids,
-        default_mode=new_rule.default_mode,
-        target_mode=new_rule.target_mode,
-        modes={**old_rule.modes, **new_rule.modes},
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class BiliConfiguredTargets:
-    """Platform-resolved push-target rules consumed by Bili services."""
-
-    group_rules: Mapping[ConversationRef, BiliTargetRule]
-    private_rules: Mapping[ConversationRef, BiliTargetRule]
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +57,7 @@ class BiliTargetService:
         return dict(self.configured_targets.private_rules)
 
     def push_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        default_rule = _default_rule(self.config)
+        default_rule = default_bili_target_rule(self.config)
         configured = self.configured_group_rules()
         return {
             conversation: configured.get(conversation, default_rule)
@@ -162,7 +65,7 @@ class BiliTargetService:
         }
 
     def push_user_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        default_rule = _default_rule(self.config)
+        default_rule = default_bili_target_rule(self.config)
         configured = self.configured_user_rules()
         return {
             conversation: configured.get(conversation, default_rule)
@@ -173,13 +76,13 @@ class BiliTargetService:
         }
 
     def monitored_uids(self) -> list[int]:
-        uids = set(_default_rule(self.config).uids)
+        uids = set(default_bili_target_rule(self.config).uids)
         for rule in [
             *self.configured_group_rules().values(),
             *self.configured_user_rules().values(),
         ]:
             uids.update(rule.uids)
-        return _unique_ints(sorted(uids))
+        return [uid for uid in sorted(uids) if uid > 0]
 
     def query_uids(
         self,
@@ -210,7 +113,7 @@ class BiliTargetService:
 
     def _query_group_uids(self, conversation: ConversationRef) -> list[int]:
         rule = self.configured_group_rules().get(conversation)
-        return sorted((rule or _default_rule(self.config)).uids)
+        return sorted((rule or default_bili_target_rule(self.config)).uids)
 
     def _query_private_uids(self, actor: ActorRef) -> list[int]:
         rule = self.configured_user_rules().get(private_conversation_for_actor(actor))
@@ -292,15 +195,119 @@ class BiliTargetService:
         return [
             PushSubscriptionOption(
                 key=(key := bili_push_subscription_key(uid)),
-                label=bili_push_subscription_label(
-                    uid,
-                    self.account_names.name_for_uid(uid),
-                ),
+                label=self._subscription_label(uid),
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
+                submenu_key=bili_category_submenu_key(uid),
             )
             for uid in sorted(rule.uids)
         ]
+
+    def subscription_submenu(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool,
+    ) -> tuple[list[PushSubscriptionOption], str] | None:
+        if option.submenu_key is None:
+            return None
+        uid = _subscription_uid(option.submenu_key)
+        if uid is None or self.mode_for_uid(conversation, uid) is None:
+            return None
+        config = self.category_config_for_uid(uid)
+        title = (
+            f"📺【{config.label} 推送设置】"
+            if config is not None
+            else f"📺【{self._subscription_label(uid)} 推送设置】"
+        )
+        options = [
+            PushSubscriptionOption(
+                key=bili_push_subscription_key(uid),
+                label="全部动态",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_unsubscribed(
+                    conversation,
+                    bili_push_subscription_key(uid),
+                ),
+            ),
+            PushSubscriptionOption(
+                key=bili_media_subscription_key(uid, "text"),
+                label="动态正文",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_unsubscribed(
+                    conversation,
+                    bili_media_subscription_key(uid, "text"),
+                ),
+            ),
+            PushSubscriptionOption(
+                key=bili_media_subscription_key(uid, "image"),
+                label="动态图片",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_unsubscribed(
+                    conversation,
+                    bili_media_subscription_key(uid, "image"),
+                ),
+            ),
+            *[
+                PushSubscriptionOption(
+                    key=bili_category_subscription_key(uid, category),
+                    label=definition.label,
+                    feature="bili_push",
+                    unsubscribed=self._category_muted(conversation, uid, category),
+                )
+                for category, definition in (
+                    config.categories.items() if config is not None else ()
+                )
+            ],
+        ]
+        return options, build_push_subscription_menu(
+            title=title,
+            options=options,
+            read_only=read_only,
+        )
+
+    def toggle_subscription(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+    ) -> str | None:
+        parsed = _category_subscription(option.key)
+        if parsed is None:
+            return self._toggle_media_subscription(conversation, option)
+        uid, category = parsed
+        config = self.category_config_for_uid(uid)
+        if config is None or category not in config.categories:
+            return None
+        muted = not self._category_muted(conversation, uid, category)
+        self.preferences.set_category_muted(
+            conversation,
+            uid,
+            category,
+            muted=muted,
+        )
+        action = "退订" if muted else "恢复订阅"
+        return f"已{action}：{config.categories[category].label}。"
+
+    def _toggle_media_subscription(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+    ) -> str | None:
+        parsed = _media_subscription(option.key)
+        if parsed is None:
+            return None
+        uid, media = parsed
+        if (
+            media not in {"text", "image"}
+            or self.mode_for_uid(conversation, uid) is None
+        ):
+            return None
+        if self.unsubscribe_store.is_unsubscribed(conversation, option.key):
+            self.unsubscribe_store.restore(conversation, option.key)
+            return f"已恢复订阅：{option.label}。"
+        self.unsubscribe_store.unsubscribe(conversation, option.key, option.feature)
+        return f"已退订：{option.label}。"
 
     async def prepare_account_names(
         self,
@@ -408,10 +415,20 @@ class BiliTargetService:
         )
 
     def push_targets_for_uid(self, uid: int) -> BiliPushTargets:
+        return self.push_targets_for_dynamic(uid)
+
+    def push_targets_for_dynamic(
+        self,
+        uid: int,
+        *,
+        categories: tuple[str, ...] = (),
+    ) -> BiliPushTargets:
         full_group_conversations: list[ConversationRef] = []
         link_group_conversations: list[ConversationRef] = []
         for conversation in self.push_group_rules():
             mode = self.mode_for_uid(conversation, uid)
+            if not self._categories_allowed(conversation, uid, categories):
+                continue
             if mode == "full":
                 full_group_conversations.append(conversation)
             elif mode == "link":
@@ -421,6 +438,8 @@ class BiliTargetService:
         link_private_conversations: list[ConversationRef] = []
         for conversation in self.push_user_rules():
             mode = self.mode_for_uid(conversation, uid)
+            if not self._categories_allowed(conversation, uid, categories):
+                continue
             if mode == "full":
                 full_private_conversations.append(conversation)
             elif mode == "link":
@@ -433,6 +452,68 @@ class BiliTargetService:
             link_private_conversations=list(dict.fromkeys(link_private_conversations)),
         )
 
+    def category_config_for_uid(
+        self,
+        uid: int,
+    ) -> BiliAccountCategorySubscriptionConfig | None:
+        """Return category rules for one configured account, if any."""
+        if not self.config.category_subscriptions.enabled:
+            return None
+        for (
+            alias,
+            category_config,
+        ) in self.config.category_subscriptions.accounts.items():
+            account = self.config.accounts.get(alias)
+            if account is not None and account.uid == uid:
+                return category_config
+        return None
+
+    def suppress_patterns_for_uid(self, uid: int) -> list[str]:
+        """Category-managed accounts decide delivery per category, not globally."""
+
+        return (
+            []
+            if self.category_config_for_uid(uid) is not None
+            else list(self.config.filters.suppress_push_patterns)
+        )
+
+    def _categories_allowed(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        categories: tuple[str, ...],
+    ) -> bool:
+        config = self.category_config_for_uid(uid)
+        if config is None or not categories:
+            return True
+        return any(
+            not self._category_muted(conversation, uid, category)
+            for category in categories
+        )
+
+    def _category_muted(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        category: str,
+    ) -> bool:
+        configured = self.category_config_for_uid(uid)
+        if configured is None or category not in configured.categories:
+            return False
+        stored = self.preferences.category_muted(conversation, uid, category)
+        if stored is not None:
+            return stored
+        return category in configured.default_muted_categories
+
+    def _subscription_label(self, uid: int) -> str:
+        configured = self.category_config_for_uid(uid)
+        label = (
+            configured.label
+            if configured is not None
+            else self.account_names.name_for_uid(uid)
+        )
+        return bili_push_subscription_label(uid, label)
+
 
 def _push_mode_usage() -> str:
     return (
@@ -441,3 +522,39 @@ def _push_mode_usage() -> str:
         "例：B站推送模式 赛尔号官号 内容\n"
         "例：B站推送模式 赛尔号官号 默认"
     )
+
+
+def _subscription_uid(key: str) -> int | None:
+    prefix = "bili_category:"
+    if not key.startswith(prefix) or ":" in key.removeprefix(prefix):
+        return None
+    try:
+        return int(key.removeprefix(prefix))
+    except ValueError:
+        return None
+
+
+def _category_subscription(key: str) -> tuple[int, str] | None:
+    prefix = "bili_category:"
+    if not key.startswith(prefix):
+        return None
+    raw_uid, separator, category = key.removeprefix(prefix).partition(":")
+    if not separator or not category:
+        return None
+    try:
+        return int(raw_uid), category
+    except ValueError:
+        return None
+
+
+def _media_subscription(key: str) -> tuple[int, str] | None:
+    prefix = "bili_media:"
+    if not key.startswith(prefix):
+        return None
+    raw_uid, separator, media = key.removeprefix(prefix).partition(":")
+    if not separator or not media:
+        return None
+    try:
+        return int(raw_uid), media
+    except ValueError:
+        return None
