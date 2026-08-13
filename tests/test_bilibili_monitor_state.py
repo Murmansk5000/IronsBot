@@ -510,6 +510,32 @@ def test_bili_push_subscription_options_use_public_account_names(
     ]
 
 
+def test_bili_push_subscription_options_fall_back_to_uid(
+    tmp_path: Path,
+) -> None:
+    service = _target_service(
+        _bili_config(
+            accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},
+            push={
+                "groups": {
+                    "987654321": {
+                        "accounts": [FIRE_BILI_ALIAS],
+                    }
+                }
+            },
+        ),
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
+    )
+
+    options = service.subscription_options("group", 987654321)
+
+    assert [option.label for option in options] == [
+        f"B站动态（UID：{FIRE_BILI_UID}）",
+        "赛尔号 B站动态设置",
+    ]
+
+
 def test_seer_category_subscription_submenu_and_target_filtering(
     tmp_path: Path,
 ) -> None:
