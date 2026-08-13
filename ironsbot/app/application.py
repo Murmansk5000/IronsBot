@@ -86,6 +86,7 @@ class Application:
         for contribution in self.contributions:
             if contribution.install is not None:
                 contribution.install(self.matcher_factory)
+        self.matcher_factory.install_queued_conversation_router()
         self.matcher_factory.validate_command_catalog(self.resources.commands)
         self.matcher_factory.install_postprocessor()
         self.lifecycle.install()

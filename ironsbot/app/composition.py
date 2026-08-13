@@ -8,6 +8,7 @@ import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
+from ironsbot.app.ai_health import check_configured_ai_api
 from ironsbot.app.application import Application
 from ironsbot.app.bilibili_composition import (
     build_onebot_bilibili_components,
@@ -248,6 +249,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer=seer,
         pet_config=pet_config,
         ai=ai,
+        ai_startup_check=partial(
+            check_configured_ai_api,
+            settings.ai,
+            operations.startup_notice,
+        ),
         data_sync=data_sync,
         docker_update=operations.docker_update,
         startup_notice=operations.startup_notice,

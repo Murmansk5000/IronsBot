@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from time import monotonic
 from typing import TYPE_CHECKING
 
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from ironsbot.runtime.semantic_requests import SemanticRequest
 
 PromptSessionGetter = Callable[[T_State], PromptSessionManager]
-CreateTemporaryMatcher = Callable[[Matcher, _QueuedConversation], Awaitable[None]]
+DispatchHandlers = Callable[[Matcher, _QueuedConversation], None]
 
 
 async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
@@ -40,7 +40,7 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     state: T_State,
     *,
     get_prompt_sessions: PromptSessionGetter,
-    create_temporary_matcher: CreateTemporaryMatcher,
+    dispatch_handlers: DispatchHandlers,
 ) -> None:
     prompt_sessions = get_prompt_sessions(state)
     context = prompt_sessions.queued_conversation(state)
@@ -61,7 +61,6 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     is_shared_group_reply = context.is_shared_group_reply(event)
     if event.get_plaintext().strip() == "0":
         if is_shared_group_reply and context.allow_group_reply_exit:
-            await create_temporary_matcher(matcher, context)
             state.clear()
             state.update(context.state)
             state[QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY] = True
@@ -85,7 +84,6 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
             is_shared_group_reply=is_shared_group_reply,
         )
         if feedback is not None:
-            await create_temporary_matcher(matcher, context)
             state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
             await _send_in_flight_feedback(matcher, event, feedback)
             raise FinishedException
@@ -98,7 +96,6 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
     waited = not ready.done()
     activated = True
     try:
-        await create_temporary_matcher(matcher, context)
         await ready
         activated = not pending or await context.wait_until_active()
     except BaseException:
@@ -122,13 +119,13 @@ async def capture_queued_conversation_input(  # noqa: C901, PLR0912, PLR0915
         )
         if feedback is not None:
             context.abort(ticket)
-            await create_temporary_matcher(matcher, context)
             state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
             await _send_in_flight_feedback(matcher, event, feedback)
             raise FinishedException
     if request_token is not None:
         state[IN_FLIGHT_REQUEST_TOKEN_STATE_KEY] = request_token
     context.mark_dispatched(ticket)
+    dispatch_handlers(matcher, context)
     action_id = request.action.id if request is not None else "none"
     logger.info(
         "queued conversation input dispatched: namespace=%s session=%s "

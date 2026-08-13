@@ -313,6 +313,7 @@ def build_test_plugin_registry(
                 ),
             ),
             ai=object(),
+            ai_startup_check=_noop_startup,
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
@@ -350,6 +351,7 @@ def build_test_plugin_registry(
             service=resources.ai,
             features=runtime.features,
             commands=resources.commands,
+            startup_check=resources.ai_startup_check,
         ),
         ai_intent_plugin_contribution(
             settings=config,
