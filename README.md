@@ -483,10 +483,6 @@ startup_trigger_remote_build = true
 
 开机同步的成功、失败、无需更新状态会追加到“机器人已开启。”通知中。
 
-### 主机时钟只读检查
-
-OneBot 首次连接时检查 HTTPS Date 样本的中位时差；默认开启，单来源超时3秒、偏差阈值3秒。配置位于 `[operations.clock_check]`，字段依次为`enabled`、`timeout_seconds`、`warning_threshold_seconds`。原生 OneBot/full 清单下，绝对偏差超过阈值才加入管理启动通知；无可用样本只记日志。管理通知仍受原目标与退订配置限制，不保证送达；检查不修改系统时间，也不是自动整点校时，宿主机应自行配置 NTP。
-
 ## Docker 自更新与重启
 
 超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`、`/更新镜像`、`/更新Docker`）
