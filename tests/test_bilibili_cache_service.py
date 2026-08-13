@@ -81,3 +81,27 @@ def test_save_target_dynamic_history_builds_and_saves_snapshots(
     assert records[0].uid == AUTHOR_UID
     assert records[0].suppressed
     assert records[0].suppression_reason.endswith(pattern)
+
+
+def test_dynamic_delivery_claim_is_shared_between_history_store_instances(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "history.sqlite"
+    first = SqliteBiliDynamicHistoryStore(path, 10)
+    second = SqliteBiliDynamicHistoryStore(path, 10)
+    first.save_snapshot(
+        DynamicHistorySnapshot(
+            item={"id_str": "dynamic-1"},
+            pub_ts=PUB_TS,
+            author_mid=AUTHOR_UID,
+            author_name="Seer",
+            brief="test dynamic",
+        )
+    )
+
+    assert first.try_claim_delivery("dynamic-1")
+    assert not second.try_claim_delivery("dynamic-1")
+
+    first.release_delivery_claim("dynamic-1")
+
+    assert second.try_claim_delivery("dynamic-1")

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from ironsbot.services.bilibili.checkpoints import (
     mark_checkpoint,
 )
 from ironsbot.services.bilibili.parser import (
+    dynamic_id,
     item_author_mid,
     target_dynamics_from_response,
 )
@@ -39,7 +41,7 @@ logger = logging.getLogger(__name__)
 HTTP_OK = 200
 AuthInvalidHandler = Callable[[str], Awaitable[None]]
 DynamicPushSender = Callable[
-    [dict[str, Any], int, int, BiliPushTargets],
+    [dict[str, Any], int, int, BiliPushTargets, tuple[str, ...]],
     Awaitable[None],
 ]
 
@@ -48,6 +50,38 @@ DynamicPushSender = Callable[
 class DynamicPushBatch:
     checkpoint_changed: bool
     discovered_new: bool = False
+    delivery_tasks: tuple[asyncio.Task[None], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedDynamicDelivery:
+    item: dict[str, Any]
+    pub_ts: int
+    author_mid: int
+    targets: BiliPushTargets
+    categories: tuple[str, ...]
+    snapshot: DynamicHistorySnapshot
+    history_id: str
+
+
+async def _deliver_claimed_dynamic(
+    service: BilibiliService,
+    send_push: DynamicPushSender,
+    delivery: ClaimedDynamicDelivery,
+) -> None:
+    try:
+        await send_push(
+            delivery.item,
+            delivery.pub_ts,
+            delivery.author_mid,
+            delivery.targets,
+            delivery.categories,
+        )
+    except BaseException:
+        service.history.release_delivery_claim(delivery.history_id)
+        raise
+    service.history.save_snapshot(mark_history_snapshot_pushed(delivery.snapshot))
+    service.history.advance_checkpoint(delivery.author_mid, delivery.pub_ts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,10 +139,15 @@ async def _push_new_dynamics(
     valid_dynamics: list[DynamicItem],
     checkpoints: dict[int, int],
     send_push: DynamicPushSender,
+    *,
+    cookie: str = "",
 ) -> DynamicPushBatch:
     checkpoint_changed = False
     discovered_new = False
-    for pub_ts, item in valid_dynamics:
+    delivery_tasks: list[asyncio.Task[None]] = []
+    cookie = cookie or service.cookie_store.load()
+    for pub_ts, feed_item in valid_dynamics:
+        item = await service.resolve_dynamic_item(feed_item, cookie=cookie)
         author_mid = item_author_mid(item)
         category_config = service.targets.category_config_for_uid(author_mid)
         categories = classify_dynamic(item, category_config)
@@ -123,6 +162,13 @@ async def _push_new_dynamics(
         author_mid = snapshot.author_mid
         last_saved_time = checkpoints.get(author_mid, 0)
         service.history.save_snapshot(snapshot)
+        history_id = dynamic_id(item) or f"{author_mid}:{pub_ts}"
+        previous = service.history.get(history_id)
+        if previous is not None and previous.pushed:
+            checkpoint_changed = (
+                mark_checkpoint(checkpoints, author_mid, pub_ts) or checkpoint_changed
+            )
+            continue
         targets: BiliPushTargets | None = None
         decision = decide_dynamic_push_before_targets(
             pub_ts=pub_ts,
@@ -145,6 +191,7 @@ async def _push_new_dynamics(
 
         if decision.status in {"suppressed", "no_targets"}:
             _log_non_delivery_decision(decision.status, snapshot)
+            service.history.save_snapshot(mark_history_snapshot_pushed(snapshot))
             checkpoint_changed = (
                 mark_checkpoint(checkpoints, author_mid, pub_ts) or checkpoint_changed
             )
@@ -156,18 +203,30 @@ async def _push_new_dynamics(
                 categories=categories,
             )
 
-        await send_push(
-            item,
-            pub_ts,
-            author_mid,
-            targets,
-        )
-        service.history.save_snapshot(mark_history_snapshot_pushed(snapshot))
-        checkpoint_changed = (
-            mark_checkpoint(checkpoints, author_mid, pub_ts) or checkpoint_changed
+        if service.delivery_in_progress(history_id):
+            continue
+        if not service.history.try_claim_delivery(history_id):
+            continue
+        delivery_tasks.append(
+            service.spawn_delivery(
+                history_id,
+                _deliver_claimed_dynamic(
+                    service,
+                    send_push,
+                    ClaimedDynamicDelivery(
+                        item,
+                        pub_ts,
+                        author_mid,
+                        targets,
+                        categories,
+                        snapshot,
+                        history_id,
+                    ),
+                ),
+            )
         )
 
-    return DynamicPushBatch(checkpoint_changed, discovered_new)
+    return DynamicPushBatch(checkpoint_changed, discovered_new, tuple(delivery_tasks))
 
 
 async def _do_check_logic(

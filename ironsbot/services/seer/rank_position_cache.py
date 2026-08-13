@@ -5,6 +5,19 @@ from typing import Any
 from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
 
 
+def restore_cached_rank_after_timeout(
+    result: RankLookupResult,
+    cached_item: Any,
+) -> RankLookupResult:
+    """Keep the last observed rank visible when live confirmation times out."""
+
+    result.rank = int(cached_item.rank_index) + 1
+    result.score = int(cached_item.score)
+    result.failure = "查询超时"
+    result.fallback_cached_at = float(cached_item.fetched_at)
+    return result
+
+
 async def find_rank_by_cached_position(  # noqa: PLR0913
     game: Any,
     *,

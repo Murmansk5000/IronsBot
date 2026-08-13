@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Protocol
 
+from ironsbot.services.operations.scheduler import JobRegistry
+
 if TYPE_CHECKING:
     from ironsbot.config.models.operations import DataSyncConfig
     from ironsbot.services.operations.scheduler import Scheduler
@@ -16,7 +18,7 @@ class DataSyncBackend(Protocol):
     def has_databases(self) -> bool: ...
     def remote_names(self) -> tuple[str, ...]: ...
     def remote_build_names(self) -> tuple[str, ...]: ...
-    def schedules(self) -> tuple[tuple[str, int], ...]: ...
+    def schedules(self) -> tuple[tuple[str, int, int], ...]: ...
     def is_running(self) -> bool: ...
     def prepare_all(self) -> None: ...
     def load_all_cached(self) -> None: ...
@@ -75,7 +77,14 @@ class DataSyncService:
         )
         if not did_run:
             return BUSY_MESSAGE
-        return self._format_manual_result(results)
+        return self._format_manual_result(
+            results,
+            downstream_publication_pending=any(
+                source.remote_build.enabled
+                and source.remote_build.downstream_publication_pending
+                for source in self._config.sources.values()
+            ),
+        )
 
     async def startup(self, scheduler: Scheduler) -> str | None:
         if not self._backend.has_databases():
@@ -104,20 +113,24 @@ class DataSyncService:
         )
 
     def _register_jobs(self, scheduler: Scheduler) -> None:
-        for name, minutes in self._backend.schedules():
+        for name, minutes, second in self._backend.schedules():
             if not self._config.interval_enabled:
                 logger.debug("已注册数据库 %r，自动定时同步已关闭", name)
                 continue
-            scheduler.add_job(
+            JobRegistry(scheduler).add_wall_clock_interval(
                 self._backend.run_sync_database,
-                "interval",
                 args=[name],
                 minutes=minutes,
-                id=f"db_sync_{name}",
-                replace_existing=True,
+                offset_seconds=second,
+                job_id=f"db_sync_{name}",
             )
 
-    def _format_manual_result(self, results: dict[str, bool]) -> str:
+    def _format_manual_result(
+        self,
+        results: dict[str, bool],
+        *,
+        downstream_publication_pending: bool = False,
+    ) -> str:
         failed = [name for name, ok in results.items() if not ok]
         succeeded = [name for name, ok in results.items() if ok]
         status = self._backend.format_sync_statuses(results)
@@ -138,4 +151,10 @@ class DataSyncService:
             if skipped and len(skipped) == len(results)
             else f"数据更新完成：{', '.join(succeeded)}"
         )
-        return f"{title}{status_extra}"
+        downstream_notice = (
+            "\napi-data 发布后会自动派发下游 SeerAPI 构建；"
+            "新数据库发布后，机器人会在最多 5 分钟内热同步。"
+            if downstream_publication_pending
+            else ""
+        )
+        return f"{title}{status_extra}{downstream_notice}"

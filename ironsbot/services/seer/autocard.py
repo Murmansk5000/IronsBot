@@ -39,9 +39,28 @@ _AUTOCARD_ASSET_BASE_URL = (
 _AUTOCARD_NON_PET_CARD_ID_START = 20000
 _AUTOCARD_TABLE_QUERIES = {
     "autocard_card": text("SELECT raw_json FROM autocard_card ORDER BY id"),
-    "autocard_role": text("SELECT raw_json FROM autocard_role ORDER BY id"),
     "autocard_nature": text("SELECT raw_json FROM autocard_nature ORDER BY id"),
 }
+_AUTOCARD_ROLE_QUERY = text(
+    """
+    SELECT
+        role.id,
+        role.name,
+        role.description,
+        role.health,
+        role.skill_desc,
+        role.element_type_id,
+        raw.pic_id,
+        raw.skill_id,
+        raw.skill_name,
+        raw.skill_upgrade,
+        raw.raw_json
+    FROM autocard_role AS role
+    JOIN autocard_role_raw AS raw ON raw.role_id = role.id
+    ORDER BY role.id
+    """
+)
+_LEGACY_AUTOCARD_ROLE_QUERY = text("SELECT raw_json FROM autocard_role ORDER BY id")
 
 
 @dataclass(slots=True, frozen=True)
@@ -112,11 +131,7 @@ class AutocardService:
                 if value.kind == "role"
                 else _find_autocard_card_by_id(dataset, value.item_id)
             )
-        return (
-            None
-            if item is None
-            else _build_entry(dataset, value.kind, item)
-        )
+        return None if item is None else _build_entry(dataset, value.kind, item)
 
 
 def _extract_autocard_query_arg(arg: str) -> str:
@@ -137,7 +152,7 @@ def _extract_autocard_query_arg(arg: str) -> str:
 def _load_autocard_dataset(session: Session) -> _AutocardDataset:
     try:
         cards = _load_json_rows(session, "autocard_card")
-        roles = _load_json_rows(session, "autocard_role")
+        roles = _load_role_rows(session)
         nature_rows = _load_json_rows(session, "autocard_nature")
     except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError) as e:
         raise RuntimeError(_AUTOCARD_MISSING_TABLE_MESSAGE) from e
@@ -145,10 +160,7 @@ def _load_autocard_dataset(session: Session) -> _AutocardDataset:
     if not cards and not roles:
         raise RuntimeError(_AUTOCARD_EMPTY_DATA_MESSAGE)
 
-    natures = {
-        _int_field(row, "id"): str(_field(row, "name"))
-        for row in nature_rows
-    }
+    natures = {_int_field(row, "id"): str(_field(row, "name")) for row in nature_rows}
     return _AutocardDataset(
         cards=cards,
         roles=roles,
@@ -288,6 +300,65 @@ def _load_json_rows(
     return tuple(result)
 
 
+def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
+    try:
+        rows = session.execute(_AUTOCARD_ROLE_QUERY).all()
+    except SQLAlchemyError:
+        return _load_legacy_role_rows(session)
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        mapping = row._mapping if hasattr(row, "_mapping") else None
+        values = (
+            mapping
+            if mapping is not None
+            else {
+                "id": row[0],
+                "name": row[1],
+                "description": row[2],
+                "health": row[3],
+                "skill_desc": row[4],
+                "element_type_id": row[5],
+                "pic_id": row[6],
+                "skill_id": row[7],
+                "skill_name": row[8],
+                "skill_upgrade": row[9],
+                "raw_json": row[10],
+            }
+        )
+        item = json.loads(str(values["raw_json"]))
+        if not isinstance(item, dict):
+            continue
+        item.update(
+            {
+                "id": int(values["id"]),
+                "name": str(values["name"]),
+                "desc": str(values["description"]),
+                "health": int(values["health"]),
+                "skillTxt": str(values["skill_desc"]),
+                "nature": int(values["element_type_id"]),
+                "picID": int(values["pic_id"]),
+                "skillID": int(values["skill_id"]),
+                "skillName": str(values["skill_name"]),
+                "skillUpgrade": str(values["skill_upgrade"]),
+            }
+        )
+        result.append(item)
+    return tuple(result)
+
+
+def _load_legacy_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
+    rows = session.execute(_LEGACY_AUTOCARD_ROLE_QUERY).all()
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        mapping = row._mapping if hasattr(row, "_mapping") else None
+        raw_json = mapping["raw_json"] if mapping is not None else row[0]
+        item = json.loads(str(raw_json))
+        if isinstance(item, dict):
+            result.append(item)
+    return tuple(result)
+
+
 def _entry_name(item: dict[str, Any]) -> str:
     return str(_field(item, "name", default=""))
 
@@ -304,9 +375,7 @@ def _autocard_image_name(kind: str, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     pic_id = _int_field(item, "picID", "pic_id")
     image_id = (
-        pic_id
-        if item_id < _AUTOCARD_NON_PET_CARD_ID_START and pic_id > 0
-        else item_id
+        pic_id if item_id < _AUTOCARD_NON_PET_CARD_ID_START and pic_id > 0 else item_id
     )
     return f"card_{image_id}" if image_id > 0 else ""
 
@@ -402,9 +471,7 @@ def _build_entry(
         name=_entry_name(item),
         text=_format_autocard_entry(dataset, kind, item),
         image_url=_autocard_image_url(kind, item),
-        description=_clean_text(
-            _field(item, "desc" if is_role else "des", default="")
-        ),
+        description=_clean_text(_field(item, "desc" if is_role else "des", default="")),
         skill_name=(
             _clean_text(_field(item, "skillName", "skill_name", default=""))
             if is_role

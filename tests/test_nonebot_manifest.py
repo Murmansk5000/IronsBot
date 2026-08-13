@@ -32,6 +32,7 @@ FULL_PLUGINS = [
     "nonebot_plugin_htmlkit",
     "nonebot_plugin_saa",
     "ironsbot.plugins.onebot.scheduler",
+    "ironsbot.plugins.onebot.clock_check",
     "ironsbot.plugins.onebot.seer.query",
     "ironsbot.plugins.onebot.bilibili",
     "ironsbot.plugins.onebot.messaging",
