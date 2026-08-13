@@ -42,6 +42,8 @@ class NewContentMenuItem:
     image: str | None
     skill: SkillDict | None
     friend_skill: SkillDict | None
+    image_notice: str = ""
+    entity_key: tuple[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,12 +53,14 @@ class NewContentMenuDocument:
     content_date: str
     items: tuple[NewContentMenuItem, ...]
     skill_type_icons: tuple[tuple[int | str, str], ...]
+    menu_title: str = "新增内容"
 
     @property
     def templates(self) -> Mapping[str, object]:
         return MappingProxyType(
             {
                 "content_date": self.content_date,
+                "menu_title": self.menu_title,
                 "items": self.items,
                 "skill_type_icons": MappingProxyType(dict(self.skill_type_icons)),
             }
@@ -67,12 +71,14 @@ def present_new_content_menu(
     content_date: str,
     items: Sequence[NewContentMenuItem],
     skill_type_icons: Mapping[int | str, str],
+    menu_title: str = "新增内容",
 ) -> NewContentMenuDocument:
     """Freeze prepared menu values into a render-ready document."""
     return NewContentMenuDocument(
         content_date=content_date,
         items=tuple(items),
         skill_type_icons=tuple(skill_type_icons.items()),
+        menu_title=menu_title,
     )
 
 

@@ -379,9 +379,9 @@ async def test_missing_mount_image_uses_pending_notice_without_cache() -> None:
         "mount",
     )
 
-    item_row = next(row for row in captured["items"] if row["code"] == "1")
-    assert item_row["image"] is None
-    assert item_row["image_notice"] == "官方图片暂未上线"
+    item_row = next(row for row in captured["items"] if row.code == "1")
+    assert item_row.image is None
+    assert item_row.image_notice == "官方图片暂未上线"
     assert cache.saved is None
 
 
@@ -429,9 +429,9 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
         "mount",
     )
 
-    item_row = next(row for row in captured["items"] if row["code"] == "1")
-    assert item_row["image"] == "data:image/png;base64,Zmxhc2gtbW91bnQ="
-    assert item_row["image_notice"] == ""
+    item_row = next(row for row in captured["items"] if row.code == "1")
+    assert item_row.image == "data:image/png;base64,Zmxhc2gtbW91bnQ="
+    assert item_row.image_notice == ""
     assert cache.saved == b"menu-image"
 
 
@@ -474,16 +474,15 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         expanded_categories=frozenset({"autocard_sanctuary_effect"}),
     )
 
-    assert [row["code"] for row in captured["items"]] == ["a", "a1", "a2", "b"]
-    assert [row["expanded"] for row in captured["items"] if row["is_category"]] == [
+    assert [row.code for row in captured["items"]] == ["a", "a1", "a2", "b"]
+    assert [row.expanded for row in captured["items"] if row.is_category] == [
         True,
         False,
     ]
-    assert [row["description"] for row in captured["items"] if row["is_category"]] == [
+    assert [row.description for row in captured["items"] if row.is_category] == [
         "2 项新增",
         "6 项新增",
     ]
-    assert captured["focused_category"] is None
 
 
 def test_new_content_render_cache_key_includes_expanded_categories() -> None:

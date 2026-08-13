@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 from typing_extensions import Self
 
 from ironsbot.app import clock_check
-from ironsbot.config.models.settings import RuntimeSchedulerConfig
+from ironsbot.config.models.operations import ClockCheckConfig
 from ironsbot.integrations.http.clock import ClockCheckSample, check_clock_drift
 
 if TYPE_CHECKING:
@@ -78,7 +78,7 @@ def test_clock_check_adds_startup_notice_only_above_threshold(
 
     asyncio.run(
         clock_check.check_configured_clock(
-            RuntimeSchedulerConfig(clock_warning_threshold_seconds=3),
+            ClockCheckConfig(warning_threshold_seconds=3),
             notices,  # type: ignore[arg-type]
         )
     )
@@ -102,7 +102,7 @@ def test_clock_check_can_be_disabled(monkeypatch: MonkeyPatch) -> None:
 
     asyncio.run(
         clock_check.check_configured_clock(
-            RuntimeSchedulerConfig(clock_check_on_startup=False),
+            ClockCheckConfig(enabled=False),
             NoticeRecorder(),  # type: ignore[arg-type]
         )
     )
@@ -121,7 +121,7 @@ def test_clock_check_allows_every_time_source_to_fail(
 
     asyncio.run(
         clock_check.check_configured_clock(
-            RuntimeSchedulerConfig(),
+            ClockCheckConfig(),
             notices,  # type: ignore[arg-type]
         )
     )
