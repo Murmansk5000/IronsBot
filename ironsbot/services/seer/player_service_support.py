@@ -12,7 +12,7 @@ from ironsbot.services.seer.player_request_protection import (
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
 
 
 PLAYER_REQUEST_ERRORS = (

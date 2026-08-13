@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol, TypeAlias
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.typing import T_State
 
-from ironsbot.runtime.semantic_requests import (
+from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
     SemanticRequestSource,
