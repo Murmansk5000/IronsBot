@@ -21,7 +21,6 @@ _PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位"))
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.rank import RankService
-    from ironsbot.services.seer.rank_page_cache_models import CachedRankLookup
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,18 +215,13 @@ def fetch_cached_rank_player_result(
     spec = rank.get_spec(command.rank_key)
     if rank.spec_needs_sub_key(spec):
         return None
-    cached_lookup = getattr(rank, "cached_player_lookup", None)
-    cached = (
-        cached_lookup(
-            rank_key=command.rank_key,
-            user_id=command.player_id,
-            title=spec.title.removesuffix("榜"),
-            score_name=spec.unit,
-            key=spec.key,
-            sub_key=spec.sub_key,
-        )
-        if cached_lookup is not None
-        else _legacy_cached_player_lookup(rank, command, spec)
+    cached = rank.cached_player_lookup(
+        rank_key=command.rank_key,
+        user_id=command.player_id,
+        title=spec.title.removesuffix("榜"),
+        score_name=spec.unit,
+        key=spec.key,
+        sub_key=spec.sub_key,
     )
     if cached is None:
         return None
@@ -255,31 +249,6 @@ def fetch_cached_rank_player_result(
         ),
         result,
     )
-
-
-def _legacy_cached_player_lookup(
-    rank: RankService,
-    command: RankPlayerCommand,
-    spec: object,
-) -> tuple[CachedRankLookup | None, RankLookupResult] | None:
-    """Keep lightweight service fakes compatible with the cache query contract."""
-
-    cached_item = rank.cache.item(
-        key=spec.key,
-        sub_key=spec.sub_key,
-        user_id=command.player_id,
-    )
-    if cached_item is None:
-        return None
-    return cached_item, RankLookupResult(
-        title=spec.title.removesuffix("榜"),
-        score_name=spec.unit,
-        rank=cached_item.rank_index + 1,
-        score=cached_item.score,
-        searched_limit=cached_item.rank_index + 1,
-        queried=False,
-    )
-
 
 def _format_score(metric_key: str, score: int | None, unit: str) -> str:
     if score is None:

@@ -43,27 +43,48 @@ def _command_ids() -> tuple[str, ...]:
     return tuple(sorted(application.resources.commands.command_ids))
 
 
-def _introduced_at(command_id: str) -> str | None:
-    lines = _git_lines(
-        "log",
-        "--format=%aI",
-        "--reverse",
-        "-S",
-        f'"{command_id}"',
-        f"{BASELINE_COMMIT}..HEAD",
-        "--",
-        "ironsbot",
+def _introduced_timestamps(command_ids: Iterable[str]) -> dict[str, str]:
+    """Find all command introductions with one chronological Git history scan."""
+
+    wanted = set(command_ids)
+    if not wanted:
+        return {}
+    result = subprocess.run(
+        [
+            "git",
+            "log",
+            "--format=%H%x00%aI",
+            "--reverse",
+            "-p",
+            "--no-ext-diff",
+            "--unified=0",
+            f"{BASELINE_COMMIT}..HEAD",
+            "--",
+            "ironsbot",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
     )
-    return lines[0] if lines else None
+    introduced: dict[str, str] = {}
+    timestamp: str | None = None
+    for line in result.stdout.splitlines():
+        if "\x00" in line:
+            _commit, timestamp = line.split("\x00", maxsplit=1)
+            continue
+        if timestamp is None or not line.startswith("+"):
+            continue
+        for command_id in wanted.difference(introduced):
+            if f'"{command_id}"' in line:
+                introduced[command_id] = timestamp
+    return introduced
 
 
 def build_manifest(command_ids: Iterable[str]) -> dict[str, object]:
     _git_lines("merge-base", "--is-ancestor", BASELINE_COMMIT, "HEAD")
-    commands = {
-        command_id: timestamp
-        for command_id in sorted(set(command_ids))
-        if (timestamp := _introduced_at(command_id)) is not None
-    }
+    commands = _introduced_timestamps(command_ids)
     return {
         "schema_version": 1,
         "baseline_commit": BASELINE_COMMIT,
