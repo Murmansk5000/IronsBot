@@ -44,6 +44,7 @@ from ironsbot.services.seer.rank_list_score_messages import (
 )
 from ironsbot.services.seer.rank_player_query import (
     RankPlayerQueryResult,
+    fetch_cached_rank_player_result,
     fetch_rank_player_result,
 )
 
@@ -148,7 +149,7 @@ class RankQueryService:
         except _PLAYER_REQUEST_ERRORS as error:
             return player_request_protection_message(error)
 
-    async def player(  # noqa: PLR0911 - distinct query failure replies
+    async def player(  # noqa: C901, PLR0911 - distinct query failure replies
         self,
         command: RankPlayerCommand,
         *,
@@ -159,6 +160,14 @@ class RankQueryService:
         if not is_valid_player_id(command.player_id):
             return PLAYER_ID_ERROR_MESSAGE
         quota_message = self._check_player_quota(command, actor)
+        if quota_message:
+            cached = fetch_cached_rank_player_result(
+                self._rank,
+                command=command,
+            )
+            if cached is not None:
+                return f"{cached.message}\n\n⚠️ 今日查询额度已用完，以上为缓存数据。"
+            return quota_message
         anchor_only = bool(quota_message)
         try:
             result = await self._run_headless_request(
