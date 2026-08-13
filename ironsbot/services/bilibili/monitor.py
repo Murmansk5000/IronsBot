@@ -5,12 +5,16 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
+from ironsbot.services.bilibili.categories import classify_dynamic
 from ironsbot.services.bilibili.checkpoints import (
     DynamicItem,
     initialize_missing_checkpoints,
     mark_checkpoint,
 )
-from ironsbot.services.bilibili.parser import target_dynamics_from_response
+from ironsbot.services.bilibili.parser import (
+    item_author_mid,
+    target_dynamics_from_response,
+)
 from ironsbot.services.bilibili.push import (
     DynamicHistorySnapshot,
     build_dynamic_history_snapshot_for_item,
@@ -105,10 +109,13 @@ async def _push_new_dynamics(
     checkpoint_changed = False
     discovered_new = False
     for pub_ts, item in valid_dynamics:
+        author_mid = item_author_mid(item)
+        category_config = service.targets.category_config_for_uid(author_mid)
+        categories = classify_dynamic(item, category_config)
         snapshot = build_dynamic_history_snapshot_for_item(
             item,
             pub_ts=pub_ts,
-            suppress_patterns=service.config.filters.suppress_push_patterns,
+            suppress_patterns=service.targets.suppress_patterns_for_uid(author_mid),
         )
         if snapshot is None:
             continue
@@ -123,7 +130,10 @@ async def _push_new_dynamics(
             suppression_reason=snapshot.suppression_reason,
         )
         if decision is None:
-            targets = service.targets.push_targets_for_uid(author_mid)
+            targets = service.targets.push_targets_for_dynamic(
+                author_mid,
+                categories=categories,
+            )
             decision = decide_dynamic_push_after_targets(
                 has_targets=targets.has_targets
             )
@@ -141,7 +151,10 @@ async def _push_new_dynamics(
             continue
 
         if targets is None:
-            targets = service.targets.push_targets_for_uid(author_mid)
+            targets = service.targets.push_targets_for_dynamic(
+                author_mid,
+                categories=categories,
+            )
 
         await send_push(
             item,
