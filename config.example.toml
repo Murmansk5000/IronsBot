@@ -299,6 +299,12 @@ base_url = "https://api.deepseek.com"
 # Example: "deepseek-chat"
 model = "deepseek-v4-pro"
 
+# Default: []
+# EN: Backup models tried in order when the preferred model fails.
+# ZH: 首选模型失败时按顺序尝试的备用模型；全部失败后才向用户报错。
+# Example: ["deepseek-chat", "gpt-5.4"]
+fallback_models = []
+
 # Default: built-in IronsBot prompt.
 # EN: System prompt used for AI chat.
 # ZH: AI 聊天系统提示词。
@@ -574,6 +580,28 @@ users = {}
 # ZH: 抑制自动推送的正则表达式。
 # Example: ["恭喜", "中奖", "抽奖结果"]
 suppress_push_patterns = ["恭喜", "恭喜.*获得", "记得及时查看私信通知", "中奖", "抽奖结果"]
+
+[bilibili.category_subscriptions]
+# Default: true
+# EN: Optional per-account content categories. A configured account appears as a
+# nested item in "推送管理" so each conversation can mute individual categories.
+# ZH: 可选的按账号内容分类。配置后的账号会在“推送管理”中显示二级菜单，
+# 每个群/私聊可单独退订某个分类。未配置分类的账号仍沿用普通 B 站推送。
+enabled = true
+
+# Each key must be an existing [bilibili.accounts] alias. Categories use regular
+# expressions against the complete dynamic text. Configured category accounts do
+# not use the global lottery suppression list; classify unwanted content here.
+# 每个键必须是已定义的 B 站账号别名。分类正则匹配完整动态文本；配置分类后，
+# 该账号不再套用全局抽奖屏蔽规则，请在此定义需要静音的内容。
+#
+# [bilibili.category_subscriptions.accounts.example_account]
+# label = "示例账号"
+# default_muted_categories = ["lottery"]
+#
+# [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
+# label = "抽奖与中奖"
+# patterns = ["恭喜", "中奖", "抽奖结果"]
 
 [messaging]
 # Default: []
