@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, cast
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.operations import StartupConfig
-from ironsbot.integrations.onebot.targets import (
-    OneBotMessageTarget,
-    OneBotTargetSendSummary,
-)
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.plugins.onebot import startup_notice as startup_notice_runtime
-from ironsbot.services.messaging.admin_notice import AdminNoticeService
+from ironsbot.services.messaging.admin_notice import (
+    AdminNoticeSendSummary,
+    AdminNoticeService,
+)
 from ironsbot.services.operations.startup import StartupNoticeService
 from tests.helpers.runtime import build_test_runtime
 
@@ -35,10 +35,10 @@ def test_startup_notice_appends_db_sync_notice(
         _service: AdminNoticeService,
         message: object,
         **kwargs: object,
-    ) -> OneBotTargetSendSummary:
+    ) -> AdminNoticeSendSummary:
         assert "bot" not in kwargs
         sent_messages.append((str(message), kwargs.get("subscription_key")))
-        return OneBotTargetSendSummary([OneBotMessageTarget("private", 1)], [])
+        return AdminNoticeSendSummary((ActorRef(Platform.ONEBOT, "1"),), ())
 
     monkeypatch.setattr(
         AdminNoticeService,
@@ -78,9 +78,9 @@ def test_startup_notice_appends_docker_update_before_db_sync(
         _service: AdminNoticeService,
         message: object,
         **kwargs: object,
-    ) -> OneBotTargetSendSummary:
+    ) -> AdminNoticeSendSummary:
         sent_messages.append((str(message), kwargs.get("subscription_key")))
-        return OneBotTargetSendSummary([OneBotMessageTarget("private", 1)], [])
+        return AdminNoticeSendSummary((ActorRef(Platform.ONEBOT, "1"),), ())
 
     monkeypatch.setattr(
         AdminNoticeService,

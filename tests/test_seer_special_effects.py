@@ -9,13 +9,13 @@ from sqlmodel import Session, create_engine
 from ironsbot.integrations.seer_data.pet_display_data import (
     load_pet_derived_display_data,
 )
+from ironsbot.services.seer.pet_info_views import PetSoulmarkSnapshot
 from ironsbot.services.seer.rendering.analyze_description import (
     format_analyze_description,
 )
 from ironsbot.services.seer.rendering.pet_effect_presentation import (
     assign_special_effect_colors,
 )
-from ironsbot.services.seer.rendering.pet_info_models import PetSoulmarkSnapshot
 from ironsbot.services.seer.rendering.pet_info_presentation import (
     _format_soulmark_description,
 )
@@ -58,7 +58,7 @@ def _create_published_fact_tables(session: Session) -> None:
             """
             CREATE TABLE pet_soulmark_display (
                 pet_id INTEGER NOT NULL, soulmark_id INTEGER NOT NULL,
-                display_order INTEGER NOT NULL,
+                display_order INTEGER NOT NULL, display_kind TEXT NOT NULL,
                 PRIMARY KEY (pet_id, soulmark_id)
             )
             """
@@ -104,7 +104,8 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
         session.execute(
             text(
                 """
-                INSERT INTO pet_soulmark_display VALUES (3549, 10, 2), (3549, 9, 1)
+                INSERT INTO pet_soulmark_display VALUES
+                (3549, 10, 2, 'intensified'), (3549, 9, 1, 'base')
                 """
             )
         )
@@ -135,6 +136,10 @@ def test_published_effect_facts_keep_sarmon_links_and_prebuilt_icons() -> None:
     assert display.soulmark_order_by_id == {
         BASE_SOULMARK_ID: 1,
         UPGRADED_SOULMARK_ID: 2,
+    }
+    assert display.soulmark_display_kind_by_id == {
+        BASE_SOULMARK_ID: "base",
+        UPGRADED_SOULMARK_ID: "intensified",
     }
     icon = display.soulmark_icon_by_id[BASE_SOULMARK_ID]
     assert (icon.icon_id, icon.png) == (SOULMARK_ICON_ID, b"published-png")

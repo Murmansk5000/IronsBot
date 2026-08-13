@@ -3,7 +3,7 @@ import pytest
 from ironsbot.services.operations.data_sync_commands import (
     FORCE_MANUAL_SYNC_COMMANDS,
     MANUAL_SYNC_COMMANDS,
-    data_sync_command_descriptors,
+    data_sync_command_contracts,
     is_force_data_sync_command,
     is_manual_data_sync_command,
 )
@@ -30,7 +30,7 @@ def test_force_data_sync_parser_only_matches_force_commands(text: str) -> None:
 
 
 def test_data_sync_contract_examples_match_the_parser() -> None:
-    commands = {command.id: command for command in data_sync_command_descriptors()}
+    commands = {command.id: command for command in data_sync_command_contracts()}
 
     assert commands["db_sync.update"].examples == tuple(
         f"/{command}" for command in MANUAL_SYNC_COMMANDS

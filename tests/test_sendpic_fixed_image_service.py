@@ -9,7 +9,7 @@ from ironsbot.integrations.sendpic import LocalBackend
 from ironsbot.services.messaging.sendpic import (
     ImageNotFoundError,
     SendpicService,
-    sendpic_command_descriptors,
+    sendpic_command_contracts,
 )
 
 
@@ -120,7 +120,7 @@ def test_sendpic_command_contracts_follow_enabled_configurations() -> None:
         lambda _kind: LocalBackend(Path()),
     )
 
-    descriptors = {item.id: item for item in sendpic_command_descriptors(service)}
+    descriptors = {item.id: item for item in sendpic_command_contracts(service)}
 
     assert descriptors["sendpic.example-gallery"].examples == ("表情", "表情包")
     assert descriptors["sendpic.example-gallery"].description == (

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 from ironsbot.core.commands import normalize_command_text
@@ -21,7 +21,7 @@ _NORMALIZED_FORCE_MANUAL_SYNC_COMMANDS = frozenset(
 )
 
 
-def data_sync_command_descriptors() -> tuple[CommandDescriptor, ...]:
+def data_sync_command_contracts() -> tuple[CommandContract, ...]:
     """Describe direct data-sync commands for the shared command catalog."""
 
     return commands_from_rows(

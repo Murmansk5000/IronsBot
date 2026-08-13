@@ -9,7 +9,7 @@ import nonebot
 from ironsbot.app.composition import build_application
 from ironsbot.app.nonebot_manifest import nonebot_manifest_path
 from ironsbot.config.loader import load_settings
-from ironsbot.runtime.plugins import scoped_plugin_install_context
+from ironsbot.core.plugin_install import scoped_plugin_install_context
 
 if TYPE_CHECKING:
     from ironsbot.app.application import Application
