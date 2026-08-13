@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
@@ -46,7 +46,7 @@ class HttpAiCompletionClient:
 
             result = _parse_http_response(response)
             if result.ok:
-                return result
+                return replace(result, model=model)
             logger.warning(
                 "AI model returned an error: model=%s HTTP=%s detail=%s",
                 model,

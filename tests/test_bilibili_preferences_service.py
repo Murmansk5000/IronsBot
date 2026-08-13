@@ -43,3 +43,23 @@ def test_bili_push_subscription_key_and_mode_normalization() -> None:
     assert normalize_push_mode_text(" content ") == "full"
     assert normalize_push_mode_text("url") == "link"
     assert normalize_push_mode_text("default") is None
+
+
+def test_bili_push_preference_store_persists_category_target_preferences(
+    tmp_path: Path,
+) -> None:
+    store = SqliteBiliPushPreferenceStore(tmp_path / "bili_preferences.sqlite")
+
+    group = ConversationRef(Platform.ONEBOT, "group", "1001")
+    private = ConversationRef(Platform.ONEBOT, "private", "1001")
+    assert store.category_muted(group, 123456, "lottery") is None
+
+    store.set_category_muted(
+        group,
+        123456,
+        "lottery",
+        muted=True,
+    )
+
+    assert store.category_muted(group, 123456, "lottery") is True
+    assert store.category_muted(private, 123456, "lottery") is None

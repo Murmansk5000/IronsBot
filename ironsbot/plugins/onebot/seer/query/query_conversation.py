@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import GroupMessageEvent
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -14,6 +14,9 @@ from nonebot_plugin_saa import Image, MessageFactory
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticTarget,
+)
+from ironsbot.integrations.onebot.conversations import (
+    begin_event_reply_conversation,
 )
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
 from ironsbot.integrations.onebot.params import parse_string_arg
@@ -28,6 +31,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 SearchQuery = Callable[[str], Awaitable[QueryResult[T]]]
 SelectionQuery = Callable[[T], Awaitable[QueryResult[Any]]]
+_QUERY_SELECTION_NAMESPACE = "selection_prompt"
 
 
 def _raise_if_selection_cancelled(matcher: Matcher) -> None:
@@ -48,7 +52,23 @@ def build_reply(reply: QueryReply) -> MessageFactory:
     return message
 
 
-def make_query_handler(
+async def send_query_reply(
+    reply: QueryReply,
+    event: Event,
+    *,
+    finish: bool,
+) -> None:
+    """Send direct and selected query results with consistent group mentions."""
+
+    message = build_reply(reply)
+    kwargs = {"at_sender": isinstance(event, GroupMessageEvent)}
+    if finish:
+        await message.finish(**kwargs)
+    else:
+        await message.send(**kwargs)
+
+
+def make_query_handler(  # noqa: C901
     search: SearchQuery[T],
     select: SelectionQuery[T],
     prompt_title: str,
@@ -70,15 +90,22 @@ def make_query_handler(
             await matcher.finish(result.message)
             return
         if result.reply is not None:
-            await build_reply(result.reply).send(
-                at_sender=isinstance(event, GroupMessageEvent)
-            )
+            await send_query_reply(result.reply, event, finish=False)
 
     async def handle(
         matcher: Matcher,
         state: T_State,
         event: Event,
     ) -> None:
+        if isinstance(event, MessageEvent):
+            await begin_event_reply_conversation(
+                matcher,
+                event,
+                namespace=_QUERY_SELECTION_NAMESPACE,
+                handlers=[resolve_selection],
+                pending_reply_check=_is_digit_selection_input,
+                reply_check=_is_digit_selection_input,
+            )
         try:
             result = await search(parse_string_arg(state))
         except DataUnavailableError:
@@ -87,7 +114,7 @@ def make_query_handler(
         if result.message:
             await matcher.finish(result.message)
         if result.reply is not None:
-            await build_reply(result.reply).finish()
+            await send_query_reply(result.reply, event, finish=True)
         if not result.choices:
             raise FinishedException
         await enter_prompt(
@@ -112,6 +139,10 @@ def make_query_handler(
         )
 
     return handle
+
+
+def _is_digit_selection_input(event: MessageEvent) -> bool:
+    return event.get_plaintext().strip().isdigit()
 
 
 def _query_choice_semantic_target(choice: object) -> SemanticTarget:
