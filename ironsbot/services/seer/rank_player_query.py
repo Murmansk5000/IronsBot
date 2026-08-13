@@ -250,7 +250,6 @@ def fetch_cached_rank_player_result(
         result,
     )
 
-
 def _format_score(metric_key: str, score: int | None, unit: str) -> str:
     if score is None:
         return ""
