@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     PluginContribution,
     PluginExtensionContextError,
     PluginInstallContextError,

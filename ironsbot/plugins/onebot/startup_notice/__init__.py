@@ -9,7 +9,7 @@ from nonebot.adapters.onebot.v11 import Bot  # noqa: TC002
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
 
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,

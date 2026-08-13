@@ -10,8 +10,13 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.core.command_catalog import CommandDescriptor
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    PluginContributionCatalog,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     enter_prompt_loop,
@@ -25,12 +30,7 @@ from ironsbot.integrations.onebot.replies import (
     send_event_reply,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    PluginContributionCatalog,
-    active_plugin_install_context,
-)
+from ironsbot.services.help_commands import help_command_contracts
 
 from .menu import (
     HELP_ENTRIES_KEY,
@@ -225,17 +225,7 @@ def plugin_contribution(
             order=10,
             visible=_always_visible_help,
         ),
-        commands=(
-            CommandDescriptor(
-                id="help",
-                plugin_id="help",
-                section="查看",
-                examples=("帮助",),
-                description="查看当前会话可用功能",
-                features_any=("help",),
-                show_in_poke=True,
-            ),
-        ),
+        commands=help_command_contracts(),
         install=partial(
             install,
             contribution_catalog=contribution_catalog,

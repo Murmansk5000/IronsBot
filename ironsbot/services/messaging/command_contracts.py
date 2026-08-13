@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 
@@ -15,13 +15,13 @@ if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
 
 
-def messaging_command_descriptors(
+def messaging_command_contracts(
     config: MessageConfig,
-) -> tuple[CommandDescriptor, ...]:
+) -> tuple[CommandContract, ...]:
     """Describe configured messaging commands for the shared command catalog."""
 
     configured = tuple(
-        CommandDescriptor(
+        CommandContract(
             id=f"messaging.{action.id}",
             plugin_id="messaging",
             section="配置口令",
@@ -34,7 +34,7 @@ def messaging_command_descriptors(
         if action.enabled
     )
     keyword_replies = tuple(
-        CommandDescriptor(
+        CommandContract(
             id=f"messaging.keyword.{action.id}",
             plugin_id="messaging",
             section="关键词回复",
@@ -47,7 +47,7 @@ def messaging_command_descriptors(
         if action.enabled
     )
     schedules = tuple(
-        CommandDescriptor(
+        CommandContract(
             id=f"messaging.schedule.{action.id}",
             plugin_id="messaging",
             section="定时推送",

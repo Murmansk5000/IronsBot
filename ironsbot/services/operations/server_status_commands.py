@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ironsbot.core.command_catalog import (
     CommandAccess,
-    CommandDescriptor,
+    CommandContract,
     commands_from_rows,
 )
 from ironsbot.services.operations.command_text import (
@@ -15,7 +15,7 @@ from ironsbot.services.operations.command_text import (
 )
 
 
-def server_status_command_descriptors() -> tuple[CommandDescriptor, ...]:
+def server_status_command_contracts() -> tuple[CommandContract, ...]:
     """Describe server-status commands for the shared command catalog."""
 
     return (

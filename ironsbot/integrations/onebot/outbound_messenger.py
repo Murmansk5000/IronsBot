@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from nonebot.log import logger
 
@@ -26,7 +26,6 @@ from ironsbot.integrations.onebot.outbound import (
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Message
 
-    from ironsbot.integrations.onebot.delivery import OneBotMessageSender
     from ironsbot.integrations.onebot.router import BotRouter
 
 
@@ -46,6 +45,14 @@ _UNSUPPORTED_CAPABILITIES = DeliveryCapabilities(
     supports_private_context=False,
     supports_images=False,
 )
+
+
+class OneBotMessageSender(Protocol):
+    """Minimal OneBot send API required by the platform outbound adapter."""
+
+    async def send_private_msg(self, *, user_id: int, message: Message) -> object: ...
+
+    async def send_group_msg(self, *, group_id: int, message: Message) -> object: ...
 
 
 class OneBotOutboundMessenger:

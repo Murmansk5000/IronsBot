@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.services.seer.rendering.pet_info_models import (
+from ironsbot.services.seer.pet_info_views import (
     PetCoreSnapshot,
     PetDerivedDisplayData,
     PetInfoAssets,
@@ -133,7 +134,7 @@ def test_presenter_builds_template_document_from_detached_values() -> None:
     assert skill["activation_item"]["icon"].startswith("data:image/png;base64,")
 
 
-def test_presenter_uses_partner_descriptions_only_for_upgrade_partitioning() -> None:
+def test_presenter_uses_published_partner_upgrade_kind_for_partitioning() -> None:
     partner = PetPartnerSnapshot(
         group_id=1,
         name="测试羁绊",
@@ -143,12 +144,56 @@ def test_presenter_uses_partner_descriptions_only_for_upgrade_partitioning() -> 
         skill=None,
     )
 
-    document = present_pet_info(_snapshot(partner=partner), _assets())
+    snapshot = _snapshot(partner=partner)
+    soulmarks = (
+        replace(snapshot.soulmarks[0], intensified=False),
+        replace(snapshot.soulmarks[1], intensified=False),
+    )
+    document = present_pet_info(
+        replace(
+            snapshot,
+            soulmarks=soulmarks,
+            display=PetDerivedDisplayData(
+                snapshot.display.special_effects,
+                snapshot.display.soulmark_display_order,
+                snapshot.display.soulmark_icons,
+                snapshot.display.soulmark_display_additions,
+                ((20, "partner_upgrade"),),
+            ),
+        ),
+        _assets(),
+    )
     templates = cast("Mapping[str, Any]", document.templates)
 
     assert templates["pet_partner"]["name"] == "测试羁绊"
     assert [value["id"] for value in templates["base_soulmarks"]] == [10]
     assert [value["id"] for value in templates["upgraded_soulmarks"]] == [20]
+
+
+def test_presenter_does_not_infer_partner_upgrade_from_descriptions() -> None:
+    partner = PetPartnerSnapshot(
+        group_id=1,
+        name="测试羁绊",
+        cost_item=PetItemSnapshot(300, "契约徽章", 8),
+        before_description="基础魂印",
+        after_description="强化魂印",
+        skill=None,
+    )
+    snapshot = _snapshot(partner=partner)
+    document = present_pet_info(
+        replace(
+            snapshot,
+            soulmarks=tuple(
+                replace(soulmark, intensified=False)
+                for soulmark in snapshot.soulmarks
+            ),
+        ),
+        _assets(),
+    )
+    templates = cast("Mapping[str, Any]", document.templates)
+
+    assert [value["id"] for value in templates["base_soulmarks"]] == [10, 20]
+    assert templates["upgraded_soulmarks"] == ()
 
 
 def test_presenter_uses_published_soulmark_display_additions() -> None:

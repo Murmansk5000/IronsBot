@@ -32,6 +32,12 @@ from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugi
 from ironsbot.services.identity.player_accounts import build_player_account_registry
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
+from ironsbot.services.seer.lucky_skin_commands import (
+    LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
+    LUCKY_SKIN_WATCH_LIST_COMMANDS,
+    LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
+    LUCKY_SKIN_WATCH_RESET_COMMANDS,
+)
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
     LuckySkinWindowAccount,
@@ -369,9 +375,9 @@ def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None
     async def check() -> None:
         list_state: dict[str, object] = {}
         for commands in (
-            lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
-            lucky_skin_window_plugin._WATCH_CLEAR_COMMANDS,
-            lucky_skin_window_plugin._WATCH_RESET_COMMANDS,
+            LUCKY_SKIN_WATCH_LIST_COMMANDS,
+            LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
+            LUCKY_SKIN_WATCH_RESET_COMMANDS,
         ):
             for command in commands:
                 assert await lucky_skin_window_plugin._matches_watch_exact(
@@ -382,8 +388,8 @@ def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None
                 )
 
         for commands in (
-            lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
-            lucky_skin_window_plugin._WATCH_REMOVE_COMMANDS,
+            LUCKY_SKIN_WATCH_LIST_COMMANDS,
+            LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
         ):
             for command in commands:
                 change_state: dict[str, object] = {}
@@ -401,14 +407,14 @@ def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None
         assert not await lucky_skin_window_plugin._matches_watch_change(
             private_message_event("关注橱窗", user_id=1001),
             cast("Any", {}),
-            commands=lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
+            commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
             features=features,
         )
         for legacy_command in ("关注皮肤", "订阅皮肤"):
             assert not await lucky_skin_window_plugin._matches_watch_exact(
                 private_message_event(legacy_command, user_id=1001),
                 cast("Any", {}),
-                commands=lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
+                commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
                 features=features,
             )
 
@@ -461,7 +467,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
         assert await lucky_skin_window_plugin._matches_watch_exact(
             event,
             cast("Any", {}),
-            commands=lucky_skin_window_plugin._WATCH_LIST_COMMANDS,
+            commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
             features=cast("FeatureService", _Features()),
         )
         await lucky_skin_window_plugin._handle_watch_list(

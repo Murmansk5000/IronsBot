@@ -16,13 +16,13 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
+from ironsbot.core.plugin_install import (
+    PluginContribution,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.help_hint import (
     OneBotHelpHintPort,
     is_onebot_poke_at_bot,
-)
-from ironsbot.runtime.plugins import (
-    PluginContribution,
-    active_plugin_install_context,
 )
 
 __plugin_meta__ = PluginMetadata(

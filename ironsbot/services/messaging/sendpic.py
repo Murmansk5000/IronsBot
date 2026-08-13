@@ -5,7 +5,7 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from ironsbot.core.command_catalog import CommandDescriptor
+from ironsbot.core.command_catalog import CommandContract
 from ironsbot.core.commands import normalize_command_text
 
 if TYPE_CHECKING:
@@ -109,13 +109,13 @@ class SendpicService:
         )
 
 
-def sendpic_command_descriptors(
+def sendpic_command_contracts(
     service: SendpicService,
-) -> tuple[CommandDescriptor, ...]:
+) -> tuple[CommandContract, ...]:
     """Describe exactly the configured image commands in the shared catalog."""
 
     return tuple(
-        CommandDescriptor(
+        CommandContract(
             id=f"sendpic.{config.id}",
             plugin_id="sendpic",
             section="图片",

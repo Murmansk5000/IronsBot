@@ -15,12 +15,12 @@ from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.matchers import bind_async
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.matchers import bind_async
 
 if TYPE_CHECKING:
     from ironsbot.integrations.onebot.matchers import MatcherFactory
