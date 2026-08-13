@@ -80,6 +80,7 @@ def test_builtin_push_options_split_startup_admin_notices() -> None:
     assert labels["startup_notice"] == "机器人启动通知"
     assert labels["startup_docker_update"] == "启动镜像检查通知"
     assert labels["startup_data_sync"] == "启动数据同步通知"
+    assert labels["startup_clock_check"] == "启动时钟偏差检查通知"
     assert labels["ai_chat_error_notice"] == "AI聊天异常通知"
     assert labels["bili_login_notice"] == "B站登录通知"
     assert labels["headless_seer_notice"] == "无头赛尔号通知"

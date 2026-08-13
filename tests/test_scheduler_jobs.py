@@ -1,6 +1,13 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
-from ironsbot.services.operations.scheduler import JobRegistry
+from ironsbot.core.time import ScheduledClockTime
+from ironsbot.services.operations.scheduler import (
+    JobRegistry,
+    wall_clock_interval_trigger,
+)
+
+FALLBACK_INTERVAL_MINUTES = 90
 
 
 @dataclass
@@ -25,6 +32,10 @@ class FakeScheduler:
 
     def remove_job(self, job_id: str) -> None:
         self.removed.append(job_id)
+
+
+class TimezoneFakeScheduler(FakeScheduler):
+    timezone = "Asia/Shanghai"
 
 
 def test_job_registry_scopes_job_ids_and_prefix_removal() -> None:
@@ -76,3 +87,95 @@ def test_job_registry_replace_all_clears_prefix_before_registering() -> None:
             "minute": 0,
         }
     ]
+
+
+def test_wall_clock_interval_uses_exact_minute_boundaries() -> None:
+    trigger, kwargs = wall_clock_interval_trigger(15)
+
+    assert trigger == "cron"
+    assert kwargs == {"minute": "*/15", "second": 0}
+
+
+def test_wall_clock_interval_supports_a_second_phase() -> None:
+    trigger, kwargs = wall_clock_interval_trigger(
+        15,
+        offset_minutes=4,
+        offset_seconds=5,
+    )
+
+    assert trigger == "cron"
+    assert kwargs == {"minute": "4/15", "second": 5}
+
+
+def test_job_registry_registers_daily_time_with_seconds() -> None:
+    scheduler = FakeScheduler()
+    registry = JobRegistry(scheduler)
+
+    registry.add_daily(
+        "task",
+        clock_time=ScheduledClockTime.parse(
+            "04:30:05",
+            error_message="invalid time",
+        ),
+        job_id="daily",
+    )
+
+    assert scheduler.added_jobs == [
+        {
+            "func": "task",
+            "trigger": "cron",
+            "id": "daily",
+            "replace_existing": True,
+            "hour": 4,
+            "minute": 30,
+            "second": 5,
+        }
+    ]
+
+
+def test_job_registry_applies_the_configured_scheduler_timezone() -> None:
+    scheduler = TimezoneFakeScheduler()
+    registry = JobRegistry(scheduler)
+
+    registry.add_daily(
+        "task",
+        clock_time=ScheduledClockTime(4, 30, 5),
+        job_id="daily",
+    )
+
+    assert scheduler.added_jobs[0]["timezone"] == "Asia/Shanghai"
+
+
+def test_wall_clock_interval_fallback_starts_on_next_aligned_slot() -> None:
+    trigger, kwargs = wall_clock_interval_trigger(
+        FALLBACK_INTERVAL_MINUTES,
+        now=datetime(2026, 8, 12, 14, 23, 41, tzinfo=timezone.utc),
+    )
+
+    assert trigger == "interval"
+    assert kwargs["minutes"] == FALLBACK_INTERVAL_MINUTES
+    start_date = kwargs["start_date"]
+    assert isinstance(start_date, datetime)
+    assert start_date.minute in {0, 30}
+    assert start_date.second == 0
+
+
+def test_wall_clock_interval_fallback_uses_the_scheduler_timezone() -> None:
+    trigger, kwargs = wall_clock_interval_trigger(
+        FALLBACK_INTERVAL_MINUTES,
+        offset_minutes=30,
+        offset_seconds=5,
+        schedule_timezone="Asia/Shanghai",
+        now=datetime(2026, 8, 12, 14, 23, 41, tzinfo=timezone.utc),
+    )
+
+    assert trigger == "interval"
+    assert kwargs["start_date"] == datetime(
+        2026,
+        8,
+        12,
+        23,
+        0,
+        5,
+        tzinfo=kwargs["start_date"].tzinfo,
+    )

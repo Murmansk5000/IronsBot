@@ -22,9 +22,9 @@ from ironsbot.core.commands import (
 )
 from ironsbot.core.time import normalize_daily_time
 
-INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
+INVALID_INTERVAL_TIME_ERROR = "bilibili.polling.windows time must use HH:MM:SS"
 INVALID_SEER_PREVIEW_TIME_ERROR = (
-    "bilibili.seer_categories.preview_windows time must use HH:MM"
+    "bilibili.seer_categories.preview_windows time must use HH:MM:SS"
 )
 
 BiliPushMode = Literal["full", "link"]
@@ -40,6 +40,7 @@ DEFAULT_BILI_SUPPRESS_PATTERNS = [
     "抽奖结果",
 ]
 DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
+MAX_CLOCK_SECOND = 59
 SeerDynamicCategory = Literal[
     "lottery",
     "version_preview",
@@ -179,6 +180,42 @@ class BiliIntervalWindow(BaseModel):
         )
 
 
+class BiliBoostWindow(BaseModel):
+    """Extra short polling burst around a recurring wall-clock release slot."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    start: str
+    end: str
+    interval_minutes: int = Field(gt=0)
+    offset_seconds: list[int] = Field(min_length=1)
+
+    @field_validator("start", "end")
+    @classmethod
+    def validate_hhmm(cls, value: str) -> str:
+        return normalize_daily_time(
+            value,
+            error_message=INVALID_INTERVAL_TIME_ERROR,
+        )
+
+    @field_validator("offset_seconds")
+    @classmethod
+    def validate_offset_seconds(cls, value: list[int]) -> list[int]:
+        if any(not 0 <= second <= MAX_CLOCK_SECOND for second in value):
+            msg = (
+                "bilibili.polling.boost_windows offset_seconds "
+                "must be between 0 and 59"
+            )
+            raise ValueError(msg)
+        if len(set(value)) != len(value):
+            msg = (
+                "bilibili.polling.boost_windows offset_seconds "
+                "must not contain duplicates"
+            )
+            raise ValueError(msg)
+        return sorted(value)
+
+
 class BiliStorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -190,9 +227,26 @@ class BiliPollingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_minutes: int = Field(default=30, gt=0)
+    check_second: int = Field(default=5, ge=0, le=59)
     windows: list[BiliIntervalWindow] = Field(
         default_factory=lambda: [
-            BiliIntervalWindow(start="07:00", end="23:00", minutes=5)
+            BiliIntervalWindow(start="07:00:00", end="23:00:00", minutes=5)
+        ]
+    )
+    boost_windows: list[BiliBoostWindow] = Field(
+        default_factory=lambda: [
+            BiliBoostWindow(
+                start="10:00:00",
+                end="19:00:00",
+                interval_minutes=60,
+                offset_seconds=[0, 5, 10, 15],
+            ),
+            BiliBoostWindow(
+                start="14:30:00",
+                end="19:30:00",
+                interval_minutes=60,
+                offset_seconds=[0, 5, 10, 15],
+            ),
         ]
     )
 
@@ -304,8 +358,8 @@ class BiliSeerPreviewWindow(BaseModel):
     weekdays: NormalizedStringList = Field(
         default_factory=lambda: list(DEFAULT_SEER_PREVIEW_WEEKDAYS)
     )
-    start: str = "17:00"
-    end: str = "18:00"
+    start: str = "17:00:00"
+    end: str = "18:00:00"
 
     @field_validator("weekdays")
     @classmethod

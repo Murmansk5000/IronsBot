@@ -12,13 +12,13 @@ from ironsbot.core.time import (
 )
 
 INVALID_RESTART_TIME_ERROR = (
-    "operations.restart.times must contain daily HH:MM times, "
-    'for example "04:30,16:10" or ["04:30","16:10"]'
+    "operations.restart.times must contain daily HH:MM:SS times, "
+    'for example "04:30:00,16:10:05" or ["04:30:00","16:10:05"]'
 )
 INVALID_RECONNECT_TIME_ERROR = (
     "operations.headless_notice.reconnect_check_times must contain "
-    "daily HH:MM times, "
-    'for example "00:05" or ["00:05"]'
+    "daily HH:MM:SS times, "
+    'for example "00:05:00" or ["00:05:00"]'
 )
 SEERAPI_DATA_RELEASE = "https://github.com/Murmansk-Seer/seerapi/releases/download"
 IRONSBOT_RELEASE = "https://github.com/Murmansk5000/IronsBot/releases/download"
@@ -80,6 +80,7 @@ class DataSourceConfig(BaseModel):
     url: str
     fingerprint_url: str = ""
     interval_minutes: int = Field(default=60, gt=0)
+    interval_second: int = Field(default=0, ge=0, le=59)
     local_path: str
     remote_build: RemoteBuildConfig = Field(default_factory=RemoteBuildConfig)
 
@@ -181,7 +182,7 @@ class RestartConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    times: str = "04:30"
+    times: str = "04:30:00"
     grace_seconds: float = Field(default=10.0, ge=0)
     signal_parent: bool = True
 
@@ -230,7 +231,7 @@ class HeadlessNoticeConfig(BaseModel):
         "离线时长：{offline_duration}\n"
         "来源：{source}"
     )
-    reconnect_check_times: str = "00:05"
+    reconnect_check_times: str = "00:05:00"
 
     @field_validator("reconnect_check_times", mode="before")
     @classmethod

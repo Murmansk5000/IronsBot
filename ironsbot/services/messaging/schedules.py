@@ -134,10 +134,11 @@ def schedule_override_trigger_kwargs(
     task: MessageScheduledAction,
     value: str,
 ) -> dict[str, Any]:
-    hour, minute = daily_time_parts_for_push(value)
+    hour, minute, second = daily_time_parts_for_push(value)
     trigger_kwargs = build_schedule_trigger_kwargs(task)
     trigger_kwargs["hour"] = hour
     trigger_kwargs["minute"] = minute
+    trigger_kwargs["second"] = second
     return trigger_kwargs
 
 

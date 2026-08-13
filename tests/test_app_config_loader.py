@@ -152,7 +152,7 @@ def _assert_default_player_request_protection(
 def _assert_default_file_logging(config: Settings) -> None:
     assert not config.bot.logging.file_enabled
     assert not config.bot.logging.error_file_enabled
-    assert config.bot.logging.rotation == "00:00"
+    assert config.bot.logging.rotation == "00:00:00"
     assert config.bot.logging.retention == "30 days"
     assert config.bot.logging.compression is None
 
@@ -242,8 +242,8 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
         config.request_interval_seconds == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
     )
     assert config.request_jitter_seconds == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
-    assert config.active_start == "07:30"
-    assert config.active_end == "01:30"
+    assert config.active_start == "07:30:00"
+    assert config.active_end == "01:30:00"
     assert config.times == []
 
 
@@ -270,7 +270,7 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
     assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == [DEFAULT_BILI_ACCOUNT_ALIAS]
     assert config.bilibili.push.modes == {}
-    assert config.bilibili.polling.windows[0].start == "07:00"
+    assert config.bilibili.polling.windows[0].start == "07:00:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
     _assert_default_push_unsubscribe(config.messaging.push_unsubscribe)
@@ -370,7 +370,7 @@ def test_scheduled_push_migrates_legacy_hour_and_minute() -> None:
         }
     )
 
-    assert action.time == "23:05"
+    assert action.time == "23:05:00"
 
 
 def test_scheduled_push_ids_are_globally_unique() -> None:
@@ -1048,7 +1048,7 @@ watched_skin_ids = [1400538]
     env = {account_password_env: "secret"}
     config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
-    assert config.seer.lucky_skin_window.time == "00:02"
+    assert config.seer.lucky_skin_window.time == "00:02:00"
     assert (
         config.seer.lucky_skin_window.accounts[0].account
         == "sample_account"
@@ -1135,8 +1135,16 @@ time = "24:02"
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="time must use HH:MM"):
+    with pytest.raises(ValidationError, match="HH:MM:SS"):
         load_settings(config_path)
+
+
+def test_lucky_skin_window_accepts_seconds_and_uses_precise_default() -> None:
+    assert LuckySkinWindowConfig().time == "00:01:05"
+    assert LuckySkinWindowConfig(time="0:2:5").time == "00:02:05"
+
+    with pytest.raises(ValidationError, match="HH:MM:SS"):
+        LuckySkinWindowConfig(time="00:01:60")
 
 
 def test_lucky_skin_window_requires_dedicated_password(
@@ -1346,7 +1354,7 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
         default_at_users="owner,1234567890",  # type: ignore[arg-type]
     )
 
-    assert config.times == ["08:30", "23:00"]
+    assert config.times == ["08:30:00", "23:00:00"]
     assert config.default_threshold == TEAM_RESOURCE_THRESHOLD
     assert config.default_at_users == ["owner", "1234567890"]
 

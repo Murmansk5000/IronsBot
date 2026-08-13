@@ -197,10 +197,11 @@ def test_start_team_audit_followups_registers_scan() -> None:
     assert scheduler.jobs == [
         {
             "func": service.schedule_pending,
-            "trigger": "interval",
+            "trigger": "cron",
             "id": "team_audit_followup_scan",
             "replace_existing": True,
-            "minutes": FOLLOWUP_SCAN_INTERVAL_MINUTES,
+            "minute": f"*/{FOLLOWUP_SCAN_INTERVAL_MINUTES}",
+            "second": 0,
             "args": [scheduler],
         }
     ]

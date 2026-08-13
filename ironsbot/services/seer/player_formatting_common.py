@@ -120,6 +120,18 @@ def sample_rank_text(summary: LocalRankSummary, key: str) -> str:
     return summary.sample_rank(key)
 
 
+def format_rank_cache_fallback(result: RankLookupResult | None) -> str:
+    """Describe an explicitly stale rank reused after live lookup failure."""
+
+    if result is None:
+        return ""
+    cached_at = getattr(result, "fallback_cached_at", None)
+    if not isinstance(cached_at, (int, float)) or cached_at <= 0:
+        return ""
+    failure = str(getattr(result, "failure", "") or "查询失败")
+    return f"上次记录，缓存于{format_datetime(int(cached_at))}，本次{failure}"
+
+
 def format_metric_line(
     title: str,
     value: int | None,
@@ -130,10 +142,15 @@ def format_metric_line(
 ) -> str | None:
     value_text = str(value) if value is not None and value >= 0 else "暂无数据"
     failure = None if rank_result is None else getattr(rank_result, "failure", None)
+    cached_fallback = format_rank_cache_fallback(rank_result)
     rank_text = (
-        f"全服排行失败：{failure}"
-        if failure
-        else format_rank_position_text(rank_result)
+        f"{format_rank_position_text(rank_result)}（{cached_fallback}）"
+        if cached_fallback
+        else (
+            f"全服排行失败：{failure}"
+            if failure
+            else format_rank_position_text(rank_result)
+        )
     )
 
     metric_text = join_metric_parts(
