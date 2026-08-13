@@ -281,6 +281,8 @@ def test_docker_image_runs_preflight_before_application() -> None:
 
     assert 'ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]' in dockerfile
     assert 'CMD ["python", "-m", "ironsbot"]' in dockerfile
+    assert "COPY ironsbot /app/ironsbot" in dockerfile
+    assert "COPY . /app/" not in dockerfile
     assert "python -m ironsbot.app.docker_preflight" in entrypoint
     assert "while :; do" in entrypoint
     wait_offset = entrypoint.index("while :; do")
