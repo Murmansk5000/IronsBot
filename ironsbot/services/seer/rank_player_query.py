@@ -121,6 +121,50 @@ async def fetch_rank_player_result(
     )
 
 
+def fetch_cached_rank_player_result(
+    rank: RankService,
+    *,
+    command: RankPlayerCommand,
+) -> RankPlayerQueryResult | None:
+    """Format a cached rank fact without opening a live game request."""
+
+    spec = rank.get_spec(command.rank_key)
+    if rank.spec_needs_sub_key(spec):
+        return None
+    cached = rank.cache.item(
+        key=spec.key,
+        sub_key=spec.sub_key,
+        user_id=command.player_id,
+        allow_stale=True,
+    )
+    if cached is None:
+        return None
+
+    metric_key = LOCAL_RANKS[command.rank_key].metric_key
+    score = int(cached.score)
+    display = _format_score(metric_key, score, spec.unit)
+    result = RankLookupResult(
+        title=spec.title.removesuffix("榜"),
+        score_name=spec.unit,
+        rank=int(cached.rank_index) + 1,
+        score=score,
+    )
+    metric_text = join_metric_parts(
+        display or "暂无数据",
+        format_rank_position_text(result),
+    )
+    return RankPlayerQueryResult(
+        "\n".join(
+            (
+                f"📊【{spec.title}玩家查询】",
+                format_player_identity(command.player_id, cached.nick),
+                f"{spec.title.removesuffix('榜')}：{metric_text}",
+            )
+        ),
+        result,
+    )
+
+
 async def fetch_rank_player_message(
     rank: RankService,
     local_rank: LocalRankService,
