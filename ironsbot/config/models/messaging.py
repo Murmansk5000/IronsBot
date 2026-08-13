@@ -14,7 +14,7 @@ from ironsbot.core.commands import (  # noqa: TC001 - Pydantic resolves aliases
     NormalizedStringList,
 )
 from ironsbot.core.messaging import SendpicBehaviorConfig
-from ironsbot.core.time import normalize_daily_time
+from ironsbot.core.time import normalize_daily_time_with_seconds
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
@@ -45,7 +45,7 @@ PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
 SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
 SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
 SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
-SCHEDULE_TIME_ERROR = "messaging.schedules.time must use HH:MM"
+SCHEDULE_TIME_ERROR = "messaging.schedules.time must use HH:MM or HH:MM:SS"
 _SCHEDULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 BotReference = str | int
 COMMAND_COOLDOWN_MESSAGE_REQUIRED_ERROR = (
@@ -316,7 +316,10 @@ class MessageScheduledAction(BaseMessageAction):
     @field_validator("time")
     @classmethod
     def normalize_time(cls, value: str) -> str:
-        return normalize_daily_time(value, error_message=SCHEDULE_TIME_ERROR)
+        return normalize_daily_time_with_seconds(
+            value,
+            error_message=SCHEDULE_TIME_ERROR,
+        )
 
     @model_validator(mode="after")
     def validate_schedule_id(self) -> Self:
