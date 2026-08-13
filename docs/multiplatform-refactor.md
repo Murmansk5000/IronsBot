@@ -161,6 +161,14 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
 `build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
 
+**效果元数据来源边界（2026-08-13）：** SeerAPI `e82d738` 将官方
+`effectDes.json` 与 `signIconFight.json` 的纯解析和值对象迁入
+`scripts/effect_metadata_sources.py`。发布构建器继续持有 URL、下载、失败日志和 SQLite
+写入，新模块不依赖环境变量、网络或数据库。旧私有解析器入口已删除；构建相关 49 项、
+SeerAPI 全量 **259 passed**、Ruff、脚本 CLI 帮助、编译和 diff 检查均通过。该步骤让
+`build_seerapi_data_db.py` 净减少 81 行，为后续按来源继续拆出商店、契约和配置包二进制解析
+建立同一边界，不改变已发布表或 IronsBot 查询语义。
+
 **镜像依赖审计（2026-08-13）：** 已删除 IronsBot 未导入、也不由 `seerapi`
 传递依赖的 `unitypy`。锁定闭包同步移除纹理解码、音频、压缩等 11 个运行时包；
 HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而保留。Docker 引擎在本机未
