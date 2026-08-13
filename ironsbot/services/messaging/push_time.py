@@ -12,7 +12,10 @@ from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
-from ironsbot.core.time import normalize_daily_time
+from ironsbot.core.time import (
+    daily_time_parts_with_seconds,
+    normalize_daily_time_with_seconds,
+)
 from ironsbot.services.messaging.subscription_options import (
     schedule_key,
     schedule_label,
@@ -36,9 +39,7 @@ EligibleConversations = Callable[
 ]
 
 DEFAULT_TEXT = "默认"
-TIME_INPUT_ERROR = (
-    "请输入 HH:MM 格式的时间，例如 22:30；输入“默认”恢复 TOML。"
-)
+TIME_INPUT_ERROR = "请输入 HH:MM 或 HH:MM:SS 时间，例如 22:30；输入“默认”恢复 TOML。"
 LEAD_INPUT_ERROR = "请输入正整数小时列表，例如 24,3,1；输入“默认”恢复 TOML。"
 
 
@@ -201,7 +202,7 @@ def build_push_time_menu_prompt(
 def push_time_value_prompt(option: PushTimeOption) -> str:
     if option.preference_type == CRON_TIME_PREFERENCE:
         return (
-            f"请输入“{option.label}”的新时间，格式 HH:MM。\n"
+            f"请输入“{option.label}”的新时间，格式 HH:MM 或 HH:MM:SS。\n"
             f"当前：{option.current_value}；默认：{option.default_value}。\n"
             "发送“默认”恢复 TOML，输入 0 退出。"
         )
@@ -217,7 +218,7 @@ def normalize_push_time_input(option: PushTimeOption, text: str) -> str | None:
     if value == DEFAULT_TEXT:
         return None
     if option.preference_type == CRON_TIME_PREFERENCE:
-        return normalize_daily_time(value, error_message=TIME_INPUT_ERROR)
+        return normalize_daily_time_with_seconds(value, error_message=TIME_INPUT_ERROR)
 
     lead_hours = positive_int_list(value)
     if not lead_hours:
@@ -225,7 +226,5 @@ def normalize_push_time_input(option: PushTimeOption, text: str) -> str | None:
     return lead_hours_text(lead_hours)
 
 
-def daily_time_parts_for_push(value: str) -> tuple[int, int]:
-    normalized = normalize_daily_time(value, error_message=TIME_INPUT_ERROR)
-    hour_text, minute_text = normalized.split(":", maxsplit=1)
-    return int(hour_text), int(minute_text)
+def daily_time_parts_for_push(value: str) -> tuple[int, int, int]:
+    return daily_time_parts_with_seconds(value, error_message=TIME_INPUT_ERROR)
