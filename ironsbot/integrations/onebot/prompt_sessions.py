@@ -419,6 +419,21 @@ class PromptSessionManager:
             return None
         return self._queued_by_token.get(token)
 
+    def matching_queued_conversation(
+        self,
+        event: Event,
+    ) -> _QueuedConversation | None:
+        """Return the active menu context that exclusively owns an input."""
+
+        return next(
+            (
+                context
+                for context in self._queued_by_token.values()
+                if context.matches(event)
+            ),
+            None,
+        )
+
     def finish_queued_conversation(self, state: T_State) -> None:
         context = self.queued_conversation(state)
         ticket = state.get(QUEUED_CONVERSATION_TICKET_STATE_KEY)

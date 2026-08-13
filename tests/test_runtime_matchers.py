@@ -172,6 +172,21 @@ async def test_queued_conversation_serializes_inputs_in_arrival_order() -> None:
     context.complete(second_ticket)
 
 
+def test_queued_conversation_matches_current_owner_input() -> None:
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_456_123",
+        owner_user_id=123,
+        state={},
+        reply_check=lambda event: event.get_plaintext().strip() == "1",
+        handlers=[],
+    )
+
+    assert manager.matching_queued_conversation(group_message_event("1")) is context
+    assert manager.matching_queued_conversation(group_message_event("2")) is None
+
+
 @pytest.mark.asyncio
 async def test_parallel_queued_conversation_reserves_fifo_tickets_without_waiting() -> (
     None
