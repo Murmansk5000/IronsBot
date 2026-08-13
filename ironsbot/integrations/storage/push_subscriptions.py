@@ -90,9 +90,7 @@ PUSH_SUBSCRIPTION_SCHEMA = (
     )
     """,
 )
-PUSH_SUBSCRIPTION_MIGRATIONS = (
-    SqliteMigration(1, PUSH_SUBSCRIPTION_SCHEMA),
-)
+PUSH_SUBSCRIPTION_MIGRATIONS = (SqliteMigration(1, PUSH_SUBSCRIPTION_SCHEMA),)
 MIGRATION_NAMESPACE = "push_subscriptions"
 
 
@@ -195,9 +193,7 @@ class PushUnsubscribeStore:
             if (conversation := _conversation_from_row(row)) is not None
         }
         return [
-            conversation
-            for conversation in requested
-            if conversation not in blocked
+            conversation for conversation in requested if conversation not in blocked
         ]
 
     def get_time_preference(
@@ -481,6 +477,12 @@ class PushUnsubscribeStore:
 
     def _connect(self) -> AbstractContextManager[sqlite3.Connection]:
         return self._database.connect()
+
+    def migrate_bilibili_subscriptions(self, classified_uids: set[int]) -> None:
+        from .bilibili_subscription_migration import migrate_bilibili_subscriptions
+
+        with self._connect() as con:
+            migrate_bilibili_subscriptions(con, classified_uids)
 
 
 def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str]:

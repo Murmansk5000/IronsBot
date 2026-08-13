@@ -6,7 +6,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.core.platform import ConversationRef
+from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.matchers import bind_async, enter_prompt_loop
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.services.messaging.service import (  # noqa: TC001
@@ -137,9 +137,24 @@ async def handle_push_subscription_select(
             replace_menu_anchor=True,
         )
 
+    if submenu := messaging.subscription_submenu(
+        conversation,
+        option,
+        read_only=False,
+    ):
+        submenu_options, submenu_prompt = submenu
+        state[PUSH_SUBSCRIPTION_OPTIONS_KEY] = submenu_options
+        await PUSH_SUBSCRIPTION_FLOW.reject(
+            matcher,
+            state,
+            submenu_prompt,
+            replace_menu_anchor=True,
+        )
+
     result_message = messaging.toggle_subscription(
         conversation,
         option,
+        actor=ActorRef(Platform.ONEBOT, str(event.user_id)),
     )
     refreshed_options, menu_prompt = messaging.subscription_menu(
         conversation,

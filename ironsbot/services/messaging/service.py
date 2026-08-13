@@ -54,6 +54,24 @@ PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS = ("推送管理",)
 PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 
 
+class PushSubscriptionSubmenuProvider(Protocol):
+    """Optional extension point for a nested, configuration-backed push menu."""
+
+    def subscription_submenu(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool,
+    ) -> tuple[list[PushSubscriptionOption], str] | None: ...
+
+    def toggle_subscription(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+    ) -> str | None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class MessagingService:
     _config: MessageConfig
@@ -69,6 +87,7 @@ class MessagingService:
     _prepare_extra_push_options: (
         Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
+    _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -175,7 +194,26 @@ class MessagingService:
         self,
         conversation: ConversationRef,
         option: PushSubscriptionOption,
+        *,
+        actor: ActorRef | None = None,
     ) -> str:
+        # Resolve the live option rather than trusting a stale menu's constraint.
+        current_options = self._all_subscription_options(conversation)
+        current = next(
+            (item for item in current_options if item.key == option.key), None
+        )
+        if current is None:
+            return "订阅选项已调整，请重新打开 TD。"
+        option = current
+        if option.submenu_key is not None:
+            return "请进入该账号的推送设置后选择订阅项。"
+        if option.superuser_only and (
+            actor is None or not self._features.is_actor_superuser(actor)
+        ):
+            return "仅超级管理员可以修改动态提醒订阅。"
+        for provider in self._subscription_submenu_providers:
+            if message := provider.toggle_subscription(conversation, option):
+                return message
         if self._store.is_unsubscribed(conversation, option.key):
             self._store.restore(conversation, option.key)
             return f"已恢复订阅：{option.label}。"
@@ -185,6 +223,22 @@ class MessagingService:
             option.feature,
         )
         return f"已退订：{option.label}。"
+
+    def subscription_submenu(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool,
+    ) -> tuple[list[PushSubscriptionOption], str] | None:
+        for provider in self._subscription_submenu_providers:
+            if submenu := provider.subscription_submenu(
+                conversation,
+                option,
+                read_only=read_only,
+            ):
+                return submenu
+        return None
 
     def push_time_options(
         self,
@@ -319,7 +373,7 @@ class MessagingService:
         ] = {}
         for conversation in self._store.preference_conversations():
             valid_unsubscriptions[conversation] = {
-                option.key for option in self.subscription_options(conversation)
+                option.key for option in self._all_subscription_options(conversation)
             }
             valid_times[conversation] = {
                 (option.key, option.preference_type)
@@ -329,6 +383,19 @@ class MessagingService:
             valid_unsubscription_keys=valid_unsubscriptions,
             valid_time_preferences=valid_times,
         )
+
+    def _all_subscription_options(
+        self, conversation: ConversationRef
+    ) -> list[PushSubscriptionOption]:
+        options = self.subscription_options(conversation)
+        for parent in tuple(options):
+            if parent.submenu_key is not None:
+                submenu = self.subscription_submenu(
+                    conversation, parent, read_only=False
+                )
+                if submenu is not None:
+                    options.extend(submenu[0])
+        return options
 
 
 class CommandAction(Protocol):

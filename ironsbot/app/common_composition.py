@@ -57,6 +57,14 @@ def build_common_components(
         task_owner.create,
     )
     subscriptions = PushUnsubscribeStore(settings.paths.qq_state)
+    subscriptions.migrate_bilibili_subscriptions(
+        {
+            account.uid
+            for alias, account in settings.bilibili.accounts.items()
+            if settings.bilibili.category_subscriptions.enabled
+            and alias in settings.bilibili.category_subscriptions.accounts
+        }
+    )
     bot_router = BotRouter(
         settings.messaging.bot_routing,
         settings.onebot_references,

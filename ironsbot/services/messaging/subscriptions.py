@@ -143,6 +143,8 @@ class PushSubscriptionOption:
     label: str
     feature: str
     unsubscribed: bool = False
+    submenu_key: str | None = None
+    superuser_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)

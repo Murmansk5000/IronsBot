@@ -116,6 +116,18 @@ def _seed_legacy_platform_state(root: Path) -> None:
             )
             """,
             """
+            CREATE TABLE bili_push_category_preferences (
+                target_type TEXT, target_id INTEGER, uid INTEGER,
+                category TEXT, muted INTEGER, updated_at TEXT
+            )
+            """,
+            """
+            INSERT INTO bili_push_category_preferences VALUES (
+                'group', 2001, 123, 'lottery', 1,
+                '2026-08-04T00:00:00Z'
+            )
+            """,
+            """
             CREATE TABLE group_rank_display_limits (
                 group_id INTEGER PRIMARY KEY, display_limit INTEGER,
                 updated_at TEXT, updated_by INTEGER
@@ -217,8 +229,7 @@ def test_platform_state_migration_dry_run_is_read_only(tmp_path: Path) -> None:
     assert result.migrated_rows["player_bindings"] == 1
     with sqlite3.connect(data_root / "state/qq_state.sqlite") as connection:
         columns = {
-            row[1]
-            for row in connection.execute("PRAGMA table_info(player_bindings)")
+            row[1] for row in connection.execute("PRAGMA table_info(player_bindings)")
         }
     assert "qq_user_id" in columns
     assert "actor_id" not in columns
@@ -278,14 +289,20 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
         ).fetchall() == [("group", "2001")]
         assert connection.execute(
             """
+            SELECT conversation_platform,
+                   conversation_kind, conversation_id, uid, category, muted
+            FROM bili_push_category_preferences
+            """
+        ).fetchall() == [("onebot", "group", "2001", 123, "lottery", 1)]
+        assert connection.execute(
+            """
             SELECT actor_id, position
             FROM team_resource_subscription_mentions
             ORDER BY position
             """
         ).fetchall() == [("1001", 0), ("1002", 1)]
         columns = {
-            row[1]
-            for row in connection.execute("PRAGMA table_info(player_bindings)")
+            row[1] for row in connection.execute("PRAGMA table_info(player_bindings)")
         }
     assert "qq_user_id" not in columns
     with sqlite3.connect(data_root / "state/runtime_state.sqlite") as connection:
@@ -316,9 +333,7 @@ def test_platform_state_migration_rejects_invalid_target_type(tmp_path: Path) ->
     _seed_legacy_platform_state(data_root)
     _execute(
         data_root / "state/qq_state.sqlite",
-        (
-            "UPDATE push_unsubscriptions SET target_type = 'unsupported'",
-        ),
+        ("UPDATE push_unsubscriptions SET target_type = 'unsupported'",),
     )
 
     with pytest.raises(PlatformStateMigrationError, match="invalid target type"):

@@ -127,7 +127,9 @@ def build_push_subscription_menu(
         title=title,
         items=tuple(
             SelectionMenuItem(
-                label=option.label,
+                label=f"{option.label}（仅超管可修改）"
+                if option.superuser_only
+                else option.label,
                 prefix="❌" if option.unsubscribed else "✅",
             )
             for option in options
