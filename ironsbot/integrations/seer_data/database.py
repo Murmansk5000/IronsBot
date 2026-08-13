@@ -65,9 +65,12 @@ class SeerDatabase:
         merge_connected_mintmarks: bool,
     ) -> None:
         self._databases = databases
+        self._published_version = UNKNOWN_VERSION
         self.mintmark = build_mintmark_data_getter(
             merge_connected=merge_connected_mintmarks
         )
+        databases.add_load_listener(SEERAPI_DB, self._refresh_published_version)
+        self._refresh_published_version()
 
     @contextmanager
     def query(self, operation: DataQuery[_T]) -> Iterator[_T]:
@@ -168,16 +171,24 @@ class SeerDatabase:
             return None
 
     def version(self) -> str:
+        """Return the release version cached when the in-memory DB was loaded."""
+
+        return self._published_version
+
+    def _refresh_published_version(self) -> None:
+        """Refresh only after an atomic database load, never per cache lookup."""
         try:
             with self._databases.session(SEERAPI_DB) as session:
                 if session is None:
-                    return UNKNOWN_VERSION
+                    self._published_version = UNKNOWN_VERSION
+                    return
                 metadata = session.exec(select(ApiMetadataORM)).first()
                 if metadata is not None:
-                    return metadata.generate_time.isoformat()
+                    self._published_version = metadata.generate_time.isoformat()
+                    return
         except Exception:  # noqa: BLE001
             logger.debug("failed to query Seer database version", exc_info=True)
-        return UNKNOWN_VERSION
+        self._published_version = UNKNOWN_VERSION
 
 
 def _mintmark_class_member_ids(
