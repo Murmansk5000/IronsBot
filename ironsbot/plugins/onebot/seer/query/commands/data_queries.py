@@ -32,6 +32,7 @@ from ironsbot.integrations.onebot.prompts import (
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.autocard import AutocardPromptValue
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.data_query_commands import (
     DATA_VERSION_COMMANDS,
     NEW_ACHIEVEMENTS_COMMANDS,
@@ -50,6 +51,7 @@ from ironsbot.services.seer.data_query_commands import (
     WEEKLY_PREVIEW_COMMANDS,
 )
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.external_references import SeerInfoReference
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     CATEGORY_NAMES,
@@ -59,6 +61,7 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentSnapshot,
     format_new_content_item_description,
+    is_new_content_category_auto_expanded,
     new_content_category_unavailable_message,
     new_content_unavailable_message,
 )
@@ -70,15 +73,14 @@ from ..query_conversation import build_reply
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from ironsbot.services.seer.data_queries import (
-        DataQueryReply,
-        SeerDataQueryService,
-    )
+    from ironsbot.services.seer.data_queries import DataQueryReply, SeerDataQueryService
+    from ironsbot.services.seer.external_references import SeerInfoReferences
 
 
 NEW_CONTENT_SNAPSHOT_KEY = "new_content_snapshot"
 NEW_CONTENT_SERVICES_KEY = "new_content_services"
 NEW_CONTENT_MENU_LAYOUT_KEY = "new_content_menu_layout"
+NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 logger = logging.getLogger(__name__)
 
 
@@ -95,40 +97,59 @@ class _NewContentMenuLayout:
 
     display_categories: tuple[NewContentCategory, ...]
     focused_category: NewContentCategory | None = None
+    expanded_categories: frozenset[NewContentCategory] = frozenset()
 
 
-_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-z]|[1-9]\d*|0)", re.IGNORECASE)
+_NEW_CONTENT_INPUT_PATTERN = re.compile(
+    r"(?:[a-z](?:[1-9]\d*)?|[1-9]\d*|0)",
+    re.IGNORECASE,
+)
 
 
 async def _finish_query(
     operation: Callable[[], Awaitable[DataQueryReply]],
     *,
     matcher: Matcher,
+    references: SeerInfoReferences | None,
+    reference: SeerInfoReference | None = None,
 ) -> None:
     try:
         reply: DataQueryReply = await operation()
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    if isinstance(reply, bytes):
-        await MessageFactory(Image(reply)).finish()
+    if isinstance(reply, (bytes, DataQueryImageReply)):
+        image = reply if isinstance(reply, bytes) else reply.image
+        message = MessageFactory(Image(image))
+        if isinstance(reply, DataQueryImageReply) and reply.notice:
+            message += f"\n{reply.notice}"
+        if references is not None and (url := references.url_for(reference)):
+            message += f"\n相关查询：{url}"
+        await message.finish()
         return
     await matcher.finish(reply)
 
 
 def install(group: SeerMatcherGroup) -> None:
     service: SeerDataQueryService = group.resources.data_queries
+    references = getattr(group.resources, "external_references", None)
     commands = (
-        (WEEKLY_PREVIEW_COMMANDS, "seer_data_preview", service.weekly_preview),
-        (DATA_VERSION_COMMANDS, "seer_data_version", service.data_version),
+        (
+            WEEKLY_PREVIEW_COMMANDS,
+            "seer_data_preview",
+            service.weekly_preview,
+            SeerInfoReference.WEEKLY_PREVIEW,
+        ),
+        (DATA_VERSION_COMMANDS, "seer_data_version", service.data_version, None),
         (
             SEASON_COUNTDOWN_COMMANDS,
             "seer_season_countdown",
             service.season_countdown,
+            None,
         ),
     )
     rule = seer_feature_rule(group.features, "seer_data") & explicit_command()
-    for messages, command_id, operation in commands:
+    for messages, command_id, operation, reference in commands:
         matcher = group.on_fullmatch(
             messages,
             policy=CommandPolicy.command(
@@ -138,7 +159,14 @@ def install(group: SeerMatcherGroup) -> None:
             rule=rule,
             priority=group.matcher_priority("seer_data"),
         )
-        matcher.append_handler(bind_async(_finish_query, operation))
+        matcher.append_handler(
+            bind_async(
+                _finish_query,
+                operation,
+                references=references,
+                reference=reference,
+            )
+        )
 
     _install_new_content_commands(group, service)
 
@@ -262,6 +290,15 @@ async def _start_new_content(  # noqa: PLR0913
         focused_category=(
             categories[0] if categories is not None and len(categories) == 1 else None
         ),
+        expanded_categories=frozenset(
+            category
+            for category in visible_categories
+            if is_new_content_category_auto_expanded(
+                snapshot,
+                category,
+                NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
+            )
+        ),
     )
     prompt = _content_prompt(snapshot, layout)
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
@@ -363,6 +400,17 @@ def _content_prompt(
                 _NewContentAction("category", category),
                 key=code,
             )
+        )
+        if category not in layout.expanded_categories:
+            continue
+        choices.extend(
+            PromptItem(
+                item.name,
+                _item_description(item),
+                _NewContentAction("item", category, item),
+                key=f"{code}{item_index}",
+            )
+            for item_index, item in enumerate(items, start=1)
         )
     return Prompt(
         title="🆕【新增内容】输入编号查看详情：",
@@ -476,6 +524,9 @@ async def _render_content_prompt(
             snapshot,
             layout.display_categories,
             layout.focused_category,
+            "新增内容",
+            layout.expanded_categories,
+            NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
         )
     except Exception:
         logger.exception("new content menu rendering failed; falling back to text")

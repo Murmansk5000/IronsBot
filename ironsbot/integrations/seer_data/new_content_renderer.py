@@ -7,6 +7,7 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
 from ironsbot.services.seer.images import (
     ImageSourceError,
     SeerImageSource,
@@ -16,6 +17,8 @@ from ironsbot.services.seer.new_content import (
     CATEGORY_NAMES,
     NewContentCategory,
     NewContentSnapshot,
+    format_new_content_category_count,
+    is_new_content_category_auto_expanded,
 )
 from ironsbot.services.seer.render_paths import PET_INFO_IMAGES_PATH
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
@@ -48,36 +51,78 @@ async def render_new_content_menu(  # noqa: PLR0913
     snapshot: NewContentSnapshot,
     display_categories: tuple[NewContentCategory, ...],
     focused_category: NewContentCategory | None,
+    menu_title: str = "新增内容",
+    expanded_categories: frozenset[NewContentCategory] = frozenset(),
+    auto_expand_max_items: int = 5,
 ) -> bytes:
     """Render a release menu after all database state is frozen in a snapshot."""
 
-    request_key = render_request_cache_key(
-        "new_content",
-        (
-            snapshot.config_version,
-            snapshot.weekly_cycle,
-            display_categories,
-            focused_category,
-        ),
+    request_key = _cache_key(
+        snapshot,
+        display_categories,
+        focused_category,
+        menu_title,
+        expanded_categories,
+        auto_expand_max_items,
     )
     if cached := cache.get("new_content", request_key):
         return cached
 
     # All ORM and domain-service reads complete before the first await below.
-    prepared_items = NewContentSnapshotBuilder(data, autocard).prepare(
-        snapshot,
-        focused_category,
+    expanded = frozenset(
+        category
+        for category in display_categories
+        if category in expanded_categories
+        or (
+            focused_category is None
+            and is_new_content_category_auto_expanded(
+                snapshot,
+                category,
+                auto_expand_max_items,
+            )
+        )
     )
-    rows = _initial_rows(snapshot, display_categories, prepared_items, focused_category)
+    builder = NewContentSnapshotBuilder(data, autocard)
+    prepared_items = tuple(
+        prepared
+        for category in display_categories
+        if focused_category is not None or category in expanded
+        for prepared in builder.prepare(snapshot, category)
+    )
+    prepared_items = tuple(
+        _with_mount_fallback(data, prepared) for prepared in prepared_items
+    )
+    rows = _initial_rows(
+        snapshot,
+        display_categories,
+        prepared_items,
+        focused_category,
+        expanded,
+    )
     visuals = await asyncio.gather(
         *(_item_visuals(images, prepared) for prepared in prepared_items)
     )
 
     cacheable = True
-    for index, (prepared, (image, type_icon)) in enumerate(
-        zip(prepared_items, visuals, strict=True)
-    ):
-        rows[index] = replace(rows[index], image=image, type_icon=type_icon)
+    prepared_by_key = {
+        (prepared.item.category, prepared.item.entity_id): (prepared, visual)
+        for prepared, visual in zip(prepared_items, visuals, strict=True)
+    }
+    for index, row in enumerate(rows):
+        if row.entity_key is None or row.entity_key not in prepared_by_key:
+            continue
+        prepared, visual = prepared_by_key[row.entity_key]
+        image, type_icon = visual
+        rows[index] = replace(
+            rows[index],
+            image=image,
+            type_icon=type_icon,
+            image_notice=(
+                "官方图片暂未上线"
+                if image is None and rows[index].image_layout == "square"
+                else ""
+            ),
+        )
         if prepared.asset is not None and prepared.asset.required and image is None:
             cacheable = False
 
@@ -85,6 +130,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         snapshot.weekly_cycle,
         rows,
         await _load_skill_type_icons(images, prepared_items, visuals),
+        menu_title,
     )
     result = await render_new_content_document(render_html, document)
     if cacheable:
@@ -92,41 +138,95 @@ async def render_new_content_menu(  # noqa: PLR0913
     return result
 
 
+def _with_mount_fallback(
+    data: SeerDataAccess,
+    prepared: NewContentPreparedItem,
+) -> NewContentPreparedItem:
+    asset = prepared.asset
+    if prepared.item.category != "mount" or asset is None:
+        return prepared
+    return replace(
+        prepared,
+        asset=replace(
+            asset,
+            fallback_data=load_flash_mount_image(data, prepared.item.entity_id),
+        ),
+    )
+
+
+def _cache_key(  # noqa: PLR0913
+    snapshot: NewContentSnapshot,
+    display_categories: tuple[NewContentCategory, ...],
+    focused_category: NewContentCategory | None,
+    menu_title: str,
+    expanded_categories: frozenset[NewContentCategory],
+    auto_expand_max_items: int,
+) -> str:
+    return render_request_cache_key(
+        "new_content",
+        (
+            snapshot.config_version,
+            snapshot.weekly_cycle,
+            display_categories,
+            focused_category,
+            menu_title,
+            tuple(sorted(expanded_categories)),
+            auto_expand_max_items,
+        ),
+    )
+
+
 def _initial_rows(
     snapshot: NewContentSnapshot,
     display_categories: tuple[NewContentCategory, ...],
     prepared_items: tuple[NewContentPreparedItem, ...],
     focused_category: NewContentCategory | None,
+    expanded_categories: frozenset[NewContentCategory],
 ) -> list[NewContentMenuItem]:
     if focused_category is not None:
         return [
             _content_row(str(index), prepared)
             for index, prepared in enumerate(prepared_items, start=1)
         ]
-    return [
-        NewContentMenuItem(
-            code=chr(ord("a") + index),
-            name=CATEGORY_NAMES[category],
-            description=f"{len(snapshot.items_for(category))} 项",
-            metadata="",
-            side_title="",
-            side_description="",
-            stats=(),
-            stats_layout="inline",
-            stats_total="",
-            type_name="",
-            gender_name="",
-            type_icon=None,
-            gender_icon=None,
-            image_layout="square",
-            is_category=True,
-            expanded=False,
-            image=None,
-            skill=None,
-            friend_skill=None,
+    rows: list[NewContentMenuItem] = []
+    prepared_by_category = {
+        category: [item for item in prepared_items if item.item.category == category]
+        for category in display_categories
+    }
+    for index, category in enumerate(display_categories):
+        code = chr(ord("a") + index)
+        rows.append(
+            NewContentMenuItem(
+                code=code,
+                name=CATEGORY_NAMES[category],
+                description=format_new_content_category_count(snapshot.items_for(category)),
+                metadata="",
+                side_title="",
+                side_description="",
+                stats=(),
+                stats_layout="inline",
+                stats_total="",
+                type_name="",
+                gender_name="",
+                type_icon=None,
+                gender_icon=None,
+                image_layout="square",
+                image_notice="",
+                is_category=True,
+                expanded=category in expanded_categories,
+                image=None,
+                skill=None,
+                friend_skill=None,
+            )
         )
-        for index, category in enumerate(display_categories)
-    ]
+        if category in expanded_categories:
+            rows.extend(
+                _content_row(f"{code}{item_index}", prepared)
+                for item_index, prepared in enumerate(
+                    prepared_by_category[category], start=1
+                )
+            )
+    return rows
 
 
 def _content_row(code: str, prepared: NewContentPreparedItem) -> NewContentMenuItem:
@@ -148,11 +248,13 @@ def _content_row(code: str, prepared: NewContentPreparedItem) -> NewContentMenuI
         image_layout=(
             prepared.asset.layout if prepared.asset is not None else "square"
         ),
+        image_notice="",
         is_category=False,
         expanded=False,
         image=None,
         skill=details.skill,
         friend_skill=details.friend_skill,
+        entity_key=(prepared.item.category, prepared.item.entity_id),
     )
 
 
@@ -181,6 +283,8 @@ async def _asset_data_uri(
                 await images.fetch(request.kind, request.key, fallback=False)  # type: ignore[arg-type]
             )
     except (ImageSourceError, RuntimeError, TypeError, ValueError):
+        if request.fallback_data is not None:
+            return to_data_uri(request.fallback_data)
         return None
     return None
 
