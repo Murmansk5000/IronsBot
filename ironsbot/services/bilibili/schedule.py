@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ironsbot.core.bilibili import BiliPollingConfig
-from ironsbot.core.time import minute_of_day
+from ironsbot.core.time import clock_window_contains
 
 POLLING_WINDOW_TIME_ERROR = "bilibili.polling.windows time must use HH:MM"
 
@@ -13,18 +13,12 @@ class AutoCheckState:
 
 
 def window_contains(now: datetime, *, start: str, end: str) -> bool:
-    current = now.hour * 60 + now.minute
-    start_minute = minute_of_day(
-        start,
+    return clock_window_contains(
+        now,
+        start=start,
+        end=end,
         error_message=POLLING_WINDOW_TIME_ERROR,
     )
-    end_minute = minute_of_day(
-        end,
-        error_message=POLLING_WINDOW_TIME_ERROR,
-    )
-    if start_minute <= end_minute:
-        return start_minute <= current < end_minute
-    return current >= start_minute or current < end_minute
 
 
 def current_interval_minutes(
