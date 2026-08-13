@@ -373,13 +373,16 @@ def _copy_namespaces(
 def _namespace_versions(source: Path) -> dict[str, int]:
     if not table_exists(source, _META_TABLE):
         return {}
-    with _read(source) as connection:
+    connection = _read(source)
+    try:
         return {
             str(row["namespace"]): int(row["version"])
             for row in connection.execute(
                 "SELECT namespace, version FROM ironsbot_schema_migrations"
             )
         }
+    finally:
+        connection.close()
 
 
 def _mark_migrated(connection: sqlite3.Connection) -> None:
@@ -460,26 +463,35 @@ def _connection_counts(
 def _is_migrated(path: Path) -> bool:
     if not table_exists(path, _MARKER_TABLE):
         return False
-    with _read(path) as connection:
+    connection = _read(path)
+    try:
         row = connection.execute(f"SELECT version FROM {_MARKER_TABLE}").fetchone()
+    finally:
+        connection.close()
     return row is not None and int(row["version"]) == _VERSION
 
 
 def _prepare_target(path: Path) -> None:
-    with open_sqlite_connection(path) as connection:
+    connection = open_sqlite_connection(path)
+    try:
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         connection.execute("PRAGMA journal_mode=DELETE")
         foreign_key_violations = connection.execute(
             "PRAGMA foreign_key_check"
         ).fetchall()
+    finally:
+        connection.close()
     if foreign_key_violations:
         raise PlatformStateMigrationError.integrity_failed(path)
     _validate_integrity(path)
 
 
 def _validate_integrity(path: Path) -> None:
-    with _read(path) as connection:
+    connection = _read(path)
+    try:
         row = connection.execute("PRAGMA integrity_check").fetchone()
+    finally:
+        connection.close()
     if row is None or str(row[0]).lower() != "ok":
         raise PlatformStateMigrationError.integrity_failed(path)
 

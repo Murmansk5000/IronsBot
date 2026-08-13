@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -16,9 +17,10 @@ LEGACY_PRIVATE_UNSUBSCRIPTION_COUNT = 2
 
 def _execute(path: Path, statements: tuple[str, ...]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection:
         for statement in statements:
             connection.execute(statement)
+        connection.commit()
 
 
 def _seed_legacy_state(root: Path) -> None:
