@@ -27,7 +27,10 @@ from ironsbot.services.bilibili.push import (
 )
 from ironsbot.services.bilibili.schedule import (
     auto_check_due,
+    boost_slots_at,
+    boost_slots_due,
     mark_auto_check,
+    mark_boost_slots_completed,
 )
 from ironsbot.services.bilibili.service import (
     BilibiliService,
@@ -46,7 +49,18 @@ DynamicPushSender = Callable[
 @dataclass(frozen=True, slots=True)
 class DynamicPushBatch:
     checkpoint_changed: bool
+    discovered_new: bool = False
     delivery_tasks: tuple[asyncio.Task[None], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class MonitorCheckResult:
+    executed: bool = False
+    valid_response: bool = False
+    discovered_new: bool = False
+
+    def __bool__(self) -> bool:
+        return self.executed
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +150,7 @@ async def _push_new_dynamics(
     cookie: str = "",
 ) -> DynamicPushBatch:
     checkpoint_changed = False
+    discovered_new = False
     delivery_tasks: list[asyncio.Task[None]] = []
     for pub_ts, feed_item in valid_dynamics:
         item = await service.resolve_dynamic_item(feed_item, cookie=cookie)
@@ -194,6 +209,8 @@ async def _push_new_dynamics(
         if decision.status == "skip_existing":
             continue
 
+        discovered_new = True
+
         if decision.status in {"suppressed", "no_targets"}:
             _log_non_delivery_decision(decision.status, snapshot)
             service.history.save_snapshot(mark_history_snapshot_pushed(snapshot))
@@ -244,14 +261,19 @@ async def _push_new_dynamics(
             )
         )
 
-    return DynamicPushBatch(checkpoint_changed, tuple(delivery_tasks))
+    return DynamicPushBatch(
+        checkpoint_changed,
+        discovered_new,
+        tuple(delivery_tasks),
+    )
 
 
 async def _do_check_logic(
     service: BilibiliService,
     on_auth_invalid: AuthInvalidHandler,
     send_push: DynamicPushSender,
-) -> None:
+) -> MonitorCheckResult:
+    result = MonitorCheckResult(executed=True)
     try:
         cookie = service.cookie_store.load()
         feed = await service.fetch_feed(cookie)
@@ -259,14 +281,16 @@ async def _do_check_logic(
             feed,
             on_auth_invalid,
         ):
-            return
+            return result
+
+        result = MonitorCheckResult(executed=True, valid_response=True)
 
         valid_dynamics = target_dynamics_from_response(
             feed.data,
             service.targets.monitored_uids(),
         )
         if not valid_dynamics:
-            return
+            return result
 
         checkpoints = service.history.get_checkpoints()
         initialized_checkpoints = initialize_missing_checkpoints(
@@ -295,58 +319,136 @@ async def _do_check_logic(
             service.history.save_checkpoints(checkpoints)
             logger.info("Bilibili dynamic checkpoints updated")
 
+        return MonitorCheckResult(
+            executed=True,
+            valid_response=True,
+            discovered_new=push_batch.discovered_new,
+        )
+
     except Exception:
         logger.exception("Bilibili monitor check failed")
+        return result
 
 
-async def run_monitor_check(
+async def run_monitor_check(  # noqa: PLR0913 - public monitor coordination API
     service: BilibiliService,
     *,
     on_auth_invalid: AuthInvalidHandler,
     send_push: DynamicPushSender,
     is_startup_check: bool = False,
     force: bool = False,
-) -> bool:
+    now: datetime | None = None,
+) -> MonitorCheckResult:
+    current_now = now or datetime.now(timezone.utc).astimezone()
+    active_boost_slots = boost_slots_at(service.config.polling, current_now)
+    due_boost_slots = boost_slots_due(
+        service.auto_check_state,
+        active_boost_slots,
+    )
     if service.check_lock.locked():
-        service.pending_check = True
-        logger.info("Bilibili dynamic check is already running; catch-up queued")
-        return False
+        completed_active_boost = bool(active_boost_slots) and not due_boost_slots
+        regular_due = (
+            is_startup_check
+            or force
+            or (
+                not active_boost_slots
+                and not completed_active_boost
+                and auto_check_due(
+                    service.auto_check_state,
+                    service.config.polling,
+                    current_now,
+                )
+            )
+        )
+        service.pending_regular_check = (
+            service.pending_regular_check or regular_due
+        )
+        service.pending_boost_slots.update(
+            {slot.key: slot for slot in due_boost_slots}
+        )
+        service.pending_check = (
+            service.pending_regular_check or bool(service.pending_boost_slots)
+        )
+        logger.info(
+            "Bilibili dynamic check is already running; regular=%s boost_slots=%s",
+            regular_due,
+            len(due_boost_slots),
+        )
+        return MonitorCheckResult()
 
     async with service.check_lock:
-        ran = False
+        result = MonitorCheckResult()
         catch_up = force
         while True:
-            now = datetime.now(timezone.utc).astimezone()
+            current_now = now or datetime.now(timezone.utc).astimezone()
+            active_boost_slots = boost_slots_at(service.config.polling, current_now)
+            pending_boost_slots = tuple(service.pending_boost_slots.values())
+            merged_boost_slots = {
+                slot.key: slot
+                for slot in (*active_boost_slots, *pending_boost_slots)
+            }
+            due_boost_slots = boost_slots_due(
+                service.auto_check_state,
+                tuple(merged_boost_slots.values()),
+            )
+            completed_active_boost = bool(active_boost_slots) and not due_boost_slots
+            if not is_startup_check and not catch_up and completed_active_boost:
+                return result
             if (
                 not is_startup_check
                 and not catch_up
+                and not due_boost_slots
                 and not auto_check_due(
                     service.auto_check_state,
                     service.config.polling,
-                    now,
+                    current_now,
                 )
             ):
-                return ran
+                return result
 
             service.pending_check = False
+            service.pending_regular_check = False
+            service.pending_boost_slots.clear()
             started_at = time.monotonic()
             logger.info(
-                "Bilibili dynamic discovery check starting: force=%s startup=%s at=%s",
+                "Bilibili dynamic discovery check starting: force=%s startup=%s "
+                "boost_slots=%s at=%s",
                 catch_up,
                 is_startup_check,
-                now.isoformat(),
+                len(due_boost_slots),
+                current_now.isoformat(),
             )
-            await _do_check_logic(service, on_auth_invalid, send_push)
-            mark_auto_check(service.auto_check_state, now)
+            result = await _do_check_logic(service, on_auth_invalid, send_push)
+            if result.discovered_new and due_boost_slots:
+                mark_boost_slots_completed(
+                    service.auto_check_state,
+                    due_boost_slots,
+                    current_now,
+                )
+                logger.info(
+                    "Bilibili release burst completed after new dynamics: slots=%s",
+                    ",".join(slot.key for slot in due_boost_slots),
+                )
+            mark_auto_check(service.auto_check_state, current_now)
             logger.info(
-                "Bilibili dynamic discovery check completed: elapsed=%.3fs",
+                "Bilibili dynamic discovery check completed: valid=%s new=%s "
+                "elapsed=%.3fs",
+                result.valid_response,
+                result.discovered_new,
                 time.monotonic() - started_at,
             )
-            ran = True
             is_startup_check = False
             if not service.pending_check:
+                break
+            pending_boost_slots = boost_slots_due(
+                service.auto_check_state,
+                tuple(service.pending_boost_slots.values()),
+            )
+            if not service.pending_regular_check and not pending_boost_slots:
+                service.pending_check = False
+                service.pending_boost_slots.clear()
                 break
             logger.info("Bilibili dynamic catch-up check starting")
             catch_up = True
 
-    return ran
+    return result

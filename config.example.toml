@@ -817,6 +817,25 @@ check_second = 5
 # Example: [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
 windows = [{ start = "07:00:00", end = "23:00:00", minutes = 5 }]
 
+# EN: Extra short polling bursts around recurring release times. Each slot checks
+# at every offset below until a monitored account has a new dynamic; remaining
+# offsets for that slot are then skipped. Regular polling above remains enabled.
+# ZH: 高频发布时间点的额外秒级冲刺。每个发布点依次按下方秒偏移检查；
+# 任一受监控账号发现新动态后，该发布点剩余秒点自动跳过；上方常规轮询继续生效。
+# start/end use [start, end) wall-clock semantics, including midnight wrap.
+# Default: the observed 10:00-18:00 hourly and 14:30-18:30 half-hour Seer slots.
+[[bilibili.polling.boost_windows]]
+start = "10:00:00"
+end = "19:00:00"
+interval_minutes = 60
+offset_seconds = [0, 5, 10, 15]
+
+[[bilibili.polling.boost_windows]]
+start = "14:30:00"
+end = "19:30:00"
+interval_minutes = 60
+offset_seconds = [0, 5, 10, 15]
+
 [bilibili.push]
 # Default: "full"
 # EN: Default push mode for accounts without an explicit mode.

@@ -7,12 +7,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.services.bilibili.monitor import run_monitor_check
+from ironsbot.services.bilibili.schedule import boost_schedule_entries
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
     from ironsbot.services.bilibili.monitor import (
         AuthInvalidHandler,
         DynamicPushSender,
+        MonitorCheckResult,
     )
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.operations.scheduler import Scheduler
@@ -37,7 +39,7 @@ class BilibiliMonitorService:
         *,
         is_startup_check: bool = False,
         force: bool = False,
-    ) -> bool:
+    ) -> MonitorCheckResult:
         return await run_monitor_check(
             self.service,
             on_auth_invalid=self._on_auth_invalid,
@@ -55,6 +57,17 @@ class BilibiliMonitorService:
             second=self.check_second,
             job_id="auto_check",
         )
+        for entry in boost_schedule_entries(self.service.config.polling):
+            if entry.second == self.check_second:
+                continue
+            jobs.add(
+                self.check,
+                "cron",
+                hour=entry.hour,
+                minute=entry.minute,
+                second=entry.second,
+                job_id=entry.job_suffix,
+            )
 
     async def check_on_connect(self, bot_id: str) -> None:
         logger.info("Bilibili monitor saw bot connected: %s", bot_id)

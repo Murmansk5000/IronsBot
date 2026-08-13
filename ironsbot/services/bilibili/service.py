@@ -27,7 +27,7 @@ from ironsbot.services.bilibili.parser import (
     target_dynamics_from_response,
 )
 from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
-from ironsbot.services.bilibili.schedule import AutoCheckState
+from ironsbot.services.bilibili.schedule import AutoCheckState, BoostSlot
 from ironsbot.services.seer.external_references import (
     SeerInfoReference,
     SeerInfoReferences,
@@ -70,6 +70,8 @@ class BilibiliService:
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)
+    pending_regular_check: bool = field(default=False, init=False)
+    pending_boost_slots: dict[str, BoostSlot] = field(default_factory=dict, init=False)
     _detail_tasks: dict[str, asyncio.Task[dict[str, Any]]] = field(
         default_factory=dict,
         init=False,

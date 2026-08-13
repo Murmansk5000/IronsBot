@@ -106,6 +106,7 @@ def test_monitor_marks_category_muted_seer_dynamic_as_processed(
     saved = service.history.get("seer-lottery")
     assert sent == []
     assert batch.checkpoint_changed
+    assert batch.discovered_new
     assert checkpoints == {SEER_UID: PUB_TS}
     assert saved is not None
     assert saved.pushed
