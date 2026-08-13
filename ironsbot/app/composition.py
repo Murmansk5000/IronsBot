@@ -14,6 +14,7 @@ from ironsbot.app.bilibili_composition import (
     build_onebot_bilibili_components,
     build_onebot_bilibili_monitor,
 )
+from ironsbot.app.clock_check import check_configured_clock
 from ironsbot.app.common_composition import build_common_components
 from ironsbot.app.file_logging import FileLogging
 from ironsbot.app.lifecycle import TaskOwner
@@ -252,6 +253,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ai_startup_check=partial(
             check_configured_ai_api,
             settings.ai,
+            operations.startup_notice,
+        ),
+        clock_startup_check=partial(
+            check_configured_clock,
+            settings.operations.clock_check,
             operations.startup_notice,
         ),
         data_sync=data_sync,

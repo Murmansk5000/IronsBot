@@ -126,6 +126,16 @@ class StartupConfig(BaseModel):
     delay: float = Field(default=0.0, ge=0)
 
 
+class ClockCheckConfig(BaseModel):
+    """Read-only startup diagnostic for noticeable host clock drift."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    warning_threshold_seconds: float = Field(default=3.0, ge=0)
+    timeout_seconds: float = Field(default=3.0, gt=0)
+
+
 class DockerUpdateConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -268,6 +278,7 @@ class OperationsConfig(BaseModel):
     headless: HeadlessConfig = Field(default_factory=HeadlessConfig)
     headless_notice: HeadlessNoticeConfig = Field(default_factory=HeadlessNoticeConfig)
     startup_notice: StartupConfig = Field(default_factory=StartupConfig)
+    clock_check: ClockCheckConfig = Field(default_factory=ClockCheckConfig)
     docker_update: DockerUpdateConfig = Field(default_factory=DockerUpdateConfig)
     private_extensions: PrivateExtensionsConfig = Field(
         default_factory=PrivateExtensionsConfig
