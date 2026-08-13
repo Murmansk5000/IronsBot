@@ -9,9 +9,12 @@ from ironsbot.services.bilibili.auth import (
 )
 from ironsbot.services.bilibili.service import BiliFeedResponse
 
-LIST_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all?type=all"
+LIST_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all"
+SPACE_FEED_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
+DYNAMIC_DETAIL_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 ACCOUNT_CARD_URL = "https://api.bilibili.com/x/web-interface/card"
 HTTP_OK = 200
+OPUS_STYLE_FEATURE = "itemOpusStyle"
 QR_GENERATE_URL = (
     "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
 )
@@ -19,20 +22,69 @@ QR_POLL_URL = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
 
 
 async def fetch_bili_feed(client: AsyncClient, cookie: str) -> BiliFeedResponse:
-    headers: dict[str, str] = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://t.bilibili.com/",
-    }
-    if cookie:
-        headers["Cookie"] = cookie
+    headers = _dynamic_headers(cookie, referer="https://t.bilibili.com/")
     response = await client.get(
         LIST_URL,
+        params={"type": "all", "features": OPUS_STYLE_FEATURE},
         headers=headers,
         timeout=10.0,
         follow_redirects=True,
     )
     data: Any = response.json()
     return BiliFeedResponse(response.status_code, data)
+
+
+async def fetch_bili_dynamic_detail(
+    client: AsyncClient,
+    cookie: str,
+    dynamic_id: str,
+) -> BiliFeedResponse:
+    response = await client.get(
+        DYNAMIC_DETAIL_URL,
+        params={"id": dynamic_id, "features": OPUS_STYLE_FEATURE},
+        headers=_dynamic_headers(
+            cookie,
+            referer=f"https://t.bilibili.com/{dynamic_id}",
+        ),
+        timeout=10.0,
+        follow_redirects=True,
+    )
+    data: Any = response.json()
+    return BiliFeedResponse(response.status_code, data)
+
+
+async def fetch_bili_space_feed(
+    client: AsyncClient,
+    cookie: str,
+    uid: int,
+    offset: str = "",
+) -> BiliFeedResponse:
+    response = await client.get(
+        SPACE_FEED_URL,
+        params={
+            "host_mid": int(uid),
+            "offset": offset,
+            "features": OPUS_STYLE_FEATURE,
+        },
+        headers=_dynamic_headers(
+            cookie,
+            referer=f"https://space.bilibili.com/{int(uid)}/dynamic",
+        ),
+        timeout=10.0,
+        follow_redirects=True,
+    )
+    data: Any = response.json()
+    return BiliFeedResponse(response.status_code, data)
+
+
+def _dynamic_headers(cookie: str, *, referer: str) -> dict[str, str]:
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": referer,
+    }
+    if cookie:
+        headers["Cookie"] = cookie
+    return headers
 
 
 async def fetch_bili_account_name(

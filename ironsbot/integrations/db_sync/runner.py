@@ -57,11 +57,12 @@ class DatabaseSync:
     def register(self, name: str, source: DataSourceConfig) -> None:
         if source.url:
             self.registered_syncs[name] = SyncEntry(
-                source.url,
-                source.interval_minutes,
-                self._fingerprint_getter(source.fingerprint_url),
-                source.local_path,
-                source.remote_build,
+                sync_url=source.url,
+                sync_interval_minutes=source.interval_minutes,
+                get_fingerprint=self._fingerprint_getter(source.fingerprint_url),
+                local_path=source.local_path,
+                remote_build=source.remote_build,
+                sync_interval_second=source.interval_second,
             )
             return
         self.registered_local_databases[name] = source.local_path
@@ -79,9 +80,9 @@ class DatabaseSync:
             if entry.remote_build is not None and entry.remote_build.enabled
         )
 
-    def schedules(self) -> tuple[tuple[str, int], ...]:
+    def schedules(self) -> tuple[tuple[str, int, int], ...]:
         return tuple(
-            (name, entry.sync_interval_minutes)
+            (name, entry.sync_interval_minutes, entry.sync_interval_second)
             for name, entry in self.registered_syncs.items()
         )
 

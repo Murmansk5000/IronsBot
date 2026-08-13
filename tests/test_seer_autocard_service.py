@@ -4,6 +4,8 @@ import json
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from ironsbot.services.seer.autocard import (
     AutocardPromptValue,
     AutocardService,
@@ -60,16 +62,40 @@ NATURES = ({"id": 1, "name": "草"}, {"id": 2, "name": "火"})
 
 
 class FakeResult:
-    def __init__(self, rows: tuple[tuple[str], ...]) -> None:
+    def __init__(self, rows: tuple[tuple[object, ...], ...]) -> None:
         self._rows = rows
 
-    def all(self) -> tuple[tuple[str], ...]:
+    def all(self) -> tuple[tuple[object, ...], ...]:
         return self._rows
 
 
 class FakeSession:
+    def __init__(self, *, new_role_schema: bool) -> None:
+        self._new_role_schema = new_role_schema
+
     def execute(self, query: object) -> FakeResult:
         sql = str(query)
+        if "autocard_role_raw" in sql:
+            if not self._new_role_schema:
+                raise SQLAlchemyError
+            return FakeResult(
+                tuple(
+                    (
+                        value["id"],
+                        value["name"],
+                        value["desc"],
+                        value["health"],
+                        value["skillTxt"],
+                        value["nature"],
+                        value["picID"],
+                        value.get("skillID", 0),
+                        value["skillName"],
+                        value["skillUpgrade"],
+                        json.dumps(value, ensure_ascii=False),
+                    )
+                    for value in ROLES
+                )
+            )
         values = (
             CARDS
             if "autocard_card" in sql
@@ -83,16 +109,21 @@ class FakeSession:
 
 
 class FakeData:
+    def __init__(self, *, new_role_schema: bool) -> None:
+        self._new_role_schema = new_role_schema
+
     @contextmanager
     def query(
         self,
         operation: Callable[[Any], Any],
     ) -> Iterator[Any]:
-        yield operation(FakeSession())
+        yield operation(FakeSession(new_role_schema=self._new_role_schema))
 
 
-def _service() -> AutocardService:
-    return AutocardService(cast("SeerDataAccess", FakeData()))
+def _service(*, new_role_schema: bool = True) -> AutocardService:
+    return AutocardService(
+        cast("SeerDataAccess", FakeData(new_role_schema=new_role_schema))
+    )
 
 
 def test_autocard_search_returns_rendered_card_entry() -> None:
@@ -142,3 +173,13 @@ def test_autocard_select_returns_rendered_role_entry() -> None:
     assert entry.image_url.endswith(
         "/newseer/assets/art/autocard/texture/roles/card/role_7.png"
     )
+
+
+def test_autocard_select_falls_back_to_legacy_role_raw_json() -> None:
+    entry = _service(new_role_schema=False).select(AutocardPromptValue("role", ROLE_ID))
+
+    assert entry is not None
+    assert entry.skill_name == ROLES[0]["skillName"]
+    assert entry.skill_text == ROLES[0]["skillTxt"]
+    assert entry.skill_upgrade == ROLES[0]["skillUpgrade"]
+    assert entry.image_url.endswith("/roles/card/role_7.png")

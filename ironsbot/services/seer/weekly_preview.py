@@ -11,6 +11,10 @@ DEFAULT_WEEKLY_PREVIEW_IMAGE_URL = (
 DEFAULT_WEEKLY_PREVIEW_SOURCE_URL = (
     "https://github.com/Murmansk-Seer/seer-unity-preview-img-dumper"
 )
+WEEKLY_PREVIEW_MIRROR_URL = (
+    "https://cdn.jsdelivr.net/gh/Murmansk-Seer/"
+    "seer-unity-preview-img-dumper@main/img/preview.png"
+)
 
 
 def load_weekly_preview_metadata(session: Any) -> dict[str, str]:
