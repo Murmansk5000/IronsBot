@@ -17,7 +17,10 @@ from ironsbot.services.seer.peak import (
     PeakVoteItemSnapshot,
     PeakVotePoolInput,
 )
-from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
+from ironsbot.services.seer.rendering.cache_key import (
+    render_document_cache_key,
+    render_request_cache_key,
+)
 from ironsbot.services.seer.rendering.peak_pool import (
     present_peak_pool,
 )
@@ -129,7 +132,7 @@ def test_peak_pool_document_key_changes_with_rendered_snapshot_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_peak_pool_adapter_loads_assets_before_final_cache_lookup() -> None:
+async def test_peak_pool_adapter_checks_final_cache_before_loading_assets() -> None:
     cache = _Cache(b"cached")
     images = _Images()
 
@@ -142,7 +145,7 @@ async def test_peak_pool_adapter_loads_assets_before_final_cache_lookup() -> Non
     )
 
     assert result == b"cached"
-    assert images.requests
+    assert images.requests == []
 
 
 @pytest.mark.asyncio
@@ -171,22 +174,12 @@ async def test_peak_pool_adapter_deduplicates_assets_and_writes_final_cache() ->
         ("element_type", "2"),
     ]
     assert captured["templates"]["pool_type"] == "竞技池"
-    expected_document = present_peak_pool(
-        _pools(),
-        "竞技池",
-        PetImageAssets(
-            pet_heads=(
-                (70, _asset_uri("pet_head", "70")),
-                (71, _asset_uri("pet_head", "71")),
-            ),
-            type_icons=(
-                (1, _asset_uri("element_type", "1")),
-                (2, _asset_uri("element_type", "2")),
-            ),
-        ),
-    )
     assert cache.writes == [
-        ("peak_pool", render_document_cache_key(expected_document), b"rendered")
+        (
+            "peak_pool",
+            render_request_cache_key("peak_pool", ("竞技池", _pools())),
+            b"rendered",
+        )
     ]
 
 
@@ -253,18 +246,13 @@ async def test_peak_vote_adapter_deduplicates_assets_and_writes_final_cache() ->
     assert result == b"rendered-vote"
     assert images.requests == [("pet_head", "70"), ("element_type", "1")]
     assert captured["templates"]["generated_at"] == generated_at
-    expected_document = present_peak_pool_vote(
-        _vote_pools(),
-        generated_at,
-        PetImageAssets(
-            pet_heads=((70, _asset_uri("pet_head", "70")),),
-            type_icons=((1, _asset_uri("element_type", "1")),),
-        ),
-    )
     assert cache.writes == [
         (
             "peak_pool_vote",
-            render_document_cache_key(expected_document),
+            render_request_cache_key(
+                "peak_pool_vote",
+                (generated_at, _vote_pools()),
+            ),
             b"rendered-vote",
         )
     ]

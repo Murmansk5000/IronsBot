@@ -50,6 +50,7 @@ def build_seer_rendering_components(
                 HTML_TEMPLATE_RENDERER_SOURCE_PATH,
             ),
         ),
+        category_available=seer_database.render_category_available,
     )
     return images, cache, RenderCoordinator(
         render_html_template,
