@@ -51,6 +51,7 @@ from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
 from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
+from ironsbot.services.seer.external_references import SeerInfoReferences
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
 from ironsbot.services.seer.lucky_skin_window_delivery import (
@@ -296,6 +297,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
     )
     autocard = AutocardService(seer_database)
     autocard_sanctuary = AutocardSanctuaryService(seer_database)
+    external_references = SeerInfoReferences(settings.seer.external_references)
     return SeerComponents(
         seer=SeerQueryResources(
             SeerDataQueryService(
@@ -374,6 +376,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 autocard,
                 render_coordinator.render,
             ),
+            external_references,
         ),
         lucky_skin_window=lucky_skin_window,
         team_resource=team_resource,

@@ -1,4 +1,5 @@
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from ironsbot.config.models.operations import RestartConfig
 from ironsbot.services.operations import scheduled_restart as scheduled_restart_runtime
@@ -54,6 +55,6 @@ def test_register_restart_job_uses_standard_scheduler_fields() -> None:
             "hour": 4,
             "minute": 30,
             "second": 0,
-            "timezone": scheduled_restart_runtime.LOCAL_TZ,
+            "timezone": ZoneInfo("Asia/Shanghai"),
         }
     ]

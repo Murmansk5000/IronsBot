@@ -55,6 +55,8 @@ _URLS: dict[ImageKind, tuple[str, ...]] = {
     "preview": (
         "https://raw.githubusercontent.com/Murmansk-Seer/"
         "seer-unity-preview-img-dumper/main/img/preview.png",
+        "https://cdn.jsdelivr.net/gh/Murmansk-Seer/"
+        "seer-unity-preview-img-dumper@main/img/preview.png",
     ),
     "sign_buff": (
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
@@ -124,4 +126,5 @@ def _image_source_error(
             error.response.status_code,
             error.response.reason_phrase,
         )
-    return ImageSourceError(str(error))
+    detail = str(error).strip() or type(error).__name__
+    return ImageSourceError(f"{detail} ({error.request.url})")

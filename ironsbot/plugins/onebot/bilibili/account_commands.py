@@ -48,7 +48,7 @@ async def handle_bili_push_mode_action(
         await finish_event_reply(
             matcher,
             event,
-            "❌ 仅本群群主、管理员或超级管理员可用。",
+            "❌ 仅群主、管理员或超级管理员可用。",
         )
         return
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.services.seer.player_formatting_common import (
     format_metric_line,
     format_player_data_time,
+    format_rank_cache_fallback,
     join_metric_parts,
     sample_rank_text,
 )
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 def format_collection_info(
     more_info: Any,
     *,
-    unity_part_one: UnityPartOneInfo,
+    unity_part_one: UnityPartOneInfo | None,
     rank_summary: PlayerRankSummary,
     local_summary: LocalRankSummary,
     player_identity: str,
@@ -41,7 +42,7 @@ def format_collection_info(
     metric_lines = [
         format_metric_line(
             "精灵数量",
-            getattr(more_info, "pet_all_num", 0),
+            None if more_info is None else getattr(more_info, "pet_all_num", None),
             local_summary=local_summary,
             local_key="pet_total_count",
         ),
@@ -54,21 +55,21 @@ def format_collection_info(
         ),
         format_metric_line(
             "成就点数",
-            getattr(more_info, "total_achieve", 0),
+            None if more_info is None else getattr(more_info, "total_achieve", None),
             rank_result=rank_summary.achieve,
             local_summary=local_summary,
             local_key="achievement_score",
         ),
         format_metric_line(
             "精灵图鉴",
-            unity_part_one.pet_kind_num,
+            None if unity_part_one is None else unity_part_one.pet_kind_num,
             rank_result=breakdown.pet_kind,
             local_summary=local_summary,
             local_key="pet_kind_count",
         ),
         format_metric_line(
             "皮肤图鉴",
-            unity_part_one.skin_num,
+            None if unity_part_one is None else unity_part_one.skin_num,
             rank_result=breakdown.skin,
             local_summary=local_summary,
             local_key="skin_count",
@@ -109,7 +110,7 @@ def format_collection_info(
         ),
         format_metric_line(
             "成就数量",
-            unity_part_one.achievement_num,
+            None if unity_part_one is None else unity_part_one.achievement_num,
             local_summary=local_summary,
             local_key="achievement_count",
         ),
@@ -132,7 +133,15 @@ def format_autocard_rank_info(
         else ""
     )
     failure = getattr(result, "failure", None)
-    if failure:
+    cached_fallback = format_rank_cache_fallback(result)
+    if cached_fallback:
+        metric_text = join_metric_parts(
+            "" if result.score is None else f"{result.score}分",
+            f"{format_rank_position_text(result)}（{cached_fallback}）",
+            sample_text,
+        )
+        lines.append(f"群星之巅：{metric_text}")
+    elif failure:
         metric_text = join_metric_parts(
             "" if result.score is None else f"{result.score}分",
             f"全服排行失败：{failure}",

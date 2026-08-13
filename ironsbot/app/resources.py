@@ -65,6 +65,7 @@ class ApplicationResources:
     pet_config: PetConfigQueryService
     ai: AiService
     ai_startup_check: Callable[[], Awaitable[None]]
+    clock_startup_check: Callable[[], Awaitable[None]]
     data_sync: DataSyncService
     docker_update: DockerUpdateService
     startup_notice: StartupNoticeService

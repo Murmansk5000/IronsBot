@@ -100,10 +100,12 @@ class ApplicationLifecycle:
                 for hook in contribution.hooks.shutdown
             ),
             resource_shutdown_hooks=resource_shutdown_hooks,
-            first_bot_connect_hooks=tuple(
-                hook
-                for contribution in contributions
-                for hook in contribution.hooks.first_bot_connect
+            first_bot_connect_hooks=_order_first_bot_connect_hooks(
+                tuple(
+                    hook
+                    for contribution in contributions
+                    for hook in contribution.hooks.first_bot_connect
+                ),
             ),
             bot_connect_hooks=tuple(
                 hook
@@ -232,3 +234,19 @@ def _bot_id(bot: object) -> int:
     if value is None:
         raise ConnectedBotIdentityError.missing_self_id()
     return int(value)
+
+
+def _order_first_bot_connect_hooks(
+    hooks: tuple[NamedBotLifecycleHook, ...],
+) -> tuple[NamedBotLifecycleHook, ...]:
+    """Run clock diagnostics before the existing startup notice sender."""
+    names = [name for name, _hook in hooks]
+    if "clock_startup_check" not in names or "startup_notice" not in names:
+        return hooks
+    clock_index = names.index("clock_startup_check")
+    notice_index = names.index("startup_notice")
+    if clock_index < notice_index:
+        return hooks
+    ordered = list(hooks)
+    ordered.insert(notice_index, ordered.pop(clock_index))
+    return tuple(ordered)

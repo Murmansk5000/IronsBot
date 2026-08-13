@@ -319,7 +319,7 @@ def test_push_subscription_menu_prompt_can_be_read_only(tmp_path: Path) -> None:
         read_only=True,
     )
 
-    assert "本群推送订阅状态" in prompt
+    assert "推送订阅状态：" in prompt
     assert "1. ✅ 机器人启动通知" in prompt
     assert "普通群员仅可查看" in prompt
     assert "输入序号切换" not in prompt

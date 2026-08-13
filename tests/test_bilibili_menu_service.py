@@ -163,5 +163,5 @@ def test_bilibili_service_owns_dynamic_query_and_history(
 
     assert result.status == "ok"
     assert result.dynamic_ids == ("dynamic-1",)
-    assert "赛尔号发布了一条动态" in result.prompt
+    assert "赛尔号（UID：912345678）" in result.prompt
     assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"
