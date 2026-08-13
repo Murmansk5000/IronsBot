@@ -277,7 +277,7 @@ async def test_workflow_feedback_survives_the_caller_context() -> None:
     workflow = HeadlessWorkflowState(
         sequence=1,
         label="workflow",
-        user_id=1,
+        actor=None,
         priority_state=HeadlessRequestPriorityState(
             HeadlessRequestPriority.INTERACTIVE
         ),
