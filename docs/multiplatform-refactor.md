@@ -619,3 +619,16 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 这份记录不能以“同一个 AI 曾经生成过”代替事实核验。合并文档时先按
 target/transition/baseline 收口职责；Git 冲突只表明文本同时被改过，不代表两份设计
 都应保留。
+
+## 主线同步记录
+
+- **2026-08-13 / `origin/main` `7757a48f`：** 已合并到 V5 工作分支。该主线修复的
+  行为是：B站公开昵称刷新失败时，“TD / 推送管理”仍可打开，选项退化为 UID 并显示
+  警告，而不是拒绝整个菜单。V5 保持 `ConversationRef` 作为消息服务的唯一会话
+  标识，未恢复已删除的旧 `plugins/messaging` 路径；适配位于
+  `services.bilibili.targets.prepare_subscription_labels()` 和
+  `services.messaging.service.prepared_subscription_menu()`。
+- **验证证据：** `tests/test_bilibili_monitor_state.py`、
+  `tests/test_messaging_runtime_setup.py` 共 46 项通过；全量测试 `1505 passed`，
+  `ruff check ironsbot tests`、`python -m compileall -q ironsbot` 与
+  `git diff --check` 均通过。

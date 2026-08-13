@@ -78,8 +78,7 @@ def bili_all_subscription_key(stage: str) -> str:
 
 
 def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
-    del uid
-    return f"B站动态：{label}" if label else "B站动态"
+    return f"B站动态：{label}" if label else f"B站动态（UID：{uid}）"
 
 
 def normalize_push_mode_text(raw_mode: str) -> BiliRuntimePushMode | None:

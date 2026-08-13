@@ -3,19 +3,12 @@ from typing import Any, cast
 
 import nonebot
 import pytest
-from ironsbot.config.onebot_references import OneBotReferenceResolver
-from ironsbot.integrations.onebot.bilibili_targets import (
-    build_onebot_bili_configured_targets,
-)
-from ironsbot.plugins.onebot.bilibili.command_rules import (
-    is_bili_account_command,
-    is_bili_push_mode_command,
-)
 
 from ironsbot.config.models.features import (
     FeatureConfig,
     build_onebot_feature_service,
 )
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
@@ -25,10 +18,17 @@ from ironsbot.core.bilibili import (
 )
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.bilibili_targets import (
+    build_onebot_bili_configured_targets,
+)
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.plugins.onebot.bilibili.command_rules import (
+    is_bili_account_command,
+    is_bili_push_mode_command,
+)
 from ironsbot.services.bilibili import accounts
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
@@ -552,6 +552,30 @@ def test_bili_push_subscription_options_use_public_account_names(
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
         f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}",
+    ]
+
+
+def test_bili_push_subscription_options_fall_back_to_uid(
+    tmp_path: Path,
+) -> None:
+    service = _target_service(
+        _bili_config(
+            accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},
+            push={"groups": {"987654321": {"accounts": [FIRE_BILI_ALIAS]}}},
+        ),
+        _features({"987654321": ["bili_push"]}),
+        tmp_path,
+    )
+
+    options = [
+        option
+        for option in service.subscription_options(_group(987654321))
+        if option.submenu_key is not None
+    ]
+
+    assert [option.label for option in options] == [
+        f"B站动态（UID：{FIRE_BILI_UID}）",
+        f"B站动态（UID：{DEFAULT_BILI_ACCOUNT_UID}）",
     ]
 
 

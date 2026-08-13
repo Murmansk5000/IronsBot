@@ -174,6 +174,23 @@ class MessagingService:
             return None
         return await self._prepare_extra_push_options(conversation)
 
+    async def prepared_subscription_menu(
+        self,
+        conversation: ConversationRef,
+        *,
+        read_only: bool = False,
+    ) -> tuple[list[PushSubscriptionOption], str]:
+        preparation_warning = await self.prepare_subscription_options(
+            conversation,
+        )
+        options, prompt = self.subscription_menu(
+            conversation,
+            read_only=read_only,
+        )
+        if preparation_warning:
+            prompt = f"{preparation_warning}\n\n{prompt}"
+        return options, prompt
+
     def subscription_menu(
         self,
         conversation: ConversationRef,
