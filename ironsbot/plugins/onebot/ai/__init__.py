@@ -16,6 +16,7 @@ from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
+    PluginHooks,
     active_plugin_install_context,
 )
 from ironsbot.integrations.onebot.context import (
@@ -33,6 +34,8 @@ from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
@@ -219,6 +222,7 @@ def plugin_contribution(
     service: AiService,
     features: FeatureService,
     commands: CommandCatalog,
+    startup_check: Callable[[], Awaitable[None]],
 ) -> PluginContribution:
     """Declare AI-chat command visibility and OneBot matcher ownership."""
 
@@ -254,6 +258,13 @@ def plugin_contribution(
             if enabled
             else None
         ),
+        hooks=(
+            PluginHooks(
+                first_bot_connect=(("ai_api_check", lambda _bot: startup_check()),)
+            )
+            if enabled
+            else PluginHooks()
+        ),
     )
 
 
@@ -265,5 +276,6 @@ if (context := active_plugin_install_context()) is not None:
             service=context.resources.ai,
             features=context.resources.features,
             commands=context.resources.commands,
+            startup_check=context.resources.ai_startup_check,
         ),
     )
