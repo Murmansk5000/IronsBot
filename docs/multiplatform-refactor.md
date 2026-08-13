@@ -183,6 +183,13 @@ SeerAPI 全量 **259 passed**、Ruff、脚本 CLI 帮助、编译和 diff 检查
 49 项、SeerAPI 全量 **259 passed**、Ruff、编译和 diff 检查均通过。此项不改变已发布伙伴表，
 但使来源格式变动能够在独立模块和测试中处理，而不再膨胀发布编排脚本。
 
+**ConfigPackage 二进制解码边界（2026-08-13）：** SeerAPI `7b194ba` 将 Unity
+PackageManifest、刻印品质、皮肤商店、道具说明、魂印图标和群星牌赛季效果的字节协议解码迁入
+`scripts/config_package_sources.py`。发布构建器保留版本/manifest 下载、Unity TextAsset 提取、
+来源选择和 SQLite 写入；解码模块不依赖环境、网络、UnityPy 或数据库。构建相关 49 项、
+SeerAPI 全量 **259 passed**、Ruff、CLI 帮助、编译和 diff 检查均通过。构建主脚本从 4,671 行
+降至 4,218 行，模块本身 331 行，未改变发布 schema 或运行时消费语义。
+
 **镜像依赖审计（2026-08-13）：** 已删除 IronsBot 未导入、也不由 `seerapi`
 传递依赖的 `unitypy`。锁定闭包同步移除纹理解码、音频、压缩等 11 个运行时包；
 HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而保留。Docker 引擎在本机未
