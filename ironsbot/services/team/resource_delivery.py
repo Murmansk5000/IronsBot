@@ -12,7 +12,9 @@ from ironsbot.core.platform import private_conversation_for_actor
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
-    from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
+    from ironsbot.services.team.resource_subscriptions import (
+        TeamResourceSubscriptionTarget,
+    )
 
 
 _LOGGER = logging.getLogger(__name__)
