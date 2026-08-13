@@ -11,7 +11,7 @@ from ironsbot.integrations.storage.platform_identity import (
     ConversationIdentityColumns,
 )
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
-from ironsbot.services.team.resource import (
+from ironsbot.services.team.resource_subscriptions import (
     TeamResourcePrivateSubscription,
     TeamResourcePrivateSubscriptionUpdate,
     TeamResourceSubscription,
