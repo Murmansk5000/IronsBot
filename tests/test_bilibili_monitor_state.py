@@ -3,12 +3,19 @@ from typing import Any, cast
 
 import nonebot
 import pytest
+from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.integrations.onebot.bilibili_targets import (
+    build_onebot_bili_configured_targets,
+)
+from ironsbot.plugins.onebot.bilibili.command_rules import (
+    is_bili_account_command,
+    is_bili_push_mode_command,
+)
 
 from ironsbot.config.models.features import (
     FeatureConfig,
     build_onebot_feature_service,
 )
-from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
@@ -18,17 +25,10 @@ from ironsbot.core.bilibili import (
 )
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.onebot.bilibili_targets import (
-    build_onebot_bili_configured_targets,
-)
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.plugins.onebot.bilibili.command_rules import (
-    is_bili_account_command,
-    is_bili_push_mode_command,
-)
 from ironsbot.services.bilibili import accounts
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
@@ -483,7 +483,11 @@ def test_bili_push_subscription_options_are_per_uid(
         },
     )
 
-    options = service.subscription_options(_group(987654321))
+    options = [
+        option
+        for option in service.subscription_options(_group(987654321))
+        if option.submenu_key is not None
+    ]
 
     assert [option.key for option in options] == [
         bili_push_subscription_key(375750254),
@@ -499,8 +503,15 @@ def test_bili_push_subscription_options_are_per_uid(
         bili_push_subscription_key(375750254),
         "bili_push",
     )
+    cast(
+        "PushUnsubscribeStore", service.unsubscribe_store
+    ).migrate_bilibili_subscriptions(set())
 
-    options = service.subscription_options(_group(987654321))
+    options = [
+        option
+        for option in service.subscription_options(_group(987654321))
+        if option.submenu_key is not None
+    ]
 
     assert [option.key for option in options] == [
         bili_push_subscription_key(375750254),
@@ -532,7 +543,11 @@ def test_bili_push_subscription_options_use_public_account_names(
         },
     )
 
-    options = service.subscription_options(_group(987654321))
+    options = [
+        option
+        for option in service.subscription_options(_group(987654321))
+        if option.submenu_key is not None
+    ]
 
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",

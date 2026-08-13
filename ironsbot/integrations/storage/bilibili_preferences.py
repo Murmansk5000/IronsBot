@@ -37,7 +37,24 @@ _SCHEMA = (
     )
     """,
 )
-_MIGRATIONS = (SqliteMigration(1, _SCHEMA),)
+_CATEGORY_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS bili_push_category_preferences (
+        conversation_platform TEXT NOT NULL,
+        conversation_kind TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        uid INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        muted INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (
+            conversation_platform, conversation_kind, conversation_id,
+            uid, category
+        )
+    )
+    """,
+)
+_MIGRATIONS = (SqliteMigration(1, _SCHEMA), SqliteMigration(2, _CATEGORY_SCHEMA))
 MIGRATION_NAMESPACE = "bilibili_preferences"
 
 
@@ -107,6 +124,52 @@ class SqliteBiliPushPreferenceStore:
                   AND conversation_id = ? AND uid = ?
                 """,
                 (*_conversation_values(conversation), uid),
+            )
+
+    def category_muted(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        category: str,
+    ) -> bool | None:
+        with self._database.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT muted FROM bili_push_category_preferences
+                WHERE conversation_platform = ? AND conversation_kind = ?
+                  AND conversation_id = ? AND uid = ? AND category = ?
+                """,
+                (*_conversation_values(conversation), uid, category),
+            ).fetchone()
+        return None if row is None else bool(row[0])
+
+    def set_category_muted(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        category: str,
+        *,
+        muted: bool,
+    ) -> None:
+        with self._database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO bili_push_category_preferences (
+                    conversation_platform, conversation_kind, conversation_id,
+                    uid, category, muted, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(
+                    conversation_platform, conversation_kind, conversation_id,
+                    uid, category
+                ) DO UPDATE SET muted = excluded.muted, updated_at = excluded.updated_at
+                """,
+                (
+                    *_conversation_values(conversation),
+                    uid,
+                    category,
+                    int(muted),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
             )
 
 

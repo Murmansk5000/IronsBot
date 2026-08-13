@@ -143,6 +143,14 @@ class PushSubscriptionOption:
     label: str
     feature: str
     unsubscribed: bool = False
+    submenu_key: str | None = None
+    superuser_only: bool = False
+    group_superuser_only: bool = False
+
+    def requires_superuser(self, conversation_kind: ConversationKind) -> bool:
+        return self.superuser_only or (
+            self.group_superuser_only and conversation_kind == "group"
+        )
 
 
 @dataclass(frozen=True, slots=True)

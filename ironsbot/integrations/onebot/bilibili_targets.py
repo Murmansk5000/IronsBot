@@ -5,9 +5,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.services.bilibili.targets import (
+from ironsbot.services.bilibili.target_models import (
     BiliConfiguredTargets,
     BiliTargetRule,
+)
+from ironsbot.services.bilibili.target_rules import (
     build_bili_target_rule,
     merge_bili_target_rules,
 )

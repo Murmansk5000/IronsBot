@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 QQ_IDENTITY_TABLES = frozenset(
     {
+        "bili_push_category_preferences",
         "bili_push_preferences",
         "group_rank_display_limits",
         "lucky_skin_watch_preferences",
@@ -156,6 +157,19 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL,
             PRIMARY KEY (
                 conversation_platform, conversation_kind, conversation_id, uid
+            )
+        )
+        """,
+        f"""
+        CREATE TABLE bili_push_category_preferences (
+            {_CONVERSATION_COLUMNS},
+            uid INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            muted INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (
+                conversation_platform, conversation_kind, conversation_id,
+                uid, category
             )
         )
         """,
@@ -477,6 +491,7 @@ def _copy_conversation_preferences(
         ),
         "push_daily_hints": ("hint_key", "delivered_on", "updated_at"),
         "bili_push_preferences": ("uid", "mode", "updated_at"),
+        "bili_push_category_preferences": ("uid", "category", "muted", "updated_at"),
     }
     for table, columns in table_columns.items():
         placeholders = ", ".join("?" for _ in range(3 + len(columns)))

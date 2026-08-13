@@ -4,7 +4,6 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ConversationRef
 from ironsbot.core.selection import (
     TOGGLE_SELECTION_FOOTER,
     SelectionMenuItem,
@@ -19,7 +18,7 @@ from ironsbot.services.messaging.subscriptions import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.platform import ConversationKind, ConversationRef
 
 READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可查看 · 输入 0 退出"
 
@@ -122,12 +121,15 @@ def build_push_subscription_menu(
     title: str,
     options: Sequence[PushSubscriptionOption],
     read_only: bool = False,
+    conversation_kind: ConversationKind = "group",
 ) -> str:
     return format_selection_menu(
         title=title,
         items=tuple(
             SelectionMenuItem(
-                label=option.label,
+                label=f"{option.label}（仅超管可修改）"
+                if option.requires_superuser(conversation_kind)
+                else option.label,
                 prefix="❌" if option.unsubscribed else "✅",
             )
             for option in options
