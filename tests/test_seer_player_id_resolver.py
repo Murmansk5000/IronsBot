@@ -55,6 +55,22 @@ def test_resolves_alias_in_the_current_conversation() -> None:
     assert result.error is None
 
 
+def test_privileged_actor_can_resolve_a_private_alias() -> None:
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        privileged_reference_lookup=lambda reference, _conversation: {
+            "private": _ALIAS_PLAYER_ID
+        }.get(reference),
+        is_privileged_actor=lambda actor: actor.id == "100",
+    )
+
+    result = resolver.resolve(_context(), "private")
+
+    assert result.player_id == _ALIAS_PLAYER_ID
+    assert result.offer_binding is True
+
+
 def test_recognizes_known_aliases_without_evaluating_message_targets() -> None:
     resolver = _resolver()
     conversation = ConversationRef(Platform.ONEBOT, "group", "200")
