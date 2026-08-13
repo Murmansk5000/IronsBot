@@ -4,7 +4,6 @@ plugin_dirs = []
 [tool.nonebot.plugins]
 "@local" = [
   "nonebot_plugin_apscheduler",
-  "nonebot_plugin_localstore",
   "nonebot_plugin_htmlkit",
   "nonebot_plugin_saa",
   "ironsbot.plugins.onebot.scheduler",
