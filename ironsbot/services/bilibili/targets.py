@@ -1,11 +1,9 @@
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ironsbot.core.bilibili import (
     BiliAccountCategorySubscriptionConfig,
     BiliConfig,
     BiliPushMode,
-    BiliPushTargetConfig,
 )
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import (
@@ -35,114 +33,12 @@ from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionRepository,
 )
 
-
-def _unique_ints(values: list[int]) -> list[int]:
-    return list(dict.fromkeys(item for item in values if item > 0))
-
+from .target_models import BiliConfiguredTargets, BiliPushTargets, BiliTargetRule
+from .target_rules import default_bili_target_rule
 
 ACCOUNT_NAMES_UNAVAILABLE = (
     "❌ 暂时无法获取当前会话订阅账号的 B站公开昵称，请稍后重试。"
 )
-
-
-@dataclass(frozen=True, slots=True)
-class BiliTargetRule:
-    aliases: frozenset[str]
-    uids: frozenset[int]
-    default_mode: BiliPushMode
-    target_mode: BiliPushMode | None
-    modes: dict[int, BiliPushMode]
-
-    def mode_for_uid(self, uid: int) -> BiliPushMode | None:
-        if uid not in self.uids:
-            return None
-        return self.modes.get(uid, self.target_mode or self.default_mode)
-
-    def configured_mode_for_uid(self, uid: int) -> BiliPushMode | None:
-        if uid not in self.uids:
-            return None
-        configured_mode = self.modes.get(uid)
-        return configured_mode if configured_mode is not None else self.target_mode
-
-
-@dataclass(frozen=True, slots=True)
-class BiliPushTargets:
-    full_group_conversations: list[ConversationRef]
-    link_group_conversations: list[ConversationRef]
-    full_private_conversations: list[ConversationRef]
-    link_private_conversations: list[ConversationRef]
-
-    @property
-    def has_targets(self) -> bool:
-        return any(
-            (
-                self.full_group_conversations,
-                self.link_group_conversations,
-                self.full_private_conversations,
-                self.link_private_conversations,
-            )
-        )
-
-
-def _target_aliases(
-    target_config: BiliPushTargetConfig,
-    config: BiliConfig,
-) -> frozenset[str]:
-    return frozenset(
-        [
-            *config.push.accounts,
-            *target_config.accounts,
-        ]
-    )
-
-
-def _resolve_modes(
-    modes: dict[str, BiliPushMode],
-    config: BiliConfig,
-) -> dict[int, BiliPushMode]:
-    return {config.accounts[alias].uid: mode for alias, mode in modes.items()}
-
-
-def build_bili_target_rule(
-    target_config: BiliPushTargetConfig,
-    config: BiliConfig,
-) -> BiliTargetRule:
-    aliases = _target_aliases(target_config, config)
-    return BiliTargetRule(
-        aliases=aliases,
-        uids=frozenset(config.accounts[alias].uid for alias in aliases),
-        default_mode=config.push.mode,
-        target_mode=target_config.mode,
-        modes={
-            **_resolve_modes(config.push.modes, config),
-            **_resolve_modes(target_config.modes, config),
-        },
-    )
-
-
-def _default_rule(config: BiliConfig) -> BiliTargetRule:
-    return build_bili_target_rule(BiliPushTargetConfig(), config)
-
-
-def merge_bili_target_rules(
-    old_rule: BiliTargetRule,
-    new_rule: BiliTargetRule,
-) -> BiliTargetRule:
-    return BiliTargetRule(
-        aliases=old_rule.aliases | new_rule.aliases,
-        uids=old_rule.uids | new_rule.uids,
-        default_mode=new_rule.default_mode,
-        target_mode=new_rule.target_mode,
-        modes={**old_rule.modes, **new_rule.modes},
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class BiliConfiguredTargets:
-    """Platform-resolved push-target rules consumed by Bili services."""
-
-    group_rules: Mapping[ConversationRef, BiliTargetRule]
-    private_rules: Mapping[ConversationRef, BiliTargetRule]
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +57,7 @@ class BiliTargetService:
         return dict(self.configured_targets.private_rules)
 
     def push_group_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        default_rule = _default_rule(self.config)
+        default_rule = default_bili_target_rule(self.config)
         configured = self.configured_group_rules()
         return {
             conversation: configured.get(conversation, default_rule)
@@ -169,7 +65,7 @@ class BiliTargetService:
         }
 
     def push_user_rules(self) -> dict[ConversationRef, BiliTargetRule]:
-        default_rule = _default_rule(self.config)
+        default_rule = default_bili_target_rule(self.config)
         configured = self.configured_user_rules()
         return {
             conversation: configured.get(conversation, default_rule)
@@ -180,13 +76,13 @@ class BiliTargetService:
         }
 
     def monitored_uids(self) -> list[int]:
-        uids = set(_default_rule(self.config).uids)
+        uids = set(default_bili_target_rule(self.config).uids)
         for rule in [
             *self.configured_group_rules().values(),
             *self.configured_user_rules().values(),
         ]:
             uids.update(rule.uids)
-        return _unique_ints(sorted(uids))
+        return [uid for uid in sorted(uids) if uid > 0]
 
     def query_uids(
         self,
@@ -217,7 +113,7 @@ class BiliTargetService:
 
     def _query_group_uids(self, conversation: ConversationRef) -> list[int]:
         rule = self.configured_group_rules().get(conversation)
-        return sorted((rule or _default_rule(self.config)).uids)
+        return sorted((rule or default_bili_target_rule(self.config)).uids)
 
     def _query_private_uids(self, actor: ActorRef) -> list[int]:
         rule = self.configured_user_rules().get(private_conversation_for_actor(actor))
@@ -575,8 +471,10 @@ class BiliTargetService:
     def suppress_patterns_for_uid(self, uid: int) -> list[str]:
         """Category-managed accounts decide delivery per category, not globally."""
 
-        return [] if self.category_config_for_uid(uid) is not None else list(
-            self.config.filters.suppress_push_patterns
+        return (
+            []
+            if self.category_config_for_uid(uid) is not None
+            else list(self.config.filters.suppress_push_patterns)
         )
 
     def _categories_allowed(

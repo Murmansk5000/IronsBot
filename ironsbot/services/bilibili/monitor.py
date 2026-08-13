@@ -33,7 +33,7 @@ from ironsbot.services.bilibili.service import (
     BilibiliService,
     BiliFeedResponse,
 )
-from ironsbot.services.bilibili.targets import BiliPushTargets
+from ironsbot.services.bilibili.target_models import BiliPushTargets
 
 logger = logging.getLogger(__name__)
 HTTP_OK = 200

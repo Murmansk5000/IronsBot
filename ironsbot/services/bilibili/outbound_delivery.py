@@ -23,7 +23,7 @@ from ironsbot.services.bilibili.preferences import (
     bili_media_subscription_key,
     bili_push_subscription_key,
 )
-from ironsbot.services.bilibili.targets import BiliPushTargets
+from ironsbot.services.bilibili.target_models import BiliPushTargets
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
     append_outbound_text_once,
