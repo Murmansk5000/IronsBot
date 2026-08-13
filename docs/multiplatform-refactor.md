@@ -117,6 +117,16 @@ NapCat reply segment 事实。`event.reply` 缺失时，OneBot 输入适配器�
 原始消息读取 reply segment，命令输入分类与群菜单锚点共用同一解析结果。没有 cherry-pick
 旧 `main` 的 runtime 目录实现，也没有重新引入临时 fallback matcher。
 
+**主线功能吸收与镜像静态审计（2026-08-13）：** `22616886` 将当前 `main` 的
+启动时钟诊断、B站动态详情补全/异步投递、查询回复锚点与新增内容图片菜单吸收到 V5 的
+组合边界。B站后台任务由 `ApplicationLifecycle` 注入的 task owner 创建，领域服务不再自行
+调用 `asyncio.create_task`；新增内容的自动展开项与同一 `Prompt` 的 `a1`、`a2` 等输入键
+保持一致，不会出现图片中可见但会话无法选择的项目。完整 pytest 为 **1502 passed**，Ruff、
+compileall 与 diff 检查通过。静态 Docker 审计确认运行镜像仍只显式复制运行代码、配置模板、
+入口脚本和字体，仓库测试/文档/脚本/数据均被排除；二维码、HTML 渲染和 SVG 光栅化依赖
+均有真实调用，不能为压缩镜像而删除。此工作站 Docker daemon 未启动，实际镜像字节大小仍须
+由 CI 或 Docker 构建环境记录。
+
 **渲染版本快照（2026-08-13）：** `SeerDatabase` 在 SeerAPI 内存库原子换版完成时
 刷新发布版本；最终图片缓存读取该内存快照，不再为每个 `get`/`put` 额外开 SQLite
 session。未加载数据仍显式返回 `unknown`，因此不会写入无发布版本的缓存。该项是下一步
