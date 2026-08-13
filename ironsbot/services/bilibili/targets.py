@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ironsbot.core.bilibili import (
+    BiliAccountCategorySubscriptionConfig,
     BiliConfig,
     BiliPushMode,
     BiliPushTargetConfig,
@@ -18,10 +19,15 @@ from ironsbot.services.bilibili.accounts import (
 )
 from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
+    bili_category_submenu_key,
+    bili_category_subscription_key,
     bili_push_subscription_key,
     bili_push_subscription_label,
     normalize_push_mode_text,
     push_mode_label,
+)
+from ironsbot.services.messaging.subscription_options import (
+    build_push_subscription_menu,
 )
 from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
@@ -292,15 +298,78 @@ class BiliTargetService:
         return [
             PushSubscriptionOption(
                 key=(key := bili_push_subscription_key(uid)),
-                label=bili_push_subscription_label(
-                    uid,
-                    self.account_names.name_for_uid(uid),
-                ),
+                label=self._subscription_label(uid),
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
+                submenu_key=(
+                    bili_category_submenu_key(uid)
+                    if self.category_config_for_uid(uid) is not None
+                    else None
+                ),
             )
             for uid in sorted(rule.uids)
         ]
+
+    def subscription_submenu(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+        *,
+        read_only: bool,
+    ) -> tuple[list[PushSubscriptionOption], str] | None:
+        if option.submenu_key is None:
+            return None
+        uid = _subscription_uid(option.submenu_key)
+        config = None if uid is None else self.category_config_for_uid(uid)
+        if config is None:
+            return None
+        options = [
+            PushSubscriptionOption(
+                key=bili_push_subscription_key(uid),
+                label="全部动态",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_unsubscribed(
+                    conversation,
+                    bili_push_subscription_key(uid),
+                ),
+            ),
+            *[
+                PushSubscriptionOption(
+                    key=bili_category_subscription_key(uid, category),
+                    label=definition.label,
+                    feature="bili_push",
+                    unsubscribed=self._category_muted(conversation, uid, category),
+                )
+                for category, definition in config.categories.items()
+            ],
+        ]
+        return options, build_push_subscription_menu(
+            title=f"📺【{config.label} 分类订阅】",
+            options=options,
+            read_only=read_only,
+        )
+
+    def toggle_subscription(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+    ) -> str | None:
+        parsed = _category_subscription(option.key)
+        if parsed is None:
+            return None
+        uid, category = parsed
+        config = self.category_config_for_uid(uid)
+        if config is None or category not in config.categories:
+            return None
+        muted = not self._category_muted(conversation, uid, category)
+        self.preferences.set_category_muted(
+            conversation,
+            uid,
+            category,
+            muted=muted,
+        )
+        action = "退订" if muted else "恢复订阅"
+        return f"已{action}：{config.categories[category].label}。"
 
     async def prepare_account_names(
         self,
@@ -408,10 +477,20 @@ class BiliTargetService:
         )
 
     def push_targets_for_uid(self, uid: int) -> BiliPushTargets:
+        return self.push_targets_for_dynamic(uid)
+
+    def push_targets_for_dynamic(
+        self,
+        uid: int,
+        *,
+        categories: tuple[str, ...] = (),
+    ) -> BiliPushTargets:
         full_group_conversations: list[ConversationRef] = []
         link_group_conversations: list[ConversationRef] = []
         for conversation in self.push_group_rules():
             mode = self.mode_for_uid(conversation, uid)
+            if not self._categories_allowed(conversation, uid, categories):
+                continue
             if mode == "full":
                 full_group_conversations.append(conversation)
             elif mode == "link":
@@ -421,6 +500,8 @@ class BiliTargetService:
         link_private_conversations: list[ConversationRef] = []
         for conversation in self.push_user_rules():
             mode = self.mode_for_uid(conversation, uid)
+            if not self._categories_allowed(conversation, uid, categories):
+                continue
             if mode == "full":
                 full_private_conversations.append(conversation)
             elif mode == "link":
@@ -433,6 +514,66 @@ class BiliTargetService:
             link_private_conversations=list(dict.fromkeys(link_private_conversations)),
         )
 
+    def category_config_for_uid(
+        self,
+        uid: int,
+    ) -> BiliAccountCategorySubscriptionConfig | None:
+        """Return category rules for one configured account, if any."""
+        if not self.config.category_subscriptions.enabled:
+            return None
+        for (
+            alias,
+            category_config,
+        ) in self.config.category_subscriptions.accounts.items():
+            account = self.config.accounts.get(alias)
+            if account is not None and account.uid == uid:
+                return category_config
+        return None
+
+    def suppress_patterns_for_uid(self, uid: int) -> list[str]:
+        """Category-managed accounts decide delivery per category, not globally."""
+
+        return [] if self.category_config_for_uid(uid) is not None else list(
+            self.config.filters.suppress_push_patterns
+        )
+
+    def _categories_allowed(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        categories: tuple[str, ...],
+    ) -> bool:
+        config = self.category_config_for_uid(uid)
+        if config is None or not categories:
+            return True
+        return any(
+            not self._category_muted(conversation, uid, category)
+            for category in categories
+        )
+
+    def _category_muted(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        category: str,
+    ) -> bool:
+        configured = self.category_config_for_uid(uid)
+        if configured is None or category not in configured.categories:
+            return False
+        stored = self.preferences.category_muted(conversation, uid, category)
+        if stored is not None:
+            return stored
+        return category in configured.default_muted_categories
+
+    def _subscription_label(self, uid: int) -> str:
+        configured = self.category_config_for_uid(uid)
+        label = (
+            configured.label
+            if configured is not None
+            else self.account_names.name_for_uid(uid)
+        )
+        return bili_push_subscription_label(uid, label)
+
 
 def _push_mode_usage() -> str:
     return (
@@ -441,3 +582,26 @@ def _push_mode_usage() -> str:
         "例：B站推送模式 赛尔号官号 内容\n"
         "例：B站推送模式 赛尔号官号 默认"
     )
+
+
+def _subscription_uid(key: str) -> int | None:
+    prefix = "bili_category:"
+    if not key.startswith(prefix) or ":" in key.removeprefix(prefix):
+        return None
+    try:
+        return int(key.removeprefix(prefix))
+    except ValueError:
+        return None
+
+
+def _category_subscription(key: str) -> tuple[int, str] | None:
+    prefix = "bili_category:"
+    if not key.startswith(prefix):
+        return None
+    raw_uid, separator, category = key.removeprefix(prefix).partition(":")
+    if not separator or not category:
+        return None
+    try:
+        return int(raw_uid), category
+    except ValueError:
+        return None

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Annotated, Literal, cast
 
@@ -224,6 +225,69 @@ class BiliFilterConfig(BaseModel):
     )
 
 
+class BiliDynamicCategoryConfig(BaseModel):
+    """A configurable content category for one monitored Bilibili account."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1)
+    patterns: NormalizedStringList = Field(min_length=1)
+
+    @field_validator("patterns")
+    @classmethod
+    def validate_patterns(cls, values: list[str]) -> list[str]:
+        invalid = next(
+            (pattern for pattern in values if not _is_valid_regex(pattern)),
+            None,
+        )
+        if invalid is not None:
+            msg = f"bilibili.category_subscriptions has invalid regex {invalid!r}"
+            raise ValueError(msg)
+        return values
+
+
+class BiliAccountCategorySubscriptionConfig(BaseModel):
+    """Category controls for a configured account, without account-specific code."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1)
+    categories: dict[str, BiliDynamicCategoryConfig] = Field(default_factory=dict)
+    default_muted_categories: NormalizedStringList = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_muted_categories(self) -> BiliAccountCategorySubscriptionConfig:
+        unknown = sorted(set(self.default_muted_categories) - set(self.categories))
+        if unknown:
+            msg = (
+                "bilibili.category_subscriptions has unknown muted categories: "
+                + ", ".join(unknown)
+            )
+            raise ValueError(msg)
+        return self
+
+
+class BiliCategorySubscriptionsConfig(BaseModel):
+    """Optional, reusable category subscription rules keyed by account alias."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    accounts: dict[str, BiliAccountCategorySubscriptionConfig] = Field(
+        default_factory=dict
+    )
+
+    @field_validator("accounts", mode="before")
+    @classmethod
+    def normalize_accounts(cls, value: object) -> object:
+        parsed = json_object(value, name="bilibili.category_subscriptions.accounts")
+        return {
+            alias: account
+            for raw_alias, account in parsed.items()
+            if (alias := normalize_account_alias(raw_alias))
+        }
+
+
 class BiliConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -232,6 +296,9 @@ class BiliConfig(BaseModel):
     polling: BiliPollingConfig = Field(default_factory=BiliPollingConfig)
     push: BiliPushConfig = Field(default_factory=BiliPushConfig)
     filters: BiliFilterConfig = Field(default_factory=BiliFilterConfig)
+    category_subscriptions: BiliCategorySubscriptionsConfig = Field(
+        default_factory=BiliCategorySubscriptionsConfig
+    )
     login_notice_cooldown_seconds: float = Field(
         default=DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
         ge=0,
@@ -273,6 +340,12 @@ class BiliConfig(BaseModel):
             self.push.users,
             accounts,
         )
+        for alias in self.category_subscriptions.accounts:
+            _validate_account_ref(
+                f"bilibili.category_subscriptions.accounts.{alias}",
+                alias,
+                accounts,
+            )
         return self
 
 
@@ -285,6 +358,14 @@ def _validate_account_ref(
         raise ValueError(  # noqa: TRY003
             f"unknown Bilibili account alias at {location}: {alias}"
         )
+
+
+def _is_valid_regex(pattern: str) -> bool:
+    try:
+        re.compile(pattern)
+    except re.error:
+        return False
+    return True
 
 
 def _validate_target_account_refs(

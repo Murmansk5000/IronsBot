@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import ConversationRef
 
 BILI_PUSH_SUBSCRIPTION_PREFIX = "bili_push:"
+BILI_CATEGORY_SUBSCRIPTION_PREFIX = "bili_category:"
 BiliRuntimePushMode = Literal["full", "link"]
 INVALID_PUSH_MODE_ERROR = "push mode must be content/full, link, or default"
 
@@ -31,9 +32,33 @@ class BiliPushPreferenceStore(Protocol):
         uid: int,
     ) -> None: ...
 
+    def category_muted(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        category: str,
+    ) -> bool | None: ...
+
+    def set_category_muted(
+        self,
+        conversation: ConversationRef,
+        uid: int,
+        category: str,
+        *,
+        muted: bool,
+    ) -> None: ...
+
 
 def bili_push_subscription_key(uid: int) -> str:
     return f"{BILI_PUSH_SUBSCRIPTION_PREFIX}{int(uid)}"
+
+
+def bili_category_subscription_key(uid: int, category: str) -> str:
+    return f"{BILI_CATEGORY_SUBSCRIPTION_PREFIX}{int(uid)}:{category}"
+
+
+def bili_category_submenu_key(uid: int) -> str:
+    return f"{BILI_CATEGORY_SUBSCRIPTION_PREFIX}{int(uid)}"
 
 
 def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
