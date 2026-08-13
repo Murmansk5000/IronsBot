@@ -8,17 +8,15 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
-    from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.render_cache import RenderCache
-    from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +74,49 @@ class PlayerLineupEntryResolver(Protocol):
     ) -> tuple[PlayerLineupPetSnapshot, ...]: ...
 
 
+@dataclass(frozen=True, slots=True)
+class PlayerLineupImageAssets:
+    """Image facts prepared for a private lineup render document."""
+
+    pet_heads: tuple[tuple[int, str], ...]
+    type_icons: tuple[tuple[int, str], ...]
+
+    @property
+    def pet_head_by_resource_id(self) -> dict[int, str]:
+        return dict(self.pet_heads)
+
+    @property
+    def type_icon_by_id(self) -> dict[int, str]:
+        return dict(self.type_icons)
+
+
+class PlayerLineupRenderPort(Protocol):
+    """Rendering capabilities deliberately available to the lineup extension."""
+
+    async def image_assets(
+        self,
+        *,
+        resource_ids: tuple[int, ...],
+        type_ids: tuple[int, ...],
+    ) -> PlayerLineupImageAssets: ...
+
+    def cache_key(self, document: object, *, renderer_fingerprint: str) -> str: ...
+
+    def cached_image(self, category: str, key: str) -> bytes | None: ...
+
+    def cache_image(self, category: str, key: str, image: bytes) -> None: ...
+
+    async def render_html(
+        self,
+        *,
+        template_path: Path,
+        template_name: str,
+        templates: Mapping[str, object],
+        max_width: int,
+        allow_refit: bool,
+    ) -> bytes: ...
+
+
 class PlayerLineupExtensionContext(Protocol):
     """Dependencies permitted to the optional player-lineup extension.
 
@@ -87,9 +128,7 @@ class PlayerLineupExtensionContext(Protocol):
 
     headless: HeadlessService
     lineup_entries: PlayerLineupEntryResolver
-    images: SeerImageSource
-    render_cache: RenderCache
-    render_html: HtmlTemplateRenderer
+    lineup_render: PlayerLineupRenderPort
     error_message: ErrorMessageLookup
     player_quotas: PlayerQueryQuotaService
     player_requests: PlayerRequestProtectionService

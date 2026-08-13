@@ -43,12 +43,12 @@ Task     [████████░░] 80%  remaining: boundary tests and smo
 
 示例中的数字不是当前状态；实际状态由本次任务报告和提交证据决定。
 
-## 当前验证进度（2026-08-06）
+## 当前验证进度（2026-08-13）
 
 ```text
-总任务  [██▌░░░░░░░] 25%  已完成阶段 2/8  剩余：跨仓库装载、数据事实、解析与错误语义；尚不能可靠估算
-Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：完整素材 manifest、早期 L3 命中和其余 renderer 数据边界验收
-当前任务[██████████] 100%  构建自产魂印 PNG 的 manifest 事实已发布；尚未覆盖远程素材或启用早期 L3 命中
+总任务  [██████░░░░] 58%  已完成阶段 2/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
+Phase 2 [████████░░] 80%  私有阵容已从运行时安装模块迁到公开 `core.plugin_install` / `extensions` 契约；仍需删除私有包对公共 service 的直接依赖
+当前任务[██████████] 100%  `d9215799` / `65f09ec` 已验证公开安装、动作注册与发布数据阵容快照；公共 45 项、私有 23 项针对性测试通过
 ```
 
 本次完成的跨仓库证据：
@@ -93,7 +93,7 @@ Phase 4 [████░░░░░░] 40%  已验证子项 2/5  剩余：完�
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
-| Phase 2 | `in_progress` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；真实 `ironsbot-private` 已迁到 `core.command_catalog` / `core.player_reference_commands`，并以其自身 `pyproject.toml` 经 `nonebot.load_from_toml()` 的隔离 smoke test 验证；清单、贡献、安装上下文、命令目录和架构守卫 64 项测试通过，组合根拆分后的全量 `pytest` 为 1377 passed，静态检查通过 | 将私有阵容尚存的 OneBot 可见性与公共 service 依赖收进 `ironsbot.extensions` 的窄 context，证明外部包只依赖文档化的 extension/core/install 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
+| Phase 2 | `in_progress` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；私有库 `65f09ec` 已消费该契约。公共 45 项、私有 23 项针对性测试通过 | 删除私有阵容对公共 service / integration 的直接 import，仅依赖文档化的 `extensions` / `core` / install 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键和部分 SeerAPI 效果事实已验证 | SeerAPI 发布完整 render asset manifest；IronsBot 以 `RenderRequestKey` 在 SQL/HTTP/presenter 前命中 L3，并对每个 renderer 加零调用命中测试 | 所有渲染都已迁移 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |

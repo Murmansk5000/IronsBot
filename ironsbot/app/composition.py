@@ -26,7 +26,10 @@ from ironsbot.app.seer_composition import build_seer_components
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import PluginContributionCatalog
-from ironsbot.extensions.player_lineup import PlayerLineupExtensionServices
+from ironsbot.extensions.player_lineup import (
+    PlayerLineupExtensionServices,
+    PlayerLineupRenderServices,
+)
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
@@ -181,9 +184,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         "player_lineup": PlayerLineupExtensionServices(
             headless=headless,
             lineup_entries=PublishedPlayerLineupEntryResolver(seer_database),
-            images=seer_images,
-            render_cache=render_cache,
-            render_html=render_coordinator.render,
+            lineup_render=PlayerLineupRenderServices(
+                images=seer_images,
+                cache=render_cache,
+                render=render_coordinator.render,
+            ),
             error_message=seer_database.error_message,
             player_quotas=player_query_quotas,
             player_requests=player_requests,
