@@ -197,8 +197,9 @@ pytest、Ruff、编译、`git diff --check` 均通过。
 **完成条件：**
 
 - feature、冷却、订阅、限流、管理通知和持久化公开 API 均使用类型化身份；
-- `ironsbot.state_migration` 支持 dry-run、备份、临时构建、事务复制、校验、原子替换
-  和幂等重跑；
+- `ironsbot.state_migration` 保持唯一部署 CLI；参数解析、退出码和输出在
+  `ironsbot.state_migration_cli`，而 dry-run、备份、临时构建、事务复制、校验、原子替换
+  和幂等重跑在迁移服务中；
 - 空库、正常旧库、重复记录、损坏记录和中断都有测试；
 - `ironsbot-private` 仅使用公开的身份/状态 contract；不读取应用 composition。
 

@@ -1369,7 +1369,9 @@ reference for users:
 - **State and subscriptions:** QQ user/group state is consolidated in
   `data/state/qq_state.sqlite`; runtime task state is in
   `data/state/runtime_state.sqlite`. `ironsbot.state_migration` is the
-  one-time tool that creates and validates these stores. Bindings, query
+  one-time CLI entry point; `ironsbot.state_migration_cli` owns argument
+  parsing and process output while the migration service owns state copying
+  and validation. Bindings, query
   quotas, push preferences, display limits, and subscriptions stay logically
   separate tables even when they share a file.
 - **Large content and caches:** Seer data, aliases, player samples, rank facts,
