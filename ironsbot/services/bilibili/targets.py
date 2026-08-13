@@ -21,6 +21,7 @@ from ironsbot.services.bilibili.preferences import (
     BiliPushPreferenceStore,
     bili_category_submenu_key,
     bili_category_subscription_key,
+    bili_media_subscription_key,
     bili_push_subscription_key,
     bili_push_subscription_label,
     normalize_push_mode_text,
@@ -301,11 +302,7 @@ class BiliTargetService:
                 label=self._subscription_label(uid),
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
-                submenu_key=(
-                    bili_category_submenu_key(uid)
-                    if self.category_config_for_uid(uid) is not None
-                    else None
-                ),
+                submenu_key=bili_category_submenu_key(uid),
             )
             for uid in sorted(rule.uids)
         ]
@@ -320,9 +317,14 @@ class BiliTargetService:
         if option.submenu_key is None:
             return None
         uid = _subscription_uid(option.submenu_key)
-        config = None if uid is None else self.category_config_for_uid(uid)
-        if config is None:
+        if uid is None or self.mode_for_uid(conversation, uid) is None:
             return None
+        config = self.category_config_for_uid(uid)
+        title = (
+            f"📺【{config.label} 推送设置】"
+            if config is not None
+            else f"📺【{self._subscription_label(uid)} 推送设置】"
+        )
         options = [
             PushSubscriptionOption(
                 key=bili_push_subscription_key(uid),
@@ -333,6 +335,24 @@ class BiliTargetService:
                     bili_push_subscription_key(uid),
                 ),
             ),
+            PushSubscriptionOption(
+                key=bili_media_subscription_key(uid, "text"),
+                label="动态正文",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_unsubscribed(
+                    conversation,
+                    bili_media_subscription_key(uid, "text"),
+                ),
+            ),
+            PushSubscriptionOption(
+                key=bili_media_subscription_key(uid, "image"),
+                label="动态图片",
+                feature="bili_push",
+                unsubscribed=self.unsubscribe_store.is_unsubscribed(
+                    conversation,
+                    bili_media_subscription_key(uid, "image"),
+                ),
+            ),
             *[
                 PushSubscriptionOption(
                     key=bili_category_subscription_key(uid, category),
@@ -340,11 +360,13 @@ class BiliTargetService:
                     feature="bili_push",
                     unsubscribed=self._category_muted(conversation, uid, category),
                 )
-                for category, definition in config.categories.items()
+                for category, definition in (
+                    config.categories.items() if config is not None else ()
+                )
             ],
         ]
         return options, build_push_subscription_menu(
-            title=f"📺【{config.label} 分类订阅】",
+            title=title,
             options=options,
             read_only=read_only,
         )
@@ -356,7 +378,7 @@ class BiliTargetService:
     ) -> str | None:
         parsed = _category_subscription(option.key)
         if parsed is None:
-            return None
+            return self._toggle_media_subscription(conversation, option)
         uid, category = parsed
         config = self.category_config_for_uid(uid)
         if config is None or category not in config.categories:
@@ -370,6 +392,26 @@ class BiliTargetService:
         )
         action = "退订" if muted else "恢复订阅"
         return f"已{action}：{config.categories[category].label}。"
+
+    def _toggle_media_subscription(
+        self,
+        conversation: ConversationRef,
+        option: PushSubscriptionOption,
+    ) -> str | None:
+        parsed = _media_subscription(option.key)
+        if parsed is None:
+            return None
+        uid, media = parsed
+        if (
+            media not in {"text", "image"}
+            or self.mode_for_uid(conversation, uid) is None
+        ):
+            return None
+        if self.unsubscribe_store.is_unsubscribed(conversation, option.key):
+            self.unsubscribe_store.restore(conversation, option.key)
+            return f"已恢复订阅：{option.label}。"
+        self.unsubscribe_store.unsubscribe(conversation, option.key, option.feature)
+        return f"已退订：{option.label}。"
 
     async def prepare_account_names(
         self,
@@ -603,5 +645,18 @@ def _category_subscription(key: str) -> tuple[int, str] | None:
         return None
     try:
         return int(raw_uid), category
+    except ValueError:
+        return None
+
+
+def _media_subscription(key: str) -> tuple[int, str] | None:
+    prefix = "bili_media:"
+    if not key.startswith(prefix):
+        return None
+    raw_uid, separator, media = key.removeprefix(prefix).partition(":")
+    if not separator or not media:
+        return None
+    try:
+        return int(raw_uid), media
     except ValueError:
         return None

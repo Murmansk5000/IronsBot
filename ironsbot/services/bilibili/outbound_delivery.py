@@ -19,7 +19,10 @@ from ironsbot.services.bilibili.parser import (
     item_author_mid,
     item_author_name,
 )
-from ironsbot.services.bilibili.preferences import bili_push_subscription_key
+from ironsbot.services.bilibili.preferences import (
+    bili_media_subscription_key,
+    bili_push_subscription_key,
+)
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryRequest,
@@ -96,14 +99,34 @@ class BilibiliDynamicOutboundSender:
             subscription_key=subscription_key,
         )
 
-        content_override = await self._content_override(dynamic_content(item))
-        content_message = render_dynamic_content_message(item, content_override)
+        text_targets = self._subscribed_full_targets(
+            full_targets,
+            bili_media_subscription_key(author_mid, "text"),
+        )
+        if text_targets.has_targets:
+            content_override = await self._content_override(dynamic_content(item))
+            content_message = render_dynamic_text_message(item, content_override)
+        else:
+            content_message = None
         if content_message is not None:
             await self._send_content_with_retries(
                 item,
                 author_mid,
                 content_message,
-                full_targets,
+                text_targets,
+            )
+
+        image_targets = self._subscribed_full_targets(
+            full_targets,
+            bili_media_subscription_key(author_mid, "image"),
+        )
+        image_message = render_dynamic_image_message(item)
+        if image_message is not None and image_targets.has_targets:
+            await self._send_content_with_retries(
+                item,
+                author_mid,
+                image_message,
+                image_targets,
             )
 
     async def _send_link_message(
@@ -278,21 +301,44 @@ def render_dynamic_link_message(
         return None
 
 
-def render_dynamic_content_message(
+def render_dynamic_text_message(
     item: dict[str, Any],
     content_override: str | None = None,
 ) -> OutboundMessage | None:
-    """Render text and source images without depending on a transport format."""
+    """Render dynamic body text independently from source images."""
 
     try:
         content = (content_override or dynamic_content(item)).strip()
-        parts: list[TextPart | RemoteImagePart] = [TextPart(content)] if content else []
-        parts.extend(
+    except (TypeError, ValueError, KeyError):
+        _LOGGER.exception("failed to render Bilibili dynamic text")
+        return None
+    return OutboundMessage((TextPart(content),)) if content else None
+
+
+def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None:
+    """Render dynamic source images independently from text delivery."""
+
+    try:
+        parts = tuple(
             RemoteImagePart(url)
             for raw_url in dynamic_image_urls(item)
             if (url := raw_url.strip().rstrip("]"))
         )
     except (TypeError, ValueError, KeyError):
-        _LOGGER.exception("failed to render Bilibili dynamic content")
+        _LOGGER.exception("failed to render Bilibili dynamic images")
         return None
     return OutboundMessage(tuple(parts)) if parts else None
+
+
+def render_dynamic_content_message(
+    item: dict[str, Any],
+    content_override: str | None = None,
+) -> OutboundMessage | None:
+    """Backward-compatible combined renderer for callers outside delivery."""
+
+    text = render_dynamic_text_message(item, content_override)
+    images = render_dynamic_image_message(item)
+    parts = (text.parts if text is not None else ()) + (
+        images.parts if images is not None else ()
+    )
+    return OutboundMessage(parts) if parts else None

@@ -12,7 +12,10 @@ from ironsbot.integrations.storage.bilibili_preferences import (
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.bilibili.categories import classify_dynamic
-from ironsbot.services.bilibili.preferences import bili_category_submenu_key
+from ironsbot.services.bilibili.preferences import (
+    bili_category_submenu_key,
+    bili_media_subscription_key,
+)
 from ironsbot.services.bilibili.targets import BiliTargetService
 
 
@@ -80,7 +83,10 @@ def test_category_subscriptions_filter_and_toggle_per_conversation(
     submenu = service.subscription_submenu(conversation, root, read_only=False)
     assert submenu is not None
     options, _ = submenu
-    lottery = options[1]
+    text = options[1]
+    assert text.key == bili_media_subscription_key(912345678, "text")
+    assert service.toggle_subscription(conversation, text) == "已退订：动态正文。"
+    lottery = options[3]
     assert lottery.unsubscribed
     assert service.toggle_subscription(conversation, lottery) == "已恢复订阅：抽奖。"
     assert service.push_targets_for_dynamic(

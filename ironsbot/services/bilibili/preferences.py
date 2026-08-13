@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 BILI_PUSH_SUBSCRIPTION_PREFIX = "bili_push:"
 BILI_CATEGORY_SUBSCRIPTION_PREFIX = "bili_category:"
+BILI_MEDIA_SUBSCRIPTION_PREFIX = "bili_media:"
 BiliRuntimePushMode = Literal["full", "link"]
 INVALID_PUSH_MODE_ERROR = "push mode must be content/full, link, or default"
 
@@ -59,6 +60,10 @@ def bili_category_subscription_key(uid: int, category: str) -> str:
 
 def bili_category_submenu_key(uid: int) -> str:
     return f"{BILI_CATEGORY_SUBSCRIPTION_PREFIX}{int(uid)}"
+
+
+def bili_media_subscription_key(uid: int, media: str) -> str:
+    return f"{BILI_MEDIA_SUBSCRIPTION_PREFIX}{int(uid)}:{media}"
 
 
 def bili_push_subscription_label(uid: int, label: str | None = None) -> str:
