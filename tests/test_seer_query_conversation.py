@@ -11,9 +11,8 @@ from nonebot.exception import FinishedException
 
 nonebot.init()
 
-from ironsbot.plugins.seer.query import query_conversation
-
 from ironsbot.core.semantic_requests import ActionDefinition
+from ironsbot.plugins.onebot.seer.query import query_conversation
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
