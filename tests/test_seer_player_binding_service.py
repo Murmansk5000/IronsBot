@@ -22,7 +22,7 @@ from ironsbot.services.seer.player_service import (
     PlayerQueryResult,
     PlayerService,
 )
-from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
+from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 
 _PLAYER_ID = 123456
 

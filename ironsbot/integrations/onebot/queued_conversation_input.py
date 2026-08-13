@@ -28,7 +28,7 @@ from ironsbot.integrations.onebot.prompt_sessions import (
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
-    from ironsbot.runtime.semantic_requests import SemanticRequest
+    from ironsbot.core.semantic_requests import SemanticRequest
 
 PromptSessionGetter = Callable[[T_State], PromptSessionManager]
 DispatchHandlers = Callable[[Matcher, _QueuedConversation], None]

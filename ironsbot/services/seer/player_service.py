@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 import asyncio
@@ -46,12 +46,14 @@ from ironsbot.services.seer.player_service_support import (
     shortcut_operation_label,
     utc_now,
 )
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     player_shortcut_semantic_request,
 )
 from ironsbot.services.seer.query_result import QueryReply
 
+_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
+_PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
 PlayerError = SocketRecvError | NotLoggedInError | DisconnectedError
 
 if TYPE_CHECKING:
@@ -69,7 +71,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +177,9 @@ class PlayerService(PlayerAccountPolicyMixin):
         binding = self._bindings.get(actor)
         if binding.player_id == player_id:
             nick = f"（{binding.player_nick}）" if binding.player_nick else ""
-            return PlayerQueryResult(message=f"当前已绑定该米米号：{player_id}{nick}。")
+            return PlayerQueryResult(
+                message=f"当前已绑定该米米号：{player_id}{nick}。"
+            )
         if binding.player_id is not None:
             change_error = self._binding_change_error(actor)
             if change_error:
@@ -305,7 +309,9 @@ class PlayerService(PlayerAccountPolicyMixin):
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             return QueryReply(text=self.format_error(player_id, error))
         except Exception as error:  # noqa: BLE001
-            return QueryReply(text=player_query_failure_message(player_id, error))
+            return QueryReply(
+                text=player_query_failure_message(player_id, error)
+            )
         if quota_message:
             if not message.rank_lookup_is_lightweight:
                 return QueryReply(text=quota_message)
@@ -381,7 +387,9 @@ class PlayerService(PlayerAccountPolicyMixin):
             )
             return PlayerQueryResult(pending=pending)
         except (TimeoutError, asyncio.TimeoutError):
-            return PlayerQueryResult(message=player_query_timeout_message(player_id))
+            return PlayerQueryResult(
+                message=player_query_timeout_message(player_id)
+            )
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             if isinstance(error, (NotLoggedInError, DisconnectedError)):
                 await self._headless.mark_unavailable(
@@ -421,7 +429,6 @@ class PlayerService(PlayerAccountPolicyMixin):
                 if quota_message and not allow_quota_exhausted:
                     raise PlayerQueryQuotaExceededError(quota_message)
             return await operation()
-
         if self._requests is None:
             await send_request_feedback(queued=False)
             return await guarded_operation()
