@@ -22,12 +22,16 @@ class _ConcurrentDetectingClient(httpx.AsyncClient):
         super().__init__()
         self.in_flight = 0
         self.max_in_flight = 0
+        self.max_started = asyncio.Event()
+        self.release = asyncio.Event()
 
     async def get(self, url: str, *args: Any, **kwargs: Any) -> httpx.Response:
         _ = (args, kwargs)
         self.in_flight += 1
         self.max_in_flight = max(self.max_in_flight, self.in_flight)
-        await asyncio.sleep(0)
+        if self.in_flight >= MAX_ASSET_FETCH_CONCURRENCY:
+            self.max_started.set()
+        await self.release.wait()
         self.in_flight -= 1
         return httpx.Response(
             200,
@@ -66,12 +70,12 @@ async def _fetch_many_images(cache_dir: Path) -> int:
         ),
     )
     try:
-        await asyncio.gather(
-            *(
-                images.fetch("pet_body", str(i), fallback=False)
-                for i in range(8)
-            )
+        requests = asyncio.gather(
+            *(images.fetch("pet_body", str(i), fallback=False) for i in range(8))
         )
+        await asyncio.wait_for(cache.max_started.wait(), timeout=1)
+        cache.release.set()
+        await requests
         return cache.max_in_flight
     finally:
         await clients.close()
