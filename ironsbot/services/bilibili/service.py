@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.dynamic_history import save_target_dynamics
+from ironsbot.services.bilibili.hydration import (
+    DynamicDetailFetcher,
+    hydrate_dynamic_item,
+)
 from ironsbot.services.bilibili.menu import (
     DYNAMIC_MENU_DEFAULT_LIMIT,
     DynamicDetailSelection,
@@ -19,7 +24,7 @@ from ironsbot.services.bilibili.parser import target_dynamics_from_response
 from ironsbot.services.bilibili.schedule import AutoCheckState, BoostSlot
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Coroutine
 
     from ironsbot.core.bilibili import BiliConfig
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -27,6 +32,13 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.targets import BiliTargetService
 
 logger = logging.getLogger(__name__)
+
+
+async def _unavailable_dynamic_detail(
+    _cookie: str,
+    _dynamic_id: str,
+) -> BiliFeedResponse:
+    return BiliFeedResponse(status_code=0, data={})
 
 
 class BiliCookieStore(Protocol):
@@ -48,11 +60,110 @@ class BilibiliService:
     cookie_store: BiliCookieStore
     history: BiliDynamicHistoryStore
     fetch_feed: Callable[[str], Awaitable[BiliFeedResponse]]
+    fetch_detail: DynamicDetailFetcher
+    spawn: Callable[..., asyncio.Task[Any]]
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)
     pending_regular_check: bool = field(default=False, init=False)
     pending_boost_slots: dict[str, BoostSlot] = field(default_factory=dict, init=False)
+    _detail_tasks: dict[str, asyncio.Task[dict[str, Any]]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _delivery_tasks: dict[str, asyncio.Task[None]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _history_backfill_attempted: bool = field(default=False, init=False, repr=False)
+
+    async def resolve_dynamic_item(
+        self,
+        item: dict[str, Any],
+        *,
+        cookie: str | None = None,
+    ) -> dict[str, Any]:
+        from ironsbot.services.bilibili.parser import dynamic_content, dynamic_id
+
+        typed_item = dict(item)
+        item_id = dynamic_id(typed_item)
+        if not item_id or dynamic_content(typed_item):
+            return typed_item
+        task = self._detail_tasks.get(item_id)
+        if task is None:
+            task = self.spawn(
+                hydrate_dynamic_item(
+                    typed_item,
+                    cookie=self.cookie_store.load() if cookie is None else cookie,
+                    fetch_detail=self.fetch_detail,
+                ),
+                name=f"bilibili-dynamic-detail-{item_id}",
+            )
+            self._detail_tasks[item_id] = task
+        try:
+            return await asyncio.shield(task)
+        finally:
+            if task.done() and self._detail_tasks.get(item_id) is task:
+                self._detail_tasks.pop(item_id, None)
+
+    def delivery_in_progress(self, item_id: str) -> bool:
+        task = self._delivery_tasks.get(item_id)
+        return task is not None and not task.done()
+
+    def spawn_delivery(
+        self,
+        item_id: str,
+        coroutine: Coroutine[Any, Any, None],
+    ) -> asyncio.Task[None]:
+        task = self.spawn(coroutine, name=f"bilibili-delivery-{item_id}")
+        self._delivery_tasks[item_id] = task
+        task.add_done_callback(
+            lambda finished: self._remove_delivery_task(item_id, finished)
+        )
+        return task
+
+    def _remove_delivery_task(self, item_id: str, task: asyncio.Task[None]) -> None:
+        if self._delivery_tasks.get(item_id) is task:
+            self._delivery_tasks.pop(item_id, None)
+
+    async def backfill_recent_empty_bodies(
+        self,
+        *,
+        days: int = 7,
+        limit: int = 20,
+    ) -> int:
+        from ironsbot.services.bilibili.parser import dynamic_content
+        from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
+
+        if self._history_backfill_attempted:
+            return 0
+        cookie = self.cookie_store.load()
+        if not cookie:
+            return 0
+        self._history_backfill_attempted = True
+        cutoff = int(time.time()) - max(days, 0) * 24 * 60 * 60
+        updated = 0
+        for record in self.history.list(limit=self.config.storage.history_max_items):
+            if record.pub_ts < cutoff or dynamic_content(record.item):
+                continue
+            if updated >= max(limit, 0):
+                break
+            resolved = await self.resolve_dynamic_item(record.item, cookie=cookie)
+            if not dynamic_content(resolved):
+                continue
+            self.history.save_snapshot(
+                build_dynamic_history_snapshot(
+                    resolved,
+                    pub_ts=record.pub_ts,
+                    author_mid=record.uid,
+                    suppression_reason=record.suppression_reason,
+                    pushed=record.pushed,
+                )
+            )
+            updated += 1
+        return updated
 
     async def query_dynamic_menu(
         self,

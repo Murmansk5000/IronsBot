@@ -110,7 +110,7 @@ def test_monitor_marks_category_muted_seer_dynamic_as_processed(
     assert checkpoints == {SEER_UID: PUB_TS}
     assert saved is not None
     assert saved.pushed
-    assert not saved.suppressed
+    assert saved.suppressed
 
 
 def test_monitor_enriches_empty_seer_dynamic_before_saving(
@@ -168,7 +168,7 @@ def test_monitor_releases_discovery_before_slow_delivery(
     release_delivery = asyncio.Event()
     monkeypatch.setattr(
         BiliTargetService,
-        "push_targets_for_uid",
+        "push_targets_for_dynamic",
         lambda *_args, **_kwargs: BiliPushTargets([1001], [], [], []),
     )
 

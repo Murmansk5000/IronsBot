@@ -77,6 +77,7 @@ class BilibiliDynamicOutboundSender:
         pub_ts: int,
         author_mid: int,
         targets: BiliPushTargets,
+        _categories: tuple[str, ...] = (),
     ) -> None:
         subscription_key = bili_push_subscription_key(author_mid)
         link_message = render_dynamic_link_message(item, pub_ts)
