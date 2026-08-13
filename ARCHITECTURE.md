@@ -61,10 +61,10 @@ contract without the qualifier "current bootstrap bridge". This specifically
 prevents a retired central application registry or any future bootstrap adapter
 from being mistaken for the plugin, command, or lifecycle contract.
 
-Current transition items are the legacy OneBot `OneBotMessageTarget` /
-`OneBotDelivery` send chain and the renderer data lookups listed in the Phase
-0 guard below. They keep the current OneBot application runnable; they are not
-the architecture that new cross-feature work should target. Within Phase 2,
+Current transition items are the OneBot-only configuration compilers and the
+renderer data lookups listed in the Phase 0 guard below. They keep the current
+OneBot application runnable; they are not the architecture that new
+cross-feature work should target. Within Phase 2,
 the standard NoneBot manifest discovery and the `MatcherFactory` construction
 boundary are verified sub-items; the phase itself remains in progress until
 its remaining bridge and ownership conditions are met. `PluginContribution` is
@@ -115,12 +115,12 @@ check. A branch that reintroduces it, or a document that calls it the current
 installation contract, is stale and must be resolved toward the contract table
 above rather than merged as an alternative design.
 
-### Current Command-Contract Bridge
+### Current Command-Contract Boundary
 
-`core.command_catalog.CommandDescriptor` is the current code carrier for part of the target
-`CommandContract`; it is not a second authority and must not grow a parallel
-catalog, matcher registry, or AI-only keyword list. `CommandCatalog` remains
-the single runtime catalog today. New command work must add the smallest
+`core.command_catalog.CommandContract` is the current runtime representation
+for every direct command. It is not a second authority and must not grow a
+parallel catalog, matcher registry, or AI-only keyword list. `CommandCatalog`
+remains the single runtime catalog. New command work must add the smallest
 missing contract field or catalog query there, then make help, poke hints and
 AI command claims consume the same field.
 
@@ -137,26 +137,24 @@ natural-language prefix merely to keep AI from responding: parameterized
 commands claim only inputs their own parser can accept or reject with a
 command-specific validation error.
 
-The target name `CommandContract` becomes the runtime type only when command
-parsing ownership, access metadata and documentation fields have all moved
-out of matcher-local constants. Until then, plans and reviews must use this
-precise wording:
+The type rename does not make the migration complete. Completion still requires
+command parsing ownership, access metadata and documentation fields to move out
+of matcher-local constants. Plans and reviews must use this precise wording:
 
 | Subject | Correct status | Required wording |
 | --- | --- | --- |
 | `PluginDefinition` | retired | Historical only; never a current contract. |
 | `PluginContribution` | target, currently implemented | Plugin-local runtime contribution only. |
-| `CommandDescriptor` | transition carrier | Current representation of part of the target command contract. |
+| `CommandContract` | target, currently implemented | The only direct-command representation. |
 | `CommandCatalog` | target, currently implemented | The only command metadata/catalog authority. |
-| `CommandContract` | target type | The final command representation; do not claim it already exists as a separate runtime class. |
 
 Completion requires one explicit command-contract type, every direct command
 being registered through it, and deletion of matcher-local duplicate command
 metadata. A rename alone is not completion.
 
-During the transition, each migrated command domain must expose its descriptors
-from `services.<domain>` (or `core` for cross-domain contracts). A platform
-plugin may submit those descriptors to `PluginContribution`, but it must not
+Every direct-command domain must expose its contracts from `services.<domain>`
+(or `core` for cross-domain contracts). A platform plugin may submit those
+contracts to `PluginContribution`, but it must not
 redeclare examples, access rules, help text, or input ownership. The current
 migration inventory lives in `docs/multiplatform-refactor.md`; update it in the
 same commit as every ownership move. This is deliberately stricter than
@@ -247,20 +245,21 @@ feature, persistence schema, or policy decision.
 | Feature-policy decisions for inbound messages | target | `FeatureService.is_feature_allowed(actor, conversation, feature)`, `conversation_has_feature(conversation, feature)` and `is_message_blocked(actor, conversation)` | Plugins, services and integrations pass typed identities. `config.models.features.build_onebot_feature_service()` is the only OneBot TOML compiler and must finish alias and bundle expansion before constructing the service. |
 | Command-context identity and access checks | target | `CommandContext(actor, conversation, group_role)` plus typed feature-policy methods | `CommandCatalog`, help, poke candidates and AI command claims must not receive native user/group integers. OneBot event and poke adapters use `integrations.onebot.identity` to construct the typed context at the edge. |
 | Team-audit reminders | target reference | `TeamAuditService` plus a OneBot adapter | Reuse this shape for event-triggered delivery. |
-| Administrator notices | target reference with adapter bridge | `AdminNoticeService` plus `AdminNoticeSender` | Keep OneBot routing, queues and CQ rendering in `integrations.onebot`. |
-| Activity reminders | target reference with adapter bridge | `ActivityService` plus `ActivityReminderSender` | Keep subscription and rate-limit semantics in the target integration. |
-| OneBot `OneBotMessageTarget` / `OneBotDelivery` | transition | Only in OneBot integration and composition wiring; not exposed through `ApplicationResources` | A service must first receive a typed recipient and sender port; then move its legacy call into the adapter. |
+| Proactive text delivery | target | `ProactiveMessageDelivery` plus `OutboundMessenger` | All new non-rich proactive text sends use typed conversations, subscription filtering, promotion text, daily hints and failure summaries here. |
+| Administrator notices | target reference | `AdminNoticeService` plus `OutboundAdminNoticeSender` | Resolve administrators as `ActorRef` values and send through `ProactiveMessageDelivery`; no OneBot delivery object is exposed to the service. |
+| Activity reminders | target reference | `ActivityService` plus `ActivityReminderOutboundSender` | Build typed recipients and a text message, then delegate subscription and rate-limit semantics to proactive delivery. |
+| OneBot outbound delivery | target adapter | `integrations.onebot.outbound_messenger.OneBotOutboundMessenger` | Convert typed messages to OneBot only after `ConversationRef` routing. Numeric batch targets and `OneBotDelivery` are deleted and must not return. |
 | OneBot reference resolution and numeric QQ configuration | target adapter | `config.onebot_references.OneBotReferenceResolver` plus OneBot integration config compilers | Convert aliases and numeric QQ values to opaque refs or typed recipient snapshots before a service is constructed; a service must not receive the resolver itself. |
 | Push-preference repositories | target with OneBot configuration bridge | `PushSubscriptionRepository` and Bilibili preference storage accept `ConversationRef`; their SQLite rows use the same platform, kind and opaque ID identity | Keep native numeric QQ conversion at TOML/composition and OneBot-delivery boundaries. Do not reintroduce `target_type` / `target_id` as a service or repository contract. |
 | OneBot poke hints | target, OneBot-only capability | `integrations.onebot.help_hint.OneBotHelpHintService` plus the passive help plugin | Keep QQ numeric IDs, configured aliases and poke-event semantics inside the OneBot adapter; future platforms may expose a separate capability rather than reusing this service. |
-| Lucky-skin-window delivery | target reference with adapter bridge | `LuckySkinWindowService` plus `OneBotLuckySkinWindowNotificationSender` | Reuse typed actor ownership; keep OneBot subscription and daily-hint policy in the adapter. |
-| Team-resource subscription delivery | target reference with adapter bridge | `TeamResourceService` plus `TeamResourceNoticeSender` | Keep numeric QQ configuration, mention conversion and `OneBotDelivery` in `integrations.onebot.team_resource`. |
+| Lucky-skin-window delivery | target reference | `LuckySkinWindowService` plus `LuckySkinWindowOutboundSender` | Reuse typed actor ownership and the shared outbound messenger; persist domain-specific daily state in the lucky-skin service. |
+| Team-resource subscription delivery | target reference | `TeamResourceService` plus `TeamResourceOutboundSender` | Compile numeric QQ configuration and mention parts at the OneBot boundary, then deliver through the shared outbound messenger. |
 | Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |
 | Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. |
 | Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
-| Bilibili rich-media push delivery | target reference with adapter bridge | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `integrations.onebot.bilibili_push.OneBotBilibiliPushSender` owns OneBot rendering, routing, retries, rate limits and subscription hints | Keep future platform-specific media delivery out of `services.bilibili`; any new platform implements the same monitor sender port. |
+| Bilibili rich-media push delivery | target reference | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `services.bilibili.outbound_delivery.BilibiliDynamicOutboundSender` creates portable parts and delegates routing, retries, rate limits and subscription hints to the shared outbound path | Keep future platform-specific media rendering in platform adapters, never in the Bilibili service. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. Raw-package omissions that change display use a SeerAPI `pet_soulmark_display_addition` fact with provenance; no presenter may branch on a pet ID. |
 | Private-extension loading | target | Verified private `[tool.nonebot.plugins]` manifest plus a scoped `PluginInstallContext` | The public bootstrap only validates the package and calls `nonebot.load_from_toml`; modules receive narrow declared extension contexts, never composition internals. |
@@ -398,6 +397,15 @@ delivery ports. They must not receive `GroupMessageEvent`, `Bot`, CQ segments,
 or adapter-specific session objects. Transport adapters own conversion in both
 directions.
 
+Platform identity is deliberately distinct from Seer domain identity. A
+`player_id`, rank-table `user_id`, or headless-game account ID is a numeric
+米米号 and remains an integer where the Seer protocol or its facts require one;
+it must never be migrated into `ActorRef`. Conversely, a QQ user/group/member
+identity is always an `ActorRef` or `ConversationRef` outside the OneBot
+boundary, even when its source happened to be numeric. Storage audits and
+migrations classify IDs by table ownership and protocol meaning, not by a
+column name such as `user_id` or `group_id`.
+
 Extension callbacks follow the same boundary. A player-detail extension
 receives `PlayerDetailActionRequest(player_id, actor, conversation)`, not a
 tuple of numeric player, QQ-user and group IDs. The public player-command
@@ -413,18 +421,27 @@ plugin implementation. Each extension receives only the smallest context its
 declared responsibility needs; the application's larger runtime object stays
 an internal composition detail.
 
+An external extension may additionally import a documented core command
+contract (for example `core.command_catalog.CommandContract` and
+`core.player_reference_commands.player_reference_input_matcher`) when it
+declares a direct command, and the narrowly scoped `core.plugin_install` install
+API needed to submit its own `PluginContribution`. These are public semantic
+contracts, not plugin implementation details. It must not import historical
+`runtime.commands` or `runtime.player_reference_commands` paths. When such a
+core contract moves, update the external package in the same cross-repository
+phase; do not restore a deleted runtime module as a compatibility shim. An
+extension that still imports a removed path is an unvalidated dependency, even
+if the bundled application tests do not install it.
+
 Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
 `ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
-`OutboundMessenger`. They use opaque nonempty string IDs. The current
-OneBot-only `OneBotMessageTarget` remains a Phase 3 transition type until its full
-call chain can be replaced in one direction; no new platform-neutral service
-may depend on it. `integrations.onebot.outbound_messenger.OneBotOutboundMessenger`
-is the Phase 1 edge adapter for the new port: it translates text, images,
-mentions and reply contexts only after a `ConversationRef` has been routed to
-a OneBot bot. Existing `OneBotDelivery` callers still use `OneBotMessageTarget`
-until the Phase 3 one-direction migration; new services must use the
-platform-neutral port instead.
+`OutboundMessenger`. They use opaque nonempty string IDs.
+`integrations.onebot.outbound_messenger.OneBotOutboundMessenger` is the OneBot
+edge adapter for the port: it translates text, images, mentions and reply
+contexts only after a `ConversationRef` has been routed to a OneBot bot. Numeric
+target types and the former `OneBotDelivery` batch bridge were removed in Phase 3;
+new services use the platform-neutral port directly.
 
 `services.team.audit.TeamAuditService` is the first complete reference use
 case for this boundary. Its workflow, reminder store, scheduler jobs, and
@@ -434,40 +451,34 @@ The OneBot plugin converts notice events at the edge, while
 and group-member probes. Future transport migrations should follow this shape
 rather than passing numeric IDs or adapter bot instances into a service.
 
-`services.messaging.admin_notice.AdminNoticeService` is the reference use case
-for platform-neutral operational delivery. It selects `ActorRef` and
-`ConversationRef` recipients through feature policy and sends an
-`OutboundMessage` through an explicit `AdminNoticeSender` port. The OneBot
-adapter may delegate to the legacy `OneBotDelivery` chain while that chain is
-being retired, because the adapter is the only place that knows numeric QQ
-targets, routing, subscriptions, queueing, and rate limits. A new notification
-service must use this shape or a narrower domain port; it must not import
-`OneBotMessageTarget`, `OneBotDelivery`, a NoneBot `Bot`, or CQ message types.
+`services.messaging.proactive_delivery.ProactiveMessageDelivery` is the target
+reference for proactive **text** delivery. It accepts typed conversations and
+`OutboundMessage` values, applies feature/subscription checks, promotions,
+daily subscription hints, scatter timing and failure summaries, then delegates
+only final transport to `OutboundMessenger`. `OneBotOutboundMessenger` is the
+current edge adapter. Any new non-rich scheduled, administrative or service
+notification must use this service or a narrower domain port that delegates to
+it; it must not import `OneBotMessageTarget`, `OneBotDelivery`, a NoneBot
+`Bot`, or CQ message types.
 
-`services.activity.ActivityService` applies the same ownership to scheduled
-activity reminders: the service creates typed recipients and an
-`OutboundMessage`, while `integrations.onebot.activity` preserves the current
-OneBot subscription, advertisement, routing, queue, and rate-limit semantics.
-Push-preference SQLite rows store platform, conversation kind and opaque
-conversation ID columns. Their public repository and service APIs accept
-`ConversationRef`; configuration composition and OneBot delivery adapters are
-the only layers allowed to convert native QQ numbers. This keeps Bilibili and
-scheduled-push preference logic reusable without making a second platform
-pretend that its identifiers are QQ integers.
+`services.messaging.admin_notice.AdminNoticeService` and
+`services.activity.ActivityService` are reference consumers. Their senders
+resolve `ActorRef` and `ConversationRef` recipients, create typed messages,
+and invoke proactive delivery without receiving a OneBot object. Scheduled
+messages, lucky-skin notices and team-resource notices use the same route.
+Configuration composition and the OneBot edge are the only layers allowed to
+convert native QQ numbers or create OneBot mention parts. Push-preference
+SQLite rows retain platform, conversation kind and opaque conversation ID
+columns, so a second transport never has to pretend that its identifiers are
+QQ integers.
 
-Lucky-skin-window notification delivery now follows this rule: its service
-owns `ActorRef`-scoped account, binding, cache and watch-preference policy;
-the OneBot adapter owns numeric QQ conversion, unsubscription, daily-hint
-deduplication and `OneBotDelivery`. Team-resource subscriptions use the same
-shape: `TeamResourceService` owns typed conversations, actors, subscriptions
-and low-resource policy, while `OneBotTeamResourceNoticeSender` owns QQ number
-conversion, mentions and legacy delivery. The remaining messaging scheduler
-migrations are ordered by semantic overlap, not file size. Each task must
-extract a typed service-side port and move the corresponding OneBot
-`OneBotMessageTarget` call into `integrations.onebot`; it must not add another
-platform-neutral wrapper around `OneBotMessageTarget`. This keeps current
-subscription, queue, rate-limit and failure semantics available while reducing
-the old chain one domain at a time.
+Monitored Bilibili dynamics now use the same route: the Bilibili domain renders
+portable text and remote-image parts, while the shared delivery service keeps
+subscription, promotion, queue and failure behaviour. The OneBot-only renderer
+that remains under `integrations.onebot` is for an incoming user's immediate
+query reply, not a monitored push. Numeric batch delivery and its test fixtures
+are deleted; no replacement may be passed through `ApplicationResources`, stored
+in a service, or used by a new sender.
 
 The eventual composition is:
 
@@ -609,7 +620,7 @@ manifest directly discovers the required third-party runtime
 plugins (`nonebot_plugin_apscheduler`, `nonebot_plugin_localstore`,
 `nonebot_plugin_htmlkit`, and `nonebot_plugin_saa`).
 `fire_manual_ad` owns its passive feature policy contribution; `onebot.sendpic`,
-`meeting`, `rank_help`, and `onebot.team_resource` also own the command descriptors
+`meeting`, `rank_help`, and `onebot.team_resource` also own the command contracts
 for the matchers they install.
 Every subsequent private extension follows the same manifest and narrow-context
 pattern.
@@ -639,6 +650,11 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
 
 - A repository obtains and detaches domain data while its database session is
   open. A snapshot is complete enough to survive after that session closes.
+- Render value objects belong to the owning domain, not the renderer package.
+  For pet information, `services.seer.pet_info_views` is shared by the data
+  repository, asset adapter, presenter and document renderer; a repository
+  must never import a presentation or renderer module merely to construct a
+  snapshot.
 - An integration loads reusable image assets through the shared `SeerImageSource`
   and `SeerAssetStore`, then combines the snapshot and assets in a pure
   presenter.
@@ -648,24 +664,39 @@ repository -> immutable snapshot -> presenter -> RenderDocument -> renderer
 - A renderer receives only the document and an HTML/native render port. Native
   work passes through the single `RenderCoordinator`; feature modules must not
   create their own semaphore, task, or timeout policy.
-- The integration owns final-image cache lookup and write. Final-cache keys
-  include the complete rendered snapshot, category, published data version,
-  renderer/template fingerprint, and all asset content versions that affect
-  pixels. The shared `render_document_cache_key()` is calculated from the
-  completed immutable `RenderDocument`, after asset preparation. A final-cache
-  hit may therefore reuse the image only after the bounded asset cache has
-  confirmed the exact image bytes used by the document; no renderer may return
-  a final image from an entity ID or an incomplete pre-asset key.
+- The integration owns final-image cache lookup and write. It first builds an
+  immutable `RenderRequestKey` from the requested render category and input,
+  the published data revision, the declared asset-manifest revision, and the
+  renderer/template fingerprint. An L3 hit by that key returns before any SQL,
+  HTTP, asset loading, presenter invocation, or native rendering. It is never
+  merely an entity-ID cache: every value that can change pixels must be part of
+  the request key through a published data or asset revision.
+- On an L3 miss, the integration loads the detached snapshot and required
+  assets, then produces an immutable `RenderDocument`. The shared
+  `render_document_cache_key()` hashes the completed document and is stored as
+  integrity metadata beside the request-keyed bytes. It proves that the miss
+  path's document, including actual asset bytes, matches the cache entry; it
+  is not the normal lookup key. Missing asset-manifest data is a release
+  contract failure, not permission to fetch assets before every L3 lookup.
+- `seerapi` must publish that manifest as deterministic facts keyed by
+  `(asset_kind, asset_key)`, with a content SHA-256 and release revision.
+  A global database timestamp or a few feature-specific asset checks do not
+  satisfy this contract. A consumer validates the manifest schema before it
+  enables request-keyed final-image caching; it never probes mutable HTTP
+  resources merely to decide whether an L3 entry is safe to use.
 
-The current Phase 4 transition has this target shape for published pet info,
-type matchup, peak-pool, peak-vote, peak-pet-rank, and the private player
-lineup image. The new-content menu follows the same split: its Seer-data
-adapter prepares details and images, while the renderer consumes an immutable
-menu document. The private lineup keeps its own presentation module, but its
-adapter alone owns asset loading, final-cache access, and the HTML render port.
-Rank and any later renderer paths remain **transition** work. They may receive
-narrow correctness fixes, but new rendering features must start from the
-target pipeline above instead of copying their older data-loading patterns.
+The current Phase 4 transition has the snapshot/presenter direction for
+published pet info, type matchup, peak-pool, peak-vote, peak-pet-rank, and the
+private player-lineup image. The new-content menu follows the same split: its
+Seer-data adapter prepares details and images, while the renderer consumes an
+immutable menu document. However, those adapters currently calculate their
+final-cache key only after asset materialization. They are **not** evidence for
+the L3 early-hit target above and new renderers must not copy that order. The
+private lineup keeps its own presentation module, but its adapter alone owns
+asset loading, final-cache access, and the HTML render port. Rank and any later
+renderer paths remain **transition** work. They may receive narrow correctness
+fixes, but new rendering features must start from the target pipeline above
+instead of copying their older data-loading patterns.
 
 Future data work follows these rules:
 
@@ -776,7 +807,10 @@ The percentages are estimates based on completed, verifiable tasks, not a
 claim of linear certainty. Re-estimate when investigation changes scope;
 state why the estimate changed. Do not hide a blocked task behind a broad
 percentage. Report the blocker, the affected phase, what was tried, and the
-next safe action.
+next safe action. A phase may be marked `completed` only after its target
+contract, deletion conditions, and verification evidence are recorded in the
+work-breakdown ledger; later phases must treat that path as the only normal
+route instead of reintroducing a compatibility registry or duplicate loader.
 
 At the start of each task, record its target contract, touched repositories,
 acceptance checks, rollback strategy, and whether it changes public behaviour.
@@ -928,6 +962,44 @@ contributions, but it is not a second discovery path. Composition:
 4. builds the application lifecycle;
 5. returns one `Application` object.
 
+The root coordinates domain builders; it must not become the implementation
+site for a feature's infrastructure graph. Builders are grouped by stable
+responsibility (`common`, `seer`, `messaging`, and `operations`) and return
+small typed component bundles. `app.operations_composition.OperationsComponents`
+is the first extracted builder: it owns data synchronization, the headless
+client/session factory, server status, restart services, and the Seer database
+gateway. A builder may depend on configuration and concrete integrations, but
+neither a service nor a plugin may import an application builder.
+
+`app.common_composition.CommonComponents` is the current host-bound boundary
+for feature policy, prompt sessions, routing, push subscriptions, outbound
+limits, proactive delivery, promotions, and administrator notices. It owns
+the explicit OneBot edge wiring needed to construct the platform-neutral
+outbound port, so domain builders receive typed dependencies instead of
+constructing platform objects themselves. The common layer remains host-bound
+composition code; only the port it supplies is platform-neutral.
+
+`app.messaging_composition.MessagingComponents` owns configuration-backed
+message schedules, fixed-image delivery, and team-audit notification assembly.
+It accepts delivery, routing, rate-limit, subscription, and feature ports from
+`CommonComponents`; it must not recreate them or reach into the composition
+root. Other domain builders follow the same dependency direction.
+
+`app.seer_composition.SeerComponents` owns player lookup, rank caches and
+refresh, team resources, lucky-skin state, data query services, and render
+dependencies. It returns the existing public service objects and immutable
+render dependencies, not a broad service locator. Its OneBot account and
+mention compilers remain explicit composition adapters: they create typed
+identity and recipient values before a service is constructed. Notifications
+already cross the platform-neutral outbound port rather than leaking platform
+objects back into plugins or individual Seer services.
+
+`app.bilibili_composition.BilibiliComponents` compiles configured OneBot
+targets and creates Bilibili query, history, and login services before the
+messaging builder consumes its subscription options. This keeps the composition
+root as an ordering coordinator instead of a second place that knows Bilibili
+storage and HTTP construction details.
+
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:
 
@@ -987,7 +1059,7 @@ class PluginContribution:
     id: str
     features: frozenset[Feature]
     help: HelpEntry | None
-    commands: tuple[CommandDescriptor, ...] = ()
+    commands: tuple[CommandContract, ...] = ()
     install: PluginInstall | None = None
     hooks: PluginHooks = PluginHooks()
 ```
@@ -1068,7 +1140,7 @@ plugin exposes `PluginMetadata`; plugin-side loading creates a scoped
 service locator and must not be read by services or renderers. A
 `PluginContribution` carries a plugin-local matcher installer, command
 descriptors, lifecycle hooks and scheduled-job contributions during the
-current installation bridge. `CommandCatalog` consumes the command descriptors
+current installation bridge. `CommandCatalog` consumes the command contracts
 and remains the only command-description authority; `ApplicationLifecycle`
 owns lifecycle policy and task lifetime. The replacement becomes the only
 authority; the bridge and its reflective discovery are then deleted instead of
@@ -1271,7 +1343,7 @@ implementation. It is deliberately an ownership map, not a second command
 reference for users:
 
 - **Ingress and commands:** NoneBot + OneBot v11 events enter through
-  `MessageInputContext`; `CommandCatalog` and `CommandDescriptor` currently
+  `MessageInputContext`; `CommandCatalog` and `CommandContract` currently
   drive help, poke candidates, access checks, and direct-command ownership.
   `MatcherFactory` constructs the current matchers and records their command
   policy. Prompts and selection menus keep their own anchored session state.
