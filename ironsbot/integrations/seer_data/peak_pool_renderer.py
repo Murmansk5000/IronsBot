@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
+from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.peak_pool import (
     present_peak_pool,
     render_peak_pool_document,
@@ -32,15 +32,16 @@ async def render_peak_pool(
     pool_type: str,
 ) -> bytes:
     """Render one pool after cache lookup and shared asset retrieval."""
+    pools = tuple(pools)
+    request_key = render_request_cache_key(_CACHE_CATEGORY, (pool_type, pools))
+    if cached := cache.get(_CACHE_CATEGORY, request_key):
+        return cached
     assets = await load_pet_image_assets(
         images,
         resource_ids=(pet.resource_id for pool in pools for pet in pool.pets),
         type_ids=(pet.type_id for pool in pools for pet in pool.pets),
     )
     document = present_peak_pool(pools, pool_type, assets)
-    content_key = render_document_cache_key(document)
-    if cached := cache.get(_CACHE_CATEGORY, content_key):
-        return cached
     rendered = await render_peak_pool_document(render_html, document)
-    cache.put(_CACHE_CATEGORY, content_key, rendered)
+    cache.put(_CACHE_CATEGORY, request_key, rendered)
     return rendered

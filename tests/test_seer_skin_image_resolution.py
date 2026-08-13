@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
 from ironsbot.services.seer.skin_image_resolution import (
+    SkinImageResolutionSchemaError,
     load_skin_image_resolutions,
 )
 
@@ -54,7 +56,7 @@ def test_load_skin_image_resolutions_reads_per_kind_build_results() -> None:
     assert _UNRESOLVED_SKIN not in rows
 
 
-def test_load_skin_image_resolutions_falls_back_for_legacy_database() -> None:
+def test_load_skin_image_resolutions_rejects_legacy_database() -> None:
     engine = create_engine("sqlite://")
-    with Session(engine) as session:
-        assert load_skin_image_resolutions(session, (_SKIN_SOUL_EMPEROR,)) == {}
+    with Session(engine) as session, pytest.raises(SkinImageResolutionSchemaError):
+        load_skin_image_resolutions(session, (_SKIN_SOUL_EMPEROR,))

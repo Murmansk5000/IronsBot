@@ -14,7 +14,7 @@ from ironsbot.services.seer.render_paths import (
     PET_INFO_IMAGES_PATH,
     SHARED_TEMPLATE_PATH,
 )
-from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
+from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.pet_info_presentation import present_pet_info
 from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_document
 
@@ -49,6 +49,9 @@ async def render_published_pet_info(
     pet_id: int,
 ) -> bytes:
     """Render one pet after completely detaching its data from SQLite."""
+    request_key = render_request_cache_key(_PET_INFO_CACHE_CATEGORY, pet_id)
+    if cached := cache.get(_PET_INFO_CACHE_CATEGORY, request_key):
+        return cached
     with data.query(
         lambda session: load_pet_info_snapshot(session, pet_id)
     ) as snapshot:
@@ -56,15 +59,12 @@ async def render_published_pet_info(
             raise PetInfoNotFoundError(pet_id)
     assets = await _load_assets(images, snapshot)
     document = present_pet_info(snapshot, assets)
-    content_key = render_document_cache_key(document)
-    if cached := cache.get(_PET_INFO_CACHE_CATEGORY, content_key):
-        return cached
     rendered = await render_pet_info_document(
         render_html,
         [CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         document,
     )
-    cache.put(_PET_INFO_CACHE_CATEGORY, content_key, rendered)
+    cache.put(_PET_INFO_CACHE_CATEGORY, request_key, rendered)
     return rendered
 
 

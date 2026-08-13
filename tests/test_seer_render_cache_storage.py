@@ -41,6 +41,22 @@ def test_render_cache_skips_unknown_db_version(tmp_path: Path) -> None:
     assert not cache_dir.exists()
 
 
+def test_render_cache_skips_categories_without_complete_manifest_scope(
+    tmp_path: Path,
+) -> None:
+    cache = FileRenderCache(
+        tmp_path,
+        1024,
+        version_getter=lambda: "release",
+        category_available=lambda category: category == "pet_info",
+    )
+
+    cache.put("new_content", "request", b"png-data")
+
+    assert cache.get("new_content", "request") is None
+    assert list(tmp_path.glob("*.bin")) == []
+
+
 def test_render_cache_cleanup_removes_least_recently_used_entry(tmp_path: Path) -> None:
     cache = _test_cache(tmp_path, max_size_bytes=5)
 
