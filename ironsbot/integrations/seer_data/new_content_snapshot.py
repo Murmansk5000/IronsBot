@@ -285,11 +285,13 @@ def _seer_asset(
     resource_id: int,
     *,
     required: bool = False,
+    fallback_data: bytes | None = None,
 ) -> NewContentAssetRequest:
     return NewContentAssetRequest(
         kind=kind,
         key=str(resource_id),
         required=required and resource_id > 0,
+        fallback_data=fallback_data,
     )
 
 
