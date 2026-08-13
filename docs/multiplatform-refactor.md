@@ -145,6 +145,12 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 仍从 Git tree 读取 39,766 个 blob 条目。此项只拆协议边界，不改变 manifest schema、发布字段
 或运行时消费契约。
 
+**群星牌来源边界（2026-08-13）：** SeerAPI `2480a8f` 将群星牌四份官方 JSON 的读取与
+`data` 信封规范化迁入 `scripts/autocard_sources.py`。构建编排层继续持有本地/远端来源选择、
+网络下载、SQLite 写入与发布顺序；新模块不接触环境变量、网络或数据库，因而可由纯输入输出
+测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
+`build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
+
 **镜像依赖审计（2026-08-13）：** 已删除 IronsBot 未导入、也不由 `seerapi`
 传递依赖的 `unitypy`。锁定闭包同步移除纹理解码、音频、压缩等 11 个运行时包；
 HTML 渲染、二维码登录和 SVG 光栅化依赖仍因存在真实调用而保留。Docker 引擎在本机未
