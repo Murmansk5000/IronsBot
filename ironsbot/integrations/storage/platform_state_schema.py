@@ -8,6 +8,7 @@ repositories get their own narrow table APIs after the migration is enabled.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -283,7 +284,7 @@ def create_ai_memory_schema(connection: sqlite3.Connection) -> None:
 def copy_qq_state(source: Path, target: sqlite3.Connection) -> None:
     if not source.is_file():
         return
-    with _read(source) as connection:
+    with closing(_read(source)) as connection:
         _copy_player_bindings(connection, target)
         _copy_player_query_usage(connection, target)
         _copy_lucky_skin_preferences(connection, target)
@@ -295,7 +296,7 @@ def copy_qq_state(source: Path, target: sqlite3.Connection) -> None:
 def copy_runtime_state(source: Path, target: sqlite3.Connection) -> None:
     if not source.is_file():
         return
-    with _read(source) as connection:
+    with closing(_read(source)) as connection:
         for row in _rows(connection, "pending_team_audit_reminders"):
             conversation = _onebot_group(
                 row["group_id"],
@@ -325,7 +326,7 @@ def copy_runtime_state(source: Path, target: sqlite3.Connection) -> None:
 def copy_ai_memory(source: Path, target: sqlite3.Connection) -> None:
     if not source.is_file():
         return
-    with _read(source) as connection:
+    with closing(_read(source)) as connection:
         for row in _rows(connection, "messages"):
             actor = _onebot_actor(row["user_id"], "messages")
             conversation = _legacy_conversation(
@@ -361,7 +362,7 @@ def copy_passthrough_tables(
 
     if not source.is_file():
         return
-    with _read(source) as connection:
+    with closing(_read(source)) as connection:
         entries = connection.execute(
             """
             SELECT type, name, tbl_name, sql
@@ -388,7 +389,7 @@ def copy_passthrough_tables(
 def source_table_counts(source: Path, tables: frozenset[str]) -> dict[str, int]:
     if not source.is_file():
         return {}
-    with _read(source) as connection:
+    with closing(_read(source)) as connection:
         return {
             table: int(
                 connection.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
@@ -401,7 +402,7 @@ def source_table_counts(source: Path, tables: frozenset[str]) -> dict[str, int]:
 def table_exists(source: Path, table: str) -> bool:
     if not source.is_file():
         return False
-    with _read(source) as connection:
+    with closing(_read(source)) as connection:
         return _table_exists(connection, table)
 
 
