@@ -46,6 +46,7 @@ from ironsbot.integrations.storage.team_resources import (
 )
 from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
+from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
 from ironsbot.services.seer.data_queries import SeerDataQueryService
@@ -282,6 +283,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         player_requests,
     )
     autocard = AutocardService(seer_database)
+    autocard_sanctuary = AutocardSanctuaryService(seer_database)
     return SeerComponents(
         seer=SeerQueryResources(
             SeerDataQueryService(
@@ -292,6 +294,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             ),
             CountermarkStatRankService(seer_database),
             autocard,
+            autocard_sanctuary,
             SeerTeamQueryService(
                 settings.seer.team,
                 headless,
