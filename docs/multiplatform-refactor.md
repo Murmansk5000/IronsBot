@@ -105,6 +105,12 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
 
+**配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
+`seer.player.query_limits.bound_other_daily_limit`。已删除
+`other_target_action_daily_limit` 的模型迁移器、运行时协议字段和示例配置；旧字段受
+`extra="forbid"` 直接拒绝。`tests/test_app_config_loader.py` 记录拒绝行为，避免后续为
+旧 TOML 恢复双字段或隐式重命名。
+
 **Main 吸收记录（2026-08-13）：** 已以 V5 的类型化 B 站服务为唯一业务路径吸收
 `main` 的发布时段加密轮询需求。`BiliBoostWindow`、秒级时钟、槽位去重和 cron
 注册均不依赖 OneBot 数值 target；发现新动态后仅结束当前 burst，空响应或失败仍会继续
