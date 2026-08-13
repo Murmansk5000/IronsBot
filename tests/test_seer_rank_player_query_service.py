@@ -14,10 +14,12 @@ from ironsbot.services.seer.rank_list_models import (
     RankPlayerCommand,
 )
 from ironsbot.services.seer.rank_models import RankLookupResult
+from ironsbot.services.seer.rank_page_cache_models import CachedRankLookup
 
 PLAYER_ID = 123456
 ACHIEVEMENT_SCORE = 5000
 CURRENT_PEAK_SCORE = 300033
+RANK_POSITION = 42
 
 
 class FakeGame:
@@ -56,7 +58,34 @@ def build_rank_stub(
             find_pet_kind_rank=AsyncMock(),
             get_spec=lambda rank_key: spec or GLOBAL_RANKS[rank_key],
             spec_needs_sub_key=lambda _spec: False,
+            cache=SimpleNamespace(item=lambda **_kwargs: None),
         ),
+    )
+
+
+def test_rank_player_query_uses_cached_fact_without_live_game() -> None:
+    rank = build_rank_stub(AsyncMock())
+    rank.cache = SimpleNamespace(
+        item=lambda **_kwargs: CachedRankLookup(
+            id=PLAYER_ID,
+            nick="缓存玩家",
+            score=ACHIEVEMENT_SCORE,
+            rank_index=41,
+            fetched_at=0.0,
+        )
+    )
+
+    result = rank_player_query.fetch_cached_rank_player_result(
+        rank,
+        command=RankPlayerCommand(rank_key="成就点数", player_id=PLAYER_ID),
+    )
+
+    assert result is not None
+    assert result.lookup.rank == RANK_POSITION
+    assert result.message == (
+        "📊【成就点数榜玩家查询】\n"
+        "米米号：123456（缓存玩家）\n"
+        "成就点数：5000点｜全服第42"
     )
 
 
