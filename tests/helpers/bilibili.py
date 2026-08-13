@@ -1,4 +1,6 @@
+import asyncio
 from pathlib import Path
+from typing import Any
 
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
@@ -25,6 +27,10 @@ from tests.helpers.runtime import build_test_runtime
 
 
 async def _unused_feed(_cookie: str) -> BiliFeedResponse:
+    raise AssertionError
+
+
+async def _unused_detail(_cookie: str, _dynamic_id: str) -> dict[str, Any]:
     raise AssertionError
 
 
@@ -74,4 +80,6 @@ def build_test_bilibili_service(
             resolved.storage.history_max_items,
         ),
         fetch_feed=_unused_feed,
+        fetch_detail=_unused_detail,
+        spawn=lambda coroutine, *, name: asyncio.create_task(coroutine, name=name),
     )

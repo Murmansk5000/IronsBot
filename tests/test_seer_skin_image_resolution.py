@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
-from ironsbot.services.seer.skin_image_resolution import (
+from ironsbot.integrations.seer_data.skin_image_resolution import (
     SkinImageResolutionSchemaError,
     load_skin_image_resolutions,
 )

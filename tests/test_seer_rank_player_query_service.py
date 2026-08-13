@@ -50,6 +50,7 @@ def build_rank_stub(
     find_rank: Any,
     *,
     spec: GlobalRankSpec | None = None,
+    cached_player_lookup: Any = None,
 ) -> RankService:
     return cast(
         "RankService",
@@ -58,21 +59,36 @@ def build_rank_stub(
             find_pet_kind_rank=AsyncMock(),
             get_spec=lambda rank_key: spec or GLOBAL_RANKS[rank_key],
             spec_needs_sub_key=lambda _spec: False,
-            cache=SimpleNamespace(item=lambda **_kwargs: None),
+            cached_player_lookup=cached_player_lookup or (lambda **_kwargs: None),
         ),
     )
 
 
 def test_rank_player_query_uses_cached_fact_without_live_game() -> None:
-    rank = build_rank_stub(AsyncMock())
-    rank.cache = SimpleNamespace(
-        item=lambda **_kwargs: CachedRankLookup(
-            id=PLAYER_ID,
-            nick="缓存玩家",
-            score=ACHIEVEMENT_SCORE,
-            rank_index=41,
-            fetched_at=0.0,
+    def cached_player_lookup(
+        **_kwargs: Any,
+    ) -> tuple[CachedRankLookup, RankLookupResult]:
+        return (
+            CachedRankLookup(
+                id=PLAYER_ID,
+                nick="缓存玩家",
+                score=ACHIEVEMENT_SCORE,
+                rank_index=41,
+                fetched_at=0.0,
+            ),
+            RankLookupResult(
+                title="成就点数",
+                score_name="点",
+                rank=RANK_POSITION,
+                score=ACHIEVEMENT_SCORE,
+                searched_limit=RANK_POSITION,
+                queried=False,
+            ),
         )
+
+    rank = build_rank_stub(
+        AsyncMock(),
+        cached_player_lookup=cached_player_lookup,
     )
 
     result = rank_player_query.fetch_cached_rank_player_result(

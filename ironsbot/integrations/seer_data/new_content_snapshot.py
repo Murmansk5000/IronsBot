@@ -6,8 +6,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.skin_image_resolution import (
+    load_skin_image_resolutions,
+)
 from ironsbot.services.seer.autocard import AutocardPromptValue
-from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
 from .new_content_details import (
     NewContentItemDetails,
@@ -44,6 +46,7 @@ class NewContentAssetRequest:
     url: str | None = None
     required: bool = False
     layout: str = "square"
+    fallback_data: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,9 +170,14 @@ class NewContentSnapshotBuilder:
                 return _fallback_details(item)
             return NewContentItemDetails(
                 metadata=f"ID：{suit.id}",
-                description="",
+                description=str(suit.suit_desc or "暂无官方简介").strip(),
                 side_title="套装效果",
-                side_description=str(suit.suit_desc or "暂无官方简介").strip(),
+                side_description=(
+                    str(suit.bonus.desc).strip()
+                    if getattr(suit, "bonus", None) is not None
+                    and getattr(suit.bonus, "desc", "")
+                    else "暂无套装效果"
+                ),
             )
 
     def _equip_details(self, item: NewContentItem) -> NewContentItemDetails:
@@ -279,11 +287,13 @@ def _seer_asset(
     resource_id: int,
     *,
     required: bool = False,
+    fallback_data: bytes | None = None,
 ) -> NewContentAssetRequest:
     return NewContentAssetRequest(
         kind=kind,
         key=str(resource_id),
         required=required and resource_id > 0,
+        fallback_data=fallback_data,
     )
 
 

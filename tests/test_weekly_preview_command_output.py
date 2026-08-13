@@ -12,8 +12,7 @@ from typing_extensions import Self
 
 nonebot.init()
 
-from ironsbot.plugins.seer.query.commands import data_queries
-
+from ironsbot.plugins.onebot.seer.query.commands import data_queries
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.external_references import SeerInfoReference
 

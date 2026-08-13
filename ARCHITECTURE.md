@@ -938,8 +938,11 @@ The graph is interpreted as "may depend on":
 
 - `core` imports no other IronsBot layer.
 - `config` imports only `core`.
-- `services` imports `core` and service modules. A service defines the
-  protocols for infrastructure it needs.
+- `services` imports `core` and service modules. It may import the narrow,
+  read-only published-data repositories under `integrations.seer_data`; it
+  must not import transport, scheduler, generic storage, platform adapters,
+  plugins, or the application composition root. A service defines protocols
+  for all other infrastructure it needs.
 - `integrations` imports `core`, configuration value types, and service
   protocols. It never imports plugins or the application composition root.
 - `runtime` imports `core` and NoneBot, but no concrete service or integration.

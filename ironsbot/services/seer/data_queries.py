@@ -6,9 +6,11 @@ from datetime import timedelta, timezone
 from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.weekly_preview_repository import (
+    load_weekly_preview_links,
+)
 from ironsbot.services.seer.data import load_data_generated_at
 from ironsbot.services.seer.season_countdown import format_season_countdown
-from ironsbot.services.seer.weekly_preview import load_weekly_preview_links
 from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageError
 
 if TYPE_CHECKING:

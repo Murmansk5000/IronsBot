@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.skin_image_resolution import (
+    load_skin_image_resolutions,
+)
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.query_result import (
     QueryChoice,
@@ -14,7 +17,6 @@ from ironsbot.services.seer.query_result import (
     QueryResult,
 )
 from ironsbot.services.seer.render_crash_report import render_crash_marker
-from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 from ironsbot.services.seer.skin_price import load_skin_details
 
 if TYPE_CHECKING:

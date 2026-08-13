@@ -144,7 +144,7 @@ def test_red_packet_notice_uses_admin_notice_delivery(
 
     monkeypatch.setattr(
         red_packet_notice_plugin,
-        "resolve_group_name",
+        "_get_group_name",
         fake_resolve_group_name,
     )
     monkeypatch.setattr(

@@ -920,9 +920,9 @@ enabled = true
 # EN: Total daily live queries for a user's current default player ID. Complete cache hits remain available after exhaustion.
 # ZH: 查询当前默认米米号实时数据的每日总次数；额度耗尽后仍可读取已有完整缓存。
 bound_default_daily_limit = 10
-# EN: Daily live queries for one other player ID and one query type.
-# ZH: 实时查询同一个其他米米号的同一种数据，每日最多次数。
-other_target_action_daily_limit = 1
+# EN: Daily live queries for one non-default player ID and one query type.
+# ZH: 实时查询同一个非默认米米号的同一种数据，每日最多次数。
+bound_other_daily_limit = 1
 # EN: Total daily live player-related queries before a default player ID is bound.
 # ZH: 尚未绑定默认米米号时，玩家相关实时查询的每日总次数。
 unbound_daily_limit = 1
@@ -1431,6 +1431,14 @@ enabled = true
 message = "机器人已开启。"
 # Default: 0.0; EN: Delay before sending startup notice. ZH: 启动通知延迟秒数。
 delay = 0.0
+
+[operations.clock_check]
+# Default: true; EN: Check the host clock from HTTPS Date headers after the first bot connection. ZH: 首次机器人连接后通过 HTTPS Date 响应头只读检查主机时钟偏差。
+enabled = true
+# Default: 3.0; EN: Only add an admin startup warning when the estimated drift exceeds this many seconds. ZH: 估算偏差超过此秒数时才写入管理员启动通知。
+warning_threshold_seconds = 3.0
+# Default: 3.0; EN: Timeout per HTTPS clock source. The check never changes system time. ZH: 每个 HTTPS 时间源的超时秒数；此检查不会修改系统时间。
+timeout_seconds = 3.0
 
 [operations.docker_update]
 # Docker 更新也分两层：

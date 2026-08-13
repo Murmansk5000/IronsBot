@@ -10,21 +10,21 @@ from typing import TYPE_CHECKING
 from ironsbot.integrations.http.clock import check_clock_drift
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.settings import RuntimeSchedulerConfig
+    from ironsbot.config.models.operations import ClockCheckConfig
     from ironsbot.services.operations.startup import StartupNoticeService
 
 logger = logging.getLogger(__name__)
 
 
 async def check_configured_clock(
-    config: RuntimeSchedulerConfig,
+    config: ClockCheckConfig,
     startup_notice: StartupNoticeService,
 ) -> None:
-    if not config.clock_check_on_startup:
+    if not config.enabled:
         return
 
     samples = await check_clock_drift(
-        timeout_seconds=config.clock_check_timeout_seconds,
+        timeout_seconds=config.timeout_seconds,
     )
     if not samples:
         logger.warning("clock check unavailable: every HTTPS Date source failed")
@@ -32,12 +32,11 @@ async def check_configured_clock(
 
     offset_seconds = float(median(sample.offset_seconds for sample in samples))
     logger.info(
-        "clock check complete: offset=%.3fs samples=%d timezone=%s",
+        "clock check complete: offset=%.3fs samples=%d",
         offset_seconds,
         len(samples),
-        config.timezone,
     )
-    if abs(offset_seconds) <= config.clock_warning_threshold_seconds:
+    if abs(offset_seconds) <= config.warning_threshold_seconds:
         return
 
     direction = "slow" if offset_seconds > 0 else "fast"
@@ -52,5 +51,5 @@ async def check_configured_clock(
     logger.warning(
         "clock drift exceeds threshold: offset=%.3fs threshold=%.3fs",
         offset_seconds,
-        config.clock_warning_threshold_seconds,
+        config.warning_threshold_seconds,
     )

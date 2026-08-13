@@ -10,12 +10,14 @@ from ironsbot.extensions.contracts import (
     PlayerLineupPetSnapshot,
     PlayerLineupSlot,
 )
+from ironsbot.integrations.seer_data.skin_image_resolution import (
+    load_skin_image_resolutions,
+)
 from ironsbot.services.seer.peak import (
     active_peak_pool_limits,
     load_peak_pools,
     snapshot_peak_pools,
 )
-from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess

@@ -31,6 +31,7 @@ from ironsbot.config.models.operations import (
 )
 from ironsbot.config.models.seer import (
     LuckySkinWindowConfig,
+    PlayerQueryLimitsConfig,
     PlayerRequestProtectionConfig,
     RankPageRefreshConfig,
     TeamResourceConfig,
@@ -283,7 +284,7 @@ def test_example_config_parses() -> None:
     )
     _assert_default_team_audit_welcome(config)
     assert config.seer.team_resource.commands == ["战队"]
-    assert config.seer.lucky_skin_window == LuckySkinWindowConfig()
+    assert config.seer.lucky_skin_window == LuckySkinWindowConfig(time="00:02:00")
     assert config.paths.qq_state == Path("data/state/qq_state.sqlite")
     assert "autocard" in config.seer.player.sections
     assert config.seer.rank.display_limit == DEFAULT_RANK_DISPLAY_LIMIT
@@ -1053,7 +1054,7 @@ watched_skin_ids = [1400538]
     env = {account_password_env: "secret"}
     config = load_settings(config_path, env=env)
     assert config.seer.lucky_skin_window.enabled
-    assert config.seer.lucky_skin_window.time == "00:02"
+    assert config.seer.lucky_skin_window.time == "00:02:00"
     assert config.seer.lucky_skin_window.accounts[0].account == "sample_account"
     assert (
         config.player_accounts.resolve("sample_account", location="test").password
@@ -1557,6 +1558,13 @@ query_worker = true
 
     assert settings.headless_accounts == ()
     assert "seer.player_accounts[0].query_worker" in capsys.readouterr().err
+
+
+def test_player_query_limits_reject_legacy_limit_field() -> None:
+    with pytest.raises(ValidationError, match="other_target_action_daily_limit"):
+        PlayerQueryLimitsConfig.model_validate(
+            {"other_target_action_daily_limit": 1},
+        )
 
 
 def test_player_accounts_reject_inline_credentials(

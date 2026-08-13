@@ -348,8 +348,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
         "render_crash_report",
         "bilibili_check",
-        "ai_api_startup_check",
-        "clock_startup_check",
         "startup_notice",
         "headless_seer_check",
     ]
@@ -505,6 +503,12 @@ def test_internal_plugins_use_only_the_matcher_factory() -> None:
                     / "plugins"
                     / "onebot"
                     / "scheduler"
+                    / "__init__.py",
+                    ROOT
+                    / "ironsbot"
+                    / "plugins"
+                    / "onebot"
+                    / "clock_check"
                     / "__init__.py",
                 } and imported == {"PluginMetadata"}:
                     continue

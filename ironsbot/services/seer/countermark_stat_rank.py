@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.countermark_stat_rank_repository import (
+    MISSING_MINTMARK_QUALITY_MESSAGE,
+    load_countermark_rank_data,
+)
 from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
 )
@@ -11,10 +15,6 @@ from ironsbot.services.seer.countermark_stat_rank_parsing import (
 )
 from ironsbot.services.seer.countermark_stat_rank_ranking import (
     collect_countermark_rank_items,
-)
-from ironsbot.services.seer.countermark_stat_rank_repository import (
-    MISSING_MINTMARK_QUALITY_MESSAGE,
-    load_countermark_rank_data,
 )
 
 if TYPE_CHECKING:
