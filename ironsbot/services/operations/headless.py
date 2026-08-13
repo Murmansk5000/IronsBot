@@ -389,7 +389,6 @@ class HeadlessService:
                     reason=reason,
                 ),
                 action_name="headless seer failure notice",
-                interval_seconds=1.2,
                 subscription_key="headless_seer_notice",
             )
 
@@ -612,7 +611,6 @@ class HeadlessService:
                 ),
             ),
             action_name="headless state notice",
-            interval_seconds=1.2,
             subscription_key="headless_seer_notice",
         )
 

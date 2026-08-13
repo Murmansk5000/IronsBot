@@ -6,6 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from ironsbot.core.request_coordination import (
+    RequestDecision,
+    RequestExecutionFeedback,
+    request_response_scope,
+)
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.operations.headless_pool import (
@@ -18,7 +23,6 @@ from ironsbot.services.operations.headless_pool import (
     headless_request_priority_scope,
     headless_workflow_scope,
 )
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -42,11 +46,13 @@ class _Game:
         started: dict[str, asyncio.Event],
         *,
         fail: bool = False,
+        timeout: bool = False,
     ) -> None:
         self.user_id = user_id
         self._events = events
         self._started = started
         self._fail = fail
+        self._timeout = timeout
 
     async def step(
         self,
@@ -58,6 +64,8 @@ class _Game:
         if self._fail:
             msg = f"worker {self.user_id} disconnected"
             raise DisconnectedError(msg)
+        if self._timeout:
+            raise asyncio.TimeoutError
         if release is not None:
             await release.wait()
         return f"{self.user_id}:{label}"
@@ -75,6 +83,7 @@ def _pool(
     count: int,
     *,
     failing_workers: frozenset[int] = frozenset(),
+    timing_out_workers: frozenset[int] = frozenset(),
 ) -> tuple[PooledHeadlessGame, list[tuple[int, str]], dict[str, asyncio.Event]]:
     events: list[tuple[int, str]] = []
     started: dict[str, asyncio.Event] = {}
@@ -88,6 +97,7 @@ def _pool(
                     events,
                     started,
                     fail=index in failing_workers,
+                    timeout=index in timing_out_workers,
                 )
             ),
         )
@@ -203,19 +213,36 @@ async def test_failed_packet_retries_on_another_healthy_worker() -> None:
 
 
 @pytest.mark.asyncio
+async def test_timed_out_packet_retries_on_another_healthy_worker() -> None:
+    game, events, _started = _pool(
+        2,
+        timing_out_workers=frozenset((0,)),
+    )
+
+    result = await game.step("retry-timeout")
+
+    assert result == f"{SECOND_WORKER_ID}:retry-timeout"
+    assert events == [
+        (10000, "retry-timeout"),
+        (SECOND_WORKER_ID, "retry-timeout"),
+    ]
+    assert game.user_id == SECOND_WORKER_ID
+
+
+@pytest.mark.asyncio
 async def test_request_feedback_reflects_actual_worker_dispatch_state() -> None:
     game, _events, started = _pool(1)
     release = asyncio.Event()
     feedback: list[tuple[str, bool]] = []
 
-    async def send_feedback(label: str, *, queued: bool) -> None:
-        feedback.append((label, queued))
+    async def send_feedback(decision: RequestDecision) -> None:
+        feedback.append((decision.label, decision.queued))
 
-    with request_feedback_scope("first", send_feedback):
+    with request_response_scope("first", send_feedback):
         first = asyncio.create_task(game.step("first", release))
     await started.setdefault("first", asyncio.Event()).wait()
 
-    with request_feedback_scope("second", send_feedback):
+    with request_response_scope("second", send_feedback):
         second = asyncio.create_task(game.step("second"))
     await asyncio.sleep(0)
 
@@ -229,12 +256,45 @@ async def test_request_feedback_is_sent_only_for_the_first_packet() -> None:
     game, _events, _started = _pool(1)
     feedback: list[tuple[str, bool]] = []
 
-    async def send_feedback(label: str, *, queued: bool) -> None:
-        feedback.append((label, queued))
+    async def send_feedback(decision: RequestDecision) -> None:
+        feedback.append((decision.label, decision.queued))
 
-    with request_feedback_scope("workflow", send_feedback):
+    with request_response_scope("workflow", send_feedback):
         await game.step("first")
         await game.step("second")
+
+    assert feedback == [("workflow", False)]
+
+
+@pytest.mark.asyncio
+async def test_workflow_feedback_survives_the_caller_context() -> None:
+    game, _events, _started = _pool(1)
+    feedback: list[tuple[str, bool]] = []
+
+    async def send_feedback(decision: RequestDecision) -> None:
+        feedback.append((decision.label, decision.queued))
+
+    workflow = HeadlessWorkflowState(
+        sequence=1,
+        label="workflow",
+        user_id=1,
+        priority_state=HeadlessRequestPriorityState(
+            HeadlessRequestPriority.INTERACTIVE
+        ),
+        feedback=RequestExecutionFeedback("workflow", send_feedback),
+    )
+
+    async def submit() -> None:
+        with (
+            headless_workflow_scope(workflow),
+            headless_request_priority_scope(
+                HeadlessRequestPriority.INTERACTIVE,
+                state=workflow.priority_state,
+            ),
+        ):
+            await game.step("first")
+
+    await submit()
 
     assert feedback == [("workflow", False)]
 

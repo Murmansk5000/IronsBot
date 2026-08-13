@@ -42,7 +42,7 @@ def test_build_dynamic_history_snapshot_collects_display_fields() -> None:
     )
 
     assert snapshot.author_name == "赛尔号"
-    assert "赛尔号" in snapshot.brief
+    assert "测试动态" in snapshot.brief
     assert snapshot.suppressed
     assert snapshot.suppression_reason == "命中规则：测试"
     assert not snapshot.pushed

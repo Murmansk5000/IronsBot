@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.adapters.onebot.v11 import (
     Message,
@@ -23,7 +24,6 @@ from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import member_target_command
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
 )
