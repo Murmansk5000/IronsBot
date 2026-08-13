@@ -6,7 +6,10 @@ from __future__ import annotations
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
-from ironsbot.runtime.plugins import PluginContribution, active_plugin_install_context
+from ironsbot.core.plugin_install import (
+    PluginContribution,
+    active_plugin_install_context,
+)
 
 __plugin_meta__ = PluginMetadata(
     name="火火手册推广",

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     PluginHooks,

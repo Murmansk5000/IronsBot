@@ -424,7 +424,7 @@ an internal composition detail.
 An external extension may additionally import a documented core command
 contract (for example `core.command_catalog.CommandContract` and
 `core.player_reference_commands.player_reference_input_matcher`) when it
-declares a direct command, and the narrowly scoped `runtime.plugins` install
+declares a direct command, and the narrowly scoped `core.plugin_install` install
 API needed to submit its own `PluginContribution`. These are public semantic
 contracts, not plugin implementation details. It must not import historical
 `runtime.commands` or `runtime.player_reference_commands` paths. When such a

@@ -10,9 +10,6 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 from ironsbot.core.features import Feature
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.plugin import PluginMetadata
-
     from ironsbot.core.command_catalog import CommandContract
 
 HookResult: TypeAlias = Awaitable[None] | None
@@ -23,7 +20,9 @@ LifecycleHook: TypeAlias = Callable[[], HookResult]
 BotLifecycleHook: TypeAlias = Callable[[Any], HookResult]
 NamedLifecycleHook: TypeAlias = tuple[str, LifecycleHook]
 NamedBotLifecycleHook: TypeAlias = tuple[str, BotLifecycleHook]
-HelpVisibility: TypeAlias = Callable[["Event"], bool]
+# Plugin installation is a core contract.  The platform adapter owns the event
+# type, so core deliberately keeps callback values opaque here.
+HelpVisibility: TypeAlias = Callable[[Any], bool]
 PluginInstall: TypeAlias = Callable[[Any], None]
 
 
@@ -67,7 +66,7 @@ class PluginContribution:
 class LoadedPluginContribution:
     """A contribution paired with its NoneBot top-level plugin metadata."""
 
-    metadata: PluginMetadata
+    metadata: Any
     contribution: PluginContribution
 
 
@@ -157,7 +156,7 @@ class PluginInstallContext:
 
     def contribute(
         self,
-        metadata: PluginMetadata,
+        metadata: Any,
         *contributions: PluginContribution,
     ) -> None:
         self._loaded.extend(

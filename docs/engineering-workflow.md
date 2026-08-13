@@ -281,7 +281,7 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
     不能把 `if id == ...`、部署者数据、默认回退或复制粘贴的解析逻辑当成长期方案。
 21. 跨仓库私有扩展只能导入 `ironsbot.extensions` 中声明的最小 context、文档化的
     `ironsbot.core` 语义 contract，以及仅用于安装期提交的
-    `ironsbot.runtime.plugins` 公开 API；不得导入 `app.composition`、
+    `ironsbot.core.plugin_install` 公开 API；不得导入 `app.composition`、
     `app.private_extensions`、公共插件实现或历史 `runtime.commands` /
     `runtime.player_reference_commands`。公共应用可以在内部保有更大的资源对象，
     但必须在扩展边界投影为按职责命名的 context。跨仓库升级 core contract 时，

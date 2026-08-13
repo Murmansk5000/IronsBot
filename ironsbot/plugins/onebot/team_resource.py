@@ -16,6 +16,12 @@ from nonebot.rule import Rule
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    PluginHooks,
+    active_plugin_install_context,
+)
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
@@ -29,12 +35,6 @@ from ironsbot.integrations.onebot.replies import (
     finish_message_sequence,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
-from ironsbot.runtime.plugins import (
-    HelpEntry,
-    PluginContribution,
-    PluginHooks,
-    active_plugin_install_context,
-)
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
 

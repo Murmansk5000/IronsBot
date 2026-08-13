@@ -22,7 +22,7 @@ except ValueError:
 from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.features import Feature
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     OPTIONAL_PRIVATE_FEATURES,
     validate_plugin_contributions,
 )
@@ -188,9 +188,7 @@ def test_manifest_ai_chat_owns_its_features_and_commands() -> None:
     assert contribution.commands == ()
     assert {
         command.plugin_id for command in ai_chat_command_contracts(enabled=True)
-    } == {
-        "ai_chat"
-    }
+    } == {"ai_chat"}
 
 
 def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
@@ -231,9 +229,7 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
     )
     assert {
         command.plugin_id for command in ai_intent_command_contracts(enabled_settings)
-    } == {
-        "ai_intent"
-    }
+    } == {"ai_intent"}
 
 
 def test_manifest_server_status_owns_its_commands_and_feature() -> None:

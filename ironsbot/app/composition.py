@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
@@ -24,6 +25,7 @@ from ironsbot.app.resources import ApplicationResources
 from ironsbot.app.seer_composition import build_seer_components
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.features import Feature
+from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.extensions.player_lineup import PlayerLineupExtensionServices
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
@@ -32,6 +34,7 @@ from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.onebot.bilibili_rendering import (
     build_dynamic_content_message,
 )
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
@@ -39,13 +42,15 @@ from ironsbot.integrations.onebot.identity import (
 )
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
+from ironsbot.integrations.seer_data.player_lineup_entries import (
+    PublishedPlayerLineupEntryResolver,
+)
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.plugins import PluginContributionCatalog
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
@@ -174,16 +179,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     extension_contexts = {
         "player_lineup": PlayerLineupExtensionServices(
-            features=features,
             headless=headless,
-            data=seer_database,
+            lineup_entries=PublishedPlayerLineupEntryResolver(seer_database),
             images=seer_images,
             render_cache=render_cache,
             render_html=render_coordinator.render,
             error_message=seer_database.error_message,
             player_quotas=player_query_quotas,
             player_requests=player_requests,
-            player_details=player_detail_extensions,
+            feature_visible=partial(event_is_feature_visible_in_help, features),
+            _player_details=player_detail_extensions,
             player_id_resolver=player_id_resolver,
             settings=settings.operations.private_extensions.settings.get(
                 "player_lineup", {}

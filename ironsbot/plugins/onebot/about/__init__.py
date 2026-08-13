@@ -5,14 +5,14 @@ from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.runtime.plugins import (
+from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.about_commands import about_command_contracts
 
 __plugin_meta__ = PluginMetadata(

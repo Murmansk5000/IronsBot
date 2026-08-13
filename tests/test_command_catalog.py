@@ -10,7 +10,7 @@ from ironsbot.core.command_catalog import (
     CommandContract,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.runtime.plugins import PluginContribution
+from ironsbot.core.plugin_install import PluginContribution
 
 
 @dataclass(slots=True)
@@ -159,12 +159,15 @@ def test_catalog_supports_any_feature_and_multiple_access_rules() -> None:
         superusers=set(),
     )
 
-    assert [command.id for command in catalog.available_for_context(
-        _context(1), features
-    )] == ["mixed"]
-    assert [command.id for command in catalog.available_for_context(
-        _context(2, group_id=100, group_role="admin"), features
-    )] == ["mixed"]
+    assert [
+        command.id for command in catalog.available_for_context(_context(1), features)
+    ] == ["mixed"]
+    assert [
+        command.id
+        for command in catalog.available_for_context(
+            _context(2, group_id=100, group_role="admin"), features
+        )
+    ] == ["mixed"]
     assert not catalog.available_for_context(
         _context(2, group_id=100, group_role="member"), features
     )
@@ -190,9 +193,7 @@ def test_catalog_requires_all_declared_features() -> None:
         superusers=set(),
     )
 
-    assert not catalog.available_for_context(
-        _context(1, group_id=100), features
-    )
+    assert not catalog.available_for_context(_context(1, group_id=100), features)
     assert catalog.available_for_context(
         _context(1, group_id=101),
         features,
@@ -227,8 +228,9 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
             section="查询",
             examples=("米米号<号码>",),
             description="查询玩家",
-            routing_matcher=lambda text, _context: text.startswith("米米号")
-            and text[3:].isdecimal(),
+            routing_matcher=lambda text, _context: (
+                text.startswith("米米号") and text[3:].isdecimal()
+            ),
         ),
         CommandContract(
             id="automatic",
