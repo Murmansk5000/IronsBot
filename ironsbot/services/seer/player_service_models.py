@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from ironsbot.services.seer.player_binding import PlayerBindingState
     from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
 
 

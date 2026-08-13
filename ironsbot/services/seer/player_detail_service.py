@@ -1,3 +1,4 @@
+﻿# SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 import asyncio
@@ -5,7 +6,14 @@ import logging
 from time import monotonic
 from typing import TYPE_CHECKING
 
-from ironsbot.core.semantic_requests import SemanticRequestSource
+from ironsbot.core.semantic_requests import (
+    SemanticRequestSource,
+)
+from ironsbot.services.operations.headless_errors import (
+    DisconnectedError,
+    NotLoggedInError,
+    SocketRecvError,
+)
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
     PlayerBaseSnapshot,
@@ -16,14 +24,19 @@ from ironsbot.services.seer.player_service_support import (
     background_refresh_kinds,
     shortcut_operation_label,
 )
-from ironsbot.services.seer.player_shortcuts import (
+from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutDependencies,
-    fetch_player_shortcut_reply,
     player_shortcut_semantic_request,
 )
+from ironsbot.services.seer.player_shortcut_queries import fetch_player_shortcut_reply
+
+_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
+_PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
+PlayerError = SocketRecvError | NotLoggedInError | DisconnectedError
 
 if TYPE_CHECKING:
+
     from ironsbot.config.models.seer import SeerConfig
     from ironsbot.core.platform import ConversationRef
     from ironsbot.core.tasks import TaskSpawner
@@ -32,13 +45,11 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
     from ironsbot.services.seer.rank import RankService
 
-_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
-_PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
-logger = logging.getLogger("ironsbot.services.seer.player_service")
+logger = logging.getLogger(__name__)
 
 
 class PlayerDetailService:
@@ -377,3 +388,5 @@ class PlayerDetailService:
                 future.set_result(None)
         if self._background_refreshes.get(player_id) is refresh:
             self._background_refreshes.pop(player_id, None)
+
+
