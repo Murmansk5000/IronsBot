@@ -13,7 +13,7 @@ from ironsbot.platform_state_migration import (
     PlatformStateMigrationError,
     migrate_platform_state_identities,
 )
-from ironsbot.state_migration import main as state_migration_main
+from ironsbot.state_migration_cli import main as state_migration_main
 
 if TYPE_CHECKING:
     from pathlib import Path
