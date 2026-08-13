@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
@@ -29,7 +30,7 @@ async def _unused_feed(_cookie: str) -> BiliFeedResponse:
     raise AssertionError
 
 
-async def _unused_detail(_cookie: str, _dynamic_id: str) -> BiliFeedResponse:
+async def _unused_detail(_cookie: str, _dynamic_id: str) -> dict[str, Any]:
     raise AssertionError
 
 

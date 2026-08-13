@@ -34,6 +34,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _unavailable_dynamic_detail(
+    _cookie: str,
+    _dynamic_id: str,
+) -> BiliFeedResponse:
+    return BiliFeedResponse(status_code=0, data={})
+
+
 class BiliCookieStore(Protocol):
     def load(self) -> str: ...
 
