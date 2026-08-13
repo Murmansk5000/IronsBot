@@ -111,6 +111,10 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 `extra="forbid"` 直接拒绝。`tests/test_app_config_loader.py` 记录拒绝行为，避免后续为
 旧 TOML 恢复双字段或隐式重命名。
 
+**群星牌 schema 收口（2026-08-13）：** `AutocardService` 只读取 SeerAPI 发布的
+`autocard_role` 官方字段和 `autocard_role_raw` sidecar，已删除旧版仅含 `raw_json` 的
+回退查询与测试夹具。缺少当前表结构会走既有“更新数据库”错误语义，不再双读旧发布物。
+
 **Main 吸收记录（2026-08-13）：** 已以 V5 的类型化 B 站服务为唯一业务路径吸收
 `main` 的发布时段加密轮询需求。`BiliBoostWindow`、秒级时钟、槽位去重和 cron
 注册均不依赖 OneBot 数值 target；发现新动态后仅结束当前 burst，空响应或失败仍会继续

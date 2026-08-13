@@ -60,9 +60,6 @@ _AUTOCARD_ROLE_QUERY = text(
     ORDER BY role.id
     """
 )
-_LEGACY_AUTOCARD_ROLE_QUERY = text("SELECT raw_json FROM autocard_role ORDER BY id")
-
-
 @dataclass(slots=True, frozen=True)
 class _AutocardDataset:
     cards: tuple[dict[str, Any], ...]
@@ -301,11 +298,7 @@ def _load_json_rows(
 
 
 def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
-    try:
-        rows = session.execute(_AUTOCARD_ROLE_QUERY).all()
-    except SQLAlchemyError:
-        return _load_legacy_role_rows(session)
-
+    rows = session.execute(_AUTOCARD_ROLE_QUERY).all()
     result: list[dict[str, Any]] = []
     for row in rows:
         mapping = row._mapping if hasattr(row, "_mapping") else None
@@ -344,18 +337,6 @@ def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
             }
         )
         result.append(item)
-    return tuple(result)
-
-
-def _load_legacy_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
-    rows = session.execute(_LEGACY_AUTOCARD_ROLE_QUERY).all()
-    result: list[dict[str, Any]] = []
-    for row in rows:
-        mapping = row._mapping if hasattr(row, "_mapping") else None
-        raw_json = mapping["raw_json"] if mapping is not None else row[0]
-        item = json.loads(str(raw_json))
-        if isinstance(item, dict):
-            result.append(item)
     return tuple(result)
 
 
