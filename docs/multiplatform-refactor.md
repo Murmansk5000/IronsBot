@@ -162,6 +162,12 @@ OneBot 菜单、文本快捷入口、玩家服务与测试都直接依赖各自�
 导入卫生 4 项测试、Ruff、编译与 diff 检查通过。该项减少 Phase 5 的服务职责混杂，
 不改变用户命令或增加运行时依赖。
 
+**Matcher 装配职责拆分（2026-08-13）：** `matcher_support` 现在唯一拥有 NoneBot
+回调签名绑定、组合期 runtime-context token、菜单锚点与会话访问帮助函数；`matchers`
+只保留 matcher 注册、命令准入、冷却和持久菜单入口。工厂从 760 行降至 609 行，公共
+OneBot 导入面保持稳定但不创建第二套运行时路径。运行时、会话、插件导入卫生和生命周期
+36 项测试、Ruff、编译与 diff 检查通过。
+
 **核心语义请求直连（2026-08-13）：** 删除 `runtime.semantic_requests` 的常驻重导出层；
 OneBot matcher、提示会话和测试均直接依赖 `core.semantic_requests`。这消除了 runtime 对 core
 模型的伪所有权，也避免未来平台适配因历史导入路径被迫依赖 NoneBot runtime。会话、matcher、
