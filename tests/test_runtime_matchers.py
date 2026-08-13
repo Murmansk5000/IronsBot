@@ -40,6 +40,7 @@ from ironsbot.runtime.matchers import (
     bind_async,
     get_prompt_session_manager,
 )
+from ironsbot.runtime.onebot_reply import event_reply_message_id
 from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
     GroupMenuAnchor,
@@ -281,6 +282,32 @@ def test_group_menu_reply_accepts_napcat_reply_segment_without_metadata() -> Non
     )
 
     assert event.reply is None
+    assert is_current_group_menu_reply(event, anchor)
+
+
+def test_group_menu_reply_prefers_current_napcat_message_segments() -> None:
+    anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
+    event = group_message_event(
+        "7",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        message=Message(
+            [
+                MessageSegment.reply(99),
+                MessageSegment.at(1),
+                MessageSegment.text(" 7"),
+            ]
+        ),
+        original_message=Message(
+            [MessageSegment.at(1), MessageSegment.text(" 7")]
+        ),
+        raw_message="[reply:id=99][at:qq=1] 7",
+    )
+
+    assert event.reply is None
+    assert event_reply_message_id(event) == anchor.message_id
     assert is_current_group_menu_reply(event, anchor)
 
 
@@ -563,7 +590,7 @@ async def test_session_fallback_accepts_rapid_choices_while_menu_is_pending(  # 
             == context.token
         )
         tasks: list[asyncio.Task[T_State]] = []
-        choices = ("1", "2", "3", "4")
+        choices = ("1", "2", "3", "4", "7")
         for message_id, choice in enumerate(choices, start=10):
             previous_generation = context.fallback_generation
             tasks.append(asyncio.create_task(dispatch(message_id, choice)))
@@ -606,7 +633,7 @@ async def test_session_fallback_accepts_rapid_choices_while_menu_is_pending(  # 
 
         assert [
             state[QUEUED_CONVERSATION_TICKET_STATE_KEY] for state in states
-        ] == [1, 2, 3, 4]
+        ] == [1, 2, 3, 4, 5]
     finally:
         manager.cancel_queued_context(context)
         del matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY][fallback_start:]
