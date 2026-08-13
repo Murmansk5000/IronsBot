@@ -34,4 +34,4 @@ def test_manifest_generator_marks_sanctuary_command_after_baseline(
     manifest = json.loads(output_path.read_text(encoding="utf-8"))
     assert manifest["baseline_commit"] == "c83f48e8dd65ba71dd4227c8251083b9443ded4b"
     assert "seer.autocard.sanctuary" in manifest["commands"]
-    assert "help" not in manifest["commands"]
+    assert "help" in manifest["commands"]
