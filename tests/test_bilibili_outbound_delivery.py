@@ -15,8 +15,9 @@ from ironsbot.services.bilibili.outbound_delivery import (
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliDynamicOutboundSender,
-    render_dynamic_content_message,
+    render_dynamic_image_message,
     render_dynamic_link_message,
+    render_dynamic_text_message,
 )
 from ironsbot.services.bilibili.preferences import (
     bili_media_subscription_key,
@@ -137,14 +138,16 @@ class _RecordingAdminNotices:
 
 def test_portable_renderers_keep_text_and_remote_images() -> None:
     link = render_dynamic_link_message(_item(), PUB_TS)
-    content = render_dynamic_content_message(_item())
+    text = render_dynamic_text_message(_item())
+    images = render_dynamic_image_message(_item())
 
     assert link is not None
-    assert content is not None
+    assert text is not None
+    assert images is not None
     assert "传送门：" in str(link.parts[0])
-    assert "正文内容" in str(content.parts[0])
-    assert isinstance(content.parts[1], RemoteImagePart)
-    assert content.parts[1].url == "http://i0.hdslb.com/bfs/new_dyn/test.jpg"
+    assert "正文内容" in str(text.parts[0])
+    assert isinstance(images.parts[0], RemoteImagePart)
+    assert images.parts[0].url == "http://i0.hdslb.com/bfs/new_dyn/test.jpg"
 
 
 @pytest.mark.asyncio
@@ -412,11 +415,12 @@ async def test_full_dynamic_media_preferences_filter_text_and_images_separately(
 
 
 def test_image_only_dynamic_does_not_invent_content_text() -> None:
-    message = render_dynamic_content_message(_item(text=""))
+    text = render_dynamic_text_message(_item(text=""))
+    images = render_dynamic_image_message(_item(text=""))
 
-    assert message is not None
-    assert all(not isinstance(part, TextPart) for part in message.parts)
-    assert isinstance(message.parts[0], RemoteImagePart)
+    assert text is None
+    assert images is not None
+    assert isinstance(images.parts[0], RemoteImagePart)
 
 
 def test_bilibili_admin_hint_is_limited_once_per_group_per_day(

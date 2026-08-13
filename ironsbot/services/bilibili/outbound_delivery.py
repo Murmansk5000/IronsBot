@@ -261,12 +261,9 @@ class BilibiliDynamicOutboundSender:
         result = message
         if self.can_query_history is not None and self.can_query_history(conversation):
             result = append_outbound_text_once(result, DYNAMIC_HISTORY_HINT)
-        if (
-            conversation.kind == "group"
-            and self.subscriptions.mark_daily_hint_sent(
-                conversation,
-                BILI_PUSH_ADMIN_HINT_KEY,
-            )
+        if conversation.kind == "group" and self.subscriptions.mark_daily_hint_sent(
+            conversation,
+            BILI_PUSH_ADMIN_HINT_KEY,
         ):
             result = append_outbound_text_once(result, BILI_PUSH_ADMIN_HINT)
         return result
@@ -328,17 +325,3 @@ def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None
         _LOGGER.exception("failed to render Bilibili dynamic images")
         return None
     return OutboundMessage(tuple(parts)) if parts else None
-
-
-def render_dynamic_content_message(
-    item: dict[str, Any],
-    content_override: str | None = None,
-) -> OutboundMessage | None:
-    """Backward-compatible combined renderer for callers outside delivery."""
-
-    text = render_dynamic_text_message(item, content_override)
-    images = render_dynamic_image_message(item)
-    parts = (text.parts if text is not None else ()) + (
-        images.parts if images is not None else ()
-    )
-    return OutboundMessage(parts) if parts else None
