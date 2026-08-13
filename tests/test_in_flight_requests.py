@@ -4,13 +4,13 @@ from dataclasses import dataclass
 
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.runtime.in_flight_requests import InFlightRequestService
-from ironsbot.runtime.semantic_requests import (
+from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
     SemanticRequestSource,
     SemanticTarget,
 )
+from ironsbot.runtime.in_flight_requests import InFlightRequestService
 
 USER_ID = 100
 OTHER_USER_ID = 200

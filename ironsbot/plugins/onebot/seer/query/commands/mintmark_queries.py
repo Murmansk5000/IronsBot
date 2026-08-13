@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Mintmark and gem query matchers."""
 
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import CommandPolicy
 from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
-from ironsbot.runtime.semantic_requests import ActionDefinition
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import make_query_handler

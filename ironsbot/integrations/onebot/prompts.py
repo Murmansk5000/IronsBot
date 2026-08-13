@@ -21,6 +21,12 @@ from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.integrations.onebot.matchers import (
     begin_queued_conversation,
     get_prompt_session_manager,
@@ -30,12 +36,6 @@ from ironsbot.integrations.onebot.matchers import (
     enter_prompt_loop as _enter_prompt_loop,
 )
 from ironsbot.runtime.prompt_errors import PromptSessionManagerMissingError
-from ironsbot.runtime.semantic_requests import (
-    ActionDefinition,
-    SemanticRequest,
-    SemanticRequestSource,
-    SemanticTarget,
-)
 
 T = TypeVar("T")
 
