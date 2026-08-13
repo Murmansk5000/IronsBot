@@ -6,15 +6,14 @@ from copy import deepcopy
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import AsyncMock
 
 import pytest
 from nonebot.adapters import Event  # noqa: TC002 - the signature test resolves it
-from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher, current_bot, current_event, matchers
-from nonebot.permission import Permission
+from nonebot.matcher import Matcher, current_event
+from nonebot.message import handle_event
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot.utils import is_coroutine_callable
@@ -43,13 +42,9 @@ from ironsbot.runtime.matchers import (
 from ironsbot.runtime.onebot_reply import event_reply_message_id
 from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY,
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
     GroupMenuAnchor,
     is_current_group_menu_reply,
-)
-from ironsbot.runtime.queued_conversation_fallback import (
-    QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY,
-    QUEUED_CONVERSATION_FALLBACK_PRIORITY,
-    create_queued_conversation_fallback,
 )
 from ironsbot.runtime.semantic_requests import (
     ActionDefinition,
@@ -311,7 +306,31 @@ def test_group_menu_reply_prefers_current_napcat_message_segments() -> None:
     assert is_current_group_menu_reply(event, anchor)
 
 
-def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:
+def test_group_menu_reply_accepts_original_message_as_compatibility_fallback() -> None:
+    anchor = GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99)
+    event = group_message_event(
+        "2",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        message=Message([MessageSegment.at(1), MessageSegment.text(" 2")]),
+        original_message=Message(
+            [
+                MessageSegment.reply(99),
+                MessageSegment.at(1),
+                MessageSegment.text(" 2"),
+            ]
+        ),
+        raw_message="[at:qq=1] 2",
+    )
+
+    assert event.reply is None
+    assert event_reply_message_id(event) == anchor.message_id
+    assert is_current_group_menu_reply(event, anchor)
+
+
+def test_group_menu_reply_zero_is_a_shared_exit_without_closing_owner() -> None:
     manager = PromptSessionManager()
     owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
     context = manager.start_queued_conversation(
@@ -358,12 +377,13 @@ def test_group_menu_reply_cannot_exit_the_owner_conversation() -> None:
     )
 
     assert context.matches(member_choice)
-    assert not context.matches(member_exit)
+    assert context.matches(member_exit)
+    assert context.is_shared_group_reply(member_exit)
     assert context.matches(owner_exit)
     assert context.matches(owner_direct_exit)
 
 
-def test_group_menu_reply_zero_is_silent_even_when_exit_was_legacy_enabled() -> None:
+def test_group_menu_reply_zero_stays_shared_with_legacy_flag_disabled() -> None:
     manager = PromptSessionManager()
     owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
     context = manager.start_queued_conversation(
@@ -375,7 +395,7 @@ def test_group_menu_reply_zero_is_silent_even_when_exit_was_legacy_enabled() -> 
         group_reply_check=lambda event: event.get_plaintext().strip() in {"1", "0"},
         handlers=[],
         menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
-        allow_group_reply_exit=True,
+        allow_group_reply_exit=False,
     )
     member_exit = group_message_event(
         "0",
@@ -386,18 +406,13 @@ def test_group_menu_reply_zero_is_silent_even_when_exit_was_legacy_enabled() -> 
         reply_sender_user_id=1,
     )
 
-    assert not context.matches(member_exit)
-    assert not context.is_shared_group_reply(member_exit)
+    assert context.matches(member_exit)
+    assert context.is_shared_group_reply(member_exit)
 
 
 def test_stable_menu_router_keeps_third_party_reply_support() -> None:
     manager = PromptSessionManager()
-    registry = MatcherRegistry(
-        cooldown=cast("CommandCooldown", object()),
-        priorities=object(),
-        prompt_session_manager=manager,
-    )
-    state = registry._with_runtime_hooks({})["state"]
+    state: T_State = {}
     owner = group_message_event("1", user_id=2, group_id=4, self_id=1)
     context = manager.start_queued_conversation(
         namespace="test",
@@ -427,9 +442,11 @@ def test_stable_menu_router_keeps_third_party_reply_support() -> None:
         reply_sender_user_id=1,
     )
 
-    assert _matches_active_queued_conversation(member_choice, state)
+    assert _matches_active_queued_conversation(manager, member_choice, state)
     assert state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] == context.token
-    assert not _matches_active_queued_conversation(member_exit, state)
+    state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
+    assert _matches_active_queued_conversation_exit(manager, member_exit, state)
+    assert state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] == context.token
 
 
 def test_numeric_selection_prompt_accepts_owner_bot_mention_or_plain_choice() -> None:
@@ -482,16 +499,68 @@ def test_queued_menu_uses_singleton_permanent_routers() -> None:
     assert not exit_router.temp
     assert not input_router.temp
     assert QUEUED_CONVERSATION_INPUT_PRIORITY < QUEUED_CONVERSATION_RESERVATION_PRIORITY
-    assert (
-        QUEUED_CONVERSATION_RESERVATION_PRIORITY
-        < QUEUED_CONVERSATION_FALLBACK_PRIORITY
-    )
 
 
 @pytest.mark.asyncio
-async def test_session_fallback_accepts_rapid_choices_while_menu_is_pending(  # noqa: PLR0915
-) -> None:
-    """A waiting query must not leave gaps between temporary menu matchers."""
+async def test_shared_group_exit_only_exits_the_replying_member() -> None:
+    class _MatcherProbe:
+        def __init__(self, state: T_State) -> None:
+            self.state = state
+            self.remain_handlers: list[Any] = []
+            self.messages: list[str] = []
+
+        async def finish(self, message: object) -> None:
+            self.messages.append(str(message))
+            raise FinishedException
+
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+    owner = group_message_event("菜单", user_id=2, group_id=4, self_id=1)
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state={},
+        reply_check=lambda event: event.get_plaintext().strip() in {"0", "1"},
+        group_reply_check=lambda event: event.get_plaintext().strip() in {"0", "1"},
+        handlers=[],
+        menu_anchor=GroupMenuAnchor(group_id=4, bot_user_id=1, message_id=99),
+    )
+    member_exit = group_message_event(
+        "0",
+        user_id=3,
+        group_id=4,
+        self_id=1,
+        message_id=100,
+        reply_sender_user_id=1,
+        reply_message_id=99,
+    )
+    state = registry._with_runtime_hooks({})["state"]
+    assert _matches_active_queued_conversation_exit(manager, member_exit, state)
+    matcher = _MatcherProbe(state)
+
+    with pytest.raises(FinishedException):
+        await _capture_queued_conversation_input(
+            cast("Matcher", matcher),
+            member_exit,
+            state,
+        )
+
+    assert matcher.messages == ["[CQ:at,qq=3] 已退出当前选择。"]
+    assert context.active
+    assert manager.queued_conversation_for(
+        namespace="test",
+        event_session_id=owner.get_session_id(),
+    ) is context
+
+
+@pytest.mark.asyncio
+async def test_permanent_router_accepts_rapid_choices_while_menu_is_pending() -> None:
+    """Real NoneBot dispatch must retain every early numeric menu input."""
 
     manager = PromptSessionManager()
     registry = MatcherRegistry(
@@ -500,145 +569,167 @@ async def test_session_fallback_accepts_rapid_choices_while_menu_is_pending(  # 
         prompt_session_manager=manager,
     )
     registry.install_queued_conversation_router()
-    origin_type = registry.message_matchers[-1]
-    origin_event = group_message_event(
+    routers = registry.message_matchers
+    runtime_state = registry._with_runtime_hooks({})["state"]
+    origin = group_message_event(
         "米米号",
         user_id=2,
         group_id=4,
         self_id=1,
         message_id=1,
     )
-    runtime_state = registry._with_runtime_hooks({})["state"]
+    dispatched: list[str] = []
+
+    async def record_choice(event: MessageEvent, state: T_State) -> None:
+        dispatched.append(event.get_plaintext().strip())
+        state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
+        manager.finish_queued_conversation(state)
+
     context = manager.start_queued_conversation(
         namespace="player_detail",
-        event_session_id=origin_event.get_session_id(),
-        owner_user_id=origin_event.user_id,
+        event_session_id=origin.get_session_id(),
+        owner_user_id=origin.user_id,
         state=runtime_state,
-        reply_check=lambda event: event.get_plaintext().strip()
-        in {"1", "2", "3", "4"},
+        reply_check=lambda event: event.get_plaintext().strip().isdigit(),
         pending_reply_check=lambda event: event.get_plaintext().strip().isdigit(),
-        handlers=[],
+        handlers=[record_choice],
         pending=True,
-        parallel=True,
+        parallel=False,
     )
-    origin = origin_type()
-    origin.state.update(runtime_state)
-    origin.update_permission = AsyncMock(return_value=Permission())
-    bot = cast(
-        "Any",
-        SimpleNamespace(
-            config=SimpleNamespace(session_expire_timeout=timedelta(minutes=1))
-        ),
-    )
-    bot_token = current_bot.set(bot)
-    event_token = current_event.set(origin_event)
-    fallback_start = len(matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY])
-
-    async def dispatch(message_id: int, choice: str) -> T_State:
-        event = group_message_event(
-            choice,
-            user_id=2,
-            group_id=4,
-            self_id=1,
-            message_id=message_id,
+    bot = cast("Any", SimpleNamespace(type="OneBot V11", self_id="1"))
+    choices = ("1", "2", "3", "7")
+    tasks: list[asyncio.Task[None]] = []
+    for expected_ticket, (message_id, choice) in enumerate(
+        zip(range(10, 14), choices, strict=True),
+        start=1,
+    ):
+        tasks.append(
+            asyncio.create_task(
+                handle_event(
+                    bot,
+                    group_message_event(
+                        choice,
+                        user_id=origin.user_id,
+                        group_id=origin.group_id,
+                        self_id=origin.self_id,
+                        message_id=message_id,
+                    ),
+                )
+            )
         )
-        fallback_type = next(
-            matcher_type
-            for matcher_type in matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY]
-            if matcher_type._default_state.get(
-                QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY
-            )
-            == context.fallback_generation
-            and matcher_type._default_state.get(
-                QUEUED_CONVERSATION_TOKEN_STATE_KEY
-            )
-            == context.token
-        )
-        state = deepcopy(fallback_type._default_state)
-        assert await fallback_type.rule(bot, event, state)
-        fallback = fallback_type()
-        fallback.state.update(state)
-        task_event_token = current_event.set(event)
-        try:
-            await _capture_queued_conversation_input(
-                fallback,
-                event,
-                fallback.state,
-            )
-        finally:
-            current_event.reset(task_event_token)
-        return fallback.state
+        for _ in range(100):
+            if context._next_ticket >= expected_ticket:
+                break
+            await asyncio.sleep(0.001)
+        assert context._next_ticket == expected_ticket
 
     try:
-        await create_queued_conversation_fallback(
-            origin,
-            context,
-            handler=_capture_queued_conversation_input,
-            runtime_context_key=RUNTIME_CONTEXT_TOKEN_STATE_KEY,
-            priority=QUEUED_CONVERSATION_FALLBACK_PRIORITY,
-        )
-        first_fallback = next(
-            matcher_type
-            for matcher_type in matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY]
-            if matcher_type._default_state.get(
-                QUEUED_CONVERSATION_FALLBACK_GENERATION_STATE_KEY
-            )
-            == context.fallback_generation
-            and matcher_type._default_state.get(
-                QUEUED_CONVERSATION_TOKEN_STATE_KEY
-            )
-            == context.token
-        )
-        tasks: list[asyncio.Task[T_State]] = []
-        choices = ("1", "2", "3", "4", "7")
-        for message_id, choice in enumerate(choices, start=10):
-            previous_generation = context.fallback_generation
-            tasks.append(asyncio.create_task(dispatch(message_id, choice)))
-            for _ in range(100):
-                await asyncio.sleep(0.01)
-                if context.fallback_generation > previous_generation:
-                    break
-                if tasks[-1].done():
-                    await tasks[-1]
-            assert context.fallback_generation > previous_generation
-
-        expected_generation = len(choices) + 1
-        assert context.fallback_generation == expected_generation
-        assert not any(task.done() for task in tasks)
-        first_state: T_State = {}
-        first_event = group_message_event(
-            "1",
-            user_id=2,
-            group_id=4,
-            self_id=1,
-            message_id=99,
-        )
-        assert not await first_fallback.rule(bot, first_event, first_state)
-
+        assert not dispatched
         manager.activate_queued_conversation(
             context,
             state=runtime_state,
-            reply_check=lambda event: event.get_plaintext().strip()
-            in {"1", "2", "3", "4"},
+            reply_check=lambda event: event.get_plaintext().strip().isdigit(),
             group_reply_check=None,
             menu_anchor=None,
             allow_group_reply_exit=False,
             semantic_request_resolver=None,
-            handlers=[],
-            parallel=True,
+            handlers=[record_choice],
+            parallel=False,
             page_id="player:detail",
             menu_sent=True,
         )
-        states = await asyncio.gather(*tasks)
-
-        assert [
-            state[QUEUED_CONVERSATION_TICKET_STATE_KEY] for state in states
-        ] == [1, 2, 3, 4, 5]
+        await asyncio.gather(*tasks)
     finally:
         manager.cancel_queued_context(context)
-        del matchers[QUEUED_CONVERSATION_FALLBACK_PRIORITY][fallback_start:]
-        current_event.reset(event_token)
-        current_bot.reset(bot_token)
+        for router in routers:
+            router.destroy()
+
+    assert dispatched == list(choices)
+
+
+@pytest.mark.asyncio
+async def test_permanent_router_transfers_reply_to_another_member() -> None:
+    manager = PromptSessionManager()
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=manager,
+    )
+    registry.install_queued_conversation_router()
+    routers = registry.message_matchers
+    runtime_state = registry._with_runtime_hooks({})["state"]
+    owner = group_message_event(
+        "谱尼技能",
+        user_id=2,
+        group_id=4,
+        self_id=1,
+        message_id=10,
+    )
+    menu_message_id = 99
+    dispatched: list[tuple[int, str, bool]] = []
+
+    async def record_choice(event: MessageEvent, state: T_State) -> None:
+        shared = bool(state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY))
+        dispatched.append((event.user_id, event.get_plaintext().strip(), shared))
+        if shared:
+            manager.detach_queued_conversation(state)
+            return
+        state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
+        manager.finish_queued_conversation(state)
+
+    context = manager.start_queued_conversation(
+        namespace="selection_prompt",
+        event_session_id=owner.get_session_id(),
+        owner_user_id=owner.user_id,
+        state=runtime_state,
+        reply_check=lambda event: event.get_session_id() == owner.get_session_id()
+        and event.get_plaintext().strip() in {"1", "2"},
+        group_reply_check=lambda event: event.get_plaintext().strip() in {"1", "2"},
+        handlers=[record_choice],
+        menu_anchor=GroupMenuAnchor(
+            group_id=owner.group_id,
+            bot_user_id=owner.self_id,
+            message_id=menu_message_id,
+        ),
+    )
+    bot = cast("Any", SimpleNamespace(type="OneBot V11", self_id="1"))
+    owner_choice = group_message_event(
+        "1",
+        user_id=owner.user_id,
+        group_id=owner.group_id,
+        self_id=owner.self_id,
+        message_id=11,
+    )
+    member_choice = group_message_event(
+        "2",
+        user_id=3,
+        group_id=owner.group_id,
+        self_id=owner.self_id,
+        message_id=12,
+        message=Message(
+            [
+                MessageSegment.reply(menu_message_id),
+                MessageSegment.at(owner.self_id),
+                MessageSegment.text(" 2"),
+            ]
+        ),
+        original_message=Message(
+            [MessageSegment.at(owner.self_id), MessageSegment.text(" 2")]
+        ),
+        raw_message=f"[reply:id={menu_message_id}][at:qq={owner.self_id}] 2",
+    )
+
+    try:
+        await handle_event(bot, owner_choice)
+        assert context.active
+        await handle_event(bot, member_choice)
+        assert context.active
+    finally:
+        manager.cancel_queued_context(context)
+        for router in routers:
+            router.destroy()
+
+    assert dispatched == [(2, "1", False), (3, "2", True)]
 
 
 def test_queued_conversation_never_matches_another_session() -> None:
@@ -694,11 +785,11 @@ def test_queued_menu_exit_has_a_dedicated_earlier_route() -> None:
         message_id=11,
     )
 
-    assert _matches_active_queued_conversation_exit(exit_event, state)
+    assert _matches_active_queued_conversation_exit(manager, exit_event, state)
     assert state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] == context.token
     state.pop(QUEUED_CONVERSATION_TOKEN_STATE_KEY)
-    assert not _matches_active_queued_conversation_exit(choice_event, state)
-    assert _matches_active_queued_conversation(choice_event, state)
+    assert not _matches_active_queued_conversation_exit(manager, choice_event, state)
+    assert _matches_active_queued_conversation(manager, choice_event, state)
 
 
 @pytest.mark.asyncio
@@ -759,7 +850,7 @@ async def test_permanent_router_accepts_parallel_choices_before_exit() -> None:
             message_id=message_id,
         )
         state = registry._with_runtime_hooks({})["state"]
-        assert _matches_active_queued_conversation(event, state)
+        assert _matches_active_queued_conversation(manager, event, state)
         matcher = _MatcherProbe(state)
         await _capture_queued_conversation_input(
             cast("Matcher", matcher),
@@ -785,7 +876,7 @@ async def test_permanent_router_accepts_parallel_choices_before_exit() -> None:
         message_id=13,
     )
     exit_state = registry._with_runtime_hooks({})["state"]
-    assert _matches_active_queued_conversation_exit(exit_event, exit_state)
+    assert _matches_active_queued_conversation_exit(manager, exit_event, exit_state)
     exit_matcher = _MatcherProbe(exit_state)
     with pytest.raises(FinishedException):
         await _capture_queued_conversation_input(
@@ -1188,7 +1279,6 @@ async def test_player_command_attaches_the_high_priority_pending_reservation() -
         pending=True,
         parallel=True,
     )
-    context.fallback_generation = 1
     state = registry._with_runtime_hooks({})["state"]
     matcher = cast("Matcher", SimpleNamespace(state=state))
     event_token = current_event.set(event)
@@ -1209,7 +1299,6 @@ async def test_player_command_attaches_the_high_priority_pending_reservation() -
         namespace="seer_player",
         event_session_id=event.get_session_id(),
     ) is context
-    assert context.fallback_generation == 1
 
 
 @pytest.mark.asyncio
@@ -1243,7 +1332,7 @@ async def test_pending_player_reservation_accepts_rapid_1_2_3_4_before_menu() ->
             message_id=message_id,
         )
         state = registry._with_runtime_hooks({})["state"]
-        assert _matches_active_queued_conversation(event, state)
+        assert _matches_active_queued_conversation(manager, event, state)
         matcher = cast(
             "Matcher",
             SimpleNamespace(state=state, remain_handlers=[]),
