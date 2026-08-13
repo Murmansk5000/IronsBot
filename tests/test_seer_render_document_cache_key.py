@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
+from ironsbot.services.seer.rendering.cache_key import (
+    render_document_cache_key,
+    render_request_cache_key,
+)
 from ironsbot.services.seer.rendering.type_matchup import (
     TypeMatchupAssets,
     present_type_matchup,
@@ -55,4 +58,14 @@ def test_render_document_cache_key_includes_renderer_fingerprint() -> None:
     ) != render_document_cache_key(
         document,
         renderer_fingerprint="template-v2",
+    )
+
+
+def test_render_request_cache_key_is_stable_for_equivalent_mapping_order() -> None:
+    assert render_request_cache_key(
+        "test",
+        {"left": (1, 2), "right": {"value": "x"}},
+    ) == render_request_cache_key(
+        "test",
+        {"right": {"value": "x"}, "left": (1, 2)},
     )

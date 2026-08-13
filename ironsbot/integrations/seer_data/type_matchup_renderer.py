@@ -7,7 +7,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.images import to_data_uri
-from ironsbot.services.seer.rendering.cache_key import render_document_cache_key
+from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.type_matchup import (
     TypeMatchupAssets,
     present_type_matchup,
@@ -30,13 +30,13 @@ async def render_type_matchup(
     matchup: TypeMatchup,
 ) -> bytes:
     """Render one matchup after cache lookup and shared asset retrieval."""
+    request_key = render_request_cache_key(_CACHE_CATEGORY, matchup.cache_key)
+    if cached := cache.get(_CACHE_CATEGORY, request_key):
+        return cached
     assets = await _load_assets(images, matchup)
     document = present_type_matchup(matchup, assets)
-    content_key = render_document_cache_key(document)
-    if cached := cache.get(_CACHE_CATEGORY, content_key):
-        return cached
     rendered = await render_type_matchup_document(render_html, document)
-    cache.put(_CACHE_CATEGORY, content_key, rendered)
+    cache.put(_CACHE_CATEGORY, request_key, rendered)
     return rendered
 
 

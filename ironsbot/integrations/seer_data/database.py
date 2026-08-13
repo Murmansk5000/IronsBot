@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from seerapi_models import ApiMetadataORM, ErrorCodeORM, MintmarkORM, PeakSeasonORM
 from seerapi_models.mintmark import AbilityPartORM, UniversalPartORM
+from sqlalchemy import text
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, or_, select
 
@@ -184,7 +185,25 @@ class SeerDatabase:
                     return
                 metadata = session.exec(select(ApiMetadataORM)).first()
                 if metadata is not None:
-                    self._published_version = metadata.generate_time.isoformat()
+                    try:
+                        manifest_revision = session.execute(
+                            text(
+                                "SELECT value FROM ironsbot_metadata "
+                                "WHERE key = :key"
+                            ),
+                            {"key": "render_asset_manifest_revision"},
+                        ).scalar_one_or_none()
+                    except Exception:  # noqa: BLE001
+                        manifest_revision = None
+                    if not manifest_revision:
+                        self._published_version = UNKNOWN_VERSION
+                        return
+                    self._published_version = ":".join(
+                        (
+                            metadata.generate_time.isoformat(),
+                            str(manifest_revision),
+                        )
+                    )
                     return
         except Exception:  # noqa: BLE001
             logger.debug("failed to query Seer database version", exc_info=True)
