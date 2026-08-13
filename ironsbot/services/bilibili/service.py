@@ -16,7 +16,7 @@ from ironsbot.services.bilibili.menu import (
     dynamic_record_ids,
 )
 from ironsbot.services.bilibili.parser import target_dynamics_from_response
-from ironsbot.services.bilibili.schedule import AutoCheckState
+from ironsbot.services.bilibili.schedule import AutoCheckState, BoostSlot
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -50,6 +50,9 @@ class BilibiliService:
     fetch_feed: Callable[[str], Awaitable[BiliFeedResponse]]
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
+    pending_check: bool = field(default=False, init=False)
+    pending_regular_check: bool = field(default=False, init=False)
+    pending_boost_slots: dict[str, BoostSlot] = field(default_factory=dict, init=False)
 
     async def query_dynamic_menu(
         self,
