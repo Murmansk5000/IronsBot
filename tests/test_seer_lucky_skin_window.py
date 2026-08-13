@@ -35,6 +35,8 @@ from ironsbot.services.operations.headless_activity import HeadlessOperationTrac
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
     LuckySkinWindowBindingError,
+    LuckySkinWindowOffer,
+    LuckySkinWindowResult,
     LuckySkinWindowService,
     _parse_skin_ids,
 )
@@ -250,6 +252,10 @@ class _PluginService:
     def format_result(self, _result: object, *, user_id: int) -> str:
         return f"橱窗结果：{user_id}"
 
+    async def render_result(self, _result: object, *, user_id: int) -> bytes | None:
+        del user_id
+        return None
+
 
 def _service(
     tmp_path: Path,
@@ -347,6 +353,61 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
     with pytest.raises(LuckySkinWindowBindingError, match="90001"):
         asyncio.run(service.check_for_user(1001))
+
+
+def test_render_result_marks_the_receivers_own_watched_skin(tmp_path: Path) -> None:
+    service, _game, _delivery, _bindings, _headless = _service(tmp_path)
+    rendered_offers: list[tuple[LuckySkinWindowOffer, ...]] = []
+
+    async def render_result(
+        result: LuckySkinWindowResult,
+        offers: tuple[LuckySkinWindowOffer, ...],
+    ) -> bytes:
+        del result
+        rendered_offers.append(offers)
+        return b"lucky-window-image"
+
+    service._renderer = render_result  # type: ignore[assignment]
+
+    async def check() -> None:
+        result = await service.check_for_user(1001)
+
+        owner_image = await service.render_result(result, user_id=1001)
+        friend_image = await service.render_result(result, user_id=1002)
+        assert owner_image == b"lucky-window-image"
+        assert friend_image == b"lucky-window-image"
+
+    asyncio.run(check())
+
+    owner_offers, friend_offers = rendered_offers
+    assert [offer.watched for offer in owner_offers] == [True, False, False, False]
+    assert [offer.watched for offer in friend_offers] == [False, True, False, False]
+
+
+def test_daily_notifications_accept_a_rendered_message_formatter(
+    tmp_path: Path,
+) -> None:
+    service, _game, delivery, _bindings, _headless = _service(tmp_path)
+
+    async def format_message(
+        result: LuckySkinWindowResult,
+        *,
+        user_id: int,
+    ) -> str:
+        del result
+        return f"image:{user_id}"
+
+    asyncio.run(
+        service.send_daily_notifications(
+            cast("MessageDelivery", delivery),
+            format_message=format_message,
+        )
+    )
+
+    assert {message for _targets, message, _key in delivery.messages} == {
+        "image:1001",
+        "image:1002",
+    }
 
 
 def test_lucky_skin_response_uses_the_first_of_four_offers() -> None:

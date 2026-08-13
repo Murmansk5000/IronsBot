@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #071426; }
+    body {
+      color: #eaf6ff;
+      font-family: "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+    }
+    .panel { width: 100%; padding: 22px; }
+    .header {
+      display: flex; align-items: baseline; gap: 12px;
+      margin-bottom: 16px; padding: 0 3px 13px;
+      border-bottom: 2px solid #4b98d8;
+    }
+    .title { font-size: 29px; font-weight: 800; letter-spacing: 0; }
+    .subtitle { color: #91c8ed; font-size: 15px; }
+    .offers { display: table; width: 100%; table-layout: fixed; border-spacing: 12px 0; }
+    .offer {
+      display: table-cell; width: 25%; overflow: hidden; background: #0d2947;
+      border: 1px solid #347db8; border-radius: 5px;
+    }
+    .art {
+      height: 270px; display: flex; align-items: center; justify-content: center;
+      padding: 10px; background: #102f4f;
+      border-bottom: 1px solid #286290;
+    }
+    .art img { width: 100%; height: 100%; object-fit: contain; }
+    .missing { color: #83b4d7; font-size: 14px; text-align: center; }
+    .name {
+      min-height: 76px; padding: 10px 9px 12px; display: flex;
+      flex-direction: column;
+      align-items: center; justify-content: center; text-align: center;
+      font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere;
+    }
+    .star { color: #ffd15c; margin-right: 4px; font-size: 19px; line-height: 1; }
+    .skin-id { color: #91c8ed; margin-top: 4px; font-size: 13px; font-weight: 400; }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <header class="header">
+      <div class="title">幸运橱窗</div>
+      <div class="subtitle">今日刷新皮肤</div>
+    </header>
+    <section class="offers">
+      {% for offer in offers %}
+      <article class="offer">
+        <div class="art">
+          {% if offer.image %}
+          <img src="{{ offer.image }}" alt="{{ offer.name }}">
+          {% else %}
+          <span class="missing">立绘暂未获取</span>
+          {% endif %}
+        </div>
+        <div class="name">
+          <div>{% if offer.watched %}<span class="star">⭐</span>{% endif %}{{ offer.name }}</div>
+          <div class="skin-id">皮肤ID：{{ offer.skin_id }}</div>
+        </div>
+      </article>
+      {% endfor %}
+    </section>
+  </main>
+</body>
+</html>
