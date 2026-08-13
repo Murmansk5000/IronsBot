@@ -43,6 +43,9 @@ def _unique_ints(values: list[int]) -> list[int]:
 ACCOUNT_NAMES_UNAVAILABLE = (
     "❌ 暂时无法获取当前会话订阅账号的 B站公开昵称，请稍后重试。"
 )
+ACCOUNT_NAMES_MENU_WARNING = (
+    "⚠️ 暂时无法刷新部分 B站公开昵称，以下账号使用缓存名称或 UID 显示。"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -532,6 +535,15 @@ class BiliTargetService:
         if await self.account_names.refresh(rule.uids):
             return None
         return ACCOUNT_NAMES_UNAVAILABLE
+
+    async def prepare_subscription_labels(
+        self,
+        target_type: PushTargetType,
+        target_id: int,
+    ) -> str | None:
+        if await self.prepare_account_names(target_type, target_id) is None:
+            return None
+        return ACCOUNT_NAMES_MENU_WARNING
 
     async def account_summary(
         self,

@@ -163,7 +163,7 @@ def boost_slots_at(
             BoostSlot(
                 index,
                 anchor + timedelta(seconds=elapsed - offset),
-            ),
+            )
         )
     return tuple(slots)
 
