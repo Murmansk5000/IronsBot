@@ -9,7 +9,6 @@ from ironsbot.plugins.operations.db_sync import (
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
-    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
@@ -76,13 +75,7 @@ def docker_update_commands() -> tuple[CommandDescriptor, ...]:
             (
                 "docker_update.image_update",
                 DOCKER_UPDATE_COMMANDS,
-                "检查镜像并重启机器人",
-                {"access": (CommandAccess(audience="superuser"),)},
-            ),
-            (
-                "docker_update.image_check",
-                DOCKER_CHECK_UPDATE_COMMANDS,
-                "只检查远端镜像，不拉取或重启机器人",
+                "检查镜像后确认更新并重启机器人",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
@@ -98,13 +91,13 @@ def data_sync_commands() -> tuple[CommandDescriptor, ...]:
             (
                 "db_sync.update",
                 tuple(f"/{command}" for command in MANUAL_SYNC_COMMANDS),
-                "构建远程数据并同步到机器人",
+                "检查后选择同步已发布数据，或构建上游数据后同步",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
             (
                 "db_sync.force_update",
                 tuple(f"/{command}" for command in FORCE_MANUAL_SYNC_COMMANDS),
-                "忽略本地指纹，强制同步数据",
+                "选择第 2 项时强制重建上游数据后同步",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
