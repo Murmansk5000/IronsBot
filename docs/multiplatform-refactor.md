@@ -674,3 +674,6 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
 - **2026-08-14：** 新增内容发布索引、赛季时间和 Flash 座驾素材读取分别迁入
   `new_content_repository`、`season_repository`、`flash_mount_repository`。
   相关聚焦测试共 65 项通过；Ruff、compileall 与 diff 检查通过。
+- **2026-08-14：** 巅峰池、投票、赛季周期及精灵快照读取迁入
+  `peak_repository`。巅峰 service、私有阵容条目解析和 renderer 只消费已脱离
+  ORM Session 的快照；巅峰查询、投票、渲染和架构边界测试共 36 项通过。
