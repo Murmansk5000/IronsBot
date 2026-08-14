@@ -88,7 +88,7 @@
         }
 
         .pet-entry { flex: 0 0 104px; }
-        .pet-entry.historical { filter: grayscale(100%); }
+        .pet-entry.historical { filter: grayscale(50%) brightness(50%); }
         .pet-entry .pet-head-icon[src=""] { visibility: hidden; }
         .pool-empty {
             min-height: 56px;
@@ -118,7 +118,7 @@
 
         <div class="change-status">
             {% if change_state == 'changed' %}
-            <strong>彩色</strong>：当前所在位置　<strong>灰度</strong>：上周所在位置
+            <strong>彩色</strong>：当前所在位置　<strong>灰暗</strong>：上周所在位置
             {% elif change_state == 'unchanged' %}
             本周{{ change_label }}未变化
             {% else %}

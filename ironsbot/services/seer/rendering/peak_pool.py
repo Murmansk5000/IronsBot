@@ -31,7 +31,7 @@ CELL_GAP = 10
 POOL_OVERHEAD = 18 * 2 + 1 * 2  # pool-section padding + border
 CONTAINER_PADDING = 20 * 2
 MAX_COLS = 10
-PEAK_POOL_CACHE_VERSION = 3
+PEAK_POOL_CACHE_VERSION = 4
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ async def render_peak_pool(
     snapshot: PeakPoolRenderSnapshot,
     pool_type: str,
 ) -> bytes:
-    """Render the current peak pool with grayscale previous positions."""
+    """Render the current peak pool with dimmed previous positions."""
     content_key = _peak_pool_cache_key(snapshot, pool_type)
     cached = cache.get("peak_pool", content_key)
     if cached is not None:
