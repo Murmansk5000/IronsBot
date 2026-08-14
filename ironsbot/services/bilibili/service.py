@@ -85,11 +85,14 @@ class BilibiliService:
         *,
         cookie: str | None = None,
     ) -> dict[str, Any]:
-        from ironsbot.services.bilibili.parser import dynamic_content, dynamic_id
+        from ironsbot.services.bilibili.parser import (
+            dynamic_body_hydration_reason,
+            dynamic_id,
+        )
 
         typed_item = dict(item)
         item_id = dynamic_id(typed_item)
-        if not item_id or dynamic_content(typed_item):
+        if not item_id or dynamic_body_hydration_reason(typed_item) is None:
             return typed_item
         task = self._detail_tasks.get(item_id)
         if task is None:
@@ -134,7 +137,7 @@ class BilibiliService:
         days: int = 7,
         limit: int = 20,
     ) -> int:
-        from ironsbot.services.bilibili.parser import dynamic_content
+        from ironsbot.services.bilibili.parser import dynamic_body_hydration_reason
         from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
 
         if self._history_backfill_attempted:
@@ -146,12 +149,15 @@ class BilibiliService:
         cutoff = int(time.time()) - max(days, 0) * 24 * 60 * 60
         updated = 0
         for record in self.history.list(limit=self.config.storage.history_max_items):
-            if record.pub_ts < cutoff or dynamic_content(record.item):
+            if (
+                record.pub_ts < cutoff
+                or dynamic_body_hydration_reason(record.item) is None
+            ):
                 continue
             if updated >= max(limit, 0):
                 break
             resolved = await self.resolve_dynamic_item(record.item, cookie=cookie)
-            if not dynamic_content(resolved):
+            if dynamic_body_hydration_reason(resolved) is not None:
                 continue
             self.history.save_snapshot(
                 build_dynamic_history_snapshot(

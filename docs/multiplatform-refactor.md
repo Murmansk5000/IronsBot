@@ -660,10 +660,9 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   Seer repository 边界吸收开服别名及新增内容竞技池变动入口。后续主线
   `857d27d8` 将新增内容菜单重做为旧 renderer 的预览矩阵；它不能直接覆盖 V5
   的快照/Presenter 链路，须在准备好同等的不可变 render document 后再选择性迁移。
-- **2026-08-14 / `origin/main` `32461c12`：** B站详情补全现在会处理缺正文和
-  Opus 正文截断两种情况，并且只接受更完整的详情结果。该行为尚待迁入 V5 的
-  Bilibili 服务；迁移时保留 V5 的 task owner 与 delivery 边界，不能直接复制旧的
-  runtime 调度路径。
+- **2026-08-14 / `origin/main` `32461c12`：** 已迁入 B站缺正文与 Opus 正文截断
+  的详情补全；只有详情正文更完整时才替换。V5 保留自己的 task owner 与 delivery
+  边界，未复制旧 runtime 调度路径。
 
 ## 数据读取边界记录
 
