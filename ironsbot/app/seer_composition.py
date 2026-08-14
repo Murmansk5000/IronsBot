@@ -16,6 +16,9 @@ from ironsbot.integrations.onebot.lucky_skin_window import (
 from ironsbot.integrations.onebot.team_resource import (
     build_onebot_team_resource_default_mentions,
 )
+from ironsbot.integrations.seer_data.lucky_skin_window_renderer import (
+    render_lucky_skin_window,
+)
 from ironsbot.integrations.seer_data.new_content_renderer import (
     render_new_content_menu,
 )
@@ -153,21 +156,6 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             include_private=True,
         )
 
-    lucky_skin_window = LuckySkinWindowService(
-        settings.seer.lucky_skin_window,
-        build_onebot_lucky_skin_window_accounts(
-            settings.seer.lucky_skin_window,
-            settings.onebot_references,
-            player_accounts,
-        ),
-        features,
-        headless_sessions,
-        seer_database,
-        player_bindings,
-        SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
-        SqliteLuckySkinWindowCache(settings.paths.runtime_state),
-        LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
-    )
     team_resource = TeamResourceService(
         settings.seer.team_resource,
         TeamResourceSubscriptionStore(settings.paths.qq_state),
@@ -195,6 +183,28 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         cache_paths,
         settings.seer.render,
         seer_database,
+    )
+    lucky_skin_window = LuckySkinWindowService(
+        settings.seer.lucky_skin_window,
+        build_onebot_lucky_skin_window_accounts(
+            settings.seer.lucky_skin_window,
+            settings.onebot_references,
+            player_accounts,
+        ),
+        features,
+        headless_sessions,
+        seer_database,
+        player_bindings,
+        SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
+        SqliteLuckySkinWindowCache(settings.paths.runtime_state),
+        LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
+        renderer=partial(
+            render_lucky_skin_window,
+            render_cache,
+            seer_database,
+            images,
+            render_coordinator,
+        ),
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,

@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
+    Message,
     MessageEvent,
+    MessageSegment,
     PrivateMessageEvent,
 )
 from nonebot.matcher import Matcher
@@ -65,6 +67,7 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowBindingError,
     LuckySkinWindowError,
     LuckySkinWindowNotConfiguredError,
+    LuckySkinWindowResult,
     LuckySkinWindowService,
 )
 
@@ -244,7 +247,7 @@ async def _handle_query(
         await finish_event_reply(
             matcher,
             event,
-            service.format_result(cached, actor=actor),
+            await _result_message(service, cached, actor=actor),
         )
         return
 
@@ -320,8 +323,20 @@ async def _query_and_reply(
     await finish_event_reply(
         matcher,
         event,
-        service.format_result(result, actor=actor),
+        await _result_message(service, result, actor=actor),
     )
+
+
+async def _result_message(
+    service: LuckySkinWindowService,
+    result: LuckySkinWindowResult,
+    *,
+    actor: ActorRef,
+) -> str | Message:
+    rendered = await service.render_result(result, actor=actor)
+    if rendered is None:
+        return service.format_result(result, actor=actor)
+    return Message(MessageSegment.image(rendered))
 
 
 async def _handle_watch_list(
