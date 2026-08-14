@@ -10,14 +10,13 @@ from ironsbot.extensions.contracts import (
     PlayerLineupPetSnapshot,
     PlayerLineupSlot,
 )
+from ironsbot.integrations.seer_data.peak_repository import (
+    load_peak_pool_snapshots,
+)
 from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
-from ironsbot.services.seer.peak import (
-    active_peak_pool_limits,
-    load_peak_pools,
-    snapshot_peak_pools,
-)
+from ironsbot.services.seer.peak import active_peak_pool_limits
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
@@ -41,9 +40,9 @@ class PublishedPlayerLineupEntryResolver:
         pet_ids = {slot.pet_id for slot in slots}
         skin_ids = {slot.skin_id for slot in slots if slot.skin_id > 0}
         with self._data.query(
-            lambda session: load_peak_pools(session, expert=False)
+            lambda session: load_peak_pool_snapshots(session, expert=False)
         ) as pools:
-            peak_pool_limits = active_peak_pool_limits(snapshot_peak_pools(pools))
+            peak_pool_limits = active_peak_pool_limits(pools)
         with (
             self._data.query(
                 lambda session: load_skin_image_resolutions(session, skin_ids)

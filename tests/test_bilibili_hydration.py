@@ -12,10 +12,15 @@ from tests.helpers.bilibili import build_test_bilibili_service
 SEER_UID = 1310714247
 
 
-def _item(*, body: str = "", item_id: str = "123456") -> dict[str, Any]:
+def _item(
+    *,
+    body: str = "",
+    item_id: str = "123456",
+    truncated: bool = False,
+) -> dict[str, Any]:
     major: dict[str, Any]
     if body:
-        major = {"opus": {"summary": {"text": body}, "pics": []}}
+        major = {"opus": {"summary": {"text": body, "has_more": truncated}, "pics": []}}
     else:
         major = {"draw": {"items": [{"src": "https://example.test/image.png"}]}}
     return {
@@ -73,6 +78,20 @@ def test_hydrate_dynamic_item_keeps_original_when_detail_is_invalid() -> None:
 
     assert hydrated == source
     assert dynamic_content(hydrated) == ""
+
+
+def test_hydrate_dynamic_item_replaces_truncated_opus_body() -> None:
+    source = _item(body="被截断", truncated=True)
+    detail = _item(body="被截断的完整官方正文")
+
+    async def fetch_detail(_cookie: str, _dynamic_id: str) -> BiliFeedResponse:
+        return _detail_response(detail)
+
+    hydrated = asyncio.run(
+        hydrate_dynamic_item(source, cookie="cookie", fetch_detail=fetch_detail)
+    )
+
+    assert dynamic_content(hydrated) == "被截断的完整官方正文"
 
 
 def test_service_backfills_recent_empty_body_without_changing_delivery_state(

@@ -468,6 +468,11 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
   适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变
   文档；不得把新的数据库读取或展示推断放回 HTML 模板或纯 presenter。
+- 新增内容发布索引、赛季时间和 Flash 座驾素材读取已经分别迁入
+  `integrations.seer_data.new_content_repository`、`season_repository` 与
+  `flash_mount_repository`。`NewContentService`、赛季倒计时和装备服务只消费
+  脱离 Session 的值对象；新功能必须沿用这一 repository 边界，而不是在 service
+  内恢复 SQLAlchemy、JSON 或 Flash 文件访问。
 - 当前最终图片缓存仍在素材准备和 `RenderDocument` 生成之后使用
   `render_document_cache_key()`，其 data URI 确实能保证 miss 路径的像素正确性；但这
   不满足“L3 命中零 SQL/HTTP/presenter”的目标。后续必须由发布数据的 revision 和素材
@@ -651,6 +656,13 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   `tests/test_messaging_runtime_setup.py` 共 46 项通过；全量测试 `1505 passed`，
   `ruff check ironsbot tests`、`python -m compileall -q ironsbot` 与
   `git diff --check` 均通过。
+- **2026-08-14 / `origin/main` `24d54d82`、`cc86b1d6`：** 已以 V5 的服务常量和
+  Seer repository 边界吸收开服别名及新增内容竞技池变动入口。后续主线
+  `857d27d8` 将新增内容菜单重做为旧 renderer 的预览矩阵；它不能直接覆盖 V5
+  的快照/Presenter 链路，须在准备好同等的不可变 render document 后再选择性迁移。
+- **2026-08-14 / `origin/main` `32461c12`：** 已迁入 B站缺正文与 Opus 正文截断
+  的详情补全；只有详情正文更完整时才替换。V5 保留自己的 task owner 与 delivery
+  边界，未复制旧 runtime 调度路径。
 
 ## 数据读取边界记录
 
@@ -658,3 +670,13 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   `integrations.seer_data`；赛尔 service 仅保留命令编排与业务格式化。
   跨领域的正整数转换同时迁入 `core.value_coercion`，避免 repository 反向依赖
   `services.seer`。相关查询、皮肤、预告、榜单和本地排行测试共 32 项通过。
+- **2026-08-14：** 新增内容发布索引、赛季时间和 Flash 座驾素材读取分别迁入
+  `new_content_repository`、`season_repository`、`flash_mount_repository`。
+  相关聚焦测试共 65 项通过；Ruff、compileall 与 diff 检查通过。
+- **2026-08-14：** 巅峰池、投票、赛季周期及精灵快照读取迁入
+  `peak_repository`。巅峰 service、私有阵容条目解析和 renderer 只消费已脱离
+  ORM Session 的快照；巅峰查询、投票、渲染和架构边界测试共 36 项通过。
+- **2026-08-14：** 皮肤资料与商店价格读取迁入 `skin_price_repository`；价格显示
+  仍是 service 层的纯格式化规则，精灵查询只接收 `SkinDetails`。
+- **2026-08-14：** 幸运橱窗按资源 ID 补全皮肤资料的 ORM 查询迁入
+  `skin_reference_repository`；协议请求、缓存和关注偏好不变。

@@ -7,7 +7,9 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
+from ironsbot.integrations.seer_data.flash_mount_repository import (
+    load_flash_mount_image,
+)
 from ironsbot.services.seer.images import (
     ImageSourceError,
     SeerImageSource,

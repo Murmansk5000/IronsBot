@@ -132,11 +132,12 @@ docker run --name ironsbot `
 In this example, `/config/ironsbot.toml` inside the container is
 `D:\DockerData\ironsbot\config\ironsbot.toml` on Windows.
 
-Optional Docker image check/update: superusers can send `/重启机器人`;
-`/更新镜像` and `/更新Docker` are equivalent commands for the same restart flow.
-By default `config.example.toml` checks the target image on startup and before
-manual restart/update commands. When a new image exists, IronsBot starts a
-one-shot Watchtower updater and keeps the old container from starting the bot.
+Optional Docker image check/update: superusers can send `/重启机器人` for the
+restart flow. `/更新镜像` and `/更新Docker` are read-only checks first; a new
+image requires an explicit yes/y confirmation before IronsBot starts a one-shot
+Watchtower updater and keeps the old container from starting the bot. By default
+`config.example.toml` checks the target image on startup and before a manual
+restart.
 The recreated container verifies that it is running the expected image before
 it starts NoneBot, data sync, or startup notifications. If Watchtower fails,
 the old container stays in the handoff state and its Watchtower container is

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
+from ironsbot.integrations.seer_data.skin_price_repository import load_skin_details
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.query_result import (
     QueryChoice,
@@ -17,7 +18,6 @@ from ironsbot.services.seer.query_result import (
     QueryResult,
 )
 from ironsbot.services.seer.render_crash_report import render_crash_marker
-from ironsbot.services.seer.skin_price import load_skin_details
 
 if TYPE_CHECKING:
     from seerapi_models import PetORM, PetSkinORM
@@ -66,13 +66,9 @@ class PetQueryService:
         if len(choices) > PET_PROMPT_MAX_ITEMS:
             exact = self._single_character_match(arg, choices)
             if exact is not None:
-                return QueryResult(
-                    reply=await self._build_image_reply(exact.value)
-                )
+                return QueryResult(reply=await self._build_image_reply(exact.value))
             return QueryResult(
-                message=(
-                    f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
-                )
+                message=(f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词：")
             )
         return QueryResult(choices=choices)
 
@@ -80,9 +76,7 @@ class PetQueryService:
         self,
         selection: PetImageSelection,
     ) -> QueryResult[object]:
-        return QueryResult(
-            reply=await self._build_image_reply(selection)
-        )
+        return QueryResult(reply=await self._build_image_reply(selection))
 
     async def search_info(self, arg: str) -> QueryResult[int]:
         with self._data.resolve(self._data.pet, arg) as values:
@@ -93,11 +87,7 @@ class PetQueryService:
                 selected = (int(pets[0].id), str(pets[0].name))
             elif len(pets) > PET_PROMPT_MAX_ITEMS:
                 exact = next(
-                    (
-                        pet
-                        for pet in pets
-                        if len(arg) == 1 and pet.name == arg
-                    ),
+                    (pet for pet in pets if len(arg) == 1 and pet.name == arg),
                     None,
                 )
                 if exact is not None:
@@ -121,10 +111,7 @@ class PetQueryService:
         with self._data.get(self._data.pet, pet_id) as pet:
             if pet is None:
                 return QueryResult(
-                    message=(
-                        f"❌未找到精灵 {pet_id}"
-                        "（这是一个bug，请反馈给开发者）"
-                    )
+                    message=(f"❌未找到精灵 {pet_id}（这是一个bug，请反馈给开发者）")
                 )
             selected = (int(pet.id), str(pet.name))
         return QueryResult(reply=await self._build_info_reply(*selected))
@@ -163,8 +150,7 @@ class PetQueryService:
         ) as details:
             if details is not None:
                 text += (
-                    f"所属精灵：{details.pet_name}\n"
-                    f"所属系列：{details.series_name}\n"
+                    f"所属精灵：{details.pet_name}\n所属系列：{details.series_name}\n"
                 )
                 if details.card_price:
                     text += f"礼卡价格：{details.card_price}\n"
