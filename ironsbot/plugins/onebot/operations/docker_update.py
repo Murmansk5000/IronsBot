@@ -11,12 +11,17 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
+from nonebot.typing import T_State
 
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
     PluginHooks,
     active_plugin_install_context,
+)
+from ironsbot.integrations.onebot.confirmation import (
+    EventConfirmation,
+    request_event_confirmation,
 )
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
@@ -82,6 +87,29 @@ def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
             await service.check_image_update(),
         )
 
+    async def handle_image_update(matcher: Matcher, event: MessageEvent) -> None:
+        message, should_update = await service.prepare_manual_update()
+        if not should_update:
+            await finish_event_reply(matcher, event, message)
+            return
+        await request_event_confirmation(
+            matcher,
+            event,
+            EventConfirmation(
+                namespace="docker_update_confirmation",
+                check_message=message,
+                action_label="更新镜像并重启机器人",
+                executor=run_confirmed_image_update,
+            ),
+        )
+
+    async def run_confirmed_image_update(
+        _matcher: Matcher,
+        _event: MessageEvent,
+        _state: T_State,
+    ) -> str:
+        return await service.execute_manual_update()
+
     restart_matcher = registry.on_fullmatch(
         BOT_RESTART_COMMANDS,
         policy=CommandPolicy.command(
@@ -106,7 +134,7 @@ def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    update_matcher.append_handler(handle_restart)
+    update_matcher.append_handler(handle_image_update)
 
     check_update_matcher = registry.on_fullmatch(
         DOCKER_CHECK_UPDATE_COMMANDS,

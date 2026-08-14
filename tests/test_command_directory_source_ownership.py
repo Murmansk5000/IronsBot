@@ -19,7 +19,7 @@ from ironsbot.services.operations.command_text import (
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMAND,
+    NORMAL_SERVER_STATUS_COMMANDS,
 )
 from ironsbot.services.operations.data_sync_commands import (
     FORCE_MANUAL_SYNC_COMMANDS,
@@ -88,7 +88,7 @@ def test_operation_examples_use_matcher_command_sources() -> None:
     docker = _by_id(docker_command_contracts())
     sync = _by_id(data_sync_command_contracts())
 
-    assert status["server_status.query"].examples == (NORMAL_SERVER_STATUS_COMMAND,)
+    assert status["server_status.query"].examples == NORMAL_SERVER_STATUS_COMMANDS
     assert status["server_status.admin_query"].examples == (
         ADMIN_SERVER_STATUS_COMMAND,
     )

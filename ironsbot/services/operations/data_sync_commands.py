@@ -32,13 +32,13 @@ def data_sync_command_contracts() -> tuple[CommandContract, ...]:
             (
                 "db_sync.update",
                 tuple(f"/{command}" for command in MANUAL_SYNC_COMMANDS),
-                "构建远程数据并同步到机器人",
+                "检查后选择同步已发布数据，或构建上游数据后同步",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
             (
                 "db_sync.force_update",
                 tuple(f"/{command}" for command in FORCE_MANUAL_SYNC_COMMANDS),
-                "忽略本地指纹，强制同步数据",
+                "选择第 2 项时强制重建上游数据后同步",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
