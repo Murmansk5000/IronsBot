@@ -30,7 +30,7 @@ from .command_text import (
     DISABLED_BARE_ADMIN_COMMAND,
     DOCKER_UPDATE_COMMANDS,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMAND,
+    NORMAL_SERVER_STATUS_COMMANDS,
 )
 from .commands import handle_admin_status, handle_normal_status
 
@@ -128,7 +128,7 @@ def install(
         return await docker_service.execute_manual_update()
 
     normal_matcher = registry.on_fullmatch(
-        NORMAL_SERVER_STATUS_COMMAND,
+        NORMAL_SERVER_STATUS_COMMANDS,
         policy=CommandPolicy.command(
             "server_status_query",
             help_ids=("server_status.query",),
