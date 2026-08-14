@@ -38,7 +38,6 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
-    NEW_PEAK_POOL_COMMANDS,
     NEW_PETS_COMMANDS,
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
@@ -54,14 +53,14 @@ from ironsbot.services.seer.external_references import (
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     CATEGORY_NAMES,
-    NEW_CONTENT_CATEGORIES,
+    PEAK_POOL_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentSnapshot,
     format_new_content_category_count,
     format_new_content_item_description,
-    is_new_content_category_auto_expanded,
+    new_content_category_preview_items,
     new_content_category_unavailable_message,
     new_content_unavailable_message,
 )
@@ -69,6 +68,11 @@ from ironsbot.services.seer.pet_query import PetImageSelection
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import build_reply
+from .new_content_routing import (
+    available_new_content_categories,
+    send_peak_pool,
+    visible_new_content_categories,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -197,12 +201,6 @@ def _install_new_content_commands(
             None,
         ),
         (("pet",), NEW_PETS_COMMANDS, "seer.data.new_pet", "seer_pet"),
-        (
-            ("peak_pool",),
-            NEW_PEAK_POOL_COMMANDS,
-            "seer.data.new_peak_pool",
-            "seer_pet",
-        ),
         (("pet_skin",), NEW_SKINS_COMMANDS, "seer.data.new_skin", "seer_pet"),
         (("skill",), NEW_SKILLS_COMMANDS, "seer.data.new_skill", "seer_pet"),
         (
@@ -265,7 +263,7 @@ async def _start_new_content(  # noqa: PLR0913
         await matcher.finish(new_content_unavailable_message())
         return
 
-    available = _available_categories(group, event)
+    available = available_new_content_categories(group, event)
     if categories is not None and not set(categories).issubset(available):
         await matcher.finish("当前会话未开放此新增内容分类。")
         return
@@ -282,10 +280,9 @@ async def _start_new_content(  # noqa: PLR0913
             new_content_category_unavailable_message(snapshot, categories)
         )
         return
-    visible_categories: tuple[NewContentCategory, ...] = tuple(
-        category
-        for category in comparable_categories
-        if snapshot.items_for(category)
+    visible_categories = visible_new_content_categories(
+        snapshot,
+        comparable_categories,
     )
     if categories is not None and not visible_categories:
         await matcher.finish(_empty_new_content_message(snapshot, categories))
@@ -315,6 +312,8 @@ async def _start_new_content(  # noqa: PLR0913
         mintmark=group.resources.mintmark,
         equipment=group.resources.equipment,
         autocard=group.resources.autocard,
+        peak=group.resources.peak_query,
+        references=group.resources.external_references,
         menu_renderer=group.resources.new_content_menu,
     )
     state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
@@ -356,38 +355,6 @@ def _empty_new_content_message(
     return f"本周暂无{name}。"
 
 
-def _available_categories(
-    group: SeerMatcherGroup,
-    event: Event,
-) -> tuple[NewContentCategory, ...]:
-    from ironsbot.runtime.feature_policy import event_is_feature_allowed
-
-    required_features: dict[NewContentCategory, str | None] = {
-        "pet": "seer_pet",
-        "peak_pool": "seer_pet",
-        "pet_skin": "seer_pet",
-        "skill": "seer_pet",
-        "mintmark": "seer_mintmark",
-        "suit": "seer_equipment",
-        "equip": "seer_equipment",
-        "mount": "seer_equipment",
-        "achievement": None,
-        "autocard_card": "seer_autocard",
-        "autocard_role": "seer_autocard",
-        "autocard_sanctuary_effect": "seer_autocard",
-    }
-    available: list[NewContentCategory] = []
-    for category in NEW_CONTENT_CATEGORIES:
-        required_feature = required_features[category]
-        if required_feature is None or event_is_feature_allowed(
-            group.features,
-            event,
-            required_feature,
-        ):
-            available.append(category)
-    return tuple(available)
-
-
 def _is_new_content_input(event: Event) -> bool:
     return bool(_NEW_CONTENT_INPUT_PATTERN.fullmatch(event.get_plaintext().strip()))
 
@@ -403,12 +370,28 @@ def _content_prompt(
     for index, category in enumerate(layout.display_categories):
         code = chr(ord("a") + index)
         items = snapshot.items_for(category)
-        expanded = category in layout.expanded_categories or (
-            is_new_content_category_auto_expanded(
+        if category in PEAK_POOL_NEW_CONTENT_CATEGORIES:
+            choices.append(
+                PromptItem(
+                    f"↗ {CATEGORY_NAMES[category]}",
+                    f"{len(items)} 只变化",
+                    _NewContentAction("pool", category),
+                    key=code,
+                )
+            )
+            continue
+        expanded = (
+            category in layout.expanded_categories
+            and layout.auto_expand_max_items > 0
+        )
+        preview_items = (
+            new_content_category_preview_items(
                 snapshot,
                 category,
                 layout.auto_expand_max_items,
             )
+            if expanded
+            else ()
         )
         choices.append(
             PromptItem(
@@ -418,7 +401,7 @@ def _content_prompt(
                 key=code,
             )
         )
-        for item_index, item in enumerate(items, start=1):
+        for item_index, item in enumerate(preview_items, start=1):
             choices.append(
                 PromptItem(
                     item.name,
@@ -508,6 +491,18 @@ async def _resolve_new_content_selection(
             matcher,
             event,
             _content_prompt(snapshot, layout),
+        )
+        return
+    if action.kind == "pool" and action.category is not None:
+        services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
+        if not isinstance(services, _NewContentServices):
+            await matcher.finish("新增内容会话已失效，请重新发送指令。")
+            return
+        await send_peak_pool(
+            services.peak,
+            services.references,
+            matcher,
+            expert=action.category == "peak_expert_pool",
         )
         return
     if action.item is not None:
@@ -641,7 +636,7 @@ async def _select_standard_item(
     item: NewContentItem,
     services: _NewContentServices,
 ) -> Any:
-    if item.category in {"pet", "peak_pool"}:
+    if item.category == "pet":
         return await services.pet.select_info(item.entity_id)
     if item.category == "pet_skin":
         return await services.pet.select_image(
@@ -792,4 +787,6 @@ class _NewContentServices:
     mintmark: Any
     equipment: Any
     autocard: Any
+    peak: Any
+    references: Any
     menu_renderer: Any

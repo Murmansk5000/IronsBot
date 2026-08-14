@@ -13,7 +13,6 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
-    NEW_PEAK_POOL_COMMANDS,
     NEW_PETS_COMMANDS,
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
@@ -208,12 +207,6 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                     "seer.data.new_pet",
                     NEW_PETS_COMMANDS,
                     "查看本周新增精灵",
-                    {"features_all": ("seer_data", "seer_pet")},
-                ),
-                (
-                    "seer.data.new_peak_pool",
-                    NEW_PEAK_POOL_COMMANDS,
-                    "查看本周竞技池限制变化",
                     {"features_all": ("seer_data", "seer_pet")},
                 ),
                 (

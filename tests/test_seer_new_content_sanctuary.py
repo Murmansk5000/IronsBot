@@ -24,8 +24,11 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     _NewContentServices,
     _render_content_prompt_with_notice,
     _replace_prompt,
-    _select_standard_item,
+    _resolve_new_content_selection,
     _skill_detail,
+)
+from ironsbot.plugins.seer.query.commands.new_content_routing import (
+    visible_new_content_categories,
 )
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
@@ -33,6 +36,8 @@ from ironsbot.services.seer.new_content import (
     NewContentSnapshot,
 )
 from tests.helpers.onebot_events import group_message_event
+
+ROOT_PREVIEW_TOTAL_ITEMS = 9
 
 
 def test_new_content_expanded_categories_are_validated_and_deduplicated() -> None:
@@ -46,6 +51,11 @@ def test_new_content_expanded_categories_are_validated_and_deduplicated() -> Non
     with pytest.raises(ValidationError, match="expanded_categories"):
         SeerConfig.model_validate(
             {"new_content": {"expanded_categories": ["unknown"]}}
+        )
+
+    with pytest.raises(ValidationError, match="expanded_categories"):
+        SeerConfig.model_validate(
+            {"new_content": {"expanded_categories": ["peak_pool"]}}
         )
 
 
@@ -69,33 +79,6 @@ def _effect(
         },
         change_kind=change_kind,
     )
-
-
-@pytest.mark.asyncio
-async def test_peak_pool_item_selection_opens_pet_details() -> None:
-    pet = AsyncMock()
-    pet.select_info.return_value = "pet-details"
-    services = _NewContentServices(
-        pet=pet,
-        mintmark=AsyncMock(),
-        equipment=AsyncMock(),
-        autocard=AsyncMock(),
-        menu_renderer=AsyncMock(),
-    )
-    item = NewContentItem(
-        "peak_pool",
-        5000,
-        "圣灵谱尼",
-        5000,
-        {"previous_limit": 0, "current_limit": 2},
-        "modified",
-    )
-
-    result = await _select_standard_item(item, services)
-
-    assert result == "pet-details"
-    pet.select_info.assert_awaited_once_with(5000)
-    services.equipment.select.assert_not_awaited()
 
 
 class _RecordingMatcher:
@@ -169,6 +152,8 @@ def test_new_content_category_render_sends_notice_before_replacement_menu(
                 mintmark=object(),
                 equipment=object(),
                 autocard=object(),
+                peak=object(),
+                references=object(),
                 menu_renderer=renderer,
             ),
         }
@@ -295,7 +280,7 @@ def test_new_content_root_menu_uses_configured_explicit_item_keys() -> None:
         _NewContentMenuLayout(
             display_categories=("pet", "skill"),
             expanded_categories=frozenset({"pet"}),
-            auto_expand_max_items=0,
+            auto_expand_max_items=5,
         ),
     )
 
@@ -305,14 +290,13 @@ def test_new_content_root_menu_uses_configured_explicit_item_keys() -> None:
         "▶ 新增技能",
     ]
     first_item = prompt.get_item_by_input("a1")
-    second_item = prompt.get_item_by_input("b1")
     assert first_item is not None and first_item.value.item == pet
-    assert second_item is not None and second_item.value.item == skill
+    assert prompt.get_item_by_input("b1") is None
     assert "a1. 超级噗纽" in prompt.build_message()
     assert "a. ▼ 新增精灵（1 项新增）" in prompt.build_message()
 
 
-def test_new_content_root_menu_keeps_folded_items_selectable() -> None:
+def test_new_content_root_menu_keeps_unconfigured_categories_folded() -> None:
     pet = NewContentItem(
         category="pet",
         entity_id=4927,
@@ -346,17 +330,13 @@ def test_new_content_root_menu_keeps_folded_items_selectable() -> None:
     )
 
     assert [item.key for item in prompt.items if item.is_visible] == ["a", "b"]
-    first_item = prompt.get_item_by_input("a1")
     skill_category = prompt.get_item_by_input("b")
-    assert first_item is not None and first_item.value.item == pet
-    assert all(
-        prompt.get_item_by_input(f"b{index}") is not None
-        for index in range(1, 7)
-    )
+    assert prompt.get_item_by_input("a1") is None
+    assert all(prompt.get_item_by_input(f"b{index}") is None for index in range(1, 7))
     assert skill_category is not None and skill_category.value.category == "skill"
 
 
-def test_new_content_root_menu_auto_expands_short_categories() -> None:
+def test_new_content_root_menu_does_not_auto_expand_short_categories() -> None:
     pet = NewContentItem("pet", 4927, "超级噗纽", 4927, {})
     snapshot = NewContentSnapshot(
         baseline_established=True,
@@ -370,8 +350,134 @@ def test_new_content_root_menu_auto_expands_short_categories() -> None:
         _NewContentMenuLayout(display_categories=("pet",)),
     )
 
-    assert "a. ▼ 新增精灵（1 项新增）" in prompt.build_message()
-    assert "a1. 超级噗纽" in prompt.build_message()
+    assert "a. ▶ 新增精灵（1 项新增）" in prompt.build_message()
+    assert "a1. 超级噗纽" not in prompt.build_message()
+
+
+def test_new_content_root_preview_caps_items_but_focused_menu_keeps_all() -> None:
+    mintmarks = tuple(
+        NewContentItem("mintmark", index, f"刻印 {index}", index, {})
+        for index in range(1, ROOT_PREVIEW_TOTAL_ITEMS + 1)
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=mintmarks,
+    )
+    root_layout = _NewContentMenuLayout(
+        display_categories=("mintmark",),
+        expanded_categories=frozenset({"mintmark"}),
+        auto_expand_max_items=5,
+    )
+
+    root_prompt = _content_prompt(snapshot, root_layout)
+    focused_prompt = _content_prompt(
+        snapshot,
+        _focus_new_content_category(root_layout, "mintmark"),
+    )
+
+    assert [item.key for item in root_prompt.items if item.is_visible] == [
+        "a",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+    ]
+    assert root_prompt.get_item_by_input("a6") is None
+    assert len(focused_prompt.items) == ROOT_PREVIEW_TOTAL_ITEMS
+    assert focused_prompt.get_item_by_input(str(ROOT_PREVIEW_TOTAL_ITEMS)) is not None
+
+
+def test_pool_categories_without_changes_are_hidden() -> None:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(NewContentItem("pet", 1, "新增精灵", 1, {}),),
+    )
+
+    assert visible_new_content_categories(
+        snapshot,
+        ("pet", "peak_pool", "peak_expert_pool"),
+    ) == ("pet",)
+
+
+@pytest.mark.asyncio
+async def test_pool_category_letters_send_existing_full_pool_images(
+    monkeypatch: Any,
+) -> None:
+    standard = NewContentItem(
+        "peak_pool",
+        1,
+        "标准池精灵",
+        1,
+        {"previous_limit": 0, "current_limit": 2},
+        "modified",
+    )
+    expert = NewContentItem(
+        "peak_expert_pool",
+        2,
+        "专家池精灵",
+        2,
+        {"previous_limit": None, "current_limit": 0},
+        "modified",
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(standard, expert),
+    )
+    prompt = _content_prompt(
+        snapshot,
+        _NewContentMenuLayout(
+            display_categories=("peak_pool", "peak_expert_pool")
+        ),
+    )
+    send_pool = AsyncMock()
+    monkeypatch.setattr(
+        "ironsbot.plugins.seer.query.commands.data_queries.send_peak_pool",
+        send_pool,
+    )
+    services = _NewContentServices(
+        pet=object(),
+        mintmark=object(),
+        equipment=object(),
+        autocard=object(),
+        peak=object(),
+        references=object(),
+        menu_renderer=object(),
+    )
+    matcher = _RecordingMatcher(
+        {
+            NEW_CONTENT_SNAPSHOT_KEY: snapshot,
+            NEW_CONTENT_SERVICES_KEY: services,
+        }
+    )
+    standard_choice = prompt.get_item_by_input("a")
+    expert_choice = prompt.get_item_by_input("b")
+    assert standard_choice is not None and expert_choice is not None
+
+    await _resolve_new_content_selection(
+        standard_choice,
+        matcher,  # type: ignore[arg-type]
+        group_message_event(),
+    )
+    await _resolve_new_content_selection(
+        expert_choice,
+        matcher,  # type: ignore[arg-type]
+        group_message_event(),
+    )
+
+    assert [item.name for item in prompt.items] == [
+        "↗ 竞技池变化",
+        "↗ 专家池变化",
+    ]
+    assert all(item.value.item is None for item in prompt.items)
+    assert send_pool.await_args_list[0].kwargs == {"expert": False}
+    assert send_pool.await_args_list[1].kwargs == {"expert": True}
 
 
 def test_new_content_root_menu_separates_added_and_modified_counts() -> None:

@@ -14,8 +14,13 @@ from ironsbot.services.seer.new_content import (
 )
 from ironsbot.services.seer.rendering import new_content as new_content_rendering
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
+from ironsbot.services.seer.rendering.new_content_pool_changes import (
+    pool_change_preview,
+)
 
 FLASH_TEST_MOUNT_ID = 1301170
+EXPECTED_STANDARD_POOL_CHANGES = 17
+EXPERT_POOL_DIRECTION_CHANGES = 5
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -249,7 +254,7 @@ async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> 
     )
     await render_new_content_menu(
         _Cache(),  # type: ignore[arg-type]
-        _Data(),  # type: ignore[arg-type]
+        _RichData({}),  # type: ignore[arg-type]
         _Images(fail_keys={("mintmark", "2")}),  # type: ignore[arg-type]
         _Autocard(),  # type: ignore[arg-type]
         render_html,
@@ -405,6 +410,52 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
     assert captured["focused_category"] is None
 
 
+@pytest.mark.asyncio
+async def test_root_render_caps_configured_category_preview_at_five_items() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=tuple(_item("mintmark", index) for index in range(1, 10)),
+    )
+
+    await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _RichData({}),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("mintmark",),
+        None,
+        expanded_categories=frozenset({"mintmark"}),
+        auto_expand_max_items=5,
+    )
+
+    assert [row["code"] for row in captured["items"]] == [
+        "a",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+    ]
+
+
 def test_new_content_render_cache_key_includes_expanded_categories() -> None:
     snapshot = NewContentSnapshot(
         baseline_established=True,
@@ -507,26 +558,130 @@ def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
     assert details.stats_total == "650"
 
 
-def test_peak_pool_menu_details_show_limit_transition() -> None:
-    pet = SimpleNamespace(
-        id=5000,
-        type=SimpleNamespace(id=13, name="圣灵"),
-        gender=SimpleNamespace(id=0, name="无性别"),
+def test_peak_pool_preview_places_all_seventeen_changes_in_matrix() -> None:
+    transitions = (
+        *((0, 2) for _ in range(3)),
+        *((2, 0) for _ in range(3)),
+        *((2, 3) for _ in range(2)),
+        *((3, 2) for _ in range(2)),
+        *((3, None) for _ in range(3)),
+        (None, 2),
+        *((None, 3) for _ in range(3)),
     )
-    data = _RichData({(_RichData.pet, 5000): pet})
-    item = _item("peak_pool", 5000, previous_limit=0, current_limit=2)
+    items = tuple(
+        _item(
+            "peak_pool",
+            index,
+            previous_limit=previous,
+            current_limit=current,
+        )
+        for index, (previous, current) in enumerate(transitions, start=1)
+    )
 
-    details = new_content_rendering._item_details(
-        data,  # type: ignore[arg-type]
+    preview = pool_change_preview("peak_pool", items)
+
+    assert preview["title"] == (
+        f"竞技池变化｜{EXPECTED_STANDARD_POOL_CHANGES} 只"
+    )
+    assert preview["headers"] == ("到限0", "到限2", "到限3", "到不限")
+    assert tuple(row["label"] for row in preview["matrix_rows"]) == (
+        "从限0",
+        "从限2",
+        "从限3",
+        "从不限",
+    )
+    assert sum(
+        len(pets)
+        for row in preview["matrix_rows"]
+        for pets in row["cells"]
+    ) == EXPECTED_STANDARD_POOL_CHANGES
+    assert preview["other_rows"] == ()
+
+
+def test_expert_pool_preview_uses_two_directions_and_keeps_unknown_limits() -> None:
+    items = tuple(
+        _item(
+            "peak_expert_pool",
+            index,
+            previous_limit=None if index <= EXPERT_POOL_DIRECTION_CHANGES else 0,
+            current_limit=0 if index <= EXPERT_POOL_DIRECTION_CHANGES else None,
+        )
+        for index in range(1, 11)
+    )
+    unexpected = _item(
+        "peak_expert_pool",
+        11,
+        previous_limit=7,
+        current_limit=0,
+    )
+
+    preview = pool_change_preview(
+        "peak_expert_pool",
+        (*items, unexpected),
+    )
+
+    assert [row["direction"] for row in preview["direction_rows"]] == [
+        "不限 → 限0",
+        "限0 → 不限",
+    ]
+    assert [len(row["pets"]) for row in preview["direction_rows"]] == [
+        EXPERT_POOL_DIRECTION_CHANGES,
+        EXPERT_POOL_DIRECTION_CHANGES,
+    ]
+    assert preview["other_rows"][0]["direction"] == "限7 → 限0"
+    assert preview["other_rows"][0]["pets"] == (
+        {"entity_id": 11, "image": None},
+    )
+
+
+@pytest.mark.asyncio
+async def test_pool_render_fetches_pet_heads_without_exposing_names() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *args: object,
+        **kwargs: object,
+    ) -> bytes:
+        del template_path, template_name, args, kwargs
+        captured.update(templates)
+        return b"menu-image"
+
+    images = _Images()
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(
+            NewContentItem(
+                "peak_pool",
+                5000,
+                "不应显示的精灵名",
+                5000,
+                {"previous_limit": 0, "current_limit": 2},
+                "modified",
+            ),
+        ),
+    )
+
+    await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        images,  # type: ignore[arg-type]
         _Autocard(),  # type: ignore[arg-type]
-        item,
+        render_html,  # type: ignore[arg-type]
+        snapshot,
+        ("peak_pool",),
+        None,
     )
 
-    assert details.metadata == "精灵 ID：5000"
-    assert details.description == "限0 → 限2"
-    assert new_content_rendering._item_image_request(data, item) == (
-        "pet_head",
-        5000,
+    assert images.requests == [("pet_head", "5000")]
+    assert "不应显示的精灵名" not in str(captured["items"])
+    preview = captured["items"][0]["pool_preview"]
+    assert preview["matrix_rows"][0]["cells"][1][0]["image"].startswith(
+        "data:image/png;base64,"
     )
 
 

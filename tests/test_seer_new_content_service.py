@@ -112,11 +112,18 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
 def test_new_content_order_places_skills_before_mintmarks() -> None:
     assert NEW_CONTENT_CATEGORIES[:6] == (
         "pet",
-        "peak_pool",
         "pet_skin",
         "skill",
         "mintmark",
         "suit",
+        "equip",
+    )
+    pool_index = NEW_CONTENT_CATEGORIES.index("peak_pool")
+    assert NEW_CONTENT_CATEGORIES[pool_index - 1 : pool_index + 3] == (
+        "achievement",
+        "peak_pool",
+        "peak_expert_pool",
+        "autocard_card",
     )
 
 
@@ -131,6 +138,18 @@ def test_peak_pool_change_description_distinguishes_zero_from_unlimited() -> Non
     )
 
     assert format_new_content_item_description(change) == "修改｜5000｜限0 → 不限"
+
+    expert_change = NewContentItem(
+        "peak_expert_pool",
+        5001,
+        "测试精灵",
+        5001,
+        {"previous_limit": None, "current_limit": 0},
+        "modified",
+    )
+    assert format_new_content_item_description(expert_change) == (
+        "修改｜5001｜不限 → 限0"
+    )
 
 
 def test_category_count_separates_additions_and_modifications() -> None:
