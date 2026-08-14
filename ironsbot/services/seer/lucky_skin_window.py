@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
 from struct import unpack
@@ -16,8 +17,6 @@ from seerapi_models import PetSkinORM
 from sqlmodel import Session, col, select
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ironsbot.config.models.seer import LuckySkinWindowConfig
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
@@ -28,6 +27,11 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
 logger = logging.getLogger(__name__)
+
+LuckySkinWindowRenderer = Callable[
+    ["LuckySkinWindowResult", tuple["LuckySkinWindowOffer", ...]],
+    Awaitable[bytes],
+]
 
 LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY = "lucky_skin_window"
 _GET_LUCKY_SKIN_WINDOW = 45866
@@ -175,6 +179,7 @@ class LuckySkinWindowService:
         notification_sender: LuckySkinWindowNotificationSender,
         *,
         today: Callable[[], date] | None = None,
+        renderer: LuckySkinWindowRenderer | None = None,
     ) -> None:
         self._config = config
         self._features = features
@@ -185,6 +190,7 @@ class LuckySkinWindowService:
         self._cache = cache
         self._notification_sender = notification_sender
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
+        self._renderer = renderer
         self._accounts = {configured.actor: configured for configured in accounts}
         if len(self._accounts) != len(accounts):
             raise LuckySkinWindowConfigurationError.duplicate_actor()
@@ -420,13 +426,42 @@ class LuckySkinWindowService:
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
     def format_result(self, result: LuckySkinWindowResult, *, actor: ActorRef) -> str:
-        watched_ids = frozenset(self._watched_skin_ids(actor))
+        offers = self._offers_for_actor(result, actor)
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
-        for index, offer in enumerate(result.offers, start=1):
-            marker = " ★ 关注" if offer.skin_id in watched_ids else ""
+        for index, offer in enumerate(offers, start=1):
+            marker = " ★ 关注" if offer.watched else ""
             identifiers = _skin_identifiers(offer.skin_id, offer.resource_id)
             lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
         return "\n".join(lines)
+
+    async def render_result(
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        actor: ActorRef,
+    ) -> bytes | None:
+        if self._renderer is None:
+            return None
+        try:
+            return await self._renderer(result, self._offers_for_actor(result, actor))
+        except Exception:
+            logger.exception(
+                "lucky skin window render failed: player_id=%s day=%s",
+                result.player_id,
+                result.day,
+            )
+            return None
+
+    def _offers_for_actor(
+        self,
+        result: LuckySkinWindowResult,
+        actor: ActorRef,
+    ) -> tuple[LuckySkinWindowOffer, ...]:
+        watched_ids = frozenset(self._watched_skin_ids(actor))
+        return tuple(
+            replace(offer, watched=offer.skin_id in watched_ids)
+            for offer in result.offers
+        )
 
     def _watched_skin_ids(self, actor: ActorRef) -> tuple[int, ...]:
         self._validated_account_for_actor(actor)
