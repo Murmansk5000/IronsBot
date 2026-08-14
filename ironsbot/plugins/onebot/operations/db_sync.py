@@ -20,9 +20,14 @@ from ironsbot.core.plugin_install import (
     PluginHooks,
     active_plugin_install_context,
 )
+from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    MatcherFactory,
+    bind_async,
+)
+from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.operations.data_sync_commands import (
     data_sync_command_contracts,
@@ -31,6 +36,8 @@ from ironsbot.services.operations.data_sync_commands import (
 )
 
 if TYPE_CHECKING:
+    from nonebot.typing import T_State
+
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.scheduler import Scheduler
@@ -44,6 +51,9 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
+
+DATA_SYNC_FORCE_STATE_KEY = "data_sync_force"
+DATA_SYNC_ACTION_NAMESPACE = "data_sync_action"
 
 
 def _help_visible(event: Event, *, features: FeatureService) -> bool:
@@ -79,18 +89,46 @@ def _is_force_manual_sync_event(event: Event) -> bool:
 def _install(registry: MatcherFactory, service: DataSyncService) -> None:
     async def handle_sync(matcher: Matcher, event: MessageEvent) -> None:
         force = _is_force_manual_sync_event(event)
-        message, should_run = service.prepare_manual(force=force)
+        message, should_run = await service.prepare_manual(force=force)
         if not should_run:
             await finish_event_reply(
                 matcher,
                 event,
                 message,
             )
-        await send_event_reply(matcher, event, message)
+            return
+        matcher.state[DATA_SYNC_FORCE_STATE_KEY] = force
+        await enter_event_reply_conversation(
+            matcher,
+            event,
+            namespace=DATA_SYNC_ACTION_NAMESPACE,
+            handlers=[bind_async(handle_sync_action)],
+            reply_check=lambda reply: _is_manual_action_reply(reply, service),
+            prompt=message,
+        )
+
+    async def handle_sync_action(
+        matcher: Matcher,
+        event: MessageEvent,
+        state: T_State,
+    ) -> None:
+        choice = event.get_plaintext().strip()
+        if choice == "0":
+            await finish_event_reply(matcher, event, "已取消更新。")
+            return
+        force = bool(state.get(DATA_SYNC_FORCE_STATE_KEY, False))
+        action = service.manual_action_for_choice(choice, force=force)
+        if action is None:
+            await finish_event_reply(
+                matcher,
+                event,
+                "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
+            )
+            return
         await finish_event_reply(
             matcher,
             event,
-            await service.run_manual(force=force),
+            await service.run_manual(action=action, force=force),
         )
 
     matcher = registry.on_message(
@@ -104,6 +142,13 @@ def _install(registry: MatcherFactory, service: DataSyncService) -> None:
         block=True,
     )
     matcher.append_handler(handle_sync)
+
+
+def _is_manual_action_reply(event: MessageEvent, service: DataSyncService) -> bool:
+    choice = event.get_plaintext().strip()
+    return choice == "0" or (
+        service.manual_action_for_choice(choice, force=False) is not None
+    )
 
 
 def plugin_contribution(
