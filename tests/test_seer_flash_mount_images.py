@@ -5,7 +5,9 @@ from typing import TYPE_CHECKING, cast
 
 from sqlmodel import Session, create_engine
 
-from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
+from ironsbot.integrations.seer_data.flash_mount_repository import (
+    load_flash_mount_image,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
