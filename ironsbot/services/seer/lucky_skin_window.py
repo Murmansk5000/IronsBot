@@ -13,8 +13,9 @@ from struct import unpack
 from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
 
-from seerapi_models import PetSkinORM
-from sqlmodel import Session, col, select
+from ironsbot.integrations.seer_data.skin_reference_repository import (
+    load_skins_by_resource_id,
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import LuckySkinWindowConfig
@@ -521,7 +522,7 @@ class LuckySkinWindowService:
         if not unresolved:
             return resolved
         with self._data.query(
-            partial(_load_skin_records_by_resource_id, references=unresolved)
+            partial(load_skins_by_resource_id, references=unresolved)
         ) as skins:
             by_resource_id = {int(skin.resource_id): skin for skin in skins}
             resolved.update(
@@ -573,17 +574,6 @@ def _required_password(account: PlayerAccount) -> str:
     if account.password is None:
         raise LuckySkinWindowNotConfiguredError
     return account.password
-
-
-def _load_skin_records_by_resource_id(
-    session: Session,
-    *,
-    references: frozenset[int],
-) -> tuple[PetSkinORM, ...]:
-    if not references:
-        return ()
-    statement = select(PetSkinORM).where(col(PetSkinORM.resource_id).in_(references))
-    return tuple(session.exec(statement).all())
 
 
 def _watch_item(skin: object | None, fallback_id: int) -> LuckySkinWatchItem:

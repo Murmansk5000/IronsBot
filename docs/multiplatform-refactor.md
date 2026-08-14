@@ -679,3 +679,5 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   ORM Session 的快照；巅峰查询、投票、渲染和架构边界测试共 36 项通过。
 - **2026-08-14：** 皮肤资料与商店价格读取迁入 `skin_price_repository`；价格显示
   仍是 service 层的纯格式化规则，精灵查询只接收 `SkinDetails`。
+- **2026-08-14：** 幸运橱窗按资源 ID 补全皮肤资料的 ORM 查询迁入
+  `skin_reference_repository`；协议请求、缓存和关注偏好不变。
