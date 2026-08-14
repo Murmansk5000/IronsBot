@@ -222,14 +222,20 @@ async def test_peak_pool_query_combines_current_and_previous_positions() -> None
         id=1,
         name="当前精灵",
         resource_id=1001,
-        type=SimpleNamespace(id=4),
+        type_id=4,
     )
-    removed_pet = SimpleNamespace(
-        id=2,
-        name="移出精灵",
-        resource_id=1002,
-        type=SimpleNamespace(id=5),
-    )
+
+    class SessionBoundPet:
+        id = 2
+        name = "移出精灵"
+        resource_id = 1002
+
+        @property
+        def type_id(self) -> int:
+            assert data.get_many_open
+            return 5
+
+    removed_pet = SessionBoundPet()
     data.query_result = (
         SimpleNamespace(
             id=1,
@@ -334,7 +340,7 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
             id=7,
             name="雷伊",
             resource_id=1007,
-            type=SimpleNamespace(id=4),
+            type_id=4,
         )
     }
     rendered: dict[str, Any] = {}
@@ -385,7 +391,7 @@ async def test_peak_vote_snapshots_pets_before_headless_requests(
                     id=7,
                     name="雷伊",
                     resource_id=1007,
-                    type=SimpleNamespace(id=4),
+                    type_id=4,
                 )
             ],
         ),

@@ -15,7 +15,6 @@ from ironsbot.services.seer.query_result import (
     QueryReply,
     QueryResult,
 )
-from ironsbot.services.seer.render_crash_report import render_crash_marker
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 from ironsbot.services.seer.skin_price import load_skin_details
 
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 PET_PROMPT_MAX_ITEMS = 20
 PetInfoRenderer = Callable[[PetORM], Awaitable[bytes]]
+PetRenderFailureNotifier = Callable[[str], Awaitable[object]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,10 +41,12 @@ class PetQueryService:
         data: SeerDataAccess,
         images: SeerImageSource,
         render_info: PetInfoRenderer,
+        render_failure_notifier: PetRenderFailureNotifier | None = None,
     ) -> None:
         self._data = data
         self._images = images
         self._render_info = render_info
+        self._render_failure_notifier = render_failure_notifier
 
     async def search_image(
         self,
@@ -183,13 +185,22 @@ class PetQueryService:
             pet_name,
             resource_id,
         )
-        with render_crash_marker(
-            operation="pet_info_render",
-            pet_id=pet_id,
-            pet_name=pet_name,
-            resource_id=resource_id,
-        ):
+        try:
             image = await self._render_info(pet)
+        except Exception as error:
+            logger.exception(
+                "pet info render failed: pet_id=%s pet_name=%s resource_id=%s",
+                pet_id,
+                pet_name,
+                resource_id,
+            )
+            await self._notify_render_failure(
+                pet_id=pet_id,
+                pet_name=pet_name,
+                resource_id=resource_id,
+                error=error,
+            )
+            raise
         logger.info(
             "rendered pet info image: pet_id=%s pet_name=%s bytes=%s",
             pet_id,
@@ -197,6 +208,31 @@ class PetQueryService:
             len(image),
         )
         return QueryReply(image=image)
+
+    async def _notify_render_failure(
+        self,
+        *,
+        pet_id: int,
+        pet_name: str,
+        resource_id: int,
+        error: Exception,
+    ) -> None:
+        if self._render_failure_notifier is None:
+            return
+        message = (
+            "⚠️ 精灵信息渲染失败。\n"
+            f"精灵：{pet_name}\n"
+            f"精灵ID：{pet_id}\n"
+            f"资源ID：{resource_id}\n"
+            f"异常类型：{type(error).__name__}"
+        )
+        try:
+            await self._render_failure_notifier(message)
+        except Exception:
+            logger.exception(
+                "pet render failure notice failed: pet_id=%s",
+                pet_id,
+            )
 
     @staticmethod
     def _image_choices(

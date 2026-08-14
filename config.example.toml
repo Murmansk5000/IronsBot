@@ -511,7 +511,7 @@ enabled = true
 # headless_seer_notice, render_crash_notice, red_packet_notice, admin_notice,
 # per-account Bilibili dynamic pushes and seer_activity_push.
 # 内置推送项包括机器人启动、启动镜像检查、启动数据同步、启动AI接口检查、启动时钟偏差检查、AI 聊天异常、
-# B站登录、无头赛尔号、精灵渲染崩溃、红包提醒、其它管理通知、
+# B站登录、无头赛尔号、当前进程捕获的精灵渲染异常、红包提醒、其它管理通知、
 # 按账号拆分的 B站动态和活动结束提醒。
 commands = ["td", "退订"]
 # Default: ["订阅", "恢复订阅", "推送管理"]
