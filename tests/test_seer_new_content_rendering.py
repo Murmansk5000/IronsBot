@@ -507,6 +507,29 @@ def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
     assert details.stats_total == "650"
 
 
+def test_peak_pool_menu_details_show_limit_transition() -> None:
+    pet = SimpleNamespace(
+        id=5000,
+        type=SimpleNamespace(id=13, name="圣灵"),
+        gender=SimpleNamespace(id=0, name="无性别"),
+    )
+    data = _RichData({(_RichData.pet, 5000): pet})
+    item = _item("peak_pool", 5000, previous_limit=0, current_limit=2)
+
+    details = new_content_rendering._item_details(
+        data,  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        item,
+    )
+
+    assert details.metadata == "精灵 ID：5000"
+    assert details.description == "限0 → 限2"
+    assert new_content_rendering._item_image_request(data, item) == (
+        "pet_head",
+        5000,
+    )
+
+
 def test_skill_menu_details_match_pet_skill_fields() -> None:
     electric_type_id = 5
     expected_power = 150

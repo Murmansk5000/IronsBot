@@ -12,6 +12,7 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentService,
     format_new_content_category_count,
+    format_new_content_item_description,
 )
 
 if TYPE_CHECKING:
@@ -109,13 +110,27 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
 
 
 def test_new_content_order_places_skills_before_mintmarks() -> None:
-    assert NEW_CONTENT_CATEGORIES[:5] == (
+    assert NEW_CONTENT_CATEGORIES[:6] == (
         "pet",
+        "peak_pool",
         "pet_skin",
         "skill",
         "mintmark",
         "suit",
     )
+
+
+def test_peak_pool_change_description_distinguishes_zero_from_unlimited() -> None:
+    change = NewContentItem(
+        "peak_pool",
+        5000,
+        "圣灵谱尼",
+        5000,
+        {"previous_limit": 0, "current_limit": None},
+        "modified",
+    )
+
+    assert format_new_content_item_description(change) == "修改｜5000｜限0 → 不限"
 
 
 def test_category_count_separates_additions_and_modifications() -> None:

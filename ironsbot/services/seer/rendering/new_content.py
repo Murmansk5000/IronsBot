@@ -29,6 +29,7 @@ from ironsbot.services.seer.render_paths import (
 )
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
+from .new_content_peak_pool_details import peak_pool_details
 from .new_content_skill_details import (
     SKILL_CATEGORY_ATTRIBUTE as _SKILL_CATEGORY_ATTRIBUTE,
 )
@@ -97,7 +98,6 @@ async def render_new_content_menu(  # noqa: PLR0913
     auto_expand_max_items: int = 5,
 ) -> bytes:
     """Render the active categories and items without requiring every asset."""
-
     content_key = _cache_key(
         snapshot,
         display_categories,
@@ -314,6 +314,7 @@ def _item_details(
 
     resolvers = {
         "pet": lambda: _pet_details(data, item),
+        "peak_pool": lambda: peak_pool_details(data, item),
         "pet_skin": lambda: _skin_details(data, item),
         "skill": lambda: _skill_details(data, item),
         "mintmark": lambda: _mintmark_details(data, item),
@@ -634,7 +635,7 @@ def _item_image_request(
     data: SeerDataAccess,
     item: NewContentItem,
 ) -> tuple[str, int] | None:
-    if item.category == "pet":
+    if item.category in {"pet", "peak_pool"}:
         return "pet_head", int(item.payload.get("resource_id", item.entity_id))
     if item.category == "pet_skin":
         return "pet_head", _skin_head_resource_id(data, item)
@@ -650,7 +651,7 @@ def _item_image_request(
 
 def _item_requires_image(item: NewContentItem) -> bool:
     if item.category in {
-        "pet",
+        "pet", "peak_pool",
         "pet_skin",
         "mintmark",
         "suit",

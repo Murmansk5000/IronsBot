@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 NewContentCategory = Literal[
     "achievement",
     "pet",
+    "peak_pool",
     "pet_skin",
     "skill",
     "mintmark",
@@ -33,6 +34,7 @@ NewContentCategory = Literal[
 
 NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "pet",
+    "peak_pool",
     "pet_skin",
     "skill",
     "mintmark",
@@ -57,6 +59,7 @@ AUTOCARD_NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
 CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "achievement": "新增成就",
     "pet": "新增精灵",
+    "peak_pool": "竞技池变化",
     "pet_skin": "新增皮肤",
     "skill": "新增技能",
     "mintmark": "新增刻印",
@@ -163,7 +166,7 @@ class NewContentService:
             return snapshot
 
 
-def format_new_content_item_description(item: NewContentItem) -> str:
+def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: PLR0911
     """Keep text and rendered new-content menus on the same item wording."""
 
     change = "修改" if item.change_kind == "modified" else "新增"
@@ -175,6 +178,10 @@ def format_new_content_item_description(item: NewContentItem) -> str:
     if item.category == "pet_skin":
         pet_name = str(item.payload.get("pet_name", ""))
         return f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
+    if item.category == "peak_pool":
+        previous_limit = _format_peak_pool_limit(item.payload.get("previous_limit"))
+        current_limit = _format_peak_pool_limit(item.payload.get("current_limit"))
+        return f"修改｜{item.entity_id}｜{previous_limit} → {current_limit}"
     if item.category == "skill":
         pets = item.payload.get("pets", [])
         names = (
@@ -199,6 +206,15 @@ def format_new_content_item_description(item: NewContentItem) -> str:
         phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
         return f"{change}｜{sanctuary}{pet}｜{phase}"
     return f"{change}｜{item.entity_id}"
+
+
+def _format_peak_pool_limit(value: object) -> str:
+    if value is None:
+        return "不限"
+    try:
+        return f"限{int(value)}"
+    except (TypeError, ValueError):
+        return "未知"
 
 
 def _load_snapshot(session: Session) -> NewContentSnapshot:

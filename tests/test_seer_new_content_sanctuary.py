@@ -1,5 +1,6 @@
 import asyncio
 from typing import Any, Literal
+from unittest.mock import AsyncMock
 
 import nonebot
 import pytest
@@ -23,6 +24,7 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     _NewContentServices,
     _render_content_prompt_with_notice,
     _replace_prompt,
+    _select_standard_item,
     _skill_detail,
 )
 from ironsbot.services.seer.new_content import (
@@ -67,6 +69,33 @@ def _effect(
         },
         change_kind=change_kind,
     )
+
+
+@pytest.mark.asyncio
+async def test_peak_pool_item_selection_opens_pet_details() -> None:
+    pet = AsyncMock()
+    pet.select_info.return_value = "pet-details"
+    services = _NewContentServices(
+        pet=pet,
+        mintmark=AsyncMock(),
+        equipment=AsyncMock(),
+        autocard=AsyncMock(),
+        menu_renderer=AsyncMock(),
+    )
+    item = NewContentItem(
+        "peak_pool",
+        5000,
+        "圣灵谱尼",
+        5000,
+        {"previous_limit": 0, "current_limit": 2},
+        "modified",
+    )
+
+    result = await _select_standard_item(item, services)
+
+    assert result == "pet-details"
+    pet.select_info.assert_awaited_once_with(5000)
+    services.equipment.select.assert_not_awaited()
 
 
 class _RecordingMatcher:

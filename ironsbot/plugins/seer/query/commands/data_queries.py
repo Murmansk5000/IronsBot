@@ -38,6 +38,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
+    NEW_PEAK_POOL_COMMANDS,
     NEW_PETS_COMMANDS,
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
@@ -196,6 +197,12 @@ def _install_new_content_commands(
             None,
         ),
         (("pet",), NEW_PETS_COMMANDS, "seer.data.new_pet", "seer_pet"),
+        (
+            ("peak_pool",),
+            NEW_PEAK_POOL_COMMANDS,
+            "seer.data.new_peak_pool",
+            "seer_pet",
+        ),
         (("pet_skin",), NEW_SKINS_COMMANDS, "seer.data.new_skin", "seer_pet"),
         (("skill",), NEW_SKILLS_COMMANDS, "seer.data.new_skill", "seer_pet"),
         (
@@ -357,6 +364,7 @@ def _available_categories(
 
     required_features: dict[NewContentCategory, str | None] = {
         "pet": "seer_pet",
+        "peak_pool": "seer_pet",
         "pet_skin": "seer_pet",
         "skill": "seer_pet",
         "mintmark": "seer_mintmark",
@@ -633,7 +641,7 @@ async def _select_standard_item(
     item: NewContentItem,
     services: _NewContentServices,
 ) -> Any:
-    if item.category == "pet":
+    if item.category in {"pet", "peak_pool"}:
         return await services.pet.select_info(item.entity_id)
     if item.category == "pet_skin":
         return await services.pet.select_image(
