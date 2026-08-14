@@ -155,12 +155,14 @@ async def test_pool_cache_key_changes_with_weekly_content_version() -> None:
     assert renders == EXPECTED_RENDER_COUNT
 
 
-def test_pool_template_uses_opacity_without_transition_arrows() -> None:
+def test_pool_template_uses_grayscale_without_transparency_or_arrows() -> None:
     template = (
         Path(__file__).parents[1]
         / "ironsbot/services/seer/rendering/templates/peak_pool/template.html.j2"
     ).read_text(encoding="utf-8")
 
-    assert ".pet-entry.historical { opacity: 0.35; }" in template
+    assert ".pet-entry.historical { filter: grayscale(100%); }" in template
+    assert "opacity:" not in template
+    assert "<strong>灰度</strong>：上周所在位置" in template
     assert "transition-arrow" not in template
     assert "→" not in template
