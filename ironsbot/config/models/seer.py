@@ -118,6 +118,7 @@ RANK_LOOKUP_LIMIT_RANK_KEY_ERROR = (
 NEW_CONTENT_CATEGORY_KEYS = (
     "achievement",
     "pet",
+    "peak_pool",
     "pet_skin",
     "skill",
     "mintmark",
@@ -134,6 +135,7 @@ NEW_CONTENT_CATEGORY_ERROR = (
 NewContentCategoryKey = Literal[
     "achievement",
     "pet",
+    "peak_pool",
     "pet_skin",
     "skill",
     "mintmark",

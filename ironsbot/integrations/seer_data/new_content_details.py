@@ -51,6 +51,39 @@ _SKILL_CATEGORY_NAMES = {
 }
 
 
+def load_new_content_peak_pool_details(
+    data: SeerDataAccess,
+    item: NewContentItem,
+) -> NewContentItemDetails:
+    """Describe one official competitive-pool limit change for a pet."""
+
+    previous_limit = _peak_pool_limit_text(item.payload.get("previous_limit"))
+    current_limit = _peak_pool_limit_text(item.payload.get("current_limit"))
+    with data.get(data.pet, item.entity_id) as pet:
+        if pet is None:
+            return NewContentItemDetails(
+                metadata=f"精灵 ID：{item.entity_id}",
+                description=f"{previous_limit} → {current_limit}",
+            )
+        return NewContentItemDetails(
+            metadata=f"精灵 ID：{pet.id}",
+            description=f"{previous_limit} → {current_limit}",
+            type_id=int(pet.type.id),
+            gender_id=int(pet.gender.id),
+            type_name=str(pet.type.name),
+            gender_name=str(pet.gender.name),
+        )
+
+
+def _peak_pool_limit_text(value: object) -> str:
+    if value is None:
+        return "不限"
+    try:
+        return f"限{int(value)}"
+    except (TypeError, ValueError):
+        return "未知"
+
+
 def load_new_content_skill_details(
     data: SeerDataAccess,
     item: NewContentItem,

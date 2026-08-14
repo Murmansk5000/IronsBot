@@ -8,6 +8,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
+    NEW_PEAK_POOL_COMMANDS,
     NEW_PETS_COMMANDS,
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
@@ -33,6 +34,7 @@ def test_new_content_root_commands_cover_natural_language_aliases() -> None:
 def test_new_content_categories_use_prefix_aliases_only() -> None:
     categories = {
         "精灵": NEW_PETS_COMMANDS,
+        "竞技池": NEW_PEAK_POOL_COMMANDS,
         "皮肤": NEW_SKINS_COMMANDS,
         "技能": NEW_SKILLS_COMMANDS,
         "刻印": NEW_MINTMARKS_COMMANDS,
