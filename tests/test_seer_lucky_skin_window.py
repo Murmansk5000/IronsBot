@@ -49,7 +49,7 @@ from tests.helpers.onebot_events import private_message_event
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Awaitable, Callable, Iterator
     from pathlib import Path
 
     from ironsbot.core.feature_policy import FeatureService
@@ -212,9 +212,14 @@ class _PluginService:
     def format_result(self, _result: object, *, actor: ActorRef) -> str:
         return f"橱窗结果：{actor.id}"
 
+    async def render_result(self, _result: object, *, actor: ActorRef) -> None:
+        del actor
+
 
 def _service(
     tmp_path: Path,
+    *,
+    renderer: Callable[[object, tuple[object, ...]], Awaitable[bytes]] | None = None,
 ) -> tuple[
     LuckySkinWindowService,
     _Game,
@@ -285,6 +290,7 @@ def _service(
         SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite"),
         notification_sender,
         today=lambda: date(2026, 8, 3),
+        renderer=cast("Any", renderer),
     )
     return service, game, notification_sender, bindings, sessions
 
@@ -304,6 +310,31 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     with pytest.raises(LuckySkinWindowBindingError, match="90001"):
         asyncio.run(service.check_for_actor(_actor(1001)))
+
+
+def test_render_result_uses_the_configured_port(tmp_path: Path) -> None:
+    rendered_inputs: list[tuple[object, tuple[object, ...]]] = []
+
+    async def render(result: object, offers: tuple[object, ...]) -> bytes:
+        rendered_inputs.append((result, offers))
+        return b"lucky-window-card"
+
+    service, _game, _delivery, _bindings, _sessions = _service(
+        tmp_path,
+        renderer=render,
+    )
+
+    async def check() -> None:
+        result = await service.check_for_actor(_actor(1001))
+        assert await service.render_result(result, actor=_actor(1001)) == (
+            b"lucky-window-card"
+        )
+
+    asyncio.run(check())
+
+    assert len(rendered_inputs) == 1
+    _result, offers = rendered_inputs[0]
+    assert offers[0].watched is True
 
 
 def test_lucky_skin_response_uses_the_first_of_four_offers() -> None:
