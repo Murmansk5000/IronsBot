@@ -3,17 +3,18 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy.exc import SQLAlchemyError
+from ironsbot.integrations.seer_data.new_content_repository import (
+    NewContentIndex,
+    NewContentIndexRepositoryError,
+    load_new_content_index,
+)
 
 if TYPE_CHECKING:
-    from sqlmodel import Session
-
     from ironsbot.services.seer.data import SeerDataAccess
 
 
@@ -156,8 +157,11 @@ class NewContentService:
         self._data = data
 
     def snapshot(self) -> NewContentSnapshot:
-        with self._data.query(_load_snapshot) as snapshot:
-            return snapshot
+        try:
+            with self._data.query(load_new_content_index) as index:
+                return _snapshot_from_index(index)
+        except NewContentIndexRepositoryError as error:
+            raise NewContentIndexUnavailableError from error
 
 
 def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: PLR0911
@@ -211,98 +215,40 @@ def _format_peak_pool_limit(value: object) -> str:
         return "未知"
 
 
-def _load_snapshot(session: Session) -> NewContentSnapshot:
-    try:
-        connection = session.connection()
-        release = (
-            connection
-            .exec_driver_sql(
-                """
-            SELECT current_config_version, weekly_cycle, baseline_established
-            FROM new_content_release
-            WHERE id = 1
-            """
-            )
-            .mappings()
-            .first()
-        )
-        if release is None:
-            raise NewContentIndexUnavailableError
-        rows = (
-            connection
-            .exec_driver_sql(
-                """
-            SELECT category, entity_id, name, sort_value, payload_json, change_kind
-            FROM new_content_item
-            ORDER BY category, sort_value, entity_id
-            """
-            )
-            .mappings()
-            .all()
-        )
-        has_category_state = connection.exec_driver_sql(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type = 'table' AND name = 'new_content_category_state'
-            """
-        ).first()
-        if not has_category_state:
-            raise NewContentIndexUnavailableError
-        state_rows = (
-            connection
-            .exec_driver_sql(
-                """
-                SELECT category, comparison_ready, reason
-                FROM new_content_category_state
-                ORDER BY category
-                """
-            )
-            .mappings()
-            .all()
-        )
-    except SQLAlchemyError as error:
-        raise NewContentIndexUnavailableError from error
-
+def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
     items: list[NewContentItem] = []
-    for row in rows:
-        category = str(row["category"])
+    for row in index.items:
+        category = row.category
         if category not in NEW_CONTENT_CATEGORIES:
             continue
-        try:
-            payload = json.loads(str(row["payload_json"]))
-        except json.JSONDecodeError:
-            payload = {}
         items.append(
             NewContentItem(
                 category=category,  # type: ignore[arg-type]
-                entity_id=int(row["entity_id"]),
-                name=str(row["name"]),
-                sort_value=int(row["sort_value"]),
-                payload=payload if isinstance(payload, dict) else {},
-                change_kind=(
-                    "modified" if str(row["change_kind"]) == "modified" else "added"
-                ),
+                entity_id=row.entity_id,
+                name=row.name,
+                sort_value=row.sort_value,
+                payload=row.payload,
+                change_kind="modified" if row.change_kind == "modified" else "added",
             )
         )
     category_states: list[NewContentCategoryState] = []
-    for row in state_rows:
-        category = str(row["category"])
+    for row in index.category_states:
+        category = row.category
         if category not in NEW_CONTENT_CATEGORIES:
             continue
         category_states.append(
             NewContentCategoryState(
                 category=category,  # type: ignore[arg-type]
-                comparison_ready=bool(row["comparison_ready"]),
-                reason=str(row["reason"]),
+                comparison_ready=row.comparison_ready,
+                reason=row.reason,
             )
         )
     return NewContentSnapshot(
-        baseline_established=bool(release["baseline_established"]),
-        config_version=str(release["current_config_version"]),
+        baseline_established=index.baseline_established,
+        config_version=index.config_version,
         weekly_cycle=_current_content_date(
-            str(release["current_config_version"]),
-            str(release["weekly_cycle"]),
+            index.config_version,
+            index.weekly_cycle,
         ),
         items=tuple(items),
         category_states=tuple(category_states),
