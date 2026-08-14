@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
 
@@ -81,6 +82,34 @@ def format_sync_statuses(
         if status.message and status.message not in hidden_messages:
             lines.append(f"  说明：{status.message}")
 
+    return "\n".join(lines)
+
+
+def format_sync_check_statuses(sync_statuses: Mapping[str, Any]) -> str:
+    """Format a read-only remote fingerprint comparison."""
+
+    lines: list[str] = []
+    for name, status in sync_statuses.items():
+        state = (
+            "无需更新"
+            if status.ok and status.skipped
+            else "发现新版本"
+            if status.ok
+            else "检查失败"
+        )
+        lines.append(f"{name}：{state}")
+        lines.append(
+            "  本地："
+            f"{format_timestamp(status.local_before.timestamp)} "
+            f"sha256={format_fingerprint(status.local_before.fingerprint)}"
+        )
+        lines.append(
+            "  远端："
+            f"{format_timestamp(status.remote.timestamp)} "
+            f"sha256={format_fingerprint(status.remote.fingerprint)}"
+        )
+        if status.message:
+            lines.append(f"  说明：{status.message}")
     return "\n".join(lines)
 
 
