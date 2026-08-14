@@ -11,6 +11,7 @@ from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolut
 
 from .new_content_details import (
     NewContentItemDetails,
+    load_new_content_peak_pool_details,
     load_new_content_skill_details,
 )
 
@@ -90,6 +91,7 @@ class NewContentSnapshotBuilder:
     ) -> NewContentItemDetails:
         resolvers = {
             "pet": lambda: self._pet_details(item),
+            "peak_pool": lambda: load_new_content_peak_pool_details(self._data, item),
             "pet_skin": lambda: self._skin_details(item),
             "skill": lambda: load_new_content_skill_details(self._data, item),
             "mintmark": lambda: self._mintmark_details(item),
@@ -238,7 +240,7 @@ class NewContentSnapshotBuilder:
     ) -> NewContentAssetRequest | None:
         if item.category == "skill":
             return None
-        if item.category == "pet":
+        if item.category in {"pet", "peak_pool"}:
             resource_id = int(item.payload.get("resource_id", item.entity_id))
             return _seer_asset("pet_head", resource_id, required=True)
         if item.category == "pet_skin":

@@ -167,6 +167,25 @@ def _prepared(
     ).prepare_item(item)
 
 
+def test_peak_pool_item_uses_pet_details_and_head_asset() -> None:
+    pet = SimpleNamespace(
+        id=5000,
+        type=SimpleNamespace(id=13, name="圣灵"),
+        gender=SimpleNamespace(id=0, name="无性别"),
+    )
+    data = _RichData({(_RichData.pet, 5000): pet})
+
+    prepared = _prepared(
+        data,
+        _item("peak_pool", 5000, previous_limit=0, current_limit=2),
+    )
+
+    assert prepared.details.metadata == "精灵 ID：5000"
+    assert prepared.details.description == "限0 → 限2"
+    assert prepared.asset is not None
+    assert (prepared.asset.kind, prepared.asset.key) == ("pet_head", "5000")
+
+
 @pytest.mark.asyncio
 async def test_render_new_content_menu_uses_category_specific_thumbnails(
     monkeypatch: pytest.MonkeyPatch,
