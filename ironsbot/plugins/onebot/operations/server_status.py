@@ -30,7 +30,7 @@ from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     DISABLED_BARE_ADMIN_COMMAND,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMAND,
+    NORMAL_SERVER_STATUS_COMMANDS,
 )
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
@@ -110,7 +110,7 @@ def _install(
         )
 
     normal_matcher = registry.on_fullmatch(
-        NORMAL_SERVER_STATUS_COMMAND,
+        NORMAL_SERVER_STATUS_COMMANDS,
         policy=CommandPolicy.command(
             "server_status_query",
             help_ids=("server_status.query",),
