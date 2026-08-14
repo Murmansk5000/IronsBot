@@ -11,7 +11,7 @@ from ironsbot.core.command_catalog import (
 from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMAND,
+    NORMAL_SERVER_STATUS_COMMANDS,
 )
 
 
@@ -26,7 +26,7 @@ def server_status_command_contracts() -> tuple[CommandContract, ...]:
             (
                 (
                     "server_status.query",
-                    (NORMAL_SERVER_STATUS_COMMAND,),
+                    NORMAL_SERVER_STATUS_COMMANDS,
                     "查询当前维护和开服状态",
                     {"show_in_poke": True},
                 ),

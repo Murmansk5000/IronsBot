@@ -18,9 +18,13 @@ from ironsbot.config.models.operations import (
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.db_sync import runner as db_sync_runner
 from ironsbot.integrations.db_sync.github_actions import WorkflowRunResult
+from ironsbot.integrations.db_sync.models import SyncStatus, VersionInfo
 from ironsbot.integrations.db_sync.runner import DatabaseSync
 from ironsbot.runtime.cache_paths import CachePaths
-from ironsbot.services.operations.data_sync import DataSyncService
+from ironsbot.services.operations.data_sync import (
+    DataSyncService,
+    ManualDataSyncAction,
+)
 
 CONNECT_ERROR_MESSAGE = "connection failed"
 
@@ -186,32 +190,61 @@ def test_registration_defers_database_engine_creation() -> None:
     assert databases.get_engine("unit") is None
 
 
-def test_manual_sync_shows_current_local_data_versions(tmp_path: Path) -> None:
-    cache_path = tmp_path / "seerapi.sqlite"
-    cache_path.write_bytes(b"seerapi cache")
+def test_manual_sync_checks_remote_versions_before_action_selection(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
     sync = DatabaseSync(DatabaseManager())
     sync.register(
         "seerapi",
         _source(
-            local_path=str(cache_path),
+            local_path=str(tmp_path / "seerapi.sqlite"),
             remote_build=_remote_build_config(),
         ),
     )
     sync.register("aliases", _source(local_path=str(tmp_path / "aliases.sqlite")))
-    sync.fingerprints["seerapi"] = "0123456789abcdef"
+
+    async def check_all(
+        _self: DatabaseSync,
+    ) -> tuple[bool, dict[str, SyncStatus]]:
+        return True, {
+            "seerapi": SyncStatus(
+                ok=True,
+                local_before=VersionInfo("0123456789abcdef"),
+                remote=VersionInfo("fedcba9876543210"),
+                message="远端已发布新数据",
+            ),
+            "aliases": SyncStatus(
+                ok=True,
+                skipped=True,
+                remote=VersionInfo("0123456789abcdef"),
+                message="本地缓存与已发布数据一致",
+            ),
+        }
+
+    monkeypatch.setattr(DatabaseSync, "check_all_databases", check_all)
     service = DataSyncService(_config(), sync)
 
-    message, should_run = service.prepare_manual(force=False)
+    message, should_run = asyncio.run(service.prepare_manual(force=False))
 
     assert should_run
+    assert "数据更新检查完成。检测到已发布的新数据：seerapi" in message
+    assert "aliases：无需更新" in message
+    assert "1. 同步已发布数据" in message
+    assert "2. 检查上游并构建后同步数据" in message
+    assert "0. 退出" in message
     assert (
-        "开始检查远程数据更新：seerapi；"
-        "随后更新数据：seerapi, aliases，请稍等。"
-    ) in message
-    assert "当前本地数据版本：" in message
-    assert "seerapi：" in message
-    assert "sha256=0123456789ab" in message
-    assert "aliases：未安装" in message
+        service.manual_action_for_choice("1", force=False)
+        is ManualDataSyncAction.SYNC_PUBLISHED
+    )
+    assert (
+        service.manual_action_for_choice("2", force=False)
+        is ManualDataSyncAction.UPDATE_UPSTREAM
+    )
+    assert service.manual_action_for_choice("3", force=False) is None
+    force_message, force_should_run = asyncio.run(service.prepare_manual(force=True))
+    assert force_should_run
+    assert "2. 强制检查上游并重建后同步数据" in force_message
 
 
 def test_startup_prepares_database_and_interval_job() -> None:
