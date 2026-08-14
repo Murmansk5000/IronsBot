@@ -21,7 +21,7 @@ from ironsbot.services.bilibili.menu import (
     dynamic_record_ids,
 )
 from ironsbot.services.bilibili.parser import (
-    dynamic_content,
+    dynamic_body_hydration_reason,
     dynamic_id,
     item_author_mid,
     target_dynamics_from_response,
@@ -92,7 +92,7 @@ class BilibiliService:
     ) -> dict[str, Any]:
         typed_item = dict(item)
         item_id = dynamic_id(typed_item)
-        if not item_id or dynamic_content(typed_item):
+        if not item_id or dynamic_body_hydration_reason(typed_item) is None:
             return typed_item
 
         task = self._detail_tasks.get(item_id)
@@ -142,7 +142,7 @@ class BilibiliService:
         days: int = 7,
         limit: int = 20,
     ) -> int:
-        """Update recent saved official dynamics without re-delivering them."""
+        """Backfill recent missing or truncated official bodies without delivery."""
 
         if self._history_backfill_attempted:
             return 0
@@ -160,12 +160,15 @@ class BilibiliService:
             limit=self.config.storage.history_max_items,
             uid=account.uid,
         ):
-            if record.pub_ts < cutoff or dynamic_content(record.item):
+            if (
+                record.pub_ts < cutoff
+                or dynamic_body_hydration_reason(record.item) is None
+            ):
                 continue
             if updated >= max(limit, 0):
                 break
             resolved = await self.resolve_dynamic_item(record.item, cookie=cookie)
-            if not dynamic_content(resolved):
+            if dynamic_body_hydration_reason(resolved) is not None:
                 continue
             snapshot = build_dynamic_history_snapshot(
                 resolved,

@@ -1409,17 +1409,17 @@ merge_connected = true
 
 [seer.new_content]
 # Default: []
-# EN: Weekly-content root-menu categories to force-expand, even when they have
-# more than auto_expand_max_items. Folded items remain selectable by a1/b2 keys.
-# ZH: 强制展开的新增内容分类；即使条目数超过 auto_expand_max_items 也会展示。
+# EN: Weekly-content categories that show a bounded item preview in the root menu.
+# Categories not listed remain folded regardless of their item count.
+# ZH: 仅以下分类在新增内容总菜单预览条目；未配置分类始终折叠。
 # Available: achievement, pet, pet_skin, skill, mintmark, suit, equip, mount,
 # autocard_card, autocard_role, autocard_sanctuary_effect.
 # 可选值：achievement、pet、pet_skin、skill、mintmark、suit、equip、mount、
 # autocard_card、autocard_role、autocard_sanctuary_effect。
 expanded_categories = []
-# Default: 5; EN: Automatically expand a category with at most this many items.
-# Set 0 to keep every non-forced category folded.
-# ZH: 条目数不超过此值的分类自动展开；设为 0 可关闭自动展开。
+# Default: 5; EN: Maximum items rendered for each configured root-menu preview.
+# Set 0 to disable ordinary previews. Focused category menus still show all items.
+# ZH: 每个已配置分类在总菜单最多预览的条目数；设为 0 关闭普通条目预览，子菜单仍显示全部。
 auto_expand_max_items = 5
 
 [seer.season]

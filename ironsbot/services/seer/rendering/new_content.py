@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from typing import TYPE_CHECKING, TypedDict
 
 from ironsbot.services.seer.autocard import (
@@ -16,11 +15,12 @@ from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
 from ironsbot.services.seer.images import ImageSourceError, SeerImageSource, to_data_uri
 from ironsbot.services.seer.new_content import (
     CATEGORY_NAMES,
+    PEAK_POOL_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
     format_new_content_category_count,
-    is_new_content_category_auto_expanded,
+    new_content_category_preview_items,
 )
 from ironsbot.services.seer.render_paths import (
     NEW_CONTENT_TEMPLATE_PATH,
@@ -29,6 +29,15 @@ from ironsbot.services.seer.render_paths import (
 )
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
+from .new_content_pool_changes import (
+    PoolChangePreviewDict,
+    load_pool_change_images,
+    pool_change_preview,
+)
+from .new_content_render_policy import (
+    item_requires_image as _item_requires_image,
+)
+from .new_content_render_policy import new_content_cache_key as _cache_key
 from .new_content_skill_details import (
     SKILL_CATEGORY_ATTRIBUTE as _SKILL_CATEGORY_ATTRIBUTE,
 )
@@ -69,6 +78,7 @@ class NewContentMenuItemDict(TypedDict):
     image_notice: str
     skill: SkillDict | None
     friend_skill: SkillDict | None
+    pool_preview: PoolChangePreviewDict | None
 
 
 _EQUIP_PART_TYPE_NAMES = {
@@ -97,7 +107,6 @@ async def render_new_content_menu(  # noqa: PLR0913
     auto_expand_max_items: int = 5,
 ) -> bytes:
     """Render the active categories and items without requiring every asset."""
-
     content_key = _cache_key(
         snapshot,
         display_categories,
@@ -108,6 +117,19 @@ async def render_new_content_menu(  # noqa: PLR0913
     )
     if cached := cache.get("new_content", content_key):
         return cached
+
+    pool_items = (
+        tuple(
+            item
+            for item in snapshot.items
+            if item.category in PEAK_POOL_NEW_CONTENT_CATEGORIES
+            and item.category in display_categories
+        )
+        if focused_category is None
+        else ()
+    )
+    pool_images = await load_pool_change_images(images, pool_items)
+    cacheable = all(image is not None for image in pool_images.values())
 
     rows: list[NewContentMenuItemDict] = []
     item_rows: list[tuple[int, NewContentItem, _ItemDetails]] = []
@@ -136,6 +158,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                     "image_notice": "",
                     "skill": details.skill,
                     "friend_skill": details.friend_skill,
+                    "pool_preview": None,
                 }
             )
             item_rows.append((len(rows) - 1, item, details))
@@ -143,18 +166,34 @@ async def render_new_content_menu(  # noqa: PLR0913
         for index, category in enumerate(display_categories):
             code = chr(ord("a") + index)
             items = snapshot.items_for(category)
-            expanded = category in expanded_categories or (
-                is_new_content_category_auto_expanded(
+            pool_preview = (
+                pool_change_preview(category, items, pool_images)
+                if category in PEAK_POOL_NEW_CONTENT_CATEGORIES
+                else None
+            )
+            expanded = (
+                category in expanded_categories
+                and category not in PEAK_POOL_NEW_CONTENT_CATEGORIES
+                and auto_expand_max_items > 0
+            )
+            preview_items = (
+                new_content_category_preview_items(
                     snapshot,
                     category,
                     auto_expand_max_items,
                 )
+                if expanded
+                else ()
             )
             rows.append(
                 {
                     "code": code,
                     "name": CATEGORY_NAMES[category],
-                    "description": format_new_content_category_count(items),
+                    "description": (
+                        f"{len(items)} 只变化"
+                        if category in PEAK_POOL_NEW_CONTENT_CATEGORIES
+                        else format_new_content_category_count(items)
+                    ),
                     "metadata": "",
                     "side_title": "",
                     "side_description": "",
@@ -172,10 +211,11 @@ async def render_new_content_menu(  # noqa: PLR0913
                     "image_notice": "",
                     "skill": None,
                     "friend_skill": None,
+                    "pool_preview": pool_preview,
                 }
             )
             if expanded:
-                for item_index, item in enumerate(items, start=1):
+                for item_index, item in enumerate(preview_items, start=1):
                     details = _item_details(data, autocard, item)
                     rows.append(
                         {
@@ -199,6 +239,7 @@ async def render_new_content_menu(  # noqa: PLR0913
                             "image_notice": "",
                             "skill": details.skill,
                             "friend_skill": details.friend_skill,
+                            "pool_preview": None,
                         }
                     )
                     item_rows.append((len(rows) - 1, item, details))
@@ -209,7 +250,6 @@ async def render_new_content_menu(  # noqa: PLR0913
             for _row_index, item, details in item_rows
         )
     )
-    cacheable = True
     for (row_index, item, _details), (image, type_icon, image_notice) in zip(
         item_rows,
         image_results,
@@ -570,27 +610,6 @@ def _gender_name(value: str) -> str:
     }.get(value.casefold(), value)
 
 
-def _cache_key(  # noqa: PLR0913
-    snapshot: NewContentSnapshot,
-    categories: tuple[NewContentCategory, ...],
-    focused_category: NewContentCategory | None,
-    menu_title: str,
-    expanded_categories: frozenset[NewContentCategory],
-    auto_expand_max_items: int,
-) -> str:
-    raw = "|".join(
-        (
-            snapshot.config_version,
-            ",".join(categories),
-            focused_category or "root",
-            menu_title,
-            "expanded=" + ",".join(sorted(expanded_categories)),
-            f"auto-expand={auto_expand_max_items}",
-        )
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-
-
 async def _item_image(
     data: SeerDataAccess,
     images: SeerImageSource,
@@ -646,29 +665,6 @@ def _item_image_request(
     }
     kind = image_kinds.get(item.category)
     return None if kind is None else (kind, item.entity_id)
-
-
-def _item_requires_image(item: NewContentItem) -> bool:
-    if item.category in {
-        "pet",
-        "pet_skin",
-        "mintmark",
-        "suit",
-        "equip",
-        "mount",
-        "autocard_card",
-        "autocard_role",
-    }:
-        return True
-    if item.category != "achievement":
-        return False
-    titles = item.payload.get("titles", [])
-    return bool(
-        isinstance(titles, list)
-        and titles
-        and isinstance(titles[0], dict)
-        and titles[0].get("id", titles[0].get("title_id", 0))
-    )
 
 
 async def _autocard_item_image(
