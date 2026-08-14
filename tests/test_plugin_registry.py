@@ -82,7 +82,6 @@ def test_registry_is_the_lifecycle_order_authority() -> None:
         "ai_api_startup_check",
         "clock_startup_check",
         "startup_notice",
-        "render_crash_report",
     ]
     assert [name for name, _hook in lifecycle.bot_connect_hooks] == [
         "team_audit_followups",
