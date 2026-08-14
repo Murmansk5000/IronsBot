@@ -143,7 +143,11 @@ def install(
         await finish_event_reply(matcher, event, reply)
 
     direct_matcher = registry.on_message(
-        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.private",)),
+        policy=CommandPolicy.command(
+            "ai_chat",
+            help_ids=("ai_chat.private",),
+            closes_active_conversation=False,
+        ),
         rule=Rule(bind(_capture_ai_prompt, features=features)),
         priority=registry.priority("ai_chat"),
         block=True,
@@ -151,7 +155,11 @@ def install(
     direct_matcher.append_handler(run_ai_chat)
 
     group_at_matcher = registry.on_message(
-        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.group",)),
+        policy=CommandPolicy.command(
+            "ai_chat",
+            help_ids=("ai_chat.group",),
+            closes_active_conversation=False,
+        ),
         rule=bot_mention()
         & Rule(bind(_capture_group_ai_prompt, features=features)),
         priority=registry.pre_command_priority("ai_group_at"),

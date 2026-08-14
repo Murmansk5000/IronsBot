@@ -21,6 +21,7 @@ from nonebot.utils import is_coroutine_callable
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.runtime.matchers import (
+    EXPLICIT_COMMAND_STATE_KEY,
     QUEUED_CONVERSATION_EXIT_PRIORITY,
     QUEUED_CONVERSATION_INPUT_PRIORITY,
     QUEUED_CONVERSATION_RESERVATION_PRIORITY,
@@ -28,6 +29,7 @@ from ironsbot.runtime.matchers import (
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
+    CommandPolicy,
     MatcherRegistry,
     PromptSessionManager,
     _capture_queued_conversation_input,
@@ -122,6 +124,32 @@ async def test_matcher_runtime_context_keeps_live_tasks_out_of_matcher_state() -
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+def test_command_policy_marks_only_explicit_commands_as_conversation_takeovers(
+) -> None:
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=PromptSessionManager(),
+    )
+
+    command = registry.on_fullmatch(
+        "help",
+        policy=CommandPolicy.command("help"),
+    )
+    exempt = registry.on_fullmatch(
+        "menu",
+        policy=CommandPolicy.exempt("menu input"),
+    )
+    passive = registry.on_fullmatch(
+        "chat",
+        policy=CommandPolicy.command("chat", closes_active_conversation=False),
+    )
+
+    assert command._default_state[EXPLICIT_COMMAND_STATE_KEY] is True
+    assert EXPLICIT_COMMAND_STATE_KEY not in exempt._default_state
+    assert EXPLICIT_COMMAND_STATE_KEY not in passive._default_state
 
 
 @pytest.mark.asyncio
