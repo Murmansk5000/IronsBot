@@ -47,6 +47,7 @@ NEW_AUTOCARD_SANCTUARIES_COMMANDS = (
     "更新群星牌圣域",
     "更新圣域",
 )
+PEAK_ENVIRONMENT_CHANGES_COMMANDS = ("巅峰环境变化", "巅峰变化")
 SEASON_COUNTDOWN_COMMANDS = ("赛季倒计时", "赛季时间", "赛季结束", "赛季")
 DATA_QUERY_HELP_EXAMPLES = (
     WEEKLY_PREVIEW_COMMANDS[0],

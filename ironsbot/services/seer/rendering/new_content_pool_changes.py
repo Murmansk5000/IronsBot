@@ -111,7 +111,11 @@ def pool_change_preview(
     )
     return PoolChangePreviewDict(
         kind="standard" if category == "peak_pool" else "expert",
-        title=f"{CATEGORY_NAMES[category]}｜{len(items)} 只",
+        title=(
+            f"{CATEGORY_NAMES[category]}｜{len(items)} 只"
+            if items
+            else f"{CATEGORY_NAMES[category]}｜本周未变化"
+        ),
         headers=tuple(f"到{_pool_limit_label(limit)}" for limit in _POOL_LIMITS),
         matrix_rows=matrix_rows,
         direction_rows=direction_rows,
@@ -137,6 +141,8 @@ def _pool_limit_key(value: object) -> int | str | None:
         return None
     if isinstance(value, bool):
         return f"未知（{value!r}）"
+    if not isinstance(value, (int, str)):
+        return f"未知（{value}）"
     try:
         return int(value)
     except (TypeError, ValueError):

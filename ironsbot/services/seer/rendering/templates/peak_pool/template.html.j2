@@ -34,6 +34,17 @@
             margin-bottom: 20px;
         }
 
+        .change-status {
+            margin: -6px 0 18px;
+            padding: 10px 14px;
+            color: #cce9ff;
+            background-color: #12345c;
+            border-left: 3px solid #65b7ef;
+            font-size: 14px;
+        }
+
+        .change-status strong { color: #ffffff; }
+
         .pool-section {
             background-color: #2a5a9a;
             padding: 18px;
@@ -76,6 +87,17 @@
             justify-content: flex-start;
         }
 
+        .pet-entry { flex: 0 0 104px; }
+        .pet-entry.historical { opacity: 0.35; }
+        .pet-entry .pet-head-icon[src=""] { visibility: hidden; }
+        .pool-empty {
+            min-height: 56px;
+            display: flex;
+            align-items: center;
+            color: #89a9c8;
+            font-size: 14px;
+        }
+
         {% include "pet_cell.css" %}
 
         .footer {
@@ -94,17 +116,35 @@
     <div class="container">
         <div class="page-title">当前{{ pool_type }}</div>
 
+        <div class="change-status">
+            {% if change_state == 'changed' %}
+            <strong>实色</strong>：当前所在位置　<strong>半透明</strong>：上周所在位置
+            {% elif change_state == 'unchanged' %}
+            本周{{ change_label }}未变化
+            {% else %}
+            本周{{ change_label }}变化数据暂不可用
+            {% endif %}
+        </div>
+
         {% for pool in pools %}
         <div class="pool-section">
             <div class="pool-header">
                 <div>
-                    <span class="pool-title">池 #{{ pool.id }}</span>
-                    <span class="pool-badge">携带上限: {{ pool.count }}</span>
+                    <span class="pool-title">{{ pool.label }}</span>
+                    <span class="pool-badge">当前 {{ pool.current_count }} 只</span>
+                    {% if pool.historical_count %}
+                    <span class="pool-badge">上周位置 {{ pool.historical_count }} 只</span>
+                    {% endif %}
                 </div>
             </div>
             <div class="pet-grid">
+                {% if not pool.pets %}
+                <div class="pool-empty">本周无相关精灵</div>
+                {% endif %}
                 {% for pet in pool.pets %}
+                <div class="pet-entry{% if pet.historical %} historical{% endif %}">
                 {{ pet_cell(id=pet.id, name=pet.name, head_img=pet.head_img, type_icon=pet.type_icon) }}
+                </div>
                 {% endfor %}
             </div>
         </div>
