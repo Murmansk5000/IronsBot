@@ -237,7 +237,7 @@ def _snapshot_peak_pet(pet: PetORM) -> PeakPetSnapshot:
         id=int(pet.id),
         name=str(pet.name),
         resource_id=int(pet.resource_id),
-        type_id=int(pet.type.id),
+        type_id=int(pet.type_id),
     )
 
 
@@ -478,11 +478,10 @@ class PeakQueryService:
             for pet in pool.pets
         }
         missing_ids = {item.entity_id for item in items} - set(current_pets)
-        database_pets: dict[int, PetORM] = {}
+        changed_pets: dict[int, PeakPetSnapshot] = {}
         if missing_ids:
             with self._data.get_many(self._data.pet, missing_ids) as loaded:
-                database_pets = loaded
-        changed_pets = snapshot_peak_pet_map(database_pets)
+                changed_pets = snapshot_peak_pet_map(loaded)
         current_limits = _current_peak_pool_limits(pools, expert=expert)
         transitions: list[PeakPoolTransitionSnapshot] = []
         for item in items:
