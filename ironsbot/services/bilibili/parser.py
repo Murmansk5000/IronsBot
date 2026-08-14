@@ -217,6 +217,18 @@ def has_dynamic_body(item: dict[str, Any]) -> bool:
     return bool(dynamic_text_pieces(item))
 
 
+def dynamic_body_hydration_reason(item: dict[str, Any]) -> str | None:
+    """Return why a feed item needs its detail body resolved, if at all."""
+
+    if not has_dynamic_body(item):
+        return "missing"
+
+    major = _mapping(_module_dynamic(item).get("major"))
+    opus = _mapping(major.get("opus"))
+    summary = _mapping(opus.get("summary"))
+    return "truncated" if summary.get("has_more") is True else None
+
+
 def dynamic_brief(item: dict[str, Any]) -> str:
     pieces = dynamic_text_pieces(item)
     if pieces:
