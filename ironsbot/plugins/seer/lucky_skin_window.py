@@ -32,7 +32,7 @@ from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition, PluginHooks
 from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
-from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, explicit_command
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.lucky_skin_window import (
@@ -43,11 +43,13 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowResult,
     LuckySkinWindowService,
 )
+from ironsbot.services.seer.pet_query import PetImageSelection
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.seer.pet_query import PetQueryService
 
 _COMMANDS = ("幸运橱窗", "橱窗")
 _WATCH_LIST_COMMANDS = ("关注橱窗", "订阅橱窗", "橱窗关注", "橱窗订阅")
@@ -99,6 +101,7 @@ logger = logging.getLogger(__name__)
 
 def plugin_definition(
     service: LuckySkinWindowService,
+    pet_query: PetQueryService,
     features: FeatureService,
     delivery: MessageDelivery,
     scheduler: Scheduler,
@@ -168,7 +171,12 @@ def plugin_definition(
                 features_any=("lucky_skin_window",),
             ),
         ),
-        install=partial(_install, service=service, features=features),
+        install=partial(
+            _install,
+            service=service,
+            pet_query=pet_query,
+            features=features,
+        ),
         hooks=PluginHooks(
             startup=(
                 (
@@ -290,8 +298,10 @@ async def _finish_watch_access_error(
 
 async def _handle_query(
     service: LuckySkinWindowService,
+    pet_query: PetQueryService,
     matcher: Matcher,
     event: MessageEvent,
+    state: T_State,
 ) -> None:
     try:
         cached = service.cached_for_user(event.user_id)
@@ -307,10 +317,13 @@ async def _handle_query(
         return
 
     if cached is not None:
-        await finish_event_reply(
+        await _enter_result_prompt(
+            pet_query,
             matcher,
             event,
-            await _result_message(service, cached, user_id=event.user_id),
+            state,
+            service,
+            cached,
         )
         return
 
@@ -323,7 +336,7 @@ async def _handle_query(
         matcher,
         event,
         namespace=_LOGIN_CONFIRMATION_NAMESPACE,
-        handlers=[bind_async(_handle_login_confirmation, service)],
+        handlers=[bind_async(_handle_login_confirmation, service, pet_query)],
         reply_check=lambda reply_event: parse_confirmation(reply_event.get_plaintext())
         is not None,
         prompt=(
@@ -336,20 +349,24 @@ async def _handle_query(
 
 async def _handle_login_confirmation(
     service: LuckySkinWindowService,
+    pet_query: PetQueryService,
     matcher: Matcher,
     event: MessageEvent,
+    state: T_State,
 ) -> None:
     confirmed = parse_confirmation(event.get_plaintext())
     if confirmed is not True:
         await finish_event_reply(matcher, event, "已取消幸运橱窗查询。")
         return
-    await _query_and_reply(service, matcher, event)
+    await _query_and_reply(service, pet_query, matcher, event, state)
 
 
 async def _query_and_reply(
     service: LuckySkinWindowService,
+    pet_query: PetQueryService,
     matcher: Matcher,
     event: MessageEvent,
+    state: T_State,
 ) -> None:
     try:
         result = await service.check_for_user(event.user_id)
@@ -381,10 +398,13 @@ async def _query_and_reply(
     except Exception:  # noqa: BLE001 - the game protocol must not leak errors
         await finish_event_reply(matcher, event, "❌ 幸运橱窗查询失败，请稍后再试。")
         return
-    await finish_event_reply(
+    await _enter_result_prompt(
+        pet_query,
         matcher,
         event,
-        await _result_message(service, result, user_id=event.user_id),
+        state,
+        service,
+        result,
     )
 
 
@@ -398,6 +418,74 @@ async def _result_message(
     if image is not None:
         return Message(MessageSegment.image(image))
     return service.format_result(result, user_id=user_id)
+
+
+async def _enter_result_prompt(  # noqa: PLR0913 - menu activation context is explicit
+    pet_query: PetQueryService,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    service: LuckySkinWindowService,
+    result: LuckySkinWindowResult,
+) -> None:
+    prompt = Prompt(
+        title="幸运橱窗",
+        action=_ACTION,
+        items=[
+            PromptItem(
+                offer.name,
+                str(offer.skin_id),
+                PetImageSelection(offer.resource_id, offer.name, offer.skin_id),
+                semantic_target=SemanticTarget(
+                    str(offer.skin_id),
+                    offer.name,
+                ),
+            )
+            for offer in result.offers
+        ],
+    )
+    await enter_prompt(
+        matcher,
+        event,
+        state,
+        prompt,
+        partial(_handle_skin_selection, pet_query),
+        prompt_message=_result_message(service, result, user_id=event.user_id),
+    )
+
+
+async def _handle_skin_selection(
+    pet_query: PetQueryService,
+    item: PromptItem[PetImageSelection],
+    matcher: Matcher,
+    event: Event,
+) -> None:
+    result = await pet_query.select_image(item.value)
+    if result.message:
+        await matcher.finish(result.message)
+        return
+    if result.reply is not None and isinstance(event, MessageEvent):
+        await send_event_reply(
+            matcher,
+            event,
+            _query_reply_message(result.reply),
+        )
+
+
+def _query_reply_message(reply: object) -> str | Message:
+    leading_text = str(getattr(reply, "leading_text", ""))
+    text = str(getattr(reply, "text", ""))
+    image = getattr(reply, "image", None)
+    image_error = str(getattr(reply, "image_error", ""))
+    if image is None:
+        return f"{leading_text}{text or image_error}"
+    message = Message()
+    if leading_text:
+        message += MessageSegment.text(leading_text)
+    message += MessageSegment.image(image)
+    if text:
+        message += MessageSegment.text(text)
+    return message
 
 
 async def _handle_watch_list(
@@ -553,6 +641,7 @@ def _install(
     registry: MatcherRegistry,
     *,
     service: LuckySkinWindowService,
+    pet_query: PetQueryService,
     features: FeatureService,
 ) -> None:
     priority = registry.priority("lucky_skin_window")
@@ -567,7 +656,7 @@ def _install(
         priority=priority,
         block=True,
     )
-    matcher.append_handler(bind_async(_handle_query, service))
+    matcher.append_handler(bind_async(_handle_query, service, pet_query))
 
     watch_list = registry.on_message(
         policy=CommandPolicy.command(
