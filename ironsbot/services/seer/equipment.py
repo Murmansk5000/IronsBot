@@ -4,7 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from ironsbot.services.seer.flash_mount_images import load_flash_mount_image
+from ironsbot.integrations.seer_data.flash_mount_repository import (
+    load_flash_mount_image,
+)
 from ironsbot.services.seer.formatting import format_sub_lines
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.query_result import (
