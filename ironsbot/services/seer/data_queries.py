@@ -3,14 +3,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta, timezone
-from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.season_repository import load_peak_season_times
 from ironsbot.integrations.seer_data.weekly_preview_repository import (
     load_weekly_preview_links,
 )
 from ironsbot.services.seer.data import load_data_generated_at
-from ironsbot.services.seer.season_countdown import format_season_countdown
+from ironsbot.services.seer.season_countdown import (
+    SeasonWindow,
+    format_season_countdown,
+)
 from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageError
 
 if TYPE_CHECKING:
@@ -78,6 +81,14 @@ class SeerDataQueryService:
         return f"数据更新时间：{local_time:%Y-%m-%d %H:%M:%S}"
 
     async def season_countdown(self) -> str:
-        operation = partial(format_season_countdown, config=self._season)
-        with self._data.query(operation) as message:
-            return message
+        with self._data.query(load_peak_season_times) as times:
+            peak = (
+                None
+                if times is None
+                else SeasonWindow(
+                    name="巅峰圣战赛季",
+                    start_time=times.start_time,
+                    end_time=times.end_time,
+                )
+            )
+        return format_season_countdown(peak, self._season)

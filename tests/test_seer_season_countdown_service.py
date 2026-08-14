@@ -5,6 +5,7 @@ from typing import Any
 from pytest import MonkeyPatch
 
 from ironsbot.config.models.seer import SeasonCountdownConfig
+from ironsbot.integrations.seer_data import season_repository
 from ironsbot.services.seer import season_countdown
 
 CHINA_TZ = season_countdown.CHINA_TZ
@@ -48,7 +49,14 @@ def test_format_season_countdown_uses_peak_season(
         end_time=datetime(2026, 7, 17, 10, 0, 0, tzinfo=CHINA_TZ),
     )
 
-    message = season_countdown.format_season_countdown(FakeSession(peak), config)
+    message = season_countdown.format_season_countdown(
+        season_countdown.SeasonWindow(
+            name="巅峰圣战赛季",
+            start_time=peak.start_time,
+            end_time=peak.end_time,
+        ),
+        config,
+    )
 
     assert "巅峰圣战赛季：2026-04-17 10:00 ~ 2026-07-17 10:00" in message
     assert "状态：进行中，剩余 18天22小时0分钟" in message
@@ -73,14 +81,14 @@ def test_format_season_countdown_uses_configured_autocard_time(
         FakeDateTime,
     )
 
-    message = season_countdown.format_season_countdown(FakeSession(None), config)
+    message = season_countdown.format_season_countdown(None, config)
 
     assert "巅峰圣战赛季：未找到赛季数据" in message
     assert "群星牌S1赛季：2026-06-20 10:00 ~ 2026-07-17 10:00" in message
     assert "状态：进行中，剩余 18天22小时0分钟" in message
 
 
-def test_load_peak_season_window_returns_none_without_model(
+def test_peak_season_repository_returns_none_without_model(
     monkeypatch: MonkeyPatch,
 ) -> None:
     def fake_import(name: str, *_args: Any, **_kwargs: Any) -> object:
@@ -90,4 +98,4 @@ def test_load_peak_season_window_returns_none_without_model(
 
     monkeypatch.setattr("builtins.__import__", fake_import)
 
-    assert season_countdown.load_peak_season_window(FakeSession(None)) is None
+    assert season_repository.load_peak_season_times(FakeSession(None)) is None
