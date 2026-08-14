@@ -70,6 +70,8 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import build_reply
 from .new_content_routing import (
     available_new_content_categories,
+    install_peak_environment_change_commands,
+    new_content_rendering_notice,
     send_peak_pool,
     visible_new_content_categories,
 )
@@ -244,6 +246,8 @@ def _install_new_content_commands(
         matcher.append_handler(
             bind_async(_start_new_content, service, categories, group)
         )
+
+    install_peak_environment_change_commands(group, service, root_rule)
 
 
 async def _start_new_content(  # noqa: PLR0913
@@ -554,10 +558,7 @@ async def _render_content_prompt_with_notice(  # noqa: PLR0913
 
 
 def _new_content_rendering_notice(event: Event) -> str | Message:
-    text = "⏳ 正在生成新增内容图片，请稍候。"
-    if not isinstance(event, GroupMessageEvent):
-        return text
-    return MessageSegment.at(event.user_id) + MessageSegment.text(f" {text}")
+    return new_content_rendering_notice(event)
 
 
 async def _render_content_prompt(

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from typing import Any, Literal
 from unittest.mock import AsyncMock
 
@@ -28,6 +29,8 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     _skill_detail,
 )
 from ironsbot.plugins.seer.query.commands.new_content_routing import (
+    PeakPoolChangeRequest,
+    send_peak_pool_change_command,
     visible_new_content_categories,
 )
 from ironsbot.services.seer.new_content import (
@@ -94,6 +97,14 @@ class _RecordingMatcher:
         raise AssertionError(message)
 
 
+class _FinishRecorder:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def finish(self, **kwargs: object) -> None:
+        self.calls.append(kwargs)
+
+
 def _render_prompt_state() -> tuple[
     NewContentSnapshot,
     _NewContentMenuLayout,
@@ -136,6 +147,121 @@ def test_new_content_initial_render_sends_notice_before_menu_image() -> None:
     assert len(matcher.sent) == 1
     assert "正在生成新增内容图片" in str(matcher.sent[0])
     assert "[CQ:image" in str(rendered)
+
+
+@pytest.mark.asyncio
+async def test_peak_environment_changes_renders_weekly_deltas_without_peak_query(
+    monkeypatch: Any,
+) -> None:
+    standard = NewContentItem(
+        "peak_pool",
+        1,
+        "竞技池精灵",
+        1,
+        {"previous_limit": 0, "current_limit": 2},
+        "modified",
+    )
+    expert = NewContentItem(
+        "peak_expert_pool",
+        2,
+        "专家池精灵",
+        2,
+        {"previous_limit": None, "current_limit": 0},
+        "modified",
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(standard, expert),
+    )
+    renderer = AsyncMock(return_value=b"pool-change-image")
+    group = SimpleNamespace(
+        resources=SimpleNamespace(new_content_menu=renderer),
+        features=object(),
+    )
+    service = SimpleNamespace(new_content_snapshot=lambda: snapshot)
+    matcher = _RecordingMatcher()
+    sender = _FinishRecorder()
+    monkeypatch.setattr(
+        "ironsbot.plugins.seer.query.commands.new_content_routing.available_new_content_categories",
+        lambda _group, _event: ("peak_pool", "peak_expert_pool"),
+    )
+    monkeypatch.setattr(
+        "ironsbot.plugins.seer.query.commands.new_content_routing.MessageFactory",
+        lambda _message: sender,
+    )
+
+    await send_peak_pool_change_command(
+        service,  # type: ignore[arg-type]
+        PeakPoolChangeRequest(
+            ("peak_pool", "peak_expert_pool"),
+            "巅峰环境变化",
+        ),
+        group,  # type: ignore[arg-type]
+        matcher,  # type: ignore[arg-type]
+        group_message_event(user_id=123),
+    )
+
+    renderer.assert_awaited_once_with(
+        snapshot,
+        ("peak_pool", "peak_expert_pool"),
+        None,
+        "巅峰环境变化",
+        frozenset(),
+        0,
+    )
+    assert "正在生成新增内容图片" in str(matcher.sent[0])
+    assert sender.calls == [{"at_sender": True}]
+
+
+@pytest.mark.asyncio
+async def test_peak_environment_changes_keeps_both_unchanged_categories(
+    monkeypatch: Any,
+) -> None:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(),
+    )
+    renderer = AsyncMock(return_value=b"unchanged-pool-image")
+    group = SimpleNamespace(
+        resources=SimpleNamespace(new_content_menu=renderer),
+        features=object(),
+    )
+    service = SimpleNamespace(new_content_snapshot=lambda: snapshot)
+    matcher = _RecordingMatcher()
+    sender = _FinishRecorder()
+    monkeypatch.setattr(
+        "ironsbot.plugins.seer.query.commands.new_content_routing.available_new_content_categories",
+        lambda _group, _event: ("peak_pool", "peak_expert_pool"),
+    )
+    monkeypatch.setattr(
+        "ironsbot.plugins.seer.query.commands.new_content_routing.MessageFactory",
+        lambda _message: sender,
+    )
+
+    await send_peak_pool_change_command(
+        service,  # type: ignore[arg-type]
+        PeakPoolChangeRequest(
+            ("peak_pool", "peak_expert_pool"),
+            "巅峰环境变化",
+        ),
+        group,  # type: ignore[arg-type]
+        matcher,  # type: ignore[arg-type]
+        group_message_event(user_id=123),
+    )
+
+    renderer.assert_awaited_once_with(
+        snapshot,
+        ("peak_pool", "peak_expert_pool"),
+        None,
+        "巅峰环境变化",
+        frozenset(),
+        0,
+    )
+    assert sender.calls == [{"at_sender": True}]
 
 
 def test_new_content_category_render_sends_notice_before_replacement_menu(

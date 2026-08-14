@@ -508,12 +508,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     )
     autocard = AutocardService(seer_database)
     autocard_sanctuary = AutocardSanctuaryService(seer_database)
+    new_content = NewContentService(seer_database)
     seer = SeerQueryResources(
         SeerDataQueryService(
             seer_database,
             weekly_preview_images,
             settings.seer.season,
-            NewContentService(seer_database),
+            new_content,
         ),
         CountermarkStatRankService(seer_database),
         autocard,
@@ -565,6 +566,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 images=seer_images,
                 render_html=render_scheduler.render,
             ),
+            new_content=new_content,
         ),
         MintmarkQueryService(
             seer_database,

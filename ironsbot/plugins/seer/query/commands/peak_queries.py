@@ -121,7 +121,7 @@ def install(group: SeerMatcherGroup) -> None:
     priority = group.matcher_priority("seer_peak")
 
     pool = group.on_fullmatch(
-        ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
+        ("竞技池", "竞技池变化", "巅峰竞技池", "竞技精灵池", "限制池"),
         policy=CommandPolicy.command(
             "seer_peak_pool",
             help_ids=("seer.peak.query",),
@@ -132,7 +132,7 @@ def install(group: SeerMatcherGroup) -> None:
     pool.append_handler(bind_async(_handle_pool, service, references, expert=False))
 
     expert_pool = group.on_fullmatch(
-        ("专家池", "巅峰专家池", "专家禁用池"),
+        ("专家池", "专家池变化", "巅峰专家池", "专家禁用池"),
         policy=CommandPolicy.command(
             "seer_peak_expert_pool",
             help_ids=("seer.peak.query",),
