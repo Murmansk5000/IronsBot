@@ -431,9 +431,14 @@ docker start ironsbot
 主数据发布文件现使用 `data/seerapi-data.sqlite`。确认新版本已成功下载并能查询最新数据后，
 旧的 `data/ironsbot-data.sqlite` 可手动删除；状态库迁移命令不会自动删除主数据文件。
 
-超级管理员发送 `/更新数据` 时，IronsBot 会先按
-`[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
-GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。默认示例流水线为：
+超级管理员发送 `/更新数据` 时，IronsBot 会先只读比对当前已发布数据，再提供两个选项：
+
+1. 同步已发布数据：只下载当前 release 的 SQLite，不触发 GitHub Actions。
+2. 检查上游并构建后同步数据：选择后按
+   `[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
+   GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。
+
+默认示例流水线为：
 
 1. `Murmansk-Seer/data-update-workflows`：检查淘米官方资源包，更新 Unity 资源和完整配置源。
 2. `Murmansk-Seer/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出补充 JSON。
@@ -450,7 +455,7 @@ GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。默认示例�
 on_startup = false
 ```
 
-若希望开机时近似执行一次 `/更新数据`，可同时设置：
+若希望开机时近似执行一次 `/更新数据` 第 2 项的实际更新流程，可同时设置：
 
 ```toml
 [operations.data_sync]
@@ -462,7 +467,7 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`、`/更新镜像`、`/更新Docker`）
+超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`），或发送 `/更新镜像`（同义命令：`/更新Docker`）先检查镜像并确认更新。
 进入同一套重启流程。默认会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像；
 检测到新镜像时会启动一次性 Watchtower 更新当前容器。镜像已是最新时，如果挂载了
 Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket 时才退回普通
@@ -532,7 +537,7 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 check_on_startup = false
 ```
 
-如果不想让手动 `/重启机器人` 或 `/更新镜像` 时检查镜像，可改为：
+如果不想让手动 `/重启机器人` 时检查镜像，可改为：
 
 ```toml
 [operations.docker_update]

@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
+from nonebot.typing import T_State
 
+from ironsbot.plugins.operations.update_confirmation import (
+    UpdateConfirmation,
+    request_update_confirmation,
+)
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
@@ -23,7 +28,6 @@ from .command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
     DISABLED_BARE_ADMIN_COMMAND,
-    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
     HEADLESS_INSTANCE_STATUS_COMMANDS,
     NORMAL_SERVER_STATUS_COMMAND,
@@ -100,15 +104,28 @@ def install(
             (await server_status.query_headless_instances()).message,
         )
 
-    async def handle_check_image_update(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await finish_event_reply(
+    async def handle_image_update(matcher: Matcher, event: MessageEvent) -> None:
+        message, should_update = await docker_service.prepare_manual_update()
+        if not should_update:
+            await finish_event_reply(matcher, event, message)
+            return
+        await request_update_confirmation(
             matcher,
             event,
-            await docker_service.check_image_update(),
+            UpdateConfirmation(
+                namespace="docker_update_confirmation",
+                check_message=message,
+                action_label="更新镜像并重启机器人",
+                executor=run_confirmed_image_update,
+            ),
         )
+
+    async def run_confirmed_image_update(
+        _matcher: Matcher,
+        _event: MessageEvent,
+        _state: T_State,
+    ) -> str:
+        return await docker_service.execute_manual_update()
 
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMAND,
@@ -190,17 +207,4 @@ def install(
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    update_matcher.append_handler(handle_restart)
-
-    check_update_matcher = registry.on_fullmatch(
-        DOCKER_CHECK_UPDATE_COMMANDS,
-        policy=CommandPolicy.command(
-            "bot_restart",
-            help_ids=("docker_update.image_check",),
-        ),
-        rule=explicit_command(),
-        permission=SUPERUSER,
-        priority=registry.priority("server_status_admin"),
-        block=True,
-    )
-    check_update_matcher.append_handler(handle_check_image_update)
+    update_matcher.append_handler(handle_image_update)
