@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: MIT
-"""Read optional build-time Flash mount PNG fallbacks from SeerAPI data."""
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Read build-time Flash mount image fallbacks from SeerAPI data."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _missing_table_warning_logged = False
 
 
 def load_flash_mount_image(data: SeerDataAccess, mount_id: int) -> bytes | None:
-    """Return a rendered Flash PNG, or ``None`` for old and incomplete data DBs."""
+    """Return a rendered Flash PNG, or ``None`` for old incomplete data DBs."""
 
     if mount_id <= 0:
         return None
