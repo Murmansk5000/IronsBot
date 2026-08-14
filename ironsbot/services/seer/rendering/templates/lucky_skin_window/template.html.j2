@@ -9,7 +9,7 @@
       color: #eaf6ff;
       font-family: "Microsoft YaHei", "Source Han Sans SC", sans-serif;
     }
-    .panel { width: 100%; padding: 22px; }
+    .panel { width: 100%; padding: 22px 22px 16px; }
     .header {
       display: flex; align-items: baseline; gap: 12px;
       margin-bottom: 16px; padding: 0 3px 13px;
@@ -23,20 +23,42 @@
       border: 1px solid #347db8; border-radius: 5px;
     }
     .art {
-      height: 270px; display: flex; align-items: center; justify-content: center;
+      height: 220px; display: flex; align-items: center; justify-content: center;
       padding: 10px; background: #102f4f;
       border-bottom: 1px solid #286290;
     }
     .art img { width: 100%; height: 100%; object-fit: contain; }
     .missing { color: #83b4d7; font-size: 14px; text-align: center; }
     .name {
-      min-height: 76px; padding: 10px 9px 12px; display: flex;
+      min-height: 66px; padding: 9px 9px 7px; display: flex;
       flex-direction: column;
       align-items: center; justify-content: center; text-align: center;
       font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere;
     }
     .star { color: #ffd15c; margin-right: 4px; font-size: 19px; line-height: 1; }
     .skin-id { color: #91c8ed; margin-top: 4px; font-size: 13px; font-weight: 400; }
+    .choice {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; margin-right: 5px; border-radius: 3px;
+      background: #1d5d91; color: #d9f1ff; font-size: 13px;
+    }
+    .price {
+      min-height: 91px; padding: 8px 9px 11px; border-top: 1px solid #286290;
+      text-align: center; color: #cde9fb; font-size: 12px; line-height: 1.4;
+    }
+    .pay-row {
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      min-height: 30px; margin-bottom: 4px; color: #fff3ad; font-size: 17px; font-weight: 800;
+    }
+    .currency { width: 25px; height: 25px; object-fit: contain; vertical-align: middle; }
+    .plus { color: #83bfe8; margin: 0 2px; }
+    .price-meta { color: #b7d8ed; }
+    .ticket-meta { color: #8fc8e7; margin-top: 2px; }
+    .price-error { color: #ffbd8a; padding-top: 10px; }
+    .footer {
+      margin: 15px 3px 0; padding-top: 10px; border-top: 1px solid #245574;
+      color: #91c8ed; text-align: center; font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -56,12 +78,28 @@
           {% endif %}
         </div>
         <div class="name">
-          <div>{% if offer.watched %}<span class="star">⭐</span>{% endif %}{{ offer.name }}</div>
+          <div><span class="choice">{{ offer.index }}</span>{% if offer.watched %}<span class="star">⭐</span>{% endif %}{{ offer.name }}</div>
           <div class="skin-id">皮肤ID：{{ offer.skin_id }}</div>
+        </div>
+        <div class="price">
+          {% if offer.price_error %}
+          <div class="price-error">橱窗价格数据异常</div>
+          {% else %}
+          <div class="pay-row">
+            {% if offer.ticket_icon %}<img class="currency" src="{{ offer.ticket_icon }}" alt="风尚券">{% else %}<span>券</span>{% endif %}
+            <span>×{{ offer.ticket_num or 0 }}</span>
+            <span class="plus">+</span>
+            {% if offer.diamond_icon %}<img class="currency" src="{{ offer.diamond_icon }}" alt="钻石">{% else %}<span>钻</span>{% endif %}
+            <span>×{{ offer.minimum_diamonds or 0 }}</span>
+          </div>
+          <div class="price-meta">{{ offer.price_text }}</div>
+          {% if offer.ticket_text %}<div class="ticket-meta">{{ offer.ticket_text }}</div>{% endif %}
+          {% endif %}
         </div>
       </article>
       {% endfor %}
     </section>
+    <div class="footer">发送 1-4 查看对应皮肤详情 · 0 退出</div>
   </main>
 </body>
 </html>

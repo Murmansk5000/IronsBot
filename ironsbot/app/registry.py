@@ -756,6 +756,7 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
         ),
         lucky_skin_window_plugin(
             lucky_skin_window_service,
+            seer_resources.pet_query,
             features,
             delivery,
             scheduler,

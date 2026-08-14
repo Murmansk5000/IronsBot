@@ -18,6 +18,11 @@ from sqlmodel import Session, col, select
 
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
+from ironsbot.services.seer.skin_price import (
+    FASHION_TICKET_VALUE,
+    SkinStorePrice,
+    load_active_skin_store_prices,
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import LuckySkinWindowConfig
@@ -135,6 +140,7 @@ class LuckySkinWindowOffer:
     resource_id: int
     name: str
     watched: bool
+    store_price: SkinStorePrice | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -458,16 +464,33 @@ class LuckySkinWindowService:
         from_cache: bool,
     ) -> LuckySkinWindowResult:
         resolved = self._skin_items_by_reference(skin_ids)
-        offers = tuple(
-            LuckySkinWindowOffer(
-                skin_id=(item.skin_id if item is not None else reference),
-                resource_id=(item.resource_id if item is not None else 0),
-                name=(item.name if item is not None else f"皮肤 {reference}"),
-                watched=False,
+        with self._data.query(
+            partial(load_active_skin_store_prices, skin_ids=skin_ids)
+        ) as store_prices:
+            for reference in skin_ids:
+                item = resolved.get(reference)
+                skin_id = item.skin_id if item is not None else reference
+                if skin_id not in store_prices:
+                    logger.warning(
+                        "lucky skin window store price missing: day=%s skin_id=%s "
+                        "resource_id=%s",
+                        day,
+                        skin_id,
+                        item.resource_id if item is not None else 0,
+                    )
+            offers = tuple(
+                LuckySkinWindowOffer(
+                    skin_id=(item.skin_id if item is not None else reference),
+                    resource_id=(item.resource_id if item is not None else 0),
+                    name=(item.name if item is not None else f"皮肤 {reference}"),
+                    watched=False,
+                    store_price=store_prices.get(
+                        item.skin_id if item is not None else reference
+                    ),
+                )
+                for reference in skin_ids
+                for item in (resolved.get(reference),)
             )
-            for reference in skin_ids
-            for item in (resolved.get(reference),)
-        )
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
     def format_result(self, result: LuckySkinWindowResult, *, user_id: int) -> str:
@@ -477,6 +500,11 @@ class LuckySkinWindowService:
             marker = " ★ 关注" if offer.watched else ""
             identifiers = _skin_identifiers(offer.skin_id, offer.resource_id)
             lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
+            if offer.store_price is None:
+                lines.append("   橱窗价格数据异常")
+            else:
+                lines.extend(_format_offer_price(offer.store_price))
+        lines.append("发送 1-4 查看对应皮肤详情 · 0 退出")
         return "\n".join(lines)
 
     async def render_result(
@@ -650,3 +678,22 @@ def _skin_identifiers(skin_id: int, resource_id: int) -> str:
     if resource_id > 0 and resource_id != skin_id:
         return f"皮肤ID：{skin_id}，资源ID：{resource_id}"
     return f"皮肤ID：{skin_id}"
+
+
+def _format_offer_price(price: SkinStorePrice) -> tuple[str, ...]:
+    if price.price <= 0:
+        return ("   橱窗价格数据异常",)
+
+    price_text = f"   橱窗价：{price.price}钻"
+    if price.original_price > 0 and price.original_price != price.price:
+        price_text += f"（原价{price.original_price}钻）"
+    if price.ticket_num <= 0:
+        return (price_text,)
+
+    ticket_discount = price.ticket_num * FASHION_TICKET_VALUE
+    if ticket_discount < price.price:
+        minimum = price.price - ticket_discount
+        ticket_text = f"   最多用{price.ticket_num}张风尚券，最低{minimum}钻"
+    else:
+        ticket_text = f"   最多用{price.ticket_num}张风尚券，可抵扣{ticket_discount}钻"
+    return price_text, ticket_text
