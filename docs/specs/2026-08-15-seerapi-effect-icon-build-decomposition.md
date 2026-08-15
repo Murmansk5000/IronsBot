@@ -100,7 +100,7 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | Renderer/cache | FFDec、PNG 校验、缓存与并发移出总构建器；原测试迁到模块 | Types/config | completed |
 | Source adapters | Flash/Unity 探测、包解码和每图标来源事实移出总构建器 | Types/config | completed |
 | Resolver/shard | 优先级、回退、缺图诊断与 shard 复用同一 resolver | Renderer/cache + source adapters | completed |
-| Release smoke | 全量 release 构建、PNG/issue 行、metadata、manifest 与 IronsBot consumer smoke 验证 | 所有前序 slice | planned |
+| Release smoke | 全量 release 构建、PNG/issue 行、metadata、manifest 与 IronsBot consumer smoke 验证 | 所有前序 slice | in_progress（本地 build/consumer 通过；FFDec CI release 待验证） |
 
 ## Migration And Rollback
 
@@ -132,13 +132,14 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | 2026-08-15 | SeerAPI `98c7506` | `uv run pytest -q`（261 passed）、Ruff、compileall、`git diff --check` | `effect_icon_unity_sources.py` 成为 DefaultPackage manifest、bundle 下载、UnityPy Sprite/Texture2D 提取、缺图事实和 SWF fallback 分区的唯一实现；构建器只注入 manifest/download gateway。Flash HTTP adapter、统一 resolver/shard 与真实 release smoke 仍待完成。 |
 | 2026-08-15 | SeerAPI `5368055` | `uv run pytest -q`（262 passed）、Ruff、compileall、`git diff --check` | `effect_icon_flash_sources.py` 成为 Flash HEAD/range 探测、内容校验和下载的唯一实现；构建器只注入 HTTP primitives。所有 source-adapter 细节均已离开构建器；下一步是将 Flash/Unity 优先级、回退和 cache shard 收入统一 resolver。 |
 | 2026-08-15 | SeerAPI `5bcde20` | `uv run pytest -q`（262 passed）、Ruff、构建器 `--help`、compileall、`git diff --check` | `effect_icon_build.py` 成为 Flash/Unity 优先级、逐图回退、缺图统计与 Flash shard rendering 的唯一协调者；构建器只装配 gateway 并写发布 SQLite。真实 release 与 IronsBot consumer smoke 仍待完成。 |
+| 2026-08-15 | 本地 release/consumer smoke | 以当前 `seerapi-data-latest` 为上游和 PNG cache，完整构建临时 SQLite 成功（116.49 MB）；IronsBot `load_pet_derived_display_data()` 读取真实 PNG；新表含 `6376` effects、`10378` sources、`2234` soulmark displays | 当前发布库尚未包含新派生表，不能作为 consumer target；新构建产物已满足 consumer 契约。本机无 FFDec jar，Flash 渲染按既有语义回退 Unity；仍需 GitHub Actions 的 FFDec release build 才能完成此 slice。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  global verified progress; this draft does not change it
-Phase    [████████░░] 80%  verified slices: 4/5   estimated remaining: 1-2 h
-Current  [██████████] 100% resolver and cache-shard coordination verified; next: release and consumer smoke
+Phase    [████████░░] 80%  verified slices: 4/5 + local release/consumer smoke   estimated remaining: 1-2 h
+Current  [██████████] 100% local release and consumer smoke verified; next: FFDec-backed CI release validation
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
