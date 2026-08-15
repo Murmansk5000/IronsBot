@@ -82,8 +82,12 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
   版本指纹，私有阵容继续使用自己的私有源码/模板指纹。幸运橱窗使用皮肤 body，当前没有
   完整 inventory，故其 L3 最终图缓存保持禁用；这比错误声明素材范围完整更安全。
 
-下一步核对每个 renderer 的真实素材家族与已声明 scope，并以新 release 做 consumer
-smoke；未满足这些范围验证前，不得把 Phase 4 标为完成。
+**真实发布消费者 smoke（2026-08-15）：** 以本地生成的 SeerAPI release 验证后，
+IronsBot 正确读取 immutable repository revision，并为精灵头像生成固定 revision URL。
+该素材快照实际缺少 9 个精灵头像、12 个 body、1 个刻印图标、11 个装备和 11 个称号，
+所以 metadata 正确发布空 `complete_scopes`，下游 L3 final-image cache 全部保持禁用。
+这证明消费者不会用不完整 manifest 缓存图片；Phase 4 的剩余工作是向素材仓库发布这些
+缺失资源，而不是放宽缓存准入或恢复 `main` fallback。
 
 ## 阶段账本与报告纪律
 

@@ -83,7 +83,7 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 | 1 | SeerAPI 发布显式、可解析的 asset repository snapshot contract 与 fixture | SeerAPI build schema | verified |
 | 2 | IronsBot 原子读取并拒绝缺失/无效 snapshot 的 release | Slice 1 | verified |
 | 3 | HTTP 素材 adapter 对受保护类别只构造 revision-pinned URL，缓存不复用 mutable source | Slice 2 | verified |
-| 4 | 逐个核对 pet/type/peak/new-content inventory 与真实 `ImageKind`；端到端 fixture 验证 | Slice 3 | in_progress |
+| 4 | 逐个核对 pet/type/peak/new-content inventory 与真实 `ImageKind`；端到端 fixture 验证 | Slice 3 | verified |
 
 ## Migration And Rollback
 
@@ -103,7 +103,7 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 - [x] preview、任意 URL 卡牌图等非 manifest 资源不被错误改写；含任意 URL 的
   新内容最终图不进入 L3 缓存。
 - [x] 同一请求在不同 asset revision 下不会复用素材或最终图缓存。
-- [ ] SeerAPI 与 IronsBot 分别通过 focused tests、Ruff、类型/编译检查；最后以新
+- [x] SeerAPI 与 IronsBot 分别通过 focused tests、Ruff、类型/编译检查；已以新
   release 做 consumer smoke test。
 
 ## Evidence
@@ -114,11 +114,12 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 | 2026-08-15 | SeerAPI `39c3339` | `uv run pytest -q` (260 passed); Ruff; compileall; diff check | Manifest contract v2 显式发布 repository 与 immutable revision；尚未做真实 release smoke。 |
 | 2026-08-15 | IronsBot `a7dd38f4` | `uv run pytest -q` (1521 passed); Ruff; static check; BasedPyright 0 errors; compileall; diff check | 受保护素材改用 revision-pinned URL，素材缓存按 source identity 隔离；尚待逐 renderer inventory 对照与新 release consumer smoke。 |
 | 2026-08-15 | SeerAPI / IronsBot scope audit | SeerAPI manifest focused tests (7 passed); IronsBot renderer/cache focused tests (37 passed); Ruff | `new_content_standard` 额外证明皮肤专属头像；外部卡牌 URL 不写最终图缓存；所有公共 Seer renderer adapter 进入缓存版本指纹。幸运橱窗的皮肤 body 尚未有完整 inventory，故 L3 仍刻意不可用。 |
+| 2026-08-15 | 真实生成 release consumer smoke | 临时构建 SeerAPI SQLite；IronsBot 原子加载、metadata/scope 读取与 URL 构造 | 发布 revision `6da5ef9...` 正确固定 HTTP URL。该快照缺 9 个 pet head、12 个 pet body、1 个 mintmark、11 个 equip 和 11 个 title，故 `complete_scopes=[]`，所有 L3 正确禁用。临时 55 MB 产物已删除。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  verified phases: 3/8  estimated remaining: cross-repository slices
-Phase    [████████░░] 80%  verified scope inventory: pet/type/peak/new-content; remaining: release consumer smoke
-Current  [████████░░] 85%  next: full validation and a generated-release consumer smoke
+Phase    [████████░░] 80%  verified contract and consumer behavior; blocked only by incomplete upstream asset snapshot
+Current  [██████████] 100%  verified: generated-release consumer smoke; next: publish missing assets upstream
 ```
