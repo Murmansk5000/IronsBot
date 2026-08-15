@@ -1,6 +1,6 @@
 # SeerAPI 发布构建编排职责拆分
 
-Status: `accepted`
+Status: `implementing`
 
 Contract: `transition`
 
@@ -12,7 +12,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 
 ## Problem
 
-`seerapi/scripts/build_seerapi_data_db.py` 仍有 3,098 行。它同时拥有网络请求、官方
+`seerapi/scripts/build_seerapi_data_db.py` 当前仍有 2,903 行（本 Spec 开始时为 3,098 行）。它同时拥有网络请求、官方
 包读取、精灵/皮肤资源探测、效果图 PNG cache CLI、SQLite 表写入和最终发布编排。
 此前已迁出 ConfigPackage、群星牌、效果元数据、伙伴契约、渲染 manifest、效果图来源与
 PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此新增表或资源逻辑会重新扩大
@@ -44,7 +44,8 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 
 | Slice | 唯一职责 | 入口保留的职责 | Acceptance criteria | Status |
 | --- | --- | --- | --- | --- |
-| Published-table writer | 写入 ConfigPackage、商店、效果、魂印、群星牌、伙伴和 metadata 表 | 创建连接、确定发布顺序 | 写入前后表内容与 metadata 不变；writer 不读取环境或网络 | planned |
+| ConfigPackage table writer | 写入刻印品质、皮肤商店、皮肤价格、道具说明与皮肤素材 resolution 表 | 创建连接、确定发布顺序 | 写入前后表内容不变；writer 不读取环境或网络 | completed (`seerapi` `39b7348`) |
+| Remaining published-table writers | 写入商店、效果、魂印、群星牌、伙伴和 metadata 表 | 创建连接、确定发布顺序 | 写入前后表内容与 metadata 不变；writer 不读取环境或网络 | planned |
 | Pet/skin asset source | 探测精灵头像、皮肤资源及经典皮肤 fallback | 传入来源 URL、超时与 logger | 相同 fixture 产生相同 resolution 与缺失语义 | planned |
 | Build I/O | HTTP 重试、下载、包 manifest 和上游数据库复制 | 传入构建配置并处理 CLI 错误 | 重试、HTTP 错误和本地上游路径保持当前语义 | planned |
 | Effect-icon cache CLI | cache seed、分片导出/渲染的 CLI adapter | 正常发布与参数选择 | `--seed`、`--render-shard`、`--help` 保持兼容 | planned |
@@ -69,8 +70,14 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 
 ```text
 Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
-Phase 4 [████░░░░░░]  verified work: manifest/effect/new-content boundaries; release builder remains
-Current  [██░░░░░░░░]  next: extract one SQLite writer boundary and verify fixture equivalence
+Phase 4 [████░░░░░░]  verified work: manifest/effect/new-content boundaries plus ConfigPackage table writer
+Current  [██████████]  completed: ConfigPackage tables moved to a dedicated SQLite writer; next writer boundary pending
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
+
+## Evidence
+
+| Date | Change | Verification actually run | Result / remaining risk |
+| --- | --- | --- | --- |
+| 2026-08-15 | `seerapi` `39b7348` | focused `tests/test_build_seerapi_data_db.py` (54 passed); full SeerAPI pytest (264 passed); Ruff; compileall; `git diff --check` | ConfigPackage-derived table replacement is a single no-network writer. The entry script fell from 3,098 to 2,903 lines. Remaining table writers, resource probes and CLI adapters are not yet migrated. |
