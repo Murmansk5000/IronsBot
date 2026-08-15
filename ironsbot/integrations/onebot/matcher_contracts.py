@@ -106,5 +106,9 @@ class CommandPolicyError(ValueError):
         return cls("exempt command policy cannot define help ids")
 
     @classmethod
+    def exempt_with_conversation_close(cls) -> CommandPolicyError:
+        return cls("exempt command policy cannot close an active conversation")
+
+    @classmethod
     def empty_help_id(cls) -> CommandPolicyError:
         return cls("command policy help ids must not contain empty values")

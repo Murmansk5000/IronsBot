@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
+EXPLICIT_COMMAND_STATE_KEY = "_ironsbot_explicit_command"
 
 
 class _BoundPartial(partial):

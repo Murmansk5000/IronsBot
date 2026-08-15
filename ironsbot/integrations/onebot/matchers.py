@@ -37,6 +37,7 @@ from ironsbot.integrations.onebot.matcher_contracts import (
     static_command_id,
 )
 from ironsbot.integrations.onebot.matcher_support import (
+    EXPLICIT_COMMAND_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
     bind,
     bind_async,
@@ -304,6 +305,7 @@ class CommandPolicy:
     exemption_reason: str | None = None
     semantic_request: SemanticRequestResolver | None = None
     help_ids: tuple[str, ...] = ()
+    closes_active_conversation: bool = True
 
     def __post_init__(self) -> None:
         if (self.command_id is None) == (self.exemption_reason is None):
@@ -314,6 +316,8 @@ class CommandPolicy:
             raise CommandPolicyError.exempt_with_semantic_request()
         if self.exemption_reason is not None and self.help_ids:
             raise CommandPolicyError.exempt_with_help_ids()
+        if self.exemption_reason is not None and self.closes_active_conversation:
+            raise CommandPolicyError.exempt_with_conversation_close()
         if any(not command_id.strip() for command_id in self.help_ids):
             raise CommandPolicyError.empty_help_id()
 
@@ -324,16 +328,18 @@ class CommandPolicy:
         *,
         semantic_request: SemanticRequestResolver | None = None,
         help_ids: tuple[str, ...] = (),
+        closes_active_conversation: bool = True,
     ) -> CommandPolicy:
         return cls(
             command_id=command_id,
             semantic_request=semantic_request,
             help_ids=help_ids,
+            closes_active_conversation=closes_active_conversation,
         )
 
     @classmethod
     def exempt(cls, reason: str) -> CommandPolicy:
-        return cls(exemption_reason=reason)
+        return cls(exemption_reason=reason, closes_active_conversation=False)
 
 
 def _command_policy_label(policy: CommandPolicy) -> str:
@@ -381,7 +387,12 @@ class MatcherFactory:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_message(**self._with_runtime_hooks(kwargs)),
+            on_message(
+                **self._with_runtime_hooks(
+                    kwargs,
+                    closes_active_conversation=policy.closes_active_conversation,
+                )
+            ),
             policy,
         )
 
@@ -393,7 +404,13 @@ class MatcherFactory:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_fullmatch(msg, **self._with_runtime_hooks(kwargs)),
+            on_fullmatch(
+                msg,
+                **self._with_runtime_hooks(
+                    kwargs,
+                    closes_active_conversation=policy.closes_active_conversation,
+                ),
+            ),
             policy,
         )
 
@@ -405,7 +422,13 @@ class MatcherFactory:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_command(cmd, **self._with_runtime_hooks(kwargs)),
+            on_command(
+                cmd,
+                **self._with_runtime_hooks(
+                    kwargs,
+                    closes_active_conversation=policy.closes_active_conversation,
+                ),
+            ),
             policy,
         )
 
@@ -584,11 +607,18 @@ class MatcherFactory:
         matcher.handlers.insert(0, dependent)
         self._cooldown_registrations[matcher] = ("command", str(label))
 
-    def _with_runtime_hooks(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+    def _with_runtime_hooks(
+        self,
+        kwargs: dict[str, Any],
+        *,
+        closes_active_conversation: bool = False,
+    ) -> dict[str, Any]:
         if self._runtime_context_token is None:
             return kwargs
         updated = dict(kwargs)
         state = dict(updated.get("state") or {})
         state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = self._runtime_context_token
+        if closes_active_conversation:
+            state[EXPLICIT_COMMAND_STATE_KEY] = True
         updated["state"] = state
         return updated
