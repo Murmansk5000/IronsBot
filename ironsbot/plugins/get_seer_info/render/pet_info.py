@@ -278,12 +278,29 @@ async def render_pet_info(pet: PetORM) -> bytes:
         for mm, icon_bytes in zip(mintmarks, mm_icon_results, strict=True)
     ]
 
+    encyclopedia = pet.encyclopedia
+    pet_height: str | None = None
+    pet_weight: str | None = None
+    pet_food: str | None = None
+    if encyclopedia:
+        pet_height = (
+            f"{encyclopedia.height:g}cm" if encyclopedia.height is not None else "未知"
+        )
+        pet_weight = (
+            f"{encyclopedia.weight:g}kg" if encyclopedia.weight is not None else "未知"
+        )
+        pet_food = encyclopedia.food
+
     result = await template_to_pic(
         template_path=[TEMPLATE_PATH, SHARED_PATH],
         template_name="template.html.j2",
         templates={
             "pet_name": pet.name,
             "pet_id": pet.id,
+            "pet_introduction": encyclopedia.introduction if encyclopedia else None,
+            "pet_height": pet_height,
+            "pet_weight": pet_weight,
+            "pet_food": pet_food,
             "pet_gender_id": pet.gender.id,
             "pet_gender_icon": f"images/{pet.gender.id}.png",
             "pet_type_id": pet.type.id,
