@@ -44,7 +44,12 @@ class TypeQueryService:
                 target_id = None
             elif len(combinations) == 1:
                 target = combinations[0]
-                if _contains_normal_type(target):
+                if _contains_normal_type_ids(
+                    int(target.primary_id),
+                    None
+                    if target.secondary_id is None
+                    else int(target.secondary_id),
+                ):
                     return QueryResult(message=NORMAL_TYPE_MESSAGE)
                 target_id = int(target.id)
             elif len(combinations) > PROMPT_MAX_ITEMS:
@@ -98,7 +103,17 @@ class TypeQueryService:
 def _contains_normal_type(
     type_combination: TypeCombinationSnapshot,
 ) -> bool:
-    return NORMAL_TYPE_ID in {
+    return _contains_normal_type_ids(
         type_combination.primary_id,
         type_combination.secondary_id,
+    )
+
+
+def _contains_normal_type_ids(
+    primary_id: int,
+    secondary_id: int | None,
+) -> bool:
+    return NORMAL_TYPE_ID in {
+        primary_id,
+        secondary_id,
     }

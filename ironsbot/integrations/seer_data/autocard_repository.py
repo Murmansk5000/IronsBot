@@ -125,7 +125,9 @@ def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
 
 
 def _as_int(value: object) -> int:
+    if not isinstance(value, int | float | str):
+        return 0
     try:
-        return int(value or 0)
+        return int(value)
     except (TypeError, ValueError):
         return 0

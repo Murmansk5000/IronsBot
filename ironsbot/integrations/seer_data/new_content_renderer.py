@@ -71,7 +71,7 @@ async def render_new_content_menu(  # noqa: PLR0913
         return cached
 
     # All ORM and domain-service reads complete before the first await below.
-    expanded = frozenset(
+    expanded: frozenset[NewContentCategory] = frozenset(
         category
         for category in display_categories
         if category in expanded_categories
