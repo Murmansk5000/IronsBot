@@ -98,7 +98,7 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | --- | --- | --- | --- |
 | Types/config | `EffectIconBuildConfig` 与结果值对象可由构建器显式构造；无模块读取环境 | 本 Spec 接受 | completed |
 | Renderer/cache | FFDec、PNG 校验、缓存与并发移出总构建器；原测试迁到模块 | Types/config | completed |
-| Source adapters | Flash/Unity 探测、包解码和每图标来源事实移出总构建器 | Types/config | in_progress（Unity 完成；Flash 待迁移） |
+| Source adapters | Flash/Unity 探测、包解码和每图标来源事实移出总构建器 | Types/config | completed |
 | Resolver/shard | 优先级、回退、缺图诊断与 shard 复用同一 resolver | Renderer/cache + source adapters | planned |
 | Release smoke | 全量 release 构建、PNG/issue 行、metadata、manifest 与 IronsBot consumer smoke 验证 | 所有前序 slice | planned |
 
@@ -130,13 +130,14 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | 2026-08-15 | SeerAPI `c1faedf` | `uv run pytest -q`（260 passed）、Ruff、构建器 `--help`、compileall、`git diff --check` | `effect_icon_build_types.py` 解析配置和值对象，`effect_icon_png_renderer.py` 成为 FFDec、PNG 校验、缓存和并发的唯一实现；总构建器从 4,122 行降至 3,542 行。source adapters、resolver/shard 与真实 release consumer smoke 尚未完成。 |
 | 2026-08-15 | SeerAPI `6ff44d0`、`1f8d029` | effect-icon 构建测试 51 passed、Ruff、compileall、`git diff --check` | Flash/Unity URL、asset path、来源 URL 与 ID 解析迁入纯 `effect_icon_source_paths.py`，只接收 `EffectIconBuildConfig`；构建器删除 50 行路径规则。Unity bundle 与 Flash HTTP adapter 仍在构建器，尚未宣称 source-adapter slice 完成。 |
 | 2026-08-15 | SeerAPI `98c7506` | `uv run pytest -q`（261 passed）、Ruff、compileall、`git diff --check` | `effect_icon_unity_sources.py` 成为 DefaultPackage manifest、bundle 下载、UnityPy Sprite/Texture2D 提取、缺图事实和 SWF fallback 分区的唯一实现；构建器只注入 manifest/download gateway。Flash HTTP adapter、统一 resolver/shard 与真实 release smoke 仍待完成。 |
+| 2026-08-15 | SeerAPI `5368055` | `uv run pytest -q`（262 passed）、Ruff、compileall、`git diff --check` | `effect_icon_flash_sources.py` 成为 Flash HEAD/range 探测、内容校验和下载的唯一实现；构建器只注入 HTTP primitives。所有 source-adapter 细节均已离开构建器；下一步是将 Flash/Unity 优先级、回退和 cache shard 收入统一 resolver。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  global verified progress; this draft does not change it
-Phase    [██████░░░░] 60%  verified slices: 2 complete + Unity source adapter   estimated remaining: 2-4 h
-Current  [██████████] 100% Unity DefaultPackage source adapter verified; next: isolate Flash HTTP source adapter
+Phase    [██████░░░░] 60%  verified slices: 3/5   estimated remaining: 2-4 h
+Current  [██████████] 100% Flash and Unity source adapters verified; next: isolate resolver and cache shard
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
