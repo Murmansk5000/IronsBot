@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING, Literal, NamedTuple, TypedDict
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageOps
+from PIL import Image, ImageEnhance, ImageOps
 
 from ironsbot.services.seer.images import (
     ImageKind,
@@ -21,6 +21,17 @@ from ironsbot.services.seer.render_paths import (
     SHARED_TEMPLATE_PATH,
 )
 
+from .peak_pool_arrows import (
+    CELL_GAP,
+    CELL_WIDTH,
+)
+from .peak_pool_arrows import (
+    pool_transition_arrows as _pool_transition_arrows,
+)
+from .peak_pool_arrows import (
+    transition_overlay_uri as _transition_overlay_uri,
+)
+
 if TYPE_CHECKING:
     from ironsbot.services.seer.peak import (
         PeakPetSnapshot,
@@ -30,18 +41,10 @@ if TYPE_CHECKING:
 
     from . import HtmlTemplateRenderer
 
-CELL_WIDTH = 100 + 2 * 2  # pet-cell width + border
-CELL_GAP = 0
-CELL_STEP = CELL_WIDTH + CELL_GAP
 POOL_OVERHEAD = 18 * 2 + 1 * 2  # pool-section padding + border
 CONTAINER_PADDING = 20 * 2
-POOL_GRID_LEFT = 1 + 18
-POOL_GRID_TOP = 1 + 18 + 28 + 10 + 1 + 14
-POOL_SECTION_FIXED_HEIGHT = POOL_GRID_TOP + 18 + 1
-POOL_SECTION_MARGIN = 16
-EMPTY_GRID_HEIGHT = 56
 MAX_BASE_COLS = 10
-PEAK_POOL_CACHE_VERSION = 8
+PEAK_POOL_CACHE_VERSION = 9
 
 logger = logging.getLogger(__name__)
 
@@ -115,22 +118,6 @@ class PoolTransitionLane:
     previous_index: int
     current_index: int
     lane: int
-
-
-@dataclass(frozen=True, slots=True)
-class PoolPlacementGeometry:
-    x: int
-    top: int
-    bottom: int
-
-
-@dataclass(frozen=True, slots=True)
-class PoolTransitionArrow:
-    transition_id: int
-    x: int
-    start_y: int
-    line_end_y: int
-    head_points: tuple[tuple[int, int], tuple[int, int], tuple[int, int]]
 
 
 class PoolSlotCollisionError(RuntimeError):
@@ -331,13 +318,17 @@ def _transition_lanes(
         previous_position,
         current_position,
     ) in candidates:
-        lane = next(
+        lane = min(
             (
                 candidate
                 for candidate, previous_end in enumerate(lane_ends)
-                if previous_end < interval_start
+                if previous_end <= interval_start
             ),
-            len(lane_ends),
+            key=lambda candidate: (
+                lane_ends[candidate] != interval_start,
+                candidate,
+            ),
+            default=len(lane_ends),
         )
         if lane == len(lane_ends):
             lane_ends.append(interval_end)
@@ -395,7 +386,12 @@ def _pool_grid_dimensions(
     transition_lanes: tuple[PoolTransitionLane, ...],
 ) -> PoolGridDimensions:
     max_items = max((len(items) for items in regular.values()), default=0)
-    base_columns = max(1, min(max_items, MAX_BASE_COLS))
+    target_rows = max(
+        1,
+        _ceil_div(max_items, MAX_BASE_COLS),
+        _max_transition_boundary_rows(transition_lanes),
+    )
+    base_columns = max(1, _ceil_div(max_items, target_rows))
     lane_count = max(
         (transition.lane + 1 for transition in transition_lanes),
         default=0,
@@ -404,6 +400,24 @@ def _pool_grid_dimensions(
         base_columns=base_columns,
         columns=base_columns + lane_count,
     )
+
+
+def _max_transition_boundary_rows(
+    transition_lanes: tuple[PoolTransitionLane, ...],
+) -> int:
+    endpoint_loads: dict[tuple[int | None, int], int] = {}
+    for transition in transition_lanes:
+        for position in (
+            transition.previous_position,
+            transition.current_position,
+        ):
+            key = (position, transition.lane)
+            endpoint_loads[key] = endpoint_loads.get(key, 0) + 1
+    return max(endpoint_loads.values(), default=0)
+
+
+def _ceil_div(value: int, divisor: int) -> int:
+    return (value + divisor - 1) // divisor
 
 
 def _place_pool_pets(
@@ -494,9 +508,7 @@ def _place_pool_section(
     base_item_count = len(regular) + sum(
         item.column < dimensions.base_columns for item in reserved
     )
-    capacity_rows = (
-        base_item_count + dimensions.base_columns - 1
-    ) // dimensions.base_columns
+    capacity_rows = _ceil_div(base_item_count, dimensions.base_columns)
     boundary_rows = max(
         (
             edge_loads[(position, "top")][column]
@@ -525,107 +537,6 @@ def _place_pool_section(
     for placement in regular:
         slots[next(empty_slots)] = placement
     return PoolSectionLayout(position=position, rows=rows, slots=tuple(slots))
-
-
-def _pool_transition_arrows(
-    layout: PoolGridLayout,
-) -> tuple[int, tuple[PoolTransitionArrow, ...]]:
-    endpoints: dict[int, dict[bool, PoolPlacementGeometry]] = {}
-    section_top = 0
-    for section in layout.sections:
-        grid_height = _pool_grid_height(section.rows)
-        for slot_index, placement in enumerate(section.slots):
-            if placement is None or placement.transition_id is None:
-                continue
-            row, column = divmod(slot_index, layout.columns)
-            top = section_top + POOL_GRID_TOP + row * CELL_STEP
-            endpoints.setdefault(placement.transition_id, {})[
-                placement.historical
-            ] = PoolPlacementGeometry(
-                x=POOL_GRID_LEFT + column * CELL_STEP + CELL_WIDTH // 2,
-                top=top,
-                bottom=top + CELL_WIDTH,
-            )
-        section_top += (
-            POOL_SECTION_FIXED_HEIGHT
-            + grid_height
-            + POOL_SECTION_MARGIN
-        )
-
-    arrows = tuple(
-        _pool_transition_arrow(transition_id, pair[True], pair[False])
-        for transition_id, pair in sorted(endpoints.items())
-        if True in pair and False in pair
-    )
-    return section_top, arrows
-
-
-def _pool_grid_height(rows: int) -> int:
-    if rows == 0:
-        return EMPTY_GRID_HEIGHT
-    return rows * CELL_WIDTH + (rows - 1) * CELL_GAP
-
-
-def _pool_transition_arrow(
-    transition_id: int,
-    previous: PoolPlacementGeometry,
-    current: PoolPlacementGeometry,
-) -> PoolTransitionArrow:
-    downward = previous.top < current.top
-    x = (previous.x + current.x) // 2
-    start_y = previous.bottom + 3 if downward else previous.top - 3
-    tip_y = current.top - 3 if downward else current.bottom + 3
-    line_end_y = tip_y - 9 if downward else tip_y + 9
-    head_base_y = tip_y - 10 if downward else tip_y + 10
-    return PoolTransitionArrow(
-        transition_id=transition_id,
-        x=x,
-        start_y=start_y,
-        line_end_y=line_end_y,
-        head_points=(
-            (x, tip_y),
-            (x - 6, head_base_y),
-            (x + 6, head_base_y),
-        ),
-    )
-
-
-def _transition_overlay_uri(
-    width: int,
-    height: int,
-    arrows: tuple[PoolTransitionArrow, ...],
-) -> str:
-    if not arrows:
-        return ""
-    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    drawing = ImageDraw.Draw(overlay)
-    for arrow in arrows:
-        _draw_vertical_dashes(
-            drawing,
-            x=arrow.x,
-            start_y=arrow.start_y,
-            end_y=arrow.line_end_y,
-        )
-        drawing.polygon(arrow.head_points, fill=(255, 255, 255, 255))
-    output = BytesIO()
-    overlay.save(output, format="PNG")
-    return to_data_uri(output.getvalue())
-
-
-def _draw_vertical_dashes(
-    drawing: ImageDraw.ImageDraw,
-    *,
-    x: int,
-    start_y: int,
-    end_y: int,
-) -> None:
-    top, bottom = sorted((start_y, end_y))
-    for dash_top in range(top, bottom + 1, 14):
-        drawing.line(
-            (x, dash_top, x, min(dash_top + 8, bottom)),
-            fill=(255, 255, 255, 255),
-            width=3,
-        )
 
 
 async def _pool_image_uris(

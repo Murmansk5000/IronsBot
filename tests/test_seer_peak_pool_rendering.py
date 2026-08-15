@@ -19,6 +19,7 @@ from ironsbot.services.seer.peak import (
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 
 EXPECTED_RENDER_COUNT = 2
+SHARED_BOUNDARY_ROWS = 2
 RGBA_CHANNEL_COUNT = 4
 OPAQUE_ALPHA = 255
 
@@ -377,7 +378,7 @@ async def test_many_adjacent_transitions_expand_columns_without_stacking() -> No
 
 
 @pytest.mark.asyncio
-async def test_touching_transition_ranges_use_separate_lanes() -> None:
+async def test_touching_transition_ranges_share_lane_with_two_boundary_rows() -> None:
     from_above = PeakPetSnapshot(1, "上方迁入", 4001, 4)
     from_below = PeakPetSnapshot(2, "下方迁入", 4002, 5)
     snapshot = PeakPoolRenderSnapshot(
@@ -419,12 +420,134 @@ async def test_touching_transition_ranges_use_separate_lanes() -> None:
         historical=False,
         columns=columns,
     )
-    assert top[1] != bottom[1]
-    assert top[1] >= base_columns
-    assert bottom[1] >= base_columns
+    assert columns == base_columns + 1
+    assert top[1] == bottom[1] == base_columns
     assert top[0] == 0
     assert bottom[0] == pools["限2"]["rows"] - 1
+    assert pools["限2"]["rows"] == SHARED_BOUNDARY_ROWS
     assert top[:2] != bottom[:2]
+
+
+@pytest.mark.asyncio
+async def test_adjacent_transition_chain_uses_one_minimum_lane() -> None:
+    first = PeakPetSnapshot(1, "上段迁移", 4101, 4)
+    second = PeakPetSnapshot(2, "中段迁移", 4102, 5)
+    third = PeakPetSnapshot(3, "下段迁移", 4103, 6)
+    snapshot = PeakPoolRenderSnapshot(
+        pools=(_pool(first, count=2), _pool(second, count=3)),
+        transitions=(
+            PeakPoolTransitionSnapshot(first, 0, 2),
+            PeakPoolTransitionSnapshot(second, 2, 3),
+            PeakPoolTransitionSnapshot(third, 3, None),
+        ),
+        change_state="changed",
+        content_version="adjacent-chain",
+        expert=False,
+    )
+    captured: dict[str, Any] = {}
+
+    async def render_html(*_args: object, **kwargs: Any) -> bytes:
+        captured.update(kwargs["templates"])
+        return b"chain"
+
+    await render_peak_pool(
+        _Cache(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        render_html,  # type: ignore[arg-type]
+        snapshot,
+        "竞技池",
+    )
+
+    columns = captured["grid_columns"]
+    base_columns = captured["base_columns"]
+    pools = {pool["label"]: pool for pool in captured["pools"]}
+    assert columns == base_columns + 1
+    transition_columns = {
+        _pet_slot(
+            pools[label],
+            pet_id=pet.id,
+            historical=historical,
+            columns=columns,
+        )[1]
+        for label, pet, historical in (
+            ("限0", first, True),
+            ("限2", first, False),
+            ("限2", second, True),
+            ("限3", second, False),
+            ("限3", third, True),
+            ("不限", third, False),
+        )
+    }
+    assert transition_columns == {base_columns}
+    assert (
+        pools["限2"]["rows"]
+        == pools["限3"]["rows"]
+        == SHARED_BOUNDARY_ROWS
+    )
+
+
+@pytest.mark.asyncio
+async def test_overlapping_ranges_still_use_theoretical_minimum_lanes() -> None:
+    upper = PeakPetSnapshot(1, "上段迁移", 4201, 4)
+    spanning = PeakPetSnapshot(2, "跨区迁移", 4202, 5)
+    middle = PeakPetSnapshot(3, "中段迁移", 4203, 6)
+    lower = PeakPetSnapshot(4, "下段迁移", 4204, 7)
+    snapshot = PeakPoolRenderSnapshot(
+        pools=(_pool(upper, count=2), _pool(middle, count=3)),
+        transitions=(
+            PeakPoolTransitionSnapshot(lower, 3, None),
+            PeakPoolTransitionSnapshot(middle, 2, 3),
+            PeakPoolTransitionSnapshot(spanning, 0, 3),
+            PeakPoolTransitionSnapshot(upper, 0, 2),
+        ),
+        change_state="changed",
+        content_version="minimum-lanes",
+        expert=False,
+    )
+    captured: dict[str, Any] = {}
+
+    async def render_html(*_args: object, **kwargs: Any) -> bytes:
+        captured.update(kwargs["templates"])
+        return b"minimum"
+
+    await render_peak_pool(
+        _Cache(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        render_html,  # type: ignore[arg-type]
+        snapshot,
+        "竞技池",
+    )
+
+    columns = captured["grid_columns"]
+    base_columns = captured["base_columns"]
+    pools = {pool["label"]: pool for pool in captured["pools"]}
+    assert columns == base_columns + 2
+    upper_column = _pet_slot(
+        pools["限0"],
+        pet_id=upper.id,
+        historical=True,
+        columns=columns,
+    )[1]
+    spanning_column = _pet_slot(
+        pools["限0"],
+        pet_id=spanning.id,
+        historical=True,
+        columns=columns,
+    )[1]
+    middle_column = _pet_slot(
+        pools["限2"],
+        pet_id=middle.id,
+        historical=True,
+        columns=columns,
+    )[1]
+    lower_column = _pet_slot(
+        pools["限3"],
+        pet_id=lower.id,
+        historical=True,
+        columns=columns,
+    )[1]
+    assert upper_column == middle_column == lower_column
+    assert spanning_column != upper_column
 
 
 @pytest.mark.asyncio
@@ -490,7 +613,11 @@ async def test_disjoint_transition_ranges_reuse_right_lane() -> None:
 
 @pytest.mark.asyncio
 async def test_ordinary_grid_chooses_columns_and_rows_from_content() -> None:
-    for pet_count, expected_columns, expected_rows in ((3, 3, 1), (12, 10, 2)):
+    for pet_count, expected_columns, expected_rows in (
+        (3, 3, 1),
+        (12, 6, 2),
+        (24, 8, 3),
+    ):
         pets = tuple(
             PeakPetSnapshot(index, f"普通{index}", 6000 + index, 4)
             for index in range(1, pet_count + 1)
@@ -524,6 +651,58 @@ async def test_ordinary_grid_chooses_columns_and_rows_from_content() -> None:
         assert captured["grid_columns"] == expected_columns
         assert captured["transition_overlay"] == ""
         assert pools["限0"]["rows"] == expected_rows
+
+
+@pytest.mark.asyncio
+async def test_regular_grid_uses_rows_already_required_by_transition_chain() -> None:
+    upper = PeakPetSnapshot(101, "上段迁移", 7101, 4)
+    lower = PeakPetSnapshot(102, "下段迁移", 7102, 5)
+    regular = tuple(
+        PeakPetSnapshot(index, f"普通{index}", 7200 + index, 6)
+        for index in range(1, 8)
+    )
+    snapshot = PeakPoolRenderSnapshot(
+        pools=(_pool(*regular, upper, count=2), _pool(lower, count=3)),
+        transitions=(
+            PeakPoolTransitionSnapshot(upper, 0, 2),
+            PeakPoolTransitionSnapshot(lower, 2, 3),
+        ),
+        change_state="changed",
+        content_version="shared-rows",
+        expert=False,
+    )
+    captured: dict[str, Any] = {}
+
+    async def render_html(*_args: object, **kwargs: Any) -> bytes:
+        captured.update(kwargs["templates"])
+        return b"shared-rows"
+
+    await render_peak_pool(
+        _Cache(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        render_html,  # type: ignore[arg-type]
+        snapshot,
+        "竞技池",
+    )
+
+    columns = captured["grid_columns"]
+    base_columns = captured["base_columns"]
+    pools = {pool["label"]: pool for pool in captured["pools"]}
+    assert base_columns == (
+        len(regular) + SHARED_BOUNDARY_ROWS - 1
+    ) // SHARED_BOUNDARY_ROWS
+    assert columns == base_columns + 1
+    assert pools["限2"]["rows"] == SHARED_BOUNDARY_ROWS
+    regular_rows = {
+        _pet_slot(
+            pools["限2"],
+            pet_id=pet.id,
+            historical=False,
+            columns=columns,
+        )[0]
+        for pet in regular
+    }
+    assert regular_rows == {0, 1}
 
 
 @pytest.mark.asyncio
