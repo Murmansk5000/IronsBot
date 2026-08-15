@@ -21,7 +21,7 @@
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
 - `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
-  `seerapi/scripts/build_seerapi_data_db.py`（2,780 行）仍是已登记的 transition 债务；
+  `seerapi/scripts/build_seerapi_data_db.py`（2,650 行）仍是已登记的 transition 债务；
   `scripts/build_new_content_index.py` 已拆至 280 行。新功能
   不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
   发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
