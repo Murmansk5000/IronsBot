@@ -173,6 +173,11 @@ compileall 与 diff 检查通过。静态 Docker 审计确认运行镜像仍只�
 session。未加载数据仍显式返回 `unknown`，因此不会写入无发布版本的缓存。该项是下一步
 `RenderRequestKey` 在 SQL/HTTP 之前安全命中的版本基础，不代表早期缓存本身已经完成。
 
+**发布数据库装载契约（2026-08-15）：** `DatabaseManager` 现支持每个数据源的 staged
+load validator。SeerAPI 在内存替换前必须证明存在 `api_metadata`、`ironsbot_metadata`，且
+`ironsbot_schema_contract_version` 等于消费者支持的版本；失败时保留旧内存库和旧本地文件，
+`/更新数据` 会返回具体契约原因。该校验不接受旧 schema 的双读或静默降级。
+
 **请求级渲染缓存（2026-08-13）：** `a167843a` 将已发布精灵信息、属性克制、巅峰池、
 巅峰票选、巅峰精灵榜和新内容菜单改为先构造确定性请求键，再查最终图片缓存。命中路径
 不读取 SQLite、不加载素材、不调用 presenter 或原生 HTML 渲染；针对性测试覆盖了零素材

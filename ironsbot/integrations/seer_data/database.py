@@ -37,6 +37,7 @@ from .getters import (
     build_mintmark_data_getter,
 )
 from .mintmark_series_resolvers import resolve_custom_mintmark_series
+from .release_contract import validate_published_seerapi_release
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -78,6 +79,7 @@ class SeerDatabase:
         self.mintmark = build_mintmark_data_getter(
             merge_connected=merge_connected_mintmarks
         )
+        databases.add_load_validator(SEERAPI_DB, validate_published_seerapi_release)
         databases.add_load_listener(SEERAPI_DB, self._refresh_published_version)
         self._refresh_published_version()
 
