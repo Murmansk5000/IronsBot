@@ -134,6 +134,7 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | 2026-08-15 | SeerAPI `5bcde20` | `uv run pytest -q`（262 passed）、Ruff、构建器 `--help`、compileall、`git diff --check` | `effect_icon_build.py` 成为 Flash/Unity 优先级、逐图回退、缺图统计与 Flash shard rendering 的唯一协调者；构建器只装配 gateway 并写发布 SQLite。真实 release 与 IronsBot consumer smoke 仍待完成。 |
 | 2026-08-15 | 本地 release/consumer smoke | 以当前 `seerapi-data-latest` 为上游和 PNG cache，完整构建临时 SQLite 成功；IronsBot `load_pet_derived_display_data()` 读取真实 PNG；新表含 `6376` effects、`10378` sources、`2234` soulmark displays | 当前发布库尚未包含新派生表，不能作为 consumer target；新构建产物已满足 consumer 契约。仍需 GitHub Actions 的 FFDec release build 才能完成此 slice。 |
 | 2026-08-15 | SeerAPI `547582f` cached-source smoke | 完整临时构建复用 `2096` 个 Flash PNG，`0` 个 Unity fallback；IronsBot 从产物读取 `pet=300` 的魂印 PNG（16,624 bytes）和 5 条专属效果；SeerAPI `pytest`（263 passed）、Ruff、compileall、`git diff --check` | 缓存完整时不再预检或启动 Java/FFDec，增量构建无需工具链也不会错误回退 Unity。真实 GitHub Actions FFDec release 仍是最后一项发布环境验证。 |
+| 2026-08-15 | SeerAPI `9eceeac` workflow trigger audit | YAML 解析确认 data-build workflow 会监听 `scripts/effect_icon_*.py` 与 `scripts/render_asset_manifest_build.py` | 已拆分模块进入 `main` 时会触发 FFDec cache shard、正式构建和发布；避免本地重构通过而 Actions 未执行。 |
 
 ## Progress
 
