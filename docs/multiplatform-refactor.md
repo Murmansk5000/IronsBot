@@ -21,7 +21,7 @@
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
 - `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
-  `seerapi/scripts/build_seerapi_data_db.py`（2,167 行）仍是已登记的 transition 债务；
+  `seerapi/scripts/build_seerapi_data_db.py`（2,030 行）仍是已登记的 transition 债务；
   `scripts/build_new_content_index.py` 已拆至 280 行。新功能
   不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
   发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
@@ -41,12 +41,12 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [████░░░░░░] 40%  verified phases: 2/7  estimated remaining: 4-7 h
-Phase 3  [██████░░░░] 60%  verified tasks: 3/5  estimated remaining: 1-2 h
-Task     [████████░░] 80%  remaining: boundary tests and smoke test  20-40 min
+Program  [███░░░░░░░]  verified phases: 3/8; percentage awaits a weighted acceptance baseline
+Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
+Task     [██████████] completed only after code, tests, and evidence are committed
 ```
 
-示例中的数字不是当前状态；实际状态由本次任务报告和提交证据决定。
+进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
 ## 当前验证进度（2026-08-15）
 
