@@ -214,6 +214,12 @@ diff 检查通过。入口脚本降至 1,226 行，尚未完成的边界只剩�
 构建相关 56 项、SeerAPI 全量 **269 passed**、Ruff、编译、CLI `--help` 与 diff 检查通过。
 真实 release 和 IronsBot 消费者 smoke 仍是 release gate，不能由本地单元测试替代。
 
+**镜像体积基线（2026-08-15）：** Docker 发布工作流现在在 push 后拉取刚发布的首个
+镜像标签，并把 Docker 报告的本地未压缩体积写入 GitHub Actions Summary。当前工作站的
+Docker daemon 未启动，不能伪造实际大小；后续只在有连续发布基线后，才为增长设置预算或
+删除运行依赖。静态审计确认 tests/docs/scripts/dev 依赖均不进入最终镜像，HTML 渲染、
+Pillow、SQLAlchemy 与中文字体有真实运行时调用，不能以“瘦身”为由直接移除。
+
 **效果元数据来源边界（2026-08-13）：** SeerAPI `e82d738` 将官方
 `effectDes.json` 与 `signIconFight.json` 的纯解析和值对象迁入
 `scripts/effect_metadata_sources.py`。发布构建器继续持有 URL、下载、失败日志和 SQLite
