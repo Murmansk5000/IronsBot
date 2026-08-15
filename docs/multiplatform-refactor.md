@@ -646,6 +646,15 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
 
 ## 主线同步记录
 
+- **2026-08-15 / `origin/main` `af2e8810`：** 已抓取，尚未直接合并到 V5。该批次
+  包含活动周快照、竞技池变动展示、幸运橱窗卡片、Docker 维护菜单、更新确认和绑定
+  限制等功能。它依赖已退役的 command-directory / plugin / runtime 路径，与 V5 的
+  NoneBot 插件装载及 command contract 发生结构冲突。后续必须按
+  `docs/specs/` 中的上游同步 Spec 逐项迁入并验证，不得把自动 merge 误报为完成。
+- **2026-08-15 / 活动周快照：** 已在 V5 的 `ActivityService`、活动命令 contract 与
+  `runtime_state.sqlite` 中迁入。`新增活动` 对比当前周和上周已观察到的活动 ID；首周
+  没有上周快照时明确提示，后续只显示差集。未恢复旧活动插件或 command-directory。
+
 - **2026-08-13 / `origin/main` `7757a48f`：** 已合并到 V5 工作分支。该主线修复的
   行为是：B站公开昵称刷新失败时，“TD / 推送管理”仍可打开，选项退化为 UID 并显示
   警告，而不是拒绝整个菜单。V5 保持 `ConversationRef` 作为消息服务的唯一会话

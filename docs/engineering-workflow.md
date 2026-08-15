@@ -103,6 +103,25 @@ Git 的 `ours`/`theirs` 策略静默选择整段文档。每次这种语义合�
 
 ## 先设计，再落代码
 
+### Spec 驱动开发
+
+跨模块、跨仓库、公开命令、配置、持久化、渲染契约和迁移改动，必须先创建一份
+feature spec。模板与生命周期见 [specs/README.md](specs/README.md) 和
+[specs/TEMPLATE.md](specs/TEMPLATE.md)。Spec 是本次工作唯一的可执行范围与验收
+清单，不替代 [ARCHITECTURE.md](../ARCHITECTURE.md) 的长期目标，也不复制
+[multiplatform-refactor.md](multiplatform-refactor.md) 的阶段账本。
+
+实施时每一项代码改动都要能追溯到 Spec 的范围或验收标准。需求、数据事实或上游
+变更推翻原设计时，先更新 Spec，写清增减的范围、迁移和验证，再继续代码。小型局部
+修复可写短设计记录，但一旦影响命令、配置、数据、渲染或职责边界，必须升级为 Spec。
+
+### 上游同步的 Spec 门
+
+`main` 与架构分支目录或目标契约不同，Git 自动合并不等于功能已安全迁入。每批主线
+提交先在对应 Spec 中列出提交号、用户行为、V5 语义 owner、迁入方式和验证；只有
+在 V5 边界内通过验收后，才能记为“已吸收”。禁止用 `ours`/`theirs` 整段覆盖来解决
+目录迁移冲突，也禁止为了让 merge 通过而恢复退役的插件、registry 或 runtime 路径。
+
 ### 用户授权与改动范围
 
 每个工作项都必须以用户最近一次明确授权的改动范围为上限。计划、长期目标或

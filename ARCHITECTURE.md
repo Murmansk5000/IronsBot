@@ -319,6 +319,32 @@ Before changing production code, the implementation plan must answer these
 questions in writing. A small bug fix may answer them in one short paragraph;
 a migration must answer each one explicitly.
 
+### Spec-Driven Delivery
+
+For any change that crosses a module boundary, changes a public command,
+configuration, persistence, rendering contract, or another repository, create
+a feature spec from [docs/specs/TEMPLATE.md](docs/specs/TEMPLATE.md) before
+editing production code. The spec is the executable agreement for that change:
+it records the target behaviour, semantic owner, accepted inputs and outputs,
+non-goals, migration and rollback, and acceptance evidence. It is not a second
+architecture document.
+
+Use [docs/specs/README.md](docs/specs/README.md) for the lifecycle and naming
+rules. `ARCHITECTURE.md` remains the authority for durable ownership and target
+contracts; `docs/engineering-workflow.md` remains the authority for how work is
+reviewed and reported; `docs/multiplatform-refactor.md` remains the migration
+ledger. A feature spec links to those documents instead of duplicating them.
+
+Small, local correctness fixes may use a short design note in the commit or
+task instead of a separate spec only when they do not alter a user contract,
+schema, configuration, command syntax, or ownership boundary. If investigation
+widens such a fix, stop and promote it to a spec before adding another patch.
+
+Each implementation step must trace to one acceptance criterion in its spec.
+When facts change, update the spec before changing the implementation; do not
+preserve an obsolete plan through compatibility code. A spec is complete only
+when its verified evidence, remaining risks, and rollback state are recorded.
+
 1. **Semantic owner:** What domain capability owns the behaviour? The answer
    must not be "this plugin already handles something similar."
 2. **Reusable input/output:** Which existing typed value, port, resolver, or

@@ -36,6 +36,10 @@ if TYPE_CHECKING:
 
 ACTIVITY_PUSH_SUBSCRIPTION_KEY = "seer_activity_push"
 EMPTY_CURRENT_ACTIVITY_MESSAGE = "📭 当前没有从活动中心读到正在进行的活动。"
+EMPTY_NEW_ACTIVITY_MESSAGE = "📭 本周没有比上周新增的活动。"
+NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE = (
+    "📭 暂无上周活动快照，暂时无法判断本周新增活动。"
+)
 EMPTY_SOON_ENDING_ACTIVITY_MESSAGE = "📭 当前没有读到不足 7 天结束的活动。"
 REMINDER_DISPATCH_TOLERANCE = timedelta(minutes=1)
 _LOGGER = logging.getLogger(__name__)
@@ -55,6 +59,9 @@ class ActivityService:
     preference_for_target: Callable[[ActivityReminderRecipient], str | None]
     targets: Callable[[], ActivityReminderTargets]
     broadcast: Callable[[ActivityReminderDelivery], Awaitable[bool]]
+    newly_observed_activity_ids: Callable[
+        [set[int], datetime], tuple[frozenset[int], bool]
+    ]
     now: Callable[[], datetime]
 
     async def active_activity_infos(self, now: datetime) -> list[ActivityInfo]:
@@ -70,6 +77,14 @@ class ActivityService:
             asyncio.to_thread(self.load_rows),
             self.load_notice_text(now),
         )
+        new_activity_ids, has_previous_week_snapshot = self.newly_observed_activity_ids(
+            {
+                int(row["id"])
+                for row in rows
+                if row.get("id") is not None
+            },
+            now,
+        )
         activities = build_active_activity_infos(
             rows,
             now,
@@ -77,6 +92,8 @@ class ActivityService:
         )
         self.cache.items = activities
         self.cache.expires_at = now + self.cache_ttl
+        self.cache.new_activity_ids = new_activity_ids
+        self.cache.has_previous_week_snapshot = has_previous_week_snapshot
         return list(activities)
 
     async def soon_ending_activity_infos(
@@ -147,6 +164,34 @@ class ActivityService:
             )
 
         hidden_count = len(activities) - len(shown)
+        if limit is not None and hidden_count > 0:
+            lines.append(f"...还有 {hidden_count} 个活动未显示")
+        return "\n".join(lines)
+
+    async def build_newly_added_message(
+        self,
+        *,
+        limit: int | None = None,
+    ) -> str:
+        now = self.now()
+        activities = await self.active_activity_infos(now)
+        if not self.cache.has_previous_week_snapshot:
+            return NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE
+
+        new_activities = [
+            activity
+            for activity in activities
+            if activity.activity_id in self.cache.new_activity_ids
+        ]
+        if not new_activities:
+            return EMPTY_NEW_ACTIVITY_MESSAGE
+
+        shown = new_activities if limit is None else new_activities[:limit]
+        lines = ["📅【新增活动】", f"截至 {now:%Y-%m-%d %H:%M}", ""]
+        for index, activity in enumerate(shown, start=1):
+            lines.extend(format_activity_line(index, activity, now, soon_only=False))
+
+        hidden_count = len(new_activities) - len(shown)
         if limit is not None and hidden_count > 0:
             lines.append(f"...还有 {hidden_count} 个活动未显示")
         return "\n".join(lines)
