@@ -10,6 +10,7 @@ from ironsbot.core.command_catalog import (
 )
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
+    NEW_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
 )
 
@@ -28,6 +29,12 @@ def activity_command_contracts() -> tuple[CommandContract, ...]:
                     SOON_ENDING_ACTIVITY_COMMANDS[:1],
                     "查询即将结束的活动",
                     {"show_in_poke": True},
+                ),
+                (
+                    "activity.new",
+                    NEW_ACTIVITY_COMMANDS[:1],
+                    "查询本周新增活动",
+                    {},
                 ),
             ),
         ),

@@ -11,7 +11,9 @@ from ironsbot.services.activity.delivery import (
 )
 from ironsbot.services.activity.models import ActivityInfoCache
 from ironsbot.services.activity.service import (
+    EMPTY_NEW_ACTIVITY_MESSAGE,
     EMPTY_SOON_ENDING_ACTIVITY_MESSAGE,
+    NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE,
     ActivityService,
 )
 
@@ -43,6 +45,9 @@ def _service(
     now: datetime,
     cache_ttl: timedelta = timedelta(minutes=1),
     load_rows: Callable[[], list[Mapping[str, Any]]] | None = None,
+    newly_observed_ids: (
+        Callable[[set[int], datetime], tuple[frozenset[int], bool]] | None
+    ) = None,
 ) -> ActivityService:
     async def broadcast(_delivery: ActivityReminderDelivery) -> bool:
         return True
@@ -63,6 +68,9 @@ def _service(
         preference_for_target=lambda _target: None,
         targets=ActivityReminderTargets,
         broadcast=broadcast,
+        newly_observed_activity_ids=(
+            newly_observed_ids or (lambda _ids, _now: (frozenset(), False))
+        ),
         now=lambda: now,
     )
 
@@ -112,4 +120,43 @@ def test_build_current_message_handles_empty_soon_ending_list() -> None:
     assert (
         asyncio.run(service.build_current_message(soon_only=True))
         == EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
+    )
+
+
+def test_newly_added_activity_message_requires_previous_week_snapshot() -> None:
+    service = _service([_row(1, "银河斗技场", end_day=12)], now=dt(11))
+
+    assert (
+        asyncio.run(service.build_newly_added_message())
+        == NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE
+    )
+
+
+def test_newly_added_activity_message_lists_only_new_weekly_members() -> None:
+    service = _service(
+        [
+            _row(1, "银河斗技场", end_day=12),
+            _row(2, "审判天使", end_day=13),
+        ],
+        now=dt(11),
+        newly_observed_ids=lambda _ids, _now: (frozenset({2}), True),
+    )
+
+    message = asyncio.run(service.build_newly_added_message())
+
+    assert "📅【新增活动】" in message
+    assert "审判天使" in message
+    assert "银河斗技场" not in message
+
+
+def test_newly_added_activity_message_handles_empty_difference() -> None:
+    service = _service(
+        [_row(1, "银河斗技场", end_day=12)],
+        now=dt(11),
+        newly_observed_ids=lambda _ids, _now: (frozenset(), True),
+    )
+
+    assert (
+        asyncio.run(service.build_newly_added_message())
+        == EMPTY_NEW_ACTIVITY_MESSAGE
     )
