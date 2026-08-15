@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import re
 from collections.abc import Callable
 from typing import Any, Literal, NamedTuple, TypedDict
 
@@ -15,7 +16,7 @@ from ironsbot.plugins.seer_data.image import (
     PetBodyImageGetter,
     PetHeadImageGetter,
 )
-from ironsbot.utils.analyze_parser import AnalyzeDescParser
+from ironsbot.utils.analyze_parser import AnalyzeDescParser, TextSegment
 
 from ._cache import render_cache
 from ._common import TEMPLATES_PATH, to_data_uri
@@ -128,13 +129,26 @@ def _extract_skill(skill_in_pet: SkillInPetORM) -> list[SkillDict]:
     return [result]
 
 
+def _create_effect_segment(text: str) -> TextSegment:
+    return TextSegment(text=text)
+
+
 def _extract_soulmark(soulmarks: list[SoulmarkORM], pet: PetORM) -> list[SoulmarkDict]:
     results: list[SoulmarkDict] = []
     for sm in soulmarks:
+        desc_parser = AnalyzeDescParser(sm.analyze_desc or sm.desc)
+        for line in desc_parser.lines:
+            plain_text = line.plain_text
+            if re.search(r"BOSS有效|BOSS无效", plain_text, re.IGNORECASE):
+                continue
+
+            if line.sprite == "dot1":
+                line.segments.append(_create_effect_segment("（BOSS有效）"))
+            elif line.sprite == "dot4":
+                line.segments.append(_create_effect_segment("（BOSS无效）"))
+
         result = SoulmarkDict(
-            desc=AnalyzeDescParser(sm.analyze_desc or sm.desc).to_html(
-                _ANALYZE_DESC_STYLES
-            ),
+            desc=desc_parser.to_html(_ANALYZE_DESC_STYLES),
             intensified=sm.intensified,
             is_adv=sm.is_adv,
             pve_effective=sm.pve_effective,
