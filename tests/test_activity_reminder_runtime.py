@@ -55,6 +55,10 @@ def _service(
         ),
         targets=lambda: targets,
         broadcast=broadcast,
+        newly_observed_activity_ids=lambda activity_ids, _now: (
+            frozenset(activity_ids),
+            True,
+        ),
         now=lambda: datetime(2026, 6, 1, tzinfo=timezone.utc),
     )
 

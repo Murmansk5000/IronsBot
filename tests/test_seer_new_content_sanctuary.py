@@ -1,10 +1,10 @@
 import asyncio
-from types import SimpleNamespace
 from typing import Any, Literal
 from unittest.mock import AsyncMock
 
 import nonebot
 import pytest
+from nonebot.rule import Rule
 from pydantic import ValidationError
 
 try:
@@ -29,8 +29,7 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     _skill_detail,
 )
 from ironsbot.plugins.seer.query.commands.new_content_routing import (
-    PeakPoolChangeRequest,
-    send_peak_pool_change_command,
+    install_peak_environment_change_commands,
     visible_new_content_categories,
 )
 from ironsbot.services.seer.new_content import (
@@ -97,12 +96,30 @@ class _RecordingMatcher:
         raise AssertionError(message)
 
 
-class _FinishRecorder:
+class _RegisteredMatcher:
     def __init__(self) -> None:
-        self.calls: list[dict[str, object]] = []
+        self.handler: Any | None = None
 
-    async def finish(self, **kwargs: object) -> None:
-        self.calls.append(kwargs)
+    def append_handler(self, handler: Any) -> None:
+        self.handler = handler
+
+
+class _RegistrationGroup:
+    def __init__(self) -> None:
+        self.features = object()
+        self.matcher = _RegisteredMatcher()
+        self.commands: tuple[str, ...] = ()
+
+    def matcher_priority(self, _plugin_id: str) -> int:
+        return 1
+
+    def on_fullmatch(
+        self,
+        commands: tuple[str, ...],
+        **_kwargs: Any,
+    ) -> _RegisteredMatcher:
+        self.commands = commands
+        return self.matcher
 
 
 def _render_prompt_state() -> tuple[
@@ -149,10 +166,7 @@ def test_new_content_initial_render_sends_notice_before_menu_image() -> None:
     assert "[CQ:image" in str(rendered)
 
 
-@pytest.mark.asyncio
-async def test_peak_environment_changes_renders_weekly_deltas_without_peak_query(
-    monkeypatch: Any,
-) -> None:
+def test_peak_environment_changes_root_keeps_the_a_b_menu() -> None:
     standard = NewContentItem(
         "peak_pool",
         1,
@@ -175,93 +189,54 @@ async def test_peak_environment_changes_renders_weekly_deltas_without_peak_query
         weekly_cycle="2026-08-14",
         items=(standard, expert),
     )
-    renderer = AsyncMock(return_value=b"pool-change-image")
-    group = SimpleNamespace(
-        resources=SimpleNamespace(new_content_menu=renderer),
-        features=object(),
-    )
-    service = SimpleNamespace(new_content_snapshot=lambda: snapshot)
-    matcher = _RecordingMatcher()
-    sender = _FinishRecorder()
-    monkeypatch.setattr(
-        "ironsbot.plugins.seer.query.commands.new_content_routing.available_new_content_categories",
-        lambda _group, _event: ("peak_pool", "peak_expert_pool"),
-    )
-    monkeypatch.setattr(
-        "ironsbot.plugins.seer.query.commands.new_content_routing.MessageFactory",
-        lambda _message: sender,
-    )
-
-    await send_peak_pool_change_command(
-        service,  # type: ignore[arg-type]
-        PeakPoolChangeRequest(
-            ("peak_pool", "peak_expert_pool"),
-            "巅峰环境变化",
-        ),
-        group,  # type: ignore[arg-type]
-        matcher,  # type: ignore[arg-type]
-        group_message_event(user_id=123),
-    )
-
-    renderer.assert_awaited_once_with(
+    prompt = _content_prompt(
         snapshot,
-        ("peak_pool", "peak_expert_pool"),
-        None,
-        "巅峰环境变化",
-        frozenset(),
-        0,
-    )
-    assert "正在生成新增内容图片" in str(matcher.sent[0])
-    assert sender.calls == [{"at_sender": True}]
-
-
-@pytest.mark.asyncio
-async def test_peak_environment_changes_keeps_both_unchanged_categories(
-    monkeypatch: Any,
-) -> None:
-    snapshot = NewContentSnapshot(
-        baseline_established=True,
-        config_version="20260814",
-        weekly_cycle="2026-08-14",
-        items=(),
-    )
-    renderer = AsyncMock(return_value=b"unchanged-pool-image")
-    group = SimpleNamespace(
-        resources=SimpleNamespace(new_content_menu=renderer),
-        features=object(),
-    )
-    service = SimpleNamespace(new_content_snapshot=lambda: snapshot)
-    matcher = _RecordingMatcher()
-    sender = _FinishRecorder()
-    monkeypatch.setattr(
-        "ironsbot.plugins.seer.query.commands.new_content_routing.available_new_content_categories",
-        lambda _group, _event: ("peak_pool", "peak_expert_pool"),
-    )
-    monkeypatch.setattr(
-        "ironsbot.plugins.seer.query.commands.new_content_routing.MessageFactory",
-        lambda _message: sender,
-    )
-
-    await send_peak_pool_change_command(
-        service,  # type: ignore[arg-type]
-        PeakPoolChangeRequest(
-            ("peak_pool", "peak_expert_pool"),
-            "巅峰环境变化",
+        _NewContentMenuLayout(
+            display_categories=("peak_pool", "peak_expert_pool"),
+            root_title="巅峰环境变化",
         ),
+    )
+    assert prompt.title == "🆕【巅峰环境变化】输入编号查看详情：\n"
+    assert [item.value.category for item in prompt.items] == [
+        "peak_pool",
+        "peak_expert_pool",
+    ]
+    assert prompt.get_item_by_input("a") is not None
+    assert prompt.get_item_by_input("b") is not None
+
+
+def test_peak_environment_change_command_starts_the_shared_menu() -> None:
+    group = _RegistrationGroup()
+    start_menu = AsyncMock()
+    service = object()
+
+    install_peak_environment_change_commands(
         group,  # type: ignore[arg-type]
-        matcher,  # type: ignore[arg-type]
-        group_message_event(user_id=123),
+        service,  # type: ignore[arg-type]
+        Rule(),
+        start_menu,
     )
 
-    renderer.assert_awaited_once_with(
-        snapshot,
-        ("peak_pool", "peak_expert_pool"),
-        None,
-        "巅峰环境变化",
-        frozenset(),
-        0,
+    assert group.matcher.handler is not None
+    matcher = _RecordingMatcher()
+    state: dict[str, object] = {}
+    event = group_message_event(user_id=123)
+    asyncio.run(
+        group.matcher.handler(
+            matcher,
+            state,
+            event,
+        )
     )
-    assert sender.calls == [{"at_sender": True}]
+    start_menu.assert_awaited_once_with(
+        service,
+        ("peak_pool", "peak_expert_pool"),
+        group,
+        matcher,
+        state,
+        event,
+        root_title="巅峰环境变化",
+    )
 
 
 def test_new_content_category_render_sends_notice_before_replacement_menu(

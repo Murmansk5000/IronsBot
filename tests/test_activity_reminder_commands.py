@@ -4,6 +4,7 @@ from ironsbot.config.models.activity import (
 )
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
+    is_new_seer_activity_text,
     is_soon_ending_seer_activity_text,
 )
 
@@ -32,6 +33,12 @@ def test_soon_ending_seer_activity_accepts_bare_text() -> None:
 
 def test_soon_ending_seer_activity_normalizes_spacing() -> None:
     assert is_soon_ending_seer_activity_text("本 周 活 动")
+
+
+def test_new_seer_activity_uses_its_own_command() -> None:
+    assert is_new_seer_activity_text("新增活动")
+    assert is_new_seer_activity_text("/新增活动")
+    assert not is_soon_ending_seer_activity_text("新增活动")
 
 
 def test_unrelated_seer_activity_text_is_ignored() -> None:

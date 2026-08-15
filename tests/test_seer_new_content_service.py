@@ -12,6 +12,7 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentService,
     format_new_content_category_count,
+    format_new_content_change_summary,
     format_new_content_item_description,
 )
 
@@ -149,6 +150,24 @@ def test_peak_pool_change_description_distinguishes_zero_from_unlimited() -> Non
     )
     assert format_new_content_item_description(expert_change) == (
         "修改｜5001｜不限 → 限0"
+    )
+
+
+def test_modified_item_exposes_publisher_change_summary() -> None:
+    change = NewContentItem(
+        "skill",
+        5002,
+        "测试技能",
+        5002,
+        {"change_summary": ["威力：120 → 130", "技能说明已更新"]},
+        "modified",
+    )
+
+    assert format_new_content_change_summary(change) == (
+        "威力：120 → 130、技能说明已更新"
+    )
+    assert format_new_content_item_description(change).endswith(
+        "修改：威力：120 → 130、技能说明已更新"
     )
 
 

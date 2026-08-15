@@ -1563,8 +1563,8 @@ delay = 0.0
 
 [operations.docker_update]
 # Docker 更新依赖 Docker socket；Windows 源码运行建议关闭启动检查。
-# /重启机器人、/机器人重启、/更新镜像、/更新Docker、/更新docker
-# 都会打开维护菜单：1 仅重启；2 检查/更新镜像后重启。
+# /重启机器人、/机器人重启直接打开维护菜单；/更新镜像、/更新Docker、
+# /更新docker 会先只读检查镜像，再打开同一菜单：1 仅重启；2 检查/更新镜像后重启。
 # Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
 check_on_startup = true
 # Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。

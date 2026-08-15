@@ -10,6 +10,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
+from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -69,6 +70,12 @@ def resolve_player_target(  # noqa: PLR0911
                 None,
                 offer_binding=False,
                 error="请一次只 @ 一名成员查询其已绑定的米米号。",
+            )
+        if binding_for_user(event.user_id) is None:
+            return PlayerTargetResolution(
+                None,
+                offer_binding=False,
+                error=unbound_player_shortcut_message(),
             )
         player_id = binding_for_user(context.member_user_ids[0])
         if player_id is None:

@@ -467,8 +467,9 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员可以发送 `/重启机器人`、`/机器人重启`、`/更新镜像`、`/更新Docker`
-或 `/更新docker` 打开统一维护菜单：
+超级管理员可以发送 `/重启机器人`、`/机器人重启` 打开维护菜单；发送
+`/更新镜像`、`/更新Docker` 或 `/更新docker` 时会先只读检查镜像，再在检查结果
+下方打开同一维护菜单：
 
 ```text
 1. 仅重启机器人
@@ -476,7 +477,8 @@ startup_trigger_remote_build = true
 0.【退出】
 ```
 
-第 1 项不会访问镜像仓库；第 2 项会检查 `murmansk5000/ironsbot:latest`，检测到
+从重启口令进入时，第 1 项不会访问镜像仓库；第 2 项会检查
+`murmansk5000/ironsbot:latest`，检测到
 新镜像时启动一次性 Watchtower 更新当前容器，镜像已是最新时则重启当前容器。
 挂载 Docker socket 时通过 Docker API 操作容器；没有 Docker socket 时退回普通进程重启。
 

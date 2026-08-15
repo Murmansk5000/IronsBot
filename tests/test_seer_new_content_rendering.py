@@ -231,6 +231,51 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
 
 
 @pytest.mark.asyncio
+async def test_rendered_modified_item_shows_its_change_summary() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        **_kwargs: object,
+    ) -> bytes:
+        del template_path, template_name
+        captured.update(templates)
+        return b"menu-image"
+
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260815",
+        weekly_cycle="2026-08-15",
+        items=(
+            NewContentItem(
+                "skill",
+                9000,
+                "修改技能",
+                9000,
+                {"change_summary": ["威力：120 → 130"]},
+                "modified",
+            ),
+        ),
+    )
+
+    await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("skill",),
+        "skill",
+    )
+
+    assert captured["items"][0]["side_title"] == "本次修改"
+    assert captured["items"][0]["side_description"] == "威力：120 → 130"
+
+
+@pytest.mark.asyncio
 async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> None:
     captured: dict[str, Any] = {}
 
