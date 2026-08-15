@@ -13,12 +13,8 @@ from typing import TYPE_CHECKING
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
-from nonebot.typing import T_State
 
-from ironsbot.plugins.operations.update_confirmation import (
-    UpdateConfirmation,
-    request_update_confirmation,
-)
+from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.onebot_context import command_context
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
@@ -39,6 +35,64 @@ if TYPE_CHECKING:
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
+
+DOCKER_MAINTENANCE_NAMESPACE = "docker_maintenance"
+DOCKER_MAINTENANCE_MENU = """请选择机器人维护操作：
+1. 仅重启机器人
+2. 更新镜像并重启机器人
+0.【退出】
+
+输入序号后会立即执行。"""
+
+
+def _is_docker_maintenance_reply(event: MessageEvent) -> bool:
+    return event.get_plaintext().strip() in {"0", "1", "2"}
+
+
+async def _handle_docker_maintenance_action(
+    matcher: Matcher,
+    event: MessageEvent,
+    *,
+    docker_service: DockerUpdateService,
+) -> None:
+    choice = event.get_plaintext().strip()
+    if choice == "0":
+        await finish_event_reply(matcher, event, "已退出机器人维护。")
+        return
+    if choice == "1":
+        message, restart_action = await docker_service.prepare_restart_only()
+    elif choice == "2":
+        message, restart_action = await docker_service.prepare_update_and_restart()
+    else:
+        await finish_event_reply(
+            matcher,
+            event,
+            "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
+        )
+        return
+    await send_event_reply(matcher, event, message)
+    await docker_service.execute_restart(restart_action)
+
+
+async def _open_docker_maintenance_menu(
+    matcher: Matcher,
+    event: MessageEvent,
+    *,
+    docker_service: DockerUpdateService,
+) -> None:
+    await enter_event_reply_conversation(
+        matcher,
+        event,
+        namespace=DOCKER_MAINTENANCE_NAMESPACE,
+        handlers=[
+            bind_async(
+                _handle_docker_maintenance_action,
+                docker_service=docker_service,
+            )
+        ],
+        reply_check=_is_docker_maintenance_reply,
+        prompt=DOCKER_MAINTENANCE_MENU,
+    )
 
 
 async def handle_disabled_bare_admin_status(
@@ -89,11 +143,6 @@ def install(
             server_status,
         )
 
-    async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
-        message, restart_action = await docker_service.prepare_manual_restart()
-        await send_event_reply(matcher, event, message)
-        await docker_service.execute_restart(restart_action)
-
     async def handle_headless_instance_status(
         matcher: Matcher,
         event: MessageEvent,
@@ -103,29 +152,6 @@ def install(
             event,
             (await server_status.query_headless_instances()).message,
         )
-
-    async def handle_image_update(matcher: Matcher, event: MessageEvent) -> None:
-        message, should_update = await docker_service.prepare_manual_update()
-        if not should_update:
-            await finish_event_reply(matcher, event, message)
-            return
-        await request_update_confirmation(
-            matcher,
-            event,
-            UpdateConfirmation(
-                namespace="docker_update_confirmation",
-                check_message=message,
-                action_label="更新镜像并重启机器人",
-                executor=run_confirmed_image_update,
-            ),
-        )
-
-    async def run_confirmed_image_update(
-        _matcher: Matcher,
-        _event: MessageEvent,
-        _state: T_State,
-    ) -> str:
-        return await docker_service.execute_manual_update()
 
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMANDS,
@@ -183,28 +209,23 @@ def install(
     )
     headless_status_matcher.append_handler(handle_headless_instance_status)
 
-    restart_matcher = registry.on_fullmatch(
-        BOT_RESTART_COMMANDS,
+    maintenance_matcher = registry.on_fullmatch(
+        (*BOT_RESTART_COMMANDS, *DOCKER_UPDATE_COMMANDS),
         policy=CommandPolicy.command(
             "bot_restart",
-            help_ids=("docker_update.restart",),
+            help_ids=(
+                "docker_update.restart",
+                "docker_update.image_update",
+            ),
         ),
         rule=explicit_command(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    restart_matcher.append_handler(handle_restart)
-
-    update_matcher = registry.on_fullmatch(
-        DOCKER_UPDATE_COMMANDS,
-        policy=CommandPolicy.command(
-            "bot_restart",
-            help_ids=("docker_update.image_update",),
-        ),
-        rule=explicit_command(),
-        permission=SUPERUSER,
-        priority=registry.priority("server_status_admin"),
-        block=True,
+    maintenance_matcher.append_handler(
+        bind_async(
+            _open_docker_maintenance_menu,
+            docker_service=docker_service,
+        )
     )
-    update_matcher.append_handler(handle_image_update)

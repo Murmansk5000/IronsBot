@@ -467,11 +467,18 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`），或发送 `/更新镜像`（同义命令：`/更新Docker`）先检查镜像并确认更新。
-进入同一套重启流程。默认会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像；
-检测到新镜像时会启动一次性 Watchtower 更新当前容器。镜像已是最新时，如果挂载了
-Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket 时才退回普通
-进程重启。
+超级管理员可以发送 `/重启机器人`、`/机器人重启`、`/更新镜像`、`/更新Docker`
+或 `/更新docker` 打开统一维护菜单：
+
+```text
+1. 仅重启机器人
+2. 更新镜像并重启机器人
+0.【退出】
+```
+
+第 1 项不会访问镜像仓库；第 2 项会检查 `murmansk5000/ironsbot:latest`，检测到
+新镜像时启动一次性 Watchtower 更新当前容器，镜像已是最新时则重启当前容器。
+挂载 Docker socket 时通过 Docker API 操作容器；没有 Docker socket 时退回普通进程重启。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -484,7 +491,6 @@ TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 ```toml
 [operations.docker_update]
 check_on_startup = true
-check_on_restart = true
 image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
@@ -535,13 +541,6 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 ```toml
 [operations.docker_update]
 check_on_startup = false
-```
-
-如果不想让手动 `/重启机器人` 时检查镜像，可改为：
-
-```toml
-[operations.docker_update]
-check_on_restart = false
 ```
 
 自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，

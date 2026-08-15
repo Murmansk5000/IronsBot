@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pytest
+from PIL import Image
 
 from ironsbot.core import time
 from ironsbot.services.seer.peak import (
@@ -16,6 +19,13 @@ from ironsbot.services.seer.peak import (
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 
 EXPECTED_RENDER_COUNT = 2
+RGBA_CHANNEL_COUNT = 4
+
+
+def _test_png() -> bytes:
+    output = BytesIO()
+    Image.new("RGBA", (2, 2), (80, 160, 240, 192)).save(output, format="PNG")
+    return output.getvalue()
 
 
 class _Cache:
@@ -38,7 +48,16 @@ class _Images:
         fallback: bool = True,
     ) -> bytes:
         del kind, key, fallback
-        return b"image"
+        return _test_png()
+
+
+def _data_uri_pixel(value: str) -> tuple[int, int, int, int]:
+    data = base64.b64decode(value.partition(",")[2])
+    with Image.open(BytesIO(data)) as image:
+        pixel = image.convert("RGBA").getpixel((0, 0))
+    if not isinstance(pixel, tuple) or len(pixel) != RGBA_CHANNEL_COUNT:
+        raise AssertionError(pixel)
+    return (int(pixel[0]), int(pixel[1]), int(pixel[2]), int(pixel[3]))
 
 
 def _pool(*pets: PeakPetSnapshot, count: int = 0) -> PeakPoolSnapshot:
@@ -94,6 +113,10 @@ async def test_standard_pool_renders_current_and_historical_positions() -> None:
     assert [(pet["id"], pet["historical"]) for pet in pools["不限"]["pets"]] == [
         (2, False)
     ]
+    current_pixel = _data_uri_pixel(pools["限0"]["pets"][0]["head_img"])
+    historical_pixel = _data_uri_pixel(pools["限2"]["pets"][0]["head_img"])
+    assert current_pixel == (80, 160, 240, 192)
+    assert historical_pixel == (56, 76, 96, 192)
 
 
 @pytest.mark.asyncio
@@ -124,6 +147,10 @@ async def test_expert_pool_uses_only_disabled_and_unlimited_sections() -> None:
     assert tuple(pools) == ("禁用", "不限")
     assert pools["禁用"]["pets"][0]["historical"] is False
     assert pools["不限"]["pets"][0]["historical"] is True
+    assert (
+        pools["禁用"]["pets"][0]["head_img"]
+        != pools["不限"]["pets"][0]["head_img"]
+    )
 
 
 @pytest.mark.asyncio
@@ -155,16 +182,13 @@ async def test_pool_cache_key_changes_with_weekly_content_version() -> None:
     assert renders == EXPECTED_RENDER_COUNT
 
 
-def test_pool_template_dims_history_without_transparency_or_arrows() -> None:
+def test_pool_template_avoids_unsupported_css_filters_and_arrows() -> None:
     template = (
         Path(__file__).parents[1]
         / "ironsbot/services/seer/rendering/templates/peak_pool/template.html.j2"
     ).read_text(encoding="utf-8")
 
-    assert (
-        ".pet-entry.historical { filter: grayscale(50%) brightness(50%); }"
-        in template
-    )
+    assert "filter:" not in template
     assert "opacity:" not in template
     assert "<strong>灰暗</strong>：上周所在位置" in template
     assert "transition-arrow" not in template

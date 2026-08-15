@@ -4,7 +4,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from typing import TYPE_CHECKING, TypedDict
+from io import BytesIO
+from typing import TYPE_CHECKING, NamedTuple, TypedDict
+
+from PIL import Image, ImageEnhance, ImageOps
 
 from ironsbot.services.seer.images import (
     ImageKind,
@@ -31,7 +34,7 @@ CELL_GAP = 10
 POOL_OVERHEAD = 18 * 2 + 1 * 2  # pool-section padding + border
 CONTAINER_PADDING = 20 * 2
 MAX_COLS = 10
-PEAK_POOL_CACHE_VERSION = 4
+PEAK_POOL_CACHE_VERSION = 5
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +52,12 @@ class PoolDict(TypedDict):
     current_count: int
     historical_count: int
     pets: list[PetInPoolDict]
+
+
+class PoolImageUris(NamedTuple):
+    heads: dict[str, str]
+    historical_heads: dict[str, str]
+    type_icons: dict[int, str]
 
 
 def _peak_pool_cache_key(
@@ -107,15 +116,14 @@ async def render_peak_pool(
         return cached
 
     positions, section_pets = _positioned_pets(snapshot)
-    head_data_uris, type_data_uris = await _pool_image_uris(
+    image_uris = await _pool_image_uris(
         images,
         section_pets,
     )
     pool_dicts = _pool_dicts(
         positions,
         section_pets,
-        head_data_uris,
-        type_data_uris,
+        image_uris,
         expert=snapshot.expert,
     )
 
@@ -185,7 +193,7 @@ def _positioned_pets(
 async def _pool_image_uris(
     images: SeerImageSource,
     section_pets: dict[int | None, list[tuple[PeakPetSnapshot, bool]]],
-) -> tuple[dict[str, str], dict[int, str]]:
+) -> PoolImageUris:
     unique_rids = {
         str(pet.resource_id)
         for pets in section_pets.values()
@@ -208,12 +216,40 @@ async def _pool_image_uris(
     )
     head_results = results[: len(rid_list)]
     type_results = results[len(rid_list) :]
-    return (
+    head_data = dict(zip(rid_list, head_results, strict=True))
+    historical_rids = sorted(
         {
-            rid: "" if data is None else to_data_uri(data)
-            for rid, data in zip(rid_list, head_results, strict=True)
-        },
+            str(pet.resource_id)
+            for pets in section_pets.values()
+            for pet, historical in pets
+            if historical and head_data[str(pet.resource_id)] is not None
+        }
+    )
+    historical_results = await asyncio.gather(
+        *(
+            asyncio.to_thread(
+                _dim_historical_head,
+                head_data[rid],
+                rid,
+            )
+            for rid in historical_rids
+        )
+    )
+    normal_uris = {
+        rid: "" if data is None else to_data_uri(data)
+        for rid, data in head_data.items()
+    }
+    historical_uris = dict(normal_uris)
+    historical_uris.update(
         {
+            rid: to_data_uri(data)
+            for rid, data in zip(historical_rids, historical_results, strict=True)
+        }
+    )
+    return PoolImageUris(
+        heads=normal_uris,
+        historical_heads=historical_uris,
+        type_icons={
             type_id: "" if data is None else to_data_uri(data)
             for type_id, data in zip(type_id_list, type_results, strict=True)
         },
@@ -223,8 +259,7 @@ async def _pool_image_uris(
 def _pool_dicts(
     positions: tuple[int | None, ...],
     section_pets: dict[int | None, list[tuple[PeakPetSnapshot, bool]]],
-    head_data_uris: dict[str, str],
-    type_data_uris: dict[int, str],
+    image_uris: PoolImageUris,
     *,
     expert: bool,
 ) -> list[PoolDict]:
@@ -240,8 +275,12 @@ def _pool_dicts(
                     {
                         "id": pet.id,
                         "name": pet.name,
-                        "head_img": head_data_uris[str(pet.resource_id)],
-                        "type_icon": type_data_uris.get(pet.type_id, ""),
+                        "head_img": (
+                            image_uris.historical_heads[str(pet.resource_id)]
+                            if historical
+                            else image_uris.heads[str(pet.resource_id)]
+                        ),
+                        "type_icon": image_uris.type_icons.get(pet.type_id, ""),
                         "historical": historical,
                     }
                     for pet, historical in pets
@@ -249,6 +288,32 @@ def _pool_dicts(
             }
         )
     return result
+
+
+def _dim_historical_head(data: bytes | None, resource_id: str) -> bytes:
+    if data is None:
+        return b""
+    try:
+        # htmlkit's native renderer ignores CSS filters, so alter source pixels.
+        with Image.open(BytesIO(data)) as source:
+            rgba = source.convert("RGBA")
+        alpha = rgba.getchannel("A")
+        rgb = rgba.convert("RGB")
+        grayscale = ImageOps.grayscale(rgb).convert("RGB")
+        dimmed = ImageEnhance.Brightness(
+            Image.blend(rgb, grayscale, 0.5)
+        ).enhance(0.5)
+        dimmed.putalpha(alpha)
+        output = BytesIO()
+        dimmed.save(output, format="PNG")
+        return output.getvalue()
+    except (OSError, ValueError):
+        logger.warning(
+            "peak pool historical head transform failed: resource_id=%s",
+            resource_id,
+            exc_info=True,
+        )
+        return data
 
 
 async def _optional_image(

@@ -69,13 +69,13 @@ def docker_update_commands() -> tuple[CommandDescriptor, ...]:
             (
                 "docker_update.restart",
                 BOT_RESTART_COMMANDS,
-                "重启机器人进程",
+                "打开机器人维护菜单，可选择仅重启或更新镜像并重启",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
             (
                 "docker_update.image_update",
                 DOCKER_UPDATE_COMMANDS,
-                "检查镜像后确认更新并重启机器人",
+                "打开机器人维护菜单，可选择仅重启或更新镜像并重启",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
