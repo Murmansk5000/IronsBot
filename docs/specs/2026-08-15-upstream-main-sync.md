@@ -12,7 +12,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 
 ## Problem
 
-`origin/main` 已推进至 `af2e8810`，新增活动周快照、竞技池变动、幸运橱窗展示、
+本地只读 `main` 当前为 `af2e8810`，其中包含活动周快照、竞技池变动、幸运橱窗展示、
 Docker 维护菜单、更新确认和玩家绑定限制等行为。V5 已将插件、命令目录和运行时
 装配迁至新的目标边界；直接合并会恢复已退役目录，或将新功能的一半代码留在旧路径。
 
@@ -25,6 +25,7 @@ semantic owner、真实的用户契约和针对性验证。
 ## Non-Goals
 
 - 不把一次 Git merge 成功视为功能完成。
+- 不因本 Spec 而自行 `fetch`、`pull` 或 `merge` `main`；默认只读取本地 `main`。
 - 不复制旧 renderer 预览矩阵来替代 V5 的 immutable render document。
 - 不将主线暂时未验证的实现或测试夹具带入 V5。
 
@@ -39,7 +40,7 @@ semantic owner、真实的用户契约和针对性验证。
 
 ## User And Data Contract
 
-- Inputs: 当前 `origin/main` 的已审计提交及其公开用户行为。
+- Inputs: 当前本地只读 `main` 的已审计提交及其公开用户行为。
 - Outputs: 与主线相同或明确改进的可观察行为；失败时保留 V5 的真实错误语义。
 - Permissions and scope: 复用 V5 feature policy 与 command catalog，不复制旧 matcher
   的权限判断。
@@ -78,14 +79,15 @@ semantic owner、真实的用户契约和针对性验证。
 | Date | Change | Verification actually run | Result / remaining risk |
 | --- | --- | --- | --- |
 | 2026-08-14 | Bilibili 正文补全 | focused hydration tests, Ruff, compileall | 已由 V5 `7231bae8` 吸收。 |
-| 2026-08-15 | 抓取 `origin/main` `af2e8810` 并尝试语义合并 | compile/Ruff preflight | 自动 merge 证明旧/新目录边界不兼容，未将半合并状态保留。 |
+| 2026-08-15 | 历史自动 merge 尝试（未保留半合并状态） | compile/Ruff preflight | 证明旧/新目录边界不兼容；该记录不授权后续 fetch、pull 或 merge。 |
+| 2026-08-15 | 只读比较本地 `main` `af2e8810` 与 V5 | commit/diff/document audit | 仅用于识别产品行为与 V5 owner；当前 V5 未合并 `main`。 |
 | 2026-08-15 | 活动周快照 | activity storage/service/command tests, Ruff, compileall | 18 项通过；首次观察明确提示缺少上周快照。 |
 | 2026-08-15 | 请求者绑定限制 | `PlayerIdResolver` 与既有用户契约审计 | 不迁入；会缩窄已确认的直接 @ 用户解析能力。 |
 
 ## Progress
 
 ```text
-Program  [████░░░░░░] 45%  verified slices: 3/7  estimated remaining: 1-3 focused specs
+Slice    [████░░░░░░] 45%  verified slices: 3/7  estimated remaining: 1-3 focused specs
 Phase    [█████░░░░░] 45%  current: upstream behaviour migration
 Current  [██████████] 100% complete: activity snapshot committed as V5 `80ce3c3e`
 ```
