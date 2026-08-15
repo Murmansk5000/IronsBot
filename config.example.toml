@@ -1562,14 +1562,11 @@ message = "机器人已开启。"
 delay = 0.0
 
 [operations.docker_update]
-# Docker 更新也分两层：
-# - check_on_startup：容器自然启动时是否先检查镜像。
-# - check_on_restart：发送 /重启机器人 时是否先检查镜像。
-# 两个开关都依赖 Docker socket；Windows 源码运行建议设为 false。
+# Docker 更新依赖 Docker socket；Windows 源码运行建议关闭启动检查。
+# /重启机器人、/机器人重启、/更新镜像、/更新Docker、/更新docker
+# 都会打开维护菜单：1 仅重启；2 检查/更新镜像后重启。
 # Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
 check_on_startup = true
-# Default: true; EN: Check Docker image before a manual restart. ZH: 手动 /重启机器人 前先检查 Docker 镜像；/更新镜像 始终先检查并等待确认。
-check_on_restart = true
 # Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。
 image = "murmansk5000/ironsbot:latest"
 # Default: "ironsbot"; EN: Container name to update. ZH: 要更新的容器名。

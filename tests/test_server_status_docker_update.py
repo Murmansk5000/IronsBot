@@ -721,6 +721,7 @@ def test_docker_service_without_restart_check_uses_process_without_socket() -> N
 
     assert restart_action == "process"
     assert "正在重启机器人进程" in message
+    assert "仅重启" in message
 
 
 def test_docker_service_without_restart_check_uses_docker_socket(
@@ -739,7 +740,27 @@ def test_docker_service_without_restart_check_uses_docker_socket(
 
     assert restart_action == "docker"
     assert "正在重启机器人容器" in message
-    assert "未启用重启前镜像检查" in message
+    assert "仅重启" in message
+
+
+def test_explicit_update_and_restart_ignores_legacy_restart_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
+        return "ironsbot", DockerUpdateResult(ok=True, up_to_date=True)
+
+    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
+    service = build_docker_service(
+        DockerUpdateConfig(
+            check_on_restart=False,
+            image="murmansk5000/ironsbot:latest",
+        )
+    )
+
+    message, restart_action = asyncio.run(service.prepare_update_and_restart())
+
+    assert restart_action == "docker"
+    assert "镜像已是最新，正在重启当前容器" in message
 
 
 def test_docker_service_missing_socket_continues_restart(
