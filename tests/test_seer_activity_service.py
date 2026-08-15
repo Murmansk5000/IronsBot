@@ -11,7 +11,9 @@ from ironsbot.services.activity.delivery import (
 )
 from ironsbot.services.activity.models import ActivityInfoCache
 from ironsbot.services.activity.service import (
+    EMPTY_NEW_ACTIVITY_MESSAGE,
     EMPTY_SOON_ENDING_ACTIVITY_MESSAGE,
+    NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE,
     ActivityService,
 )
 
@@ -43,6 +45,7 @@ def _service(
     now: datetime,
     cache_ttl: timedelta = timedelta(minutes=1),
     load_rows: Callable[[], list[Mapping[str, Any]]] | None = None,
+    previous_week_ids: set[int] | None = None,
 ) -> ActivityService:
     async def broadcast(_delivery: ActivityReminderDelivery) -> bool:
         return True
@@ -63,6 +66,10 @@ def _service(
         preference_for_target=lambda _target_type, _target_id: None,
         targets=ActivityReminderTargets,
         broadcast=broadcast,
+        newly_observed_activity_ids=lambda activity_ids, _now: (
+            frozenset(activity_ids - (previous_week_ids or set())),
+            previous_week_ids is not None,
+        ),
         now=lambda: now,
     )
 
@@ -111,4 +118,43 @@ def test_build_current_message_handles_empty_soon_ending_list() -> None:
     assert (
         asyncio.run(service.build_current_message(soon_only=True))
         == EMPTY_SOON_ENDING_ACTIVITY_MESSAGE
+    )
+
+
+def test_new_activity_message_uses_previous_week_snapshot() -> None:
+    service = _service(
+        [
+            _row(1, "上周已有活动", end_day=20),
+            _row(2, "本周新活动", end_day=20),
+        ],
+        now=dt(11),
+        previous_week_ids={1},
+    )
+
+    message = asyncio.run(service.build_newly_added_message())
+
+    assert "📅【新增活动】" in message
+    assert "本周新活动" in message
+    assert "上周已有活动" not in message
+
+
+def test_new_activity_message_requires_previous_week_snapshot() -> None:
+    service = _service([_row(1, "活动", end_day=20)], now=dt(11))
+
+    assert (
+        asyncio.run(service.build_newly_added_message())
+        == NEW_ACTIVITY_SNAPSHOT_UNAVAILABLE_MESSAGE
+    )
+
+
+def test_new_activity_message_handles_no_delta() -> None:
+    service = _service(
+        [_row(1, "活动", end_day=20)],
+        now=dt(11),
+        previous_week_ids={1},
+    )
+
+    assert (
+        asyncio.run(service.build_newly_added_message())
+        == EMPTY_NEW_ACTIVITY_MESSAGE
     )

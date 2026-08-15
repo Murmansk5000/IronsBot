@@ -57,4 +57,12 @@ def test_new_content_categories_use_prefix_aliases_only() -> None:
 
 
 def test_peak_environment_change_commands_are_explicit() -> None:
-    assert PEAK_ENVIRONMENT_CHANGES_COMMANDS == ("巅峰环境变化", "巅峰变化")
+    assert PEAK_ENVIRONMENT_CHANGES_COMMANDS == (
+        "巅峰环境变化",
+        "巅峰变化",
+        "巅峰修改",
+        "巅峰池改变",
+        "巅峰池变化",
+        "池子修改",
+        "池子改变",
+    )

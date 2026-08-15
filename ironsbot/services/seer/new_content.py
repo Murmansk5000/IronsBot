@@ -174,7 +174,22 @@ class NewContentService:
             return snapshot
 
 
-def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: PLR0911
+def format_new_content_change_summary(item: NewContentItem) -> str:
+    """Return the publisher-provided field summary for a modified item."""
+
+    if item.change_kind != "modified":
+        return ""
+    values = item.payload.get("change_summary")
+    if not isinstance(values, list):
+        return ""
+    return "、".join(
+        value.strip()
+        for value in values
+        if isinstance(value, str) and value.strip()
+    )
+
+
+def format_new_content_item_description(item: NewContentItem) -> str:
     """Keep text and rendered new-content menus on the same item wording."""
 
     change = "修改" if item.change_kind == "modified" else "新增"
@@ -182,15 +197,15 @@ def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: P
         point = int(item.payload.get("point", 0))
         titles = item.payload.get("titles", [])
         title_text = f"｜称号：{titles[0].get('name', '')}" if titles else ""
-        return f"{change}｜{item.entity_id}｜{point} 点{title_text}"
-    if item.category == "pet_skin":
+        text = f"{change}｜{item.entity_id}｜{point} 点{title_text}"
+    elif item.category == "pet_skin":
         pet_name = str(item.payload.get("pet_name", ""))
-        return f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
-    if item.category in PEAK_POOL_NEW_CONTENT_CATEGORIES:
+        text = f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
+    elif item.category in PEAK_POOL_NEW_CONTENT_CATEGORIES:
         previous_limit = _format_peak_pool_limit(item.payload.get("previous_limit"))
         current_limit = _format_peak_pool_limit(item.payload.get("current_limit"))
-        return f"修改｜{item.entity_id}｜{previous_limit} → {current_limit}"
-    if item.category == "skill":
+        text = f"修改｜{item.entity_id}｜{previous_limit} → {current_limit}"
+    elif item.category == "skill":
         pets = item.payload.get("pets", [])
         names = (
             "、".join(
@@ -201,19 +216,23 @@ def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: P
             if isinstance(pets, list)
             else ""
         )
-        return f"{change}｜{item.entity_id}{f'｜{names}' if names else ''}"
-    if item.category in {"autocard_card", "autocard_role"}:
+        text = f"{change}｜{item.entity_id}{f'｜{names}' if names else ''}"
+    elif item.category in {"autocard_card", "autocard_role"}:
         kind = "角色" if item.category == "autocard_role" else "卡牌"
-        return f"{change}｜{item.entity_id}｜{kind}"
-    if item.category == "autocard_sanctuary_effect":
+        text = f"{change}｜{item.entity_id}｜{kind}"
+    elif item.category == "autocard_sanctuary_effect":
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
         sanctuary = sanctuary or f"圣域 {int(item.payload.get('sanctuary_id', 0))}"
         pet_name = str(item.payload.get("sanctuary_pet_name", "")).strip()
         pet = f"｜精灵王：{pet_name}" if pet_name else ""
         unlock_round = int(item.payload.get("unlock_round", 0))
         phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
-        return f"{change}｜{sanctuary}{pet}｜{phase}"
-    return f"{change}｜{item.entity_id}"
+        text = f"{change}｜{sanctuary}{pet}｜{phase}"
+    else:
+        text = f"{change}｜{item.entity_id}"
+
+    summary = format_new_content_change_summary(item)
+    return f"{text}｜修改：{summary}" if summary else text
 
 
 def _format_peak_pool_limit(value: object) -> str:

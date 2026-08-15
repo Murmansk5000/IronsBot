@@ -17,6 +17,7 @@ from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.activity.commands import (
     is_current_seer_activity_text,
+    is_new_seer_activity_text,
     is_soon_ending_seer_activity_text,
 )
 
@@ -31,6 +32,10 @@ async def _is_current_seer_activity_command(event: Event) -> bool:
 
 async def _is_soon_ending_seer_activity_command(event: Event) -> bool:
     return is_soon_ending_seer_activity_text(event.get_plaintext())
+
+
+async def _is_new_seer_activity_command(event: Event) -> bool:
+    return is_new_seer_activity_text(event.get_plaintext())
 
 
 def install(
@@ -56,6 +61,16 @@ def install(
             matcher,
             event,
             await service.build_current_message(soon_only=True),
+        )
+
+    async def handle_new(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        await finish_event_reply(
+            matcher,
+            event,
+            await service.build_newly_added_message(),
         )
 
     current_matcher = registry.on_message(
@@ -88,3 +103,22 @@ def install(
         block=True,
     )
     ending_matcher.append_handler(handle_soon_ending)
+
+    new_matcher = registry.on_message(
+        policy=CommandPolicy.command(
+            "seer_activity_new",
+            help_ids=("activity.new",),
+        ),
+        rule=(
+            Rule(
+                lambda event: event_is_feature_allowed(
+                    features, event, "seer_activity_query"
+                )
+            )
+            & Rule(_is_new_seer_activity_command)
+            & explicit_command()
+        ),
+        priority=registry.priority("activity"),
+        block=True,
+    )
+    new_matcher.append_handler(handle_new)

@@ -29,6 +29,7 @@ from ironsbot.services.seer.render_paths import (
 )
 from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
+from .new_content_change_details import with_change_summary
 from .new_content_pool_changes import (
     PoolChangePreviewDict,
     load_pool_change_images,
@@ -117,7 +118,6 @@ async def render_new_content_menu(  # noqa: PLR0913
     )
     if cached := cache.get("new_content", content_key):
         return cached
-
     pool_items = (
         tuple(
             item
@@ -130,12 +130,14 @@ async def render_new_content_menu(  # noqa: PLR0913
     )
     pool_images = await load_pool_change_images(images, pool_items)
     cacheable = all(image is not None for image in pool_images.values())
-
     rows: list[NewContentMenuItemDict] = []
     item_rows: list[tuple[int, NewContentItem, _ItemDetails]] = []
     if focused_category is not None:
         for index, item in enumerate(snapshot.items_for(focused_category), start=1):
-            details = _item_details(data, autocard, item)
+            details = with_change_summary(
+                _item_details(data, autocard, item),
+                item,
+            )
             rows.append(
                 {
                     "code": str(index),
@@ -216,7 +218,10 @@ async def render_new_content_menu(  # noqa: PLR0913
             )
             if expanded:
                 for item_index, item in enumerate(preview_items, start=1):
-                    details = _item_details(data, autocard, item)
+                    details = with_change_summary(
+                        _item_details(data, autocard, item),
+                        item,
+                    )
                     rows.append(
                         {
                             "code": f"{code}{item_index}",
@@ -243,7 +248,6 @@ async def render_new_content_menu(  # noqa: PLR0913
                         }
                     )
                     item_rows.append((len(rows) - 1, item, details))
-
     image_results = await asyncio.gather(
         *(
             _item_visuals(data, images, autocard, item, details)

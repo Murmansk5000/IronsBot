@@ -27,6 +27,7 @@ from ironsbot.plugins.operations.status.command_text import (
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
+    NEW_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
 )
 from ironsbot.services.seer.data_query_commands import (
@@ -56,6 +57,7 @@ def test_bilibili_and_activity_examples_use_matcher_command_sources() -> None:
         f"/{DYNAMIC_UPDATE_COMMANDS[0]}",
     )
     assert activity["activity.ending"].examples == SOON_ENDING_ACTIVITY_COMMANDS[:1]
+    assert activity["activity.new"].examples == NEW_ACTIVITY_COMMANDS[:1]
     assert activity["activity.current"].examples == (
         f"/{CURRENT_ACTIVITY_COMMANDS[0]}",
     )
