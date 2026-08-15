@@ -21,7 +21,7 @@
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
 - `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
-  `seerapi/scripts/build_seerapi_data_db.py`（1,395 行）仍是已登记的 transition 债务；
+  `seerapi/scripts/build_seerapi_data_db.py`（727 行）已经满足该限制；
   `scripts/build_new_content_index.py` 已拆至 280 行。新功能
   不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
   发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
@@ -206,6 +206,13 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 构造与 SQLite upsert 迁入 `scripts/release_metadata.py`。该投影只接收已经完成的构建事实，
 不读取环境、网络或 SQLite 以外的输入；全量 SeerAPI pytest 为 **269 passed**，Ruff、编译和
 diff 检查通过。入口脚本降至 1,226 行，尚未完成的边界只剩最终发布编排与真实 release consumer smoke。
+
+**发布构建编排边界（2026-08-15）：** SeerAPI `13730e4` 将最终 SQLite 发布事务、
+官方来源读取及经典皮肤素材探测分别迁入 `release_publication.py`、
+`release_source_loaders.py` 与 `release_skin_image_loader.py`。入口脚本现在为 **727 行**，
+只保留 CLI、构建顺序、配置装配和 SQLite 健康检查；所有新增生产模块均低于 800 行。
+构建相关 56 项、SeerAPI 全量 **269 passed**、Ruff、编译、CLI `--help` 与 diff 检查通过。
+真实 release 和 IronsBot 消费者 smoke 仍是 release gate，不能由本地单元测试替代。
 
 **效果元数据来源边界（2026-08-13）：** SeerAPI `e82d738` 将官方
 `effectDes.json` 与 `signIconFight.json` 的纯解析和值对象迁入

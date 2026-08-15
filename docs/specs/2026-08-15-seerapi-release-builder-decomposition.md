@@ -12,7 +12,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 
 ## Problem
 
-`seerapi/scripts/build_seerapi_data_db.py` 当前仍有 1,395 行（本 Spec 开始时为 3,098 行）。它同时拥有网络请求、官方
+`seerapi/scripts/build_seerapi_data_db.py` 当前为 727 行（本 Spec 开始时为 3,098 行）。它曾同时拥有网络请求、官方
 包读取、精灵/皮肤资源探测、效果图 PNG cache CLI、SQLite 表写入和最终发布编排。
 此前已迁出 ConfigPackage、群星牌、效果元数据、伙伴契约、渲染 manifest、效果图来源与
 PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此新增表或资源逻辑会重新扩大
@@ -55,7 +55,7 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 | Pet/skin asset probe | 探测精灵头像、皮肤资源及经典皮肤输入 | 传入来源 URL、超时与 logger | 相同 fixture 产生相同资源验证、临时失败重试与缺失语义 | completed (`seerapi` `0dbf0d3`) |
 | Build I/O | HTTP 重试、下载、包 manifest 和上游数据库复制 | 传入构建配置并处理 CLI 错误 | 重试、HTTP 错误和本地上游路径保持当前语义 | completed (`seerapi` `ce39c67`) |
 | Effect-icon cache CLI | cache seed、分片导出/渲染的 CLI adapter | 正常发布与参数选择 | `--seed`、`--render-shard`、`--help` 保持兼容 | completed (`seerapi` `a92c3d0`) |
-| Final orchestration | 只协调输入、纯/适配器调用、SQLite writer、quick check 和日志 | 无 | 主脚本不超过 800 行；每个新生产模块不超过 800 行 | planned |
+| Final orchestration | 只协调输入、纯/适配器调用、SQLite writer、quick check 和日志 | 无 | 主脚本不超过 800 行；每个新生产模块不超过 800 行 | completed (`seerapi` `13730e4`) |
 
 ## Migration And Rollback
 
@@ -76,8 +76,8 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 
 ```text
 Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
-Phase 4 [████████░░]  verified work: manifest/effect/new-content boundaries, seven SQLite writers, I/O, skin assets and effect-icon cache CLI
-Current  [██████████]  completed: release metadata projection is independent from normal SQLite publication
+Phase 4 [██████████]  verified work: manifest/effect/new-content boundaries, writers, I/O, source loaders, skin assets and final publication
+Current  [██████████]  completed: entry script only owns CLI, construction order and health checks
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
@@ -97,3 +97,4 @@ Only verified, committed, or explicitly waived work counts toward progress.
 | 2026-08-15 | `seerapi` `0dbf0d3` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (268 passed); Ruff; `scripts` compileall; `git diff --check` | `SkinImageAssetProbe` now owns ranged PNG checks, transient retry, concurrent validation and content hashes. The entry script fell to 1,503 lines. Effect-icon cache CLI adapters remain. |
 | 2026-08-15 | `seerapi` `a92c3d0` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (268 passed); Ruff; `scripts` compileall; `git diff --check` | Effect icon PNG cache seed, shard rendering and shard export now use the dedicated CLI adapter. The entry script fell to 1,395 lines. Final orchestration and metadata publication remain. |
 | 2026-08-15 | `seerapi` `9d197bd` | focused metadata/build tests (57 passed); full SeerAPI pytest (269 passed); Ruff; `scripts` compileall; `git diff --check` | `ironsbot_metadata` construction and upsert now belong to a dedicated no-network projection. The entry script fell to 1,226 lines. Final orchestration remains. |
+| 2026-08-15 | `seerapi` `13730e4` | focused build tests (56 passed); full SeerAPI pytest (269 passed); Ruff; `scripts` compileall; CLI `--help`; `git diff --check` | Final publication transaction, official source loading and classic-skin resource lookup are separate modules. The entry script is 727 lines; all new production modules are below 800 lines. Real release and IronsBot consumer smoke remain a release gate, not a local unit-test claim. |
