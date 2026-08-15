@@ -19,6 +19,10 @@ from ironsbot.services.seer.data import (
     DataResolver,
     DataUnavailableError,
 )
+from ironsbot.services.seer.images import (
+    PublishedRenderAssetSnapshot,
+    parse_published_render_asset_snapshot,
+)
 
 from .getters import (
     BattleEffectDataGetter,
@@ -44,7 +48,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.db_registry import DatabaseManager
 
 UNKNOWN_VERSION = "unknown"
-_RENDER_MANIFEST_CONTRACT_VERSION = "1"
+_RENDER_MANIFEST_CONTRACT_VERSION = "2"
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
 
@@ -70,6 +74,7 @@ class SeerDatabase:
         self._databases = databases
         self._published_version = UNKNOWN_VERSION
         self._published_render_scopes: frozenset[str] = frozenset()
+        self._published_render_assets: PublishedRenderAssetSnapshot | None = None
         self.mintmark = build_mintmark_data_getter(
             merge_connected=merge_connected_mintmarks
         )
@@ -193,6 +198,15 @@ class SeerDatabase:
         }.get(category)
         return scope is not None and scope in self._published_render_scopes
 
+    def render_asset_snapshot(self) -> PublishedRenderAssetSnapshot | None:
+        """Return the immutable image source for the currently loaded release."""
+
+        return self._published_render_assets
+
+    def render_asset_cache_identity(self) -> str:
+        snapshot = self._published_render_assets
+        return "unknown" if snapshot is None else snapshot.cache_identity
+
     def _refresh_published_version(self) -> None:
         """Refresh only after an atomic database load, never per cache lookup."""
         try:
@@ -200,6 +214,7 @@ class SeerDatabase:
                 if session is None:
                     self._published_version = UNKNOWN_VERSION
                     self._published_render_scopes = frozenset()
+                    self._published_render_assets = None
                     return
                 metadata = session.exec(select(ApiMetadataORM)).first()
                 if metadata is not None:
@@ -208,12 +223,19 @@ class SeerDatabase:
                         metadata_rows = session.execute(
                             text(
                                 "SELECT key, value FROM ironsbot_metadata WHERE key IN "
-                                "(:revision, :contract, :scopes)"
+                                "(:revision, :contract, :scopes, :repository, "
+                                ":asset_revision)"
                             ),
                             {
                                 "revision": "render_asset_manifest_revision",
                                 "contract": "render_asset_manifest_contract_version",
                                 "scopes": "render_asset_manifest_complete_scopes",
+                                "repository": (
+                                    "render_asset_manifest_asset_repository"
+                                ),
+                                "asset_revision": (
+                                    "render_asset_manifest_asset_repository_revision"
+                                ),
                             },
                         ).all()
                         manifest_metadata = {
@@ -222,27 +244,41 @@ class SeerDatabase:
                         manifest_revision = manifest_metadata.get(
                             "render_asset_manifest_revision"
                         )
-                        scopes = frozenset(
-                            str(scope)
-                            for scope in json.loads(
-                                manifest_metadata.get(
-                                    "render_asset_manifest_complete_scopes", "[]"
-                                )
+                        raw_scopes = json.loads(
+                            manifest_metadata.get(
+                                "render_asset_manifest_complete_scopes", "[]"
                             )
                         )
+                        if isinstance(raw_scopes, list) and all(
+                            isinstance(scope, str) and scope for scope in raw_scopes
+                        ):
+                            snapshot = parse_published_render_asset_snapshot(
+                                manifest_metadata,
+                                contract_version=_RENDER_MANIFEST_CONTRACT_VERSION,
+                            )
+                            scopes = frozenset(raw_scopes)
+                        else:
+                            snapshot = None
+                            scopes = frozenset()
                     except Exception:  # noqa: BLE001
                         manifest_revision = None
+                        snapshot = None
                         scopes = frozenset()
                     if (
                         not manifest_revision
-                        or manifest_metadata.get(
-                            "render_asset_manifest_contract_version"
-                        ) != _RENDER_MANIFEST_CONTRACT_VERSION
+                        or snapshot is None
                     ):
                         self._published_version = UNKNOWN_VERSION
                         self._published_render_scopes = frozenset()
+                        self._published_render_assets = None
                         return
                     self._published_render_scopes = scopes
+                    self._published_render_assets = PublishedRenderAssetSnapshot(
+                        repository=snapshot.repository,
+                        revision=snapshot.revision,
+                        manifest_revision=snapshot.manifest_revision,
+                        scopes=scopes,
+                    )
                     self._published_version = ":".join(
                         (
                             metadata.generate_time.isoformat(),
@@ -254,6 +290,7 @@ class SeerDatabase:
             logger.debug("failed to query Seer database version", exc_info=True)
         self._published_version = UNKNOWN_VERSION
         self._published_render_scopes = frozenset()
+        self._published_render_assets = None
 
 
 def _mintmark_class_member_ids(

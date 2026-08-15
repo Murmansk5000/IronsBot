@@ -35,9 +35,13 @@ def build_seer_rendering_components(
 ) -> tuple[SeerImageSource, FileRenderCache, RenderCoordinator]:
     """Build the single image source, rendered-image cache, and native gate."""
     images = build_seer_asset_store(
-        HttpSeerImageSource(http_clients),
+        HttpSeerImageSource(
+            http_clients,
+            asset_snapshot_getter=seer_database.render_asset_snapshot,
+        ),
         cache_paths.assets_dir(),
         render_config,
+        source_identity_getter=seer_database.render_asset_cache_identity,
     )
     cache = FileRenderCache(
         cache_paths.render_dir(),
