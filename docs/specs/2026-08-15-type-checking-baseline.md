@@ -1,6 +1,6 @@
 # V5 类型检查基线与收口
 
-Status: `implementing`
+Status: `verified`
 
 Contract: `target`
 

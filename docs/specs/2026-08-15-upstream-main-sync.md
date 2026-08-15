@@ -87,8 +87,8 @@ semantic owner、真实的用户契约和针对性验证。
 ```text
 Program  [████░░░░░░] 45%  verified slices: 3/7  estimated remaining: 1-3 focused specs
 Phase    [█████░░░░░] 45%  current: upstream behaviour migration
-Current  [██████████] 100% next: commit the verified activity snapshot slice
+Current  [██████████] 100% complete: activity snapshot committed as V5 `80ce3c3e`
 ```
 
-Only the two completed slices are verified on the V5 path. The remaining
+The activity snapshot slice is committed as V5 `80ce3c3e`. The remaining
 entries are planned rather than implicitly merged.
