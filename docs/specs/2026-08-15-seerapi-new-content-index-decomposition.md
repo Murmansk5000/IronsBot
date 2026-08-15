@@ -40,7 +40,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | Slice | Acceptance criteria | Status |
 | --- | --- | --- |
 | Pure models | 模型、语义摘要和迁移规则脱离 SQLite 构建器；全量回归通过 | completed (`seerapi` `9d04eb4`) |
-| Current snapshot | 当前 SQLite 的类别读取、表/列探测和 payload 解码脱离 CLI | planned |
+| Current snapshot | 当前 SQLite 的类别读取、表/列探测和 payload 解码脱离 CLI | completed (`seerapi` `86d620c`) |
 | Release history/write | 历史状态读写和 CLI 编排各自保持单一职责，主脚本不超过 800 行 | planned |
 | Release smoke | 用前一 release 建立新索引并由 IronsBot 读取，验证新增/修改/未知来源语义 | planned |
 
@@ -56,13 +56,14 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | Date | Change | Verification actually run | Result / remaining risk |
 | --- | --- | --- | --- |
 | 2026-08-15 | `seerapi` `9d04eb4` | 新增内容 focused pytest（29 passed）；SeerAPI 全量 pytest（263 passed）；Ruff、compileall、CLI `--help`、`git diff --check` | 模型层已脱离构建器；脚本由 1,195 行降至 1,037 行。当前快照和发布历史仍在同一编排脚本，不能把 800 行目标误报为完成。 |
+| 2026-08-15 | `seerapi` `86d620c` | 新增内容 focused pytest（29 passed）；SeerAPI 全量 pytest（263 passed）；Ruff、compileall、CLI `--help`、`git diff --check` | `new_content_index_snapshot.py` 成为当前 SQLite 快照的唯一读取适配器；构建入口降至 573 行、snapshot adapter 为 477 行，均满足 800 行约束。历史读写与 CLI 编排仍待独立审计。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  global verified progress; this spec does not change it
-Phase    [███░░░░░░░] 25%  verified slices: 1/4  estimated remaining: 1-2 h
-Current  [██████████] 100% pure model extraction verified; next: current SQLite snapshot boundary
+Phase    [█████░░░░░] 50%  verified slices: 2/4  estimated remaining: 40-70 min
+Current  [██████████] 100% current SQLite snapshot boundary verified; next: release history/write audit
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
