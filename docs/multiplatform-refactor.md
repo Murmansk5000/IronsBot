@@ -233,6 +233,13 @@ manifest helper 已删除，构建主脚本从 4,553 行降至 4,122 行。SeerA
 Ruff、CLI 帮助、compileall 和 diff 检查通过。已发布 schema/metadata key 和 IronsBot 消费语义
 没有变化；真实 release consumer smoke 仍是 Phase 4 的未完成门。
 
+**效果图标 PNG renderer 边界（2026-08-15）：** SeerAPI `c1faedf` 将 FFDec sprite/shape
+导出、PNG 透明度与尺寸校验、原子缓存读写以及有限并发迁入
+`scripts/effect_icon_png_renderer.py`；`effect_icon_build_types.py` 统一传递已解析的构建配置和值对象。
+构建器仍保留 Flash/Unity 来源选择与发布 SQLite 编排，因而没有把 Java、FFDec、UnityPy 或 Pillow
+引入 IronsBot runtime。SeerAPI 全量 **260 passed**、Ruff、CLI 帮助、编译和 diff 检查均通过；
+构建主脚本从 4,122 行降至 3,542 行。Flash/Unity source adapter 与 resolver/shard 仍待拆分。
+
 **私有扩展验证入口（2026-08-13）：** 私有仓库 `a278d11` 不再把测试 `pythonpath`
 固定为本机相邻的 `../IronsBot`。测试启动时优先读取 `IRONSBOT_PUBLIC_ROOT`，再回退到
 `public-runtime` 或传统 sibling 目录；因此 V5 工作树、CI 检出路径和标准本地布局均能验证同一

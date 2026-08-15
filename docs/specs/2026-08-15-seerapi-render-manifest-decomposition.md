@@ -115,7 +115,7 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 | Slice | Acceptance criteria | Dependencies | Status |
 | --- | --- | --- | --- |
 | Manifest domain extraction | 新模块从 SQLite + snapshot 生成既有契约的 entries/scopes/metadata；总构建器删除旧 helper | 本 Spec 接受 | completed |
-| Effect icon build extraction | SWF/Unity 图标转换使用独立配置/结果值对象，不影响 manifest domain | Manifest extraction | planned |
+| Effect icon build extraction | SWF/Unity 图标转换使用独立配置/结果值对象，不影响 manifest domain | Manifest extraction | in_progress |
 | Mount publication | mount PNG 进入 immutable asset revision 与 manifest，IronsBot 删除 blob fallback | asset repository 写入设计 | planned |
 | New-content index extraction | 输入 repository、分类、release state 输出分开，脚本低于 800 行 | 独立 Spec | planned |
 | Final size gate | 自有 SeerAPI 生产/构建模块均低于 800 行或有窄化记录的临时例外 | 前述 slices | planned |

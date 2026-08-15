@@ -1,6 +1,6 @@
 # SeerAPI 效果图标构建职责拆分
 
-Status: `draft`
+Status: `in_progress`
 
 Contract: `transition`
 
@@ -96,8 +96,8 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 
 | Slice | Acceptance criteria | Dependencies | Status |
 | --- | --- | --- | --- |
-| Types/config | `EffectIconBuildConfig` 与结果值对象可由构建器显式构造；无模块读取环境 | 本 Spec 接受 | planned |
-| Renderer/cache | FFDec、PNG 校验、缓存与并发移出总构建器；原测试迁到模块 | Types/config | planned |
+| Types/config | `EffectIconBuildConfig` 与结果值对象可由构建器显式构造；无模块读取环境 | 本 Spec 接受 | completed |
+| Renderer/cache | FFDec、PNG 校验、缓存与并发移出总构建器；原测试迁到模块 | Types/config | completed |
 | Source adapters | Flash/Unity 探测、包解码和每图标来源事实移出总构建器 | Types/config | planned |
 | Resolver/shard | 优先级、回退、缺图诊断与 shard 复用同一 resolver | Renderer/cache + source adapters | planned |
 | Release smoke | 全量 release 构建、PNG/issue 行、metadata、manifest 与 IronsBot consumer smoke 验证 | 所有前序 slice | planned |
@@ -127,13 +127,14 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | Date | Change | Verification actually run | Result / remaining risk |
 | --- | --- | --- | --- |
 | 2026-08-15 | 当前代码依赖审计 | 函数调用图、图标测试清单、GitHub Actions build workflow | 目前 source、FFDec、cache、resolver 和 shard 均在总构建器；Actions 已正确只在构建环境安装 Java、UnityPy、Pillow 与 FFDec，IronsBot runtime 未引入这些依赖。 |
+| 2026-08-15 | SeerAPI `c1faedf` | `uv run pytest -q`（260 passed）、Ruff、构建器 `--help`、compileall、`git diff --check` | `effect_icon_build_types.py` 解析配置和值对象，`effect_icon_png_renderer.py` 成为 FFDec、PNG 校验、缓存和并发的唯一实现；总构建器从 4,122 行降至 3,542 行。source adapters、resolver/shard 与真实 release consumer smoke 尚未完成。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  global verified progress; this draft does not change it
-Phase    [░░░░░░░░░░] 0%   verified slices: 0/5   estimated remaining: 4-6 h
-Current  [██████████] 100% dependency audit recorded; next: introduce typed config and fixture locks
+Phase    [████░░░░░░] 40%  verified slices: 2/5   estimated remaining: 3-5 h
+Current  [██████████] 100% renderer/cache extraction verified; next: isolate Flash/Unity source adapters
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
