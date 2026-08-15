@@ -68,7 +68,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | B站旧桥接 | 删除无调用桥接，或迁入当前 composition；消除 10 条错误 | import graph 审计 | verified |
 | Seer typed snapshots | repository/composition 不再把未验证 `object` 传入领域模型 | published data ports | verified |
 | Adapter callback contracts | OneBot/B站回调与队列参数只有一份 protocol | runtime contract | verified |
-| Fixture conformance | 测试 fake 满足正式 protocol，测试语义不降级 | 前三项完成 | planned |
+| Fixture conformance | 测试 fake 满足正式 protocol，测试语义不降级 | 前三项完成 | verified |
 
 ## Migration And Rollback
 
@@ -96,11 +96,12 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | 2026-08-15 | 清理 OneBot 菜单伪页面参数 | OneBot prompt/confirmation 测试 10 passed；Ruff；BasedPyright | 删除未写入会话状态的 `page_id` 参数，确认测试使用正式 `Matcher` contract；类型错误由 31 降至 24。 |
 | 2026-08-15 | 收紧 Seer 数据快照边界 | Seer autocard/new-content/type-query 测试 54 passed；Ruff；BasedPyright | JSON 数值、ORM 属性组合与渲染分类在边界显式转换；类型错误由 24 降至 13。 |
 | 2026-08-15 | 修正 composition 数据端口 | 应用生命周期与周预告测试 30 passed；Ruff；BasedPyright | 周预告改用独立 HTTP 图片缓存 source，私有扩展使用显式 OneBot 适配；移除无调用旧包装，类型错误由 13 降至 7。 |
+| 2026-08-15 | 对齐剩余测试 fake 与正式 port | AI/B站/幸运橱窗测试 39 passed；Ruff；BasedPyright | HTTP、通知、B站推送和 HTML 渲染 fake 实现窄 protocol；类型错误由 7 降至 0。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  verified phases: 3/8  estimated remaining: depends on cross-repo data ports
-Phase    [████████░░] 75%  verified slices: 3/4  estimated remaining: 30-90 minutes
-Current  [██████████] 100% next: make the remaining test fakes conform to their ports
+Phase    [██████████] 100% verified slices: 4/4 estimated remaining: none for this spec
+Current  [██████████] 100% complete: BasedPyright and the full regression suite are green
 ```
