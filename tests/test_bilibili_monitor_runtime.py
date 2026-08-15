@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from ironsbot.core.bilibili import BiliBoostWindow, BiliPollingConfig
 from ironsbot.services.bilibili import monitor as monitor_module
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from pytest import MonkeyPatch
 
+    from ironsbot.services.bilibili.target_models import BiliPushTargets
     from ironsbot.services.operations.scheduler import Scheduler
 
 
@@ -33,10 +34,11 @@ async def _ignore_auth_invalid(_reason: str) -> None:
 
 
 async def _ignore_push(
-    _item: dict[str, object],
+    _item: dict[str, Any],
     _pub_ts: int,
     _author_mid: int,
-    _targets: object,
+    _targets: BiliPushTargets,
+    _categories: tuple[str, ...],
 ) -> None:
     return None
 
