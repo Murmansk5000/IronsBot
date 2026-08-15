@@ -61,6 +61,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | --- | --- | --- | --- |
 | 2026-08-15 | 审计运行依赖和 Docker 多阶段构建 | `uv export --no-dev`, `uv tree`, source search | 顶层运行依赖均有调用；HTML 渲染核心约 16 MiB，不能作为冗余删除。 |
 | 2026-08-15 | 收紧 Docker build context | Docker static test | 使用项目专用忽略规则；本地 `.venv`、Codex、数据、文档、测试、构建脚本和缓存已排除，仍待真实 daemon 测量。 |
+| 2026-08-15 | 运行依赖复核 | `uv export --no-dev`、`uv tree --no-dev --show-sizes`、Docker 静态测试（12 passed） | 约 109 MiB Node、52 MiB BasedPyright、pytest 与 virtualenv 均只在开发依赖组，不会导出到运行镜像；HTML 渲染、Pillow 和 SVG 光栅化均有运行调用。工作站 Docker daemon 不可用，仍待发布环境记录实际镜像尺寸。 |
 
 ## Progress
 
