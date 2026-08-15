@@ -119,7 +119,7 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 ## Progress
 
 ```text
-Program  [████████░░] 79%  verified phases: 3/8  estimated remaining: cross-repository slices
+Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted cross-repository slices
 Phase    [████████░░] 80%  verified contract and consumer behavior; blocked only by incomplete upstream asset snapshot
 Current  [██████████] 100%  verified: generated-release consumer smoke; next: publish missing assets upstream
 ```

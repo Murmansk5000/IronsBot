@@ -1,11 +1,17 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 from ironsbot.integrations.db_registry import DatabaseManager
 
 EXPECTED_VALUE = 7
+
+
+class InvalidStagedDatabaseError(ValueError):
+    pass
 
 
 def test_database_manager_loads_sqlite_file_into_memory(tmp_path: Path) -> None:
@@ -78,3 +84,35 @@ def test_database_manager_listener_failure_does_not_reject_database(
             "SELECT value FROM sample"
         ).scalar_one()
     assert value == EXPECTED_VALUE
+
+
+def test_database_manager_rejects_invalid_staged_database_without_replacing_active(
+    tmp_path: Path,
+) -> None:
+    valid_source = tmp_path / "valid.sqlite"
+    invalid_source = tmp_path / "invalid.sqlite"
+    for source, value in ((valid_source, "active"), (invalid_source, "invalid")):
+        with sqlite3.connect(source) as conn:
+            conn.execute("CREATE TABLE sample (value TEXT NOT NULL)")
+            conn.execute("INSERT INTO sample VALUES (?)", (value,))
+
+    manager = DatabaseManager()
+
+    def require_active_value(engine: Engine) -> None:
+        with engine.connect() as connection:
+            value = connection.execute(text("SELECT value FROM sample")).scalar_one()
+        if value != "active":
+            raise InvalidStagedDatabaseError
+
+    manager.add_load_validator("unit", require_active_value)
+    manager.load_from_file("unit", str(valid_source))
+
+    with pytest.raises(InvalidStagedDatabaseError):
+        manager.load_from_file("unit", str(invalid_source))
+
+    with manager.session("unit") as session:
+        assert session is not None
+        value = session.connection().exec_driver_sql(
+            "SELECT value FROM sample"
+        ).scalar_one()
+    assert value == "active"

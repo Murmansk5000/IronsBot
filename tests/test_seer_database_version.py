@@ -4,12 +4,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+import pytest
 from seerapi_models import ApiMetadataORM
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.seer_data.database import SeerDatabase
+from ironsbot.integrations.seer_data.release_contract import SeerApiReleaseContractError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -32,6 +34,7 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
         session.execute(
             text(
                 "INSERT INTO ironsbot_metadata (key, value) VALUES "
+                "('ironsbot_schema_contract_version', '1'), "
                 "('render_asset_manifest_revision', 'assets-v1'), "
                 "('render_asset_manifest_contract_version', '2'), "
                 "('render_asset_manifest_complete_scopes', '[\"pet_info\"]'), "
@@ -71,13 +74,19 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
     )
 
 
-def test_seer_database_version_rejects_release_without_asset_manifest(
+def test_seer_database_rejects_release_without_schema_contract(
     tmp_path: Path,
 ) -> None:
     source = tmp_path / "seerapi.sqlite"
     engine = create_engine(f"sqlite:///{source}")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
+        session.execute(
+            text(
+                "CREATE TABLE ironsbot_metadata "
+                "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+        )
         session.add(
             ApiMetadataORM(
                 id=1,
@@ -92,7 +101,8 @@ def test_seer_database_version_rejects_release_without_asset_manifest(
 
     databases = DatabaseManager()
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
-    databases.load_from_file("seerapi", str(source))
+    with pytest.raises(SeerApiReleaseContractError, match="schema 契约版本不兼容"):
+        databases.load_from_file("seerapi", str(source))
 
     assert data.version() == "unknown"
     assert data.render_asset_snapshot() is None

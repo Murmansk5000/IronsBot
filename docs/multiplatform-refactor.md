@@ -21,8 +21,8 @@
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
 - `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
-  `seerapi/scripts/build_seerapi_data_db.py`（4,122 行）与
-  `scripts/build_new_content_index.py`（1,289 行）是已登记的 transition 债务；新功能
+  `seerapi/scripts/build_seerapi_data_db.py`（727 行）已经满足该限制；
+  `scripts/build_new_content_index.py` 已拆至 280 行。新功能
   不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
   发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
 - 任何阶段都要保留当前 OneBot 用户行为，除非有明确产品决定和特征测试一并更新。
@@ -41,20 +41,26 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [████░░░░░░] 40%  verified phases: 2/7  estimated remaining: 4-7 h
-Phase 3  [██████░░░░] 60%  verified tasks: 3/5  estimated remaining: 1-2 h
-Task     [████████░░] 80%  remaining: boundary tests and smoke test  20-40 min
+Program  [███░░░░░░░]  verified phases: 3/8; percentage awaits a weighted acceptance baseline
+Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
+Task     [██████████] completed only after code, tests, and evidence are committed
 ```
 
-示例中的数字不是当前状态；实际状态由本次任务报告和提交证据决定。
+进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 当前验证进度（2026-08-13）
+## 当前验证进度（2026-08-15）
 
 ```text
-总任务  [████████░░] 79%  已完成阶段 3/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
+总任务  [███░░░░░░░]  已完成阶段 3/8；其余阶段含已验证子项，但尚未完成阶段门
 Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
 当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
+
+这里刻意不写总体百分比或完成日期。此前的 `79%` 没有可复查的阶段权重，不能由
+“已完成阶段 3/8”推导出来。下一次恢复百分比前，必须先为每个未完成阶段登记有限的
+验收切片、依赖与预计工时；届时百分比只由已提交且验证通过的切片权重计算。实际
+更新进度时仍须同时报告阶段和当前工作项，不能用总百分比掩盖外部发布、数据迁移或
+跨仓库 smoke test 尚未完成的事实。
 
 本次完成的跨仓库证据：
 
@@ -167,6 +173,11 @@ compileall 与 diff 检查通过。静态 Docker 审计确认运行镜像仍只�
 session。未加载数据仍显式返回 `unknown`，因此不会写入无发布版本的缓存。该项是下一步
 `RenderRequestKey` 在 SQL/HTTP 之前安全命中的版本基础，不代表早期缓存本身已经完成。
 
+**发布数据库装载契约（2026-08-15）：** `DatabaseManager` 现支持每个数据源的 staged
+load validator。SeerAPI 在内存替换前必须证明存在 `api_metadata`、`ironsbot_metadata`，且
+`ironsbot_schema_contract_version` 等于消费者支持的版本；失败时保留旧内存库和旧本地文件，
+`/更新数据` 会返回具体契约原因。该校验不接受旧 schema 的双读或静默降级。
+
 **请求级渲染缓存（2026-08-13）：** `a167843a` 将已发布精灵信息、属性克制、巅峰池、
 巅峰票选、巅峰精灵榜和新内容菜单改为先构造确定性请求键，再查最终图片缓存。命中路径
 不读取 SQLite、不加载素材、不调用 presenter 或原生 HTML 渲染；针对性测试覆盖了零素材
@@ -195,6 +206,24 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 网络下载、SQLite 写入与发布顺序；新模块不接触环境变量、网络或数据库，因而可由纯输入输出
 测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
 `build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
+
+**发布元数据投影边界（2026-08-15）：** SeerAPI `9d197bd` 将 `ironsbot_metadata` 的
+构造与 SQLite upsert 迁入 `scripts/release_metadata.py`。该投影只接收已经完成的构建事实，
+不读取环境、网络或 SQLite 以外的输入；全量 SeerAPI pytest 为 **269 passed**，Ruff、编译和
+diff 检查通过。入口脚本降至 1,226 行，尚未完成的边界只剩最终发布编排与真实 release consumer smoke。
+
+**发布构建编排边界（2026-08-15）：** SeerAPI `13730e4` 将最终 SQLite 发布事务、
+官方来源读取及经典皮肤素材探测分别迁入 `release_publication.py`、
+`release_source_loaders.py` 与 `release_skin_image_loader.py`。入口脚本现在为 **727 行**，
+只保留 CLI、构建顺序、配置装配和 SQLite 健康检查；所有新增生产模块均低于 800 行。
+构建相关 56 项、SeerAPI 全量 **269 passed**、Ruff、编译、CLI `--help` 与 diff 检查通过。
+真实 release 和 IronsBot 消费者 smoke 仍是 release gate，不能由本地单元测试替代。
+
+**镜像体积基线（2026-08-15）：** Docker 发布工作流现在在 push 后拉取刚发布的首个
+镜像标签，并把 Docker 报告的本地未压缩体积写入 GitHub Actions Summary。当前工作站的
+Docker daemon 未启动，不能伪造实际大小；后续只在有连续发布基线后，才为增长设置预算或
+删除运行依赖。静态审计确认 tests/docs/scripts/dev 依赖均不进入最终镜像，HTML 渲染、
+Pillow、SQLAlchemy 与中文字体有真实运行时调用，不能以“瘦身”为由直接移除。
 
 **效果元数据来源边界（2026-08-13）：** SeerAPI `e82d738` 将官方
 `effectDes.json` 与 `signIconFight.json` 的纯解析和值对象迁入

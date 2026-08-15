@@ -151,7 +151,7 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 ## Progress
 
 ```text
-Program  [████████░░] 79%  global verified progress; this draft does not change it
+Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
 Phase    [██░░░░░░░░] 20%  verified slices: 1/5   estimated remaining: 2-4 h
 Current  [██████████] 100% manifest extraction verified; next: isolate effect-icon conversion without changing PNG facts
 ```

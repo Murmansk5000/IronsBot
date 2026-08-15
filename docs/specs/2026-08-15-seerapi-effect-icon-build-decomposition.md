@@ -139,7 +139,7 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 ## Progress
 
 ```text
-Program  [████████░░] 79%  global verified progress; this draft does not change it
+Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
 Phase    [████████░░] 80%  verified slices: 4/5 + local release/consumer smoke   estimated remaining: 1-2 h
 Current  [██████████] 100% cached Flash build and consumer smoke verified; next: FFDec-backed CI release validation
 ```

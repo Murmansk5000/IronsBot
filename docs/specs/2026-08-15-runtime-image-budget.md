@@ -66,7 +66,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 ## Progress
 
 ```text
-Program  [████████░░] 79%  static boundary complete; remaining: real image measurement
+Program  [███░░░░░░░]  verified phases: 3/8; this static boundary is complete, real image measurement remains
 Phase    [██████████] 100% current: build context protection
 Current  [██████████] 100% next: measure after Docker daemon becomes available
 ```
