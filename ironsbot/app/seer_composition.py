@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
+from ironsbot.integrations.http.weekly_preview_images import (
+    CachedWeeklyPreviewImageSource,
+)
 from ironsbot.integrations.onebot.lucky_skin_window import (
     build_onebot_lucky_skin_window_accounts,
 )
@@ -184,6 +187,11 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         settings.seer.render,
         seer_database,
     )
+    weekly_preview_images = CachedWeeklyPreviewImageSource(
+        http_clients.origin,
+        cache_paths.http_dir() / "weekly_preview",
+        spawn=task_owner.create,
+    )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         build_onebot_lucky_skin_window_accounts(
@@ -312,7 +320,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         seer=SeerQueryResources(
             SeerDataQueryService(
                 seer_database,
-                images,
+                weekly_preview_images,
                 settings.seer.season,
                 NewContentService(seer_database),
             ),

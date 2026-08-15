@@ -95,11 +95,12 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | 2026-08-15 | 对齐 B站推送测试回调 | B站监控测试 37 passed；Ruff；BasedPyright | `DynamicPushSender` 的五参数 contract 成为测试唯一签名；类型错误由 36 降至 31。 |
 | 2026-08-15 | 清理 OneBot 菜单伪页面参数 | OneBot prompt/confirmation 测试 10 passed；Ruff；BasedPyright | 删除未写入会话状态的 `page_id` 参数，确认测试使用正式 `Matcher` contract；类型错误由 31 降至 24。 |
 | 2026-08-15 | 收紧 Seer 数据快照边界 | Seer autocard/new-content/type-query 测试 54 passed；Ruff；BasedPyright | JSON 数值、ORM 属性组合与渲染分类在边界显式转换；类型错误由 24 降至 13。 |
+| 2026-08-15 | 修正 composition 数据端口 | 应用生命周期与周预告测试 30 passed；Ruff；BasedPyright | 周预告改用独立 HTTP 图片缓存 source，私有扩展使用显式 OneBot 适配；移除无调用旧包装，类型错误由 13 降至 7。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  verified phases: 3/8  estimated remaining: depends on cross-repo data ports
 Phase    [████████░░] 75%  verified slices: 3/4  estimated remaining: 30-90 minutes
-Current  [██████████] 100% next: extract the remaining composition and fixture contracts
+Current  [██████████] 100% next: make the remaining test fakes conform to their ports
 ```
