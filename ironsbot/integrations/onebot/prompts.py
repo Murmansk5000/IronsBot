@@ -27,6 +27,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
+from ironsbot.integrations.onebot.matcher_support import EXPLICIT_COMMAND_STATE_KEY
 from ironsbot.integrations.onebot.matchers import (
     begin_queued_conversation,
     get_prompt_session_manager,
@@ -148,15 +149,14 @@ def _is_digit_input(event: Event) -> bool:
 
 @run_preprocessor
 async def _invalidate_prompt_on_command(matcher: Matcher, event: Event) -> None:
-    if matcher.priority > 0:
-        try:
-            prompt_sessions = get_prompt_session_manager(matcher)
-        except PromptSessionManagerMissingError:
-            return
-        # Queued conversations own their accepted input and lifetime.  Cancelling
-        # them here lets an unrelated higher-priority matcher consume a numeric
-        # menu choice before its actual conversation handler sees it.
-        prompt_sessions.invalidate(event.get_session_id())
+    if not matcher.state.get(EXPLICIT_COMMAND_STATE_KEY, False):
+        return
+    try:
+        prompt_sessions = get_prompt_session_manager(matcher)
+    except PromptSessionManagerMissingError:
+        return
+    prompt_sessions.invalidate(event.get_session_id())
+    prompt_sessions.invalidate_event_conversations(event)
 
 
 async def enter_prompt(  # noqa: PLR0913
@@ -198,7 +198,6 @@ async def enter_prompt(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             queue_reply_check=queue_reply_check,
             queue_group_reply_check=input_check,
-            queue_page_id=prompt.page_id,
             queue_semantic_request_resolver=_prompt_semantic_request,
         )
         try:
@@ -219,7 +218,6 @@ async def enter_prompt(  # noqa: PLR0913
         queue_namespace="selection_prompt",
         queue_reply_check=queue_reply_check,
         queue_group_reply_check=input_check,
-        queue_page_id=prompt.page_id,
         queue_semantic_request_resolver=_prompt_semantic_request,
     )
 
