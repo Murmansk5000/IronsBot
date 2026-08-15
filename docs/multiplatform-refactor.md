@@ -70,8 +70,13 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
   编译和 `git diff --check` 通过。它只覆盖构建自产的 `soulmark_icon_png`，不代表远程
   精灵、皮肤或其他图片资产已具备 manifest，因此不能作为早期 L3 命中的完成证据。
 
-下一步只审计尚未采用 snapshot -> document 管线的渲染路径；未满足同等发布事实和缓存
-验证前，不得把 Phase 4 标为完成。
+- `seerapi` 提交 `39c3339` 将 remote asset repository 和 immutable Git revision 升级为
+  manifest v2 的显式 metadata；IronsBot `a7dd38f4` 在原子加载时验证该契约，并只用
+  发布 revision 构造受保护素材 URL。SeerAPI 全量 260 passed；IronsBot 全量 1521
+  passed、Ruff、静态检查、BasedPyright、编译和 diff 检查通过。
+
+下一步核对每个 renderer 的真实素材家族与已声明 scope，并以新 release 做 consumer
+smoke；未满足这些范围验证前，不得把 Phase 4 标为完成。
 
 ## 阶段账本与报告纪律
 
@@ -100,7 +105,7 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
-| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证 | SeerAPI 发布完整 render asset manifest，并对每一类素材做范围完整性验证 | 渲染数据发布契约完成 |
+| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
@@ -483,11 +488,12 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   `release_revision`、可用状态和来源，并发布顺序无关的 manifest revision。它不额外
   下载素材，也不替代原有 SWF -> PNG 构建管线；消费端可以把这一类素材版本放入将来的
   `RenderRequestKey`。
-- 这仍只是第一种发布素材。SeerAPI 尚未发布覆盖 `pet_head`、`pet_body`、
-  `element_type`、`mintmark`、`item`、`sign_buff`、预览图等远端渲染素材的完整
-  manifest。因此早期 L3 命中仍是明确的跨仓库前置工作：IronsBot 只能引用已发布的
-  版本，不能在命中判断时对 HTTP 素材做探测。完整表、模型、构建完整性测试和消费端
-  schema 校验完成前，不得把 Phase 4 标为完成。
+- SeerAPI 现已为 `pet_head`、`pet_body`、`element_type`、`mintmark`、`item`、
+  `sign_buff`、`suit`、`equip` 和 `title` 发布 remote asset manifest，并通过 v2
+  metadata 将 repository/revision 固定给 consumer。IronsBot 只按该 revision 请求这些
+  素材，不能在命中判断时对 mutable HTTP 素材做探测。预览图、任意 URL 群星牌图和未来
+  renderer 仍未纳入该契约；在逐 renderer 范围验证及真实 release smoke 完成前，不得把
+  Phase 4 标为完成。
 - 私有阵容渲染也复用该内容键；私有模板和本地 Pillow 装饰源码以
   `renderer_fingerprint` 作为显式上下文参与键计算，不能维护第二套按阵容参数命中
   的最终缓存。

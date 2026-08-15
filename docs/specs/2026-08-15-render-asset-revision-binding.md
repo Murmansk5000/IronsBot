@@ -1,6 +1,6 @@
 # 发布素材 Revision 绑定
 
-Status: `accepted`
+Status: `implementing`
 
 Contract: `transition`
 
@@ -80,10 +80,10 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 
 | Slice | Acceptance criteria | Dependencies | Status |
 | --- | --- | --- | --- |
-| 1 | SeerAPI 发布显式、可解析的 asset repository snapshot contract 与 fixture | SeerAPI build schema | planned |
-| 2 | IronsBot 原子读取并拒绝缺失/无效 snapshot 的 release | Slice 1 | planned |
-| 3 | HTTP 素材 adapter 对受保护类别只构造 revision-pinned URL，缓存不复用 mutable source | Slice 2 | planned |
-| 4 | 逐个核对 pet/type/peak/new-content inventory 与真实 `ImageKind`；端到端 fixture 验证 | Slice 3 | planned |
+| 1 | SeerAPI 发布显式、可解析的 asset repository snapshot contract 与 fixture | SeerAPI build schema | verified |
+| 2 | IronsBot 原子读取并拒绝缺失/无效 snapshot 的 release | Slice 1 | verified |
+| 3 | HTTP 素材 adapter 对受保护类别只构造 revision-pinned URL，缓存不复用 mutable source | Slice 2 | verified |
+| 4 | 逐个核对 pet/type/peak/new-content inventory 与真实 `ImageKind`；端到端 fixture 验证 | Slice 3 | in_progress |
 
 ## Migration And Rollback
 
@@ -96,10 +96,10 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 
 ## Acceptance Tests
 
-- [ ] SeerAPI fixture 发布 repository、合法 revision、manifest revision 和 scope。
-- [ ] 缺少/非法 snapshot metadata 的 release 被 IronsBot 标记为不支持，L3 不可用。
-- [ ] `pet_info`、`type_matchup`、`peak_pool` 和 `new_content` 的 manifest 素材 URL
-  包含发布 revision，不含 `main`。
+- [x] SeerAPI fixture 发布 repository、合法 revision、manifest revision 和 scope。
+- [x] 缺少 snapshot metadata 的 release 被 IronsBot 标记为不支持，L3 不可用。
+- [x] manifest 支持的 `ImageKind` 通过发布 revision 构造 URL，且缺少 snapshot 时
+  不回退到 mutable `main`。
 - [ ] preview、任意 URL 卡牌图等非 manifest 资源不被错误改写。
 - [ ] 同一请求在不同 asset revision 下不会复用素材或最终图缓存。
 - [ ] SeerAPI 与 IronsBot 分别通过 focused tests、Ruff、类型/编译检查；最后以新
@@ -110,11 +110,13 @@ manifest 保护的渲染类别，IronsBot 只能下载该 release 发布的资�
 | Date | Change | Verification actually run | Result / remaining risk |
 | --- | --- | --- | --- |
 | 2026-08-15 | 跨仓库只读审计 | SeerAPI manifest builder/model/tests；IronsBot image source/database/cache | 已确认 manifest 记录 immutable tree revision，但 `HttpSeerImageSource` 仍请求 mutable `main`；尚未实施。 |
+| 2026-08-15 | SeerAPI `39c3339` | `uv run pytest -q` (260 passed); Ruff; compileall; diff check | Manifest contract v2 显式发布 repository 与 immutable revision；尚未做真实 release smoke。 |
+| 2026-08-15 | IronsBot `a7dd38f4` | `uv run pytest -q` (1521 passed); Ruff; static check; BasedPyright 0 errors; compileall; diff check | 受保护素材改用 revision-pinned URL，素材缓存按 source identity 隔离；尚待逐 renderer inventory 对照与新 release consumer smoke。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  verified phases: 3/8  estimated remaining: cross-repository slices
 Phase    [███████░░░] 75%  verified scope inventory: partial; remaining: revision-bound consumer path
-Current  [█░░░░░░░░░] 10%  next: define SeerAPI snapshot fixture and contract fields
+Current  [███████░░░] 75%  next: verify each renderer family against published inventory
 ```
