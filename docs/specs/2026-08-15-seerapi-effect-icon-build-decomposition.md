@@ -128,6 +128,7 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | --- | --- | --- | --- |
 | 2026-08-15 | 当前代码依赖审计 | 函数调用图、图标测试清单、GitHub Actions build workflow | 目前 source、FFDec、cache、resolver 和 shard 均在总构建器；Actions 已正确只在构建环境安装 Java、UnityPy、Pillow 与 FFDec，IronsBot runtime 未引入这些依赖。 |
 | 2026-08-15 | SeerAPI `c1faedf` | `uv run pytest -q`（260 passed）、Ruff、构建器 `--help`、compileall、`git diff --check` | `effect_icon_build_types.py` 解析配置和值对象，`effect_icon_png_renderer.py` 成为 FFDec、PNG 校验、缓存和并发的唯一实现；总构建器从 4,122 行降至 3,542 行。source adapters、resolver/shard 与真实 release consumer smoke 尚未完成。 |
+| 2026-08-15 | SeerAPI `6ff44d0`、`1f8d029` | effect-icon 构建测试 51 passed、Ruff、compileall、`git diff --check` | Flash/Unity URL、asset path、来源 URL 与 ID 解析迁入纯 `effect_icon_source_paths.py`，只接收 `EffectIconBuildConfig`；构建器删除 50 行路径规则。Unity bundle 与 Flash HTTP adapter 仍在构建器，尚未宣称 source-adapter slice 完成。 |
 
 ## Progress
 

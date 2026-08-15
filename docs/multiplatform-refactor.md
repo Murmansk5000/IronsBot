@@ -240,6 +240,11 @@ Ruff、CLI 帮助、compileall 和 diff 检查通过。已发布 schema/metadata
 引入 IronsBot runtime。SeerAPI 全量 **260 passed**、Ruff、CLI 帮助、编译和 diff 检查均通过；
 构建主脚本从 4,122 行降至 3,542 行。Flash/Unity source adapter 与 resolver/shard 仍待拆分。
 
+**效果图标 source-path 边界（2026-08-15）：** SeerAPI `6ff44d0` 和 `1f8d029` 将 Flash/Unity
+URL、Unity asset path、来源 URL 与 ID 解析迁入纯 `scripts/effect_icon_source_paths.py`，并补充
+只依赖 `EffectIconBuildConfig` 的直接契约测试。构建器删除 50 行路径规则；Unity bundle 解码和
+Flash HTTP 探测仍在发布编排层，未将未完成的 source adapter 伪装成已完成。
+
 **私有扩展验证入口（2026-08-13）：** 私有仓库 `a278d11` 不再把测试 `pythonpath`
 固定为本机相邻的 `../IronsBot`。测试启动时优先读取 `IRONSBOT_PUBLIC_ROOT`，再回退到
 `public-runtime` 或传统 sibling 目录；因此 V5 工作树、CI 检出路径和标准本地布局均能验证同一
