@@ -5,8 +5,9 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, Protocol
 
 from ironsbot.services.bilibili.parser import (
+    dynamic_body_hydration_reason,
+    dynamic_content,
     dynamic_id,
-    has_dynamic_body,
     item_author_mid,
 )
 
@@ -32,17 +33,19 @@ def detail_item(response: DynamicDetailResponse) -> dict[str, Any] | None:
     return item if isinstance(item, dict) else None
 
 
-async def hydrate_dynamic_item(
+async def hydrate_dynamic_item(  # noqa: PLR0911 - validation exits preserve source
     item: dict[str, Any],
     *,
     cookie: str,
     fetch_detail: DynamicDetailFetcher,
 ) -> dict[str, Any]:
-    """Fill an otherwise textless feed item with its Opus-style detail item."""
+    """Fill a missing or truncated feed item with its Opus-style detail item."""
 
     item_id = dynamic_id(item)
-    if has_dynamic_body(item) or not item_id:
+    reason = dynamic_body_hydration_reason(item)
+    if reason is None or not item_id:
         return item
+    original_length = len(dynamic_content(item))
 
     try:
         response = await fetch_detail(cookie, item_id)
@@ -72,4 +75,10 @@ async def hydrate_dynamic_item(
             author_mid,
         )
         return item
-    return resolved
+    if (
+        dynamic_body_hydration_reason(resolved) is None
+        and len(dynamic_content(resolved)) > original_length
+    ):
+        return resolved
+    logger.warning("Bilibili dynamic detail rejected: id=%s reason=%s", item_id, reason)
+    return item
