@@ -79,7 +79,7 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 
 | Slice | Acceptance criteria | Dependencies | Status |
 | --- | --- | --- | --- |
-| SeerAPI 素材发布 | `mount` PNG、SHA-256、availability 和 revision 进入 manifest | 明确 asset repository 路径 | planned |
+| SeerAPI 素材发布 | `mount` PNG、SHA-256、availability 和 revision 进入 manifest | 设计并验证 asset repository 写入/发布机制 | planned |
 | 完整 scope | `new_content_standard` 对座驾素材做范围验证 | 发布 manifest slice | planned |
 | IronsBot 通用读取 | `ImageKind` / HTTP source 能按 release revision 获取 `mount` | 新 SeerAPI fixture | planned |
 | 删除专用 fallback | 无原始 SQL、blob fallback 或缺表兼容；缺图仍有可见语义 | 通用读取 slice | planned |
@@ -111,11 +111,12 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 | Date | Change | Verification actually run | Result / remaining risk |
 | --- | --- | --- | --- |
 | 2026-08-15 | 当前路径审计 | `new_content_renderer`、`flash_mount_repository`、SeerAPI Flash render script 与 focused tests | 已确认 PNG 在构建期生成，但 IronsBot 仍从 SQLite blob 作隐式 fallback；尚未实施。 |
+| 2026-08-15 | 上游发布能力审计 | SeerAPI `render_flash_mount_images.py`、`render_asset_repository.py`、build workflow 与 asset manifest builder | Flash 脚本只写 release SQLite；现有 asset repository 仅提供 immutable snapshot 读取，尚无 PNG 写入/发布路径，因此不得开始消费者切换。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  global verified progress; this draft does not change it
-Phase    [░░░░░░░░░░] 0%   verified slices: 0/5   estimated remaining: 2-4 h after asset-path evidence
-Current  [██████████] 100% audit complete; next: accept asset publication path before code changes
+Phase    [░░░░░░░░░░] 0%   verified slices: 0/5   estimated remaining: 2-4 h after asset-publication design
+Current  [██████████] 100% audit complete; next: accept a release-owned mount PNG publication path before code changes
 ```
