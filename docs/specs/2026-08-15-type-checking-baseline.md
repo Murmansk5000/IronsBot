@@ -101,7 +101,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 ## Progress
 
 ```text
-Program  [████████░░] 79%  verified phases: 3/8  estimated remaining: depends on cross-repo data ports
+Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted cross-repository slices
 Phase    [██████████] 100% verified slices: 4/4 estimated remaining: none for this spec
 Current  [██████████] 100% complete: BasedPyright and the full regression suite are green
 ```

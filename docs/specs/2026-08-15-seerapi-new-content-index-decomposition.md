@@ -63,7 +63,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 ## Progress
 
 ```text
-Program  [████████░░] 79%  global verified progress; this spec does not change it
+Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
 Phase    [██████████] 100% verified slices: 4/4  all acceptance evidence recorded
 Current  [██████████] 100% generated-release consumer smoke verified
 ```

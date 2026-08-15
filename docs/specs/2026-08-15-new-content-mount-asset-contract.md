@@ -116,7 +116,7 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 ## Progress
 
 ```text
-Program  [████████░░] 79%  global verified progress; this draft does not change it
+Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
 Phase    [░░░░░░░░░░] 0%   verified slices: 0/5   estimated remaining: 2-4 h after asset-publication design
 Current  [██████████] 100% audit complete; next: accept a release-owned mount PNG publication path before code changes
 ```
