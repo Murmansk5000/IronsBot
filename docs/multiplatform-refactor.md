@@ -651,6 +651,9 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   限制等功能。它依赖已退役的 command-directory / plugin / runtime 路径，与 V5 的
   NoneBot 插件装载及 command contract 发生结构冲突。后续必须按
   `docs/specs/` 中的上游同步 Spec 逐项迁入并验证，不得把自动 merge 误报为完成。
+- **2026-08-15 / 活动周快照：** 已在 V5 的 `ActivityService`、活动命令 contract 与
+  `runtime_state.sqlite` 中迁入。`新增活动` 对比当前周和上周已观察到的活动 ID；首周
+  没有上周快照时明确提示，后续只显示差集。未恢复旧活动插件或 command-directory。
 
 - **2026-08-13 / `origin/main` `7757a48f`：** 已合并到 V5 工作分支。该主线修复的
   行为是：B站公开昵称刷新失败时，“TD / 推送管理”仍可打开，选项退化为 UID 并显示

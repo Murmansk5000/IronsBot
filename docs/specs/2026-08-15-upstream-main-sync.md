@@ -1,6 +1,6 @@
 # V5 上游 Main 功能同步
 
-Status: `accepted`
+Status: `implementing`
 
 Contract: `transition`
 
@@ -52,7 +52,7 @@ semantic owner、真实的用户契约和针对性验证。
 | --- | --- | --- | --- |
 | Bilibili 正文补全 | 缺正文与截断 Opus 使用详情补全，不改变 V5 任务所有权 | 无 | completed |
 | 开服别名与竞技池变动入口 | 命令由 V5 service contract 提供，数据由 repository 提供 | 无 | completed |
-| 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 需要单独活动 Spec | planned |
+| 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
 | 竞技池变动渲染 | presenter 先产出不可变 document，再接 HTML renderer | 需要 render document Spec | planned |
 | 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
 | Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 需要 operations Spec | planned |
@@ -79,13 +79,14 @@ semantic owner、真实的用户契约和针对性验证。
 | --- | --- | --- | --- |
 | 2026-08-14 | Bilibili 正文补全 | focused hydration tests, Ruff, compileall | 已由 V5 `7231bae8` 吸收。 |
 | 2026-08-15 | 抓取 `origin/main` `af2e8810` 并尝试语义合并 | compile/Ruff preflight | 自动 merge 证明旧/新目录边界不兼容，未将半合并状态保留。 |
+| 2026-08-15 | 活动周快照 | activity storage/service/command tests, Ruff, compileall | 18 项通过；首次观察明确提示缺少上周快照。 |
 
 ## Progress
 
 ```text
-Program  [████░░░░░░] 40%  verified slices: 2/7  estimated remaining: 1-3 focused specs
-Phase    [████░░░░░░] 40%  current: upstream behaviour migration
-Current  [████░░░░░░] 40%  next: select one user-visible slice and create its spec
+Program  [████░░░░░░] 45%  verified slices: 3/7  estimated remaining: 1-3 focused specs
+Phase    [█████░░░░░] 45%  current: upstream behaviour migration
+Current  [██████████] 100% next: commit the verified activity snapshot slice
 ```
 
 Only the two completed slices are verified on the V5 path. The remaining
