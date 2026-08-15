@@ -21,8 +21,8 @@
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
 - `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
-  `seerapi/scripts/build_seerapi_data_db.py`（5,453 行）与
-  `scripts/build_new_content_index.py`（1,292 行）是已登记的 transition 债务；新功能
+  `seerapi/scripts/build_seerapi_data_db.py`（4,122 行）与
+  `scripts/build_new_content_index.py`（1,289 行）是已登记的 transition 债务；新功能
   不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
   发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
 - 任何阶段都要保留当前 OneBot 用户行为，除非有明确产品决定和特征测试一并更新。
@@ -224,6 +224,14 @@ PackageManifest、刻印品质、皮肤商店、道具说明、魂印图标和�
 来源选择和 SQLite 写入；解码模块不依赖环境、网络、UnityPy 或数据库。构建相关 49 项、
 SeerAPI 全量 **259 passed**、Ruff、CLI 帮助、编译和 diff 检查均通过。构建主脚本从 4,671 行
 降至 4,218 行，模块本身 331 行，未改变发布 schema 或运行时消费语义。
+
+**渲染素材 manifest 边界（2026-08-15）：** SeerAPI `86c2de5` 将发布 SQLite 的素材 ID
+枚举、immutable repository snapshot 匹配、scope 完整性、revision 与 consumer metadata 迁入
+`scripts/render_asset_manifest_build.py`。发布构建器只保留环境配置、snapshot adapter、效果图标
+生成、SQLite 表替换与 metadata 写入时机；新模块不读环境、网络、文件、FFDec 或 CLI。旧
+manifest helper 已删除，构建主脚本从 4,553 行降至 4,122 行。SeerAPI 全量 **260 passed**、
+Ruff、CLI 帮助、compileall 和 diff 检查通过。已发布 schema/metadata key 和 IronsBot 消费语义
+没有变化；真实 release consumer smoke 仍是 Phase 4 的未完成门。
 
 **私有扩展验证入口（2026-08-13）：** 私有仓库 `a278d11` 不再把测试 `pythonpath`
 固定为本机相邻的 `../IronsBot`。测试启动时优先读取 `IRONSBOT_PUBLIC_ROOT`，再回退到

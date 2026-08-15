@@ -1,6 +1,6 @@
 # SeerAPI 渲染素材 Manifest 职责拆分
 
-Status: `draft`
+Status: `in_progress`
 
 Contract: `transition`
 
@@ -78,7 +78,7 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 
 ### Pure build result
 
-`build_render_asset_manifest(connection, snapshot, release_revision, config)` 返回
+`collect_remote_asset_manifest()` 与 `build_render_asset_manifest()` 依次返回
 `RenderAssetManifestBuild`：
 
 - `entries`：按 `(asset_kind, asset_key)` 稳定排序；
@@ -114,7 +114,7 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 
 | Slice | Acceptance criteria | Dependencies | Status |
 | --- | --- | --- | --- |
-| Manifest domain extraction | 新模块从 SQLite + snapshot 生成与当前 helper 完全等价的 entries/scopes/metadata；总构建器删除旧 helper | 本 Spec 接受 | planned |
+| Manifest domain extraction | 新模块从 SQLite + snapshot 生成既有契约的 entries/scopes/metadata；总构建器删除旧 helper | 本 Spec 接受 | completed |
 | Effect icon build extraction | SWF/Unity 图标转换使用独立配置/结果值对象，不影响 manifest domain | Manifest extraction | planned |
 | Mount publication | mount PNG 进入 immutable asset revision 与 manifest，IronsBot 删除 blob fallback | asset repository 写入设计 | planned |
 | New-content index extraction | 输入 repository、分类、release state 输出分开，脚本低于 800 行 | 独立 Spec | planned |
@@ -131,12 +131,12 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 
 ## Acceptance Tests
 
-- [ ] 静态 SQLite fixture 与 immutable snapshot 生成的 entries、scope、revision、metadata
-  与当前已锁定 fixture 完全相同。
-- [ ] pet-info required 素材、new-content 独有素材、optional item/sign-buff 缺失分别验证。
+- [x] 静态 SQLite fixture 与 immutable snapshot 生成已锁定的 entries、scope、revision、metadata
+  语义。
+- [x] pet-info required 素材、new-content 独有素材、optional item/sign-buff 缺失分别验证。
 - [ ] 无 snapshot、缺失表、空 ID 域均不得声明任何错误 complete scope。
-- [ ] effect-icon entries 合入后依旧按稳定键排序，revision 对输入顺序不敏感。
-- [ ] `build_seerapi_data_db.py` 不再定义 inventory、candidate path、scope/revision/metadata
+- [x] effect-icon entries 合入后依旧按稳定键排序，revision 对输入顺序不敏感。
+- [x] `build_seerapi_data_db.py` 不再定义 inventory、candidate path、scope/revision/metadata
   的领域 helper，也不从领域模块反向导入。
 - [ ] SeerAPI 运行 focused pytest、Ruff、compileall、`git diff --check`；真实 release 保持
   SeerAPI schema 与 IronsBot consumer smoke 可用。
@@ -146,13 +146,14 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 | Date | Change | Verification actually run | Result / remaining risk |
 | --- | --- | --- | --- |
 | 2026-08-15 | 当前职责审计 | 函数声明、调用点、既有 SeerAPI build tests 与规范审计 | manifest inventory 至 metadata 仍位于 4,553 行总构建器；`render_asset_repository.py` 已独立承担 immutable snapshot 读取。 |
+| 2026-08-15 | SeerAPI `86c2de5` | `uv run pytest -q`（260 passed）、Ruff、构建器 `--help`、compileall、`git diff --check` | `render_asset_manifest_build.py` 成为唯一 manifest 计算路径；总构建器从 4,553 行降至 4,122 行。真实 release consumer smoke 尚未重跑。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  global verified progress; this draft does not change it
-Phase    [░░░░░░░░░░] 0%   verified slices: 0/5   estimated remaining: 3-5 h after acceptance
-Current  [██████████] 100% audit and target contract recorded; next: lock fixture equivalence before extraction
+Phase    [██░░░░░░░░] 20%  verified slices: 1/5   estimated remaining: 2-4 h
+Current  [██████████] 100% manifest extraction verified; next: isolate effect-icon conversion without changing PNG facts
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
