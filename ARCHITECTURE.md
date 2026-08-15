@@ -722,7 +722,11 @@ Those paths, plus private lineup via `PlayerLineupRenderPort`, calculate their
 request key before data/asset preparation. The private lineup keeps its own
 presentation module, but its adapter alone owns asset loading, final-cache
 access, and the HTML render port. The remaining Phase 4 gate is complete,
-scope-aware SeerAPI asset-manifest validation, not another runtime cache order.
+scope-aware SeerAPI asset-manifest validation and revision-bound asset retrieval,
+not another runtime cache order. A build-time manifest that records an immutable
+asset-tree revision is insufficient while a consumer still fetches the mutable
+`main` branch: the resolved asset URL or asset source must be derived from the
+same published revision that participates in the final-image request key.
 Rank and any later renderer paths remain **transition** work. They may receive
 narrow correctness fixes, but new rendering features must start from the target
 pipeline above instead of copying their older data-loading patterns.

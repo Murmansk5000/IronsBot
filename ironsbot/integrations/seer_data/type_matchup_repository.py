@@ -25,12 +25,14 @@ def load_type_matchup_dataset(session: Session) -> TypeMatchupDataset:
     combinations = tuple(
         _combination_snapshot(item)
         for item in session.exec(
-            select(TypeCombinationORM).order_by(TypeCombinationORM.id)
+            select(TypeCombinationORM).order_by(col(TypeCombinationORM.id))
         )
     )
     elements = tuple(
         ElementTypeSnapshot(id=int(item.id), name=str(item.name))
-        for item in session.exec(select(ElementTypeORM).order_by(ElementTypeORM.id))
+        for item in session.exec(
+            select(ElementTypeORM).order_by(col(ElementTypeORM.id))
+        )
     )
     relations = tuple(
         (int(source_id), int(target_id), float(multiplier))

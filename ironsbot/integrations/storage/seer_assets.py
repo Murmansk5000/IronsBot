@@ -45,6 +45,8 @@ class SeerAssetStore:
         source: SeerImageSource,
         cache_dir: Path,
         limits: SeerAssetStoreLimits,
+        *,
+        source_identity_getter: Callable[[], str] | None = None,
     ) -> None:
         self._source = source
         self._memory = _MemoryAssetCache(limits.memory_max_size_bytes)
@@ -54,6 +56,7 @@ class SeerAssetStore:
         self._negative: dict[str, float] = {}
         self._inflight: dict[str, asyncio.Future[bytes]] = {}
         self._inflight_lock = asyncio.Lock()
+        self._source_identity_getter = source_identity_getter or (lambda: "legacy")
 
     async def fetch(
         self,
@@ -62,7 +65,13 @@ class SeerAssetStore:
         *,
         fallback: bool = True,
     ) -> bytes:
-        cache_key = _cache_key("image", kind, key, str(fallback))
+        cache_key = _cache_key(
+            "image",
+            self._source_identity_getter(),
+            kind,
+            key,
+            str(fallback),
+        )
         return await self._get_or_fetch(
             cache_key,
             lambda: self._source.fetch(kind, key, fallback=fallback),
@@ -192,6 +201,8 @@ def build_seer_asset_store(
     source: SeerImageSource,
     cache_dir: Path,
     render_config: RenderConfig,
+    *,
+    source_identity_getter: Callable[[], str],
 ) -> SeerAssetStore:
     """Build the shared Seer image asset port from application configuration."""
     return SeerAssetStore(
@@ -207,4 +218,5 @@ def build_seer_asset_store(
             max_network_concurrent=render_config.asset_fetch_max_concurrent,
             negative_ttl_seconds=render_config.asset_negative_ttl_seconds,
         ),
+        source_identity_getter=source_identity_getter,
     )

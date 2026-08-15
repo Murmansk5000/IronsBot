@@ -293,6 +293,17 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert ".codex/" in dockerignore
     assert "__pycache__/" in dockerignore
     assert ".pytest_cache/" in dockerignore
+    for repository_only_path in (
+        "data/",
+        "docker/",
+        "docs/",
+        "scripts/",
+        "tables/",
+        "tables_custom/",
+        "templates/",
+        "tests/",
+    ):
+        assert repository_only_path in dockerignore
     assert "python -m ironsbot.app.docker_preflight" in entrypoint
     assert "while :; do" in entrypoint
     wait_offset = entrypoint.index("while :; do")

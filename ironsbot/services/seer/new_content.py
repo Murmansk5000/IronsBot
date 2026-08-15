@@ -209,6 +209,8 @@ def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: P
 def _format_peak_pool_limit(value: object) -> str:
     if value is None:
         return "不限"
+    if not isinstance(value, int | float | str):
+        return "未知"
     try:
         return f"限{int(value)}"
     except (TypeError, ValueError):

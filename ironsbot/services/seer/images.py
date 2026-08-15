@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import base64
+import re
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 ImageKind = Literal[
     "battle_effect",
@@ -18,6 +22,49 @@ ImageKind = Literal[
     "suit",
     "title",
 ]
+
+_ASSET_REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_ASSET_REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedRenderAssetSnapshot:
+    """Immutable asset tree declared by one loaded SeerAPI release."""
+
+    repository: str
+    revision: str
+    manifest_revision: str
+    scopes: frozenset[str]
+
+    @property
+    def cache_identity(self) -> str:
+        return f"{self.repository}@{self.revision}:{self.manifest_revision}"
+
+
+def parse_published_render_asset_snapshot(
+    metadata: Mapping[str, str],
+    *,
+    contract_version: str,
+) -> PublishedRenderAssetSnapshot | None:
+    """Validate the narrow release metadata contract used by image adapters."""
+
+    if metadata.get("render_asset_manifest_contract_version") != contract_version:
+        return None
+    repository = metadata.get("render_asset_manifest_asset_repository", "")
+    revision = metadata.get("render_asset_manifest_asset_repository_revision", "")
+    manifest_revision = metadata.get("render_asset_manifest_revision", "")
+    if (
+        not _ASSET_REPOSITORY_PATTERN.fullmatch(repository)
+        or not _ASSET_REVISION_PATTERN.fullmatch(revision)
+        or not manifest_revision
+    ):
+        return None
+    return PublishedRenderAssetSnapshot(
+        repository=repository,
+        revision=revision,
+        manifest_revision=manifest_revision,
+        scopes=frozenset(),
+    )
 
 
 class ImageSourceError(RuntimeError):

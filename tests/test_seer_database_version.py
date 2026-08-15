@@ -33,8 +33,12 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
             text(
                 "INSERT INTO ironsbot_metadata (key, value) VALUES "
                 "('render_asset_manifest_revision', 'assets-v1'), "
-                "('render_asset_manifest_contract_version', '1'), "
-                "('render_asset_manifest_complete_scopes', '[\"pet_info\"]')"
+                "('render_asset_manifest_contract_version', '2'), "
+                "('render_asset_manifest_complete_scopes', '[\"pet_info\"]'), "
+                "('render_asset_manifest_asset_repository', "
+                "'Murmansk-Seer/seer-unity-assets'), "
+                "('render_asset_manifest_asset_repository_revision', "
+                "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
             )
         )
         session.add(
@@ -60,6 +64,11 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
     assert data.version() == expected_version
     assert data.render_category_available("pet_info")
     assert not data.render_category_available("new_content")
+    assert data.render_asset_snapshot() is not None
+    assert data.render_asset_cache_identity() == (
+        "Murmansk-Seer/seer-unity-assets@"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:assets-v1"
+    )
 
 
 def test_seer_database_version_rejects_release_without_asset_manifest(
@@ -86,3 +95,4 @@ def test_seer_database_version_rejects_release_without_asset_manifest(
     databases.load_from_file("seerapi", str(source))
 
     assert data.version() == "unknown"
+    assert data.render_asset_snapshot() is None
