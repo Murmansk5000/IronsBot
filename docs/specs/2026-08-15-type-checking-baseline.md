@@ -67,7 +67,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | --- | --- | --- | --- |
 | B站旧桥接 | 删除无调用桥接，或迁入当前 composition；消除 10 条错误 | import graph 审计 | verified |
 | Seer typed snapshots | repository/composition 不再把未验证 `object` 传入领域模型 | published data ports | planned |
-| Adapter callback contracts | OneBot/B站回调与队列参数只有一份 protocol | runtime contract | planned |
+| Adapter callback contracts | OneBot/B站回调与队列参数只有一份 protocol | runtime contract | in_progress |
 | Fixture conformance | 测试 fake 满足正式 protocol，测试语义不降级 | 前三项完成 | planned |
 
 ## Migration And Rollback
@@ -92,6 +92,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | 2026-08-15 | 运行 BasedPyright | `uv run basedpyright` | 46 errors：B站旧桥接 10、B站测试回调 5、推送时间 handler 3、AI fixture 3，其余为 Seer repository/composition/fixture 边界。 |
 | 2026-08-15 | 审计 B站旧运行桥接 | `rg` import graph、composition 对照 | `app/bilibili_runtime.py` 无调用方；真实路径是 `bilibili_composition -> BilibiliDynamicOutboundSender`。 |
 | 2026-08-15 | 删除 B站旧运行桥接 | B站/插件/架构测试 85 passed；Ruff；repo static；BasedPyright | 类型错误由 46 降至 36；当前真实 B站 composition 未受影响。 |
+| 2026-08-15 | 对齐 B站推送测试回调 | B站监控测试 37 passed；Ruff；BasedPyright | `DynamicPushSender` 的五参数 contract 成为测试唯一签名；类型错误由 36 降至 31。 |
 
 ## Progress
 
