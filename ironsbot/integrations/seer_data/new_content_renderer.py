@@ -105,7 +105,12 @@ async def render_new_content_menu(  # noqa: PLR0913
         *(_item_visuals(images, prepared) for prepared in prepared_items)
     )
 
-    cacheable = True
+    # Arbitrary card URLs are not published by the immutable Seer asset
+    # manifest, so a final image containing one must not outlive its source.
+    cacheable = all(
+        prepared.asset is None or prepared.asset.url is None
+        for prepared in prepared_items
+    )
     prepared_by_key = {
         (prepared.item.category, prepared.item.entity_id): (prepared, visual)
         for prepared, visual in zip(prepared_items, visuals, strict=True)

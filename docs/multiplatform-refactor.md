@@ -75,6 +75,13 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
   发布 revision 构造受保护素材 URL。SeerAPI 全量 260 passed；IronsBot 全量 1521
   passed、Ruff、静态检查、BasedPyright、编译和 diff 检查通过。
 
+- **渲染资产范围审计（2026-08-15）：** `pet_info`、属性和巅峰 renderer 的图片
+  家族均由当前 `pet_info` scope 覆盖。`new_content_standard` 额外发布
+  `skin_image_resolution.head_resource_id` 中不属于普通精灵的专属头像；外部群星牌 URL
+  即使成功获取也不写入最终图缓存。公共 `seer_data` 的全部 renderer adapter 进入最终图
+  版本指纹，私有阵容继续使用自己的私有源码/模板指纹。幸运橱窗使用皮肤 body，当前没有
+  完整 inventory，故其 L3 最终图缓存保持禁用；这比错误声明素材范围完整更安全。
+
 下一步核对每个 renderer 的真实素材家族与已声明 scope，并以新 release 做 consumer
 smoke；未满足这些范围验证前，不得把 Phase 4 标为完成。
 

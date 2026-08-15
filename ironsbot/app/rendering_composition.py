@@ -10,14 +10,18 @@ from ironsbot.integrations.htmlkit import (
     render_html_template,
 )
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
-from ironsbot.integrations.seer_data.pet_info_renderer import (
-    PET_INFO_RENDERER_SOURCE_PATH,
-)
+from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
 from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
 from ironsbot.integrations.storage.seer_assets import build_seer_asset_store
 from ironsbot.services.seer.render_coordinator import RenderCoordinator
 from ironsbot.services.seer.render_paths import SEER_RENDERING_PATH
+
+FINAL_RENDER_CACHE_INPUTS = (
+    SEER_RENDERING_PATH,
+    SEER_DATA_RENDERERS_PATH,
+    HTML_TEMPLATE_RENDERER_SOURCE_PATH,
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import RenderConfig
@@ -48,11 +52,7 @@ def build_seer_rendering_components(
         render_config.final_cache_max_size_mb * 1024 * 1024,
         version_getter=RenderCacheVersion(
             seer_database.version,
-            (
-                SEER_RENDERING_PATH,
-                PET_INFO_RENDERER_SOURCE_PATH,
-                HTML_TEMPLATE_RENDERER_SOURCE_PATH,
-            ),
+            FINAL_RENDER_CACHE_INPUTS,
         ),
         category_available=seer_database.render_category_available,
     )
