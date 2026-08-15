@@ -12,7 +12,7 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 
 ## Problem
 
-`seerapi/scripts/build_seerapi_data_db.py` 当前仍有 1,981 行（本 Spec 开始时为 3,098 行）。它同时拥有网络请求、官方
+`seerapi/scripts/build_seerapi_data_db.py` 当前仍有 1,861 行（本 Spec 开始时为 3,098 行）。它同时拥有网络请求、官方
 包读取、精灵/皮肤资源探测、效果图 PNG cache CLI、SQLite 表写入和最终发布编排。
 此前已迁出 ConfigPackage、群星牌、效果元数据、伙伴契约、渲染 manifest、效果图来源与
 PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此新增表或资源逻辑会重新扩大
@@ -52,7 +52,7 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 | Render manifest table writer | 写入 render manifest 事实表 | 创建连接、确定发布顺序 | manifest 行、hash 与不可用素材语义不变；writer 不读取环境或网络 | completed (`seerapi` `9988e7f`) |
 | Remaining published-table writers | 写入 metadata 表 | 创建连接、确定发布顺序 | 写入前后 metadata 不变；writer 不读取环境或网络 | planned |
 | Pet/skin asset source | 探测精灵头像、皮肤资源及经典皮肤 fallback | 传入来源 URL、超时与 logger | 相同 fixture 产生相同 resolution 与缺失语义 | planned |
-| Build I/O | HTTP 重试、下载、包 manifest 和上游数据库复制 | 传入构建配置并处理 CLI 错误 | 重试、HTTP 错误和本地上游路径保持当前语义 | planned |
+| Build I/O | HTTP 重试、下载、包 manifest 和上游数据库复制 | 传入构建配置并处理 CLI 错误 | 重试、HTTP 错误和本地上游路径保持当前语义 | completed (`seerapi` `ce39c67`) |
 | Effect-icon cache CLI | cache seed、分片导出/渲染的 CLI adapter | 正常发布与参数选择 | `--seed`、`--render-shard`、`--help` 保持兼容 | planned |
 | Final orchestration | 只协调输入、纯/适配器调用、SQLite writer、quick check 和日志 | 无 | 主脚本不超过 800 行；每个新生产模块不超过 800 行 | planned |
 
@@ -75,8 +75,8 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 
 ```text
 Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
-Phase 4 [██████░░░░]  verified work: manifest/effect/new-content boundaries plus six SQLite writers
-Current  [██████████]  completed: ConfigPackage, reference, soulmark icon, Autocard, partner and render-manifest tables moved to dedicated SQLite writers
+Phase 4 [███████░░░]  verified work: manifest/effect/new-content boundaries, six SQLite writers and release build I/O
+Current  [██████████]  completed: BuildHttpClient owns retries, downloads, upstream input, preview probes and ConfigPackage manifest I/O
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
@@ -91,3 +91,4 @@ Only verified, committed, or explicitly waived work counts toward progress.
 | 2026-08-15 | `seerapi` `ee89f06` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (266 passed); Ruff; compileall; `git diff --check` | Autocard role/card/nature/buff/season SQLite writing is isolated, including its strict official-schema rejection and raw sidecar. Shared JSON field parsing moved to a pure helper also reused by the Unity item catalog. The entry script fell to 2,167 lines. Partner, manifest, metadata, asset probes and CLI adapters remain. |
 | 2026-08-15 | `seerapi` `6821c15` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (266 passed); Ruff; compileall; `git diff --check` | Partner group/member/upgrade publication is now a dedicated no-network writer. The entry script fell to 2,030 lines. Render manifest/metadata, asset probes, build I/O and cache CLI adapters remain. |
 | 2026-08-15 | `seerapi` `9988e7f` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (266 passed); Ruff; `scripts` compileall; `git diff --check` | Render-manifest table publication is now a dedicated no-network writer. The entry script fell to 1,981 lines. Metadata, asset probes, build I/O and cache CLI adapters remain. |
+| 2026-08-15 | `seerapi` `ce39c67` | focused `tests/test_build_http.py` + `tests/test_build_seerapi_data_db.py` (58 passed); full SeerAPI pytest (268 passed); Ruff; `scripts` compileall; `git diff --check` | `BuildHttpClient` now owns retrying HTTP, atomic downloads, verified local upstream input, image probe and ConfigPackage manifest I/O. The entry script fell to 1,861 lines. Pet/skin resource probes and cache CLI adapters remain. |
