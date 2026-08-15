@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 import base64
+import io
 from collections.abc import Awaitable, Callable
 
 from httpx import AsyncClient, HTTPStatusError, RequestError
 from nonebot.params import Depends
 from nonebot_plugin_saa import Image, MessageSegmentFactory, Text
+from PIL import Image as PILImage
 
 from .parse_arg import parse_string_arg
 
@@ -79,3 +81,11 @@ class GetImage:
 def to_data_uri(data: bytes, mime_type: str = "image/png") -> str:
     b64 = base64.b64encode(data).decode("ascii")
     return f"data:{mime_type};base64,{b64}"
+
+
+def flip_image_horizontal(data: bytes) -> bytes:
+    with PILImage.open(io.BytesIO(data)) as img:
+        flipped = img.transpose(PILImage.Transpose.FLIP_LEFT_RIGHT)
+        buf = io.BytesIO()
+        flipped.save(buf, format=img.format or "PNG")
+        return buf.getvalue()

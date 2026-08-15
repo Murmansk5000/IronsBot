@@ -17,6 +17,7 @@ from ironsbot.plugins.seer_data.image import (
     PetHeadImageGetter,
 )
 from ironsbot.utils.analyze_parser import AnalyzeDescParser, TextSegment
+from ironsbot.utils.image import flip_image_horizontal
 
 from ._cache import render_cache
 from ._common import TEMPLATES_PATH, to_data_uri
@@ -252,6 +253,7 @@ async def render_pet_info(pet: PetORM) -> bytes:
         ElementTypeImageGetter.get_bytes("prop"),
         *(MintmarkBodyImageGetter.get_bytes(str(mm.id)) for mm in mintmarks),
     )
+    pet_body_bytes = flip_image_horizontal(pet_body_bytes)
 
     type_icon_count = len(type_ids) + 1  # +1 for "prop"
     type_icon_results = rest_results[:type_icon_count]
