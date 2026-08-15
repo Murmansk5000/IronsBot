@@ -58,6 +58,7 @@ def _service(
         preference_for_target=preferences.get,
         targets=lambda: targets,
         broadcast=broadcast,
+        newly_observed_activity_ids=lambda _ids, _now: (frozenset(), False),
         now=lambda: datetime(2026, 6, 1, tzinfo=timezone.utc),
     )
 
