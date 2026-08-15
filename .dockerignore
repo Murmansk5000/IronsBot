@@ -5,6 +5,16 @@
 # Git history as build context.
 .git/
 .github/
+.codex/
+.venv/
+__pycache__/
+*.py[cod]
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 data/
 docs/
 scripts/
