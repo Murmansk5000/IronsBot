@@ -56,7 +56,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 竞技池变动渲染 | presenter 先产出不可变 document，再接 HTML renderer | 需要 render document Spec | planned |
 | 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
 | Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 需要 operations Spec | planned |
-| 绑定限制 | 所有玩家目标都通过统一 resolver，错误语义一致 | 需要玩家身份 Spec | planned |
+| 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
 
 ## Migration And Rollback
 
@@ -80,6 +80,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-08-14 | Bilibili 正文补全 | focused hydration tests, Ruff, compileall | 已由 V5 `7231bae8` 吸收。 |
 | 2026-08-15 | 抓取 `origin/main` `af2e8810` 并尝试语义合并 | compile/Ruff preflight | 自动 merge 证明旧/新目录边界不兼容，未将半合并状态保留。 |
 | 2026-08-15 | 活动周快照 | activity storage/service/command tests, Ruff, compileall | 18 项通过；首次观察明确提示缺少上周快照。 |
+| 2026-08-15 | 请求者绑定限制 | `PlayerIdResolver` 与既有用户契约审计 | 不迁入；会缩窄已确认的直接 @ 用户解析能力。 |
 
 ## Progress
 
