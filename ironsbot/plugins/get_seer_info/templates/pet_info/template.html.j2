@@ -384,7 +384,23 @@
                     <div class="pet-img-box">
                         <img class="pet-img" src="{{ pet_body_img }}" />
                     </div>
-
+                    {% if pet_introduction %}
+                    <div class="section">
+                        <div class="sec-title">介绍</div>
+                        <div class="intro-item">
+                            <div class="sm-desc">{{ pet_introduction }}</div>
+                            <div class="intro-meta">
+                                <span>身高：{{ pet_height }}</span>
+                                <span class="intro-meta-sep">|</span>
+                                <span>体重：{{ pet_weight }}</span>
+                                {% if pet_food %}
+                                <span class="intro-meta-sep">|</span>
+                                <span>喜爱食物：{{ pet_food }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                     <div class="section">
                         <div class="sec-title">种族值{% if advance_stats %}<span class="s-adv">/觉醒后</span>{% endif %}</div>
                         <div class="stats-container">
@@ -432,23 +448,6 @@
                             </div>
                         </div>
                     </div>
-                    {% if pet_introduction %}
-                    <div class="section">
-                        <div class="sec-title">介绍</div>
-                        <div class="intro-item">
-                            <div class="sm-desc">{{ pet_introduction }}</div>
-                            <div class="intro-meta">
-                                <span>身高：{{ pet_height }}</span>
-                                <span class="intro-meta-sep">|</span>
-                                <span>体重：{{ pet_weight }}</span>
-                                {% if pet_food %}
-                                <span class="intro-meta-sep">|</span>
-                                <span>喜爱食物：{{ pet_food }}</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
                     {% if soulmarks %}
                     <div class="section">
                         <div class="sec-title">魂印</div>
