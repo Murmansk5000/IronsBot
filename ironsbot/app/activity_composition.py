@@ -51,9 +51,13 @@ def build_activity_service(  # noqa: PLR0913 - composition root
     notice_source: UnityNoticeSource,
 ) -> ActivityService:
     """Build the activity service from storage, policy, and delivery ports."""
-    from ironsbot.integrations.storage.activity import ActivitySentStore
+    from ironsbot.integrations.storage.activity import (
+        ActivitySentStore,
+        ActivitySnapshotStore,
+    )
 
     sent_store = ActivitySentStore(runtime_state_path)
+    snapshot_store = ActivitySnapshotStore(runtime_state_path)
     repository = ActivityRepository()
 
     def load_rows():
@@ -111,5 +115,6 @@ def build_activity_service(  # noqa: PLR0913 - composition root
         preference_for_target=preference_for_target,
         targets=targets,
         broadcast=broadcast,
+        newly_observed_activity_ids=snapshot_store.newly_observed_ids,
         now=lambda: datetime.now(_LOCAL_TZ),
     )
