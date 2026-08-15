@@ -198,7 +198,6 @@ async def enter_prompt(  # noqa: PLR0913
             pending_reply_check=queue_reply_check,
             queue_reply_check=queue_reply_check,
             queue_group_reply_check=input_check,
-            queue_page_id=prompt.page_id,
             queue_semantic_request_resolver=_prompt_semantic_request,
         )
         try:
@@ -219,7 +218,6 @@ async def enter_prompt(  # noqa: PLR0913
         queue_namespace="selection_prompt",
         queue_reply_check=queue_reply_check,
         queue_group_reply_check=input_check,
-        queue_page_id=prompt.page_id,
         queue_semantic_request_resolver=_prompt_semantic_request,
     )
 

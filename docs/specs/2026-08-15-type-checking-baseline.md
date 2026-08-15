@@ -93,11 +93,12 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | 2026-08-15 | 审计 B站旧运行桥接 | `rg` import graph、composition 对照 | `app/bilibili_runtime.py` 无调用方；真实路径是 `bilibili_composition -> BilibiliDynamicOutboundSender`。 |
 | 2026-08-15 | 删除 B站旧运行桥接 | B站/插件/架构测试 85 passed；Ruff；repo static；BasedPyright | 类型错误由 46 降至 36；当前真实 B站 composition 未受影响。 |
 | 2026-08-15 | 对齐 B站推送测试回调 | B站监控测试 37 passed；Ruff；BasedPyright | `DynamicPushSender` 的五参数 contract 成为测试唯一签名；类型错误由 36 降至 31。 |
+| 2026-08-15 | 清理 OneBot 菜单伪页面参数 | OneBot prompt/confirmation 测试 10 passed；Ruff；BasedPyright | 删除未写入会话状态的 `page_id` 参数，确认测试使用正式 `Matcher` contract；类型错误由 31 降至 24。 |
 
 ## Progress
 
 ```text
 Program  [████████░░] 79%  verified phases: 3/8  estimated remaining: depends on cross-repo data ports
 Phase    [██░░░░░░░░] 25%  verified slices: 1/4  estimated remaining: 1-4 hours
-Current  [██████████] 100% next: validate the full regression suite
+Current  [██████████] 100% next: extract the Seer snapshot decoding slice
 ```

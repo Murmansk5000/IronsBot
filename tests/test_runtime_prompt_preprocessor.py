@@ -41,7 +41,10 @@ def test_menu_input_does_not_close_active_conversations(
     event = SimpleNamespace(get_session_id=lambda: "group_1_user_2")
     matcher = SimpleNamespace(state={})
 
-    asyncio.run(prompts._invalidate_prompt_on_command(matcher, event))
+    async def invoke_preprocessor() -> None:
+        await prompts._invalidate_prompt_on_command(matcher, event)
+
+    asyncio.run(invoke_preprocessor())
 
     manager.invalidate.assert_not_called()
     manager.invalidate_event_conversations.assert_not_called()
