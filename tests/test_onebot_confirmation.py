@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from ironsbot.integrations.onebot import confirmation
 from tests.helpers.onebot_events import private_message_event
+
+if TYPE_CHECKING:
+    from nonebot.matcher import Matcher
 
 
 @pytest.mark.asyncio
@@ -25,7 +28,7 @@ async def test_confirmation_executes_only_after_affirmative_reply(
 
     monkeypatch.setattr(confirmation, "finish_event_reply", finish)
     await confirmation._handle_event_confirmation(
-        cast("object", object()),
+        cast("Matcher", object()),
         private_message_event("y"),
         {},
         executor=execute,
@@ -49,7 +52,7 @@ async def test_confirmation_cancels_without_running_executor(
 
     monkeypatch.setattr(confirmation, "finish_event_reply", finish)
     await confirmation._handle_event_confirmation(
-        cast("object", object()),
+        cast("Matcher", object()),
         private_message_event("n"),
         {},
         executor=execute,
