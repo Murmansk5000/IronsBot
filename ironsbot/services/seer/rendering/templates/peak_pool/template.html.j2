@@ -148,9 +148,17 @@
             <div class="pool-header">
                 <div>
                     <span class="pool-title">{{ pool.label }}</span>
+                    {% if pool.previous_count is not none %}
+                    <span class="pool-badge">
+                        总数：{{ pool.previous_count }} → {{ pool.current_count }} 只
+                        {% if pool.current_count > pool.previous_count %}
+                        （+{{ pool.current_count - pool.previous_count }}）
+                        {% elif pool.current_count < pool.previous_count %}
+                        （{{ pool.current_count - pool.previous_count }}）
+                        {% endif %}
+                    </span>
+                    {% else %}
                     <span class="pool-badge">当前 {{ pool.current_count }} 只</span>
-                    {% if pool.historical_count %}
-                    <span class="pool-badge">上周位置 {{ pool.historical_count }} 只</span>
                     {% endif %}
                 </div>
             </div>

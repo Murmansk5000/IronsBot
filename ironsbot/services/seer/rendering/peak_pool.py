@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 POOL_OVERHEAD = 18 * 2 + 1 * 2  # pool-section padding + border
 CONTAINER_PADDING = 20 * 2
 MAX_BASE_COLS = 10
-PEAK_POOL_CACHE_VERSION = 9
+PEAK_POOL_CACHE_VERSION = 10
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class PetInPoolDict(TypedDict):
 class PoolDict(TypedDict):
     label: str
     current_count: int
-    historical_count: int
+    previous_count: int | None
     rows: int
     slots: list[PetInPoolDict | None]
 
@@ -187,6 +187,7 @@ async def render_peak_pool(
     pool_dicts = _pool_dicts(
         layout,
         image_uris,
+        snapshot=snapshot,
         expert=snapshot.expert,
     )
     grid_width = (
@@ -612,34 +613,41 @@ def _pool_dicts(
     layout: PoolGridLayout,
     image_uris: PoolImageUris,
     *,
+    snapshot: PeakPoolRenderSnapshot,
     expert: bool,
 ) -> list[PoolDict]:
-    result: list[PoolDict] = []
-    for section in layout.sections:
-        placements = [
-            placement
-            for placement in section.slots
-            if placement is not None
-        ]
-        result.append(
-            {
-                "label": _pool_position_label(section.position, expert=expert),
-                "current_count": sum(
-                    not placement.historical for placement in placements
-                ),
-                "historical_count": sum(
-                    placement.historical for placement in placements
-                ),
-                "rows": section.rows,
-                "slots": [
-                    None
-                    if placement is None
-                    else _pool_pet_dict(placement, image_uris)
-                    for placement in section.slots
-                ],
-            }
-        )
-    return result
+    positions = tuple(section.position for section in layout.sections)
+    current_counts = {
+        position: len(pets)
+        for position, pets in _current_pool_pets(snapshot, positions).items()
+    }
+    previous_counts = dict(current_counts)
+    if snapshot.change_state != "unavailable":
+        for transition in snapshot.transitions:
+            if transition.current_limit in previous_counts:
+                previous_counts[transition.current_limit] -= 1
+            if transition.previous_limit in previous_counts:
+                previous_counts[transition.previous_limit] += 1
+
+    return [
+        {
+            "label": _pool_position_label(section.position, expert=expert),
+            "current_count": current_counts[section.position],
+            "previous_count": (
+                None
+                if snapshot.change_state == "unavailable"
+                else previous_counts[section.position]
+            ),
+            "rows": section.rows,
+            "slots": [
+                None
+                if placement is None
+                else _pool_pet_dict(placement, image_uris)
+                for placement in section.slots
+            ],
+        }
+        for section in layout.sections
+    ]
 
 
 def _pool_pet_dict(

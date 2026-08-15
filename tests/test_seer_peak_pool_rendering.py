@@ -219,6 +219,41 @@ async def test_expert_pool_uses_only_disabled_and_unlimited_sections() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pool_badges_report_previous_and_current_totals() -> None:
+    moved = PeakPetSnapshot(1, "迁移精灵", 1001, 4)
+    snapshot = PeakPoolRenderSnapshot(
+        pools=(_pool(moved, count=0),),
+        transitions=(PeakPoolTransitionSnapshot(moved, 2, 0),),
+        change_state="changed",
+        content_version="pool-counts",
+        expert=False,
+    )
+    captured: dict[str, Any] = {}
+
+    async def render_html(*_args: object, **kwargs: Any) -> bytes:
+        captured.update(kwargs["templates"])
+        return b"pool-counts"
+
+    await render_peak_pool(
+        _Cache(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        render_html,  # type: ignore[arg-type]
+        snapshot,
+        "竞技池",
+    )
+
+    pools = {pool["label"]: pool for pool in captured["pools"]}
+    assert (pools["限0"]["previous_count"], pools["限0"]["current_count"]) == (
+        0,
+        1,
+    )
+    assert (pools["限2"]["previous_count"], pools["限2"]["current_count"]) == (
+        1,
+        0,
+    )
+
+
+@pytest.mark.asyncio
 async def test_adjacent_transition_uses_matching_nearest_edge_slots() -> None:
     moved = PeakPetSnapshot(100, "迁移精灵", 1100, 4)
     limit_two = tuple(
@@ -748,4 +783,4 @@ def test_pool_template_uses_preprocessed_heads_and_svg_arrows() -> None:
     assert 'src="{{ transition_overlay }}"' in template
     assert "<svg" not in template
     assert "<script>" not in template
-    assert "→" not in template
+    assert "总数：{{ pool.previous_count }} → {{ pool.current_count }} 只" in template
