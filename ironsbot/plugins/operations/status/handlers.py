@@ -79,7 +79,18 @@ async def _open_docker_maintenance_menu(
     event: MessageEvent,
     *,
     docker_service: DockerUpdateService,
+    check_image: bool = False,
 ) -> None:
+    check_message = (
+        await docker_service.check_image_update()
+        if check_image
+        else ""
+    )
+    prompt = (
+        f"{check_message}\n\n{DOCKER_MAINTENANCE_MENU}"
+        if check_message
+        else DOCKER_MAINTENANCE_MENU
+    )
     await enter_event_reply_conversation(
         matcher,
         event,
@@ -91,7 +102,7 @@ async def _open_docker_maintenance_menu(
             )
         ],
         reply_check=_is_docker_maintenance_reply,
-        prompt=DOCKER_MAINTENANCE_MENU,
+        prompt=prompt,
     )
 
 
@@ -209,23 +220,39 @@ def install(
     )
     headless_status_matcher.append_handler(handle_headless_instance_status)
 
-    maintenance_matcher = registry.on_fullmatch(
-        (*BOT_RESTART_COMMANDS, *DOCKER_UPDATE_COMMANDS),
+    restart_matcher = registry.on_fullmatch(
+        BOT_RESTART_COMMANDS,
         policy=CommandPolicy.command(
             "bot_restart",
-            help_ids=(
-                "docker_update.restart",
-                "docker_update.image_update",
-            ),
+            help_ids=("docker_update.restart",),
         ),
         rule=explicit_command(),
         permission=SUPERUSER,
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    maintenance_matcher.append_handler(
+    restart_matcher.append_handler(
         bind_async(
             _open_docker_maintenance_menu,
             docker_service=docker_service,
+        )
+    )
+
+    update_matcher = registry.on_fullmatch(
+        DOCKER_UPDATE_COMMANDS,
+        policy=CommandPolicy.command(
+            "bot_restart",
+            help_ids=("docker_update.image_update",),
+        ),
+        rule=explicit_command(),
+        permission=SUPERUSER,
+        priority=registry.priority("server_status_admin"),
+        block=True,
+    )
+    update_matcher.append_handler(
+        bind_async(
+            _open_docker_maintenance_menu,
+            docker_service=docker_service,
+            check_image=True,
         )
     )

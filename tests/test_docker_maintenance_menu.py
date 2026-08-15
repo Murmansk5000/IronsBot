@@ -16,6 +16,11 @@ class _DockerServiceStub:
     def __init__(self) -> None:
         self.prepared: list[str] = []
         self.executed: list[str] = []
+        self.checks = 0
+
+    async def check_image_update(self) -> str:
+        self.checks += 1
+        return "检测到新镜像。"
 
     async def prepare_restart_only(self) -> tuple[str, str]:
         self.prepared.append("restart_only")
@@ -84,9 +89,35 @@ async def test_docker_maintenance_menu_uses_shared_prompt_conversation(
     reply_check = captured["reply_check"]
     assert captured["namespace"] == handlers.DOCKER_MAINTENANCE_NAMESPACE
     assert captured["prompt"] == handlers.DOCKER_MAINTENANCE_MENU
+    assert service.checks == 0
     assert callable(reply_check)
     assert reply_check(private_message_event("1")) is True
     assert reply_check(private_message_event("2")) is True
     assert reply_check(private_message_event("0")) is True
     assert reply_check(private_message_event("y")) is False
     assert len(cast("list[object]", captured["handlers"])) == 1
+
+
+@pytest.mark.asyncio
+async def test_docker_update_command_checks_image_before_showing_menu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def enter(_matcher: object, _event: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(handlers, "enter_event_reply_conversation", enter)
+    service = _DockerServiceStub()
+
+    await handlers._open_docker_maintenance_menu(
+        cast("Matcher", object()),
+        private_message_event("/更新镜像"),
+        docker_service=service,  # type: ignore[arg-type]
+        check_image=True,
+    )
+
+    assert service.checks == 1
+    assert captured["prompt"] == (
+        "检测到新镜像。\n\n" + handlers.DOCKER_MAINTENANCE_MENU
+    )

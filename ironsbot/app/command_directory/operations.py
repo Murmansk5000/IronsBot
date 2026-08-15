@@ -75,7 +75,7 @@ def docker_update_commands() -> tuple[CommandDescriptor, ...]:
             (
                 "docker_update.image_update",
                 DOCKER_UPDATE_COMMANDS,
-                "打开机器人维护菜单，可选择仅重启或更新镜像并重启",
+                "先检查镜像，再打开机器人维护菜单选择重启方式",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
         ),
