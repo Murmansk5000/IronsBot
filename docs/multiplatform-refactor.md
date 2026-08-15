@@ -202,6 +202,11 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
 `build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
 
+**发布元数据投影边界（2026-08-15）：** SeerAPI `9d197bd` 将 `ironsbot_metadata` 的
+构造与 SQLite upsert 迁入 `scripts/release_metadata.py`。该投影只接收已经完成的构建事实，
+不读取环境、网络或 SQLite 以外的输入；全量 SeerAPI pytest 为 **269 passed**，Ruff、编译和
+diff 检查通过。入口脚本降至 1,226 行，尚未完成的边界只剩最终发布编排与真实 release consumer smoke。
+
 **效果元数据来源边界（2026-08-13）：** SeerAPI `e82d738` 将官方
 `effectDes.json` 与 `signIconFight.json` 的纯解析和值对象迁入
 `scripts/effect_metadata_sources.py`。发布构建器继续持有 URL、下载、失败日志和 SQLite

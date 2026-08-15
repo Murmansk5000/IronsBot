@@ -50,7 +50,7 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 | Autocard table writer | 写入群星牌角色、sidecar、卡牌、自然、buff 与赛季效果表 | 读取官方 JSON 并确定发布顺序 | 官方 schema 拒绝规则和 sidecar 语义不变；writer 不读取环境或网络 | completed (`seerapi` `ee89f06`) |
 | Partner table writer | 写入伙伴分组、成员与升级契约表 | 创建连接、确定发布顺序 | 伙伴 group/member/upgrade 与正规化来源语义不变；writer 不读取环境或网络 | completed (`seerapi` `6821c15`) |
 | Render manifest table writer | 写入 render manifest 事实表 | 创建连接、确定发布顺序 | manifest 行、hash 与不可用素材语义不变；writer 不读取环境或网络 | completed (`seerapi` `9988e7f`) |
-| Remaining published-table writers | 写入 metadata 表 | 创建连接、确定发布顺序 | 写入前后 metadata 不变；writer 不读取环境或网络 | planned |
+| Release metadata projection | 构造并写入 `ironsbot_metadata` | 创建连接、确定发布顺序 | 写入前后 metadata 不变；writer 不读取环境或网络 | completed (`seerapi` `9d197bd`) |
 | Skin image resolution rules | 经典皮肤的同名 fallback、内容哈希消歧和 resolution 事实 | 传入已验证资源与哈希 | 相同 fixture 产生相同 resolution 与缺失语义；规则不读网络或 SQLite | completed (`seerapi` `e268bbe`) |
 | Pet/skin asset probe | 探测精灵头像、皮肤资源及经典皮肤输入 | 传入来源 URL、超时与 logger | 相同 fixture 产生相同资源验证、临时失败重试与缺失语义 | completed (`seerapi` `0dbf0d3`) |
 | Build I/O | HTTP 重试、下载、包 manifest 和上游数据库复制 | 传入构建配置并处理 CLI 错误 | 重试、HTTP 错误和本地上游路径保持当前语义 | completed (`seerapi` `ce39c67`) |
@@ -76,8 +76,8 @@ PNG 渲染等职责，但总构建器仍违反 800 行上限，且继续在此�
 
 ```text
 Program  [███░░░░░░░]  verified phases: 3/8; global percentage awaits weighted baseline
-Phase 4 [████████░░]  verified work: manifest/effect/new-content boundaries, six SQLite writers, I/O, skin assets and effect-icon cache CLI
-Current  [██████████]  completed: cache seed, shard render and shard export are independent from normal SQLite publication
+Phase 4 [████████░░]  verified work: manifest/effect/new-content boundaries, seven SQLite writers, I/O, skin assets and effect-icon cache CLI
+Current  [██████████]  completed: release metadata projection is independent from normal SQLite publication
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
@@ -96,3 +96,4 @@ Only verified, committed, or explicitly waived work counts toward progress.
 | 2026-08-15 | `seerapi` `e268bbe` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (268 passed); Ruff; `scripts` compileall; `git diff --check` | Classic-skin fallback selection, content-hash disambiguation and resolution facts are now pure rules in `skin_image_resolution.py`. The entry script fell to 1,672 lines. Resource probes and cache CLI adapters remain. |
 | 2026-08-15 | `seerapi` `0dbf0d3` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (268 passed); Ruff; `scripts` compileall; `git diff --check` | `SkinImageAssetProbe` now owns ranged PNG checks, transient retry, concurrent validation and content hashes. The entry script fell to 1,503 lines. Effect-icon cache CLI adapters remain. |
 | 2026-08-15 | `seerapi` `a92c3d0` | focused `tests/test_build_seerapi_data_db.py` (56 passed); full SeerAPI pytest (268 passed); Ruff; `scripts` compileall; `git diff --check` | Effect icon PNG cache seed, shard rendering and shard export now use the dedicated CLI adapter. The entry script fell to 1,395 lines. Final orchestration and metadata publication remain. |
+| 2026-08-15 | `seerapi` `9d197bd` | focused metadata/build tests (57 passed); full SeerAPI pytest (269 passed); Ruff; `scripts` compileall; `git diff --check` | `ironsbot_metadata` construction and upsert now belong to a dedicated no-network projection. The entry script fell to 1,226 lines. Final orchestration remains. |
