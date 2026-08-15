@@ -60,12 +60,12 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 | Date | Change | Verification actually run | Result / remaining risk |
 | --- | --- | --- | --- |
 | 2026-08-15 | 审计运行依赖和 Docker 多阶段构建 | `uv export --no-dev`, `uv tree`, source search | 顶层运行依赖均有调用；HTML 渲染核心约 16 MiB，不能作为冗余删除。 |
-| 2026-08-15 | 收紧 Docker build context | Docker static test | 本地 `.venv`、Codex、字节码、覆盖和测试缓存已排除；仍待真实 daemon 测量。 |
+| 2026-08-15 | 收紧 Docker build context | Docker static test | 使用项目专用忽略规则；本地 `.venv`、Codex、数据、文档、测试、构建脚本和缓存已排除，仍待真实 daemon 测量。 |
 
 ## Progress
 
 ```text
-Program  [████████░░] 80%  static boundary complete; remaining: real image measurement
+Program  [████████░░] 79%  static boundary complete; remaining: real image measurement
 Phase    [██████████] 100% current: build context protection
 Current  [██████████] 100% next: measure after Docker daemon becomes available
 ```
