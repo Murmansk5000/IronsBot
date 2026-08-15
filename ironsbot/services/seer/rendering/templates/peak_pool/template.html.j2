@@ -45,6 +45,17 @@
 
         .change-status strong { color: #ffffff; }
 
+        .pool-stage { position: relative; }
+
+        .transition-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 3;
+            pointer-events: none;
+            overflow: visible;
+        }
+
         .pool-section {
             background-color: #2a5a9a;
             padding: 18px;
@@ -58,6 +69,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            height: 28px;
             margin-bottom: 14px;
             padding-bottom: 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.15);
@@ -83,11 +95,16 @@
         .pet-grid {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 0;
             justify-content: flex-start;
+            width: {{ grid_width }}px;
         }
 
-        .pet-entry { flex: 0 0 104px; }
+        .pet-entry {
+            flex: 0 0 104px;
+            height: 104px;
+        }
+        .pet-entry.placeholder { visibility: hidden; }
         .pet-entry .pet-head-icon[src=""] { visibility: hidden; }
         .pool-empty {
             min-height: 56px;
@@ -125,6 +142,7 @@
             {% endif %}
         </div>
 
+        <div class="pool-stage" id="pool-stage">
         {% for pool in pools %}
         <div class="pool-section">
             <div class="pool-header">
@@ -136,18 +154,39 @@
                     {% endif %}
                 </div>
             </div>
-            <div class="pet-grid">
-                {% if not pool.pets %}
+            <div
+                class="pet-grid"
+                data-rows="{{ pool.rows }}"
+                data-columns="{{ grid_columns }}"
+                data-base-columns="{{ base_columns }}"
+            >
+                {% if not pool.slots %}
                 <div class="pool-empty">本周无相关精灵</div>
                 {% endif %}
-                {% for pet in pool.pets %}
-                <div class="pet-entry{% if pet.historical %} historical{% endif %}">
+                {% for pet in pool.slots %}
+                {% if pet %}
+                <div
+                    class="pet-entry{% if pet.historical %} historical{% endif %}"
+                >
                 {{ pet_cell(id=pet.id, name=pet.name, head_img=pet.head_img, type_icon=pet.type_icon) }}
                 </div>
+                {% else %}
+                <div class="pet-entry placeholder"></div>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
         {% endfor %}
+        {% if transition_overlay %}
+        <img
+            class="transition-overlay"
+            src="{{ transition_overlay }}"
+            width="{{ transition_overlay_width }}"
+            height="{{ stage_height }}"
+            alt=""
+        >
+        {% endif %}
+        </div>
 
         <div class="footer">IronsBot · 开源赛尔号信息查询机器人<br>项目链接：https://github.com/Nattsu39/IronsBot</div>
     </div>
