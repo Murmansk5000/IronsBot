@@ -1,5 +1,6 @@
 {
   "commands": {
+    "activity.new": "2026-08-15T11:17:31+08:00",
     "seer.autocard.sanctuary": "2026-08-11T17:32:19+08:00"
   },
   "date_policy": "first_usable",

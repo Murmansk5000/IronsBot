@@ -1,6 +1,7 @@
 {
   "baseline_commit": "70e5d51824f29f8366c5a4efc2ed0b443b26e497",
   "commands": {
+    "activity.new": "2026-08-15T11:17:31+08:00",
     "seer.autocard.sanctuary": "2026-08-11T17:32:19+08:00"
   },
   "schema_version": 1
