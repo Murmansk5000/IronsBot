@@ -7,7 +7,10 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from ironsbot.integrations.storage.activity import ActivitySentStore
+from ironsbot.integrations.storage.activity import (
+    ActivitySentStore,
+    ActivitySnapshotStore,
+)
 from ironsbot.services.activity.delivery import ActivityReminderTargets
 from ironsbot.services.activity.models import ActivityInfoCache
 from ironsbot.services.activity.repository import ActivityRepository
@@ -52,6 +55,7 @@ def build_activity_service(  # noqa: PLR0913 - composition root
     message_limiter: MessageLimiter,
 ) -> ActivityService:
     sent_store = ActivitySentStore(runtime_state_path)
+    snapshot_store = ActivitySnapshotStore(runtime_state_path)
     repository = ActivityRepository()
 
     def load_rows():
@@ -114,5 +118,6 @@ def build_activity_service(  # noqa: PLR0913 - composition root
         preference_for_target=preference_for_target,
         targets=targets,
         broadcast=broadcast,
+        newly_observed_activity_ids=snapshot_store.newly_observed_ids,
         now=lambda: datetime.now(LOCAL_TZ),
     )
