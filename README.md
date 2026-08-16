@@ -293,7 +293,7 @@ feature/组合，未知引用、空组合和循环引用都会阻止启动。为
 
 TOML 对已识别字段严格加载：既非内置也未被消息动作声明的 feature、未知 B站账号引用、
 未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
-无法识别的多余字段会直接阻止启动，并在校验错误中列出完整路径；
+无法识别的多余字段会在加载时按完整路径告警并被忽略；已识别字段的校验错误仍会阻止启动。
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
@@ -384,6 +384,11 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 `0` 将该榜的查找范围上限设为零，不是无限制。它不是功能开关；缓存及结果核验另有路径，不能据此保证零网络请求。
 例如，在现有 `[seer.rank]` 表内添加 `lookup_limits = { "群星牌" = 10000 }`，只为群星牌设置范围；不添加该行则保持默认空映射。
 此项不设置全服榜展示行数，不调整后台 `page_refresh` 预热范围，也不改变群开关或权限。全服榜展示行数仍由 `display_limit`、`display_limits`、`max_display_limit` 等展示配置控制。
+
+### 新增活动查询
+
+发送“新增活动”可查询当前活动相对于上一周已观察快照增加的项目，沿用 `seer_activity_query` 权限。
+需要上一周已有活动快照；缺少基线时会提示尚不能比较，不表示当前没有新活动，也不等于权威的活动上线时间表。
 
 ## 数据与缓存
 
@@ -528,7 +533,7 @@ image = "murmansk5000/ironsbot-private:latest"
 
 ```text
 DOCKER_REGISTRY_USERNAME=murmansk5000
-DOCKER_REGISTRY_TOKEN=YOUR_DOCKER_REGISTRY_TOKEN
+DOCKER_REGISTRY_TOKEN=private-image-pull-token
 ```
 
 私有扩展包在公开主镜像启动前通过已挂载的 Docker socket 拉取，因此 Unraid 的 Repository
