@@ -64,6 +64,7 @@ class PetInfoRepository:
             pet_id=int(pet.id),
             soulmark_ids=(soulmark.id for soulmark in soulmarks),
         )
+        encyclopedia = pet.encyclopedia
         return PetInfoSnapshot(
             pet=PetCoreSnapshot(
                 id=int(pet.id),
@@ -77,6 +78,11 @@ class PetInfoRepository:
                     if pet.encyclopedia is not None
                     else ""
                 ),
+                height=encyclopedia.height if encyclopedia is not None else None,
+                weight=encyclopedia.weight if encyclopedia is not None else None,
+                food=(encyclopedia.food or "").strip()
+                if encyclopedia is not None
+                else None,
             ),
             base_stats=_snapshot_stats(pet.base_stats),
             advance_stats=(
@@ -183,9 +189,7 @@ def _snapshot_soulmark(soulmark: Any) -> PetSoulmarkSnapshot:
         ),
         is_adv=bool(soulmark.is_adv),
         pve_effective=(
-            bool(soulmark.pve_effective)
-            if soulmark.pve_effective is not None
-            else None
+            bool(soulmark.pve_effective) if soulmark.pve_effective is not None else None
         ),
         tags=tuple(str(tag.name) for tag in soulmark.tag),
     )
@@ -377,10 +381,17 @@ def _load_partner(session: Session, pet_id: int) -> PetPartnerSnapshot | None:
         """
     )
     try:
-        row = session.execute(
-            statement,
-            {"pet_id": pet_id, "normalized_source": _NORMALIZED_PARTNER_UPGRADE_SOURCE},
-        ).mappings().first()
+        row = (
+            session.execute(
+                statement,
+                {
+                    "pet_id": pet_id,
+                    "normalized_source": _NORMALIZED_PARTNER_UPGRADE_SOURCE,
+                },
+            )
+            .mappings()
+            .first()
+        )
     except SQLAlchemyError:
         logger.debug("pet partner data is unavailable", exc_info=True)
         return None
