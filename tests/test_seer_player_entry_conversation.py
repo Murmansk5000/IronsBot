@@ -8,11 +8,16 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.core.request_coordination import send_request_response
 from ironsbot.core.semantic_requests import ActionDefinition
-from ironsbot.plugins.seer.query.commands import player, player_shortcuts
+from ironsbot.plugins.seer.query.commands import (
+    player,
+    player_shortcuts,
+    player_target_selection,
+)
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_DETAIL_NAMESPACE,
 )
+from ironsbot.runtime.prompts import Prompt
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -354,7 +359,7 @@ def test_player_query_prompts_for_ambiguous_partial_alias(
     )
     enter_selection = AsyncMock()
     query_player = AsyncMock()
-    monkeypatch.setattr(player, "enter_prompt", enter_selection)
+    monkeypatch.setattr(player_target_selection, "enter_prompt", enter_selection)
     monkeypatch.setattr(player, "handle_player", query_player)
     event = group_message_event("米米号玩家")
     state: dict[str, object] = {}
@@ -372,7 +377,7 @@ def test_player_query_prompts_for_ambiguous_partial_alias(
     call = enter_selection.await_args
     assert call is not None
     prompt = call.args[3]
-    assert isinstance(prompt, player.Prompt)
+    assert isinstance(prompt, Prompt)
     assert [(item.name, item.desc, item.value) for item in prompt.items] == [
         ("玩家1", f"游戏内ID：{_ACCOUNT_PLAYER_ID}", _ACCOUNT_PLAYER_ID),
         ("玩家2", f"游戏内ID：{other_player_id}", other_player_id),
@@ -393,6 +398,88 @@ def test_player_query_prompts_for_ambiguous_partial_alias(
     assert selected_state[player.PLAYER_ID_KEY] == other_player_id
     assert selected_state[player.PLAYER_QUERY_IS_EXPLICIT_KEY] is True
     query_player.assert_awaited_once_with(
+        dependencies,
+        selection_matcher,
+        selection_event,
+        selected_state,
+    )
+
+
+def test_player_shortcut_prompts_for_ambiguous_partial_alias(
+    monkeypatch: Any,
+) -> None:
+    other_player_id = 949105381
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="worker_one",
+                aliases=("玩家1",),
+                password=None,
+                public=True,
+            ),
+            PlayerAccount(
+                player_id=other_player_id,
+                name="worker_two",
+                aliases=("玩家2",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", SimpleNamespace(default_player_id=lambda _user_id: None)),
+        cast("Any", _features()),
+        player_accounts=registry,
+    )
+    enter_selection = AsyncMock()
+    query_shortcut = AsyncMock()
+    monkeypatch.setattr(
+        player_shortcuts,
+        "enter_player_target_selection",
+        enter_selection,
+    )
+    event = group_message_event("巅峰玩家")
+    state: dict[str, object] = {}
+
+    assert asyncio.run(
+        player_shortcuts._is_player_shortcut(
+            event,
+            state,
+            dependencies=dependencies,
+        )
+    )
+    asyncio.run(
+        player_shortcuts.handle_player_shortcut(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    call = enter_selection.await_args
+    assert call is not None
+    target = call.args[3]
+    assert isinstance(target, player.PlayerTargetResolution)
+    assert [choice.label for choice in target.choices] == ["玩家1", "玩家2"]
+
+    select_target = call.args[4]
+    selected_state: dict[str, object] = {}
+    selection_matcher = cast("Any", SimpleNamespace(state=selected_state))
+    selection_event = group_message_event("2")
+    monkeypatch.setattr(
+        player_shortcuts,
+        "handle_player_shortcut",
+        query_shortcut,
+    )
+    asyncio.run(
+        select_target(other_player_id, selection_matcher, selection_event)
+    )
+
+    selected_command = selected_state[player_shortcuts._SHORTCUT_COMMAND_KEY]
+    assert selected_command == PlayerShortcutCommand("peak", other_player_id)
+    query_shortcut.assert_awaited_once_with(
         dependencies,
         selection_matcher,
         selection_event,
