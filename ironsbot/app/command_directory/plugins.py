@@ -13,6 +13,7 @@ from ironsbot.plugins.bilibili.command_rules import (
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
+    NEW_ACTIVITY_COMMANDS,
     SOON_ENDING_ACTIVITY_COMMANDS,
 )
 
@@ -109,6 +110,12 @@ def activity_commands() -> tuple[CommandDescriptor, ...]:
             "查询",
             "seer_activity_query",
             (
+                (
+                    "activity.new",
+                    NEW_ACTIVITY_COMMANDS[:1],
+                    "查询本周相对上周新增的活动",
+                    {"show_in_poke": True},
+                ),
                 (
                     "activity.ending",
                     SOON_ENDING_ACTIVITY_COMMANDS[:1],
