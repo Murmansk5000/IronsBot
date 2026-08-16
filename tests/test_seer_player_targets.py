@@ -1,11 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+from types import SimpleNamespace
+from typing import Any, cast
+
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
+from ironsbot.plugins.seer.query.commands import rank_list
 from ironsbot.plugins.seer.query.commands.player_target import (
     resolve_event_player_reference,
+    resolve_event_player_target,
     resolve_player_target,
+)
+from ironsbot.plugins.seer.query.commands.rank_list_context import (
+    RANK_PLAYER_COMMAND_KEY,
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from tests.helpers.onebot_events import group_message_event
@@ -166,3 +174,81 @@ def test_event_player_reference_respects_public_and_group_scoped_aliases() -> No
         )
         == PLAYER_ID
     )
+
+
+def test_event_player_target_unifies_default_number_alias_and_member_forms() -> None:
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=PLAYER_ID,
+                name="sample_player",
+                aliases=("示例玩家",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+
+    default_target = resolve_event_player_target(
+        accounts,
+        group_message_event("收集"),
+        None,
+        binding_for_user=_binding_for,
+    )
+    numeric_target = resolve_event_player_target(
+        accounts,
+        group_message_event("收集105023264"),
+        "105023264",
+        binding_for_user=_binding_for,
+    )
+    alias_target = resolve_event_player_target(
+        accounts,
+        group_message_event("收集示例玩家"),
+        "示例玩家",
+        binding_for_user=_binding_for,
+    )
+    member_target = resolve_event_player_target(
+        accounts,
+        group_message_event(
+            message=Message([MessageSegment.text("收集"), MessageSegment.at(456)])
+        ),
+        None,
+        binding_for_user=_binding_for,
+    )
+
+    assert default_target.player_id == REQUESTER_PLAYER_ID
+    assert numeric_target.player_id == PLAYER_ID
+    assert alias_target.player_id == PLAYER_ID
+    assert member_target.player_id == PLAYER_ID
+
+
+def test_event_player_target_leaves_unknown_aliases_for_other_routes() -> None:
+    target = resolve_event_player_target(
+        PlayerAccountRegistry(()),
+        group_message_event("米米号不知道是谁"),
+        "不知道是谁",
+        binding_for_user=_binding_for,
+    )
+
+    assert not target.recognized
+    assert target.error is None
+
+
+def test_rank_player_target_accepts_a_current_message_member_mention() -> None:
+    group = SimpleNamespace(
+        player_accounts=PlayerAccountRegistry(()),
+        resources=SimpleNamespace(
+            player=SimpleNamespace(default_player_id=_binding_for)
+        ),
+        features=SimpleNamespace(is_superuser=lambda _user_id: False),
+    )
+    event = group_message_event(
+        message=Message([MessageSegment.text("专家榜"), MessageSegment.at(456)])
+    )
+    state: dict[str, object] = {}
+
+    assert rank_list._is_rank_player_command(cast("Any", group), event, state)
+    command = state[RANK_PLAYER_COMMAND_KEY]
+    assert isinstance(command, rank_list.RankPlayerTargetCommand)
+    assert command.rank_key == "专家段位"
+    assert command.target.player_id == PLAYER_ID

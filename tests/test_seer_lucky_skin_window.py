@@ -28,6 +28,7 @@ from ironsbot.integrations.storage.lucky_skin_window import (
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.seer import lucky_skin_window as lucky_skin_window_plugin
+from ironsbot.plugins.seer import lucky_skin_window_query
 from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
 )
@@ -265,7 +266,21 @@ class _PluginService:
     def account_for_user(self, _user_id: int) -> SimpleNamespace:
         return SimpleNamespace(player_id=90001)
 
+    def account_for_player_id(self, player_id: int) -> SimpleNamespace | None:
+        return (
+            SimpleNamespace(player_id=player_id)
+            if player_id in {90001, 90002}
+            else None
+        )
+
+    def cached_for_account(self, _player_id: int) -> object | None:
+        return self.cached
+
     async def check_for_user(self, _user_id: int) -> object:
+        self.queries += 1
+        return object()
+
+    async def check_for_account(self, _player_id: int) -> object:
         self.queries += 1
         return object()
 
@@ -762,6 +777,24 @@ def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
     assert len(sessions.opens) == 1
 
 
+def test_configured_lucky_window_account_can_be_looked_up_and_checked_by_id(
+    tmp_path: Path,
+) -> None:
+    service, game, _delivery, _bindings, sessions = _service(tmp_path)
+    target_id = 90_002
+
+    account = service.account_for_player_id(target_id)
+    result = asyncio.run(service.check_for_account(target_id))
+
+    assert account is not None
+    assert account.player_id == target_id
+    assert result.player_id == target_id
+    assert len(game.calls) == 1
+    assert sessions.opens[0][0] == target_id
+    assert len(sessions.opens) == 1
+    assert service.account_for_player_id(99999) is None
+
+
 def test_manual_query_prompts_before_a_missing_daily_cache_login(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -772,18 +805,25 @@ def test_manual_query_prompts_before_a_missing_daily_cache_login(
         prompts.append(kwargs)
 
     monkeypatch.setattr(
-        lucky_skin_window_plugin,
+        lucky_skin_window_query,
         "enter_event_reply_conversation",
         enter_conversation,
     )
 
     asyncio.run(
-        lucky_skin_window_plugin._handle_query(
+        lucky_skin_window_query.handle_lucky_skin_window_query(
             cast("Any", service),
             cast("Any", _PetQuery()),
+            None,
             cast("Any", object()),
             cast("Any", SimpleNamespace(user_id=1001)),
             cast("Any", {}),
+            target_key=lucky_skin_window_plugin._QUERY_TARGET_KEY,
+            reference_key=lucky_skin_window_plugin._QUERY_REFERENCE_KEY,
+            login_namespace="test_lucky_skin_window",
+            enter_result_prompt=cast(
+                "Any", lucky_skin_window_plugin._enter_result_prompt
+            ),
         )
     )
 
@@ -814,17 +854,103 @@ def test_manual_query_returns_today_cache_without_a_confirmation_prompt(
     monkeypatch.setattr(lucky_skin_window_plugin, "_enter_result_prompt", enter_result)
 
     asyncio.run(
-        lucky_skin_window_plugin._handle_query(
+        lucky_skin_window_query.handle_lucky_skin_window_query(
             cast("Any", service),
             cast("Any", _PetQuery()),
+            None,
             cast("Any", object()),
             cast("Any", SimpleNamespace(user_id=1001)),
             cast("Any", {}),
+            target_key=lucky_skin_window_plugin._QUERY_TARGET_KEY,
+            reference_key=lucky_skin_window_plugin._QUERY_REFERENCE_KEY,
+            login_namespace="test_lucky_skin_window",
+            enter_result_prompt=cast("Any", enter_result),
         )
     )
 
     assert service.queries == 0
     assert prompts == [(service, service.cached)]
+
+
+def test_lucky_window_cross_account_query_requires_a_superuser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _PluginService(cached=object())
+    replies: list[str] = []
+
+    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
+        replies.append(message)
+
+    monkeypatch.setattr(lucky_skin_window_query, "finish_event_reply", finish_reply)
+    state: dict[str, object] = {
+        lucky_skin_window_plugin._QUERY_TARGET_KEY: (
+            lucky_skin_window_plugin.PlayerTargetResolution(
+                90002,
+                offer_binding=False,
+            )
+        ),
+    }
+
+    asyncio.run(
+        lucky_skin_window_query.handle_lucky_skin_window_query(
+            cast("Any", service),
+            cast("Any", _PetQuery()),
+            cast("Any", SimpleNamespace(is_superuser=lambda _user_id: False)),
+            cast("Any", object()),
+            cast("Any", SimpleNamespace(user_id=1001)),
+            cast("Any", state),
+            target_key=lucky_skin_window_plugin._QUERY_TARGET_KEY,
+            reference_key=lucky_skin_window_plugin._QUERY_REFERENCE_KEY,
+            login_namespace="test_lucky_skin_window",
+            enter_result_prompt=cast(
+                "Any", lucky_skin_window_plugin._enter_result_prompt
+            ),
+        )
+    )
+
+    assert replies == ["❌ 只能查询你本人已配置的幸运橱窗账号。"]
+    assert service.queries == 0
+
+
+def test_lucky_window_superuser_reuses_the_selected_account_cache() -> None:
+    service = _PluginService(cached=object())
+    prompts: list[tuple[object, object]] = []
+
+    async def enter_result(
+        _pet_query: object,
+        _matcher: object,
+        _event: object,
+        _state: object,
+        captured_service: object,
+        result: object,
+    ) -> None:
+        prompts.append((captured_service, result))
+
+    state: dict[str, object] = {
+        lucky_skin_window_plugin._QUERY_TARGET_KEY: (
+            lucky_skin_window_plugin.PlayerTargetResolution(
+                90002,
+                offer_binding=False,
+            )
+        ),
+    }
+    asyncio.run(
+        lucky_skin_window_query.handle_lucky_skin_window_query(
+            cast("Any", service),
+            cast("Any", _PetQuery()),
+            cast("Any", SimpleNamespace(is_superuser=lambda _user_id: True)),
+            cast("Any", object()),
+            cast("Any", SimpleNamespace(user_id=1001)),
+            cast("Any", state),
+            target_key=lucky_skin_window_plugin._QUERY_TARGET_KEY,
+            reference_key=lucky_skin_window_plugin._QUERY_REFERENCE_KEY,
+            login_namespace="test_lucky_skin_window",
+            enter_result_prompt=cast("Any", enter_result),
+        )
+    )
+
+    assert prompts == [(service, service.cached)]
+    assert service.queries == 0
 
 
 def test_lucky_window_cards_enter_the_existing_skin_detail_selection_flow(
@@ -924,7 +1050,7 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
     async def finish_reply(_matcher: object, _event: object, message: str) -> None:
         replies.append(message)
 
-    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
+    monkeypatch.setattr(lucky_skin_window_query, "finish_event_reply", finish_reply)
 
     async def enter_result(
         _pet_query: object,
@@ -936,10 +1062,8 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
     ) -> None:
         prompts.append(result)
 
-    monkeypatch.setattr(lucky_skin_window_plugin, "_enter_result_prompt", enter_result)
-
     asyncio.run(
-        lucky_skin_window_plugin._handle_login_confirmation(
+        lucky_skin_window_query.handle_lucky_skin_window_confirmation(
             cast("Any", service),
             cast("Any", _PetQuery()),
             cast("Any", object()),
@@ -948,6 +1072,7 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
                 SimpleNamespace(user_id=1001, get_plaintext=lambda: reply),
             ),
             cast("Any", {}),
+            enter_result_prompt=cast("Any", enter_result),
         )
     )
 

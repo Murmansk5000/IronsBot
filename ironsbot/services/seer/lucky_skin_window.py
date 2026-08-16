@@ -177,6 +177,7 @@ class LuckySkinWindowService:
     ) -> None:
         self._config = config
         self._features = features
+        self._player_accounts = player_accounts
         self._headless_sessions = headless_sessions
         self._data = data
         self._bindings = bindings
@@ -197,6 +198,9 @@ class LuckySkinWindowService:
                 ),
             )
             for index, account in enumerate(config.accounts)
+        }
+        self._accounts_by_player_id = {
+            account.player_id for _subscription, account in self._accounts.values()
         }
         self._query_lock = asyncio.Lock()
         self._memory: dict[int, tuple[int, ...]] = {}
@@ -219,6 +223,18 @@ class LuckySkinWindowService:
     def account_for_user(self, user_id: int) -> PlayerAccount | None:
         configured = self._accounts.get(user_id)
         return configured[1] if configured is not None else None
+
+    @property
+    def player_accounts(self) -> PlayerAccountRegistry:
+        return self._player_accounts
+
+    def default_player_id(self, user_id: int) -> int | None:
+        return self._bindings.get(user_id).player_id
+
+    def account_for_player_id(self, player_id: int) -> PlayerAccount | None:
+        if player_id not in self._accounts_by_player_id:
+            return None
+        return self._player_accounts.account_for_player_id(player_id)
 
     def is_eligible_user(self, user_id: int) -> bool:
         account = self.account_for_user(user_id)
@@ -318,6 +334,18 @@ class LuckySkinWindowService:
         """Return today's result without opening the dedicated game session."""
         account = self._validated_account_for_user(user_id)
         return self._cached_result(account.player_id)
+
+    def cached_for_account(self, player_id: int) -> LuckySkinWindowResult | None:
+        account = self.account_for_player_id(player_id)
+        if account is None:
+            raise LuckySkinWindowNotConfiguredError
+        return self._cached_result(account.player_id)
+
+    async def check_for_account(self, player_id: int) -> LuckySkinWindowResult:
+        account = self.account_for_player_id(player_id)
+        if account is None:
+            raise LuckySkinWindowNotConfiguredError
+        return await self._check(account, background=False)
 
     async def send_daily_notifications(
         self,

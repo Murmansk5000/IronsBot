@@ -58,7 +58,12 @@ from .player_detail_conversation import (
     reserve_player_detail_conversation,
     send_player_info_with_detail_prompt,
 )
-from .player_target import resolve_event_player_reference, resolve_player_target
+from .player_target import (
+    PlayerTargetResolution,
+    allows_private_player_aliases,
+    default_player_id_for,
+    resolve_event_player_target,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -75,6 +80,9 @@ class PlayerCommandDependencies:
         default_factory=lambda: PlayerAccountRegistry(())
     )
     external_references: SeerInfoReferences | None = None
+
+
+_PLAYER_TARGET_KEY = "_player_target"
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
@@ -115,16 +123,21 @@ async def _is_player_id_query(
     if not arg:
         state[PLAYER_QUERY_IS_EXPLICIT_KEY] = False
         return True
-    if not arg.isdecimal() and resolve_event_player_reference(
+    target = resolve_event_player_target(
         dependencies.player_accounts,
         event,
         arg,
-        allow_private=dependencies.features.is_superuser(
-            int(event.get_user_id())
+        binding_for_user=lambda user_id: default_player_id_for(
+            dependencies.player, user_id
         ),
-    ) is None:
+        allow_private=allows_private_player_aliases(
+            dependencies.features, int(event.get_user_id())
+        ),
+    )
+    if not target.recognized:
         return False
     state[BOT_COMMAND_ARG_KEY] = arg
+    state[_PLAYER_TARGET_KEY] = target
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
     return True
 
@@ -144,22 +157,24 @@ async def validate_player_id(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    numeric_player_id = None
-    if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
-        player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-        numeric_player_id = resolve_event_player_reference(
+    player_reference = (
+        str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
+        if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True)
+        else None
+    )
+    target = state.get(_PLAYER_TARGET_KEY)
+    if not isinstance(target, PlayerTargetResolution):
+        target = resolve_event_player_target(
             dependencies.player_accounts,
             event,
             player_reference,
-            allow_private=dependencies.features.is_superuser(event.user_id),
+            binding_for_user=lambda user_id: default_player_id_for(
+                dependencies.player, user_id
+            ),
+            allow_private=allows_private_player_aliases(
+                dependencies.features, event.user_id
+            ),
         )
-        if numeric_player_id is None:
-            await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
-    target = resolve_player_target(
-        event,
-        numeric_player_id=numeric_player_id,
-        binding_for_user=dependencies.player.default_player_id,
-    )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
         return
