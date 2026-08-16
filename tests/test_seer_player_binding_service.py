@@ -289,6 +289,42 @@ def test_declining_binding_completes_first_choice(tmp_path: Path) -> None:
     assert state.choice_completed is True
 
 
+def test_binding_after_declining_replaces_null_player_id(tmp_path: Path) -> None:
+    store = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    store.decline(qq_user_id=10002)
+
+    store.bind(
+        qq_user_id=10002,
+        player_id=_PLAYER_ID,
+        player_nick="重新绑定玩家",
+    )
+
+    state = store.get(10002)
+    assert state.player_id == _PLAYER_ID
+    assert state.player_nick == "重新绑定玩家"
+    assert state.choice_completed is True
+
+
+def test_binding_after_unbinding_replaces_null_player_id(tmp_path: Path) -> None:
+    store = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    store.bind(
+        qq_user_id=10003,
+        player_id=_PLAYER_ID,
+        player_nick="原玩家",
+    )
+    assert store.unbind(qq_user_id=10003) is True
+
+    store.bind(
+        qq_user_id=10003,
+        player_id=_PLAYER_ID + 1,
+        player_nick="新玩家",
+    )
+
+    state = store.get(10003)
+    assert state.player_id == _PLAYER_ID + 1
+    assert state.player_nick == "新玩家"
+
+
 def test_binding_change_cooldown_uses_three_beijing_calendar_days(
     tmp_path: Path,
 ) -> None:

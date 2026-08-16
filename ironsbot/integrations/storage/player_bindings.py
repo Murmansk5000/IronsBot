@@ -37,6 +37,21 @@ _MIGRATIONS = (
 MIGRATION_NAMESPACE = "player_bindings"
 
 
+class PlayerBindingWriteError(RuntimeError):
+    """Raised when a binding write cannot be verified."""
+
+    def __init__(
+        self,
+        *,
+        expected_player_id: int,
+        actual_player_id: int | None,
+    ) -> None:
+        super().__init__(
+            "保存后的默认米米号与请求不一致："
+            f"expected={expected_player_id} actual={actual_player_id}"
+        )
+
+
 class SqlitePlayerBindingStore:
     def __init__(self, path: str | Path) -> None:
         self._database = SqliteDatabase(
@@ -88,9 +103,15 @@ class SqlitePlayerBindingStore:
                     choice_completed = 1,
                     last_changed_at = excluded.last_changed_at,
                     updated_at = excluded.updated_at
-                WHERE player_bindings.player_id != excluded.player_id
+                WHERE player_bindings.player_id IS NOT excluded.player_id
                 """,
                 (qq_user_id, player_id, player_nick, now, now, now),
+            )
+        saved = self.get(qq_user_id)
+        if saved.player_id != player_id:
+            raise PlayerBindingWriteError(
+                expected_player_id=player_id,
+                actual_player_id=saved.player_id,
             )
 
     def decline(self, *, qq_user_id: int) -> None:
