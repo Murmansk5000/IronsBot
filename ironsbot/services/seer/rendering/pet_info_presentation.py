@@ -8,6 +8,8 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
+from ironsbot.services.ai.analysis_parser import AnalyzeDescParser
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -231,13 +233,26 @@ def _format_soulmark_description(
     effect_colors: Mapping[str, str],
 ) -> str:
     if soulmark.analyze_desc:
-        return format_analyze_description(soulmark.analyze_desc, effect_colors)
-    if soulmark.formatting_adjustment:
+        value = soulmark.analyze_desc
+    elif soulmark.formatting_adjustment:
         value = soulmark.formatting_adjustment.replace("\r\n", "|").replace("\n", "|")
         value = _RICH_TEXT_COLOR_OPEN_RE.sub(r"[color=\1]", value)
         value = _RICH_TEXT_TAG_RE.sub("", value.replace("</color>", "[/color]"))
-        return format_analyze_description(value, effect_colors)
-    return format_analyze_description(soulmark.desc, effect_colors)
+    else:
+        value = soulmark.desc
+    lines: list[str] = []
+    for raw in value.split("|"):
+        annotated = raw
+        line = AnalyzeDescParser(raw).lines[0]
+        if line.plain_text.strip() and not re.search(
+            r"BOSS有效|BOSS无效", line.plain_text, re.IGNORECASE
+        ):
+            if line.sprite == "dot1":
+                annotated += "（BOSS有效）"
+            elif line.sprite == "dot4":
+                annotated += "（BOSS无效）"
+        lines.append(annotated)
+    return format_analyze_description("|".join(lines), effect_colors)
 
 
 def _soulmark_display_addition_views(
