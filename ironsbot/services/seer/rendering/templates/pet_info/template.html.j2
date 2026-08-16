@@ -20,6 +20,8 @@
 
         /* ========== 精灵名称与信息 ========== */
         .pet-info-header {
+            width: 100%;
+            table-layout: fixed;
             margin-bottom: 15px;
             border-spacing: 0;
         }
@@ -43,7 +45,8 @@
             font-size: 32px;
             font-weight: bold;
             color: #ffffff;
-            letter-spacing: 2px;
+            letter-spacing: 0;
+            overflow-wrap: anywhere;
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
         }
 
@@ -413,6 +416,7 @@
                                     }.get(pet_gender_id, "无性别") %}
                                     {{ gender_label }}
                                 </div>
+                                <div class="pet-meta">身高：{{ pet_height }} | 体重：{{ pet_weight }}</div>
                             </td>
                         </tr>
                     </table>
@@ -420,10 +424,10 @@
                         <img class="pet-img" src="{{ pet_body_img }}" />
                     </div>
 
-                    {% if pet_introduction %}
+                    {% if pet_introduction or pet_food %}
                     <div class="section">
                         <div class="sec-title">简介</div>
-                        <div class="intro-box">{{ pet_introduction }}</div>
+                        <div class="intro-box">{% if pet_introduction %}{{ pet_introduction }}{% endif %}{% if pet_food %}{% if pet_introduction %}<br>{% endif %}喜爱的食物：{{ pet_food }}{% endif %}</div>
                     </div>
                     {% endif %}
 
