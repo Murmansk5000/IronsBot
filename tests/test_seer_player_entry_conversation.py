@@ -373,9 +373,9 @@ def test_player_query_prompts_for_ambiguous_partial_alias(
     assert call is not None
     prompt = call.args[3]
     assert isinstance(prompt, player.Prompt)
-    assert [(item.name, item.value) for item in prompt.items] == [
-        (f"玩家1（{_ACCOUNT_PLAYER_ID}）", _ACCOUNT_PLAYER_ID),
-        (f"玩家2（{other_player_id}）", other_player_id),
+    assert [(item.name, item.desc, item.value) for item in prompt.items] == [
+        ("玩家1", f"游戏内ID：{_ACCOUNT_PLAYER_ID}", _ACCOUNT_PLAYER_ID),
+        ("玩家2", f"游戏内ID：{other_player_id}", other_player_id),
     ]
 
     resolver = call.args[4]
