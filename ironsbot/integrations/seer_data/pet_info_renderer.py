@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import asyncio
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from PIL import Image
 
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.pet_info_views import PetInfoAssets
@@ -108,7 +111,7 @@ async def _load_assets(
     return PetInfoAssets(
         gender_icon=_load_gender_icon(snapshot.pet.gender_id),
         pet_head=mandatory[0],
-        pet_body=mandatory[1],
+        pet_body=await asyncio.to_thread(_flip_pet_body, mandatory[1]),
         type_icons=(
             *(
                 (type_id, mandatory[type_offset + index])
@@ -131,6 +134,17 @@ async def _load_assets(
             if result.data is not None
         ),
     )
+
+
+def _flip_pet_body(data: bytes) -> bytes:
+    """Mirror a private decoded image; shared source bytes remain untouched."""
+    with (
+        Image.open(BytesIO(data)) as source,
+        source.transpose(Image.Transpose.FLIP_LEFT_RIGHT) as flipped,
+    ):
+        output = BytesIO()
+        flipped.save(output, format="PNG")
+        return output.getvalue()
 
 
 def _item_ids(snapshot: PetInfoSnapshot) -> tuple[int, ...]:

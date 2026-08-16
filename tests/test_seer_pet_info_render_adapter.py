@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import base64
 from contextlib import contextmanager
+from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from PIL import Image
 
 from ironsbot.integrations.seer_data import pet_info_renderer
 from ironsbot.services.seer.pet_info_views import (
@@ -42,7 +45,12 @@ class FakeImages:
 
     async def fetch(self, *_args: object, **_kwargs: object) -> bytes:
         assert self._data.session_active is False
-        return b"image"
+        output = BytesIO()
+        with Image.new("RGBA", (2, 1)) as image:
+            image.putpixel((0, 0), (255, 0, 0, 64))
+            image.putpixel((1, 0), (0, 0, 255, 192))
+            image.save(output, format="PNG")
+        return output.getvalue()
 
 
 class FakeCache:
@@ -99,5 +107,9 @@ async def test_render_adapter_closes_sql_session_before_fetching_assets(
     )
 
     assert result == b"rendered"
+    body = base64.b64decode(captured["templates"]["pet_body_img"].split(",", 1)[1])
+    with Image.open(BytesIO(body)) as image:
+        assert image.getpixel((0, 0)) == (0, 0, 255, 192)
+        assert image.getpixel((1, 0)) == (255, 0, 0, 64)
     assert captured["templates"]["pet_id"] == 1
     assert cache.values
