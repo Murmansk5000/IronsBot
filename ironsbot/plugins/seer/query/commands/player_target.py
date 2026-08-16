@@ -27,7 +27,7 @@ class PlayerTargetChoice:
     """One visible configured account offered after a partial alias match."""
 
     player_id: int
-    display: str
+    label: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +153,7 @@ def _player_target_choices(
     return tuple(
         PlayerTargetChoice(
             player_id=account.player_id,
-            display=f"{_matching_reference(account, reference)}（{account.player_id}）",
+            label=_matching_reference(account, reference),
         )
         for account in accounts
     )

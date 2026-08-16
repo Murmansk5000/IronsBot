@@ -237,12 +237,12 @@ async def _enter_player_target_selection(
             action=_PLAYER_TARGET_SELECTION_ACTION,
             items=[
                 PromptItem(
-                    choice.display,
-                    "",
+                    choice.label,
+                    f"游戏内ID：{choice.player_id}",
                     choice.player_id,
                     semantic_target=SemanticTarget(
                         key=str(choice.player_id),
-                        display=choice.display,
+                        display=choice.label,
                     ),
                 )
                 for choice in target.choices

@@ -264,9 +264,9 @@ def test_event_player_target_returns_visible_partial_alias_choices() -> None:
 
     assert target.recognized
     assert target.player_id is None
-    assert [(choice.player_id, choice.display) for choice in target.choices] == [
-        (PLAYER_ID, f"玩家1（{PLAYER_ID}）"),
-        (REQUESTER_PLAYER_ID, f"玩家2（{REQUESTER_PLAYER_ID}）"),
+    assert [(choice.player_id, choice.label) for choice in target.choices] == [
+        (PLAYER_ID, "玩家1"),
+        (REQUESTER_PLAYER_ID, "玩家2"),
     ]
 
 
