@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
@@ -33,6 +33,7 @@ from ironsbot.services.seer.external_references import (
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
+from ironsbot.services.seer.player_admin_binding import bind_player_for_user
 from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -215,11 +216,42 @@ async def handle_player_binding_command(
     player_id = dependencies.player_accounts.resolve_player_id(player_reference)
     if player_id is None:
         await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
-    result = await dependencies.player.bind_player(
-        player_id,
-        qq_user_id=event.user_id,
-        group_id=event_group_id(event),
-    )
+    context = message_input_context(event)
+    if context.has_member_mentions:
+        if not isinstance(event, GroupMessageEvent):
+            await finish_event_reply(
+                matcher,
+                event,
+                "仅群聊可为成员绑定米米号。",
+            )
+            return
+        if not dependencies.features.is_superuser(event.user_id):
+            await finish_event_reply(
+                matcher,
+                event,
+                "仅超级管理员可为其他成员绑定米米号。",
+            )
+            return
+        if len(context.member_user_ids) != 1:
+            await finish_event_reply(
+                matcher,
+                event,
+                "请一次只 @ 一名成员绑定米米号。",
+            )
+            return
+        result = await bind_player_for_user(
+            dependencies.player,
+            player_id,
+            actor_qq_user_id=event.user_id,
+            target_qq_user_id=context.member_user_ids[0],
+            group_id=event_group_id(event),
+        )
+    else:
+        result = await dependencies.player.bind_player(
+            player_id,
+            qq_user_id=event.user_id,
+            group_id=event_group_id(event),
+        )
     await _handle_player_query_result(
         dependencies,
         matcher,
@@ -394,7 +426,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
-        & explicit_command(),
+        & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )
