@@ -30,6 +30,14 @@ class PlayerBindingStore(Protocol):
         changed_at: datetime | None = None,
     ) -> None: ...
 
+    def bind_without_cooldown(
+        self,
+        *,
+        qq_user_id: int,
+        player_id: int,
+        player_nick: str,
+    ) -> None: ...
+
     def decline(self, *, qq_user_id: int) -> None: ...
 
     def unbind(
