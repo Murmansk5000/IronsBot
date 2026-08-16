@@ -102,6 +102,13 @@ def present_pet_info(
             "prop": _data_uri(type_assets["prop"]),
         },
         "pet_introduction": snapshot.pet.introduction,
+        "pet_height": f"{snapshot.pet.height:g} cm"
+        if snapshot.pet.height is not None
+        else "未知",
+        "pet_weight": f"{snapshot.pet.weight:g} kg"
+        if snapshot.pet.weight is not None
+        else "未知",
+        "pet_food": (snapshot.pet.food or "").strip(),
         "stats": _stats_view(snapshot.base_stats),
         "advance_stats": (
             _stats_view(snapshot.advance_stats)
