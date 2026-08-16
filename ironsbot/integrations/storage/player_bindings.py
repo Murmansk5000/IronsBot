@@ -107,6 +107,36 @@ class SqlitePlayerBindingStore:
                 """,
                 (qq_user_id, player_id, player_nick, now, now, now),
             )
+        self._verify_player_id(qq_user_id, player_id)
+
+    def bind_without_cooldown(
+        self,
+        *,
+        qq_user_id: int,
+        player_id: int,
+        player_nick: str,
+    ) -> None:
+        now = _utc_now()
+        with self._database.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO player_bindings(
+                    qq_user_id, player_id, player_nick,
+                    choice_completed, last_changed_at, created_at, updated_at
+                )
+                VALUES (?, ?, ?, 1, NULL, ?, ?)
+                ON CONFLICT(qq_user_id) DO UPDATE SET
+                    player_id = excluded.player_id,
+                    player_nick = excluded.player_nick,
+                    choice_completed = 1,
+                    last_changed_at = NULL,
+                    updated_at = excluded.updated_at
+                """,
+                (qq_user_id, player_id, player_nick, now, now),
+            )
+        self._verify_player_id(qq_user_id, player_id)
+
+    def _verify_player_id(self, qq_user_id: int, player_id: int) -> None:
         saved = self.get(qq_user_id)
         if saved.player_id != player_id:
             raise PlayerBindingWriteError(

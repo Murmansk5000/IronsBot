@@ -11,6 +11,7 @@ from ironsbot.core.commands import parse_confirmation
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
+from ironsbot.services.seer.player_admin_binding import bind_player_for_user
 from ironsbot.services.seer.player_binding import (
     PlayerBindingState,
     player_binding_offer_message,
@@ -191,6 +192,51 @@ def test_rebinding_a_different_player_requires_confirmation() -> None:
     service._save_binding.assert_not_called()
 
 
+def test_superuser_binding_replaces_another_users_default_without_cooldown() -> None:
+    pending = PendingPlayerQuery(
+        player_id=_PLAYER_ID,
+        user_info=SimpleNamespace(nick="测试玩家"),
+        more_info=object(),
+        player_message="玩家信息",
+        section_plan=cast("Any", object()),
+    )
+    previous = PlayerBindingState(
+        20002,
+        777777,
+        "旧账号",
+        choice_completed=True,
+    )
+    service = object.__new__(PlayerService)
+    service._bindings = SimpleNamespace(get=Mock(return_value=previous))  # type: ignore[attr-defined]
+    service.query = AsyncMock(return_value=PlayerQueryResult(pending=pending))
+    service._save_binding_without_cooldown = Mock(
+        return_value="已设置默认米米号：123456。"
+    )
+
+    result = asyncio.run(
+        bind_player_for_user(
+            service,
+            _PLAYER_ID,
+            actor_qq_user_id=10001,
+            target_qq_user_id=20002,
+            group_id=30003,
+        )
+    )
+
+    service.query.assert_awaited_once_with(
+        _PLAYER_ID,
+        qq_user_id=10001,
+        explicit=True,
+        group_id=30003,
+    )
+    service._save_binding_without_cooldown.assert_called_once_with(
+        20002,
+        pending,
+    )
+    assert result.pending is pending
+    assert pending.player_message.startswith("已为该成员设置默认米米号：123456。\n\n")
+
+
 def test_declining_a_rebinding_keeps_the_existing_binding() -> None:
     pending = PendingPlayerQuery(
         player_id=_PLAYER_ID,
@@ -323,6 +369,42 @@ def test_binding_after_unbinding_replaces_null_player_id(tmp_path: Path) -> None
     state = store.get(10003)
     assert state.player_id == _PLAYER_ID + 1
     assert state.player_nick == "新玩家"
+
+
+def test_binding_without_cooldown_clears_existing_change_timestamp(
+    tmp_path: Path,
+) -> None:
+    store = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
+    store.bind(
+        qq_user_id=10004,
+        player_id=_PLAYER_ID,
+        player_nick="原玩家",
+        changed_at=datetime(2026, 8, 16, 10, tzinfo=timezone.utc),
+    )
+
+    store.bind_without_cooldown(
+        qq_user_id=10004,
+        player_id=_PLAYER_ID,
+        player_nick="管理员重设",
+    )
+
+    state = store.get(10004)
+    assert state.player_id == _PLAYER_ID
+    assert state.player_nick == "管理员重设"
+    assert state.last_changed_at is None
+
+    service = object.__new__(PlayerService)
+    service._bindings = store
+    service._config = cast(
+        "Any",
+        SimpleNamespace(
+            player=SimpleNamespace(
+                binding=SimpleNamespace(change_cooldown_days=3),
+            )
+        ),
+    )
+    service._now = lambda: datetime(2026, 8, 16, 12, tzinfo=timezone.utc)
+    assert service._binding_change_error(10004) == ""
 
 
 def test_binding_change_cooldown_uses_three_beijing_calendar_days(

@@ -21,7 +21,7 @@ from ironsbot.services.seer.player_messages import unbound_player_shortcut_messa
 from ironsbot.services.seer.player_service import PendingPlayerQuery, PlayerQueryResult
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
-from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_events import group_message_event, private_message_event
 
 _ACCOUNT_PLAYER_ID = 949105380
 
@@ -519,6 +519,120 @@ def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
     assert call is not None
     assert call.args[2].startswith("绑定米米号请直接填写数字")
     service.bind_player.assert_not_awaited()
+
+
+def test_superuser_can_bind_a_mentioned_member(monkeypatch: Any) -> None:
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", finish_reply)
+    bind_for_user = AsyncMock(return_value=PlayerQueryResult(message="已绑定"))
+    monkeypatch.setattr(player, "bind_player_for_user", bind_for_user)
+    service = SimpleNamespace(
+        bind_player=AsyncMock(),
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", _features(superuser=True)),
+        player_accounts=cast(
+            "Any",
+            SimpleNamespace(resolve_player_id=lambda _value: _ACCOUNT_PLAYER_ID),
+        ),
+    )
+    event = group_message_event(
+        "绑定米米号949105380",
+        user_id=10001,
+        group_id=20002,
+        message=Message(
+            MessageSegment.text("绑定米米号949105380") + MessageSegment.at(30003)
+        ),
+    )
+
+    asyncio.run(
+        player.handle_player_binding_command(
+            dependencies,
+            cast("Any", object()),
+            event,
+            {player.BOT_COMMAND_ARG_KEY: "949105380"},
+        )
+    )
+
+    bind_for_user.assert_awaited_once_with(
+        service,
+        _ACCOUNT_PLAYER_ID,
+        actor_qq_user_id=10001,
+        target_qq_user_id=30003,
+        group_id=20002,
+    )
+    service.bind_player.assert_not_awaited()
+    finish_reply.assert_awaited_once()
+
+
+def test_non_superuser_cannot_bind_a_mentioned_member(monkeypatch: Any) -> None:
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", finish_reply)
+    service = SimpleNamespace(bind_player=AsyncMock())
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", _features()),
+        player_accounts=cast(
+            "Any",
+            SimpleNamespace(resolve_player_id=lambda _value: _ACCOUNT_PLAYER_ID),
+        ),
+    )
+    event = group_message_event(
+        "绑定米米号949105380",
+        message=Message(
+            MessageSegment.text("绑定米米号949105380") + MessageSegment.at(30003)
+        ),
+    )
+
+    asyncio.run(
+        player.handle_player_binding_command(
+            dependencies,
+            cast("Any", object()),
+            event,
+            {player.BOT_COMMAND_ARG_KEY: "949105380"},
+        )
+    )
+
+    service.bind_player.assert_not_awaited()
+    call = finish_reply.await_args
+    assert call is not None
+    assert call.args[2] == "仅超级管理员可为其他成员绑定米米号。"
+
+
+def test_superuser_cannot_bind_a_member_from_a_private_message(
+    monkeypatch: Any,
+) -> None:
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", finish_reply)
+    service = SimpleNamespace(bind_player=AsyncMock())
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", _features(superuser=True)),
+        player_accounts=cast(
+            "Any",
+            SimpleNamespace(resolve_player_id=lambda _value: _ACCOUNT_PLAYER_ID),
+        ),
+    )
+    event = private_message_event("绑定米米号949105380")
+    event.message = Message(
+        MessageSegment.text("绑定米米号949105380") + MessageSegment.at(30003)
+    )
+    event.original_message = event.message
+
+    asyncio.run(
+        player.handle_player_binding_command(
+            dependencies,
+            cast("Any", object()),
+            event,
+            {player.BOT_COMMAND_ARG_KEY: "949105380"},
+        )
+    )
+
+    service.bind_player.assert_not_awaited()
+    call = finish_reply.await_args
+    assert call is not None
+    assert call.args[2] == "仅群聊可为成员绑定米米号。"
 
 
 def test_shortcut_without_default_shows_explicit_player_id_help(
