@@ -40,6 +40,7 @@ from ironsbot.services.seer.rank_list_parsing import (
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from .player_target import PlayerTargetResolution, resolve_event_player_target
+from .player_target_selection import enter_player_target_selection
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
@@ -126,6 +127,7 @@ def _is_rank_player_command(
         binding_for_user=group.resources.player.default_player_id,
         allow_private=group.features.is_superuser(int(event.get_user_id())),
         allow_default=False,
+        allow_partial_reference=True,
     )
     if not target.recognized:
         return False
@@ -219,6 +221,33 @@ async def _handle_player(
         return
     if target_command.target.error is not None:
         await finish_event_reply(matcher, event, target_command.target.error)
+        return
+    if target_command.target.choices:
+        async def select_player_target(
+            player_id: int,
+            selection_matcher: Matcher,
+            selection_event: MessageEvent,
+        ) -> None:
+            selection_state = selection_matcher.state
+            selection_state[RANK_PLAYER_COMMAND_KEY] = RankPlayerTargetCommand(
+                target_command.rank_key,
+                PlayerTargetResolution(player_id, offer_binding=True),
+            )
+            await _handle_player(
+                service,
+                references,
+                selection_matcher,
+                selection_event,
+                selection_state,
+            )
+
+        await enter_player_target_selection(
+            matcher,
+            event,
+            state,
+            target_command.target,
+            select_player_target,
+        )
         return
     if target_command.target.player_id is None:
         return

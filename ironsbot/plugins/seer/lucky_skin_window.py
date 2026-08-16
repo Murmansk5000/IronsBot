@@ -232,6 +232,7 @@ async def _matches_query(
         reference or None,
         binding_for_user=service.default_player_id,
         allow_private=features.is_superuser(event.user_id),
+        allow_partial_reference=True,
     )
     if not target.recognized:
         return False

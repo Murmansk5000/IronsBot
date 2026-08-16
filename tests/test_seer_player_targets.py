@@ -313,3 +313,41 @@ def test_rank_player_target_accepts_a_current_message_member_mention() -> None:
     assert isinstance(command, rank_list.RankPlayerTargetCommand)
     assert command.rank_key == "专家段位"
     assert command.target.player_id == PLAYER_ID
+
+
+def test_rank_player_target_accepts_an_ambiguous_partial_alias() -> None:
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=PLAYER_ID,
+                name="worker_one",
+                aliases=("玩家1",),
+                password=None,
+                public=True,
+            ),
+            PlayerAccount(
+                player_id=REQUESTER_PLAYER_ID,
+                name="worker_two",
+                aliases=("玩家2",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+    group = SimpleNamespace(
+        player_accounts=accounts,
+        resources=SimpleNamespace(
+            player=SimpleNamespace(default_player_id=_binding_for)
+        ),
+        features=SimpleNamespace(is_superuser=lambda _user_id: False),
+    )
+    state: dict[str, object] = {}
+
+    assert rank_list._is_rank_player_command(
+        cast("Any", group),
+        group_message_event("专家榜玩家"),
+        state,
+    )
+    command = state[RANK_PLAYER_COMMAND_KEY]
+    assert isinstance(command, rank_list.RankPlayerTargetCommand)
+    assert [choice.label for choice in command.target.choices] == ["玩家1", "玩家2"]
