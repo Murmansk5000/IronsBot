@@ -2,7 +2,10 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ironsbot.integrations.storage.activity import ActivitySentStore
+from ironsbot.integrations.storage.activity import (
+    ActivitySentStore,
+    ActivitySnapshotStore,
+)
 from ironsbot.services.activity.models import ActivityReminder
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -52,3 +55,18 @@ def test_mark_sent_is_idempotent(tmp_path: Path) -> None:
     store.mark_sent([reminder], sent_at=dt(2026, 6, 12, 9))
 
     assert store.filter_unsent([reminder]) == []
+
+
+def test_activity_snapshot_store_compares_the_previous_week(tmp_path: Path) -> None:
+    store = ActivitySnapshotStore(tmp_path / "state.sqlite")
+    previous_week = dt(2026, 8, 7, 10)
+    current_week = dt(2026, 8, 14, 10)
+
+    assert store.newly_observed_ids({1, 2}, previous_week) == (
+        frozenset({1, 2}),
+        False,
+    )
+    assert store.newly_observed_ids({1, 2, 3}, current_week) == (
+        frozenset({3}),
+        True,
+    )

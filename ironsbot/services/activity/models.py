@@ -42,3 +42,5 @@ class ActivityDeadline:
 class ActivityInfoCache:
     items: list[ActivityInfo] = field(default_factory=list)
     expires_at: datetime | None = None
+    new_activity_ids: frozenset[int] = frozenset()
+    has_previous_week_snapshot: bool = False
