@@ -2,7 +2,6 @@
 # ruff: noqa: TC002
 from __future__ import annotations
 
-import logging
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -18,7 +17,6 @@ from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
@@ -27,18 +25,27 @@ from ironsbot.core.semantic_requests import (
     SemanticTarget,
 )
 from ironsbot.core.time import ScheduledClockTime, scheduled_clock_time
+from ironsbot.plugins.seer.lucky_skin_window_query import (
+    handle_lucky_skin_window_query,
+)
+from ironsbot.plugins.seer.query.commands.player_target import (
+    PlayerTargetResolution,
+    resolve_event_player_target,
+)
 from ironsbot.runtime.commands import CommandDescriptor
-from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.plugins import HelpEntry, PluginDefinition, PluginHooks
 from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import BOT_COMMAND_ARG_KEY, explicit_command
+from ironsbot.runtime.rules import (
+    BOT_COMMAND_ARG_KEY,
+    explicit_command,
+    member_target_command,
+)
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWatchItem,
     LuckySkinWindowBindingError,
-    LuckySkinWindowError,
     LuckySkinWindowNotConfiguredError,
     LuckySkinWindowResult,
     LuckySkinWindowService,
@@ -95,8 +102,8 @@ _WATCH_RESET_ACTION = ActionDefinition(
     "重置橱窗关注",
 )
 _JOB_PREFIX = "lucky_skin_window:"
-_LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
-logger = logging.getLogger(__name__)
+_QUERY_TARGET_KEY = "_lucky_skin_window_target"
+_QUERY_REFERENCE_KEY = "_lucky_skin_window_reference"
 
 
 def plugin_definition(
@@ -111,12 +118,16 @@ def plugin_definition(
         features=frozenset({Feature.LUCKY_SKIN_WINDOW}),
         help=HelpEntry(
             name="幸运橱窗",
-            description="查看绑定米米号当天幸运橱窗刷新的四个皮肤。",
+            description="查看绑定米米号当天幸运橱窗刷新的四个皮肤。超级管理员可查询已配置专用登录账号。",
             group="seer",
             order=16,
             visible=partial(_help_visible, service=service, features=features),
             notes=(
-                "发送“橱窗”查看；可用“关注橱窗”或“订阅橱窗”管理星标；可在“TD”中退订每日提醒。",
+                (
+                    "发送“橱窗”查看；超级管理员可用“橱窗米米号 / 橱窗别名 / "
+                    "橱窗@成员”查询已配置专用账号；可用“关注橱窗”或“订阅橱窗”"
+                    "管理星标；可在“TD”中退订每日提醒。"
+                ),
             ),
         ),
         commands=(
@@ -124,8 +135,8 @@ def plugin_definition(
                 id=_ACTION.id,
                 plugin_id="lucky_skin_window",
                 section="幸运橱窗",
-                examples=("橱窗",),
-                description="查看绑定米米号当天刷新出的四个皮肤",
+                examples=("橱窗", "橱窗123456 / 橱窗别名 / 橱窗@成员（仅超级管理员）"),
+                description="查看当天刷新出的四个皮肤；跨查目标必须配置专用橱窗登录账号",
                 features_any=("lucky_skin_window",),
                 show_in_poke=True,
             ),
@@ -207,12 +218,44 @@ async def _matches_query(
     event: MessageEvent,
     state: T_State,
     *,
+    service: LuckySkinWindowService,
     features: FeatureService,
 ) -> bool:
-    _ = state
-    if "".join(event.get_plaintext().split()) not in _COMMANDS:
+    reference = _query_reference(event.get_plaintext())
+    if reference is None:
         return False
-    return _watch_feature_allowed(event, features=features)
+    if not _watch_feature_allowed(event, features=features):
+        return False
+    target = resolve_event_player_target(
+        service.player_accounts,
+        event,
+        reference or None,
+        binding_for_user=service.default_player_id,
+        allow_private=features.is_superuser(event.user_id),
+    )
+    if not target.recognized:
+        return False
+    state[_QUERY_TARGET_KEY] = target
+    state[_QUERY_REFERENCE_KEY] = reference
+    return True
+
+
+def _query_reference(text: str) -> str | None:
+    normalized = "".join(text.split())
+    if any(
+        normalized.startswith(command)
+        for command in (
+            *_WATCH_LIST_COMMANDS,
+            *_WATCH_REMOVE_COMMANDS,
+            *_WATCH_CLEAR_COMMANDS,
+            *_WATCH_RESET_COMMANDS,
+        )
+    ):
+        return None
+    for command in sorted(_COMMANDS, key=len, reverse=True):
+        if normalized.startswith(command):
+            return normalized[len(command) :]
+    return None
 
 
 def _watch_feature_allowed(
@@ -267,13 +310,17 @@ async def _matches_watch_change(
 
 
 def _semantic_request(
-    service: LuckySkinWindowService,
+    _service: LuckySkinWindowService,
     event: MessageEvent,
     state: T_State,
 ) -> SemanticRequest:
-    _ = state
-    account = service.account_for_user(event.user_id)
-    target_key = str(account.player_id) if account is not None else str(event.user_id)
+    target = state.get(_QUERY_TARGET_KEY)
+    target_key = (
+        str(target.player_id)
+        if isinstance(target, PlayerTargetResolution)
+        and target.player_id is not None
+        else str(event.user_id)
+    )
     return SemanticRequest(
         action=_ACTION,
         target=SemanticTarget(target_key, f"{target_key} 幸运橱窗"),
@@ -293,118 +340,6 @@ async def _finish_watch_access_error(
         matcher,
         event,
         f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再管理橱窗关注。",
-    )
-
-
-async def _handle_query(
-    service: LuckySkinWindowService,
-    pet_query: PetQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    try:
-        cached = service.cached_for_user(event.user_id)
-    except LuckySkinWindowNotConfiguredError:
-        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
-        return
-    except LuckySkinWindowBindingError as error:
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再查询。",
-        )
-        return
-
-    if cached is not None:
-        await _enter_result_prompt(
-            pet_query,
-            matcher,
-            event,
-            state,
-            service,
-            cached,
-        )
-        return
-
-    account = service.account_for_user(event.user_id)
-    if account is None:
-        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
-        return
-
-    await enter_event_reply_conversation(
-        matcher,
-        event,
-        namespace=_LOGIN_CONFIRMATION_NAMESPACE,
-        handlers=[bind_async(_handle_login_confirmation, service, pet_query)],
-        reply_check=lambda reply_event: parse_confirmation(reply_event.get_plaintext())
-        is not None,
-        prompt=(
-            "今日幸运橱窗尚未获取，需要登录查询。\n"
-            "是否继续？\n"
-            "回复“是”或“y”确认，回复“否”或“n”取消。"
-        ),
-    )
-
-
-async def _handle_login_confirmation(
-    service: LuckySkinWindowService,
-    pet_query: PetQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    confirmed = parse_confirmation(event.get_plaintext())
-    if confirmed is not True:
-        await finish_event_reply(matcher, event, "已取消幸运橱窗查询。")
-        return
-    await _query_and_reply(service, pet_query, matcher, event, state)
-
-
-async def _query_and_reply(
-    service: LuckySkinWindowService,
-    pet_query: PetQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    try:
-        result = await service.check_for_user(event.user_id)
-    except LuckySkinWindowNotConfiguredError:
-        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
-        return
-    except LuckySkinWindowBindingError as error:
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再查询。",
-        )
-        return
-    except TimeoutError:
-        await finish_event_reply(matcher, event, "❌ 幸运橱窗查询超时，请稍后再试。")
-        return
-    except LuckySkinWindowError as error:
-        logger.warning(
-            "lucky skin window query unavailable: user_id=%s error=%s",
-            event.user_id,
-            error,
-        )
-        await finish_event_reply(
-            matcher,
-            event,
-            "❌ 幸运橱窗数据暂时不可用，请稍后再试。",
-        )
-        return
-    except Exception:  # noqa: BLE001 - the game protocol must not leak errors
-        await finish_event_reply(matcher, event, "❌ 幸运橱窗查询失败，请稍后再试。")
-        return
-    await _enter_result_prompt(
-        pet_query,
-        matcher,
-        event,
-        state,
-        service,
-        result,
     )
 
 
@@ -651,12 +586,27 @@ def _install(
             help_ids=(_ACTION.id,),
             semantic_request=partial(_semantic_request, service),
         ),
-        rule=Rule(bind_async(_matches_query, features=features))
-        & explicit_command(),
+        rule=Rule(
+            bind_async(_matches_query, service=service, features=features)
+        )
+        & member_target_command(),
         priority=priority,
         block=True,
     )
-    matcher.append_handler(bind_async(_handle_query, service, pet_query))
+    matcher.append_handler(
+        bind_async(
+            partial(
+                handle_lucky_skin_window_query,
+                service,
+                pet_query,
+                features,
+                target_key=_QUERY_TARGET_KEY,
+                reference_key=_QUERY_REFERENCE_KEY,
+                login_namespace="lucky_skin_window_login",
+                enter_result_prompt=_enter_result_prompt,
+            )
+        )
+    )
 
     watch_list = registry.on_message(
         policy=CommandPolicy.command(

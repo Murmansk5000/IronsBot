@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -16,27 +17,29 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.runtime.matchers import CommandPolicy, bind, bind_async
+from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply, send_event_reply
-from ironsbot.runtime.rules import explicit_command
+from ironsbot.runtime.rules import explicit_command, member_target_command
 from ironsbot.services.seer.external_references import (
     SeerInfoReference,
     SeerInfoReferences,
     peak_rank_reference,
 )
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
+from ironsbot.services.seer.rank_list_models import RankPlayerCommand
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
     parse_rank_list_command,
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
-    parse_rank_player_command,
+    parse_rank_player_target_command,
     parse_rank_score_command,
     with_admin_prefix,
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player_target import resolve_event_player_reference
+from .player_target import PlayerTargetResolution, resolve_event_player_target
 from .rank_list_context import (
     RANK_CACHE_BATCH_COMMAND_KEY,
     RANK_DISPLAY_LIMIT_COMMAND_KEY,
@@ -54,6 +57,12 @@ if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
+
+
+@dataclass(frozen=True, slots=True)
+class RankPlayerTargetCommand:
+    rank_key: str
+    target: PlayerTargetResolution
 
 
 def _rank_reference(command: object) -> SeerInfoReference | None:
@@ -104,22 +113,24 @@ def _is_rank_player_command(
     event: Event,
     state: T_State,
 ) -> bool:
-    return _store_command(
-        partial(
-            parse_rank_player_command,
-            resolve_player_id=partial(
-                resolve_event_player_reference,
-                group.player_accounts,
-                event,
-                allow_private=group.features.is_superuser(
-                    int(event.get_user_id())
-                ),
-            ),
-        ),
-        RANK_PLAYER_COMMAND_KEY,
+    parsed = parse_rank_player_target_command(event.get_plaintext())
+    if parsed is None:
+        return False
+    rank_key, reference = parsed
+    if not reference and not message_input_context(event).has_member_mentions:
+        return False
+    target = resolve_event_player_target(
+        group.player_accounts,
         event,
-        state,
+        reference or None,
+        binding_for_user=group.resources.player.default_player_id,
+        allow_private=group.features.is_superuser(int(event.get_user_id())),
+        allow_default=False,
     )
+    if not target.recognized:
+        return False
+    state[RANK_PLAYER_COMMAND_KEY] = RankPlayerTargetCommand(rank_key, target)
+    return True
 
 
 async def _handle_list(
@@ -203,7 +214,18 @@ async def _handle_player(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    command = state[RANK_PLAYER_COMMAND_KEY]
+    target_command = state[RANK_PLAYER_COMMAND_KEY]
+    if not isinstance(target_command, RankPlayerTargetCommand):
+        return
+    if target_command.target.error is not None:
+        await finish_event_reply(matcher, event, target_command.target.error)
+        return
+    if target_command.target.player_id is None:
+        return
+    command = RankPlayerCommand(
+        rank_key=target_command.rank_key,
+        player_id=target_command.target.player_id,
+    )
     reply = await service.player_reply(
         command,
         qq_user_id=event.user_id,
@@ -330,7 +352,8 @@ def install(group: SeerMatcherGroup) -> None:
     query = group.resources.rank_queries
     references = group.resources.external_references
     admin = group.resources.rank_admin
-    feature_rule = seer_feature_rule(group.features, "seer_rank") & explicit_command()
+    feature_rule = seer_feature_rule(group.features, "seer_rank")
+    explicit_feature_rule = feature_rule & explicit_command()
     priority = group.matcher_priority("seer_rank")
 
     list_matcher = group.on_message(
@@ -343,7 +366,7 @@ def install(group: SeerMatcherGroup) -> None:
                 "rank.sample_peak",
             ),
         ),
-        rule=feature_rule
+        rule=explicit_feature_rule
         & Rule(bind(_is_rank_list_command, query)),
         priority=priority,
     )
@@ -355,7 +378,8 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("rank.global_collection", "rank.global_peak"),
         ),
         rule=feature_rule
-        & Rule(bind(_is_rank_player_command, group)),
+        & Rule(bind(_is_rank_player_command, group))
+        & member_target_command(),
         priority=priority,
     )
     player_matcher.append_handler(bind_async(_handle_player, query, references))
@@ -365,7 +389,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_score",
             help_ids=("rank.global_collection", "rank.global_peak"),
         ),
-        rule=feature_rule
+        rule=explicit_feature_rule
         & Rule(
             bind(
                 _store_command,
@@ -383,7 +407,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_cache_status",
             help_ids=("rank.sample_status",),
         ),
-        rule=feature_rule,
+        rule=explicit_feature_rule,
         permission=SUPERUSER,
         priority=priority,
     )
@@ -395,7 +419,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_cache_refresh",
             help_ids=("rank.sample_refresh",),
         ),
-        rule=feature_rule,
+        rule=explicit_feature_rule,
         permission=SUPERUSER,
         priority=priority,
     )
@@ -411,7 +435,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_cache_batch",
             help_ids=("rank.page_batch",),
         ),
-        rule=feature_rule
+        rule=explicit_feature_rule
         & Rule(
             bind(
                 _store_command,
@@ -432,7 +456,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_page_cache_status",
             help_ids=("rank.page_status",),
         ),
-        rule=feature_rule,
+        rule=explicit_feature_rule,
         permission=SUPERUSER,
         priority=priority,
     )
@@ -443,7 +467,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_page_cache_status",
             help_ids=("rank.page_status",),
         ),
-        rule=feature_rule
+        rule=explicit_feature_rule
         & Rule(
             bind(
                 _store_command,
@@ -461,7 +485,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_page_cache_refresh",
             help_ids=("rank.page_refresh",),
         ),
-        rule=feature_rule
+        rule=explicit_feature_rule
         & Rule(
             bind(
                 _store_command,
@@ -481,7 +505,7 @@ def install(group: SeerMatcherGroup) -> None:
             "seer_rank_display_limit",
             help_ids=("rank.display_limit",),
         ),
-        rule=feature_rule
+        rule=explicit_feature_rule
         & Rule(
             bind(
                 _store_command,

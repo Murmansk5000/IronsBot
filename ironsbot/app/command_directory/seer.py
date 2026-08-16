@@ -48,8 +48,11 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
             (
                 (
                     "seer.player.query",
-                    ("米米号123456", "查询玩家信息123456"),
-                    "查询玩家基础信息；随后按提示回复数字查看详情",
+                    ("米米号123456", "查询玩家信息别名", "米米号@成员"),
+                    (
+                        "查询玩家基础信息；支持数字、可见别名或群内 @成员，"
+                        "随后按提示回复数字查看详情"
+                    ),
                     {"show_in_poke": True},
                 ),
                 (
@@ -300,18 +303,18 @@ def rank_commands() -> tuple[CommandDescriptor, ...]:
             "查看可用榜单和查询格式",
             {"show_in_poke": True},
         ),
-        (
-            "rank.global_collection",
-            "全服图鉴榜",
-            _global_rank_titles(peak=False),
-            "查看全服图鉴类榜单；可追加页码、名次、米米号或分数",
+                (
+                    "rank.global_collection",
+                    "全服图鉴榜",
+                    _global_rank_titles(peak=False),
+                    "查看全服图鉴类榜单；可追加页码、名次、米米号、可见别名、@成员或分数",
             {"show_in_poke": True},
         ),
-        (
-            "rank.global_peak",
-            "全服巅峰段位榜",
-            _global_rank_titles(peak=True),
-            "查看全服巅峰段位榜；可追加名次或分数",
+                (
+                    "rank.global_peak",
+                    "全服巅峰段位榜",
+                    _global_rank_titles(peak=True),
+                    "查看全服巅峰段位榜；可追加名次、米米号、可见别名、@成员或分数",
             {},
         ),
         (
