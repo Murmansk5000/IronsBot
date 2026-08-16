@@ -60,6 +60,22 @@ class PlayerAccountPolicyMixin:
             return f"⚠️ 默认米米号设置保存失败：{error}"
         return f"已设置默认米米号：{pending.player_id}。"
 
+    def _save_binding_without_cooldown(
+        self,
+        qq_user_id: int,
+        pending: PendingPlayerQuery,
+    ) -> str:
+        try:
+            self._bindings.bind_without_cooldown(
+                qq_user_id=qq_user_id,
+                player_id=pending.player_id,
+                player_nick=str(pending.user_info.nick),
+            )
+        except Exception as error:
+            logger.exception("保存无冷却米米号绑定失败")
+            return f"⚠️ 默认米米号设置保存失败：{error}"
+        return f"已设置默认米米号：{pending.player_id}。"
+
     def save_binding_choice(
         self,
         qq_user_id: int,

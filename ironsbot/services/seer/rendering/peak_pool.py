@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 POOL_OVERHEAD = 18 * 2 + 1 * 2  # pool-section padding + border
 CONTAINER_PADDING = 20 * 2
 MAX_BASE_COLS = 10
-PEAK_POOL_CACHE_VERSION = 10
+PEAK_POOL_CACHE_VERSION = 11
 
 logger = logging.getLogger(__name__)
 

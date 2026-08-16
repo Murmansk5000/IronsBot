@@ -20,6 +20,8 @@ POOL_GRID_TOP = 1 + 18 + 28 + 10 + 1 + 14
 POOL_SECTION_FIXED_HEIGHT = POOL_GRID_TOP + 18 + 1
 POOL_SECTION_MARGIN = 16
 EMPTY_GRID_HEIGHT = 56
+UPWARD_ARROW_COLOR = (255, 91, 91, 255)
+DOWNWARD_ARROW_COLOR = (77, 222, 128, 255)
 
 
 class _PoolPlacement(Protocol):
@@ -60,6 +62,7 @@ class PoolTransitionArrow:
     start_y: int
     line_end_y: int
     head_points: tuple[tuple[int, int], tuple[int, int], tuple[int, int]]
+    color: tuple[int, int, int, int]
 
 
 def pool_transition_arrows(
@@ -110,8 +113,9 @@ def transition_overlay_uri(
             x=arrow.x,
             start_y=arrow.start_y,
             end_y=arrow.line_end_y,
+            color=arrow.color,
         )
-        drawing.polygon(arrow.head_points, fill=(255, 255, 255, 255))
+        drawing.polygon(arrow.head_points, fill=arrow.color)
     output = BytesIO()
     overlay.save(output, format="PNG")
     return to_data_uri(output.getvalue())
@@ -144,6 +148,7 @@ def _pool_transition_arrow(
             (x - 6, head_base_y),
             (x + 6, head_base_y),
         ),
+        color=DOWNWARD_ARROW_COLOR if downward else UPWARD_ARROW_COLOR,
     )
 
 
@@ -153,11 +158,12 @@ def _draw_vertical_dashes(
     x: int,
     start_y: int,
     end_y: int,
+    color: tuple[int, int, int, int],
 ) -> None:
     top, bottom = sorted((start_y, end_y))
     for dash_top in range(top, bottom + 1, 14):
         drawing.line(
             (x, dash_top, x, min(dash_top + 8, bottom)),
-            fill=(255, 255, 255, 255),
+            fill=color,
             width=3,
         )

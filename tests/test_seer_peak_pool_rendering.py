@@ -17,11 +17,14 @@ from ironsbot.services.seer.peak import (
     PeakPoolTransitionSnapshot,
 )
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
+from ironsbot.services.seer.rendering.peak_pool_arrows import (
+    DOWNWARD_ARROW_COLOR,
+    UPWARD_ARROW_COLOR,
+)
 
 EXPECTED_RENDER_COUNT = 2
 SHARED_BOUNDARY_ROWS = 2
 RGBA_CHANNEL_COUNT = 4
-OPAQUE_ALPHA = 255
 
 
 def _test_png() -> bytes:
@@ -163,6 +166,8 @@ async def test_standard_pool_renders_current_and_historical_positions() -> None:
     }
     assert arrows[0].start_y > arrows[0].line_end_y
     assert arrows[1].start_y < arrows[1].line_end_y
+    assert arrows[0].color == UPWARD_ARROW_COLOR
+    assert arrows[1].color == DOWNWARD_ARROW_COLOR
     current_pixel = _data_uri_pixel(
         _filled_slots(pools["限0"])[0]["head_img"]
     )
@@ -297,12 +302,13 @@ async def test_adjacent_transition_uses_matching_nearest_edge_slots() -> None:
     arrow = captured["transition_arrows"][0]
     assert arrow.transition_id == 0
     assert arrow.start_y < arrow.line_end_y
+    assert arrow.color == DOWNWARD_ARROW_COLOR
     overlay = _data_uri_image(captured["transition_overlay"])
     assert overlay.getchannel("A").getbbox() is not None
     overlay_pixel = overlay.getpixel((arrow.x, arrow.start_y))
     assert isinstance(overlay_pixel, tuple)
     assert len(overlay_pixel) == RGBA_CHANNEL_COUNT
-    assert int(overlay_pixel[3]) == OPAQUE_ALPHA
+    assert overlay_pixel == DOWNWARD_ARROW_COLOR
     assert old_row == pools["限2"]["rows"] - 1
     assert new_row == 0
     assert all(
