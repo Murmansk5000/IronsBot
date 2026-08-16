@@ -35,6 +35,9 @@ class PetCoreSnapshot:
     type_id: int
     type_name: str
     introduction: str
+    height: float | None = None
+    weight: float | None = None
+    food: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
