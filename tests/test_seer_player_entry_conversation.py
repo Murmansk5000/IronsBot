@@ -325,6 +325,80 @@ def test_player_commands_resolve_configured_account_names() -> None:
     )
 
 
+def test_player_query_prompts_for_ambiguous_partial_alias(
+    monkeypatch: Any,
+) -> None:
+    other_player_id = 949105381
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="worker_one",
+                aliases=("玩家1",),
+                password=None,
+                public=True,
+            ),
+            PlayerAccount(
+                player_id=other_player_id,
+                name="worker_two",
+                aliases=("玩家2",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", SimpleNamespace(default_player_id=lambda _user_id: None)),
+        cast("Any", _features()),
+        player_accounts=registry,
+    )
+    enter_selection = AsyncMock()
+    query_player = AsyncMock()
+    monkeypatch.setattr(player, "enter_prompt", enter_selection)
+    monkeypatch.setattr(player, "handle_player", query_player)
+    event = group_message_event("米米号玩家")
+    state: dict[str, object] = {}
+
+    assert asyncio.run(player._is_player_id_query(dependencies, event, state))
+    asyncio.run(
+        player.validate_player_id(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    call = enter_selection.await_args
+    assert call is not None
+    prompt = call.args[3]
+    assert isinstance(prompt, player.Prompt)
+    assert [(item.name, item.value) for item in prompt.items] == [
+        (f"玩家1（{_ACCOUNT_PLAYER_ID}）", _ACCOUNT_PLAYER_ID),
+        (f"玩家2（{other_player_id}）", other_player_id),
+    ]
+
+    resolver = call.args[4]
+    selected_state: dict[str, object] = {}
+    selection_matcher = cast("Any", SimpleNamespace(state=selected_state))
+    selection_event = group_message_event("2")
+    asyncio.run(
+        resolver(
+            prompt.items[1],
+            selection_matcher,
+            selection_event,
+        )
+    )
+
+    assert selected_state[player.PLAYER_ID_KEY] == other_player_id
+    assert selected_state[player.PLAYER_QUERY_IS_EXPLICIT_KEY] is True
+    query_player.assert_awaited_once_with(
+        dependencies,
+        selection_matcher,
+        selection_event,
+        selected_state,
+    )
+
 def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),

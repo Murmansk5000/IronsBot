@@ -234,6 +234,67 @@ def test_event_player_target_leaves_unknown_aliases_for_other_routes() -> None:
     assert target.error is None
 
 
+def test_event_player_target_returns_visible_partial_alias_choices() -> None:
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=PLAYER_ID,
+                name="worker_one",
+                aliases=("玩家1",),
+                password=None,
+                public=True,
+            ),
+            PlayerAccount(
+                player_id=REQUESTER_PLAYER_ID,
+                name="worker_two",
+                aliases=("玩家2",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+
+    target = resolve_event_player_target(
+        accounts,
+        group_message_event("米米号玩家"),
+        "玩家",
+        binding_for_user=_binding_for,
+        allow_partial_reference=True,
+    )
+
+    assert target.recognized
+    assert target.player_id is None
+    assert [(choice.player_id, choice.display) for choice in target.choices] == [
+        (PLAYER_ID, f"玩家1（{PLAYER_ID}）"),
+        (REQUESTER_PLAYER_ID, f"玩家2（{REQUESTER_PLAYER_ID}）"),
+    ]
+
+
+def test_event_player_target_resolves_one_visible_partial_alias() -> None:
+    accounts = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=PLAYER_ID,
+                name="worker_one",
+                aliases=("玩家1",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+
+    target = resolve_event_player_target(
+        accounts,
+        group_message_event("米米号玩家"),
+        "玩家",
+        binding_for_user=_binding_for,
+        allow_partial_reference=True,
+    )
+
+    assert target.player_id == PLAYER_ID
+    assert target.choices == ()
+
+
 def test_rank_player_target_accepts_a_current_message_member_mention() -> None:
     group = SimpleNamespace(
         player_accounts=PlayerAccountRegistry(()),

@@ -20,12 +20,14 @@ from ironsbot.runtime.matchers import (
 )
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
+from ironsbot.runtime.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import (
     BOT_COMMAND_ARG_KEY,
     explicit_command,
     member_target_command,
 )
+from ironsbot.runtime.semantic_requests import ActionDefinition, SemanticTarget
 from ironsbot.services.seer.external_references import (
     SeerInfoReference,
     SeerInfoReferences,
@@ -83,6 +85,12 @@ class PlayerCommandDependencies:
 
 
 _PLAYER_TARGET_KEY = "_player_target"
+_PLAYER_TARGET_SELECTION_ACTION = ActionDefinition(
+    "seer_player_target_selection",
+    "选择玩家",
+)
+
+
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
@@ -133,6 +141,7 @@ async def _is_player_id_query(
         allow_private=allows_private_player_aliases(
             dependencies.features, int(event.get_user_id())
         ),
+        allow_partial_reference=True,
     )
     if not target.recognized:
         return False
@@ -174,15 +183,73 @@ async def validate_player_id(
             allow_private=allows_private_player_aliases(
                 dependencies.features, event.user_id
             ),
+            allow_partial_reference=True,
         )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
+        return
+    if target.choices:
+        await _enter_player_target_selection(
+            dependencies,
+            matcher,
+            event,
+            state,
+            target,
+        )
         return
     if target.player_id is None:
         await prompt_for_unbound_player_id(dependencies, matcher, event)
         return
     state[PLAYER_ID_KEY] = target.player_id
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = target.offer_binding
+
+
+async def _enter_player_target_selection(
+    dependencies: PlayerCommandDependencies,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    target: PlayerTargetResolution,
+) -> None:
+    async def select(
+        item: PromptItem[int],
+        selection_matcher: Matcher,
+        selection_event: Event,
+    ) -> None:
+        if not isinstance(selection_event, MessageEvent):
+            return
+        selection_state = selection_matcher.state
+        selection_state[PLAYER_ID_KEY] = item.value
+        selection_state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
+        await handle_player(
+            dependencies,
+            selection_matcher,
+            selection_event,
+            selection_state,
+        )
+
+    await enter_prompt(
+        matcher,
+        event,
+        state,
+        Prompt(
+            title="请问你想查询哪位玩家？",
+            action=_PLAYER_TARGET_SELECTION_ACTION,
+            items=[
+                PromptItem(
+                    choice.display,
+                    "",
+                    choice.player_id,
+                    semantic_target=SemanticTarget(
+                        key=str(choice.player_id),
+                        display=choice.display,
+                    ),
+                )
+                for choice in target.choices
+            ],
+        ),
+        select,
+    )
 
 
 async def handle_player(

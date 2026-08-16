@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.onebot_context import event_group_id
 from ironsbot.services.seer.ids import PLAYER_ID_ERROR_MESSAGE, is_valid_player_id
@@ -18,7 +19,15 @@ if TYPE_CHECKING:
 
     from nonebot.adapters import Event
 
-    from ironsbot.config.player_accounts import PlayerAccountRegistry
+    from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerTargetChoice:
+    """One visible configured account offered after a partial alias match."""
+
+    player_id: int
+    display: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +36,7 @@ class PlayerTargetResolution:
     offer_binding: bool
     error: str | None = None
     recognized: bool = True
+    choices: tuple[PlayerTargetChoice, ...] = ()
 
 
 def default_player_id_for(service: object, user_id: int) -> int | None:
@@ -60,7 +70,7 @@ def resolve_event_player_reference(
     )
 
 
-def resolve_event_player_target(  # noqa: PLR0913 - event resolution inputs are explicit
+def resolve_event_player_target(  # noqa: C901, PLR0913 - event resolution inputs are explicit
     accounts: PlayerAccountRegistry,
     event: Event,
     reference: str | None,
@@ -68,6 +78,7 @@ def resolve_event_player_target(  # noqa: PLR0913 - event resolution inputs are 
     binding_for_user: Callable[[int], int | None],
     allow_private: bool = False,
     allow_default: bool = True,
+    allow_partial_reference: bool = False,
 ) -> PlayerTargetResolution:
     """Resolve one current-message player target under all public query rules."""
 
@@ -92,6 +103,27 @@ def resolve_event_player_target(  # noqa: PLR0913 - event resolution inputs are 
                 allow_private=allow_private,
             )
             if explicit_player_id is None:
+                choices = (
+                    _player_target_choices(
+                        accounts.find_player_accounts(
+                            normalized,
+                            group_id=event_group_id(event),
+                            allow_private=allow_private,
+                        ),
+                        normalized,
+                    )
+                    if allow_partial_reference
+                    else ()
+                )
+                if len(choices) == 1:
+                    explicit_player_id = choices[0].player_id
+                elif choices:
+                    return PlayerTargetResolution(
+                        None,
+                        offer_binding=False,
+                        choices=choices,
+                    )
+            if explicit_player_id is None:
                 return PlayerTargetResolution(
                     None,
                     offer_binding=False,
@@ -111,6 +143,31 @@ def resolve_event_player_target(  # noqa: PLR0913 - event resolution inputs are 
         event,
         numeric_player_id=explicit_player_id,
         binding_for_user=binding_for_user,
+    )
+
+
+def _player_target_choices(
+    accounts: tuple[PlayerAccount, ...],
+    reference: str,
+) -> tuple[PlayerTargetChoice, ...]:
+    return tuple(
+        PlayerTargetChoice(
+            player_id=account.player_id,
+            display=f"{_matching_reference(account, reference)}（{account.player_id}）",
+        )
+        for account in accounts
+    )
+
+
+def _matching_reference(account: PlayerAccount, reference: str) -> str:
+    normalized = normalize_command_text(reference)
+    return next(
+        (
+            value
+            for value in (account.name, *account.aliases)
+            if normalized in normalize_command_text(value)
+        ),
+        account.name,
     )
 
 
