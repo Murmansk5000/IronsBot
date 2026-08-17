@@ -95,6 +95,9 @@ class ServerStatusService:
         queued = _format_public_pool_queue(pending)
         if queued:
             lines.append(f"公共查询等待：{queued}")
+        active = getattr(self._headless, "active_request_summaries", ())
+        if active:
+            lines.append(f"公共查询执行中：{'；'.join(active)}")
         if self._dedicated_sessions is not None:
             labels = self._dedicated_sessions.active_sessions_by_label
             if labels:

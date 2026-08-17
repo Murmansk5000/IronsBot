@@ -148,8 +148,6 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
 
         await report_previous_render_crash(
             admin_notices,
-            config.bot.logging,
-            config.paths.log_file,
         )
 
     push_time_refresher = partial(

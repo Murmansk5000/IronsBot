@@ -195,7 +195,7 @@ def test_format_docker_image_check_does_not_offer_side_effects() -> None:
     assert "newcommitabc new change" in reply
     assert "2026-07-05 02:00:00" in reply
     assert "2026-07-05 03:00:00" in reply
-    assert "可发送 /更新镜像 更新并重启" in reply
+    assert "等待确认后更新并重启" in reply
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
 
 
@@ -535,6 +535,59 @@ def test_docker_update_service_checks_without_starting_an_update() -> None:
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
 
 
+def test_manual_docker_update_checks_before_running_the_update() -> None:
+    class FakeDocker:
+        checks = 0
+        starts = 0
+
+        async def socket_exists(self, _socket_path: str) -> bool:
+            return True
+
+        async def check_update(
+            self,
+            _request: DockerUpdateRequest,
+        ) -> DockerImageCheckResult:
+            self.checks += 1
+            return DockerImageCheckResult(
+                ok=True,
+                current_image_id="sha256:current-image",
+                remote_digest="sha256:remote-digest",
+                remote_image_id="sha256:remote-image",
+            )
+
+        async def start_update(
+            self,
+            _request: DockerUpdateRequest,
+        ) -> DockerUpdateResult:
+            self.starts += 1
+            return DockerUpdateResult(
+                ok=True,
+                current_image_id="sha256:current-image",
+                target_image_id="sha256:remote-image",
+            )
+
+        async def restart_container(self, **_kwargs: object) -> None:
+            pytest.fail("manual image update must use the update path")
+
+    docker = FakeDocker()
+    service = DockerUpdateService(
+        DockerUpdateConfig(image="murmansk5000/ironsbot:latest"),
+        docker,  # type: ignore[arg-type]
+        noop_restart_process,
+    )
+
+    reply, should_update = asyncio.run(service.prepare_manual_update())
+
+    assert should_update
+    assert docker.checks == 1
+    assert docker.starts == 0
+    assert "等待确认后更新并重启" in reply
+
+    asyncio.run(service.execute_manual_update())
+
+    assert docker.starts == 1
+
+
 def test_watchtower_pull_failure_uses_cached_local_image() -> None:
     image = "containrrr/watchtower:latest"
 
@@ -668,6 +721,7 @@ def test_docker_service_without_restart_check_uses_process_without_socket() -> N
 
     assert restart_action == "process"
     assert "正在重启机器人进程" in message
+    assert "仅重启" in message
 
 
 def test_docker_service_without_restart_check_uses_docker_socket(
@@ -686,7 +740,27 @@ def test_docker_service_without_restart_check_uses_docker_socket(
 
     assert restart_action == "docker"
     assert "正在重启机器人容器" in message
-    assert "未启用重启前镜像检查" in message
+    assert "仅重启" in message
+
+
+def test_explicit_update_and_restart_ignores_legacy_restart_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run(_self: object) -> tuple[str, DockerUpdateResult]:
+        return "ironsbot", DockerUpdateResult(ok=True, up_to_date=True)
+
+    monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
+    service = build_docker_service(
+        DockerUpdateConfig(
+            check_on_restart=False,
+            image="murmansk5000/ironsbot:latest",
+        )
+    )
+
+    message, restart_action = asyncio.run(service.prepare_update_and_restart())
+
+    assert restart_action == "docker"
+    assert "镜像已是最新，正在重启当前容器" in message
 
 
 def test_docker_service_missing_socket_continues_restart(

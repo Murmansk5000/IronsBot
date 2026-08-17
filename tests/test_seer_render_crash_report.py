@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-from ironsbot.config.models.settings import LoggingConfig
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.seer import render_crash_report
 from tests.helpers.runtime import build_test_runtime
@@ -32,7 +31,6 @@ def test_report_previous_render_crash_notifies_superusers(
     tmp_path: Path,
 ) -> None:
     marker_path = tmp_path / "marker.json"
-    log_path = tmp_path / "ironsbot.log"
     marker_path.write_text(
         '{"started_at":"2026-06-22 12:55:20",'
         '"operation":"pet_info_render",'
@@ -41,7 +39,6 @@ def test_report_previous_render_crash_notifies_superusers(
         '"resource_id":4894}',
         encoding="utf-8",
     )
-    log_path.write_text("before\nrendering pet info image\nrestart\n", encoding="utf-8")
     notices: list[tuple[str, str]] = []
 
     async def fake_notify(
@@ -54,13 +51,10 @@ def test_report_previous_render_crash_notifies_superusers(
     monkeypatch.setattr(render_crash_report, "MARKER_PATH", marker_path)
     monkeypatch.setattr(AdminNoticeService, "send", fake_notify)
     runtime = build_test_runtime()
-    logging = LoggingConfig(file_enabled=True)
 
     asyncio.run(
         render_crash_report.report_previous_render_crash(
             runtime.admin_notices,
-            logging,
-            log_path,
         )
     )
 
@@ -69,4 +63,4 @@ def test_report_previous_render_crash_notifies_superusers(
     key, message = notices[0]
     assert key == "render_crash_notice"
     assert "安瑟伦" in message
-    assert "rendering pet info image" in message
+    assert "最近日志" not in message
