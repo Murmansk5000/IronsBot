@@ -43,10 +43,6 @@ BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT = "发送 TD 可按标签退订赛尔号动态。"
 SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT_KEY = "seer_dynamic_tag_unsubscribe_hint"
-# The first send counts toward the total.  Failed rich-media delivery therefore
-# receives at most two retries before a single administrator notice is sent.
-FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
-FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
 FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 BILIBILI_SUMMARY_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
@@ -178,69 +174,28 @@ class BilibiliPushDeliveryService:
             )
 
         if image_message is not None:
-            await self._send_images_with_retries(
-                item,
-                author_mid,
-                image_message,
-                image_targets,
-                subscription_key=subscription_key,
-            )
-
-    async def _send_images_with_retries(
-        self,
-        item: dict[str, Any],
-        author_mid: int,
-        content_message: Any,
-        targets: BiliPushTargets,
-        *,
-        subscription_key: str,
-    ) -> None:
-        remaining_group_ids = targets.full_group_ids
-        remaining_user_ids = targets.full_user_ids
-        for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
-            action_name = (
-                FULL_DYNAMIC_IMAGE_PUSH_ACTION
-                if attempt == 1
-                else f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry {attempt}/"
-                f"{FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS}"
-            )
             summary = await self.delivery.broadcast(
-                content_message,
-                group_ids=remaining_group_ids,
-                private_user_ids=remaining_user_ids,
-                action_name=action_name,
+                image_message,
+                group_ids=image_targets.full_group_ids,
+                private_user_ids=image_targets.full_user_ids,
+                action_name=FULL_DYNAMIC_IMAGE_PUSH_ACTION,
                 subscription_key=subscription_key,
             )
-            remaining_group_ids = [
-                target.target_id
-                for target in summary.failed
-                if target.target_type == "group"
-            ]
-            remaining_user_ids = [
-                target.target_id
-                for target in summary.failed
-                if target.target_type == "private"
-            ]
-            if not remaining_group_ids and not remaining_user_ids:
-                return
-            if attempt < FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS:
-                logger.warning(
-                    "%s failed for %s group and %s private targets; retrying "
-                    "attempt %s/%s",
-                    FULL_DYNAMIC_IMAGE_PUSH_ACTION,
-                    len(remaining_group_ids),
-                    len(remaining_user_ids),
-                    attempt + 1,
-                    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
+            if summary.failed:
+                await self._notify_content_delivery_failure(
+                    item,
+                    author_mid,
+                    [
+                        target.target_id
+                        for target in summary.failed
+                        if target.target_type == "group"
+                    ],
+                    [
+                        target.target_id
+                        for target in summary.failed
+                        if target.target_type == "private"
+                    ],
                 )
-                await asyncio.sleep(FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS)
-
-        await self._notify_content_delivery_failure(
-            item,
-            author_mid,
-            remaining_group_ids,
-            remaining_user_ids,
-        )
 
     async def _notify_content_delivery_failure(
         self,
@@ -251,10 +206,9 @@ class BilibiliPushDeliveryService:
     ) -> None:
         if self.admin_notices is None:
             logger.error(
-                "%s exhausted %s attempts without an admin notice service: "
+                "%s exhausted adaptive delivery without an admin notice service: "
                 "author=%s dynamic=%s groups=%s users=%s",
                 FULL_DYNAMIC_PUSH_ACTION,
-                FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
                 author_mid,
                 item.get("id_str", "unknown"),
                 failed_group_ids,
@@ -280,7 +234,7 @@ class BilibiliPushDeliveryService:
         ]
         await self.admin_notices.send_private_to_superusers(
             "⚠️ B站动态图片发送失败\n"
-            f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次，仍未完成。\n"
+            "自适应分批重试后仍未完成。\n"
             f"UID：{author_mid}\n"
             f"动态ID：{item.get('id_str', '未知')}\n"
             f"失败目标：{'；'.join(target_lines)}\n"

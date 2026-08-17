@@ -42,6 +42,10 @@ OUTBOUND_RATE_LIMIT_WINDOWS_DUPLICATE_ERROR = (
 PUSH_UNSUBSCRIBE_REQUIRED_ERROR = (
     "push_unsubscribe requires non-empty commands and restore_commands"
 )
+PUSH_DELIVERY_DELAY_RANGE_ERROR = (
+    "messaging.push_delivery.batch_delay_max_seconds must be greater than or equal "
+    "to batch_delay_min_seconds"
+)
 SCHEDULE_ID_REQUIRED_ERROR = "定时推送必须配置非空 id"
 SCHEDULE_ID_FORMAT_ERROR = "定时推送 id 只能包含英文字母、数字、点、下划线和连字符"
 SCHEDULE_ID_DUPLICATE_ERROR = "定时推送 id 必须全局唯一"
@@ -423,6 +427,23 @@ class PushUnsubscribeConfig(BaseModel):
         return self
 
 
+class PushDeliveryConfig(BaseModel):
+    """Adaptive batching for background fan-out messages."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_attempts: int = Field(default=3, ge=1)
+    retry_batch_divisor: int = Field(default=3, ge=2)
+    batch_delay_min_seconds: float = Field(default=2.0, ge=0)
+    batch_delay_max_seconds: float = Field(default=5.0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_batch_delay_range(self) -> Self:
+        if self.batch_delay_max_seconds < self.batch_delay_min_seconds:
+            raise ValueError(PUSH_DELIVERY_DELAY_RANGE_ERROR)
+        return self
+
+
 class RedPacketNoticeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -500,6 +521,7 @@ class MessageConfig(BaseModel):
     push_unsubscribe: PushUnsubscribeConfig = Field(
         default_factory=PushUnsubscribeConfig
     )
+    push_delivery: PushDeliveryConfig = Field(default_factory=PushDeliveryConfig)
     red_packet_notice: RedPacketNoticeConfig = Field(
         default_factory=RedPacketNoticeConfig
     )

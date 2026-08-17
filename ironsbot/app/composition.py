@@ -241,6 +241,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.onebot_references,
         ),
         subscriptions,
+        settings.messaging.push_delivery,
+        tuple(settings.features.group_aliases.values()),
+        tuple(settings.features.user_aliases.values()),
     )
     push_message_limiter = partial(append_fire_manual_ad_for_target, features)
     admin_notices = AdminNoticeService(features, delivery)
