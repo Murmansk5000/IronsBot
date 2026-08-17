@@ -82,13 +82,29 @@ def _glossary_dict(name: str, desc: str) -> GlossaryDict:
     return GlossaryDict(name=name, desc=desc, color="")
 
 
-def _glossary_group_from_entry(entry: GlossaryEntryORM) -> GlossaryGroup:
+def _glossary_group_from_entry(
+    entry: GlossaryEntryORM, links: tuple[GlossaryDict, ...]
+) -> GlossaryGroup:
     return GlossaryGroup(
         primary=_glossary_dict(entry.name, entry.desc),
-        links=tuple(
-            _glossary_dict(linked.name, linked.desc) for linked in entry.link
-        ),
+        links=links,
     )
+
+
+def _subordinate_names_in(
+    sign_names: list[str],
+    glossary_by_name: dict[str, GlossaryEntryORM],
+) -> set[str]:
+    matched = set(sign_names)
+    subordinates: set[str] = set()
+    for name in sign_names:
+        entry = glossary_by_name.get(name)
+        if entry is None:
+            continue
+        for link in entry.link:
+            if link.name in matched:
+                subordinates.add(link.name)
+    return subordinates
 
 
 class MintMarkDict(TypedDict):
@@ -189,15 +205,21 @@ class PetInfoRenderer:
     def _build_glossary_groups(
         self, sign_names: list[str], seen: set[str]
     ) -> list[GlossaryGroup]:
+        subordinate_names = _subordinate_names_in(sign_names, self._glossary_by_name)
         groups: list[GlossaryGroup] = []
         for name in sign_names:
+            if name in subordinate_names:
+                continue
             entry = self._glossary_by_name.get(name)
             if entry is None or entry.name in seen:
                 continue
             seen.add(entry.name)
-            for link in entry.link:
-                seen.add(link.name)
-            groups.append(_glossary_group_from_entry(entry))
+            links = tuple(
+                _glossary_dict(linked.name, linked.desc) for linked in entry.link
+            )
+            for linked in entry.link:
+                seen.add(linked.name)
+            groups.append(_glossary_group_from_entry(entry, links))
         return groups
 
     def _extract_skill(self, skill_in_pet: SkillInPetORM) -> list[SkillDict]:
@@ -276,8 +298,7 @@ class PetInfoRenderer:
                     line.segments.append(TextSegment(text="（BOSS无效）"))
 
             sign_names = [
-                seg.text
-                for seg in desc_parser.segments_by_color(SIGN_SEGMENT_COLOR)
+                seg.text for seg in desc_parser.segments_by_color(SIGN_SEGMENT_COLOR)
             ]
             results.append(
                 SoulmarkDict(
@@ -400,9 +421,7 @@ class PetInfoRenderer:
     def _build_skills(self) -> SkillGroups:
         all_skills: list[SkillDict] = [
             skill
-            for skill_list in [
-                self._extract_skill(sl) for sl in self.pet.skill_links
-            ]
+            for skill_list in [self._extract_skill(sl) for sl in self.pet.skill_links]
             for skill in skill_list
             if skill["id"] != 19002
         ]
@@ -464,9 +483,7 @@ class PetInfoRenderer:
         all_skills: list[SkillDict],
         mintmarks: list[MintmarkORM],
     ) -> LoadedImages:
-        type_ids = list(
-            {skill["type_id"] for skill in all_skills} | {self.pet.type.id}
-        )
+        type_ids = list({skill["type_id"] for skill in all_skills} | {self.pet.type.id})
         pet_skill_names = {s["name"] for s in all_skills}
 
         (
@@ -499,9 +516,7 @@ class PetInfoRenderer:
                 desc=mm.desc,
                 icon=to_data_uri(icon_bytes),
                 skills=list(
-                    dict.fromkeys(
-                        s.name for s in mm.skill if s.name in pet_skill_names
-                    )
+                    dict.fromkeys(s.name for s in mm.skill if s.name in pet_skill_names)
                 ),
             )
             for mm, icon_bytes in zip(mintmarks, mm_icon_results, strict=True)
