@@ -111,6 +111,50 @@ def test_player_rank_scheduler_keeps_one_page_in_flight_per_board() -> None:
     asyncio.run(run())
 
 
+def test_player_rank_scheduler_allows_explicit_probe_batches() -> None:
+    async def run() -> None:
+        started: list[str] = []
+        release = asyncio.Event()
+
+        async def operation() -> RankLookupResult:
+            scheduler = current_player_rank_page_scheduler()
+            assert scheduler is not None
+
+            async def probe(label: str) -> None:
+                started.append(label)
+                await release.wait()
+
+            await asyncio.gather(
+                *(
+                    scheduler.fetch_parallel_page(
+                        "score-probe",
+                        lambda label=label: probe(label),
+                    )
+                    for label in ("probe-1", "probe-2", "probe-3")
+                )
+            )
+            return RankLookupResult(title="a", score_name="分", rank=1)
+
+        job = PlayerRankLookupJob(
+            id="a",
+            title="a",
+            key=1,
+            sub_key=1,
+            user_id=1,
+            target_score=100,
+            operation=operation,
+        )
+        task = asyncio.create_task(
+            run_player_rank_lookup_jobs([job], PlayerRankLookupConfig())
+        )
+        await _wait_for_event_count(started, 3)
+        assert set(started) == {"probe-1", "probe-2", "probe-3"}
+        release.set()
+        await task
+
+    asyncio.run(run())
+
+
 def test_player_rank_scheduler_retries_timed_out_page() -> None:
     events: list[str] = []
     results = asyncio.run(

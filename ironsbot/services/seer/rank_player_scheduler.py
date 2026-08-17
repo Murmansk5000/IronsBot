@@ -57,6 +57,7 @@ class _PageRequest(Generic[T]):
     title: str
     operation: Callable[[], Awaitable[T]]
     future: asyncio.Future[T]
+    concurrent: bool = False
     attempt: int = 0
 
 
@@ -76,7 +77,7 @@ class PlayerRankPageScheduler:
         self._queue_ready = asyncio.Event()
         self._closed = False
         self._stats: dict[str, _LookupStats] = {}
-        self._active_lookup_ids: set[str] = set()
+        self._active_lookup_counts: dict[str, int] = {}
         self._active_pages = 0
 
     @contextmanager
@@ -88,6 +89,35 @@ class PlayerRankPageScheduler:
             _CURRENT_LOOKUP_ID.reset(token)
 
     async def fetch_page(self, title: str, operation: Callable[[], Awaitable[T]]) -> T:
+        return await self._submit_page(title, operation)
+
+    async def fetch_pages(
+        self,
+        title: str,
+        operations: Sequence[Callable[[], Awaitable[T]]],
+    ) -> list[T]:
+        """Run an explicit batch of independent probes for the current board."""
+
+        tasks = (
+            self._submit_page(title, operation, concurrent=True)
+            for operation in operations
+        )
+        return await asyncio.gather(*tasks)
+
+    async def fetch_parallel_page(
+        self,
+        title: str,
+        operation: Callable[[], Awaitable[T]],
+    ) -> T:
+        return await self._submit_page(title, operation, concurrent=True)
+
+    async def _submit_page(
+        self,
+        title: str,
+        operation: Callable[[], Awaitable[T]],
+        *,
+        concurrent: bool = False,
+    ) -> T:
         if self._closed or self._timed_out():
             raise TimeoutError("玩家榜单查询总时间已到")
         lookup_id = _CURRENT_LOOKUP_ID.get()
@@ -101,6 +131,7 @@ class PlayerRankPageScheduler:
                 title=title,
                 operation=operation,
                 future=future,
+                concurrent=concurrent,
             )
         )
         self._queue_ready.set()
@@ -127,7 +158,9 @@ class PlayerRankPageScheduler:
                     self._expire_pending_requests()
                     continue
                 while request := self._next_ready_request():
-                    self._active_lookup_ids.add(request.lookup_id)
+                    self._active_lookup_counts[request.lookup_id] = (
+                        self._active_lookup_counts.get(request.lookup_id, 0) + 1
+                    )
                     self._active_pages += 1
                     task_group.start_soon(
                         self._process_request,
@@ -140,12 +173,16 @@ class PlayerRankPageScheduler:
 
     def _next_ready_request(self) -> _PageRequest[Any] | None:
         for index, request in enumerate(self._queue):
-            if request.lookup_id not in self._active_lookup_ids:
+            active_count = self._active_lookup_counts.get(request.lookup_id, 0)
+            if request.concurrent or not active_count:
                 del self._queue[index]
                 return request
         return None
 
-    async def _process_request(self, request: _PageRequest[Any]) -> None:
+    async def _process_request(  # noqa: C901
+        self,
+        request: _PageRequest[Any],
+    ) -> None:
         stats = self._stats.setdefault(request.lookup_id, _LookupStats())
         stats.page_requests += 1
         if self._deadline is None:
@@ -193,7 +230,11 @@ class PlayerRankPageScheduler:
                 request.future.set_result(result)
         finally:
             rank_page_request_timeout.reset(timeout_token)
-            self._active_lookup_ids.discard(request.lookup_id)
+            active_count = self._active_lookup_counts.get(request.lookup_id, 0) - 1
+            if active_count > 0:
+                self._active_lookup_counts[request.lookup_id] = active_count
+            else:
+                self._active_lookup_counts.pop(request.lookup_id, None)
             self._active_pages = max(0, self._active_pages - 1)
             self._queue_ready.set()
 
