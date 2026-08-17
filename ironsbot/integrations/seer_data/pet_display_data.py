@@ -101,8 +101,25 @@ def _build_effect_views(
     effect_rows: Iterable[dict[str, object]],
     source_rows: dict[str, list[dict[str, object]]],
 ) -> tuple[PetSpecialEffectView, ...]:
+    rows = tuple(effect_rows)
+    keys_by_glossary = {
+        int(cast("int", row["glossary_id"])): str(row["effect_key"])
+        for row in rows
+        if row["glossary_id"] is not None
+    }
     return tuple(
         PetSpecialEffectView(
+            effect_key=str(row["effect_key"]),
+            parent_effect_keys=tuple(
+                dict.fromkeys(
+                    keys_by_glossary[parent_id]
+                    for source in source_rows.get(str(row["effect_key"]), [])
+                    if source["source_kind"] == "glossary_link"
+                    and (parent_id := int(cast("int", source["source_id"])))
+                    in keys_by_glossary
+                    and keys_by_glossary[parent_id] != str(row["effect_key"])
+                )
+            ),
             name=str(row["name"]),
             description=(
                 str(row["description"])
@@ -126,7 +143,7 @@ def _build_effect_views(
                 )
             ),
         )
-        for row in effect_rows
+        for row in rows
     )
 
 
