@@ -8,17 +8,34 @@ HTTP_BAD_REQUEST = 400
 HTTP_PAYMENT_REQUIRED = 402
 HTTP_TOO_MANY_REQUESTS = 429
 
-AiResponseErrorKind = Literal["http", "invalid_json", "empty_reply"]
+AiResponseErrorKind = Literal[
+    "http",
+    "invalid_json",
+    "empty_reply",
+    "network",
+    "timeout",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class AiRequestAttempt:
+    endpoint: str
+    model: str
+    status_code: int | None = None
+    error_title: str = ""
+    error_detail: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class AiResponseResult:
     status_code: int
     reply: str = ""
+    endpoint: str = ""
     model: str = ""
     error_kind: AiResponseErrorKind | None = None
     error_title: str = ""
     error_detail: str = ""
+    attempts: tuple[AiRequestAttempt, ...] = ()
 
     @property
     def ok(self) -> bool:

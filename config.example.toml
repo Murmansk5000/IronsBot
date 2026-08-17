@@ -327,24 +327,6 @@ clock_warning_threshold_seconds = 3.0
 clock_check_timeout_seconds = 3.0
 
 [ai]
-# Default: "https://api.deepseek.com"
-# EN: OpenAI-compatible AI API base URL.
-# ZH: OpenAI 兼容 AI 接口地址。
-# Example: "https://api.openai.com/v1"
-base_url = "https://api.deepseek.com"
-
-# Default: "deepseek-v4-pro"
-# EN: AI chat model name.
-# ZH: AI 聊天模型名称。
-# Example: "deepseek-chat"
-model = "deepseek-v4-pro"
-
-# Default: []
-# EN: Backup models tried in order when the preferred model fails.
-# ZH: 首选模型失败时按顺序尝试的备用模型；全部失败后才向用户报错。
-# Example: ["gpt-5.4", "gpt-5.5"]
-fallback_models = []
-
 # Default: built-in IronsBot prompt.
 # EN: System prompt used for AI chat.
 # ZH: AI 聊天系统提示词。
@@ -429,6 +411,18 @@ admin_notice_cooldown_seconds = 600.0
 # ZH: 是否启用 AI 意图动作。
 # Example: false
 intent_actions_enabled = true
+
+# OpenAI-compatible endpoints are tried in TOML order. Keys must be set only
+# in the environment as AI_KEY_<UPPERCASE_ENDPOINT_NAME>, never in this file.
+# EN: Each endpoint tries models in list order before moving to the next endpoint.
+# ZH: 按端点和模型列表顺序回退；密钥只放 Unraid/Docker 环境变量。
+
+[[ai.endpoints]]
+# EN: Stable endpoint name; only letters, digits, and underscores are allowed.
+# ZH: 稳定端点名；仅允许字母、数字和下划线，对应 AI_KEY_DEEPSEEK。
+name = "deepseek"
+base_url = "https://api.deepseek.com"
+models = ["deepseek-v4-pro"]
 
 # EN: Intent actions are configured by ID under [ai.intent_actions.<id>].
 # Omitted fields inherit built-in defaults for known actions.

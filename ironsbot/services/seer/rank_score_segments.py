@@ -3,20 +3,28 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
-from ironsbot.services.seer.rank_score_helpers import score_segment_sample_indexes
+from ironsbot.services.seer.rank_score_cache import (
+    cached_score_candidate_page_starts,
+    fetch_rank_score_segment_from_cached_candidates,
+)
+from ironsbot.services.seer.rank_score_helpers import (
+    score_miss_proof_from_page,
+    score_segment_sample_indexes,
+)
 from ironsbot.services.seer.rank_score_search import (
     DescendingScoreSearchLimits,
     locate_descending_score_range,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Sequence
 
     from ironsbot.services.seer.rank_models import RankPageResult, RankScoreMissProof
 
@@ -31,8 +39,97 @@ class RankScoreSegmentDependencies:
     score_search_probe_limit: Callable[[int], int]
     score_search_tie_page_limit: Callable[[], int]
     fetch_rank_item: Callable[..., Awaitable[Any | None]]
+    fetch_rank_items: Callable[..., Awaitable[list[Any | None]]] | None
     fetch_rank_page_result: Callable[..., Awaitable[RankPageResult]]
+    fetch_rank_page_results: (
+        Callable[..., Awaitable[list[RankPageResult]]] | None
+    )
     score_miss_proof_from_page: Callable[..., RankScoreMissProof | None]
+    parallelism: int = 1
+
+
+def build_rank_score_segment_dependencies(
+    service: Any,
+    game: Any,
+    *,
+    rank_key: str | None,
+) -> RankScoreSegmentDependencies:
+    parallelism = service.rank_probe_parallelism(game)
+    batch_enabled = parallelism > 1
+    return RankScoreSegmentDependencies(
+        score_search_limit=partial(service._score_search_limit, rank_key),
+        rank_page_size=service.page_size,
+        rank_page_start=service.page_start,
+        cached_score_candidate_page_starts=partial(
+            cached_score_candidate_page_starts,
+            rank_page_start=service.page_start,
+            get_cached_score_indexes=service.cache.score_indexes,
+            get_cache_summary=service.cache.summary,
+        ),
+        fetch_cached_candidates=partial(
+            fetch_rank_score_segment_from_cached_candidates,
+            rank_page_size=service.page_size,
+            rank_page_start=service.page_start,
+            score_search_tie_page_limit=service._tie_page_limit,
+            fetch_rank_page_result=service.fetch_page_result,
+        ),
+        score_search_probe_limit=service._probe_limit,
+        score_search_tie_page_limit=service._tie_page_limit,
+        fetch_rank_item=service.fetch_item,
+        fetch_rank_items=service.fetch_item_batch if batch_enabled else None,
+        fetch_rank_page_result=service.fetch_page_result,
+        fetch_rank_page_results=service.fetch_page_batch if batch_enabled else None,
+        score_miss_proof_from_page=score_miss_proof_from_page,
+        parallelism=parallelism,
+    )
+
+
+async def fetch_score_segment_for_service(  # noqa: PLR0913
+    service: Any,
+    game: Any,
+    *,
+    rank_key: str | None,
+    key: int,
+    sub_key: int,
+    title: str,
+    score_name: str,
+    target_score: int,
+    search_limit: int | None,
+    start_index: int,
+    sample_limit: int | None,
+) -> RankScoreSearchResult:
+    if rank_key is not None and service.exclusion_policy.excluded_user_ids(rank_key):
+        from ironsbot.services.seer.rank_exclusion_lookups import (
+            fetch_visible_score_segment,
+        )
+
+        return await fetch_visible_score_segment(
+            service,
+            game,
+            rank_key=rank_key,
+            key=key,
+            sub_key=sub_key,
+            title=title,
+            score_name=score_name,
+            target_score=target_score,
+            search_limit=search_limit,
+        )
+    return await fetch_rank_score_segment(
+        game,
+        key=key,
+        sub_key=sub_key,
+        title=title,
+        score_name=score_name,
+        target_score=target_score,
+        search_limit=search_limit,
+        start_index=start_index,
+        sample_limit=sample_limit,
+        deps=build_rank_score_segment_dependencies(
+            service,
+            game,
+            rank_key=rank_key,
+        ),
+    )
 
 
 async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
@@ -142,6 +239,18 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
         return None if item is None else int(item.score)
 
+    async def fetch_scores(indexes: Sequence[int]) -> list[int | None]:
+        if deps.fetch_rank_items is None:
+            return [await fetch_score(index) for index in indexes]
+        items = await deps.fetch_rank_items(
+            game,
+            key=key,
+            sub_key=sub_key,
+            indexes=indexes,
+            use_cache=False,
+        )
+        return [None if item is None else int(item.score) for item in items]
+
     score_range = await locate_descending_score_range(
         start_index,
         end_index,
@@ -151,6 +260,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             probe_count=deps.score_search_probe_limit(limit),
             tie_fallback_size=page_size * deps.score_search_tie_page_limit(),
         ),
+        parallelism=deps.parallelism,
+        fetch_scores=fetch_scores,
     )
     result.boundary_score = score_range.boundary_score
     if score_range.last_index is None:
@@ -197,42 +308,61 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     fetched_pages = 0
     fetched_times: list[float] = []
 
-    for page_start in page_starts:
+    ordered_starts = tuple(page_starts)
+    for offset in range(0, len(ordered_starts), max(1, deps.parallelism)):
         if sample_indexes is None and fetched_pages >= max_pages:
             result.truncated = True
             break
-
-        page_result = await deps.fetch_rank_page_result(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=page_start,
-            end=page_start + page_size - 1,
-            use_cache=False,
-        )
-        fetched_times.append(page_result.fetched_at)
-        fetched_pages += 1
-
-        for offset, item in enumerate(page_result.items):
-            rank_index = page_start + offset
-            if rank_index < first_same_or_lower or rank_index >= tie_end:
-                continue
-            if sample_indexes is not None and rank_index not in sample_indexes:
-                continue
-            if int(item.score) != target_score:
-                continue
-            result.items.append(
-                RankScoreSearchItem(
-                    id=int(item.id),
-                    nick=str(item.nick),
-                    score=int(item.score),
-                    rank_index=rank_index,
+        starts = ordered_starts[offset : offset + max(1, deps.parallelism)]
+        if sample_indexes is None:
+            starts = starts[: max_pages - fetched_pages]
+        if deps.fetch_rank_page_results is None:
+            page_results = [
+                await deps.fetch_rank_page_result(
+                    game,
+                    key=key,
+                    sub_key=sub_key,
+                    start=page_start,
+                    end=page_start + page_size - 1,
+                    use_cache=False,
                 )
+                for page_start in starts
+            ]
+        else:
+            page_results = await deps.fetch_rank_page_results(
+                game,
+                key=key,
+                sub_key=sub_key,
+                starts=starts,
+                use_cache=False,
             )
 
-        if len(page_result.items) < page_size:
+        short_page = False
+        for page_start, page_result in zip(starts, page_results, strict=True):
+            fetched_times.append(page_result.fetched_at)
+            fetched_pages += 1
+
+            for item_offset, item in enumerate(page_result.items):
+                rank_index = page_start + item_offset
+                if rank_index < first_same_or_lower or rank_index >= tie_end:
+                    continue
+                if sample_indexes is not None and rank_index not in sample_indexes:
+                    continue
+                if int(item.score) != target_score:
+                    continue
+                result.items.append(
+                    RankScoreSearchItem(
+                        id=int(item.id),
+                        nick=str(item.nick),
+                        score=int(item.score),
+                        rank_index=rank_index,
+                    )
+                )
+            short_page = short_page or len(page_result.items) < page_size
+        if short_page:
             break
 
+    result.items.sort(key=lambda item: item.rank_index)
     result.scanned_count = len(result.items)
     result.fetched_at = max(fetched_times, default=time.time())
     return result
