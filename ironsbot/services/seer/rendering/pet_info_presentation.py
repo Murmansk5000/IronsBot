@@ -179,8 +179,19 @@ def _special_effect_views(
     snapshot: PetInfoSnapshot,
     icons: Mapping[int, bytes],
 ) -> list[SpecialEffectDict]:
+    names_by_key = {
+        effect.effect_key: effect.name
+        for effect in snapshot.display.special_effects
+        if effect.effect_key
+    }
     effects = [
         SpecialEffectDict(
+            related=bool(effect.parent_effect_keys),
+            parents=[
+                names_by_key[key]
+                for key in effect.parent_effect_keys
+                if key in names_by_key
+            ],
             name=effect.name,
             desc=effect.description,
             sources=list(effect.sources),
