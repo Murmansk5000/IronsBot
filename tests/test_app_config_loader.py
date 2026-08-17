@@ -23,6 +23,7 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
+    PushDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.operations import (
@@ -88,6 +89,10 @@ CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 480.0
 CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 240.0
 MAIN_BOT_ID = 111111111
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
+DEFAULT_PUSH_DELIVERY_MAX_ATTEMPTS = 3
+DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR = 3
+DEFAULT_PUSH_DELIVERY_DELAY_MIN_SECONDS = 2.0
+DEFAULT_PUSH_DELIVERY_DELAY_MAX_SECONDS = 5.0
 TEAM_RESOURCE_THRESHOLD = 2000
 
 
@@ -112,6 +117,22 @@ def _assert_default_push_unsubscribe(
     )
     assert "TD" in push_unsubscribe.hint
     assert "可查看推送订阅" in push_unsubscribe.group_hint
+
+
+def _assert_default_push_delivery(push_delivery: PushDeliveryConfig) -> None:
+    assert push_delivery.max_attempts == DEFAULT_PUSH_DELIVERY_MAX_ATTEMPTS
+    assert (
+        push_delivery.retry_batch_divisor
+        == DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR
+    )
+    assert (
+        push_delivery.batch_delay_min_seconds
+        == DEFAULT_PUSH_DELIVERY_DELAY_MIN_SECONDS
+    )
+    assert (
+        push_delivery.batch_delay_max_seconds
+        == DEFAULT_PUSH_DELIVERY_DELAY_MAX_SECONDS
+    )
 
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
@@ -275,6 +296,7 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
     _assert_default_push_unsubscribe(config.messaging.push_unsubscribe)
+    _assert_default_push_delivery(config.messaging.push_delivery)
     assert config.messaging.red_packet_notice.enabled
     assert (
         config.messaging.red_packet_notice.cooldown_seconds
@@ -429,6 +451,17 @@ def test_outbound_rate_limit_requires_distinct_nonempty_windows() -> None:
         match=r"contains duplicate window_seconds",
     ):
         OutboundRateLimitConfig(windows=[window, window])
+
+
+def test_push_delivery_requires_a_valid_delay_range() -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"push_delivery\.batch_delay_max_seconds",
+    ):
+        PushDeliveryConfig(
+            batch_delay_min_seconds=5,
+            batch_delay_max_seconds=2,
+        )
 
 
 def test_command_cooldown_rejects_unknown_message_placeholders() -> None:

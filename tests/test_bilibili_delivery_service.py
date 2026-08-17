@@ -30,7 +30,6 @@ from ironsbot.services.bilibili.delivery import (
     BILIBILI_SUMMARY_FAILURE_ACTION,
     BILIBILI_SUMMARY_MAX_ATTEMPTS,
     DYNAMIC_HISTORY_HINT,
-    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_IMAGE_PUSH_ACTION,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
@@ -55,7 +54,6 @@ if TYPE_CHECKING:
 
 PUB_TS = 1781004683
 EXPECTED_FULL_PUSH_COUNT = 2
-EXPECTED_RETRIED_CONTENT_PUSH_COUNT = 2
 QUERY_ENABLED_GROUP_ID = 1001
 
 
@@ -835,8 +833,7 @@ async def test_full_dynamic_puts_target_hints_on_link_message_only(
 
 
 @pytest.mark.asyncio
-async def test_full_dynamic_retries_only_failed_content_targets(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_full_dynamic_delegates_image_delivery_to_common_push_pipeline(
     tmp_path: Path,
 ) -> None:
     sent: list[dict[str, object]] = []
@@ -848,20 +845,7 @@ async def test_full_dynamic_retries_only_failed_content_targets(
             **kwargs: object,
         ) -> TargetSendSummary:
             sent.append({"message": message, **kwargs})
-            if kwargs["action_name"] == FULL_DYNAMIC_IMAGE_PUSH_ACTION:
-                return TargetSendSummary(
-                    [MessageTarget("group", 1001)],
-                    [MessageTarget("private", 2001)],
-                )
             return TargetSendSummary([], [])
-
-    async def no_sleep(_delay: float) -> None:
-        return None
-
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.delivery.asyncio.sleep",
-        no_sleep,
-    )
     service = BilibiliPushDeliveryService(
         cast("MessageDelivery", PartiallyFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
@@ -878,21 +862,18 @@ async def test_full_dynamic_retries_only_failed_content_targets(
         BiliPushTargets([1001], [], [2001], []),
     )
 
-    image_attempts = [
+    image_sends = [
         entry
         for entry in sent
         if str(entry["action_name"]) == FULL_DYNAMIC_IMAGE_PUSH_ACTION
-        or str(entry["action_name"]).startswith(
-            f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry "
-        )
     ]
-    assert len(image_attempts) == EXPECTED_RETRIED_CONTENT_PUSH_COUNT
-    assert image_attempts[1]["group_ids"] == []
-    assert image_attempts[1]["private_user_ids"] == [2001]
+    assert len(image_sends) == 1
+    assert image_sends[0]["group_ids"] == [1001]
+    assert image_sends[0]["private_user_ids"] == [2001]
 
 
 @pytest.mark.asyncio
-async def test_full_dynamic_notifies_superusers_once_after_three_failures(
+async def test_full_dynamic_notifies_superusers_after_common_delivery_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -908,9 +889,7 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         ) -> TargetSendSummary:
             action_name = str(kwargs["action_name"])
             sent_actions.append(action_name)
-            if action_name == FULL_DYNAMIC_IMAGE_PUSH_ACTION or action_name.startswith(
-                f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry "
-            ):
+            if action_name == FULL_DYNAMIC_IMAGE_PUSH_ACTION:
                 image_attempts.append(kwargs)
                 return TargetSendSummary(
                     [],
@@ -926,16 +905,9 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         ) -> None:
             admin_notices.append({"message": message, **kwargs})
 
-    async def no_sleep(_delay: float) -> None:
-        return None
-
     async def group_name(_bot: object, _group_id: int, **_kwargs: object) -> str:
         return "投递失败群"
 
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.delivery.asyncio.sleep",
-        no_sleep,
-    )
     monkeypatch.setattr(
         "ironsbot.services.bilibili.delivery.resolve_group_name",
         group_name,
@@ -957,11 +929,9 @@ async def test_full_dynamic_notifies_superusers_once_after_three_failures(
         BiliPushTargets([1001], [], [2001], []),
     )
 
-    assert len(image_attempts) == FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS
+    assert len(image_attempts) == 1
     assert len(admin_notices) == 1
-    assert f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次" in str(
-        admin_notices[0]["message"]
-    )
+    assert "自适应分批重试后仍未完成" in str(admin_notices[0]["message"])
     assert "群：投递失败群（1001）" in str(admin_notices[0]["message"])
     assert "私聊：2001" in str(admin_notices[0]["message"])
     assert FULL_DYNAMIC_PUSH_ACTION in sent_actions

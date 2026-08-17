@@ -521,6 +521,21 @@ hint = "回复 TD 可管理推送订阅。"
 # ZH: 追加到群推送末尾的退订提示。
 group_hint = "发送 TD、订阅 或 推送管理 可查看推送订阅；群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
 
+[messaging.push_delivery]
+# Default: 3
+# EN: Total attempts for a background push; the first full fan-out counts.
+# ZH: 主动推送的总发送轮数，首次全量发送也计入。
+max_attempts = 3
+# Default: 3
+# EN: Divide the next retry batch capacity by this value, rounded up.
+# ZH: 每轮失败后，下一轮批次容量除以此数并向上取整。
+retry_batch_divisor = 3
+# Default: 2.0 / 5.0
+# EN: Random delay range before retry batches and between later batches.
+# ZH: 缩小批次后的首次重试，以及后续批次之间的随机等待秒数范围。
+batch_delay_min_seconds = 2.0
+batch_delay_max_seconds = 5.0
+
 [messaging.red_packet_notice]
 # Default: true
 # EN: Notify admin notice targets when a QQ group red packet is detected.

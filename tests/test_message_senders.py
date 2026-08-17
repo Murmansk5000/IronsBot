@@ -7,6 +7,7 @@ from pytest import MonkeyPatch
 
 from ironsbot.config.models.messaging import (
     BotRoutingConfig,
+    PushDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.core.messaging import MessageTarget
@@ -23,6 +24,7 @@ GROUP_ID = 10
 PRIVATE_USER_ID = 20
 MENTION_USER_ID = 30
 FANOUT_TARGET_COUNT = 2
+PUSH_ATTEMPT_COUNT = 3
 
 
 class FakeSendError(RuntimeError):
@@ -122,12 +124,19 @@ class FakeSubscriptions:
 
 def _delivery(
     outbound: FakeOutboundService | None = None,
+    push_delivery: PushDeliveryConfig | None = None,
+    *,
+    group_alias_order: tuple[int, ...] = (),
+    user_alias_order: tuple[int, ...] = (),
 ) -> OneBotDelivery:
     return OneBotDelivery(
         outbound or FakeOutboundService(),
         PushUnsubscribeConfig(),
         BotRouter(BotRoutingConfig(), OneBotReferenceResolver({}, {})),
         FakeSubscriptions(),
+        push_delivery or PushDeliveryConfig(),
+        group_alias_order,
+        user_alias_order,
     )
 
 
@@ -282,6 +291,175 @@ def test_subscription_fanout_does_not_stagger_targets() -> None:
 
     asyncio.run(send())
     assert bot.started_group_ids == {GROUP_ID, GROUP_ID + 1}
+
+
+def test_push_delivery_retries_with_smaller_batches() -> None:
+    class RetryingBot(FakeBot):
+        def __init__(self) -> None:
+            super().__init__()
+            self.attempts: dict[int, int] = {}
+            self.active = 0
+            self.max_active_by_attempt: dict[int, int] = {}
+
+        async def send_group_msg(self, *, group_id: int, message: Message) -> None:
+            attempt = self.attempts.get(group_id, 0) + 1
+            self.attempts[group_id] = attempt
+            self.active += 1
+            self.max_active_by_attempt[attempt] = max(
+                self.max_active_by_attempt.get(attempt, 0), self.active
+            )
+            await asyncio.sleep(0)
+            self.active -= 1
+            if attempt < PUSH_ATTEMPT_COUNT:
+                raise FakeSendError
+            await super().send_group_msg(group_id=group_id, message=message)
+
+    bot = RetryingBot()
+    delivery = _delivery(
+        push_delivery=PushDeliveryConfig(
+            max_attempts=3,
+            retry_batch_divisor=3,
+            batch_delay_min_seconds=0,
+            batch_delay_max_seconds=0,
+        )
+    )
+    targets = [MessageTarget("group", GROUP_ID + index) for index in range(9)]
+
+    summary = asyncio.run(
+        delivery.send_targets(
+            targets,
+            "hello",
+            bot=bot,
+            subscription_key="scheduled_message",
+        )
+    )
+
+    assert summary.succeeded == targets
+    assert summary.failed == []
+    assert bot.max_active_by_attempt == {1: 9, 2: 3, 3: 1}
+
+
+def test_push_delivery_only_retries_failed_targets() -> None:
+    class PartialFailureBot(FakeBot):
+        def __init__(self) -> None:
+            super().__init__()
+            self.attempts: dict[int, int] = {}
+
+        async def send_group_msg(self, *, group_id: int, message: Message) -> None:
+            attempt = self.attempts.get(group_id, 0) + 1
+            self.attempts[group_id] = attempt
+            if group_id == GROUP_ID + 1 and attempt == 1:
+                raise FakeSendError
+            await super().send_group_msg(group_id=group_id, message=message)
+
+    bot = PartialFailureBot()
+    delivery = _delivery(
+        push_delivery=PushDeliveryConfig(
+            batch_delay_min_seconds=0,
+            batch_delay_max_seconds=0,
+        )
+    )
+    targets = [MessageTarget("group", GROUP_ID), MessageTarget("group", GROUP_ID + 1)]
+
+    summary = asyncio.run(
+        delivery.send_targets(
+            targets,
+            "hello",
+            bot=bot,
+            subscription_key="scheduled_message",
+        )
+    )
+
+    assert summary.succeeded == targets
+    assert [group_id for group_id, _message in bot.group_messages] == [
+        GROUP_ID,
+        GROUP_ID + 1,
+    ]
+
+
+def test_push_delivery_orders_targets_by_alias_definition() -> None:
+    bot = FakeBot()
+    delivery = _delivery(
+        group_alias_order=(GROUP_ID + 2, GROUP_ID),
+        user_alias_order=(PRIVATE_USER_ID + 2, PRIVATE_USER_ID),
+    )
+    targets = [
+        MessageTarget("private", PRIVATE_USER_ID + 1),
+        MessageTarget("group", GROUP_ID + 1),
+        MessageTarget("group", GROUP_ID),
+        MessageTarget("private", PRIVATE_USER_ID),
+        MessageTarget("group", GROUP_ID + 2),
+        MessageTarget("private", PRIVATE_USER_ID + 2),
+    ]
+
+    summary = asyncio.run(
+        delivery.send_targets(
+            targets,
+            "hello",
+            bot=bot,
+            subscription_key="scheduled_message",
+        )
+    )
+
+    assert summary.succeeded == targets
+    assert [group_id for group_id, _message in bot.group_messages] == [
+        GROUP_ID + 2,
+        GROUP_ID,
+        GROUP_ID + 1,
+    ]
+    assert [user_id for user_id, _message in bot.private_messages] == [
+        PRIVATE_USER_ID + 2,
+        PRIVATE_USER_ID,
+        PRIVATE_USER_ID + 1,
+    ]
+
+
+def test_push_batches_share_a_gate_per_bot() -> None:
+    class BlockingBot(FakeBot):
+        def __init__(self) -> None:
+            super().__init__(self_id=1001)
+            self.started: list[int] = []
+            self.first_started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def send_group_msg(self, *, group_id: int, message: Message) -> None:
+            self.started.append(group_id)
+            self.first_started.set()
+            await self.release.wait()
+            await super().send_group_msg(group_id=group_id, message=message)
+
+    async def _run() -> None:
+        bot = BlockingBot()
+        delivery = _delivery(
+            push_delivery=PushDeliveryConfig(
+                max_attempts=1,
+                batch_delay_min_seconds=0,
+                batch_delay_max_seconds=0,
+            )
+        )
+        first = asyncio.create_task(
+            delivery.send_targets(
+                [MessageTarget("group", GROUP_ID)],
+                "first",
+                bot=bot,
+                subscription_key="first",
+            )
+        )
+        await asyncio.wait_for(bot.first_started.wait(), timeout=0.1)
+        second = asyncio.create_task(
+            delivery.send_targets(
+                [MessageTarget("group", GROUP_ID + 1)],
+                "second",
+                bot=bot,
+                subscription_key="second",
+            )
+        )
+        await asyncio.sleep(0)
+        assert bot.started == [GROUP_ID]
+        bot.release.set()
+        await asyncio.gather(first, second)
+
+    asyncio.run(_run())
 
 
 def test_target_messages_fan_out_distinct_payloads() -> None:
