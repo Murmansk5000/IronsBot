@@ -102,6 +102,14 @@ async def test_normal_status_returns_notice_while_headless_is_offline() -> None:
 
 
 @pytest.mark.asyncio
+async def test_logged_in_status_still_fetches_stale_announcement() -> None:
+    notices = FakeNotices("旧维护公告")
+    result = await service(FakeHeadless(connected=True), notices).query_normal()
+    assert "开服了" in result.message
+    assert "旧维护公告" in result.message
+
+
+@pytest.mark.asyncio
 async def test_notice_failure_does_not_hide_logged_in_state() -> None:
     result = await service(
         FakeHeadless(connected=True),
