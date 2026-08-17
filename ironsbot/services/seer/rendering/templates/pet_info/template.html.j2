@@ -579,7 +579,11 @@
                     <div class="section">
                         <div class="sec-title">专属效果</div>
                         <div class="special-effects">
-                            {% for effect in special_effects %}
+                            {% for related, label in [(false, '直接效果'), (true, '关联说明')] %}
+                            {% set group = special_effects | selectattr('related', 'equalto', related) | list %}
+                            {% if group %}
+                            <div class="special-effect-sources">{{ label }}</div>
+                            {% for effect in group %}
                             <div class="special-effect">
                                 {% if effect.icon %}
                                 <img class="special-effect-icon" src="{{ effect.icon }}" />
@@ -589,11 +593,16 @@
                                     <span class="special-effect-name" style="color: {{ effect.color | default('#f35555') }}">{{ effect.name }}</span>
                                     <span class="special-effect-sources">{{ effect.sources | join("、") }}</span>
                                 </div>
+                                {% if effect.parents %}
+                                <div class="special-effect-sources">关联：{{ effect.parents | join('、') }}</div>
+                                {% endif %}
                                 {% if effect.desc %}
                                 <div class="special-effect-desc">{{ effect.desc }}</div>
                                 {% endif %}
                                 </div>
                             </div>
+                            {% endfor %}
+                            {% endif %}
                             {% endfor %}
                         </div>
                     </div>
