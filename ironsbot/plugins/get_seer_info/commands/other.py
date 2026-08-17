@@ -9,6 +9,12 @@ from nonebot.matcher import Matcher
 from seerapi_models import ApiMetadataORM
 from sqlmodel import select
 
+from ironsbot.plugins.headless_seer.exception import (
+    ClientNotInitializedError,
+    DisconnectedError,
+    NotLoggedInError,
+)
+from ironsbot.plugins.headless_seer.manager import client_manager
 from ironsbot.plugins.seer_data.image import PreviewImageGetter
 from ironsbot.utils.rule import no_reply
 
@@ -39,7 +45,8 @@ async def handle_data_version(matcher: Matcher, session: SeerAPISession) -> NoRe
     if not obj:
         await matcher.finish("❌暂无数据版本信息(这是一个bug，请反馈给开发者)")
     dt = obj.generate_time
-    # 为确保时区转换生效，需先判断dt是否带有tzinfo（即是否为"aware" datetime）；否则先转为UTC再转换
+    # 为确保时区转换生效，需先判断dt是否带有tzinfo（即是否为"aware" datetime）；
+    # 否则先转为UTC再转换
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
         # 假设dt原本为UTC时间（无tzinfo），先加上UTC tzinfo
         dt = dt.replace(tzinfo=timezone.utc)
@@ -75,8 +82,13 @@ server_info_matcher = matcher_group.on_fullmatch(
 
 @server_info_matcher.handle()
 async def handle_server_info(matcher: Matcher) -> NoReturn:
-    text = await fetch_server_notice_text()
-    if text:
-        await matcher.finish(text)
+    try:
+        client_manager.get_client()
+    except (ClientNotInitializedError, NotLoggedInError, DisconnectedError) as e:
+        text = await fetch_server_notice_text()
+        if isinstance(e, DisconnectedError):
+            await matcher.finish(text or "并没有开服（也可能是机器人掉线了）")
+        if text:
+            await matcher.finish(text)
 
     await matcher.finish("开服了哦~")
