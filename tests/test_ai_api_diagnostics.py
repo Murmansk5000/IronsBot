@@ -5,7 +5,7 @@ import httpx
 from pytest import MonkeyPatch
 from typing_extensions import Self
 
-from ironsbot.config.models.ai import AiConfig
+from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
 from ironsbot.integrations.http.ai import (
     AiApiSettings,
     HttpAiCompletionClient,
@@ -86,9 +86,14 @@ def test_ai_completion_uses_fallback_models_in_order() -> None:
             completion = HttpAiCompletionClient(
                 client,
                 AiConfig(
-                    api_key="test-key",
-                    model="primary",
-                    fallback_models=["backup", "unused"],
+                    endpoints=[
+                        AiEndpointConfig(
+                            name="primary",
+                            base_url="https://example.test/v1",
+                            models=["primary", "backup", "unused"],
+                            api_key="test-key",
+                        )
+                    ]
                 ),
             )
             return await completion.complete([{"role": "user", "content": "hi"}])
@@ -97,5 +102,62 @@ def test_ai_completion_uses_fallback_models_in_order() -> None:
 
     assert requested_models == ["primary", "backup"]
     assert result.ok
+    assert result.endpoint == "primary"
     assert result.model == "backup"
     assert result.reply == "备用模型回复"
+
+
+def test_ai_completion_switches_endpoint_after_auth_failure() -> None:
+    requested: list[tuple[str, str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        requested.append(
+            (
+                request.url.host or "",
+                str(payload["model"]),
+                request.headers["Authorization"],
+            )
+        )
+        if request.url.host == "primary.test":
+            return httpx.Response(403, json={"error": {"message": "denied"}})
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "备用端点回复"}}]},
+        )
+
+    async def run() -> AiResponseResult:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as client:
+            completion = HttpAiCompletionClient(
+                client,
+                AiConfig(
+                    endpoints=[
+                        AiEndpointConfig(
+                            name="primary",
+                            base_url="https://primary.test/v1",
+                            models=["first", "unused"],
+                            api_key="primary-key",
+                        ),
+                        AiEndpointConfig(
+                            name="backup",
+                            base_url="https://backup.test/v1",
+                            models=["fallback"],
+                            api_key="backup-key",
+                        ),
+                    ]
+                ),
+            )
+            return await completion.complete([{"role": "user", "content": "hi"}])
+
+    result = asyncio.run(run())
+
+    assert requested == [
+        ("primary.test", "first", "Bearer primary-key"),
+        ("backup.test", "fallback", "Bearer backup-key"),
+    ]
+    assert result.ok
+    assert result.endpoint == "backup"
+    assert result.model == "fallback"
+    assert [attempt.endpoint for attempt in result.attempts] == ["primary"]

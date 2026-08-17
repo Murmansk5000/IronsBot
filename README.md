@@ -145,7 +145,7 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
+- 密钥：`ONEBOT_ACCESS_TOKEN`、按 AI 端点配置的 `AI_KEY_<端点名大写>`、按账号库配置的
   `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
@@ -157,7 +157,7 @@ ironsbot` 通过 `ironsbot/app/bootstrap.py` 启动，并按
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-AI_KEY=
+AI_KEY_DEEPSEEK=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=

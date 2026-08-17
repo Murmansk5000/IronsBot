@@ -614,10 +614,10 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                     feature_help_visible,
                     features=features,
                     feature="ai_chat",
-                    enabled=bool(config.ai.api_key.strip()),
+                    enabled=config.ai.ai_enabled,
                 ),
             ),
-            commands=ai_chat_commands(enabled=bool(config.ai.api_key.strip())),
+            commands=ai_chat_commands(enabled=config.ai.ai_enabled),
             install=(
                 partial(
                     install_ai,
@@ -625,7 +625,7 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                     features=features,
                     bot_mention_block_service=bot_mention_block_service,
                 )
-                if config.ai.api_key.strip()
+                if config.ai.ai_enabled
                 else None
             ),
         ),
@@ -648,7 +648,7 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                     features=features,
                     feature="ai_intent",
                     enabled=(
-                        bool(config.ai.api_key.strip())
+                        config.ai.ai_enabled
                         and config.ai.intent_actions_enabled
                     ),
                 ),

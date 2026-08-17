@@ -171,7 +171,7 @@ def configured_image_commands(config: Settings) -> tuple[CommandDescriptor, ...]
 
 
 def ai_intent_commands(config: Settings) -> tuple[CommandDescriptor, ...]:
-    if not config.ai.api_key.strip() or not config.ai.intent_actions_enabled:
+    if not config.ai.ai_enabled or not config.ai.intent_actions_enabled:
         return ()
     return tuple(
         CommandDescriptor(

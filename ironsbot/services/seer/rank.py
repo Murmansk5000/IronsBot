@@ -5,7 +5,6 @@ import asyncio
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
-from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.seer import rank_summary
@@ -18,7 +17,6 @@ from ironsbot.services.seer.rank_constants import (
 )
 from ironsbot.services.seer.rank_exclusion_lookups import (
     fetch_visible_rank_range,
-    fetch_visible_score_segment,
 )
 from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
@@ -40,21 +38,11 @@ from ironsbot.services.seer.rank_range import (
     fetch_rank_range,
     fetch_rank_range_result,
 )
-from ironsbot.services.seer.rank_score_cache import (
-    cached_score_candidate_page_starts,
-    fetch_rank_score_segment_from_cached_candidates,
-)
-from ironsbot.services.seer.rank_score_helpers import score_miss_proof_from_page
 from ironsbot.services.seer.rank_score_search import (
     score_search_probe_limit,
     score_search_tie_page_limit,
 )
-from ironsbot.services.seer.rank_score_segments import (
-    RankScoreSegmentDependencies,
-)
-from ironsbot.services.seer.rank_score_segments import (
-    fetch_rank_score_segment as fetch_rank_score_segment_online,
-)
+from ironsbot.services.seer.rank_score_segments import fetch_score_segment_for_service
 from ironsbot.services.seer.rank_work_cache import (
     cached_rank_miss,
     record_rank_page_work,
@@ -618,43 +606,10 @@ class RankService(RankCacheQueryMixin):
         start_index: int = 0,
         sample_limit: int | None = None,
     ) -> RankScoreSearchResult:
-        if rank_key is not None and self.exclusion_policy.excluded_user_ids(rank_key):
-            return await fetch_visible_score_segment(
-                self,
-                game,
-                rank_key=rank_key,
-                key=key,
-                sub_key=sub_key,
-                title=title,
-                score_name=score_name,
-                target_score=target_score,
-                search_limit=search_limit,
-            )
-        dependencies = RankScoreSegmentDependencies(
-            score_search_limit=partial(self._score_search_limit, rank_key),
-            rank_page_size=self.page_size,
-            rank_page_start=self.page_start,
-            cached_score_candidate_page_starts=partial(
-                cached_score_candidate_page_starts,
-                rank_page_start=self.page_start,
-                get_cached_score_indexes=self.cache.score_indexes,
-                get_cache_summary=self.cache.summary,
-            ),
-            fetch_cached_candidates=partial(
-                fetch_rank_score_segment_from_cached_candidates,
-                rank_page_size=self.page_size,
-                rank_page_start=self.page_start,
-                score_search_tie_page_limit=self._tie_page_limit,
-                fetch_rank_page_result=self.fetch_page_result,
-            ),
-            score_search_probe_limit=self._probe_limit,
-            score_search_tie_page_limit=self._tie_page_limit,
-            fetch_rank_item=self.fetch_item,
-            fetch_rank_page_result=self.fetch_page_result,
-            score_miss_proof_from_page=score_miss_proof_from_page,
-        )
-        return await fetch_rank_score_segment_online(
+        return await fetch_score_segment_for_service(
+            self,
             game,
+            rank_key=rank_key,
             key=key,
             sub_key=sub_key,
             title=title,
@@ -663,7 +618,6 @@ class RankService(RankCacheQueryMixin):
             search_limit=search_limit,
             start_index=start_index,
             sample_limit=sample_limit,
-            deps=dependencies,
         )
 
     async def fetch_peak_summary(  # noqa: PLR0913

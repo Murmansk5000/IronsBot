@@ -261,7 +261,8 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
         "qq_group_manager": 2854196310,
     }
     assert config.features.user_policy["qq_group_manager"] == ["blacklist"]
-    assert config.ai.model == "deepseek-v4-pro"
+    assert config.ai.endpoints[0].name == "deepseek"
+    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
     assert "fire_manual" in config.ai.intent_actions
     assert (
         config.bilibili.accounts[DEFAULT_BILI_ACCOUNT_ALIAS].uid
@@ -515,7 +516,7 @@ def test_missing_app_config_error_explains_expected_path(tmp_path: Path) -> None
 
 def test_config_path_is_selected_by_single_environment_variable() -> None:
     config = load_settings(env={CONFIG_ENV: str(ROOT / "config.example.toml")})
-    assert config.ai.model == "deepseek-v4-pro"
+    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
 
 
 def test_unknown_app_config_fields_are_ignored_and_reported(
@@ -1362,7 +1363,7 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
 def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     env = {
         "ONEBOT_ACCESS_TOKEN": "token",
-        "AI_KEY": "sk-test",
+        "AI_KEY_DEEPSEEK": "sk-test",
         "SENDPIC_CNB_TOKEN": "cnb-token",
         "GITHUB_WORKFLOW_TOKEN": "gh-token",
     }
@@ -1370,9 +1371,27 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     settings = load_settings(ROOT / "config.example.toml", env=env)
 
     assert settings.bot.onebot_token == "token"
-    assert settings.ai.api_key == "sk-test"
+    assert settings.ai.endpoints[0].api_key == "sk-test"
     assert settings.messaging.sendpic.cnb_token == "cnb-token"
     assert settings.operations.data_sync.github_token == "gh-token"
+
+
+def test_ai_endpoint_key_must_not_be_written_to_toml(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[ai]
+[[ai.endpoints]]
+name = "test"
+base_url = "https://example.test/v1"
+models = ["test-model"]
+api_key = "must-not-be-here"
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="AI_KEY_<ENDPOINT_NAME>"):
+        load_settings(config_path)
 
 
 def test_player_accounts_resolve_names_and_hash_environment_passwords(
@@ -1693,7 +1712,7 @@ def test_docker_registry_credentials_read_from_environment(
 def test_app_config_defaults_cover_runtime_services() -> None:
     app_config = load_settings(ROOT / "config.example.toml")
 
-    assert app_config.ai.model == "deepseek-v4-pro"
+    assert app_config.ai.endpoints[0].models == ["deepseek-v4-pro"]
     assert app_config.runtime.menu.root_timeout_minutes == 3  # noqa: PLR2004
     assert app_config.runtime.menu.page_extension_minutes == 1
     assert app_config.runtime.menu.max_timeout_minutes == 5  # noqa: PLR2004
