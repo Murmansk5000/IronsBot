@@ -1,3 +1,6 @@
+import asyncio
+from collections.abc import Sequence
+
 import pytest
 
 from ironsbot.config.models.seer import RankQueryConfig
@@ -110,3 +113,41 @@ async def test_score_range_search_gives_each_binary_boundary_its_own_budget() ->
     assert not result.truncated
     assert not result.budget_exhausted
     assert len(probes) <= LIMITED_PROBE_COUNT * 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("parallelism", "first_partition"),
+    [(1, (50,)), (2, (33, 66)), (3, (25, 50, 75))],
+)
+async def test_score_range_search_uses_n_partition_points(
+    parallelism: int,
+    first_partition: tuple[int, ...],
+) -> None:
+    scores = [1_000 - index for index in range(100)]
+    batches: list[tuple[int, ...]] = []
+
+    async def score_at(index: int) -> int | None:
+        return scores[index] if 0 <= index < len(scores) else None
+
+    async def scores_at(indexes: Sequence[int]) -> list[int | None]:
+        batches.append(tuple(indexes))
+        await asyncio.sleep(0)
+        return [await score_at(index) for index in indexes]
+
+    result = await locate_descending_score_range(
+        0,
+        len(scores),
+        950,
+        score_at,
+        limits=DescendingScoreSearchLimits(
+            probe_count=100,
+            tie_fallback_size=10,
+        ),
+        parallelism=parallelism,
+        fetch_scores=scores_at,
+    )
+
+    assert (result.match_start, result.match_end) == (50, 51)
+    assert max(map(len, batches)) == parallelism
+    assert first_partition in batches

@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import asyncio
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
@@ -80,6 +82,10 @@ if TYPE_CHECKING:
 
 _BOOK_BREAKDOWN_SCAN_LIMIT = 2_000
 _LAST_CONFIRMED_RANK_MAX_AGE_SECONDS = 24 * 60 * 60
+_PARALLEL_RANK_PAGE_REQUEST: ContextVar[bool] = ContextVar(
+    "parallel_rank_page_request",
+    default=False,
+)
 
 
 class RankPageCache(Protocol):
@@ -219,6 +225,7 @@ class RankService(RankCacheQueryMixin):
         start: int,
         end: int,
         use_cache: bool = False,
+        parallel: bool = False,
     ) -> RankPageResult:
         if use_cache:
             cached = self.cache.page(
@@ -252,6 +259,11 @@ class RankService(RankCacheQueryMixin):
         scheduler = current_player_rank_page_scheduler()
         if scheduler is None:
             items = await fetch_online()
+        elif parallel:
+            items = await scheduler.fetch_parallel_page(
+                f"key={key} sub_key={sub_key} page={start + 1}-{end + 1}",
+                fetch_online,
+            )
         else:
             items = await scheduler.fetch_page(
                 f"key={key} sub_key={sub_key} page={start + 1}-{end + 1}",
@@ -283,7 +295,9 @@ class RankService(RankCacheQueryMixin):
         start: int,
         end: int,
         use_cache: bool = False,
+        parallel: bool = False,
     ) -> list[Any]:
+        parallel = parallel or _PARALLEL_RANK_PAGE_REQUEST.get()
         result = await self.fetch_page_result(
             game,
             key=key,
@@ -291,6 +305,7 @@ class RankService(RankCacheQueryMixin):
             start=start,
             end=end,
             use_cache=use_cache,
+            parallel=parallel,
         )
         return result.items
 
@@ -303,6 +318,7 @@ class RankService(RankCacheQueryMixin):
         start: int,
         end: int,
         use_cache: bool = False,
+        parallel: bool = False,
     ) -> RankPageResult:
         """Fetch one position-anchor page through the public page boundary.
 
@@ -314,17 +330,19 @@ class RankService(RankCacheQueryMixin):
         """
 
         _ = use_cache
-        items = await self.fetch_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=end,
-            use_cache=False,
-        )
+        page_kwargs = {
+            "key": key,
+            "sub_key": sub_key,
+            "start": start,
+            "end": end,
+            "use_cache": False,
+        }
+        if parallel:
+            page_kwargs["parallel"] = True
+        items = await self.fetch_page(game, **page_kwargs)
         return RankPageResult(items, time.time(), from_cache=False)
 
-    async def fetch_item(
+    async def fetch_item(  # noqa: PLR0913
         self,
         game: HeadlessGame,
         *,
@@ -332,6 +350,7 @@ class RankService(RankCacheQueryMixin):
         sub_key: int,
         index: int,
         use_cache: bool = False,
+        parallel: bool = False,
     ) -> Any | None:
         if use_cache:
             cached = self.cache.item_by_index(
@@ -350,9 +369,81 @@ class RankService(RankCacheQueryMixin):
             start=page_start,
             end=page_start + page_size - 1,
             use_cache=use_cache,
+            parallel=parallel,
         )
         offset = index - page_start
         return items[offset] if 0 <= offset < len(items) else None
+
+    def rank_probe_parallelism(self, game: HeadlessGame) -> int:
+        """Return the spare public-pool capacity available to one search batch."""
+
+        idle_workers = getattr(game, "idle_worker_count", None)
+        if not isinstance(idle_workers, int):
+            return 1
+        return max(1, idle_workers)
+
+    async def fetch_page_batch(
+        self,
+        game: HeadlessGame,
+        *,
+        key: int,
+        sub_key: int,
+        starts: Sequence[int],
+        use_cache: bool = False,
+    ) -> list[RankPageResult]:
+        page_size = self.page_size()
+        normalized_starts = tuple(dict.fromkeys(max(0, start) for start in starts))
+        async def fetch_parallel_page(start: int) -> RankPageResult:
+            token = _PARALLEL_RANK_PAGE_REQUEST.set(True)
+            try:
+                items = await self.fetch_page(
+                    game,
+                    key=key,
+                    sub_key=sub_key,
+                    start=start,
+                    end=start + page_size - 1,
+                    use_cache=use_cache,
+                )
+            finally:
+                _PARALLEL_RANK_PAGE_REQUEST.reset(token)
+            return RankPageResult(items, time.time(), from_cache=False)
+
+        return list(
+            await asyncio.gather(
+                *(fetch_parallel_page(start) for start in normalized_starts)
+            )
+        )
+
+    async def fetch_item_batch(
+        self,
+        game: HeadlessGame,
+        *,
+        key: int,
+        sub_key: int,
+        indexes: Sequence[int],
+        use_cache: bool = False,
+    ) -> list[Any | None]:
+        page_starts = tuple(
+            dict.fromkeys(self.page_start(index) for index in indexes if index >= 0)
+        )
+        pages = await self.fetch_page_batch(
+            game,
+            key=key,
+            sub_key=sub_key,
+            starts=page_starts,
+            use_cache=use_cache,
+        )
+        items_by_page = dict(zip(page_starts, pages, strict=True))
+        resolved: list[Any | None] = []
+        for index in indexes:
+            if index < 0:
+                resolved.append(None)
+                continue
+            page_start = self.page_start(index)
+            page = items_by_page[page_start]
+            offset = index - page_start
+            resolved.append(page.items[offset] if offset < len(page.items) else None)
+        return resolved
 
     async def fetch_range(  # noqa: PLR0913
         self,
