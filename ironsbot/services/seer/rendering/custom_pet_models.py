@@ -69,6 +69,8 @@ class SoulmarkDict(TypedDict):
 
 
 class SpecialEffectDict(TypedDict):
+    parents: NotRequired[list[str]]
+    related: NotRequired[bool]
     name: str
     desc: str | None
     sources: list[str]
