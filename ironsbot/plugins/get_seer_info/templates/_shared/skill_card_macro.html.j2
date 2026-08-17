@@ -59,5 +59,15 @@
     {% if skill.info %}
     <div class="sk-desc">{{ skill.info }}</div>
     {% endif %}
+    {% if skill.glossaries %}
+    <div class="sk-glossaries">
+        {% for g in skill.glossaries %}
+        <div class="sk-glossary">
+            <span class="sk-glossary-name" style="color: {{ g.color }}">{{ g.name }}:</span>
+            <span class="sk-glossary-desc">{{ g.desc }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </div>
 {% endmacro %}

@@ -116,9 +116,7 @@ def _parse_desc_line(raw: str) -> DescLine:
             if can_merge:
                 line.segments[-1].text += text
             else:
-                line.segments.append(
-                    TextSegment(text=text, colors=cur, id=seg_id)
-                )
+                line.segments.append(TextSegment(text=text, colors=cur, id=seg_id))
 
     return line
 
@@ -153,10 +151,14 @@ class AnalyzeDescParser:
         """描述中出现的所有词条 ID"""
         return {seg.id for seg in self.segments if seg.id}
 
+    def segments_by_color(self, color: str) -> list[TextSegment]:
+        """返回所有匹配指定颜色的文本片段"""
+        return [seg for seg in self.segments if color in seg.colors]
+
     @property
     def colors(self) -> set[str]:
         """描述中出现的所有颜色值"""
-        return {c for line in self.lines for seg in line.segments for c in seg.colors}
+        return {c for seg in self.segments for c in seg.colors}
 
     def to_plain_text(self, line_separator: str = "\n") -> str:
         """将完整描述转为不带任何标签的纯文本。"""

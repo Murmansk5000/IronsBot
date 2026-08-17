@@ -478,7 +478,7 @@
                             <div class="sm-glossaries">
                                 {% for g in sm.glossaries %}
                                 <div class="sm-glossary">
-                                    <span class="sm-glossary-name">{{ g.name }}:</span>
+                                    <span class="sm-glossary-name" style="color: {{ g.color }}">{{ g.name }}:</span>
                                     <span class="sm-glossary-desc">{{ g.desc }}</span>
                                 </div>
                                 {% endfor %}
