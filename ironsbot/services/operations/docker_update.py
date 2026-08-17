@@ -98,14 +98,43 @@ class DockerUpdateService:
     async def check_image_update(self) -> str:
         """Check the registry manifest without pulling or restarting anything."""
 
-        container_name = str(self._config.container_name)
-        async with self._lock:
-            result = await self._docker.check_update(self._request(container_name))
+        container_name, result = await self._check_update()
         return format_docker_image_check_reply(
             container_name=container_name,
             image=str(self._config.image),
             result=result,
         )
+
+    async def prepare_manual_update(self) -> tuple[str, bool]:
+        """Return the read-only check result and whether an update can be confirmed."""
+
+        container_name, result = await self._check_update()
+        return (
+            format_docker_image_check_reply(
+                container_name=container_name,
+                image=str(self._config.image),
+                result=result,
+            ),
+            result.ok and not result.up_to_date,
+        )
+
+    async def execute_manual_update(self) -> str:
+        """Start the verified Docker update after an administrator confirmation."""
+
+        container_name, result = await self.run_update()
+        if result.ok and not result.up_to_date and result.updater_container_id:
+            self._save_manual_handoff(container_name, result)
+        return format_docker_update_reply(
+            container_name=container_name,
+            image=str(self._config.image),
+            result=result,
+        )
+
+    async def _check_update(self) -> tuple[str, DockerImageCheckResult]:
+        container_name = str(self._config.container_name)
+        async with self._lock:
+            result = await self._docker.check_update(self._request(container_name))
+        return container_name, result
 
     async def confirm_update_handoff(
         self,
@@ -163,7 +192,28 @@ class DockerUpdateService:
 
     async def prepare_manual_restart(self) -> tuple[str, RestartAction]:
         if not bool(self._config.check_on_restart):
-            return await self._prepare_restart_without_image_check()
+            return await self.prepare_restart_only()
+
+        return await self.prepare_update_and_restart()
+
+    async def prepare_restart_only(self) -> tuple[str, RestartAction]:
+        """Prepare an explicit restart without checking or updating the image."""
+
+        action = await self._ordinary_restart_action()
+        if action == "docker":
+            return (
+                "正在重启机器人容器。\n"
+                "本次选择“仅重启”，不会检查或更新 Docker 镜像。",
+                action,
+            )
+        return (
+            "正在重启机器人进程。\n"
+            "本次选择“仅重启”，不会检查或更新 Docker 镜像。",
+            action,
+        )
+
+    async def prepare_update_and_restart(self) -> tuple[str, RestartAction]:
+        """Check for an image update, apply it when present, then restart."""
 
         container_name, result = await self.run_update()
         reply = format_docker_update_reply(
@@ -231,16 +281,6 @@ class DockerUpdateService:
                 "docker container restart failed; falling back to process restart"
             )
             await self._restart_process()
-
-    async def _prepare_restart_without_image_check(self) -> tuple[str, RestartAction]:
-        action = await self._ordinary_restart_action()
-        if action == "docker":
-            return (
-                "正在重启机器人容器。\n"
-                "当前配置未启用重启前镜像检查；将直接重启当前 Docker 容器。",
-                action,
-            )
-        return "正在重启机器人进程。", action
 
     async def _ordinary_restart_action(self) -> RestartAction:
         socket_path = str(self._config.docker_socket_path).strip()

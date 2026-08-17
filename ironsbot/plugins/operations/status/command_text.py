@@ -1,9 +1,16 @@
 # SPDX-License-Identifier: MIT
 
 NORMAL_SERVER_STATUS_COMMAND = "开服了吗"
+NORMAL_SERVER_STATUS_COMMANDS = (
+    NORMAL_SERVER_STATUS_COMMAND,
+    "开服了嘛",
+    "开服了没",
+    "开服没",
+    "关服了吗",
+    "关服了嘛",
+)
 DISABLED_BARE_ADMIN_COMMAND = "开服查询"
 ADMIN_SERVER_STATUS_COMMAND = "/开服查询"
 HEADLESS_INSTANCE_STATUS_COMMANDS = ("/无头状态", "/检查无头")
 BOT_RESTART_COMMANDS = ("/机器人重启", "/重启机器人")
 DOCKER_UPDATE_COMMANDS = ("/更新镜像", "/更新Docker", "/更新docker")
-DOCKER_CHECK_UPDATE_COMMANDS = ("/检查更新镜像", "/检查镜像更新")

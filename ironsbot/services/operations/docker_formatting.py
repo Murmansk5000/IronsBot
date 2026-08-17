@@ -70,7 +70,7 @@ def format_docker_update_reply(
         if check_only:
             lines.extend(
                 [
-                    "结论：检测到远端新镜像，可发送 /更新镜像 更新并重启。",
+                    "结论：检测到远端新镜像，等待确认后更新并重启。",
                     "本次只检查，未拉取镜像、未创建 Watchtower、未重启容器。",
                 ]
             )

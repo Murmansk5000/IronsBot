@@ -21,9 +21,8 @@ from ironsbot.plugins.operations.db_sync import (
 from ironsbot.plugins.operations.status.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
     BOT_RESTART_COMMANDS,
-    DOCKER_CHECK_UPDATE_COMMANDS,
     DOCKER_UPDATE_COMMANDS,
-    NORMAL_SERVER_STATUS_COMMAND,
+    NORMAL_SERVER_STATUS_COMMANDS,
 )
 from ironsbot.runtime.commands import CommandDescriptor
 from ironsbot.services.activity.commands import (
@@ -69,13 +68,13 @@ def test_operation_examples_use_matcher_command_sources() -> None:
     docker = _by_id(docker_update_commands())
     sync = _by_id(data_sync_commands())
 
-    assert status["server_status.query"].examples == (NORMAL_SERVER_STATUS_COMMAND,)
+    assert status["server_status.query"].examples == NORMAL_SERVER_STATUS_COMMANDS
     assert status["server_status.admin_query"].examples == (
         ADMIN_SERVER_STATUS_COMMAND,
     )
     assert docker["docker_update.restart"].examples == BOT_RESTART_COMMANDS
     assert docker["docker_update.image_update"].examples == DOCKER_UPDATE_COMMANDS
-    assert docker["docker_update.image_check"].examples == DOCKER_CHECK_UPDATE_COMMANDS
+    assert "docker_update.image_check" not in docker
     assert sync["db_sync.update"].examples == tuple(
         f"/{command}" for command in MANUAL_SYNC_COMMANDS
     )
