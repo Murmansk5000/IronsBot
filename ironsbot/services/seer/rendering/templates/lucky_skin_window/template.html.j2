@@ -23,6 +23,7 @@
       border: 1px solid #347db8; border-radius: 5px;
     }
     .art {
+      position: relative;
       height: 220px; display: flex; align-items: center; justify-content: center;
       padding: 10px; background: #102f4f;
       border-bottom: 1px solid #286290;
@@ -35,7 +36,11 @@
       align-items: center; justify-content: center; text-align: center;
       font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere;
     }
-    .star { color: #ffd15c; margin-right: 4px; font-size: 19px; line-height: 1; }
+    .star {
+      position: absolute; top: 8px; left: 8px; z-index: 1;
+      color: #ffd15c; font-size: 27px; line-height: 1;
+      text-shadow: 0 1px 3px #071426;
+    }
     .skin-id { color: #91c8ed; margin-top: 4px; font-size: 13px; font-weight: 400; }
     .choice {
       display: inline-flex; align-items: center; justify-content: center;
@@ -71,6 +76,7 @@
       {% for offer in offers %}
       <article class="offer">
         <div class="art">
+          {% if offer.watched %}<span class="star" aria-label="关注">★</span>{% endif %}
           {% if offer.image %}
           <img src="{{ offer.image }}" alt="{{ offer.name }}">
           {% else %}
@@ -78,7 +84,7 @@
           {% endif %}
         </div>
         <div class="name">
-          <div><span class="choice">{{ offer.index }}</span>{% if offer.watched %}<span class="star">⭐</span>{% endif %}{{ offer.name }}</div>
+          <div><span class="choice">{{ offer.index }}</span>{{ offer.name }}</div>
           <div class="skin-id">皮肤ID：{{ offer.skin_id }}</div>
         </div>
         <div class="price">

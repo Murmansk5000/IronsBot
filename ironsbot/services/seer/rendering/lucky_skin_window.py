@@ -59,7 +59,7 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - shared rendering dependen
     """Render today's four offers without letting one missing asset fail the card."""
 
     content_key = _cache_key(result, offers)
-    if cached := cache.get("lucky_skin_window_v2", content_key):
+    if cached := cache.get("lucky_skin_window_v4", content_key):
         return cached
 
     skin_ids = tuple(offer.skin_id for offer in offers)
@@ -93,7 +93,7 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - shared rendering dependen
         max_width=1040,
         allow_refit=False,
     )
-    cache.put("lucky_skin_window_v2", content_key, rendered)
+    cache.put("lucky_skin_window_v4", content_key, rendered)
     return rendered
 
 
