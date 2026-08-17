@@ -153,6 +153,8 @@ class PetSpecialEffectView:
     glossary_id: int | None
     status_id: int | None
     sources: tuple[str, ...]
+    effect_key: str = ""
+    parent_effect_keys: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
