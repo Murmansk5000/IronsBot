@@ -658,13 +658,25 @@ def test_superuser_resolves_private_lineup_alias_outside_allowed_groups(
     assert command.player_id == _ACCOUNT_PLAYER_ID
 
 
-def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
+def test_binding_command_accepts_visible_account_aliases(monkeypatch: Any) -> None:
     finish_reply = AsyncMock()
     monkeypatch.setattr(player, "finish_event_reply", finish_reply)
     service = SimpleNamespace(bind_player=AsyncMock())
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="sample_player",
+                aliases=("示例账号",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
-        cast("Any", object()),
+        cast("Any", _features()),
+        player_accounts=registry,
     )
 
     asyncio.run(
@@ -676,10 +688,11 @@ def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
         )
     )
 
-    call = finish_reply.await_args
-    assert call is not None
-    assert call.args[2].startswith("绑定米米号请直接填写数字")
-    service.bind_player.assert_not_awaited()
+    service.bind_player.assert_awaited_once_with(
+        _ACCOUNT_PLAYER_ID,
+        qq_user_id=123,
+        group_id=456,
+    )
 
 
 def test_superuser_can_bind_a_mentioned_member(monkeypatch: Any) -> None:
@@ -725,6 +738,58 @@ def test_superuser_can_bind_a_mentioned_member(monkeypatch: Any) -> None:
     )
     service.bind_player.assert_not_awaited()
     finish_reply.assert_awaited_once()
+
+
+def test_superuser_can_bind_a_mentioned_member_by_private_alias(
+    monkeypatch: Any,
+) -> None:
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", finish_reply)
+    bind_for_user = AsyncMock(return_value=PlayerQueryResult(message="已绑定"))
+    monkeypatch.setattr(player, "bind_player_for_user", bind_for_user)
+    service = SimpleNamespace(bind_player=AsyncMock())
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="lineup_worker",
+                aliases=("甲佬",),
+                password=None,
+                public=False,
+            ),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", _features(superuser=True)),
+        player_accounts=registry,
+    )
+    event = group_message_event(
+        "绑定米米号甲佬",
+        user_id=10001,
+        group_id=20002,
+        message=Message(
+            MessageSegment.text("绑定米米号甲佬") + MessageSegment.at(30003)
+        ),
+    )
+
+    asyncio.run(
+        player.handle_player_binding_command(
+            dependencies,
+            cast("Any", object()),
+            event,
+            {player.BOT_COMMAND_ARG_KEY: "甲佬"},
+        )
+    )
+
+    bind_for_user.assert_awaited_once_with(
+        service,
+        _ACCOUNT_PLAYER_ID,
+        actor_qq_user_id=10001,
+        target_qq_user_id=30003,
+        group_id=20002,
+    )
+    service.bind_player.assert_not_awaited()
 
 
 def test_non_superuser_cannot_bind_a_mentioned_member(monkeypatch: Any) -> None:

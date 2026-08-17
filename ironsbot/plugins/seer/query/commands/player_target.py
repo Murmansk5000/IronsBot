@@ -70,7 +70,61 @@ def resolve_event_player_reference(
     )
 
 
-def resolve_event_player_target(  # noqa: C901, PLR0913 - event resolution inputs are explicit
+def resolve_event_player_reference_target(  # noqa: PLR0911 - explicit outcomes aid callers
+    accounts: PlayerAccountRegistry,
+    event: Event,
+    reference: str | None,
+    *,
+    allow_private: bool = False,
+    allow_partial_reference: bool = False,
+) -> PlayerTargetResolution:
+    """Resolve an explicit number or configured account reference only."""
+
+    normalized = "" if reference is None else reference.strip()
+    if not normalized:
+        return PlayerTargetResolution(None, offer_binding=False, recognized=False)
+    if normalized.isdecimal():
+        player_id = int(normalized)
+        if not is_valid_player_id(player_id):
+            return PlayerTargetResolution(
+                None,
+                offer_binding=False,
+                error=PLAYER_ID_ERROR_MESSAGE,
+            )
+        return PlayerTargetResolution(player_id, offer_binding=True)
+
+    player_id = resolve_event_player_reference(
+        accounts,
+        event,
+        normalized,
+        allow_private=allow_private,
+    )
+    if player_id is not None:
+        return PlayerTargetResolution(player_id, offer_binding=True)
+    choices = (
+        _player_target_choices(
+            accounts.find_player_accounts(
+                normalized,
+                group_id=(
+                    event_group_id(event)
+                    if isinstance(event, MessageEvent)
+                    else None
+                ),
+                allow_private=allow_private,
+            ),
+            normalized,
+        )
+        if allow_partial_reference
+        else ()
+    )
+    if len(choices) == 1:
+        return PlayerTargetResolution(choices[0].player_id, offer_binding=True)
+    if choices:
+        return PlayerTargetResolution(None, offer_binding=False, choices=choices)
+    return PlayerTargetResolution(None, offer_binding=False, recognized=False)
+
+
+def resolve_event_player_target(  # noqa: PLR0913 - event resolution inputs are explicit
     accounts: PlayerAccountRegistry,
     event: Event,
     reference: str | None,
@@ -84,51 +138,21 @@ def resolve_event_player_target(  # noqa: C901, PLR0913 - event resolution input
 
     if not isinstance(event, MessageEvent):
         return PlayerTargetResolution(None, offer_binding=False, recognized=False)
+    explicit_target = resolve_event_player_reference_target(
+        accounts,
+        event,
+        reference,
+        allow_private=allow_private,
+        allow_partial_reference=allow_partial_reference,
+    )
     normalized = "" if reference is None else reference.strip()
-    explicit_player_id: int | None = None
-    if normalized:
-        if normalized.isdecimal():
-            explicit_player_id = int(normalized)
-            if not is_valid_player_id(explicit_player_id):
-                return PlayerTargetResolution(
-                    None,
-                    offer_binding=False,
-                    error=PLAYER_ID_ERROR_MESSAGE,
-                )
-        else:
-            explicit_player_id = resolve_event_player_reference(
-                accounts,
-                event,
-                normalized,
-                allow_private=allow_private,
-            )
-            if explicit_player_id is None:
-                choices = (
-                    _player_target_choices(
-                        accounts.find_player_accounts(
-                            normalized,
-                            group_id=event_group_id(event),
-                            allow_private=allow_private,
-                        ),
-                        normalized,
-                    )
-                    if allow_partial_reference
-                    else ()
-                )
-                if len(choices) == 1:
-                    explicit_player_id = choices[0].player_id
-                elif choices:
-                    return PlayerTargetResolution(
-                        None,
-                        offer_binding=False,
-                        choices=choices,
-                    )
-            if explicit_player_id is None:
-                return PlayerTargetResolution(
-                    None,
-                    offer_binding=False,
-                    recognized=False,
-                )
+    if normalized and (
+        explicit_target.error is not None
+        or explicit_target.choices
+        or not explicit_target.recognized
+    ):
+        return explicit_target
+    explicit_player_id = explicit_target.player_id
 
     if explicit_player_id is None and not allow_default:
         context = message_input_context(event)

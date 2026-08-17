@@ -29,12 +29,14 @@ _PLAYER_TARGET_SELECTION_ACTION = ActionDefinition(
 )
 
 
-async def enter_player_target_selection(
+async def enter_player_target_selection(  # noqa: PLR0913 - prompt context is explicit
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
     target: PlayerTargetResolution,
     select_target: PlayerTargetSelectionCallback,
+    *,
+    title: str = "请问你想查询哪位玩家？",
 ) -> None:
     """Present visible partial matches and continue through the caller's flow."""
 
@@ -51,7 +53,7 @@ async def enter_player_target_selection(
         event,
         state,
         Prompt(
-            title="请问你想查询哪位玩家？",
+            title=title,
             action=_PLAYER_TARGET_SELECTION_ACTION,
             items=[
                 PromptItem(
