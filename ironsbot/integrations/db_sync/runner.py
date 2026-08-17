@@ -33,6 +33,7 @@ from . import remote_build as sync_remote_build
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
 
     from ironsbot.config.models.operations import DataSourceConfig
@@ -270,6 +271,23 @@ class DatabaseSync:
             return False
         return await self.sync_database(name)
 
+    async def check_all_databases(self) -> tuple[bool, dict[str, SyncStatus]]:
+        """Compare cached files with remote fingerprints without downloading data."""
+
+        if self.is_running():
+            logger.info("database sync is running; skipping manual update check")
+            return False, {}
+
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(15.0, read=30.0),
+        ) as client:
+            results = {
+                name: await self._check_database_fingerprint(name, entry, client)
+                for name, entry in self.registered_syncs.items()
+            }
+        return True, results
+
     async def run_sync_all_databases(
         self,
         *,
@@ -350,6 +368,9 @@ class DatabaseSync:
     def format_sync_statuses(self, results: dict[str, bool]) -> str:
         return sync_formatting.format_sync_statuses(results, self.last_sync_statuses)
 
+    def format_sync_check_statuses(self, statuses: Mapping[str, object]) -> str:
+        return sync_formatting.format_sync_check_statuses(statuses)
+
     def format_sync_result_notice(
         self,
         results: dict[str, bool],
@@ -369,6 +390,58 @@ class DatabaseSync:
             for name, ok in results.items()
             if ok and self.last_sync_statuses.get(name, SyncStatus(ok=True)).skipped
         ]
+
+    async def _check_database_fingerprint(
+        self,
+        name: str,
+        entry: SyncEntry,
+        client: httpx.AsyncClient,
+    ) -> SyncStatus:
+        local = VersionInfo(
+            fingerprint=(
+                _fingerprint_file(entry.local_path)
+                if entry.local_path is not None
+                else None
+            ),
+            timestamp=(
+                _file_timestamp(entry.local_path)
+                if entry.local_path is not None
+                else None
+            ),
+        )
+        if entry.get_fingerprint is None:
+            return SyncStatus(
+                ok=False,
+                local_before=local,
+                message="未配置远端指纹，无法进行只读更新检查",
+            )
+        try:
+            fingerprint = _normalize_fingerprint(await entry.get_fingerprint(client))
+        except Exception as error:  # noqa: BLE001 - report each source independently
+            logger.warning("could not check remote database fingerprint: %s", name)
+            return SyncStatus(
+                ok=False,
+                local_before=local,
+                message=f"{type(error).__name__}: {error}".rstrip(": "),
+            )
+        if fingerprint is None:
+            return SyncStatus(
+                ok=False,
+                local_before=local,
+                message="远端指纹为空或格式无效",
+            )
+        remote = VersionInfo(fingerprint=fingerprint)
+        return SyncStatus(
+            ok=True,
+            skipped=local.fingerprint == fingerprint,
+            local_before=local,
+            remote=remote,
+            message=(
+                "本地缓存与已发布数据一致"
+                if local.fingerprint == fingerprint
+                else "远端已发布新数据"
+            ),
+        )
 
     def _lock(self, name: str) -> asyncio.Lock:
         return self._sync_locks.setdefault(name, asyncio.Lock())
