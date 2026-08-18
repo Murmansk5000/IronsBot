@@ -173,20 +173,18 @@ async def render_new_content_menu(  # noqa: PLR0913
                 if category in PEAK_POOL_NEW_CONTENT_CATEGORIES
                 else None
             )
-            expanded = (
-                category in expanded_categories
-                and category not in PEAK_POOL_NEW_CONTENT_CATEGORIES
-                and auto_expand_max_items > 0
-            )
             preview_items = (
                 new_content_category_preview_items(
                     snapshot,
                     category,
                     auto_expand_max_items,
                 )
-                if expanded
+                if category in expanded_categories
+                and category not in PEAK_POOL_NEW_CONTENT_CATEGORIES
+                and auto_expand_max_items > 0
                 else ()
             )
+            expanded = bool(preview_items)
             rows.append(
                 {
                     "code": code,

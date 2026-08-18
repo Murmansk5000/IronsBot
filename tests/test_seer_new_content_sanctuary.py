@@ -397,6 +397,42 @@ def test_new_content_root_menu_uses_configured_explicit_item_keys() -> None:
     assert "a. ▼ 新增精灵（1 项新增）" in prompt.build_message()
 
 
+def test_new_content_root_menu_keeps_modified_items_folded() -> None:
+    changed_pet = NewContentItem(
+        category="pet",
+        entity_id=4930,
+        name="修改精灵",
+        sort_value=4930,
+        payload={},
+        change_kind="modified",
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(changed_pet,),
+    )
+
+    root = _content_prompt(
+        snapshot,
+        _NewContentMenuLayout(
+            display_categories=("pet",),
+            expanded_categories=frozenset({"pet"}),
+            auto_expand_max_items=5,
+        ),
+    )
+    focused = _content_prompt(
+        snapshot,
+        _focus_new_content_category(
+            _NewContentMenuLayout(display_categories=("pet",)), "pet"
+        ),
+    )
+
+    assert "a. ▶ 新增精灵（1 项修改）" in root.build_message()
+    assert root.get_item_by_input("a1") is None
+    assert focused.get_item_by_input("1") is not None
+
+
 def test_new_content_root_menu_keeps_unconfigured_categories_folded() -> None:
     pet = NewContentItem(
         category="pet",

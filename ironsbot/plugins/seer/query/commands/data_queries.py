@@ -403,19 +403,17 @@ def _content_prompt(
                 )
             )
             continue
-        expanded = (
-            category in layout.expanded_categories
-            and layout.auto_expand_max_items > 0
-        )
         preview_items = (
             new_content_category_preview_items(
                 snapshot,
                 category,
                 layout.auto_expand_max_items,
             )
-            if expanded
+            if category in layout.expanded_categories
+            and layout.auto_expand_max_items > 0
             else ()
         )
+        expanded = bool(preview_items)
         choices.append(
             PromptItem(
                 f"{'▼' if expanded else '▶'} {CATEGORY_NAMES[category]}",

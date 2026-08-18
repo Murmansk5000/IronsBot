@@ -460,7 +460,7 @@ def test_bili_push_subscription_options_are_per_uid(
     ]
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号 B站动态设置",
+        f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}",
     ]
 
     cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
@@ -506,7 +506,7 @@ def test_bili_push_subscription_options_use_public_account_names(
 
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号 B站动态设置",
+        f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}",
     ]
 
 
@@ -532,7 +532,7 @@ def test_bili_push_subscription_options_fall_back_to_uid(
 
     assert [option.label for option in options] == [
         f"B站动态（UID：{FIRE_BILI_UID}）",
-        "赛尔号 B站动态设置",
+        f"B站动态（UID：{DEFAULT_BILI_ACCOUNT_UID}）",
     ]
 
 
@@ -552,7 +552,7 @@ def test_seer_category_subscription_submenu_and_target_filtering(
         if option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
     )
 
-    assert option.label == "赛尔号 B站动态设置"
+    assert option.label == f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}"
     assert option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
 
     submenu = service.subscription_submenu("group", group_id, option)

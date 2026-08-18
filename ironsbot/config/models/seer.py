@@ -692,7 +692,7 @@ class ExternalReferencesConfig(BaseModel):
 
 
 class NewContentConfig(BaseModel):
-    """Control which weekly-content categories expand on the root menu."""
+    """Control root previews of genuinely new weekly-content entries."""
 
     model_config = ConfigDict(extra="forbid")
 
