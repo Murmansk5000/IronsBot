@@ -11,9 +11,11 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentService,
+    NewContentSnapshot,
     format_new_content_category_count,
     format_new_content_change_summary,
     format_new_content_item_description,
+    new_content_category_preview_items,
 )
 
 if TYPE_CHECKING:
@@ -181,6 +183,26 @@ def test_category_count_separates_additions_and_modifications() -> None:
     assert format_new_content_category_count(items) == "1 项新增｜2 项修改"
     assert format_new_content_category_count(items[:1]) == "1 项新增"
     assert format_new_content_category_count(items[1:]) == "2 项修改"
+
+
+def test_root_category_preview_includes_only_actual_additions() -> None:
+    additions_and_corrections = (
+        NewContentItem("pet", 1, "新增精灵一", 1, {}, "added"),
+        NewContentItem("pet", 2, "修改精灵", 2, {}, "modified"),
+        NewContentItem("pet", 3, "新增精灵二", 3, {}, "added"),
+        NewContentItem("pet", 4, "修改精灵二", 4, {}, "modified"),
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=additions_and_corrections,
+    )
+
+    assert new_content_category_preview_items(snapshot, "pet", 5) == (
+        additions_and_corrections[0],
+        additions_and_corrections[2],
+    )
 
 
 def test_current_content_version_uses_shanghai_date_not_baseline() -> None:

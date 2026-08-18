@@ -1425,10 +1425,15 @@ merge_connected = true
 # autocard_card, autocard_role, autocard_sanctuary_effect.
 # 可选值：achievement、pet、pet_skin、skill、mintmark、suit、equip、mount、
 # autocard_card、autocard_role、autocard_sanctuary_effect。
+# EN: Root-menu categories whose genuinely new entries may be previewed.
+#     Modified entries always stay folded until the category submenu is opened.
+# ZH: 根菜单中可展开预览“真正新增”项目的分类；修改项始终折叠，进入分类子菜单后查看。
 expanded_categories = []
 # Default: 5; EN: Maximum items rendered for each configured root-menu preview.
 # Set 0 to disable ordinary previews. Focused category menus still show all items.
 # ZH: 每个已配置分类在总菜单最多预览的条目数；设为 0 关闭普通条目预览，子菜单仍显示全部。
+# EN: Maximum genuinely new entries previewed per expanded root category.
+# ZH: 每个根菜单展开分类最多预览多少项真正新增内容；修改项不占用此数量。
 auto_expand_max_items = 5
 
 [seer.season]

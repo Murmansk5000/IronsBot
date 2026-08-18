@@ -141,11 +141,20 @@ def new_content_category_preview_items(
     category: NewContentCategory,
     max_items: int,
 ) -> tuple[NewContentItem, ...]:
-    """Return the bounded root-menu preview; zero disables item previews."""
+    """Return only bounded additions for a root-menu category preview.
+
+    Corrections are deliberately kept behind the category entry.  A root menu
+    should advertise this week's genuinely new content without letting a long
+    list of adjustments hide it or consume the configured preview budget.
+    """
 
     if max_items <= 0:
         return ()
-    return snapshot.items_for(category)[:max_items]
+    return tuple(
+        item
+        for item in snapshot.items_for(category)
+        if item.change_kind == "added"
+    )[:max_items]
 
 
 def format_new_content_category_count(

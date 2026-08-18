@@ -501,6 +501,55 @@ async def test_root_render_caps_configured_category_preview_at_five_items() -> N
     ]
 
 
+@pytest.mark.asyncio
+async def test_root_render_keeps_modified_entries_folded() -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"menu-image"
+
+    changed_pet = _item("pet", 4930)
+    changed_pet = NewContentItem(
+        changed_pet.category,
+        changed_pet.entity_id,
+        changed_pet.name,
+        changed_pet.sort_value,
+        changed_pet.payload,
+        "modified",
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(changed_pet,),
+    )
+
+    await render_new_content_menu(
+        _Cache(),  # type: ignore[arg-type]
+        _RichData({}),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        snapshot,
+        ("pet",),
+        None,
+        expanded_categories=frozenset({"pet"}),
+        auto_expand_max_items=5,
+    )
+
+    assert [row["code"] for row in captured["items"]] == ["a"]
+    assert captured["items"][0]["expanded"] is False
+
+
 def test_new_content_render_cache_key_includes_expanded_categories() -> None:
     snapshot = NewContentSnapshot(
         baseline_established=True,

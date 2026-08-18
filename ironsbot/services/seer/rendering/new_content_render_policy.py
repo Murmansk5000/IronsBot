@@ -30,6 +30,7 @@ def new_content_cache_key(  # noqa: PLR0913
             menu_title,
             "expanded=" + ",".join(sorted(expanded_categories)),
             f"auto-expand={auto_expand_max_items}",
+            "root-preview=added-only-v2",
         )
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
