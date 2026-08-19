@@ -10,8 +10,8 @@ from ironsbot.core.command_catalog import (
 )
 from ironsbot.core.commands import normalize_command_text
 
-MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新")
-FORCE_MANUAL_SYNC_COMMANDS = ("强制更新数据", "强制数据更新")
+MANUAL_SYNC_COMMANDS = ("更新数据", "数据更新", "同步数据")
+FORCE_MANUAL_SYNC_COMMANDS = ("强制更新数据", "强制数据更新", "强制同步数据")
 ADMIN_COMMAND_PREFIX = "/"
 _NORMALIZED_MANUAL_SYNC_COMMANDS = frozenset(
     normalize_command_text(command) for command in MANUAL_SYNC_COMMANDS
