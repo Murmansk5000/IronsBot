@@ -1255,6 +1255,15 @@ total_timeout_seconds = 60
 # Default: 1; EN: Retries for a timed-out page after other boards get a turn.
 # ZH: 单页超时后让出轮次，其他榜轮完后最多重试次数。
 page_retry_count = 1
+# Default: 600
+# EN: A confirmed player rank newer than this uses the fast online anchor path.
+# ZH: 上次确认名次在此秒数内时，优先走快速联网锚点确认。
+recent_cache_max_age_seconds = 600
+# Default: 5
+# EN: Maximum wait for a recent cached rank's online anchor page. On timeout,
+#     keep the cached result without retrying or expanding the search.
+# ZH: 近期缓存锚点页最多联网等待秒数；超时后直接保留缓存，不重试或扩圈。
+recent_cache_anchor_timeout_seconds = 5.0
 # Default: omitted/null.
 # EN: Leave unset to follow the official peak season automatically.
 #     Set only as a temporary diagnostic override.

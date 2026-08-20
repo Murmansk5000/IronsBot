@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _CACHED_LOOKUP_WINDOW_PAGES = 2
+_LAST_CONFIRMED_RANK_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 async def execute_rank_lookup(  # noqa: PLR0913
@@ -43,13 +45,14 @@ async def execute_rank_lookup(  # noqa: PLR0913
     parallelism = service.rank_probe_parallelism(game)
     batch_enabled = parallelism > 1
 
-    async def fetch_rank_pages(
+    async def fetch_rank_pages(  # noqa: PLR0913
         active_game: Any,
         *,
         key: int,
         sub_key: int,
         starts: tuple[int, ...],
         use_cache: bool = False,
+        page_phase: str = "search",
     ) -> list[list[Any]]:
         pages = await service.fetch_page_batch(
             active_game,
@@ -57,6 +60,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
             sub_key=sub_key,
             starts=starts,
             use_cache=use_cache,
+            page_phase=page_phase,
         )
         return [page.items for page in pages]
 
@@ -68,7 +72,11 @@ async def execute_rank_lookup(  # noqa: PLR0913
             sub_key=sub_key,
             page_size=page_size,
             result=result,
-            get_cached_rank_item=partial(service.cache.item, allow_stale=True),
+            get_cached_rank_item=partial(
+                _recent_confirmed_cache_item,
+                service.cache,
+                max_age_seconds=_LAST_CONFIRMED_RANK_MAX_AGE_SECONDS,
+            ),
             rank_window_page_starts=partial(
                 rank_window_page_starts,
                 window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
@@ -79,6 +87,12 @@ async def execute_rank_lookup(  # noqa: PLR0913
             ),
             anchor_only=anchor_only,
             parallelism=parallelism,
+            recent_cache_max_age_seconds=(
+                service.config.player_lookup.recent_cache_max_age_seconds
+            ),
+            recent_cache_anchor_timeout_seconds=(
+                service.config.player_lookup.recent_cache_anchor_timeout_seconds
+            ),
         )
         if cached is not None or limit <= 0 or anchor_only:
             return await finalize_visible_lookup(
@@ -102,10 +116,12 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 result=result,
                 score_search_probe_limit=service._probe_limit,
                 score_search_tie_page_limit=service._tie_page_limit,
-                fetch_rank_item=service.fetch_item,
-                fetch_rank_page=service.fetch_page,
+                fetch_rank_item=partial(service.fetch_item, page_phase="score_probe"),
+                fetch_rank_page=partial(service.fetch_page, page_phase="score_tie"),
                 fetch_rank_items=(
-                    service.fetch_item_batch if batch_enabled else None
+                    partial(service.fetch_item_batch, page_phase="score_probe")
+                    if batch_enabled
+                    else None
                 ),
                 fetch_rank_pages=fetch_rank_pages if batch_enabled else None,
                 parallelism=parallelism,
@@ -120,7 +136,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 limit=limit,
                 page_size=page_size,
                 result=result,
-                fetch_rank_page=service.fetch_page,
+                fetch_rank_page=partial(service.fetch_page, page_phase="linear_scan"),
                 fetch_rank_pages=fetch_rank_pages if batch_enabled else None,
                 parallelism=parallelism,
             )
@@ -167,3 +183,27 @@ async def execute_rank_lookup(  # noqa: PLR0913
             searched_limit=result.searched_limit,
         )
     return result
+
+
+def _recent_confirmed_cache_item(
+    cache: Any,
+    *,
+    key: int,
+    sub_key: int,
+    user_id: int,
+    max_age_seconds: float,
+) -> Any | None:
+    """Return a position fact only while it remains eligible as a fallback."""
+
+    cached_item = cache.item(
+        key=key,
+        sub_key=sub_key,
+        user_id=user_id,
+        allow_stale=True,
+    )
+    if cached_item is None:
+        return None
+    fetched_at = float(getattr(cached_item, "fetched_at", 0.0))
+    if time.time() - fetched_at > max_age_seconds:
+        return None
+    return cached_item

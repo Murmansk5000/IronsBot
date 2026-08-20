@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -31,6 +32,7 @@ from ironsbot.services.seer.rank_pagination import (
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 from ironsbot.services.seer.rank_player_scheduler import (
     PlayerRankLookupJob,
+    PlayerRankPagePriority,
     current_player_rank_page_scheduler,
     run_player_rank_lookup_jobs,
 )
@@ -74,6 +76,7 @@ _PARALLEL_RANK_PAGE_REQUEST: ContextVar[bool] = ContextVar(
     "parallel_rank_page_request",
     default=False,
 )
+_LOGGER = logging.getLogger("ironsbot.seer.rank")
 
 
 class RankPageCache(Protocol):
@@ -214,6 +217,10 @@ class RankService(RankCacheQueryMixin):
         end: int,
         use_cache: bool = False,
         parallel: bool = False,
+        page_phase: str = "search",
+        page_priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
+        page_timeout_seconds: float | None = None,
+        page_max_retries: int | None = None,
     ) -> RankPageResult:
         if use_cache:
             cached = self.cache.page(
@@ -245,18 +252,60 @@ class RankService(RankCacheQueryMixin):
             )
 
         scheduler = current_player_rank_page_scheduler()
-        if scheduler is None:
-            items = await fetch_online()
-        elif parallel:
-            items = await scheduler.fetch_parallel_page(
-                f"key={key} sub_key={sub_key} page={start + 1}-{end + 1}",
-                fetch_online,
+        started_at = time.monotonic()
+        try:
+            if scheduler is None:
+                items = await fetch_online()
+            elif parallel:
+                items = await scheduler.fetch_parallel_page(
+                    (
+                        f"{page_phase}:key={key} sub_key={sub_key} "
+                        f"page={start + 1}-{end + 1}"
+                    ),
+                    fetch_online,
+                    priority=page_priority,
+                    phase=page_phase,
+                    timeout_seconds=page_timeout_seconds,
+                    max_retries=page_max_retries,
+                )
+            else:
+                items = await scheduler.fetch_page(
+                    (
+                        f"{page_phase}:key={key} sub_key={sub_key} "
+                        f"page={start + 1}-{end + 1}"
+                    ),
+                    fetch_online,
+                    priority=page_priority,
+                    phase=page_phase,
+                    timeout_seconds=page_timeout_seconds,
+                    max_retries=page_max_retries,
+                )
+        except Exception as error:
+            _LOGGER.info(
+                "player rank page result: phase=%s key=%s sub_key=%s "
+                "page=%s-%s worker=%s elapsed=%.3fs error=%s",
+                page_phase,
+                key,
+                sub_key,
+                start + 1,
+                end + 1,
+                getattr(game, "user_id", None),
+                time.monotonic() - started_at,
+                type(error).__name__,
             )
-        else:
-            items = await scheduler.fetch_page(
-                f"key={key} sub_key={sub_key} page={start + 1}-{end + 1}",
-                fetch_online,
-            )
+            raise
+        _LOGGER.info(
+            "player rank page result: phase=%s key=%s sub_key=%s "
+            "page=%s-%s worker=%s elapsed=%.3fs items=%s",
+            page_phase,
+            key,
+            sub_key,
+            start + 1,
+            end + 1,
+            getattr(game, "user_id", None),
+            time.monotonic() - started_at,
+            len(items),
+        )
         fetched_at = time.time()
         self.cache.save(
             key=key,
@@ -284,6 +333,10 @@ class RankService(RankCacheQueryMixin):
         end: int,
         use_cache: bool = False,
         parallel: bool = False,
+        page_phase: str = "search",
+        page_priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
+        page_timeout_seconds: float | None = None,
+        page_max_retries: int | None = None,
     ) -> list[Any]:
         parallel = parallel or _PARALLEL_RANK_PAGE_REQUEST.get()
         result = await self.fetch_page_result(
@@ -294,6 +347,10 @@ class RankService(RankCacheQueryMixin):
             end=end,
             use_cache=use_cache,
             parallel=parallel,
+            page_phase=page_phase,
+            page_priority=page_priority,
+            page_timeout_seconds=page_timeout_seconds,
+            page_max_retries=page_max_retries,
         )
         return result.items
 
@@ -307,6 +364,10 @@ class RankService(RankCacheQueryMixin):
         end: int,
         use_cache: bool = False,
         parallel: bool = False,
+        page_phase: str = "cached_anchor",
+        page_priority: PlayerRankPagePriority = PlayerRankPagePriority.CACHED_ANCHOR,
+        page_timeout_seconds: float | None = None,
+        page_max_retries: int | None = None,
     ) -> RankPageResult:
         """Fetch one position-anchor page through the public page boundary.
 
@@ -318,7 +379,7 @@ class RankService(RankCacheQueryMixin):
         """
 
         _ = use_cache
-        page_kwargs = {
+        page_kwargs: dict[str, Any] = {
             "key": key,
             "sub_key": sub_key,
             "start": start,
@@ -327,6 +388,10 @@ class RankService(RankCacheQueryMixin):
         }
         if parallel:
             page_kwargs["parallel"] = True
+        page_kwargs["page_phase"] = page_phase
+        page_kwargs["page_priority"] = page_priority
+        page_kwargs["page_timeout_seconds"] = page_timeout_seconds
+        page_kwargs["page_max_retries"] = page_max_retries
         items = await self.fetch_page(game, **page_kwargs)
         return RankPageResult(items, time.time(), from_cache=False)
 
@@ -339,6 +404,8 @@ class RankService(RankCacheQueryMixin):
         index: int,
         use_cache: bool = False,
         parallel: bool = False,
+        page_phase: str = "search",
+        page_priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
     ) -> Any | None:
         if use_cache:
             cached = self.cache.item_by_index(
@@ -358,6 +425,8 @@ class RankService(RankCacheQueryMixin):
             end=page_start + page_size - 1,
             use_cache=use_cache,
             parallel=parallel,
+            page_phase=page_phase,
+            page_priority=page_priority,
         )
         offset = index - page_start
         return items[offset] if 0 <= offset < len(items) else None
@@ -370,7 +439,7 @@ class RankService(RankCacheQueryMixin):
             return 1
         return max(1, idle_workers)
 
-    async def fetch_page_batch(
+    async def fetch_page_batch(  # noqa: PLR0913
         self,
         game: HeadlessGame,
         *,
@@ -378,6 +447,8 @@ class RankService(RankCacheQueryMixin):
         sub_key: int,
         starts: Sequence[int],
         use_cache: bool = False,
+        page_phase: str = "search",
+        page_priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
     ) -> list[RankPageResult]:
         page_size = self.page_size()
         normalized_starts = tuple(dict.fromkeys(max(0, start) for start in starts))
@@ -391,6 +462,8 @@ class RankService(RankCacheQueryMixin):
                     start=start,
                     end=start + page_size - 1,
                     use_cache=use_cache,
+                    page_phase=page_phase,
+                    page_priority=page_priority,
                 )
             finally:
                 _PARALLEL_RANK_PAGE_REQUEST.reset(token)
@@ -402,7 +475,7 @@ class RankService(RankCacheQueryMixin):
             )
         )
 
-    async def fetch_item_batch(
+    async def fetch_item_batch(  # noqa: PLR0913
         self,
         game: HeadlessGame,
         *,
@@ -410,6 +483,8 @@ class RankService(RankCacheQueryMixin):
         sub_key: int,
         indexes: Sequence[int],
         use_cache: bool = False,
+        page_phase: str = "search",
+        page_priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
     ) -> list[Any | None]:
         page_starts = tuple(
             dict.fromkeys(self.page_start(index) for index in indexes if index >= 0)
@@ -420,6 +495,8 @@ class RankService(RankCacheQueryMixin):
             sub_key=sub_key,
             starts=page_starts,
             use_cache=use_cache,
+            page_phase=page_phase,
+            page_priority=page_priority,
         )
         items_by_page = dict(zip(page_starts, pages, strict=True))
         resolved: list[Any | None] = []
@@ -734,7 +811,20 @@ class RankService(RankCacheQueryMixin):
             allow_stale=True,
         )
         if cached is not None:
-            return 0, cached.rank_index, "缓存名次"
+            cache_age_seconds = max(0.0, time.time() - cached.fetched_at)
+            if cache_age_seconds > _LAST_CONFIRMED_RANK_MAX_AGE_SECONDS:
+                cached = None
+        if cached is not None:
+            cache_age_seconds = max(0.0, time.time() - cached.fetched_at)
+            recent = (
+                cache_age_seconds
+                <= self.config.player_lookup.recent_cache_max_age_seconds
+            )
+            return (
+                0 if recent else 1,
+                cached.rank_index,
+                "近期缓存名次" if recent else "缓存名次",
+            )
         if job.target_score is not None and job.target_score > 0:
             rank_key = self.exclusion_policy.rank_key_for_protocol(
                 key=job.key,
@@ -748,9 +838,9 @@ class RankService(RankCacheQueryMixin):
                 end_index=self._score_search_limit(rank_key),
             )
             if indexes:
-                return 1, min(indexes), "缓存同分位置"
-            return 2, 2**31 - 1, "已知分数"
-        return 3, 2**31 - 1, "无分数线性查找"
+                return 2, min(indexes), "缓存同分位置"
+            return 3, 2**31 - 1, "已知分数"
+        return 4, 2**31 - 1, "无分数线性查找"
 
     def _online_search_limit(
         self,

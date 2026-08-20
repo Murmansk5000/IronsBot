@@ -10,6 +10,7 @@ from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Generic, NoReturn, TypeVar
 
 from anyio import create_task_group
@@ -33,6 +34,14 @@ _CURRENT_LOOKUP_ID: ContextVar[str | None] = ContextVar(
     default=None,
 )
 T = TypeVar("T")
+
+
+class PlayerRankPagePriority(IntEnum):
+    """Ordering for pages inside one foreground player-rank workflow."""
+
+    RECENT_CACHE_ANCHOR = 0
+    CACHED_ANCHOR = 10
+    SEARCH = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +68,10 @@ class _PageRequest(Generic[T]):
     future: asyncio.Future[T]
     concurrent: bool = False
     attempt: int = 0
+    priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH
+    phase: str = "search"
+    timeout_seconds: float | None = None
+    max_retries: int | None = None
 
 
 @dataclass(slots=True)
@@ -88,35 +101,81 @@ class PlayerRankPageScheduler:
         finally:
             _CURRENT_LOOKUP_ID.reset(token)
 
-    async def fetch_page(self, title: str, operation: Callable[[], Awaitable[T]]) -> T:
-        return await self._submit_page(title, operation)
+    async def fetch_page(  # noqa: PLR0913
+        self,
+        title: str,
+        operation: Callable[[], Awaitable[T]],
+        *,
+        priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
+        phase: str = "search",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
+    ) -> T:
+        return await self._submit_page(
+            title,
+            operation,
+            priority=priority,
+            phase=phase,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
 
-    async def fetch_pages(
+    async def fetch_pages(  # noqa: PLR0913
         self,
         title: str,
         operations: Sequence[Callable[[], Awaitable[T]]],
+        *,
+        priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
+        phase: str = "search",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
     ) -> list[T]:
         """Run an explicit batch of independent probes for the current board."""
 
         tasks = (
-            self._submit_page(title, operation, concurrent=True)
+            self._submit_page(
+                title,
+                operation,
+                concurrent=True,
+                priority=priority,
+                phase=phase,
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries,
+            )
             for operation in operations
         )
         return await asyncio.gather(*tasks)
 
-    async def fetch_parallel_page(
+    async def fetch_parallel_page(  # noqa: PLR0913
         self,
         title: str,
         operation: Callable[[], Awaitable[T]],
+        *,
+        priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
+        phase: str = "search",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
     ) -> T:
-        return await self._submit_page(title, operation, concurrent=True)
+        return await self._submit_page(
+            title,
+            operation,
+            concurrent=True,
+            priority=priority,
+            phase=phase,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
 
-    async def _submit_page(
+    async def _submit_page(  # noqa: PLR0913
         self,
         title: str,
         operation: Callable[[], Awaitable[T]],
         *,
         concurrent: bool = False,
+        priority: PlayerRankPagePriority = PlayerRankPagePriority.SEARCH,
+        phase: str = "search",
+        timeout_seconds: float | None = None,
+        max_retries: int | None = None,
     ) -> T:
         if self._closed or self._timed_out():
             raise TimeoutError("玩家榜单查询总时间已到")
@@ -132,6 +191,10 @@ class PlayerRankPageScheduler:
                 operation=operation,
                 future=future,
                 concurrent=concurrent,
+                priority=priority,
+                phase=phase,
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries,
             )
         )
         self._queue_ready.set()
@@ -172,12 +235,17 @@ class PlayerRankPageScheduler:
                     )
 
     def _next_ready_request(self) -> _PageRequest[Any] | None:
-        for index, request in enumerate(self._queue):
-            active_count = self._active_lookup_counts.get(request.lookup_id, 0)
-            if request.concurrent or not active_count:
-                del self._queue[index]
-                return request
-        return None
+        candidates = [
+            (index, request)
+            for index, request in enumerate(self._queue)
+            if request.concurrent
+            or not self._active_lookup_counts.get(request.lookup_id, 0)
+        ]
+        if not candidates:
+            return None
+        index, request = min(candidates, key=lambda item: (item[1].priority, item[0]))
+        del self._queue[index]
+        return request
 
     async def _process_request(  # noqa: C901
         self,
@@ -187,19 +255,36 @@ class PlayerRankPageScheduler:
         stats.page_requests += 1
         if self._deadline is None:
             self._deadline = time.monotonic() + self._config.total_timeout_seconds
-        timeout_token = rank_page_request_timeout.set(self._config.page_timeout_seconds)
+        timeout_seconds = request.timeout_seconds or self._config.page_timeout_seconds
+        max_retries = (
+            self._config.page_retry_count
+            if request.max_retries is None
+            else request.max_retries
+        )
+        started_at = time.monotonic()
+        timeout_token = rank_page_request_timeout.set(timeout_seconds)
+        _LOGGER.info(
+            "player rank page dispatched: lookup=%s title=%s phase=%s "
+            "priority=%s timeout=%.3fs attempt=%s",
+            request.lookup_id,
+            request.title,
+            request.phase,
+            request.priority.name.lower(),
+            timeout_seconds,
+            request.attempt + 1,
+        )
         try:
             remaining_seconds = self._deadline - time.monotonic()
             if remaining_seconds <= 0:
                 self._raise_total_timeout()
             result = await asyncio.wait_for(
                 request.operation(),
-                timeout=remaining_seconds,
+                timeout=min(remaining_seconds, timeout_seconds),
             )
         except (TimeoutError, asyncio.TimeoutError) as error:
             timeout_error = TimeoutError(str(error) or "玩家榜单页查询超时")
             if (
-                request.attempt < self._config.page_retry_count
+                request.attempt < max_retries
                 and not self._closed
                 and not self._timed_out()
             ):
@@ -208,26 +293,47 @@ class PlayerRankPageScheduler:
                 self._queue.append(request)
                 _LOGGER.info(
                     "player rank page timed out; retry queued: lookup=%s title=%s "
-                    "attempt=%s",
+                    "phase=%s attempt=%s elapsed=%.3fs",
                     request.lookup_id,
                     request.title,
+                    request.phase,
                     request.attempt,
+                    time.monotonic() - started_at,
                 )
             elif not request.future.done():
                 request.future.set_exception(timeout_error)
                 _LOGGER.warning(
                     "player rank page timed out permanently: lookup=%s title=%s "
-                    "attempts=%s",
+                    "phase=%s attempts=%s elapsed=%.3fs",
                     request.lookup_id,
                     request.title,
+                    request.phase,
                     request.attempt + 1,
+                    time.monotonic() - started_at,
                 )
         except Exception as error:  # noqa: BLE001
             if not request.future.done():
                 request.future.set_exception(error)
+            _LOGGER.warning(
+                "player rank page failed: lookup=%s title=%s phase=%s "
+                "error=%s elapsed=%.3fs",
+                request.lookup_id,
+                request.title,
+                request.phase,
+                type(error).__name__,
+                time.monotonic() - started_at,
+            )
         else:
             if not request.future.done():
                 request.future.set_result(result)
+            _LOGGER.info(
+                "player rank page completed: lookup=%s title=%s phase=%s "
+                "elapsed=%.3fs",
+                request.lookup_id,
+                request.title,
+                request.phase,
+                time.monotonic() - started_at,
+            )
         finally:
             rank_page_request_timeout.reset(timeout_token)
             active_count = self._active_lookup_counts.get(request.lookup_id, 0) - 1
@@ -286,14 +392,23 @@ async def run_player_rank_lookup_jobs(
         stats = scheduler.lookup_stats(job.id)
         _LOGGER.info(
             "player rank lookup completed: id=%s title=%s rank=%s failure=%s "
-            "online_pages=%s scheduler_pages=%s retries=%s",
+            "cache_age=%s recent_anchor=%s recent_fallback=%s "
+            "online_pages=%s scheduler_pages=%s retries=%s page_starts=%s",
             job.id,
             job.title,
             result.rank,
             result.failure,
+            (
+                None
+                if result.cost.cached_rank_age_seconds is None
+                else round(result.cost.cached_rank_age_seconds, 3)
+            ),
+            result.cost.used_recent_cache_anchor,
+            result.cost.used_recent_cache_fallback,
             result.cost.online_page_fetches,
             stats.page_requests,
             stats.retries,
+            tuple(start + 1 for start in result.cost.page_starts),
         )
         return job.id, result
 
@@ -325,7 +440,21 @@ async def run_player_rank_lookup_jobs(
                 exc_info=result,
             )
             completed.append((job.id, _failed_lookup_result(job, result)))
-        return dict(completed)
+        resolved = dict(completed)
+        _LOGGER.info(
+            "player rank lookup batch completed: jobs=%s total_budget=%.3fs "
+            "scheduler_pages=%s retries=%s recent_fallbacks=%s failures=%s",
+            len(resolved),
+            config.total_timeout_seconds,
+            sum(scheduler.lookup_stats(job.id).page_requests for job in ordered_jobs),
+            sum(scheduler.lookup_stats(job.id).retries for job in ordered_jobs),
+            sum(
+                item.cost.used_recent_cache_fallback
+                for item in resolved.values()
+            ),
+            sum(item.failure is not None for item in resolved.values()),
+        )
+        return resolved
     finally:
         _CURRENT_SCHEDULER.reset(token)
 
