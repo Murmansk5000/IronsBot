@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 __plugin_meta__ = PluginMetadata(
     name="数据更新",
     description="构建远程数据并同步赛尔数据库与别名数据库。",
-    usage="超级管理员发送“/更新数据”或“/强制更新数据”。",
+    usage="超级管理员发送“/更新数据”或“/强制更新数据”；也支持“/同步数据”和“/强制同步数据”。",
     type="application",
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
