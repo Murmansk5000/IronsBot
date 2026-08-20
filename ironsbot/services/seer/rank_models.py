@@ -23,6 +23,9 @@ class RankLookupCost:
     cache_page_hits: int = 0
     online_page_fetches: int = 0
     restricted_miss: bool = False
+    cached_rank_age_seconds: float | None = None
+    used_recent_cache_anchor: bool = False
+    used_recent_cache_fallback: bool = False
 
     @property
     def lightweight_confirmed(self) -> bool:

@@ -1,9 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ironsbot.services.operations.headless_errors import (
+    DisconnectedError,
+    NotLoggedInError,
+)
 from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
+from ironsbot.services.seer.rank_player_scheduler import PlayerRankPagePriority
+
+logger = logging.getLogger(__name__)
 
 
 def restore_cached_rank_after_timeout(
@@ -19,7 +28,7 @@ def restore_cached_rank_after_timeout(
     return result
 
 
-async def find_rank_by_cached_position(  # noqa: C901, PLR0913
+async def find_rank_by_cached_position(  # noqa: C901, PLR0911, PLR0913
     game: Any,
     *,
     user_id: int,
@@ -33,6 +42,8 @@ async def find_rank_by_cached_position(  # noqa: C901, PLR0913
     fetch_rank_pages: Callable[..., Awaitable[list[RankPageResult]]] | None = None,
     anchor_only: bool = False,
     parallelism: int = 1,
+    recent_cache_max_age_seconds: float = 0,
+    recent_cache_anchor_timeout_seconds: float | None = None,
 ) -> RankLookupResult | None:
     cached_item = get_cached_rank_item(key=key, sub_key=sub_key, user_id=user_id)
     if cached_item is None:
@@ -41,6 +52,24 @@ async def find_rank_by_cached_position(  # noqa: C901, PLR0913
     result.cost.anchor_page_start = (
         cached_item.rank_index // page_size * page_size
     )
+    cached_at = float(getattr(cached_item, "fetched_at", 0.0))
+    cache_age_seconds = max(0.0, time.time() - cached_at)
+    recent_cache = (
+        recent_cache_max_age_seconds > 0
+        and cache_age_seconds <= recent_cache_max_age_seconds
+    )
+    logger.info(
+        "player rank cached anchor: key=%s sub_key=%s user_id=%s rank=%s "
+        "cache_age=%.3fs recent=%s",
+        key,
+        sub_key,
+        user_id,
+        cached_item.rank_index + 1,
+        cache_age_seconds,
+        recent_cache,
+    )
+    result.cost.cached_rank_age_seconds = cache_age_seconds
+    result.cost.used_recent_cache_anchor = recent_cache
     starts = rank_window_page_starts(
         center_index=cached_item.rank_index,
         page_size=page_size,
@@ -62,14 +91,45 @@ async def find_rank_by_cached_position(  # noqa: C901, PLR0913
         return False
 
     anchor_start = starts[0]
-    page = await fetch_rank_page(
-        game,
-        key=key,
-        sub_key=sub_key,
-        start=anchor_start,
-        end=anchor_start + page_size - 1,
-        use_cache=False,
-    )
+    try:
+        page = await fetch_rank_page(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=anchor_start,
+            end=anchor_start + page_size - 1,
+            use_cache=False,
+            page_phase="recent_anchor" if recent_cache else "cached_anchor",
+            page_priority=(
+                PlayerRankPagePriority.RECENT_CACHE_ANCHOR
+                if recent_cache
+                else PlayerRankPagePriority.CACHED_ANCHOR
+            ),
+            page_timeout_seconds=(
+                recent_cache_anchor_timeout_seconds if recent_cache else None
+            ),
+            page_max_retries=0 if recent_cache else None,
+        )
+    except (
+        TimeoutError,
+        asyncio.TimeoutError,
+        ConnectionError,
+        DisconnectedError,
+        NotLoggedInError,
+    ):
+        if not recent_cache:
+            raise
+        logger.info(
+            "player rank recent cached anchor failed; using cache: key=%s "
+            "sub_key=%s user_id=%s rank=%s cache_age=%.3fs",
+            key,
+            sub_key,
+            user_id,
+            cached_item.rank_index + 1,
+            cache_age_seconds,
+        )
+        result.cost.used_recent_cache_fallback = True
+        return restore_cached_rank_after_timeout(result, cached_item)
     if await inspect(anchor_start, page, index=0):
         return result
     if anchor_only:
@@ -102,6 +162,7 @@ async def find_rank_by_cached_position(  # noqa: C901, PLR0913
                 sub_key=sub_key,
                 starts=batch_starts,
                 use_cache=False,
+                page_phase="cached_window",
             )
         for index, (start, page) in enumerate(
             zip(batch_starts, pages, strict=True),

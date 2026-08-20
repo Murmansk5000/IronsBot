@@ -430,6 +430,8 @@ class PlayerRankLookupConfig(BaseModel):
     page_timeout_seconds: float = Field(default=8, gt=0)
     total_timeout_seconds: float = Field(default=60, gt=0)
     page_retry_count: int = Field(default=1, ge=0, le=3)
+    recent_cache_max_age_seconds: float = Field(default=600, gt=0)
+    recent_cache_anchor_timeout_seconds: float = Field(default=5, gt=0)
 
     @model_validator(mode="after")
     def validate_budget(self) -> "PlayerRankLookupConfig":
