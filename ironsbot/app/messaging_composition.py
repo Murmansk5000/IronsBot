@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
@@ -16,12 +17,14 @@ from ironsbot.integrations.onebot.team_audit import (
     OneBotTeamAuditPolicy,
 )
 from ironsbot.integrations.sendpic import SendpicBackendProvider
+from ironsbot.integrations.storage.push_topics import SqlitePushTopicStore
 from ironsbot.integrations.storage.team_audit import SqliteTeamAuditReminderStore
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
 )
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.messaging.service import MessagingService
+from ironsbot.services.messaging.topics import PushTopicService
 from ironsbot.services.team.audit import TeamAuditService
 
 if TYPE_CHECKING:
@@ -61,6 +64,39 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
         OneBotLuckySkinWindowSubscriptionOptions,
     )
 
+    def resolve_topic_target(
+        value: str, source: ConversationRef
+    ) -> tuple[ConversationRef, ...]:
+        kind, separator, reference = value.partition(":")
+        if (
+            not separator
+            or kind not in {"群", "私聊"}
+            or source.platform is not Platform.ONEBOT
+        ):
+            message = "直发目标格式为 群:群别名 或 私聊:用户别名。"
+            raise ValueError(message)
+        target_id = (
+            settings.onebot_references.resolve_group(
+                reference, location="push_topics.direct"
+            )
+            if kind == "群"
+            else settings.onebot_references.resolve_user(
+                reference, location="push_topics.direct"
+            )
+        )
+        return (
+            ConversationRef(
+                Platform.ONEBOT, "group" if kind == "群" else "private", str(target_id)
+            ),
+        )
+
+    topics = PushTopicService(
+        SqlitePushTopicStore(settings.paths.runtime_state),
+        proactive_delivery,
+        subscriptions,
+        features,
+        resolve_target=resolve_topic_target,
+    )
     return MessagingComponents(
         messaging=MessagingService(
             settings.messaging,
@@ -81,6 +117,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
             ),
             _prepare_extra_push_options=bili_targets.prepare_subscription_labels,
             _subscription_submenu_providers=(bili_targets,),
+            topics=topics,
         ),
         sendpic=SendpicService(
             settings.messaging.sendpic,
