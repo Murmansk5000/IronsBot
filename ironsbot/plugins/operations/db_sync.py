@@ -14,8 +14,13 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runti
 
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.runtime.conversations import enter_event_reply_conversation
-from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
-from ironsbot.runtime.replies import finish_event_reply
+from ironsbot.runtime.matchers import (
+    CommandPolicy,
+    MatcherRegistry,
+    bind_async,
+    get_prompt_session_manager,
+)
+from ironsbot.runtime.replies import finish_event_reply, send_event_reply
 from ironsbot.runtime.rules import explicit_command
 
 if TYPE_CHECKING:
@@ -89,6 +94,17 @@ def install(registry: MatcherRegistry, service: DataSyncService) -> None:
                 "⚠️ 序号超出范围，请重新输入；输入 0 退出。",
             )
             return
+        # Data synchronization may take longer than the menu lifetime.  The
+        # choice is already accepted, so close only further menu input and
+        # retain this handler's ability to deliver its eventual result.
+        get_prompt_session_manager(matcher).close_queued_conversation_after_accepted_input(
+            state
+        )
+        await send_event_reply(
+            matcher,
+            event,
+            "⏳ 已开始执行数据更新，完成后会发送结果。",
+        )
         await finish_event_reply(
             matcher,
             event,

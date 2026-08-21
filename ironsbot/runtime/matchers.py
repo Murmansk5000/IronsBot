@@ -26,14 +26,12 @@ if TYPE_CHECKING:
     from ironsbot.runtime.commands import CommandCatalog
     from ironsbot.runtime.matcher_contracts import (
         CommandCooldown,
-        CommandIdSource,
         QueuedSemanticRequestResolver,
-        SemanticRequestResolver,
     )
     from ironsbot.runtime.prompt_sessions import _QueuedConversation
 from ironsbot.runtime.bindings import bind, bind_async  # noqa: F401
 from ironsbot.runtime.matcher_contracts import (
-    CommandPolicyError,
+    CommandPolicy,
     default_semantic_request,
     static_command_id,
 )
@@ -61,6 +59,7 @@ from ironsbot.runtime.queued_conversation_input import (
 )
 
 RUNTIME_CONTEXT_TOKEN_STATE_KEY = "_ironsbot_runtime_context_token"
+EXPLICIT_COMMAND_STATE_KEY = "_ironsbot_explicit_command"
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
 QUEUED_CONVERSATION_EXIT_PRIORITY = -30
 QUEUED_CONVERSATION_INPUT_PRIORITY = -29
@@ -486,46 +485,6 @@ async def _restore_temporary_matcher_state(state: T_State) -> None:
     state.update(incoming_state)
 
 
-@dataclass(frozen=True, slots=True)
-class CommandPolicy:
-    command_id: CommandIdSource | None = None
-    exemption_reason: str | None = None
-    semantic_request: SemanticRequestResolver | None = None
-    help_ids: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        if (self.command_id is None) == (self.exemption_reason is None):
-            raise CommandPolicyError.ambiguous()
-        if self.exemption_reason is not None and not self.exemption_reason.strip():
-            raise CommandPolicyError.empty_exemption()
-        if self.exemption_reason is not None and (
-            self.semantic_request is not None
-        ):
-            raise CommandPolicyError.exempt_with_semantic_request()
-        if self.exemption_reason is not None and self.help_ids:
-            raise CommandPolicyError.exempt_with_help_ids()
-        if any(not command_id.strip() for command_id in self.help_ids):
-            raise CommandPolicyError.empty_help_id()
-
-    @classmethod
-    def command(
-        cls,
-        command_id: CommandIdSource,
-        *,
-        semantic_request: SemanticRequestResolver | None = None,
-        help_ids: tuple[str, ...] = (),
-    ) -> CommandPolicy:
-        return cls(
-            command_id=command_id,
-            semantic_request=semantic_request,
-            help_ids=help_ids,
-        )
-
-    @classmethod
-    def exempt(cls, reason: str) -> CommandPolicy:
-        return cls(exemption_reason=reason)
-
-
 def _command_policy_label(policy: CommandPolicy) -> str:
     command_id = policy.command_id
     if isinstance(command_id, str):
@@ -571,7 +530,12 @@ class MatcherRegistry:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_message(**self._with_runtime_hooks(kwargs)),
+            on_message(
+                **self._with_runtime_hooks(
+                    kwargs,
+                    closes_active_conversation=policy.closes_active_conversation,
+                )
+            ),
             policy,
         )
 
@@ -583,7 +547,13 @@ class MatcherRegistry:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_fullmatch(msg, **self._with_runtime_hooks(kwargs)),
+            on_fullmatch(
+                msg,
+                **self._with_runtime_hooks(
+                    kwargs,
+                    closes_active_conversation=policy.closes_active_conversation,
+                )
+            ),
             policy,
         )
 
@@ -595,7 +565,13 @@ class MatcherRegistry:
         **kwargs: Any,
     ) -> type[Matcher]:
         return self._register_message(
-            on_command(cmd, **self._with_runtime_hooks(kwargs)),
+            on_command(
+                cmd,
+                **self._with_runtime_hooks(
+                    kwargs,
+                    closes_active_conversation=policy.closes_active_conversation,
+                )
+            ),
             policy,
         )
 
@@ -770,11 +746,18 @@ class MatcherRegistry:
         matcher.handlers.insert(0, dependent)
         self._cooldown_registrations[matcher] = ("command", str(label))
 
-    def _with_runtime_hooks(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+    def _with_runtime_hooks(
+        self,
+        kwargs: dict[str, Any],
+        *,
+        closes_active_conversation: bool = False,
+    ) -> dict[str, Any]:
         if self._runtime_context_token is None:
             return kwargs
         updated = dict(kwargs)
         state = dict(updated.get("state") or {})
         state[RUNTIME_CONTEXT_TOKEN_STATE_KEY] = self._runtime_context_token
+        if closes_active_conversation:
+            state[EXPLICIT_COMMAND_STATE_KEY] = True
         updated["state"] = state
         return updated

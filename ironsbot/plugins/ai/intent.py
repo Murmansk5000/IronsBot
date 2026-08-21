@@ -119,6 +119,7 @@ def install(
         policy=CommandPolicy.command(
             _resolve_action_command_id,
             help_ids=command_help_ids,
+            closes_active_conversation=False,
         ),
         rule=Rule(match_action) & natural_language(),
         priority=registry.priority("ai_intent"),
