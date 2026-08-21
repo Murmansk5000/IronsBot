@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 from datetime import datetime, timezone
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
 from nonebot import on_command
 from nonebot.adapters import Bot, Event
@@ -29,22 +29,41 @@ from ..service import (
 
 async def _is_push_admin(bot: Bot, event: Event) -> bool:
     """检查事件是否来自有推送管理权限的超级用户。"""
+    return await _push_admin_error(bot, event) is None
+
+
+async def _push_admin_error(bot: Bot, event: Event) -> str | None:
+    """返回权限失败提示；权限通过时返回 ``None``。"""
     if not await SUPERUSER(bot, event):
-        await bot.send(event, "❌ 您不是超级用户，无法管理推送")
-        return False
+        return "❌您不是超级用户，无法管理推送"
 
     allowed_group_ids = plugin_config.push_admin_manage_group_ids
-    if not allowed_group_ids or (
-        isinstance(event, GroupMessageEvent) and event.group_id in allowed_group_ids
+    if allowed_group_ids and not (
+        isinstance(event, GroupMessageEvent)
+        and event.group_id in allowed_group_ids
     ):
-        await bot.send(event, "❌ 您不在允许管理推送的群组中")
-        return False
+        return "❌当前会话未获推送管理权限"
 
-    return True
+    return None
+
+
+async def _require_push_admin(matcher: Matcher, bot: Bot, event: Event) -> None:
+    """在命令规则通过后检查管理权限，并向调用者返回失败原因。"""
+    if await PUSH_ADMIN_PERMISSION(bot, event):
+        return
+
+    await matcher.finish(
+        await _push_admin_error(bot, event) or "❌当前会话未获推送管理权限"
+    )
+
+
+AdminPermissionCheck = Annotated[None, Depends(_require_push_admin)]
 
 
 # Permission 中多个 checker 是“任一通过”，不能直接组合 SUPERUSER 和群检查；
 # 将两个必须同时满足的条件封装为单个 checker，保留原有权限语义。
+# 不把它直接传给 matcher.permission：Permission 会先于命令 Rule 执行，
+# 由依赖在 Rule 通过后调用，才能只对实际管理命令返回错误信息。
 PUSH_ADMIN_PERMISSION = Permission(_is_push_admin)
 
 #: 命令参数分段判断所需的最小段数
@@ -58,7 +77,6 @@ def _format_time(ts: float) -> str:
 create_matcher = on_command(
     "推送新建",
     rule=no_reply(),
-    permission=PUSH_ADMIN_PERMISSION,
     priority=1,
     block=True,
 )
@@ -68,6 +86,7 @@ create_matcher = on_command(
 async def handle_create(
     matcher: Matcher,
     arg: str = Depends(parse_string_arg),
+    _: AdminPermissionCheck = None,
 ) -> NoReturn:
     parts = arg.split(maxsplit=2)
     if len(parts) < _MIN_PARTS:
@@ -84,7 +103,6 @@ async def handle_create(
 delete_matcher = on_command(
     "推送删除",
     rule=no_reply(),
-    permission=PUSH_ADMIN_PERMISSION,
     priority=1,
     block=True,
 )
@@ -94,6 +112,7 @@ delete_matcher = on_command(
 async def handle_delete(
     matcher: Matcher,
     arg: str = Depends(parse_string_arg),
+    _: AdminPermissionCheck = None,
 ) -> NoReturn:
     topic_id = arg.strip()
     if not topic_id:
@@ -110,7 +129,6 @@ async def handle_delete(
 enable_matcher = on_command(
     "推送启用",
     rule=no_reply(),
-    permission=PUSH_ADMIN_PERMISSION,
     priority=1,
     block=True,
 )
@@ -120,6 +138,7 @@ enable_matcher = on_command(
 async def handle_enable(
     matcher: Matcher,
     arg: str = Depends(parse_string_arg),
+    _: AdminPermissionCheck = None,
 ) -> NoReturn:
     topic_id = arg.strip()
     if not topic_id:
@@ -132,7 +151,6 @@ async def handle_enable(
 disable_matcher = on_command(
     "推送停用",
     rule=no_reply(),
-    permission=PUSH_ADMIN_PERMISSION,
     priority=1,
     block=True,
 )
@@ -142,6 +160,7 @@ disable_matcher = on_command(
 async def handle_disable(
     matcher: Matcher,
     arg: str = Depends(parse_string_arg),
+    _: AdminPermissionCheck = None,
 ) -> NoReturn:
     topic_id = arg.strip()
     if not topic_id:
@@ -154,7 +173,6 @@ async def handle_disable(
 subscribers_matcher = on_command(
     "推送订阅者",
     rule=no_reply(),
-    permission=PUSH_ADMIN_PERMISSION,
     priority=1,
     block=True,
 )
@@ -164,6 +182,7 @@ subscribers_matcher = on_command(
 async def handle_subscribers(
     matcher: Matcher,
     arg: str = Depends(parse_string_arg),
+    _: AdminPermissionCheck = None,
 ) -> NoReturn:
     topic_id = arg.strip()
     if not topic_id:
@@ -184,7 +203,6 @@ async def handle_subscribers(
 push_matcher = on_command(
     "推送",
     rule=no_reply(),
-    permission=PUSH_ADMIN_PERMISSION,
     priority=1,
     block=True,
 )
@@ -194,6 +212,7 @@ push_matcher = on_command(
 async def handle_push(
     matcher: Matcher,
     arg: str = Depends(parse_string_arg),
+    _: AdminPermissionCheck = None,
 ) -> NoReturn:
     parts = arg.split(maxsplit=1)
     if len(parts) < _MIN_PARTS:
@@ -218,7 +237,6 @@ async def handle_push(
 direct_matcher = on_command(
     "推送直发",
     rule=no_reply(),
-    permission=PUSH_ADMIN_PERMISSION,
     priority=1,
     block=True,
 )
@@ -228,6 +246,7 @@ direct_matcher = on_command(
 async def handle_direct(
     matcher: Matcher,
     arg: str = Depends(parse_string_arg),
+    _: AdminPermissionCheck = None,
 ) -> NoReturn:
     parts = arg.split(maxsplit=1)
     if len(parts) < _MIN_PARTS or not parts[0].isdigit():
