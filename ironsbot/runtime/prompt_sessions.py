@@ -597,6 +597,19 @@ class PromptSessionManager:
             context.complete(ticket)
         return context
 
+    def close_queued_conversation_after_accepted_input(self, state: T_State) -> None:
+        """Close menu intake while preserving the current handler's final reply.
+
+        Some menu choices start work which can legitimately outlive the menu
+        deadline.  Once the input has been accepted, later menu expiry must
+        stop additional choices without suppressing that accepted handler's
+        result message.
+        """
+
+        context = self.detach_queued_conversation(state)
+        if context is not None:
+            self._close_queued_conversation(context)
+
     def claim_input(self, event: Event) -> bool:
         raw_message_id = getattr(event, "message_id", None)
         if raw_message_id is None:

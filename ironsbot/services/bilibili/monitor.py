@@ -45,6 +45,7 @@ DynamicPushSender = Callable[
     [dict[str, Any], int, int, BiliPushTargets, tuple[SeerDynamicCategory, ...]],
     Awaitable[None],
 ]
+PendingImageRetry = Callable[[], Awaitable[None]]
 
 @dataclass(frozen=True, slots=True)
 class DynamicPushBatch:
@@ -272,9 +273,15 @@ async def _do_check_logic(
     service: BilibiliService,
     on_auth_invalid: AuthInvalidHandler,
     send_push: DynamicPushSender,
+    retry_pending_images: PendingImageRetry | None = None,
 ) -> MonitorCheckResult:
     result = MonitorCheckResult(executed=True)
     try:
+        if retry_pending_images is not None:
+            try:
+                await retry_pending_images()
+            except Exception:
+                logger.exception("Bilibili pending image retry failed")
         cookie = service.cookie_store.load()
         feed = await service.fetch_feed(cookie)
         if not await _is_valid_dynamic_response(
@@ -335,6 +342,7 @@ async def run_monitor_check(  # noqa: PLR0913 - public monitor coordination API
     *,
     on_auth_invalid: AuthInvalidHandler,
     send_push: DynamicPushSender,
+    retry_pending_images: PendingImageRetry | None = None,
     is_startup_check: bool = False,
     force: bool = False,
     now: datetime | None = None,
@@ -418,7 +426,12 @@ async def run_monitor_check(  # noqa: PLR0913 - public monitor coordination API
                 len(due_boost_slots),
                 current_now.isoformat(),
             )
-            result = await _do_check_logic(service, on_auth_invalid, send_push)
+            result = await _do_check_logic(
+                service,
+                on_auth_invalid,
+                send_push,
+                retry_pending_images,
+            )
             if result.discovered_new and due_boost_slots:
                 mark_boost_slots_completed(
                     service.auto_check_state,

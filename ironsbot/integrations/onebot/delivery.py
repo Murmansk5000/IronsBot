@@ -280,6 +280,7 @@ class OneBotDelivery:
         attempt: int,
         batch_index: int,
         batch_size: int,
+        max_attempts: int,
     ) -> TargetSendSummary:
         bot_keys = [
             key
@@ -316,7 +317,7 @@ class OneBotDelivery:
             "{} push attempt {}/{} batch {} size={} targets={} succeeded={} failed={}",
             action_name,
             attempt,
-            self.push_delivery.max_attempts,
+            max_attempts,
             batch_index,
             batch_size,
             len(selected),
@@ -325,7 +326,7 @@ class OneBotDelivery:
         )
         return TargetSendSummary(succeeded, failed)
 
-    async def _send_push_targets(
+    async def _send_push_targets(  # noqa: PLR0913
         self,
         selected: list[tuple[MessageTarget, str | Message]],
         *,
@@ -333,11 +334,15 @@ class OneBotDelivery:
         action_name: str,
         message_limiter: MessageLimiter | None,
         subscription_key: str,
+        retry_failed_targets: bool,
     ) -> TargetSendSummary:
         pending = selected
         succeeded_targets: set[MessageTarget] = set()
         batch_size = max(len(pending), 1)
-        for attempt in range(1, self.push_delivery.max_attempts + 1):
+        max_attempts = (
+            self.push_delivery.max_attempts if retry_failed_targets else 1
+        )
+        for attempt in range(1, max_attempts + 1):
             if not pending:
                 break
             if attempt > 1:
@@ -361,7 +366,7 @@ class OneBotDelivery:
                         action_name,
                         delay,
                         attempt,
-                        self.push_delivery.max_attempts,
+                        max_attempts,
                         batch_index,
                     )
                     await asyncio.sleep(delay)
@@ -374,6 +379,7 @@ class OneBotDelivery:
                     attempt=attempt,
                     batch_index=batch_index,
                     batch_size=batch_size,
+                    max_attempts=max_attempts,
                 )
                 succeeded_targets.update(summary.succeeded)
                 failed_ids = set(summary.failed)
@@ -400,6 +406,7 @@ class OneBotDelivery:
         interval_seconds: float = 1.5,
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
+        retry_failed_targets: bool = True,
     ) -> TargetSendSummary:
         selected = list(dict.fromkeys(targets))
         if subscription_key:
@@ -412,6 +419,7 @@ class OneBotDelivery:
                 action_name=action_name,
                 message_limiter=message_limiter,
                 subscription_key=subscription_key,
+                retry_failed_targets=retry_failed_targets,
             )
             return self._restore_target_order(summary, original_selected)
 
@@ -443,7 +451,7 @@ class OneBotDelivery:
             ],
         )
 
-    async def send_target_messages(
+    async def send_target_messages(  # noqa: PLR0913
         self,
         target_messages: Iterable[tuple[MessageTarget, str | Message]],
         *,
@@ -451,6 +459,7 @@ class OneBotDelivery:
         action_name: str = "message action",
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
+        retry_failed_targets: bool = True,
     ) -> TargetSendSummary:
         selected = list(target_messages)
         if subscription_key:
@@ -478,6 +487,7 @@ class OneBotDelivery:
                 action_name=action_name,
                 message_limiter=message_limiter,
                 subscription_key=subscription_key,
+                retry_failed_targets=retry_failed_targets,
             )
             return self._restore_target_order(
                 summary,
@@ -524,6 +534,7 @@ class OneBotDelivery:
         interval_seconds: float = 1.5,
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
+        retry_failed_targets: bool = True,
     ) -> TargetSendSummary:
         return await self.send_targets(
             broadcast_targets(
@@ -537,6 +548,7 @@ class OneBotDelivery:
             interval_seconds=interval_seconds,
             message_limiter=message_limiter,
             subscription_key=subscription_key,
+            retry_failed_targets=retry_failed_targets,
         )
 
     def _filter_subscribed_targets(

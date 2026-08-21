@@ -8,6 +8,7 @@ from ironsbot.core.bilibili import BiliBoostWindow, BiliPollingConfig
 from ironsbot.services.bilibili import monitor as monitor_module
 from ironsbot.services.bilibili.monitor import MonitorCheckResult, run_monitor_check
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+from ironsbot.services.bilibili.service import BiliFeedResponse
 from tests.helpers.bilibili import build_test_bilibili_service
 
 EXPECTED_CATCH_UP_CHECK_COUNT = 2
@@ -83,6 +84,34 @@ def test_bili_monitor_service_registers_wall_clock_job(
         and job["second"] == BOOST_SAMPLE_SECOND
         for job in boost_jobs
     )
+
+
+def test_monitor_check_retries_pending_images_before_discovery(
+    tmp_path: Path,
+) -> None:
+    service = build_test_bilibili_service(tmp_path)
+    events: list[str] = []
+
+    async def feed(_cookie: str) -> BiliFeedResponse:
+        events.append("feed")
+        return BiliFeedResponse(200, {"code": 0, "data": {"items": []}})
+
+    async def retry_pending_images() -> None:
+        events.append("retry")
+
+    service.fetch_feed = feed
+
+    async def scenario() -> None:
+        await run_monitor_check(
+            service,
+            on_auth_invalid=_ignore_auth_invalid,
+            send_push=_ignore_push,
+            retry_pending_images=retry_pending_images,
+            force=True,
+        )
+
+    asyncio.run(scenario())
+    assert events == ["retry", "feed"]
 
 
 def test_running_monitor_coalesces_missed_tick_into_one_catch_up(

@@ -72,6 +72,7 @@ DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 240
 DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 8.0
 DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 12.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
+CUSTOM_SUPERUSER_SCORE_LIMIT_MULTIPLIER = 3
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 50
@@ -1378,6 +1379,32 @@ lookup_limits = { "不存在的榜" = 10000 }
         encoding="utf-8",
     )
     with pytest.raises(ValidationError, match="unsupported global rank key"):
+        load_settings(config_path)
+
+
+def test_superuser_score_limit_multiplier_is_configurable(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        f"""
+[seer.rank]
+superuser_score_limit_multiplier = {CUSTOM_SUPERUSER_SCORE_LIMIT_MULTIPLIER}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    assert (
+        load_settings(config_path).seer.rank.superuser_score_limit_multiplier
+        == CUSTOM_SUPERUSER_SCORE_LIMIT_MULTIPLIER
+    )
+
+    config_path.write_text(
+        """
+[seer.rank]
+superuser_score_limit_multiplier = 0
+""".strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValidationError, match="superuser_score_limit_multiplier"):
         load_settings(config_path)
 
 

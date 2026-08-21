@@ -152,6 +152,26 @@ def test_command_policy_marks_only_explicit_commands_as_conversation_takeovers(
     assert EXPLICIT_COMMAND_STATE_KEY not in passive._default_state
 
 
+def test_push_management_commands_take_over_active_conversations() -> None:
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=PromptSessionManager(),
+    )
+
+    subscription = registry.on_fullmatch(
+        "td",
+        policy=CommandPolicy.command("message.push_subscription"),
+    )
+    push_time = registry.on_fullmatch(
+        "push-time",
+        policy=CommandPolicy.command("message.push_time"),
+    )
+
+    assert subscription._default_state[EXPLICIT_COMMAND_STATE_KEY] is True
+    assert push_time._default_state[EXPLICIT_COMMAND_STATE_KEY] is True
+
+
 @pytest.mark.asyncio
 async def test_temporary_matcher_state_keeps_tasks_out_of_default_state() -> None:
     wait_for_completion = asyncio.Event()
@@ -1059,6 +1079,32 @@ async def test_detaching_a_shared_reply_keeps_the_owner_conversation_active() ->
     next_ticket = await context.acquire()
     assert next_ticket == expected_next_ticket
     context.complete(next_ticket)
+
+
+@pytest.mark.asyncio
+async def test_accepted_long_running_menu_input_keeps_final_reply() -> None:
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_4_user_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+    )
+    ticket = await context.acquire()
+    state: T_State = {
+        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+        QUEUED_CONVERSATION_TICKET_STATE_KEY: ticket,
+    }
+
+    manager.close_queued_conversation_after_accepted_input(state)
+
+    assert state == {}
+    assert manager.queued_conversation(state) is None
+    assert not manager.queued_conversation_is_cancelled(
+        {QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token}
+    )
+    assert not context.active
 
 
 def test_group_menu_reply_uses_only_the_latest_menu_anchor() -> None:

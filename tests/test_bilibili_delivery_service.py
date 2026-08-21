@@ -16,6 +16,12 @@ from ironsbot.core.messaging import (
     TargetSendSummary,
 )
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
+from ironsbot.integrations.storage.bilibili_history import (
+    SqliteBiliDynamicHistoryStore,
+)
+from ironsbot.integrations.storage.bilibili_image_delivery_retries import (
+    SqliteBiliImageDeliveryRetryStore,
+)
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import (
     build_dynamic_content_message,
@@ -40,6 +46,7 @@ from ironsbot.services.bilibili.preferences import (
     bili_push_media_subscription_key,
     bili_push_subscription_key,
 )
+from ironsbot.services.bilibili.push import build_dynamic_history_snapshot_for_item
 from ironsbot.services.bilibili.targets import BiliPushTargets
 from tests.helpers.runtime import build_test_runtime
 
@@ -870,6 +877,7 @@ async def test_full_dynamic_delegates_image_delivery_to_common_push_pipeline(
     assert len(image_sends) == 1
     assert image_sends[0]["group_ids"] == [1001]
     assert image_sends[0]["private_user_ids"] == [2001]
+    assert image_sends[0]["retry_failed_targets"] is False
 
 
 @pytest.mark.asyncio
@@ -931,10 +939,80 @@ async def test_full_dynamic_notifies_superusers_after_common_delivery_fails(
 
     assert len(image_attempts) == 1
     assert len(admin_notices) == 1
-    assert "自适应分批重试后仍未完成" in str(admin_notices[0]["message"])
+    assert "累计投递仍未确认，已停止后续重试以避免重复图片" in str(
+        admin_notices[0]["message"]
+    )
     assert "群：投递失败群（1001）" in str(admin_notices[0]["message"])
     assert "私聊：2001" in str(admin_notices[0]["message"])
     assert FULL_DYNAMIC_PUSH_ACTION in sent_actions
+
+
+@pytest.mark.asyncio
+async def test_failed_image_targets_retry_without_resending_successes(
+    tmp_path: Path,
+) -> None:
+    first_group = MessageTarget("group", 1001)
+    failed_group = MessageTarget("group", 1002)
+    sends: list[tuple[str, list[int]]] = []
+
+    class FirstFailureDelivery:
+        async def broadcast(
+            self,
+            _message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            action = str(kwargs["action_name"])
+            groups = list(cast("list[int]", kwargs["group_ids"]))
+            sends.append((action, groups))
+            if action == FULL_DYNAMIC_IMAGE_PUSH_ACTION:
+                return TargetSendSummary([first_group], [failed_group])
+            if action == f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry":
+                return TargetSendSummary([failed_group], [])
+            return TargetSendSummary([], [])
+
+    item = _item()
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    snapshot = build_dynamic_history_snapshot_for_item(
+        item,
+        pub_ts=PUB_TS,
+        suppress_patterns=[],
+    )
+    assert snapshot is not None
+    history.save_snapshot(snapshot)
+    retries = SqliteBiliImageDeliveryRetryStore(tmp_path / "retry.sqlite")
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", FirstFailureDelivery()),
+        PushUnsubscribeStore(tmp_path / "subscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_text_message,
+        append_text_hint,
+        render_images=build_dynamic_images_message,
+        history=history,
+        image_delivery_retries=retries,
+        retry_targets_for_uid=lambda _uid: BiliPushTargets(
+            [1001, 1002], [], [], []
+        ),
+    )
+
+    await service.send(
+        item,
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001, 1002], [], [], []),
+    )
+
+    assert retries.list_pending() == [
+        (str(item["id_str"]), failed_group, 1),
+    ]
+
+    await service.retry_failed_images()
+
+    image_sends = [entry for entry in sends if "image push" in entry[0]]
+    assert image_sends == [
+        (FULL_DYNAMIC_IMAGE_PUSH_ACTION, [1001, 1002]),
+        (f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry", [1002]),
+    ]
+    assert retries.list_pending() == []
 
 
 def test_content_message_for_image_only_dynamic_omits_synthetic_notice() -> None:

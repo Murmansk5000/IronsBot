@@ -48,10 +48,15 @@ def build_bilibili_monitor(
         prepend_text_hint,
         build_dynamic_images_message,
         service.targets.seer_category_uid(),
+        service.history,
+        service.image_delivery_retries,
+        settings.messaging.push_delivery.max_attempts,
+        service.targets.push_targets_for_uid,
     )
     return BilibiliMonitorService(
         service,
         auth_invalid,
         push.send,
+        push.retry_failed_images,
         check_second=settings.bilibili.polling.check_second,
     )

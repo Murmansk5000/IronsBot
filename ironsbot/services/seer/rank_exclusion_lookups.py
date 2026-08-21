@@ -152,10 +152,15 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     score_name: str,
     target_score: int,
     search_limit: int | None,
+    use_superuser_limit: bool,
 ) -> RankScoreSearchResult:
     """Search a score segment while numbering only visible accounts."""
 
-    limit = service._score_search_limit(rank_key, search_limit)
+    limit = service._score_search_limit(
+        rank_key,
+        search_limit,
+        use_superuser_limit=use_superuser_limit,
+    )
     result = RankScoreSearchResult(
         title=title,
         score_name=score_name,

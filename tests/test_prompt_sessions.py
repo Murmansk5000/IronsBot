@@ -15,6 +15,8 @@ from ironsbot.runtime.prompt_sessions import _QueuedConversation
 from tests.helpers.onebot_events import private_message_event
 
 if TYPE_CHECKING:
+    from nonebot.adapters import Event
+
     from ironsbot.runtime.matcher_contracts import CommandCooldown
 
 
@@ -123,7 +125,7 @@ def test_matching_queued_conversation_prefers_newest_coexisting_menu() -> None:
     event = private_message_event("1", user_id=2, self_id=1)
     session_id = event.get_session_id()
 
-    def choice_check(next_event: object) -> bool:
+    def choice_check(next_event: Event) -> bool:
         return next_event.get_plaintext().strip() == "1"
 
     older = _QueuedConversation(

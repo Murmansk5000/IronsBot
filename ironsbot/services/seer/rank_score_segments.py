@@ -53,11 +53,16 @@ def build_rank_score_segment_dependencies(
     game: Any,
     *,
     rank_key: str | None,
+    use_superuser_limit: bool,
 ) -> RankScoreSegmentDependencies:
     parallelism = service.rank_probe_parallelism(game)
     batch_enabled = parallelism > 1
     return RankScoreSegmentDependencies(
-        score_search_limit=partial(service._score_search_limit, rank_key),
+        score_search_limit=partial(
+            service._score_search_limit,
+            rank_key,
+            use_superuser_limit=use_superuser_limit,
+        ),
         rank_page_size=service.page_size,
         rank_page_start=service.page_start,
         cached_score_candidate_page_starts=partial(
@@ -97,6 +102,7 @@ async def fetch_score_segment_for_service(  # noqa: PLR0913
     search_limit: int | None,
     start_index: int,
     sample_limit: int | None,
+    use_superuser_limit: bool,
 ) -> RankScoreSearchResult:
     if rank_key is not None and service.exclusion_policy.excluded_user_ids(rank_key):
         from ironsbot.services.seer.rank_exclusion_lookups import (
@@ -113,6 +119,7 @@ async def fetch_score_segment_for_service(  # noqa: PLR0913
             score_name=score_name,
             target_score=target_score,
             search_limit=search_limit,
+            use_superuser_limit=use_superuser_limit,
         )
     return await fetch_rank_score_segment(
         game,
@@ -128,6 +135,7 @@ async def fetch_score_segment_for_service(  # noqa: PLR0913
             service,
             game,
             rank_key=rank_key,
+            use_superuser_limit=use_superuser_limit,
         ),
     )
 
