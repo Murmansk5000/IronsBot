@@ -131,11 +131,20 @@ async def build_pet_image_message(
 
         return series_name
 
-    msg += f"所属精灵：{model.pet.name}\n"
+    lines = [f"所属精灵：{model.pet.name}"]
     if series_name := build_series_name():
-        msg += f"所属系列：{series_name}\n"
+        lines.append(f"所属系列：{series_name}")
     if model.card_price:
-        msg += f"礼卡价格：{model.card_price}\n"
+        lines.append(f"礼卡价格：{model.card_price}")
+    if model.diamond_price:
+        lines.append(f"钻石价格：{model.diamond_price}")
+    if model.skinhouse_price:
+        lines.append(f"神秘屋价格：{model.skinhouse_price}")
+    if model.discounted_skinhouse_price:
+        lines.append(f"神秘屋折扣价格：{model.discounted_skinhouse_price}")
+    if model.ticket_num:
+        lines.append(f"可使用风尚券数量：{model.ticket_num}")
+    msg += "\n".join(lines)
 
     return msg
 
