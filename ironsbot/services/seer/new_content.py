@@ -73,7 +73,7 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "suit": "新增套装",
     "equip": "新增部件",
     "mount": "新增座驾",
-    "autocard_card": "新增群星牌",
+    "autocard_card": "新增群星牌卡牌",
     "autocard_role": "新增群星牌角色",
     "autocard_sanctuary_effect": "新增群星牌圣域",
 }

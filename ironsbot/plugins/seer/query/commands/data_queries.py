@@ -467,9 +467,24 @@ def _focused_content_prompt(
             item.name,
             _item_description(item),
             _NewContentAction("item", category, item),
+            key=str(index),
         )
-        for item in snapshot.items_for(category)
+        for index, item in enumerate(snapshot.items_for(category), start=1)
     ]
+    # Root letters remain valid while a numeric category menu is open.  They
+    # are intentionally invisible: the focused menu stays compact, while a
+    # queued ``d`` can still jump from skills to the root's Autocard category.
+    choices.extend(
+        PromptItem(
+            CATEGORY_NAMES[root_category],
+            "",
+            _NewContentAction("category", root_category),
+            key=chr(ord("a") + index),
+            is_visible=False,
+        )
+        for index, root_category in enumerate(layout.display_categories)
+        if root_category != category
+    )
     return Prompt(
         title=f"🆕【{CATEGORY_NAMES[category]}】输入编号查看详情：",
         items=choices,
