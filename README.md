@@ -10,7 +10,7 @@
 
 > 本项目原作是 [**@火火**] 开发的西塔伦Bot，谨以此项目向 [**@火火**] 致敬，感谢他为赛尔号玩家社区所做的贡献，愿火种永存。
 > 
-> 本项目继承了西塔伦Bot的数据查询功能，不包含配置投稿/推荐功能，这些功能请查看[这个链接（目前还没有）]()获取更多信息。
+> 本项目继承了西塔伦Bot的数据查询功能，不包含配置投稿/推荐功能，这些功能请查看[这个链接](https://seerinfo.yuyuqaq.cn/firedict)获取更多信息。
 >
 > 本项目中headless_seer插件的session获取与登录数据包构建函数来源于 [@oldml](https://github.com/oldml) 的项目 [saixiaoxi](https://github.com/oldml/saixiaoxi)，在此表示感谢。
 
@@ -63,6 +63,11 @@ services:
       # === 表情包插件，当缺少时相关命令将被禁用 ===
       # MEMES_CNB_TOKEN: "你的CNB令牌"
       # MEMES_CNB_REPO: "Nattsu39/tudou"
+
+      # === 消息推送中心插件（均为可选配置，默认即可用） ===
+      # PUSH_ADMIN_MANAGE_GROUP_IDS: "[123456, 789012]"  # 推送管理命令可用的群号白名单，空表示不限制
+      # PUSH_MAX_HISTORY: "500"                          # 每个主题保留的最大推送历史条数
+      # PUSH_DEDUP_WINDOW_SECONDS: "3600"                # 去重窗口（秒）
 
       # === 机器人配置（必填） ===
       ONEBOT_ACCESS_TOKEN: "你的OneBot token" # 设置OneBot的访问令牌，用于NapCat连接机器人，注意不要泄露给他人

@@ -20,6 +20,7 @@ dependencies = [
     "nonebot-plugin-localstore>=0.7.4",
     "pypinyin>=0.53.0",
     "pillow>=12.3.0",
+    "sqlmodel>=0.0.37",
 ]
 
 [project.optional-dependencies]

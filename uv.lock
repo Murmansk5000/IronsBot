@@ -548,6 +548,7 @@ dependencies = [
     { name = "pypinyin" },
     { name = "seerapi" },
     { name = "seerapi-models" },
+    { name = "sqlmodel" },
 ]
 
 [package.optional-dependencies]
@@ -584,6 +585,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "seerapi", specifier = ">=106.7.0" },
     { name = "seerapi-models", specifier = ">=106.7.0" },
+    { name = "sqlmodel", specifier = ">=0.0.37" },
 ]
 provides-extras = ["dev"]
 
