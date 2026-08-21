@@ -62,6 +62,7 @@ from .player_target import (
     PlayerTargetResolution,
     allows_private_player_aliases,
     default_player_id_for,
+    protected_shortcut_target_error,
     resolve_event_player_reference_target,
     resolve_event_player_target,
 )
@@ -182,6 +183,13 @@ async def validate_player_id(
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
         return
+    if access_error := protected_shortcut_target_error(
+        dependencies.player,
+        event.user_id,
+        target,
+    ):
+        await finish_event_reply(matcher, event, access_error)
+        return
     if target.choices:
         async def select_player_target(
             player_id: int,
@@ -190,6 +198,11 @@ async def validate_player_id(
         ) -> None:
             selection_state = selection_matcher.state
             selection_state[PLAYER_ID_KEY] = player_id
+            selection_state[_PLAYER_TARGET_KEY] = PlayerTargetResolution(
+                player_id,
+                offer_binding=True,
+                is_shortcut_target=target.is_shortcut_target,
+            )
             selection_state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
             await handle_player(
                 dependencies,

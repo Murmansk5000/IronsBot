@@ -228,6 +228,7 @@ class PlayerBindingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     change_cooldown_days: int = Field(default=3, ge=0)
+    protect_superuser_bound_shortcuts: bool = False
 
 
 class PlayerQueryLimitsConfig(BaseModel):

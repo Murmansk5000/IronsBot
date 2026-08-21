@@ -44,6 +44,7 @@ from .player_target import (
     PlayerTargetResolution,
     allows_private_player_aliases,
     default_player_id_for,
+    protected_shortcut_target_error,
     resolve_event_player_target,
 )
 from .player_target_selection import enter_player_target_selection
@@ -180,6 +181,13 @@ async def handle_player_shortcut(
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
         return
+    if access_error := protected_shortcut_target_error(
+        service,
+        event.user_id,
+        target,
+    ):
+        await finish_event_reply(matcher, event, access_error)
+        return
     if target.choices:
         async def select_player_target(
             player_id: int,
@@ -194,6 +202,7 @@ async def handle_player_shortcut(
             selection_state[_SHORTCUT_TARGET_KEY] = PlayerTargetResolution(
                 player_id,
                 offer_binding=True,
+                is_shortcut_target=target.is_shortcut_target,
             )
             await handle_player_shortcut(
                 dependencies,
@@ -285,6 +294,7 @@ async def _enter_extension_target_selection(  # noqa: PLR0913
         selection_state[_EXTENSION_SHORTCUT_TARGET_KEY] = PlayerTargetResolution(
             player_id,
             offer_binding=True,
+            is_shortcut_target=target.is_shortcut_target,
         )
         await handle_player_extension_shortcut(
             dependencies,
@@ -302,6 +312,30 @@ async def _enter_extension_target_selection(  # noqa: PLR0913
     )
 
 
+def _resolve_extension_shortcut_target(
+    dependencies: PlayerCommandDependencies,
+    event: MessageEvent,
+    command: PlayerExtensionShortcutCommand,
+    target: object,
+) -> PlayerTargetResolution:
+    if isinstance(target, PlayerTargetResolution):
+        return target
+    return resolve_event_player_target(
+        dependencies.player_accounts,
+        event,
+        command.player_reference
+        if command.player_reference is not None
+        else (str(command.player_id) if command.player_id is not None else None),
+        binding_for_user=lambda user_id: default_player_id_for(
+            dependencies.player, user_id
+        ),
+        allow_private=allows_private_player_aliases(
+            dependencies.features, event.user_id
+        ),
+        allow_partial_reference=True,
+    )
+
+
 async def handle_player_extension_shortcut(
     dependencies: PlayerCommandDependencies,
     matcher: Matcher,
@@ -311,24 +345,21 @@ async def handle_player_extension_shortcut(
     command = state.get(_EXTENSION_SHORTCUT_COMMAND_KEY)
     if not isinstance(command, PlayerExtensionShortcutCommand):
         return
-    target = state.get(_EXTENSION_SHORTCUT_TARGET_KEY)
-    if not isinstance(target, PlayerTargetResolution):
-        target = resolve_event_player_target(
-            dependencies.player_accounts,
-            event,
-            command.player_reference
-            if command.player_reference is not None
-            else (str(command.player_id) if command.player_id is not None else None),
-            binding_for_user=lambda user_id: default_player_id_for(
-                dependencies.player, user_id
-            ),
-            allow_private=allows_private_player_aliases(
-                dependencies.features, event.user_id
-            ),
-            allow_partial_reference=True,
-        )
+    target = _resolve_extension_shortcut_target(
+        dependencies,
+        event,
+        command,
+        state.get(_EXTENSION_SHORTCUT_TARGET_KEY),
+    )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
+        return
+    if access_error := protected_shortcut_target_error(
+        dependencies.player,
+        event.user_id,
+        target,
+    ):
+        await finish_event_reply(matcher, event, access_error)
         return
     if target.choices:
         await _enter_extension_target_selection(

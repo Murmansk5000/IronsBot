@@ -26,6 +26,8 @@ from ironsbot.services.seer.player_service import (
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 
 _PLAYER_ID = 123456
+_SUPERUSER_ID = 10001
+_OTHER_USER_ID = 10002
 
 
 @pytest.mark.parametrize("text", ["是", "yes", "YES", " y ", "确认", "确定"])
@@ -87,6 +89,43 @@ def test_player_binding_replacement_offer_names_both_accounts() -> None:
 class _UnboundPlayerBindingStore:
     def get(self, _qq_user_id: int) -> SimpleNamespace:
         return SimpleNamespace(player_id=None)
+
+
+def test_superuser_bound_shortcut_protection_only_blocks_other_users() -> None:
+    service = object.__new__(PlayerService)
+    service._config = SimpleNamespace(  # type: ignore[attr-defined]
+        player=SimpleNamespace(
+            binding=SimpleNamespace(protect_superuser_bound_shortcuts=True)
+        )
+    )
+    service._superuser_ids = frozenset((_SUPERUSER_ID,))  # type: ignore[attr-defined]
+    service._bindings = SimpleNamespace(  # type: ignore[attr-defined]
+        get=lambda user_id: PlayerBindingState(
+            user_id,
+            _PLAYER_ID if user_id == _SUPERUSER_ID else None,
+        )
+    )
+
+    assert service.shortcut_target_access_error(_SUPERUSER_ID, _PLAYER_ID) is None
+    assert service.shortcut_target_access_error(_OTHER_USER_ID, _PLAYER_ID) == (
+        "该米米号不支持快捷查询，请使用完整数字米米号。"
+    )
+    assert service.shortcut_target_access_error(_OTHER_USER_ID, _PLAYER_ID + 1) is None
+
+
+def test_superuser_bound_shortcut_protection_can_be_disabled() -> None:
+    service = object.__new__(PlayerService)
+    service._config = SimpleNamespace(  # type: ignore[attr-defined]
+        player=SimpleNamespace(
+            binding=SimpleNamespace(protect_superuser_bound_shortcuts=False)
+        )
+    )
+    service._superuser_ids = frozenset((_SUPERUSER_ID,))  # type: ignore[attr-defined]
+    service._bindings = SimpleNamespace(  # type: ignore[attr-defined]
+        get=lambda user_id: PlayerBindingState(user_id, _PLAYER_ID)
+    )
+
+    assert service.shortcut_target_access_error(_OTHER_USER_ID, _PLAYER_ID) is None
 
 
 def test_shortcut_without_a_default_player_explains_player_id_lookup() -> None:

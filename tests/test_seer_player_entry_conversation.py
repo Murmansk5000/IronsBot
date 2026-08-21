@@ -17,6 +17,10 @@ from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_DETAIL_NAMESPACE,
 )
+from ironsbot.plugins.seer.query.commands.player_target import (
+    PlayerTargetResolution,
+    protected_shortcut_target_error,
+)
 from ironsbot.runtime.prompts import Prompt
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
@@ -40,6 +44,30 @@ def test_player_conversation_flows_share_one_session() -> None:
         PLAYER_BINDING_NAMESPACE,
         PLAYER_DETAIL_NAMESPACE,
     } == {PLAYER_DETAIL_NAMESPACE}
+
+
+def test_superuser_binding_protection_only_applies_to_indirect_targets() -> None:
+    service = SimpleNamespace(
+        shortcut_target_access_error=lambda _user_id, _player_id: "已保护"
+    )
+
+    assert (
+        protected_shortcut_target_error(
+            service,
+            10002,
+            PlayerTargetResolution(_ACCOUNT_PLAYER_ID, offer_binding=True),
+        )
+        is None
+    )
+    assert protected_shortcut_target_error(
+        service,
+        10002,
+        PlayerTargetResolution(
+            _ACCOUNT_PLAYER_ID,
+            offer_binding=False,
+            is_shortcut_target=True,
+        ),
+    ) == "已保护"
 
 
 def test_pending_binding_choice_accepts_only_confirmation_replies() -> None:
