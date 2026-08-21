@@ -37,12 +37,14 @@ from ironsbot.plugins.db_sync import (
     GetFingerprintFn,
     register_database,
     register_local_database,
+    register_update_hook,
 )
 from ironsbot.plugins.db_sync.manager import db_manager
 from ironsbot.utils.parse_arg import parse_string_arg
 
 from .config import plugin_config
 from .orm import BaseAliasORM, GemAliasORM, PetAliasORM
+from .push_notify import build_updated_hook
 
 _SEERAPI_DB = "seerapi"
 _ALIAS_DB = "aliases"
@@ -132,6 +134,10 @@ def _build_pinyin_fts(engine: Engine) -> None:
 
 
 db_manager.register_post_load_hook(_SEERAPI_DB, _build_pinyin_fts)
+
+# 数据库更新推送：seerapi / aliases 同步更新后向「数据库更新」主题订阅者推送
+register_update_hook(_SEERAPI_DB, build_updated_hook(_SEERAPI_DB))
+register_update_hook(_ALIAS_DB, build_updated_hook(_ALIAS_DB))
 
 _T_Model = TypeVar("_T_Model", bound=BaseResModel)
 _T_Model_co = TypeVar("_T_Model_co", bound=BaseResModel, covariant=True)
