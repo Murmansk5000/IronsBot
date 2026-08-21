@@ -22,6 +22,7 @@ from ironsbot.core.selection import (
     format_selection_menu,
 )
 from ironsbot.runtime.matchers import (
+    EXPLICIT_COMMAND_STATE_KEY,
     begin_queued_conversation,
     get_prompt_session_manager,
     reject_with_rule,
@@ -150,15 +151,16 @@ def _is_digit_input(event: Event) -> bool:
 
 @run_preprocessor
 async def _invalidate_prompt_on_command(matcher: Matcher, event: Event) -> None:
-    if matcher.priority > 0:
-        try:
-            prompt_sessions = get_prompt_session_manager(matcher)
-        except PromptSessionManagerMissingError:
-            return
-        # Queued conversations own their accepted input and lifetime.  Cancelling
-        # them here lets an unrelated higher-priority matcher consume a numeric
-        # menu choice before its actual conversation handler sees it.
-        prompt_sessions.invalidate(event.get_session_id())
+    if not matcher.state.get(EXPLICIT_COMMAND_STATE_KEY, False):
+        return
+    try:
+        prompt_sessions = get_prompt_session_manager(matcher)
+    except PromptSessionManagerMissingError:
+        return
+    # A new explicit command takes ownership of this conversation.  Menu routers
+    # and natural-language handlers are intentionally not marked this way.
+    prompt_sessions.invalidate(event.get_session_id())
+    prompt_sessions.invalidate_event_conversations(event)
 
 
 async def enter_prompt(  # noqa: PLR0913
