@@ -423,7 +423,14 @@ class PromptSessionManager:
         self.acquire(session_id)
 
     def invalidate_event_conversations(self, event: Event) -> None:
-        event_session_id = event.get_session_id()
+        self._cancel_queued_conversations_for_session(event.get_session_id())
+
+    def _cancel_queued_conversations_for_session(
+        self,
+        event_session_id: str,
+    ) -> None:
+        """Close every queued menu still open for one event session."""
+
         for context in tuple(self._queued_by_token.values()):
             if context.event_session_id == event_session_id:
                 self._cancel_queued_conversation(context)
@@ -449,8 +456,9 @@ class PromptSessionManager:
         pending: bool = False,
     ) -> _QueuedConversation:
         key = f"{namespace}:{event_session_id}"
-        if existing := self._queued_by_key.get(key):
-            self._cancel_queued_conversation(existing)
+        # A new menu takes over the whole event session: stale menus from
+        # other namespaces would otherwise compete for the same input.
+        self._cancel_queued_conversations_for_session(event_session_id)
         context = _QueuedConversation(
             token=token_urlsafe(18),
             key=key,
@@ -479,12 +487,16 @@ class PromptSessionManager:
         self,
         event: Event,
     ) -> _QueuedConversation | None:
-        """Return the one active menu that owns this input event."""
+        """Return the one active menu that owns this input event.
+
+        Menus are stored in creation order, so scanning backwards makes the
+        newest menu win whenever several coexist for the same session.
+        """
 
         return next(
             (
                 context
-                for context in self._queued_by_token.values()
+                for context in reversed(self._queued_by_token.values())
                 if context.matches(event)
             ),
             None,
@@ -584,6 +596,19 @@ class PromptSessionManager:
         if context is not None and isinstance(ticket, int):
             context.complete(ticket)
         return context
+
+    def close_queued_conversation_after_accepted_input(self, state: T_State) -> None:
+        """Close menu intake while preserving the current handler's final reply.
+
+        Some menu choices start work which can legitimately outlive the menu
+        deadline.  Once the input has been accepted, later menu expiry must
+        stop additional choices without suppressing that accepted handler's
+        result message.
+        """
+
+        context = self.detach_queued_conversation(state)
+        if context is not None:
+            self._close_queued_conversation(context)
 
     def claim_input(self, event: Event) -> bool:
         raw_message_id = getattr(event, "message_id", None)

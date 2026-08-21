@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -105,5 +106,54 @@ class CommandPolicyError(ValueError):
         return cls("exempt command policy cannot define help ids")
 
     @classmethod
+    def exempt_with_conversation_close(cls) -> CommandPolicyError:
+        return cls("exempt command policy cannot close an active conversation")
+
+    @classmethod
     def empty_help_id(cls) -> CommandPolicyError:
         return cls("command policy help ids must not contain empty values")
+
+
+@dataclass(frozen=True, slots=True)
+class CommandPolicy:
+    """Admission and conversation ownership rules for a registered command."""
+
+    command_id: CommandIdSource | None = None
+    exemption_reason: str | None = None
+    semantic_request: SemanticRequestResolver | None = None
+    help_ids: tuple[str, ...] = ()
+    closes_active_conversation: bool = True
+
+    def __post_init__(self) -> None:
+        if (self.command_id is None) == (self.exemption_reason is None):
+            raise CommandPolicyError.ambiguous()
+        if self.exemption_reason is not None and not self.exemption_reason.strip():
+            raise CommandPolicyError.empty_exemption()
+        if self.exemption_reason is not None and self.semantic_request is not None:
+            raise CommandPolicyError.exempt_with_semantic_request()
+        if self.exemption_reason is not None and self.help_ids:
+            raise CommandPolicyError.exempt_with_help_ids()
+        if self.exemption_reason is not None and self.closes_active_conversation:
+            raise CommandPolicyError.exempt_with_conversation_close()
+        if any(not command_id.strip() for command_id in self.help_ids):
+            raise CommandPolicyError.empty_help_id()
+
+    @classmethod
+    def command(
+        cls,
+        command_id: CommandIdSource,
+        *,
+        semantic_request: SemanticRequestResolver | None = None,
+        help_ids: tuple[str, ...] = (),
+        closes_active_conversation: bool = True,
+    ) -> CommandPolicy:
+        return cls(
+            command_id=command_id,
+            semantic_request=semantic_request,
+            help_ids=help_ids,
+            closes_active_conversation=closes_active_conversation,
+        )
+
+    @classmethod
+    def exempt(cls, reason: str) -> CommandPolicy:
+        return cls(exemption_reason=reason, closes_active_conversation=False)
