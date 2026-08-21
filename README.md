@@ -47,10 +47,15 @@ services:
   ironsbot:
     image: ghcr.io/nattsu39/ironsbot:latest
     environment:
+      SUPERUSERS: '["你的QQ号"]' # 管理员账号
+
       # === 赛尔号数据查询插件，可选择远程同步模式或本地回退模式 ===
       # 远程同步模式
       SEERAPI_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite"
       ALIAS_SYNC_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/aliases-data.sqlite"
+      # 判断远程数据库数据是否变动
+      SEERAPI_FINGERPRINT_URL: "https://github.com/SeerAPI/api-data/releases/download/latest/seerapi-data.sqlite.sha256"
+      ALIAS_FINGERPRINT_URL: "https://github.com/Nattsu39/ironsbot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
 
       # 本地回退模式
       SEERAPI_LOCAL_PATH: "seerapi-data.sqlite"
@@ -59,10 +64,6 @@ services:
       # --- 可选配置（以下均为默认值） ---
       # SEERAPI_SYNC_INTERVAL_MINUTES: "60"  # 数据同步间隔（分钟）
       # ALIAS_SYNC_INTERVAL_MINUTES: "60"
-
-      # === 表情包插件，当缺少时相关命令将被禁用 ===
-      # MEMES_CNB_TOKEN: "你的CNB令牌"
-      # MEMES_CNB_REPO: "Nattsu39/tudou"
 
       # === 消息推送中心插件（均为可选配置，默认即可用） ===
       # PUSH_ADMIN_MANAGE_GROUP_IDS: "[123456, 789012]"  # 推送管理命令可用的群号白名单，空表示不限制
@@ -76,7 +77,6 @@ services:
       # HOST: "0.0.0.0"
       # PORT: "8080"                  # 修改后需同步更新上方 ports 映射
       # COMMAND_START: '[""]'
-      # SUPERUSERS: '[]'
 
     restart: always
 
