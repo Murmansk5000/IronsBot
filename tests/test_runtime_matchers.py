@@ -21,6 +21,7 @@ from nonebot.utils import is_coroutine_callable
 from ironsbot.config.models.messaging import CommandCooldownConfig
 from ironsbot.core.request_coordination import RequestCoordinator
 from ironsbot.runtime.matchers import (
+    EXPLICIT_COMMAND_STATE_KEY,
     QUEUED_CONVERSATION_EXIT_PRIORITY,
     QUEUED_CONVERSATION_INPUT_PRIORITY,
     QUEUED_CONVERSATION_RESERVATION_PRIORITY,
@@ -28,6 +29,7 @@ from ironsbot.runtime.matchers import (
     QUEUED_CONVERSATION_TOKEN_STATE_KEY,
     RUNTIME_CONTEXT_TOKEN_STATE_KEY,
     TEMP_MATCHER_STATE_TOKEN_KEY,
+    CommandPolicy,
     MatcherRegistry,
     PromptSessionManager,
     _capture_queued_conversation_input,
@@ -122,6 +124,52 @@ async def test_matcher_runtime_context_keeps_live_tasks_out_of_matcher_state() -
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+def test_command_policy_marks_only_explicit_commands_as_conversation_takeovers(
+) -> None:
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=PromptSessionManager(),
+    )
+
+    command = registry.on_fullmatch(
+        "help",
+        policy=CommandPolicy.command("help"),
+    )
+    exempt = registry.on_fullmatch(
+        "menu",
+        policy=CommandPolicy.exempt("menu input"),
+    )
+    passive = registry.on_fullmatch(
+        "chat",
+        policy=CommandPolicy.command("chat", closes_active_conversation=False),
+    )
+
+    assert command._default_state[EXPLICIT_COMMAND_STATE_KEY] is True
+    assert EXPLICIT_COMMAND_STATE_KEY not in exempt._default_state
+    assert EXPLICIT_COMMAND_STATE_KEY not in passive._default_state
+
+
+def test_push_management_commands_take_over_active_conversations() -> None:
+    registry = MatcherRegistry(
+        cooldown=cast("CommandCooldown", object()),
+        priorities=object(),
+        prompt_session_manager=PromptSessionManager(),
+    )
+
+    subscription = registry.on_fullmatch(
+        "td",
+        policy=CommandPolicy.command("message.push_subscription"),
+    )
+    push_time = registry.on_fullmatch(
+        "push-time",
+        policy=CommandPolicy.command("message.push_time"),
+    )
+
+    assert subscription._default_state[EXPLICIT_COMMAND_STATE_KEY] is True
+    assert push_time._default_state[EXPLICIT_COMMAND_STATE_KEY] is True
 
 
 @pytest.mark.asyncio
@@ -1031,6 +1079,32 @@ async def test_detaching_a_shared_reply_keeps_the_owner_conversation_active() ->
     next_ticket = await context.acquire()
     assert next_ticket == expected_next_ticket
     context.complete(next_ticket)
+
+
+@pytest.mark.asyncio
+async def test_accepted_long_running_menu_input_keeps_final_reply() -> None:
+    manager = PromptSessionManager()
+    context = manager.start_queued_conversation(
+        namespace="test",
+        event_session_id="group_4_user_2",
+        state={},
+        reply_check=lambda _event: True,
+        handlers=[],
+    )
+    ticket = await context.acquire()
+    state: T_State = {
+        QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token,
+        QUEUED_CONVERSATION_TICKET_STATE_KEY: ticket,
+    }
+
+    manager.close_queued_conversation_after_accepted_input(state)
+
+    assert state == {}
+    assert manager.queued_conversation(state) is None
+    assert not manager.queued_conversation_is_cancelled(
+        {QUEUED_CONVERSATION_TOKEN_STATE_KEY: context.token}
+    )
+    assert not context.active
 
 
 def test_group_menu_reply_uses_only_the_latest_menu_anchor() -> None:
