@@ -578,6 +578,41 @@ def test_new_content_render_cache_key_includes_expanded_categories() -> None:
     assert folded != expanded
 
 
+def test_new_content_render_cache_key_includes_menu_layout_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260807",
+        weekly_cycle="2026-08-07",
+        items=(),
+    )
+    original = new_content_rendering._cache_key(
+        snapshot,
+        ("pet", "skill"),
+        None,
+        "新增内容",
+        frozenset(),
+        5,
+    )
+    monkeypatch.setattr(
+        "ironsbot.services.seer.rendering.new_content_render_policy."
+        "NEW_CONTENT_MENU_LAYOUT_VERSION",
+        "root-menu-test",
+    )
+
+    refreshed = new_content_rendering._cache_key(
+        snapshot,
+        ("pet", "skill"),
+        None,
+        "新增内容",
+        frozenset(),
+        5,
+    )
+
+    assert refreshed != original
+
+
 @pytest.mark.asyncio
 async def test_autocard_root_menu_uses_group_title() -> None:
     captured: dict[str, Any] = {}

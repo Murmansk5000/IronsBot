@@ -14,6 +14,11 @@ if TYPE_CHECKING:
     )
 
 
+# Keep disk-cached menu images tied to the visible input layout.  Menu routing
+# is rebuilt on every request, so a layout change must not reuse an older PNG.
+NEW_CONTENT_MENU_LAYOUT_VERSION = "root-menu-v3"
+
+
 def new_content_cache_key(  # noqa: PLR0913
     snapshot: NewContentSnapshot,
     categories: tuple[NewContentCategory, ...],
@@ -30,7 +35,7 @@ def new_content_cache_key(  # noqa: PLR0913
             menu_title,
             "expanded=" + ",".join(sorted(expanded_categories)),
             f"auto-expand={auto_expand_max_items}",
-            "root-preview=added-only-v2",
+            NEW_CONTENT_MENU_LAYOUT_VERSION,
         )
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
