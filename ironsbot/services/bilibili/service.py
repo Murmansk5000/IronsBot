@@ -39,6 +39,9 @@ if TYPE_CHECKING:
     from ironsbot.core.bilibili import BiliConfig
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
+    from ironsbot.services.bilibili.image_delivery_retries import (
+        BiliImageDeliveryRetryStore,
+    )
     from ironsbot.services.bilibili.targets import BiliTargetService
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
@@ -67,6 +70,7 @@ class BilibiliService:
     fetch_detail: DynamicDetailFetcher
     spawn: TaskSpawner
     external_references: SeerInfoReferences | None = None
+    image_delivery_retries: BiliImageDeliveryRetryStore | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)

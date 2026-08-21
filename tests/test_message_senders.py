@@ -377,6 +377,36 @@ def test_push_delivery_only_retries_failed_targets() -> None:
     ]
 
 
+def test_push_delivery_can_leave_failed_targets_for_a_later_round() -> None:
+    class AmbiguousFailureBot(FakeBot):
+        async def send_group_msg(self, *, group_id: int, message: Message) -> None:
+            await super().send_group_msg(group_id=group_id, message=message)
+            raise FakeSendError
+
+    bot = AmbiguousFailureBot()
+    delivery = _delivery(
+        push_delivery=PushDeliveryConfig(
+            batch_delay_min_seconds=0,
+            batch_delay_max_seconds=0,
+        )
+    )
+    target = MessageTarget("group", GROUP_ID)
+
+    summary = asyncio.run(
+        delivery.send_targets(
+            [target],
+            "image",
+            bot=bot,
+            subscription_key="scheduled_message",
+            retry_failed_targets=False,
+        )
+    )
+
+    assert summary.succeeded == []
+    assert summary.failed == [target]
+    assert [group_id for group_id, _message in bot.group_messages] == [GROUP_ID]
+
+
 def test_push_delivery_orders_targets_by_alias_definition() -> None:
     bot = FakeBot()
     delivery = _delivery(

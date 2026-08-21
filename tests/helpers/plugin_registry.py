@@ -99,8 +99,11 @@ def build_test_plugin_registry(
                 targets=SimpleNamespace(
                     can_target_query_history=lambda _target: False,
                     dynamic_link_tag=lambda _uid, _categories: None,
+                    push_targets_for_uid=lambda _uid: (),
                     seer_category_uid=lambda: None,
                 ),
+                history=None,
+                image_delivery_retries=None,
             ),
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,

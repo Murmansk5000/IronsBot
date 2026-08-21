@@ -57,6 +57,9 @@ from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
 )
+from ironsbot.integrations.storage.bilibili_image_delivery_retries import (
+    SqliteBiliImageDeliveryRetryStore,
+)
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
@@ -352,6 +355,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
         external_references=external_references,
+        image_delivery_retries=SqliteBiliImageDeliveryRetryStore(
+            cache_paths.bilibili_dir() / "image_delivery_retries.sqlite"
+        ),
     )
     bilibili_login = BilibiliLoginService(
         settings.bilibili.login_notice_cooldown_seconds,
@@ -486,6 +492,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             player_timeout_seconds=(
                 settings.seer.player.detail_timeout_seconds
             ),
+            is_superuser=features.is_superuser,
         ),
         player_query_quotas,
         player_requests,

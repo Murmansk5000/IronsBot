@@ -682,6 +682,7 @@ class RankService(RankCacheQueryMixin):
         search_limit: int | None = None,
         start_index: int = 0,
         sample_limit: int | None = None,
+        use_superuser_limit: bool = False,
     ) -> RankScoreSearchResult:
         return await fetch_score_segment_for_service(
             self,
@@ -695,6 +696,7 @@ class RankService(RankCacheQueryMixin):
             search_limit=search_limit,
             start_index=start_index,
             sample_limit=sample_limit,
+            use_superuser_limit=use_superuser_limit,
         )
 
     async def fetch_peak_summary(  # noqa: PLR0913
@@ -860,6 +862,8 @@ class RankService(RankCacheQueryMixin):
         self,
         rank_key: str | None,
         search_limit: int | None = None,
+        *,
+        use_superuser_limit: bool = False,
     ) -> int:
         configured = max(
             0,
@@ -867,6 +871,8 @@ class RankService(RankCacheQueryMixin):
             if rank_key is not None
             else self.config.limit,
         )
+        if use_superuser_limit:
+            configured *= self.config.superuser_score_limit_multiplier
         requested = configured if search_limit is None else max(0, search_limit)
         return min(requested, configured)
 

@@ -28,5 +28,8 @@ class CachePaths:
     def assets_dir(self) -> Path:
         return self._directory("assets")
 
+    def bilibili_dir(self) -> Path:
+        return self._directory("bilibili")
+
     def _directory(self, name: str) -> Path:
         return self.root / name

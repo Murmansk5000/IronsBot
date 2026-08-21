@@ -11,6 +11,8 @@ from ironsbot.services.bilibili.schedule import boost_schedule_entries
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.services.bilibili.monitor import (
         AuthInvalidHandler,
         DynamicPushSender,
@@ -29,6 +31,7 @@ class BilibiliMonitorService:
     service: BilibiliService
     _on_auth_invalid: AuthInvalidHandler
     _send_push: DynamicPushSender
+    _retry_failed_images: Callable[[], Awaitable[None]] | None = None
     check_second: int = DEFAULT_REGULAR_CHECK_SECOND
 
     async def notify_auth_invalid(self, reason: str) -> None:
@@ -44,6 +47,7 @@ class BilibiliMonitorService:
             self.service,
             on_auth_invalid=self._on_auth_invalid,
             send_push=self._send_push,
+            retry_pending_images=self._retry_failed_images,
             is_startup_check=is_startup_check,
             force=force,
         )

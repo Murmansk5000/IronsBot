@@ -1161,6 +1161,7 @@ resource_message = "出来买资源，别逼我求你😡"
 [seer.rank]
 # 这里有三种“范围”不要混：
 # - limit：已知分数时，二分查找最多认为前多少名是可搜索范围。
+# - superuser_score_limit_multiplier：超级管理员按分数查询时放大上述范围。
 # - online_limit：不知道分数时，在线从前往后扫的最大范围。
 # - page_refresh.target_limit：后台定时预热缓存到前多少名，见 [seer.rank.page_refresh]。
 # Default: 10000
@@ -1178,6 +1179,10 @@ online_limit = 2000
 # 刻印图鉴、群星牌、竞技段位、狂野段位、专家段位。
 # Example: lookup_limits = { "群星牌" = 10000 }
 lookup_limits = {}
+# Default: 2
+# EN: Multiplier applied to score-known lookup limits for superusers only.
+# ZH: 超级管理员按指定分数反查用户时的搜索范围倍数；可独立调整。
+superuser_score_limit_multiplier = 2
 # Default: 100; EN: Rank page size. ZH: 榜单分页大小。
 page_size = 100
 # Default: true; EN: Enable rank page cache. ZH: 启用榜单分页缓存。

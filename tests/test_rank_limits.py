@@ -292,6 +292,60 @@ def test_autocard_lookup_limit_overrides_only_autocard_searches(
     assert rank._online_search_limit("图鉴积分") == ONLINE_LIMIT
 
 
+def test_superuser_score_limit_multiplies_each_configured_rank_limit() -> None:
+    rank, _cache = _build_rank(rank_limit=RANK_LIMIT)
+    rank.config.lookup_limits["群星牌"] = AUTOCARD_LOOKUP_LIMIT
+
+    assert rank._score_search_limit("图鉴积分") == RANK_LIMIT
+    assert rank._score_search_limit(
+        "图鉴积分",
+        use_superuser_limit=True,
+    ) == (RANK_LIMIT * 2)
+    assert rank._score_search_limit(
+        "群星牌",
+        use_superuser_limit=True,
+    ) == (AUTOCARD_LOOKUP_LIMIT * 2)
+
+    rank.config.superuser_score_limit_multiplier = 3
+
+    assert rank._score_search_limit(
+        "群星牌",
+        use_superuser_limit=True,
+    ) == (AUTOCARD_LOOKUP_LIMIT * 3)
+
+
+def test_score_segment_applies_superuser_limit_to_all_rank_paths() -> None:
+    rank, _cache = _build_rank(rank_limit=RANK_LIMIT)
+
+    regular_result = asyncio.run(
+        rank.fetch_score_segment(
+            GAME,
+            rank_key="图鉴积分",
+            title="图鉴积分榜",
+            score_name="分",
+            key=156,
+            sub_key=1,
+            target_score=0,
+            use_superuser_limit=True,
+        )
+    )
+    excluded_result = asyncio.run(
+        rank.fetch_score_segment(
+            GAME,
+            rank_key="精灵图鉴",
+            title="精灵图鉴榜",
+            score_name="只",
+            key=156,
+            sub_key=3,
+            target_score=0,
+            use_superuser_limit=True,
+        )
+    )
+
+    assert regular_result.searched_limit == RANK_LIMIT * 2
+    assert excluded_result.searched_limit == RANK_LIMIT * 2
+
+
 def test_cached_full_rank_miss_skips_a_repeat_scan(
     monkeypatch: MonkeyPatch,
 ) -> None:
