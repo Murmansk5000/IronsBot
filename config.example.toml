@@ -1017,6 +1017,9 @@ sections = ["all"]
 # Default: 3; EN: Beijing calendar days before a default player ID can be changed or unbound again.
 # ZH: 更改或解绑默认米米号共用的北京时间自然日冷却；首次绑定不受此限制。
 change_cooldown_days = 3
+# Default: false; EN: Prevent non-owners from using an administrator-bound player ID through aliases, @member, or no-target shortcuts. Full numeric IDs still work.
+# ZH: 开启后，非绑定超级管理员不能通过别名、@成员或无目标快捷指令查询其绑定米米号；完整数字米米号仍可查询。
+protect_superuser_bound_shortcuts = false
 
 [seer.player.query_limits]
 # EN: Persistent daily budgets for foreground logical headless operations, reset by Beijing date.

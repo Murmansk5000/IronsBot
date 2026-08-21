@@ -476,6 +476,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         player_query_quotas,
         player_requests,
         profile_cache=local_rank_repository,
+        superuser_ids=features.superuser_ids,
     )
     docker_client = DockerClient()
     private_extensions = load_private_extension_catalog(

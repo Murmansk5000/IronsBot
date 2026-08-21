@@ -53,3 +53,33 @@ def test_commit_lookup_logs_exception_type_when_metadata_request_fails(
     assert result == ""
     assert "error_type=ReadTimeout" in caplog.text
     assert f"error=ReadTimeout('{_METADATA_TIMEOUT_MESSAGE}')" in caplog.text
+
+
+def test_branch_revision_uses_github_main_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClient:
+        def __init__(self, **_kwargs: object) -> None:
+            return None
+
+        async def __aenter__(self) -> Self:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def get(self, url: str, **_kwargs: object) -> httpx.Response:
+            assert url.endswith("/repos/Murmansk5000/IronsBot/commits/main")
+            return httpx.Response(
+                200,
+                json={"sha": "499223c8f23ad9be9e3320725ee70a7b77a14ad5"},
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr(metadata.httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(
+        metadata.resolve_github_branch_revision(("Murmansk5000", "IronsBot"))
+    )
+
+    assert result == "499223c8f23ad9be9e3320725ee70a7b77a14ad5"

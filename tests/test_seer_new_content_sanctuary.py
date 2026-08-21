@@ -345,7 +345,7 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
 
     assert prompt.title == "🆕【新增群星牌】输入编号查看详情：\n"
     assert [item.name for item in prompt.items if item.is_visible] == [
-        "▼ 新增群星牌",
+        "▼ 新增群星牌卡牌",
         "测试卡牌",
         "▼ 新增群星牌角色",
         "测试角色",
@@ -766,3 +766,40 @@ def test_new_content_category_shortcut_uses_numeric_keys() -> None:
     assert "a. " not in prompt.build_message()
     assert "b. " not in prompt.build_message()
     assert "1. 深海之泪" in prompt.build_message()
+
+
+def test_focused_new_content_menu_keeps_root_category_shortcuts_hidden() -> None:
+    skill = NewContentItem(
+        category="skill",
+        entity_id=38474,
+        name="金属缠绕",
+        sort_value=38474,
+        payload={},
+    )
+    autocard = NewContentItem(
+        category="autocard_card",
+        entity_id=98,
+        name="测试卡牌",
+        sort_value=98,
+        payload={},
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260821",
+        weekly_cycle="2026-08-21",
+        items=(skill, autocard),
+    )
+
+    prompt = _content_prompt(
+        snapshot,
+        _NewContentMenuLayout(
+            display_categories=("skill", "autocard_card"),
+            focused_category="skill",
+        ),
+    )
+
+    assert "b. 新增群星牌卡牌" not in prompt.build_message()
+    shortcut = prompt.get_item_by_input("b")
+    assert shortcut is not None
+    assert shortcut.value.kind == "category"
+    assert shortcut.value.category == "autocard_card"

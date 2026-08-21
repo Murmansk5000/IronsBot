@@ -446,6 +446,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         *,
         profile_cache: PlayerProfileCache | None = None,
         now: Callable[[], datetime] | None = None,
+        superuser_ids: frozenset[int] = frozenset(),
     ) -> None:
         self._config = config
         self._headless = headless
@@ -456,10 +457,27 @@ class PlayerService(PlayerAccountPolicyMixin):
         self._quotas = quotas
         self._requests = requests
         self._now = now or utc_now
+        self._superuser_ids = superuser_ids
         self._query_cache = PlayerQueryCache.from_config(config)
 
     def default_player_id(self, qq_user_id: int) -> int | None:
         return self._bindings.get(qq_user_id).player_id
+
+    def shortcut_target_access_error(
+        self,
+        requester_user_id: int,
+        player_id: int,
+    ) -> str | None:
+        """Hide superuser-bound accounts from indirect shortcut lookups."""
+
+        if not self._config.player.binding.protect_superuser_bound_shortcuts:
+            return None
+        for superuser_id in self._superuser_ids:
+            if superuser_id == requester_user_id:
+                continue
+            if self.default_player_id(superuser_id) == player_id:
+                return "该米米号不支持快捷查询，请使用完整数字米米号。"
+        return None
 
     async def query(
         self,

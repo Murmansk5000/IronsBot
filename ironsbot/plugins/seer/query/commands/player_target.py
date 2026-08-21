@@ -37,6 +37,7 @@ class PlayerTargetResolution:
     error: str | None = None
     recognized: bool = True
     choices: tuple[PlayerTargetChoice, ...] = ()
+    is_shortcut_target: bool = False
 
 
 def default_player_id_for(service: object, user_id: int) -> int | None:
@@ -100,7 +101,11 @@ def resolve_event_player_reference_target(  # noqa: PLR0911 - explicit outcomes 
         allow_private=allow_private,
     )
     if player_id is not None:
-        return PlayerTargetResolution(player_id, offer_binding=True)
+        return PlayerTargetResolution(
+            player_id,
+            offer_binding=True,
+            is_shortcut_target=True,
+        )
     choices = (
         _player_target_choices(
             accounts.find_player_accounts(
@@ -118,9 +123,18 @@ def resolve_event_player_reference_target(  # noqa: PLR0911 - explicit outcomes 
         else ()
     )
     if len(choices) == 1:
-        return PlayerTargetResolution(choices[0].player_id, offer_binding=True)
+        return PlayerTargetResolution(
+            choices[0].player_id,
+            offer_binding=True,
+            is_shortcut_target=True,
+        )
     if choices:
-        return PlayerTargetResolution(None, offer_binding=False, choices=choices)
+        return PlayerTargetResolution(
+            None,
+            offer_binding=False,
+            choices=choices,
+            is_shortcut_target=True,
+        )
     return PlayerTargetResolution(None, offer_binding=False, recognized=False)
 
 
@@ -236,11 +250,34 @@ def resolve_player_target(  # noqa: PLR0911
                 offer_binding=False,
                 error="该成员尚未绑定米米号。",
             )
-        return PlayerTargetResolution(player_id, offer_binding=False)
+        return PlayerTargetResolution(
+            player_id,
+            offer_binding=False,
+            is_shortcut_target=True,
+        )
 
     if numeric_player_id is not None:
         return PlayerTargetResolution(numeric_player_id, offer_binding=True)
     return PlayerTargetResolution(
         binding_for_user(event.user_id),
         offer_binding=False,
+        is_shortcut_target=True,
     )
+
+
+def protected_shortcut_target_error(
+    service: object,
+    requester_user_id: int,
+    target: PlayerTargetResolution,
+) -> str | None:
+    """Return an access error only for an indirect protected player target."""
+
+    if not target.is_shortcut_target or target.player_id is None:
+        return None
+    check = getattr(service, "shortcut_target_access_error", None)
+    result = (
+        check(requester_user_id, target.player_id)
+        if callable(check)
+        else None
+    )
+    return result if isinstance(result, str) else None
