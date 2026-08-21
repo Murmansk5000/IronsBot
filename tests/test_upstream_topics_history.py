@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -110,3 +110,33 @@ async def test_permissions_are_checked_only_for_claimed_topic_input(
     assert GROUP in topics.store.subscribers("公告")
     denied = await allowed["messaging.topic.create"]("推送新建 测试 测试主题", context)
     assert "仅限超级管理员" in str(denied.parts)
+
+
+def test_native_unclaimed_chat_does_not_reach_topic_permissions(tmp_path: Path) -> None:
+    from inspect import isfunction
+    from types import SimpleNamespace
+
+    from ironsbot.plugins.onebot.messaging.topics import install_topic_commands
+    from tests.helpers.onebot_events import group_message_event
+
+    topics, _ = service(tmp_path)
+    rules: list[Any] = []
+
+    class Registry:
+        def priority(self, _name: str) -> int:
+            return 5
+
+        def on_message(self, **kwargs: Any) -> Any:
+            rules.append(kwargs["rule"])
+            return SimpleNamespace(append_handler=lambda _handler: None)
+
+    install_topic_commands(
+        cast("Any", Registry()), cast("Any", SimpleNamespace(topics=topics))
+    )
+    predicate = next(
+        checker.call
+        for checker in rules[0].checkers
+        if isfunction(checker.call) and checker.call.__name__ == "matches"
+    )
+    assert not predicate(group_message_event(text="普通闲聊"))
+    assert predicate(group_message_event(text="推送新建 公告 群公告"))
