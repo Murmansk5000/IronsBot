@@ -28,6 +28,7 @@ class CommandIDNamedTuple(NamedTuple):
     GET_MORE_USER_INFO: CommandID["MoreInfo"] = CommandID(2052)
     GET_DAILY_RANK_INFO: CommandID["DailyRankList"] = CommandID(4481)
     USER_FOREVER_VALUE: CommandID["UserForeverValue"] = CommandID(40002)
+    SERVER_MAINTENANCE_NOTICE: CommandID[Any] = CommandID(41457)
     SOCKET_RECONNECT: CommandID[Any] = CommandID(41463)
 
 

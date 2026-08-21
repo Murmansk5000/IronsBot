@@ -14,7 +14,7 @@ from ironsbot.plugins.headless_seer.packets.head import HeadInfo
 from ironsbot.plugins.headless_seer.packets.peak import DailyRankList
 
 from .command_id import COMMAND_ID
-from .core import SeerConnect, SeerEncryptConnect
+from .core import EventListener, SeerConnect, SeerEncryptConnect
 from .exception import ClientNotInitializedError
 from .packets import (
     MoreInfo,
@@ -24,6 +24,11 @@ from .packets import (
 )
 from .packets.login import SessionPackct
 from .packets.peak import DailyRankInfo, DailyRankParam
+from .push_notify import (
+    notify_disconnect,
+    notify_login_success,
+    notify_server_maintenance,
+)
 from .type_hint import CommandID, SocketRecvPacketBody, T_Deserializable
 
 
@@ -131,6 +136,7 @@ class SeerGame:
         self._reconnect_delay = reconnect_delay
         self._reconnect_delay_max = reconnect_delay_max
         self._reconnect_task: asyncio.Task[None] | None = None
+        self._notification_tasks: set[asyncio.Task[None]] = set()
         self._login_server_url: str = login_server_url
 
     @property
@@ -218,6 +224,7 @@ class SeerGame:
 
             impl = SeerEncryptConnect(
                 asyncio.get_running_loop(),
+                event_listener=self._build_event_listener(),
                 heartbeat_interval=self._heartbeat_interval,
                 on_heartbeat=self._send_heartbeat,
                 on_disconnect=self._handle_disconnect,
@@ -241,6 +248,7 @@ class SeerGame:
             self._impl = impl
             self._is_logged_in = True
             logger.info("成功进入游戏服务器")
+            await notify_login_success()
 
     def logout(self) -> None:
         self._stop_reconnect()
@@ -253,6 +261,28 @@ class SeerGame:
         self._is_logged_in = False
         logger.warning(f"{self.user_id}：连接已断开")
         self.schedule_reconnect()
+        await notify_disconnect()
+
+    def _build_event_listener(self) -> EventListener:
+        event_listener = EventListener()
+        event_listener.add_listener(
+            COMMAND_ID.SERVER_MAINTENANCE_NOTICE,
+            self._handle_server_maintenance_packet,
+        )
+        return event_listener
+
+    def _handle_server_maintenance_packet(
+        self,
+        _head: HeadInfo,
+        _body: SocketRecvPacketBody,
+    ) -> None:
+        """处理服务器主动推送的 41457 服务器维护通知。"""
+        maintenance_time = _body.readInt()  # 读取维护执行时间（单位：Unix时间戳）
+
+        logger.warning(f"{self.user_id}：收到服务器维护通知（41457 封包）")
+        task = asyncio.create_task(notify_server_maintenance(maintenance_time))
+        self._notification_tasks.add(task)
+        task.add_done_callback(self._notification_tasks.discard)
 
     def schedule_reconnect(self) -> None:
         """触发自动重连。若重连任务已在运行或未启用重连则跳过。"""
