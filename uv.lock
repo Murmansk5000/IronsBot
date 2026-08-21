@@ -534,7 +534,7 @@ wheels = [
 
 [[package]]
 name = "ironsbot"
-version = "0.6.0"
+version = "0.6.1"
 source = { virtual = "." }
 dependencies = [
     { name = "hishel", extra = ["httpx"] },
