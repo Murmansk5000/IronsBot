@@ -148,9 +148,10 @@ class SeerDatabase:
                     session,
                     class_ids,
                 )
-                mintmark_ids = (*(
-                    mintmark.id for mintmark in direct
-                ), *class_member_ids)
+                mintmark_ids = (
+                    *(mintmark.id for mintmark in direct),
+                    *class_member_ids,
+                )
             yield _load_mintmark_details(session, mintmark_ids)
 
     def error_message(self, result_code: int) -> str | None:
@@ -178,6 +179,13 @@ class SeerDatabase:
         """Return the release version cached when the in-memory DB was loaded."""
 
         return self._published_version
+
+    def official_version(self) -> str:
+        if self._published_version == UNKNOWN_VERSION:
+            return ""
+        with self._databases.session(SEERAPI_DB) as session:
+            metadata = session.exec(select(ApiMetadataORM)).first() if session else None
+            return metadata.data_version if metadata else ""
 
     def render_category_available(self, category: str) -> bool:
         """Return whether the loaded release proves all assets for a renderer."""
@@ -237,7 +245,8 @@ class SeerDatabase:
                         not manifest_revision
                         or manifest_metadata.get(
                             "render_asset_manifest_contract_version"
-                        ) != _RENDER_MANIFEST_CONTRACT_VERSION
+                        )
+                        != _RENDER_MANIFEST_CONTRACT_VERSION
                     ):
                         self._published_version = UNKNOWN_VERSION
                         self._published_render_scopes = frozenset()
@@ -262,9 +271,11 @@ def _mintmark_class_member_ids(
 ) -> tuple[int, ...]:
     if not class_ids:
         return ()
-    statement = select(UniversalPartORM.mintmark_id).where(
-        col(UniversalPartORM.mintmark_class_id).in_(class_ids)
-    ).order_by(col(UniversalPartORM.mintmark_id))
+    statement = (
+        select(UniversalPartORM.mintmark_id)
+        .where(col(UniversalPartORM.mintmark_class_id).in_(class_ids))
+        .order_by(col(UniversalPartORM.mintmark_id))
+    )
     return tuple(session.exec(statement).all())
 
 
@@ -279,33 +290,35 @@ def _load_mintmark_details(
         return ()
 
     connected_ids = _collect_connected_mintmark_ids(session, requested_ids)
-    statement = select(MintmarkORM).where(
-        col(MintmarkORM.id).in_(connected_ids)
-    ).options(
-        selectinload(cast("Any", MintmarkORM.ability_part)).selectinload(
-            cast("Any", AbilityPartORM.max_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.skill_part)),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.base_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.max_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.extra_attr_value)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.mintmark_class)
-        ),
-        selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
-            cast("Any", UniversalPartORM.connect)
-        ),
-        selectinload(cast("Any", MintmarkORM.connected_universal_parts)).selectinload(
-            cast("Any", UniversalPartORM.mintmark)
-        ),
-        selectinload(cast("Any", MintmarkORM.pet)),
-        selectinload(cast("Any", MintmarkORM.skill)),
+    statement = (
+        select(MintmarkORM)
+        .where(col(MintmarkORM.id).in_(connected_ids))
+        .options(
+            selectinload(cast("Any", MintmarkORM.ability_part)).selectinload(
+                cast("Any", AbilityPartORM.max_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.skill_part)),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.base_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.max_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.extra_attr_value)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.mintmark_class)
+            ),
+            selectinload(cast("Any", MintmarkORM.universal_part)).selectinload(
+                cast("Any", UniversalPartORM.connect)
+            ),
+            selectinload(
+                cast("Any", MintmarkORM.connected_universal_parts)
+            ).selectinload(cast("Any", UniversalPartORM.mintmark)),
+            selectinload(cast("Any", MintmarkORM.pet)),
+            selectinload(cast("Any", MintmarkORM.skill)),
+        )
     )
     loaded = {mintmark.id: mintmark for mintmark in session.exec(statement).all()}
     return tuple(
