@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, cast
 
 from seerapi_models import PetSkinORM
@@ -52,6 +52,48 @@ class SkinDetails:
     price_lines: str
 
 
+@dataclass(frozen=True, slots=True)
+class SkinModelPrice:
+    card_price: int | None
+    diamond_price: int | None
+    skinhouse_price: int | None
+    discounted_skinhouse_price: int | None
+    ticket_num: int | None
+
+
+def merge_skin_price_facts(
+    *,
+    skin_id: int,
+    resource_id: int,
+    model: SkinModelPrice,
+    shop: SkinShopPrice | None,
+    stores: list[SkinStorePrice],
+) -> tuple[SkinShopPrice, list[SkinStorePrice]]:
+    """Supplement missing published facts without creating another storefront."""
+    shop = shop or SkinShopPrice(skin_id, resource_id, 0, 0, 0)
+    shop = replace(
+        shop,
+        card_price=shop.card_price if shop.card_price > 0 else model.card_price or 0,
+        diamond_price=(
+            shop.diamond_price if shop.diamond_price > 0 else model.diamond_price or 0
+        ),
+    )
+    if len(stores) > 1:
+        return shop, stores
+    original = model.skinhouse_price or 0
+    model_price = model.discounted_skinhouse_price or original
+    if not stores and model_price <= 0:
+        return shop, stores
+    store = stores[0] if stores else SkinStorePrice(skin_id, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    store = replace(
+        store,
+        price=store.price if store.price > 0 else model_price,
+        original_price=store.original_price if store.original_price > 0 else original,
+        ticket_num=store.ticket_num if store.ticket_num > 0 else model.ticket_num or 0,
+    )
+    return shop, [store]
+
+
 def load_skin_details(
     session: Session,
     *,
@@ -77,6 +119,14 @@ def load_skin_details(
             session,
             model.id,
             existing_card_price=model.card_price,
+            model=SkinModelPrice(
+                model.card_price,
+                model.diamond_price,
+                model.skinhouse_price,
+                model.discounted_skinhouse_price,
+                model.ticket_num,
+            ),
+            resource_id=int(model.resource_id),
         ),
     )
 
@@ -86,6 +136,8 @@ def _format_skin_price_lines_for_session(
     skin_id: int,
     *,
     existing_card_price: int | None = None,
+    model: SkinModelPrice | None = None,
+    resource_id: int = 0,
 ) -> str:
     try:
         shop_price = _load_shop_price(session, skin_id)
@@ -94,6 +146,14 @@ def _format_skin_price_lines_for_session(
         logger.exception("failed to load skin price rows from IronsBot SQLite")
         return ""
 
+    if model is not None:
+        shop_price, store_prices = merge_skin_price_facts(
+            skin_id=skin_id,
+            resource_id=resource_id,
+            model=model,
+            shop=shop_price,
+            stores=store_prices,
+        )
     return _format_skin_price_lines(
         shop_price=shop_price,
         store_prices=store_prices,
