@@ -10,13 +10,16 @@ from ironsbot.core.command_catalog import (
     CommandContract,
     commands_from_rows,
 )
+from ironsbot.services.messaging.topic_commands import topic_command_contracts
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
+    from ironsbot.services.messaging.topics import PushTopicService
 
 
 def messaging_command_contracts(
     config: MessageConfig,
+    topics: PushTopicService | None = None,
 ) -> tuple[CommandContract, ...]:
     """Describe configured messaging commands for the shared command catalog."""
 
@@ -75,6 +78,7 @@ def messaging_command_contracts(
         )
     )
     return (
+        *topic_command_contracts(topics),
         *configured,
         *keyword_replies,
         *schedules,

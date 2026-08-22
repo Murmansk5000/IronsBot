@@ -2,6 +2,17 @@
   "baseline_commit": "70e5d51824f29f8366c5a4efc2ed0b443b26e497",
   "commands": {
     "activity.new": "2026-08-15T11:17:31+08:00",
+    "messaging.topic.broadcast": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.create": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.delete": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.direct": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.disable": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.enable": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.list": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.mine": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.subscribe": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.subscribers": "2026-08-22T21:00:48+08:00",
+    "messaging.topic.unsubscribe": "2026-08-22T21:00:48+08:00",
     "seer.autocard.sanctuary": "2026-08-11T17:32:19+08:00"
   },
   "schema_version": 1
