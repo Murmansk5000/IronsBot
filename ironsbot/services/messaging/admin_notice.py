@@ -55,6 +55,23 @@ class AdminNoticeService:
     features: FeatureService
     sender: AdminNoticeSender
 
+    async def send_feature_notice(
+        self,
+        text: str,
+        *,
+        feature: str,
+        subscription_key: str,
+        action_name: str,
+    ) -> AdminNoticeSendSummary:
+        return await self.sender.send_admin_notice(
+            OutboundMessage((TextPart(text),)),
+            private_actors=tuple(self.features.actors_with_superusers(feature)),
+            group_conversations=tuple(self.features.conversations_for_feature(feature)),
+            action_name=action_name,
+            interval_seconds=0,
+            subscription_key=subscription_key,
+        )
+
     def targets(self) -> AdminNoticeTargets:
         return AdminNoticeTargets(
             private_actors=tuple(self.features.superuser_actors()),
