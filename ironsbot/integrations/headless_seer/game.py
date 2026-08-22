@@ -17,6 +17,9 @@ from ironsbot.integrations.headless_seer.core.connect import (
 )
 from ironsbot.integrations.headless_seer.packets.head import HeadInfo
 from ironsbot.integrations.headless_seer.packets.login import SessionPackct
+from ironsbot.integrations.headless_seer.packets.maintenance import (
+    decode_maintenance_notice,
+)
 from ironsbot.integrations.headless_seer.packets.peak import (
     DailyRankList,
     DailyRankParam,
@@ -35,6 +38,10 @@ from ironsbot.integrations.headless_seer.type_hint import (
 from ironsbot.services.operations.headless import HeadlessStateNotifier
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import ClientNotInitializedError
+from ironsbot.services.operations.headless_maintenance import (
+    HeadlessMaintenanceEvent,
+    HeadlessMaintenanceNotifier,
+)
 from ironsbot.services.seer.peak import (
     PEAK_PET_KEY_MAP,
     PEAK_SUIT_KEY_MAP,
@@ -91,6 +98,7 @@ class SeerGame:
         reconnect_delay_max: float = 120.0,
         request_interval_seconds: float = 0.0,
         state_notifier: HeadlessStateNotifier | None = None,
+        maintenance_notifier: HeadlessMaintenanceNotifier | None = None,
         operations: HeadlessOperationTracker,
         spawn: TaskSpawner,
     ) -> None:
@@ -111,6 +119,7 @@ class SeerGame:
         self._shutdown_requested = False
         self._login_server_url: str = login_server_url
         self._state_notifier = state_notifier
+        self._maintenance_notifier = maintenance_notifier
         self.operations = operations
         self._spawn = spawn
 
@@ -227,6 +236,10 @@ class SeerGame:
                 on_disconnect=self._handle_disconnect,
                 request_context=self.operations.format_current,
             )
+            impl.event_listener.add_listener(
+                COMMAND_ID.SERVER_MAINTENANCE_NOTICE,
+                self._handle_maintenance_packet,
+            )
             try:
                 await impl.connect(ip, port)
                 await asyncio.sleep(5)
@@ -250,6 +263,35 @@ class SeerGame:
             self._impl = impl
             self._is_logged_in = True
             logger.info("成功进入游戏服务器")
+
+    def _handle_maintenance_packet(
+        self, _head: HeadInfo, body: SocketRecvPacketBody
+    ) -> None:
+        if self._shutdown_requested:
+            return
+        try:
+            if not isinstance(body, (bytes, bytearray)):
+                raise TypeError("unexpected maintenance payload type")
+            event = decode_maintenance_notice(body)
+        except (ValueError, TypeError):
+            logger.warning("headless maintenance payload rejected: command=41457")
+            return
+        logger.warning("headless maintenance received: command=41457")
+        if self._maintenance_notifier is not None:
+            coroutine = self._notify_maintenance(event)
+            try:
+                self._spawn(coroutine, name="headless-maintenance")
+            except Exception:
+                coroutine.close()
+                logger.exception("headless maintenance task scheduling failed")
+
+    async def _notify_maintenance(self, event: HeadlessMaintenanceEvent) -> None:
+        if self._shutdown_requested or self._maintenance_notifier is None:
+            return
+        try:
+            await self._maintenance_notifier(event)
+        except Exception:
+            logger.exception("headless maintenance observer failed")
 
     def logout(self) -> None:
         self._shutdown_requested = True

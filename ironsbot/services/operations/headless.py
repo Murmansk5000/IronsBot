@@ -30,6 +30,10 @@ if TYPE_CHECKING:
     from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.identity.player_accounts import PlayerAccount
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.operations.headless_maintenance import (
+        HeadlessMaintenanceEvent,
+        HeadlessMaintenanceNotifier,
+    )
     from ironsbot.services.operations.scheduler import Scheduler
 
 logger = getLogger(__name__)
@@ -78,6 +82,7 @@ class HeadlessLoginRequest:
     reconnect_delay_max: float
     state_notifier: HeadlessStateNotifier
     request_interval_seconds: float = 0.0
+    maintenance_notifier: HeadlessMaintenanceNotifier | None = None
 
 
 class HeadlessGame(Protocol):
@@ -201,6 +206,8 @@ class HeadlessService:
         ]
         self._state = HeadlessState()
         self._state_lock = asyncio.Lock()
+        self._maintenance_lock = asyncio.Lock()
+        self._maintenance_deadlines: set[datetime] = set()
         self._available = asyncio.Event()
         self._state_listeners: list[HeadlessStateListener] = []
         operations = (
@@ -345,6 +352,7 @@ class HeadlessService:
                     **kwargs,
                 ),
                 request_interval_seconds=self._request_interval_seconds,
+                maintenance_notifier=self.handle_maintenance_notice,
             )
         )
         if not game.is_logged_in:
@@ -358,6 +366,37 @@ class HeadlessService:
             notify=False,
         )
         return worker.user_id
+
+    async def handle_maintenance_notice(self, event: HeadlessMaintenanceEvent) -> None:
+        """Validate deadlines and deduplicate maintenance notices across workers."""
+        scheduled_at = event.scheduled_at
+        if scheduled_at.tzinfo is None or scheduled_at.utcoffset() is None:
+            logger.warning("headless maintenance notice rejected: naive deadline")
+            return
+        now = self._now()
+        if scheduled_at <= now:
+            logger.info("headless maintenance notice expired")
+            return
+        async with self._maintenance_lock:
+            self._maintenance_deadlines = {
+                value for value in self._maintenance_deadlines if value > now
+            }
+            if scheduled_at in self._maintenance_deadlines:
+                return
+            self._maintenance_deadlines.add(scheduled_at)
+        if not self._state_notifications:
+            return
+        remaining = int((scheduled_at - now).total_seconds())
+        try:
+            await self._admin_notices.send(
+                "⚠️ 服务器维护通知\n预计停服时间："
+                f"{scheduled_at.astimezone(LOCAL_TZ):%Y-%m-%d %H:%M:%S}（北京时间）\n"
+                f"剩余时间：{remaining // 60}分{remaining % 60}秒",
+                action_name="headless maintenance notice",
+                subscription_key="headless_seer_notice",
+            )
+        except Exception:
+            logger.exception("headless maintenance delivery failed")
 
     async def start(self) -> None:
         if not self.configured:
