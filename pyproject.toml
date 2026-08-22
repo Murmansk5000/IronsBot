@@ -1,6 +1,6 @@
 [project]
 name = "ironsbot"
-version = "0.6.0"
+version = "0.6.1"
 description = "赛尔号信息查询机器人"
 readme = "README.md"
 requires-python = ">=3.10, <4.0"
