@@ -20,6 +20,7 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     _autocard_sanctuary_effect_detail,
     _content_prompt,
     _focus_new_content_category,
+    _is_new_content_input,
     _item_description,
     _NewContentMenuLayout,
     _NewContentServices,
@@ -40,6 +41,16 @@ from ironsbot.services.seer.new_content import (
 from tests.helpers.onebot_events import group_message_event
 
 ROOT_PREVIEW_TOTAL_ITEMS = 9
+
+
+@pytest.mark.parametrize("message", ("a", "B3", "12", "0"))
+def test_new_content_input_accepts_root_preview_keys(message: str) -> None:
+    assert _is_new_content_input(group_message_event(message))
+
+
+@pytest.mark.parametrize("message", ("a0", "ab", "00", "-1"))
+def test_new_content_input_rejects_invalid_root_preview_keys(message: str) -> None:
+    assert not _is_new_content_input(group_message_event(message))
 
 
 def test_new_content_expanded_categories_are_validated_and_deduplicated() -> None:

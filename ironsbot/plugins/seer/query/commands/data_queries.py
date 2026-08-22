@@ -118,7 +118,9 @@ class _NewContentMenuLayout:
     root_title: str | None = None
 
 
-_NEW_CONTENT_INPUT_PATTERN = re.compile(r"(?:[a-z]|[1-9]\d*|0)", re.IGNORECASE)
+_NEW_CONTENT_INPUT_PATTERN = re.compile(
+    r"(?:[a-z](?:[1-9]\d*)?|[1-9]\d*|0)", re.IGNORECASE
+)
 
 
 async def _finish_query(
