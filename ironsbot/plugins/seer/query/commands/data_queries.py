@@ -307,7 +307,15 @@ async def _start_new_content(  # noqa: PLR0913
         comparable_categories,
     )
     if categories is not None and not visible_categories:
-        await matcher.finish(_empty_new_content_message(snapshot, categories))
+        await matcher.finish(
+            _empty_new_content_message(
+                snapshot,
+                categories,
+                all_categories_comparable=(
+                    comparable_categories == requested_categories
+                ),
+            )
+        )
         return
     if not visible_categories:
         await matcher.finish("本周暂未检测到可验证的新增或修改内容。")
@@ -363,7 +371,14 @@ async def _start_new_content(  # noqa: PLR0913
 def _empty_new_content_message(
     snapshot: NewContentSnapshot,
     categories: tuple[NewContentCategory, ...],
+    *,
+    all_categories_comparable: bool = False,
 ) -> str:
+    if (
+        categories == PEAK_POOL_NEW_CONTENT_CATEGORIES
+        and all_categories_comparable
+    ):
+        return "本周竞技池和专家池均未变化。\n可发送“竞技池”或“专家池”查看当前池。"
     name = (
         "新增群星牌"
         if categories == AUTOCARD_NEW_CONTENT_CATEGORIES

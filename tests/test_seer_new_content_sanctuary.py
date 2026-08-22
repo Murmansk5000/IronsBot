@@ -19,6 +19,7 @@ from ironsbot.plugins.seer.query.commands.data_queries import (
     NEW_CONTENT_SNAPSHOT_KEY,
     _autocard_sanctuary_effect_detail,
     _content_prompt,
+    _empty_new_content_message,
     _focus_new_content_category,
     _is_new_content_input,
     _item_description,
@@ -35,6 +36,8 @@ from ironsbot.plugins.seer.query.commands.new_content_routing import (
 )
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
+    PEAK_POOL_NEW_CONTENT_CATEGORIES,
+    NewContentCategoryState,
     NewContentItem,
     NewContentSnapshot,
 )
@@ -214,6 +217,50 @@ def test_peak_environment_changes_root_keeps_the_a_b_menu() -> None:
     ]
     assert prompt.get_item_by_input("a") is not None
     assert prompt.get_item_by_input("b") is not None
+
+
+def test_peak_environment_without_changes_suggests_current_pool_queries() -> None:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260821",
+        weekly_cycle="2026-08-21",
+        items=(),
+    )
+
+    assert _empty_new_content_message(
+        snapshot,
+        PEAK_POOL_NEW_CONTENT_CATEGORIES,
+        all_categories_comparable=True,
+    ) == "本周竞技池和专家池均未变化。\n可发送“竞技池”或“专家池”查看当前池。"
+
+
+def test_peak_environment_without_complete_baseline_keeps_unavailable_message() -> None:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260821",
+        weekly_cycle="2026-08-21",
+        items=(),
+        category_states=(
+            NewContentCategoryState(
+                category="peak_pool",
+                comparison_ready=True,
+                reason="ready",
+            ),
+            NewContentCategoryState(
+                category="peak_expert_pool",
+                comparison_ready=False,
+                reason="first_observation",
+            ),
+        ),
+    )
+
+    message = _empty_new_content_message(
+        snapshot,
+        PEAK_POOL_NEW_CONTENT_CATEGORIES,
+    )
+
+    assert "均未变化" not in message
+    assert "已开始记录" in message
 
 
 def test_peak_environment_change_command_starts_the_shared_menu() -> None:
