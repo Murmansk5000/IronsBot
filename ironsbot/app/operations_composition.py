@@ -14,6 +14,7 @@ from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.services.operations.data_sync import DataSyncService
+from ironsbot.services.operations.data_update import DataUpdate, DataVersion
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
@@ -63,6 +64,19 @@ def build_operations_components(  # noqa: PLR0913 - application composition boun
         databases,
         merge_connected_mintmarks=settings.seer.mintmark.merge_connected,
     )
+    startup_notice = StartupNoticeService(admin_notices)
+
+    async def updated(event: DataUpdate) -> None:
+        await startup_notice.publish(
+            "seerapi_data_updated", "SeerAPI data updated", event.message()
+        )
+
+    database_sync.describe_database = lambda name: (
+        DataVersion(seer_database.version())
+        if name == "seerapi"
+        else DataVersion("unknown")
+    )
+    database_sync.on_updated = updated
     headless_operations = HeadlessOperationTracker()
     request_interval_seconds = (
         settings.seer.player.request_protection.base_request_interval_seconds
@@ -119,5 +133,5 @@ def build_operations_components(  # noqa: PLR0913 - application composition boun
                 reason="scheduled bot restart",
             ),
         ),
-        startup_notice=StartupNoticeService(admin_notices),
+        startup_notice=startup_notice,
     )

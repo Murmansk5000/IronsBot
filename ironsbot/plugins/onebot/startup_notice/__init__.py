@@ -49,6 +49,7 @@ async def send_startup_notice(
     service: StartupNoticeService,
     config: StartupConfig,
 ) -> None:
+    await service.flush_pending()
     if not service.should_send(enabled=config.enabled):
         return
 
