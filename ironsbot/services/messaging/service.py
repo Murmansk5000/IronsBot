@@ -42,6 +42,7 @@ if TYPE_CHECKING:
         PushTimePreferenceIdentity,
     )
     from ironsbot.services.messaging.targets import MessageScheduleTargets
+    from ironsbot.services.messaging.topics import PushTopicService
     from ironsbot.services.operations.scheduler import Scheduler
 
     from .push_time import PushTimeOption
@@ -88,6 +89,7 @@ class MessagingService:
         Callable[[ConversationRef], Awaitable[str | None]] | None
     ) = None
     _subscription_submenu_providers: tuple[PushSubscriptionSubmenuProvider, ...] = ()
+    topics: PushTopicService | None = None
 
     @property
     def feature_policy(self) -> FeatureService:
@@ -162,6 +164,7 @@ class MessagingService:
         ]
         return [
             *extra_options,
+            *(self.topics.subscription_options(conversation) if self.topics else ()),
             *self._builtin_subscription_options(conversation),
             *self._schedule_subscription_options(conversation),
         ]
@@ -290,6 +293,12 @@ class MessagingService:
                 result.time_preferences_deleted,
             )
         await self.register_schedules(scheduler)
+        if self.topics is not None:
+            await self.topics.start(scheduler)
+
+    async def stop_topics(self) -> None:
+        if self.topics is not None:
+            await self.topics.stop()
 
     async def register_schedules(self, scheduler: Scheduler) -> None:
         from .schedules import register_message_schedules

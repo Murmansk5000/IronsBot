@@ -176,6 +176,7 @@ def test_manifest_messaging_owns_its_commands_and_schedule() -> None:
             Feature.WEB_ACTIVITY_LINK,
             Feature.WEB_ACTIVITY_PUSH,
             Feature.SEERINFO,
+            Feature.PUSH_TOPICS,
         }
     )
     assert {command.plugin_id for command in contribution.commands} == {"messaging"}
@@ -344,6 +345,7 @@ def test_contributions_define_the_lifecycle_order() -> None:
     ]
     assert [name for name, _hook in lifecycle.shutdown_hooks] == [
         "scheduler",
+        "push_topics",
         "headless_seer",
     ]
     assert [name for name, _hook in lifecycle.first_bot_connect_hooks] == [
