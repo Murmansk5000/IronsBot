@@ -88,6 +88,9 @@ def install(
     references: OneBotReferenceResolver,
     command_help_ids: tuple[str, ...],
 ) -> None:
+    from .topics import install_topic_commands
+
+    install_topic_commands(registry, messaging)
     if command_help_ids:
         command_matcher = registry.on_message(
             policy=CommandPolicy.command(

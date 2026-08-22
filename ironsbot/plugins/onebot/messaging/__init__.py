@@ -92,12 +92,13 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
 ) -> PluginContribution:
     """Declare configured message commands and scheduled push lifecycle."""
 
-    commands = messaging_command_contracts(config)
+    commands = messaging_command_contracts(config, service.topics)
     return PluginContribution(
         id="messaging",
         features=frozenset(
             {
                 Feature.TEXT,
+                Feature.PUSH_TOPICS,
                 Feature.TEXT_PUSH,
                 Feature.WEB_ACTIVITY_LINK,
                 Feature.WEB_ACTIVITY_PUSH,
@@ -124,6 +125,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
         ),
         hooks=PluginHooks(
             startup=(("messaging", partial(service.start, scheduler)),),
+            shutdown=(("push_topics", service.stop_topics),),
         ),
     )
 
