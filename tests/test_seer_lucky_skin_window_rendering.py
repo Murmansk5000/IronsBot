@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 _WATCHED_SKIN_ID = 2
 _RENDER_WIDTH = 1040
+_EXPECTED_CACHE_ENTRIES = 3
 
 
 class _Cache:
@@ -163,7 +164,58 @@ async def test_render_lucky_skin_window_uses_four_full_portraits_and_watch_marke
     assert images.requests[2:] == [
         ("pet_body", str(9_000 + index)) for index in range(1, 5)
     ]
-    assert len(cache.entries) == 1
+    assert len(cache.entries) == _EXPECTED_CACHE_ENTRIES
+
+
+@pytest.mark.asyncio
+async def test_render_lucky_skin_window_uses_icons_when_remote_currency_assets_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def render_html(
+        template_path: object,
+        template_name: str,
+        templates: Mapping[Any, Any],
+        *,
+        max_width: int = 500,
+        allow_refit: bool = True,
+    ) -> bytes:
+        del template_path, template_name, max_width, allow_refit
+        captured.update(templates)
+        return b"lucky-window-image"
+
+    monkeypatch.setattr(
+        rendering,
+        "load_skin_image_resolutions",
+        lambda _session, skin_ids: {
+            skin_id: SimpleNamespace(body_resource_id=9_000 + skin_id)
+            for skin_id in skin_ids
+        },
+    )
+    result = _result()
+    images = _Images(
+        missing={rendering._FASHION_TICKET_ID, rendering._DIAMOND_ICON_URL}
+    )
+
+    await render_lucky_skin_window(
+        _Cache(),  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        images,  # type: ignore[arg-type]
+        render_html,
+        result,
+        result.offers,
+    )
+
+    cards = captured["offers"]
+    assert all(
+        card["ticket_icon"].startswith("data:image/svg+xml;base64,")
+        for card in cards
+    )
+    assert all(
+        card["diamond_icon"].startswith("data:image/svg+xml;base64,")
+        for card in cards
+    )
 
 
 @pytest.mark.asyncio

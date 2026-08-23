@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from contextlib import suppress
 from typing import TYPE_CHECKING, TypedDict
 
@@ -14,7 +15,7 @@ from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolut
 from ironsbot.services.seer.skin_price import FASHION_TICKET_VALUE
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
+    from collections.abc import Awaitable, Callable
 
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.lucky_skin_window import (
@@ -32,8 +33,8 @@ class LuckySkinWindowCard(TypedDict):
     name: str
     watched: bool
     image: str | None
-    ticket_icon: str | None
-    diamond_icon: str | None
+    ticket_icon: str
+    diamond_icon: str
     ticket_num: int | None
     minimum_diamonds: int | None
     price_text: str | None
@@ -46,6 +47,27 @@ _DIAMOND_ICON_URL = (
     "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
     "newseer/assets/art/ui/common/icon_diamond.png"
 )
+_CURRENCY_CACHE_CATEGORY = "lucky_skin_window_currency_v1"
+_CARD_CACHE_CATEGORY = "lucky_skin_window_v5"
+_TICKET_FALLBACK_ICON = to_data_uri(
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    b'<path fill="#f3b63e" '
+    b'd="M6 17a7 7 0 0 0 7-7h38a7 7 0 0 0 7 7v30a7 7 0 0 0-7 7H13a7 7 0 0 0-7-7z"/>'
+    b'<path fill="#fff0a6" d="M28 14h8v36h-8z"/>'
+    b'<path fill="#d58826" d="M10 27h14v10H10zm30 0h14v10H40z"/>'
+    b'</svg>',
+    "image/svg+xml",
+)
+_DIAMOND_FALLBACK_ICON = to_data_uri(
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    b'<path fill="#68d9ff" d="M8 23 20 9h24l12 14-24 34z"/>'
+    b'<path fill="#d6f7ff" d="m20 9 12 14L44 9z"/>'
+    b'<path fill="#28a9e0" d="M8 23h24L20 9zm24 0h24L44 9zm0 34V23h24z"/>'
+    b'</svg>',
+    "image/svg+xml",
+)
+
+logger = logging.getLogger(__name__)
 
 
 async def render_lucky_skin_window(  # noqa: PLR0913 - shared rendering dependencies
@@ -59,7 +81,7 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - shared rendering dependen
     """Render today's four offers without letting one missing asset fail the card."""
 
     content_key = _cache_key(result, offers)
-    if cached := cache.get("lucky_skin_window_v4", content_key):
+    if cached := cache.get(_CARD_CACHE_CATEGORY, content_key):
         return cached
 
     skin_ids = tuple(offer.skin_id for offer in offers)
@@ -72,7 +94,7 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - shared rendering dependen
             if resolution.body_resource_id > 0
         }
 
-    ticket_icon, diamond_icon = await _currency_icons(images)
+    ticket_icon, diamond_icon = await _currency_icons(cache, images)
     cards = await asyncio.gather(
         *(
             _card(
@@ -93,7 +115,7 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - shared rendering dependen
         max_width=1040,
         allow_refit=False,
     )
-    cache.put("lucky_skin_window_v4", content_key, rendered)
+    cache.put(_CARD_CACHE_CATEGORY, content_key, rendered)
     return rendered
 
 
@@ -102,8 +124,8 @@ async def _card(  # noqa: PLR0913 - render context stays explicit
     offer: LuckySkinWindowOffer,
     images: SeerImageSource,
     body_resource_id: int,
-    ticket_icon: str | None,
-    diamond_icon: str | None,
+    ticket_icon: str,
+    diamond_icon: str,
 ) -> LuckySkinWindowCard:
     image: str | None = None
     if body_resource_id > 0:
@@ -155,19 +177,48 @@ async def _card(  # noqa: PLR0913 - render context stays explicit
     }
 
 
-async def _currency_icons(images: SeerImageSource) -> tuple[str | None, str | None]:
+async def _currency_icons(
+    cache: RenderCache,
+    images: SeerImageSource,
+) -> tuple[str, str]:
     ticket, diamond = await asyncio.gather(
-        _optional_data_uri(images.fetch("item", _FASHION_TICKET_ID, fallback=False)),
-        _optional_data_uri(images.fetch_url(_DIAMOND_ICON_URL)),
+        _cached_currency_icon(
+            cache,
+            "fashion_ticket",
+            lambda: images.fetch("item", _FASHION_TICKET_ID, fallback=False),
+            fallback=_TICKET_FALLBACK_ICON,
+        ),
+        _cached_currency_icon(
+            cache,
+            "diamond",
+            lambda: images.fetch_url(_DIAMOND_ICON_URL),
+            fallback=_DIAMOND_FALLBACK_ICON,
+        ),
     )
     return ticket, diamond
 
 
-async def _optional_data_uri(fetch: Awaitable[bytes]) -> str | None:
+async def _cached_currency_icon(
+    cache: RenderCache,
+    key: str,
+    fetch: Callable[[], Awaitable[bytes]],
+    *,
+    fallback: str,
+) -> str:
+    if cached := cache.get(_CURRENCY_CACHE_CATEGORY, key):
+        return to_data_uri(cached)
     try:
-        return to_data_uri(await fetch)
-    except ImageSourceError:
-        return None
+        data = await fetch()
+    except ImageSourceError as error:
+        logger.warning(
+            "lucky skin window currency icon unavailable; using embedded fallback: "
+            "currency=%s error=%s",
+            key,
+            error,
+        )
+        return fallback
+    cache.put(_CURRENCY_CACHE_CATEGORY, key, data)
+    return to_data_uri(data)
 
 
 def _cache_key(
