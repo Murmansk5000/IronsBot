@@ -185,6 +185,71 @@ def _load_store_prices(
     return prices
 
 
+def load_active_skin_store_prices(
+    session: Session,
+    *,
+    skin_ids: Iterable[int],
+) -> dict[int, SkinStorePrice]:
+    """Load one active lucky-store price for each requested skin in one query."""
+
+    unique_ids = tuple(dict.fromkeys(int(skin_id) for skin_id in skin_ids))
+    if not unique_ids:
+        return {}
+
+    placeholders = ", ".join(f":skin_id_{index}" for index in range(len(unique_ids)))
+    params: dict[str, int] = {
+        f"skin_id_{index}": skin_id for index, skin_id in enumerate(unique_ids)
+    }
+    params["now"] = int(time.time())
+    rows = session.execute(
+        text(
+            f"""
+            SELECT
+                skin_id,
+                pool_id,
+                price,
+                original_price,
+                discount_rate,
+                selected_price,
+                ticket_id,
+                ticket_num,
+                start_time,
+                end_time
+            FROM skin_store_price
+            WHERE skin_id IN ({placeholders})
+              AND (start_time <= 0 OR start_time <= :now)
+              AND (end_time <= 0 OR :now <= end_time)
+            ORDER BY skin_id, pool_id, row_index
+            """
+        ),
+        params=params,
+    ).all()
+
+    prices: dict[int, SkinStorePrice] = {}
+    for row in rows:
+        mapping = cast(
+            "Mapping[str, Any]",
+            row._mapping if hasattr(row, "_mapping") else row,
+        )
+        skin_id = int(mapping["skin_id"])
+        prices.setdefault(
+            skin_id,
+            SkinStorePrice(
+                skin_id=skin_id,
+                pool_id=int(mapping["pool_id"] or 0),
+                price=int(mapping["price"] or 0),
+                original_price=int(mapping["original_price"] or 0),
+                discount_rate=int(mapping["discount_rate"] or 0),
+                selected_price=int(mapping["selected_price"] or 0),
+                ticket_id=int(mapping["ticket_id"] or 0),
+                ticket_num=int(mapping["ticket_num"] or 0),
+                start_time=int(mapping["start_time"] or 0),
+                end_time=int(mapping["end_time"] or 0),
+            ),
+        )
+    return prices
+
+
 def _format_skin_price_lines(
     *,
     shop_price: SkinShopPrice | None,
