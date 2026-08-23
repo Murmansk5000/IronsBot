@@ -293,7 +293,7 @@ feature/组合，未知引用、空组合和循环引用都会阻止启动。为
 
 TOML 对已识别字段严格加载：既非内置也未被消息动作声明的 feature、未知 B站账号引用、
 未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
-无法识别的多余字段会在加载时按完整路径告警并被忽略；已识别字段的校验错误仍会阻止启动。
+无法识别的多余字段会直接阻止启动，并在校验错误中列出完整路径；
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
@@ -385,16 +385,6 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 例如，在现有 `[seer.rank]` 表内添加 `lookup_limits = { "群星牌" = 10000 }`，只为群星牌设置范围；不添加该行则保持默认空映射。
 此项不设置全服榜展示行数，不调整后台 `page_refresh` 预热范围，也不改变群开关或权限。全服榜展示行数仍由 `display_limit`、`display_limits`、`max_display_limit` 等展示配置控制。
 
-### 新增活动查询
-
-发送“新增活动”可查询当前活动相对于上一周已观察快照增加的项目，沿用 `seer_activity_query` 权限。
-需要上一周已有活动快照；缺少基线时会提示尚不能比较，不表示当前没有新活动，也不等于权威的活动上线时间表。
-
-### 群内代设默认绑定
-
-超级管理员可在群内使用原绑定口令并 @ 一名成员，为其设置通过查询验证的数字米米号默认绑定，不能同时指定多人。
-该操作只设置查询快捷方式，不验证游戏账号所有权，也不授予幸运橱窗登录权限。普通用户仍走原本人绑定流程。
-
 ## 数据与缓存
 
 建议把 `/app/data` 持久化。这里会保存：
@@ -456,10 +446,9 @@ docker start ironsbot
 主数据发布文件现使用 `data/seerapi-data.sqlite`。确认新版本已成功下载并能查询最新数据后，
 旧的 `data/ironsbot-data.sqlite` 可手动删除；状态库迁移命令不会自动删除主数据文件。
 
-超级管理员发送 `/更新数据` 后先只读比较本地与已发布数据的指纹；检查失败时不继续操作。
-通过检查后按菜单选择同步已发布数据，或在已有远程构建配置允许时检查上游、构建并同步；回复 `0` 退出。
-仅同步已发布数据不触发 Actions。选择构建分支时，按
-`[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序执行；默认示例流水线为：
+超级管理员发送 `/更新数据` 时，IronsBot 会先按
+`[operations.data_sync.sources.seerapi.remote_build.steps]` 顺序触发远程
+GitHub Actions 流水线，再下载最新 `seerapi-data.sqlite`。默认示例流水线为：
 
 1. `Murmansk-Seer/data-update-workflows`：检查淘米官方资源包，更新 Unity 资源和完整配置源。
 2. `Murmansk-Seer/seer-unity-config-parser`：抓取官方 Unity ConfigPackage 并导出补充 JSON。
@@ -488,10 +477,11 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员发送 `/重启机器人`（同义命令：`/机器人重启`）会进入维护菜单。
-`/更新镜像` 或 `/更新Docker` 先只读检查镜像，再显示维护菜单；不会仅因发送口令就执行更新或重启。
-按菜单选择仅重启或更新后重启，回复 `0` 退出；仅重启分支不检查更新，更新后重启分支才进入镜像更新流程。
-挂载 Docker socket 时按原 Docker API 路径执行重启，否则使用原进程重启路径。自然启动检查仍由原启动设置控制。
+超级管理员可以发送 `/重启机器人`（同义命令：`/机器人重启`、`/更新镜像`、`/更新Docker`）
+进入同一套重启流程。默认会先检查 `murmansk5000/ironsbot:latest` 是否有新镜像；
+检测到新镜像时会启动一次性 Watchtower 更新当前容器。镜像已是最新时，如果挂载了
+Docker socket，会通过 Docker API 重启当前容器；没有 Docker socket 时才退回普通
+进程重启。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -538,7 +528,7 @@ image = "murmansk5000/ironsbot-private:latest"
 
 ```text
 DOCKER_REGISTRY_USERNAME=murmansk5000
-DOCKER_REGISTRY_TOKEN=private-image-pull-token
+DOCKER_REGISTRY_TOKEN=YOUR_DOCKER_REGISTRY_TOKEN
 ```
 
 私有扩展包在公开主镜像启动前通过已挂载的 Docker socket 拉取，因此 Unraid 的 Repository
@@ -557,7 +547,7 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 check_on_startup = false
 ```
 
-手动维护菜单是否更新由本次选择决定；下列原 `check_on_restart` 设置示例保留，但它不选择菜单分支：
+如果不想让手动 `/重启机器人` 或 `/更新镜像` 时检查镜像，可改为：
 
 ```toml
 [operations.docker_update]
