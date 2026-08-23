@@ -86,6 +86,7 @@ async def find_rank_by_cached_position(  # noqa: C901, PLR0911, PLR0913
             if item.id == user_id:
                 result.rank = start + offset + 1
                 result.score = item.score
+                result.observed_score = item.score
                 result.cost.anchor_page_hit = index == 0
                 return True
         return False
