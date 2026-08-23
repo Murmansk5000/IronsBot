@@ -7,6 +7,11 @@ import time
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.services.seer.rank_constants import (
+    EXPERT_PEAK_USER_RANK_KEY,
+    STANDARD_PEAK_USER_RANK_KEY,
+    WILD_PEAK_USER_RANK_KEY,
+)
 from ironsbot.services.seer.rank_exclusion_lookups import finalize_visible_lookup
 from ironsbot.services.seer.rank_pagination import rank_window_page_starts
 from ironsbot.services.seer.rank_position_cache import (
@@ -25,6 +30,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _CACHED_LOOKUP_WINDOW_PAGES = 2
 _LAST_CONFIRMED_RANK_MAX_AGE_SECONDS = 24 * 60 * 60
+_PUBLIC_PEAK_SCORE_KEYS = frozenset(
+    (
+        STANDARD_PEAK_USER_RANK_KEY,
+        WILD_PEAK_USER_RANK_KEY,
+        EXPERT_PEAK_USER_RANK_KEY,
+    )
+)
 
 
 async def execute_rank_lookup(  # noqa: PLR0913
@@ -44,6 +56,9 @@ async def execute_rank_lookup(  # noqa: PLR0913
 ) -> RankLookupResult:
     parallelism = service.rank_probe_parallelism(game)
     batch_enabled = parallelism > 1
+    cached_score = (
+        None if fallback_item is None else int(fallback_item.score)
+    )
 
     async def fetch_rank_pages(  # noqa: PLR0913
         active_game: Any,
@@ -95,7 +110,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
             ),
         )
         if cached is not None or limit <= 0 or anchor_only:
-            return await finalize_visible_lookup(
+            result = await finalize_visible_lookup(
                 service,
                 game,
                 rank_key=rank_key,
@@ -103,6 +118,21 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 sub_key=sub_key,
                 result=cached or result,
             )
+            _preserve_public_peak_score(
+                result,
+                key=key,
+                score_target=score_target,
+            )
+            _log_rank_score_mismatch(
+                result,
+                rank_key=rank_key,
+                key=key,
+                sub_key=sub_key,
+                user_id=user_id,
+                expected_score=score_target,
+                cached_score=cached_score,
+            )
+            return result
         if score_target is not None:
             result.cost.used_score_search = True
             result = await find_rank_by_score(
@@ -125,6 +155,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 ),
                 fetch_rank_pages=fetch_rank_pages if batch_enabled else None,
                 parallelism=parallelism,
+                allow_nearby_player_lookup=key in _PUBLIC_PEAK_SCORE_KEYS,
             )
         else:
             result.cost.used_full_scan = True
@@ -169,6 +200,20 @@ async def execute_rank_lookup(  # noqa: PLR0913
         sub_key=sub_key,
         result=result,
     )
+    _preserve_public_peak_score(
+        result,
+        key=key,
+        score_target=score_target,
+    )
+    _log_rank_score_mismatch(
+        result,
+        rank_key=rank_key,
+        key=key,
+        sub_key=sub_key,
+        user_id=user_id,
+        expected_score=score_target,
+        cached_score=cached_score,
+    )
     if (
         score_target is None
         and result.rank is None
@@ -183,6 +228,56 @@ async def execute_rank_lookup(  # noqa: PLR0913
             searched_limit=result.searched_limit,
         )
     return result
+
+
+def _preserve_public_peak_score(
+    result: RankLookupResult,
+    *,
+    key: int,
+    score_target: int | None,
+) -> None:
+    if (
+        key in _PUBLIC_PEAK_SCORE_KEYS
+        and result.rank is not None
+        and score_target is not None
+    ):
+        result.score = score_target
+
+
+def _log_rank_score_mismatch(  # noqa: PLR0913 - every field is useful in diagnostics
+    result: RankLookupResult,
+    *,
+    rank_key: str | None,
+    key: int,
+    sub_key: int,
+    user_id: int,
+    expected_score: int | None,
+    cached_score: int | None,
+) -> None:
+    reference_source = "public" if expected_score is not None else "cached"
+    reference_score = (
+        expected_score if expected_score is not None else cached_score
+    )
+    if (
+        result.rank is None
+        or reference_score is None
+        or result.observed_score is None
+        or reference_score == result.observed_score
+    ):
+        return
+    logger.warning(
+        "player rank score mismatch: rank_key=%s key=%s sub_key=%s "
+        "user_id=%s rank=%s reference=%s reference_score=%s "
+        "observed_score=%s",
+        rank_key,
+        key,
+        sub_key,
+        user_id,
+        result.rank,
+        reference_source,
+        reference_score,
+        result.observed_score,
+    )
 
 
 def _recent_confirmed_cache_item(

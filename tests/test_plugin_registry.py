@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import nonebot
-import tomli
+import tomllib
 
 if TYPE_CHECKING:
     from nonebot.internal.driver import Driver
@@ -129,7 +129,7 @@ def test_internal_plugins_use_only_the_matcher_registry() -> None:
 
 
 def test_pyproject_does_not_define_plugin_loading_lists() -> None:
-    pyproject = tomli.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     nonebot_config = pyproject["tool"]["nonebot"]
 
     assert nonebot_config.get("plugin_dirs") == []

@@ -8,6 +8,7 @@ import json
 import shutil
 import sqlite3
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,7 +42,7 @@ from ironsbot.integrations.storage.team_resources import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
 
 StateTarget = Literal["qq", "runtime"]
 
@@ -345,7 +346,7 @@ def _copy_legacy_data(
         if source.target is None:
             continue
         target_path = targets[source.target]
-        with open_sqlite_connection(target_path) as target:
+        with _write_connection(target_path) as target:
             target.execute("ATTACH DATABASE ? AS legacy", (str(source_path),))
             try:
                 for table in source.tables:
@@ -392,7 +393,7 @@ def _copy_table(connection: sqlite3.Connection, table: str) -> int:
 
 
 def _copy_private_unsubscriptions(target_path: Path, source_path: Path) -> int:
-    with open_sqlite_connection(target_path) as target:
+    with _write_connection(target_path) as target:
         target.execute("ATTACH DATABASE ? AS legacy_private", (str(source_path),))
         try:
             if not _table_exists(
@@ -613,10 +614,14 @@ def _validate_integrity(path: Path) -> None:
 
 
 def _prepare_for_atomic_replace(path: Path) -> None:
-    with open_sqlite_connection(path) as connection:
+    connection = open_sqlite_connection(path)
+    try:
         connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        connection.commit()
         connection.execute("PRAGMA journal_mode=DELETE")
         result = connection.execute("PRAGMA integrity_check").fetchone()
+    finally:
+        connection.close()
     if result is None or str(result[0]).lower() != "ok":
         raise StateMigrationError.integrity_failed(path)
 
@@ -635,8 +640,22 @@ def _remove_sqlite_files(path: Path) -> None:
         candidate.unlink(missing_ok=True)
 
 
-def _read_only_connection(path: Path) -> sqlite3.Connection:
-    return open_sqlite_connection(path, read_only=True)
+@contextmanager
+def _write_connection(path: Path) -> Iterator[sqlite3.Connection]:
+    connection = open_sqlite_connection(path)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+@contextmanager
+def _read_only_connection(path: Path) -> Iterator[sqlite3.Connection]:
+    connection = open_sqlite_connection(path, read_only=True)
+    try:
+        yield connection
+    finally:
+        connection.close()
 
 
 def _write_manifest(  # noqa: PLR0913

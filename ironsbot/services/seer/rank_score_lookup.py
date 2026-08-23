@@ -27,6 +27,7 @@ async def find_rank_by_score(  # noqa: C901, PLR0913
     fetch_rank_items: Callable[..., Awaitable[list[Any | None]]] | None = None,
     fetch_rank_pages: Callable[..., Awaitable[list[list[Any]]]] | None = None,
     parallelism: int = 1,
+    allow_nearby_player_lookup: bool = False,
 ) -> RankLookupResult:
     result.score = target_score
 
@@ -67,6 +68,21 @@ async def find_rank_by_score(  # noqa: C901, PLR0913
     search_end = score_range.last_index + 1
     result.searched_limit = min(result.searched_limit, search_end)
     if score_range.match_start is None or score_range.match_end is None:
+        if allow_nearby_player_lookup:
+            return await _find_rank_near_score_insertion(
+                game,
+                user_id=user_id,
+                key=key,
+                sub_key=sub_key,
+                center_index=score_range.insertion_index,
+                last_index=score_range.last_index,
+                page_size=page_size,
+                page_limit=tie_page_limit,
+                parallelism=parallelism,
+                result=result,
+                fetch_rank_page=fetch_rank_page,
+                fetch_rank_pages=fetch_rank_pages,
+            )
         return result
 
     tie_end = score_range.match_end
@@ -103,14 +119,122 @@ async def find_rank_by_score(  # noqa: C901, PLR0913
                 if item.id == user_id:
                     result.rank = page_start + offset + 1
                     result.score = item.score
+                    result.observed_score = item.score
                     return result
             if len(items) < end - page_start + 1:
-                return result
+                break
 
         remaining_tie_pages -= len(starts)
         start += page_size * len(starts)
 
+    if allow_nearby_player_lookup:
+        return await _find_rank_near_score_insertion(
+            game,
+            user_id=user_id,
+            key=key,
+            sub_key=sub_key,
+            center_index=score_range.match_start,
+            last_index=score_range.last_index,
+            page_size=page_size,
+            page_limit=tie_page_limit,
+            parallelism=parallelism,
+            result=result,
+            fetch_rank_page=fetch_rank_page,
+            fetch_rank_pages=fetch_rank_pages,
+        )
     return result
+
+
+async def _find_rank_near_score_insertion(  # noqa: PLR0913
+    game: Any,
+    *,
+    user_id: int,
+    key: int,
+    sub_key: int,
+    center_index: int | None,
+    last_index: int,
+    page_size: int,
+    page_limit: int,
+    parallelism: int,
+    result: RankLookupResult,
+    fetch_rank_page: Callable[..., Awaitable[list[Any]]],
+    fetch_rank_pages: Callable[..., Awaitable[list[list[Any]]]] | None,
+) -> RankLookupResult:
+    """Confirm a player near a public score that outran the rank refresh."""
+
+    if center_index is None or page_limit <= 0:
+        return result
+    starts = _nearby_page_starts(
+        center_index=center_index,
+        last_index=last_index,
+        page_size=page_size,
+        page_limit=page_limit,
+    )
+    while starts:
+        batch_size = min(max(1, parallelism), len(starts))
+        batch, starts = starts[:batch_size], starts[batch_size:]
+        if fetch_rank_pages is None:
+            pages = await asyncio.gather(
+                *(
+                    fetch_rank_page(
+                        game,
+                        key=key,
+                        sub_key=sub_key,
+                        start=page_start,
+                        end=min(page_start + page_size - 1, last_index),
+                    )
+                    for page_start in batch
+                )
+            )
+        else:
+            pages = await fetch_rank_pages(
+                game,
+                key=key,
+                sub_key=sub_key,
+                starts=batch,
+            )
+        for page_start, items in zip(batch, pages, strict=True):
+            end = min(page_start + page_size - 1, last_index)
+            result.searched_limit = max(result.searched_limit, end + 1)
+            for offset, item in enumerate(items[: end - page_start + 1]):
+                if item.id == user_id:
+                    result.rank = page_start + offset + 1
+                    result.observed_score = item.score
+                    return result
+    return result
+
+
+def _nearby_page_starts(
+    *,
+    center_index: int,
+    last_index: int,
+    page_size: int,
+    page_limit: int,
+) -> tuple[int, ...]:
+    center = min(max(0, center_index), last_index) // page_size * page_size
+    last_start = last_index // page_size * page_size
+    starts: list[int] = []
+    distance = 0
+    while len(starts) < page_limit:
+        candidates = (center,) if distance == 0 else (
+            center - distance * page_size,
+            center + distance * page_size,
+        )
+        added = False
+        for start in candidates:
+            if 0 <= start <= last_start and start not in starts:
+                starts.append(start)
+                added = True
+                if len(starts) >= page_limit:
+                    break
+        if (
+            not added
+            and center - distance * page_size < 0
+            and center + distance * page_size > last_start
+        ):
+            break
+        distance += 1
+    return tuple(starts)
 
 
 async def find_rank_by_linear_scan(  # noqa: PLR0913
@@ -158,6 +282,7 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
                 if item.id == user_id:
                     result.rank = page_start + offset + 1
                     result.score = item.score
+                    result.observed_score = item.score
                     return result
             if len(items) < end - page_start + 1:
                 return result

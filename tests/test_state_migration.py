@@ -16,9 +16,13 @@ LEGACY_PRIVATE_UNSUBSCRIPTION_COUNT = 2
 
 def _execute(path: Path, statements: tuple[str, ...]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as connection:
+    connection = sqlite3.connect(path)
+    try:
         for statement in statements:
             connection.execute(statement)
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _seed_legacy_state(root: Path) -> None:
