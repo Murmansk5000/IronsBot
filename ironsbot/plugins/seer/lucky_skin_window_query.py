@@ -14,6 +14,9 @@ from nonebot.typing import T_State
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.plugins.seer.query.commands.player_target import PlayerTargetResolution
+from ironsbot.plugins.seer.query.commands.player_target_selection import (
+    enter_player_target_selection,
+)
 from ironsbot.runtime.conversations import enter_event_reply_conversation
 from ironsbot.runtime.matchers import bind_async
 from ironsbot.runtime.replies import finish_event_reply
@@ -44,7 +47,54 @@ ResultPrompt = Callable[
 logger = logging.getLogger(__name__)
 
 
-async def handle_lucky_skin_window_query(  # noqa: PLR0913
+async def _enter_target_selection(  # noqa: PLR0913 - explicit query dependencies
+    service: LuckySkinWindowService,
+    pet_query: PetQueryService,
+    features: FeatureService | None,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    target: PlayerTargetResolution,
+    *,
+    target_key: str,
+    reference_key: str,
+    login_namespace: str,
+    enter_result_prompt: ResultPrompt,
+) -> None:
+    async def select_player_target(
+        player_id: int,
+        selection_matcher: Matcher,
+        selection_event: MessageEvent,
+    ) -> None:
+        selection_state = selection_matcher.state
+        selection_state[target_key] = PlayerTargetResolution(
+            player_id,
+            offer_binding=True,
+        )
+        selection_state[reference_key] = str(player_id)
+        await handle_lucky_skin_window_query(
+            service,
+            pet_query,
+            features,
+            selection_matcher,
+            selection_event,
+            selection_state,
+            target_key=target_key,
+            reference_key=reference_key,
+            login_namespace=login_namespace,
+            enter_result_prompt=enter_result_prompt,
+        )
+
+    await enter_player_target_selection(
+        matcher,
+        event,
+        state,
+        target,
+        select_player_target,
+    )
+
+
+async def handle_lucky_skin_window_query(  # noqa: PLR0911, PLR0913
     service: LuckySkinWindowService,
     pet_query: PetQueryService,
     features: FeatureService | None,
@@ -62,6 +112,21 @@ async def handle_lucky_skin_window_query(  # noqa: PLR0913
         target = PlayerTargetResolution(None, offer_binding=False)
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
+        return
+    if target.choices:
+        await _enter_target_selection(
+            service,
+            pet_query,
+            features,
+            matcher,
+            event,
+            state,
+            target,
+            target_key=target_key,
+            reference_key=reference_key,
+            login_namespace=login_namespace,
+            enter_result_prompt=enter_result_prompt,
+        )
         return
 
     target_player_id = target.player_id

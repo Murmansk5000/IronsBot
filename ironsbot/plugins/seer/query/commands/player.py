@@ -58,7 +58,15 @@ from .player_detail_conversation import (
     reserve_player_detail_conversation,
     send_player_info_with_detail_prompt,
 )
-from .player_target import resolve_event_player_reference, resolve_player_target
+from .player_target import (
+    PlayerTargetResolution,
+    allows_private_player_aliases,
+    default_player_id_for,
+    protected_shortcut_target_error,
+    resolve_event_player_reference_target,
+    resolve_event_player_target,
+)
+from .player_target_selection import enter_player_target_selection
 
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
@@ -75,6 +83,9 @@ class PlayerCommandDependencies:
         default_factory=lambda: PlayerAccountRegistry(())
     )
     external_references: SeerInfoReferences | None = None
+
+
+_PLAYER_TARGET_KEY = "_player_target"
 def _parse_pending_binding_choice(text: str, player_id: int) -> bool | None:
     _ = player_id
     return parse_confirmation(text)
@@ -115,16 +126,22 @@ async def _is_player_id_query(
     if not arg:
         state[PLAYER_QUERY_IS_EXPLICIT_KEY] = False
         return True
-    if not arg.isdecimal() and resolve_event_player_reference(
+    target = resolve_event_player_target(
         dependencies.player_accounts,
         event,
         arg,
-        allow_private=dependencies.features.is_superuser(
-            int(event.get_user_id())
+        binding_for_user=lambda user_id: default_player_id_for(
+            dependencies.player, user_id
         ),
-    ) is None:
+        allow_private=allows_private_player_aliases(
+            dependencies.features, int(event.get_user_id())
+        ),
+        allow_partial_reference=True,
+    )
+    if not target.recognized:
         return False
     state[BOT_COMMAND_ARG_KEY] = arg
+    state[_PLAYER_TARGET_KEY] = target
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
     return True
 
@@ -144,24 +161,63 @@ async def validate_player_id(
     event: MessageEvent,
     state: T_State,
 ) -> None:
-    numeric_player_id = None
-    if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True):
-        player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-        numeric_player_id = resolve_event_player_reference(
+    player_reference = (
+        str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
+        if state.get(PLAYER_QUERY_IS_EXPLICIT_KEY, True)
+        else None
+    )
+    target = state.get(_PLAYER_TARGET_KEY)
+    if not isinstance(target, PlayerTargetResolution):
+        target = resolve_event_player_target(
             dependencies.player_accounts,
             event,
             player_reference,
-            allow_private=dependencies.features.is_superuser(event.user_id),
+            binding_for_user=lambda user_id: default_player_id_for(
+                dependencies.player, user_id
+            ),
+            allow_private=allows_private_player_aliases(
+                dependencies.features, event.user_id
+            ),
+            allow_partial_reference=True,
         )
-        if numeric_player_id is None:
-            await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
-    target = resolve_player_target(
-        event,
-        numeric_player_id=numeric_player_id,
-        binding_for_user=dependencies.player.default_player_id,
-    )
     if target.error is not None:
         await finish_event_reply(matcher, event, target.error)
+        return
+    if access_error := protected_shortcut_target_error(
+        dependencies.player,
+        event.user_id,
+        target,
+    ):
+        await finish_event_reply(matcher, event, access_error)
+        return
+    if target.choices:
+        async def select_player_target(
+            player_id: int,
+            selection_matcher: Matcher,
+            selection_event: MessageEvent,
+        ) -> None:
+            selection_state = selection_matcher.state
+            selection_state[PLAYER_ID_KEY] = player_id
+            selection_state[_PLAYER_TARGET_KEY] = PlayerTargetResolution(
+                player_id,
+                offer_binding=True,
+                is_shortcut_target=target.is_shortcut_target,
+            )
+            selection_state[PLAYER_QUERY_IS_EXPLICIT_KEY] = True
+            await handle_player(
+                dependencies,
+                selection_matcher,
+                selection_event,
+                selection_state,
+            )
+
+        await enter_player_target_selection(
+            matcher,
+            event,
+            state,
+            target,
+            select_player_target,
+        )
         return
     if target.player_id is None:
         await prompt_for_unbound_player_id(dependencies, matcher, event)
@@ -199,24 +255,16 @@ async def handle_player(
     )
 
 
-async def handle_player_binding_command(
+async def handle_player_binding_command(  # noqa: PLR0911 - binding errors are user-facing
     dependencies: PlayerCommandDependencies,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
 ) -> None:
     player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    if not player_reference.isdecimal():
-        await finish_event_reply(
-            matcher,
-            event,
-            "绑定米米号请直接填写数字米米号，例如“绑定米米号123456”。",
-        )
-        return
-    player_id = dependencies.player_accounts.resolve_player_id(player_reference)
-    if player_id is None:
-        await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
     context = message_input_context(event)
+    target_qq_user_id: int | None = None
+    is_superuser = allows_private_player_aliases(dependencies.features, event.user_id)
     if context.has_member_mentions:
         if not isinstance(event, GroupMessageEvent):
             await finish_event_reply(
@@ -225,7 +273,7 @@ async def handle_player_binding_command(
                 "仅群聊可为成员绑定米米号。",
             )
             return
-        if not dependencies.features.is_superuser(event.user_id):
+        if not is_superuser:
             await finish_event_reply(
                 matcher,
                 event,
@@ -239,17 +287,83 @@ async def handle_player_binding_command(
                 "请一次只 @ 一名成员绑定米米号。",
             )
             return
+        target_qq_user_id = context.member_user_ids[0]
+
+    target = resolve_event_player_reference_target(
+        dependencies.player_accounts,
+        event,
+        player_reference,
+        allow_private=is_superuser,
+        allow_partial_reference=True,
+    )
+    if target.error is not None:
+        await finish_event_reply(matcher, event, target.error)
+        return
+    if not target.recognized:
+        await finish_event_reply(
+            matcher,
+            event,
+            "未找到可绑定的米米号账号，请填写数字米米号或当前会话可见的账号别名。",
+        )
+        return
+    if target.choices:
+        async def select_player_binding_target(
+            player_id: int,
+            selection_matcher: Matcher,
+            selection_event: MessageEvent,
+        ) -> None:
+            await _handle_player_binding_target(
+                dependencies,
+                selection_matcher,
+                selection_event,
+                selection_matcher.state,
+                player_id,
+                target_qq_user_id=target_qq_user_id,
+            )
+
+        await enter_player_target_selection(
+            matcher,
+            event,
+            state,
+            target,
+            select_player_binding_target,
+            title="请选择要绑定的米米号：",
+        )
+        return
+    if target.player_id is None:
+        await finish_event_reply(matcher, event, PLAYER_ID_ERROR_MESSAGE)
+        return
+    await _handle_player_binding_target(
+        dependencies,
+        matcher,
+        event,
+        state,
+        target.player_id,
+        target_qq_user_id=target_qq_user_id,
+    )
+
+
+async def _handle_player_binding_target(  # noqa: PLR0913 - binding context is explicit
+    dependencies: PlayerCommandDependencies,
+    matcher: Matcher,
+    event: MessageEvent,
+    state: T_State,
+    player_id: int,
+    *,
+    target_qq_user_id: int | None,
+) -> None:
+    if target_qq_user_id is None:
+        result = await dependencies.player.bind_player(
+            player_id,
+            qq_user_id=event.user_id,
+            group_id=event_group_id(event),
+        )
+    else:
         result = await bind_player_for_user(
             dependencies.player,
             player_id,
             actor_qq_user_id=event.user_id,
-            target_qq_user_id=context.member_user_ids[0],
-            group_id=event_group_id(event),
-        )
-    else:
-        result = await dependencies.player.bind_player(
-            player_id,
-            qq_user_id=event.user_id,
+            target_qq_user_id=target_qq_user_id,
             group_id=event_group_id(event),
         )
     await _handle_player_query_result(

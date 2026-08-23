@@ -111,6 +111,29 @@ def parse_rank_player_command(
     return RankPlayerCommand(rank_key=rank_key, player_id=player_id)
 
 
+def parse_rank_player_target_command(text: str) -> tuple[str, str] | None:
+    """Parse a global-rank player target before resolving its identity.
+
+    Range, page, and score forms deliberately keep their existing precedence.
+    A blank suffix is useful only when the caller supplied a current-message
+    member mention, which the event-level target resolver handles separately.
+    """
+
+    command = normalize_command_text(text)
+    parsed = _match_rank_list_command(command)
+    if parsed is None:
+        return None
+    kind, rank_key, suffix = parsed
+    if kind != "global":
+        return None
+    if suffix and (
+        parse_rank_list_command(command) is not None
+        or parse_rank_score_command(command) is not None
+    ):
+        return None
+    return rank_key, suffix
+
+
 def parse_rank_cache_batch_command(text: str) -> RankCacheBatchCommand | None:
     stripped = strip_command_prefix(text)
     if stripped is None:
