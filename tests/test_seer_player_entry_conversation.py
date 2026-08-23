@@ -8,11 +8,20 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
 from ironsbot.core.request_coordination import send_request_response
 from ironsbot.core.semantic_requests import ActionDefinition
-from ironsbot.plugins.seer.query.commands import player, player_shortcuts
+from ironsbot.plugins.seer.query.commands import (
+    player,
+    player_shortcuts,
+    player_target_selection,
+)
 from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_BINDING_NAMESPACE,
     PLAYER_DETAIL_NAMESPACE,
 )
+from ironsbot.plugins.seer.query.commands.player_target import (
+    PlayerTargetResolution,
+    protected_shortcut_target_error,
+)
+from ironsbot.runtime.prompts import Prompt
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -35,6 +44,30 @@ def test_player_conversation_flows_share_one_session() -> None:
         PLAYER_BINDING_NAMESPACE,
         PLAYER_DETAIL_NAMESPACE,
     } == {PLAYER_DETAIL_NAMESPACE}
+
+
+def test_superuser_binding_protection_only_applies_to_indirect_targets() -> None:
+    service = SimpleNamespace(
+        shortcut_target_access_error=lambda _user_id, _player_id: "已保护"
+    )
+
+    assert (
+        protected_shortcut_target_error(
+            service,
+            10002,
+            PlayerTargetResolution(_ACCOUNT_PLAYER_ID, offer_binding=True),
+        )
+        is None
+    )
+    assert protected_shortcut_target_error(
+        service,
+        10002,
+        PlayerTargetResolution(
+            _ACCOUNT_PLAYER_ID,
+            offer_binding=False,
+            is_shortcut_target=True,
+        ),
+    ) == "已保护"
 
 
 def test_pending_binding_choice_accepts_only_confirmation_replies() -> None:
@@ -325,6 +358,162 @@ def test_player_commands_resolve_configured_account_names() -> None:
     )
 
 
+def test_player_query_prompts_for_ambiguous_partial_alias(
+    monkeypatch: Any,
+) -> None:
+    other_player_id = 949105381
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="worker_one",
+                aliases=("玩家1",),
+                password=None,
+                public=True,
+            ),
+            PlayerAccount(
+                player_id=other_player_id,
+                name="worker_two",
+                aliases=("玩家2",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", SimpleNamespace(default_player_id=lambda _user_id: None)),
+        cast("Any", _features()),
+        player_accounts=registry,
+    )
+    enter_selection = AsyncMock()
+    query_player = AsyncMock()
+    monkeypatch.setattr(player_target_selection, "enter_prompt", enter_selection)
+    monkeypatch.setattr(player, "handle_player", query_player)
+    event = group_message_event("米米号玩家")
+    state: dict[str, object] = {}
+
+    assert asyncio.run(player._is_player_id_query(dependencies, event, state))
+    asyncio.run(
+        player.validate_player_id(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    call = enter_selection.await_args
+    assert call is not None
+    prompt = call.args[3]
+    assert isinstance(prompt, Prompt)
+    assert [(item.name, item.desc, item.value) for item in prompt.items] == [
+        ("玩家1", f"游戏内ID：{_ACCOUNT_PLAYER_ID}", _ACCOUNT_PLAYER_ID),
+        ("玩家2", f"游戏内ID：{other_player_id}", other_player_id),
+    ]
+
+    resolver = call.args[4]
+    selected_state: dict[str, object] = {}
+    selection_matcher = cast("Any", SimpleNamespace(state=selected_state))
+    selection_event = group_message_event("2")
+    asyncio.run(
+        resolver(
+            prompt.items[1],
+            selection_matcher,
+            selection_event,
+        )
+    )
+
+    assert selected_state[player.PLAYER_ID_KEY] == other_player_id
+    assert selected_state[player.PLAYER_QUERY_IS_EXPLICIT_KEY] is True
+    query_player.assert_awaited_once_with(
+        dependencies,
+        selection_matcher,
+        selection_event,
+        selected_state,
+    )
+
+
+def test_player_shortcut_prompts_for_ambiguous_partial_alias(
+    monkeypatch: Any,
+) -> None:
+    other_player_id = 949105381
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="worker_one",
+                aliases=("玩家1",),
+                password=None,
+                public=True,
+            ),
+            PlayerAccount(
+                player_id=other_player_id,
+                name="worker_two",
+                aliases=("玩家2",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", SimpleNamespace(default_player_id=lambda _user_id: None)),
+        cast("Any", _features()),
+        player_accounts=registry,
+    )
+    enter_selection = AsyncMock()
+    query_shortcut = AsyncMock()
+    monkeypatch.setattr(
+        player_shortcuts,
+        "enter_player_target_selection",
+        enter_selection,
+    )
+    event = group_message_event("巅峰玩家")
+    state: dict[str, object] = {}
+
+    assert asyncio.run(
+        player_shortcuts._is_player_shortcut(
+            event,
+            state,
+            dependencies=dependencies,
+        )
+    )
+    asyncio.run(
+        player_shortcuts.handle_player_shortcut(
+            dependencies,
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    call = enter_selection.await_args
+    assert call is not None
+    target = call.args[3]
+    assert isinstance(target, player.PlayerTargetResolution)
+    assert [choice.label for choice in target.choices] == ["玩家1", "玩家2"]
+
+    select_target = call.args[4]
+    selected_state: dict[str, object] = {}
+    selection_matcher = cast("Any", SimpleNamespace(state=selected_state))
+    selection_event = group_message_event("2")
+    monkeypatch.setattr(
+        player_shortcuts,
+        "handle_player_shortcut",
+        query_shortcut,
+    )
+    asyncio.run(
+        select_target(other_player_id, selection_matcher, selection_event)
+    )
+
+    selected_command = selected_state[player_shortcuts._SHORTCUT_COMMAND_KEY]
+    assert selected_command == PlayerShortcutCommand("peak", other_player_id)
+    query_shortcut.assert_awaited_once_with(
+        dependencies,
+        selection_matcher,
+        selection_event,
+        selected_state,
+    )
+
 def test_player_query_ignores_unknown_natural_language_suffixes() -> None:
     dependencies = player.PlayerCommandDependencies(
         cast("Any", object()),
@@ -497,13 +686,25 @@ def test_superuser_resolves_private_lineup_alias_outside_allowed_groups(
     assert command.player_id == _ACCOUNT_PLAYER_ID
 
 
-def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
+def test_binding_command_accepts_visible_account_aliases(monkeypatch: Any) -> None:
     finish_reply = AsyncMock()
     monkeypatch.setattr(player, "finish_event_reply", finish_reply)
     service = SimpleNamespace(bind_player=AsyncMock())
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="sample_player",
+                aliases=("示例账号",),
+                password=None,
+                public=True,
+            ),
+        )
+    )
     dependencies = player.PlayerCommandDependencies(
         cast("Any", service),
-        cast("Any", object()),
+        cast("Any", _features()),
+        player_accounts=registry,
     )
 
     asyncio.run(
@@ -515,10 +716,11 @@ def test_binding_command_rejects_account_aliases(monkeypatch: Any) -> None:
         )
     )
 
-    call = finish_reply.await_args
-    assert call is not None
-    assert call.args[2].startswith("绑定米米号请直接填写数字")
-    service.bind_player.assert_not_awaited()
+    service.bind_player.assert_awaited_once_with(
+        _ACCOUNT_PLAYER_ID,
+        qq_user_id=123,
+        group_id=456,
+    )
 
 
 def test_superuser_can_bind_a_mentioned_member(monkeypatch: Any) -> None:
@@ -564,6 +766,58 @@ def test_superuser_can_bind_a_mentioned_member(monkeypatch: Any) -> None:
     )
     service.bind_player.assert_not_awaited()
     finish_reply.assert_awaited_once()
+
+
+def test_superuser_can_bind_a_mentioned_member_by_private_alias(
+    monkeypatch: Any,
+) -> None:
+    finish_reply = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", finish_reply)
+    bind_for_user = AsyncMock(return_value=PlayerQueryResult(message="已绑定"))
+    monkeypatch.setattr(player, "bind_player_for_user", bind_for_user)
+    service = SimpleNamespace(bind_player=AsyncMock())
+    registry = PlayerAccountRegistry(
+        (
+            PlayerAccount(
+                player_id=_ACCOUNT_PLAYER_ID,
+                name="lineup_worker",
+                aliases=("甲佬",),
+                password=None,
+                public=False,
+            ),
+        )
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service),
+        cast("Any", _features(superuser=True)),
+        player_accounts=registry,
+    )
+    event = group_message_event(
+        "绑定米米号甲佬",
+        user_id=10001,
+        group_id=20002,
+        message=Message(
+            MessageSegment.text("绑定米米号甲佬") + MessageSegment.at(30003)
+        ),
+    )
+
+    asyncio.run(
+        player.handle_player_binding_command(
+            dependencies,
+            cast("Any", object()),
+            event,
+            {player.BOT_COMMAND_ARG_KEY: "甲佬"},
+        )
+    )
+
+    bind_for_user.assert_awaited_once_with(
+        service,
+        _ACCOUNT_PLAYER_ID,
+        actor_qq_user_id=10001,
+        target_qq_user_id=30003,
+        group_id=20002,
+    )
+    service.bind_player.assert_not_awaited()
 
 
 def test_non_superuser_cannot_bind_a_mentioned_member(monkeypatch: Any) -> None:

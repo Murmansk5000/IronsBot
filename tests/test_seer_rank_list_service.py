@@ -43,6 +43,7 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_page_cache_refresh_command,
     parse_rank_page_cache_status_command,
     parse_rank_player_command,
+    parse_rank_player_target_command,
     parse_rank_score_command,
     with_admin_prefix,
 )
@@ -279,6 +280,17 @@ def test_parse_rank_player_command_can_resolve_configured_account_alias() -> Non
         rank_key="群星牌",
         player_id=712345678,
     )
+
+
+def test_rank_player_target_parser_preserves_range_page_and_score_precedence() -> None:
+    assert parse_rank_player_target_command("专家榜白日喧嚣") == (
+        "专家段位",
+        "白日喧嚣",
+    )
+    assert parse_rank_player_target_command("专家榜") == ("专家段位", "")
+    assert parse_rank_player_target_command("专家榜1-40") is None
+    assert parse_rank_player_target_command("专家榜第2页") is None
+    assert parse_rank_player_target_command("专家榜3000分") is None
 
 
 @pytest.mark.parametrize(
