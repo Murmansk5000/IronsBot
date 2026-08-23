@@ -1,4 +1,4 @@
-FROM python:3.10 as requirements_stage
+FROM python:3.11 as requirements_stage
 
 WORKDIR /wheel
 
@@ -21,7 +21,7 @@ z=zipfile.ZipFile(io.BytesIO(data));\
 [open(f'/tmp/fonts/{os.path.basename(n)}','wb').write(z.read(n)) for n in z.namelist() if n.endswith('.otf') and ('Regular' in n or 'Bold' in n)]"
 
 
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
