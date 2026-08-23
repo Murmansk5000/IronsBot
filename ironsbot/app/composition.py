@@ -147,6 +147,9 @@ from ironsbot.services.seer.render_scheduler import RenderScheduler
 from ironsbot.services.seer.rendering.custom_pet_info import (
     render_custom_pet_info,
 )
+from ironsbot.services.seer.rendering.lucky_skin_window import (
+    render_lucky_skin_window,
+)
 from ironsbot.services.seer.rendering.new_content import render_new_content_menu
 from ironsbot.services.seer.rendering.peak_pet_rank import render_peak_pet_rank
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
@@ -288,6 +291,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             else 0.0
         ),
     )
+    seer_images = HttpSeerImageSource(http_clients)
+    render_cache = FileRenderCache(
+        cache_paths.render_dir(),
+        settings.seer.render.cache_max_size_mb * 1024 * 1024,
+        db_version_getter=seer_database.version,
+    )
+    render_scheduler = RenderScheduler(
+        render_html_template,
+        settings.runtime.concurrency.render_max_concurrent,
+    )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
         settings.onebot_references,
@@ -303,6 +316,13 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             legacy_paths=(
                 cache_paths.root / "runtime" / "lucky_skin_window.sqlite",
             ),
+        ),
+        renderer=partial(
+            render_lucky_skin_window,
+            render_cache,
+            seer_database,
+            seer_images,
+            render_scheduler.render,
         ),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
@@ -386,20 +406,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    seer_images = HttpSeerImageSource(http_clients)
     weekly_preview_images = CachedWeeklyPreviewImageSource(
         http_clients.origin,
         cache_paths.assets_dir(),
         spawn=task_owner.create,
-    )
-    render_cache = FileRenderCache(
-        cache_paths.render_dir(),
-        settings.seer.render.cache_max_size_mb * 1024 * 1024,
-        db_version_getter=seer_database.version,
-    )
-    render_scheduler = RenderScheduler(
-        render_html_template,
-        settings.runtime.concurrency.render_max_concurrent,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
