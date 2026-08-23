@@ -17,10 +17,7 @@ from ironsbot.core.seer_ids import is_valid_player_id
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover - exercised on Python 3.10 in deployment
-    import tomli as tomllib
+import tomllib
 
 TOMLDecodeError = tomllib.TOMLDecodeError
 
