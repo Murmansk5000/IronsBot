@@ -81,6 +81,8 @@ EXPECTED_REQUEST = (
     351005,
     351004,
 )
+_OWNER_USER_ID = 1001
+_OWNER_PLAYER_ID = 90001
 WATCH_SKIN_ID = 103
 
 
@@ -265,6 +267,9 @@ class _PluginService:
 
     def account_for_user(self, _user_id: int) -> SimpleNamespace:
         return SimpleNamespace(player_id=90001)
+
+    def can_login_account(self, user_id: int, player_id: int) -> bool:
+        return user_id == _OWNER_USER_ID and player_id == _OWNER_PLAYER_ID
 
     def account_for_player_id(self, player_id: int) -> SimpleNamespace | None:
         return (
@@ -683,6 +688,19 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     assert service.subscription_options("private", 1001) == []
 
 
+def test_only_the_configured_and_bound_user_can_login_an_account(
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, bindings, _headless = _service(tmp_path)
+
+    assert service.can_login_account(1001, 90001)
+    assert not service.can_login_account(1002, 90001)
+    assert not service.can_login_account(1001, 90002)
+
+    bindings.bind(qq_user_id=1001, player_id=90003, player_nick="其他")
+    assert not service.can_login_account(1001, 90001)
+
+
 def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
@@ -833,6 +851,12 @@ def test_manual_query_prompts_before_a_missing_daily_cache_login(
     assert "90001" not in prompt
     assert "米米号" not in prompt
     assert "回复“是”或“y”确认" in prompt
+    reply_check = cast("Any", prompts[0]["reply_check"])
+    group_reply_check = cast("Any", prompts[0]["group_reply_check"])
+    assert reply_check(private_message_event("y", user_id=1001))
+    assert not reply_check(private_message_event("y", user_id=1002))
+    assert group_reply_check(private_message_event("y", user_id=1001))
+    assert not group_reply_check(private_message_event("y", user_id=1002))
 
 
 def test_manual_query_returns_today_cache_without_a_confirmation_prompt(
@@ -950,6 +974,46 @@ def test_lucky_window_superuser_reuses_the_selected_account_cache() -> None:
     )
 
     assert prompts == [(service, service.cached)]
+    assert service.queries == 0
+
+
+def test_lucky_window_superuser_cannot_login_another_users_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _PluginService(cached=None)
+    replies: list[str] = []
+    state: dict[str, object] = {
+        lucky_skin_window_plugin._QUERY_TARGET_KEY: (
+            lucky_skin_window_plugin.PlayerTargetResolution(
+                90002,
+                offer_binding=False,
+            )
+        ),
+    }
+
+    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
+        replies.append(message)
+
+    monkeypatch.setattr(lucky_skin_window_query, "finish_event_reply", finish_reply)
+
+    asyncio.run(
+        lucky_skin_window_query.handle_lucky_skin_window_query(
+            cast("Any", service),
+            cast("Any", _PetQuery()),
+            cast("Any", SimpleNamespace(is_superuser=lambda _user_id: True)),
+            cast("Any", object()),
+            cast("Any", SimpleNamespace(user_id=1001)),
+            cast("Any", state),
+            target_key=lucky_skin_window_plugin._QUERY_TARGET_KEY,
+            reference_key=lucky_skin_window_plugin._QUERY_REFERENCE_KEY,
+            login_namespace="test_lucky_skin_window",
+            enter_result_prompt=cast(
+                "Any", lucky_skin_window_plugin._enter_result_prompt
+            ),
+        )
+    )
+
+    assert replies == ["❌ 只能由该账号的绑定用户本人确认登录。"]
     assert service.queries == 0
 
 
@@ -1083,6 +1147,39 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
     else:
         assert replies == [expected_message]
         assert prompts == []
+
+
+def test_lucky_window_login_confirmation_rejects_another_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _PluginService(cached=None)
+    replies: list[str] = []
+
+    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
+        replies.append(message)
+
+    monkeypatch.setattr(lucky_skin_window_query, "finish_event_reply", finish_reply)
+
+    asyncio.run(
+        lucky_skin_window_query.handle_lucky_skin_window_confirmation(
+            cast("Any", service),
+            cast("Any", _PetQuery()),
+            cast("Any", object()),
+            cast(
+                "Any",
+                SimpleNamespace(user_id=1002, get_plaintext=lambda: "y"),
+            ),
+            cast("Any", {}),
+            enter_result_prompt=cast(
+                "Any", lucky_skin_window_plugin._enter_result_prompt
+            ),
+            target_player_id=90001,
+            authorized_user_id=1001,
+        )
+    )
+
+    assert service.queries == 0
+    assert replies == []
 
 
 def test_cache_deletes_previous_days_at_the_first_new_day_lookup(

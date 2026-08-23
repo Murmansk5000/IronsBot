@@ -236,6 +236,16 @@ class LuckySkinWindowService:
             return None
         return self._player_accounts.account_for_player_id(player_id)
 
+    def can_login_account(self, user_id: int, player_id: int) -> bool:
+        """Return whether this QQ user owns and still binds the login account."""
+
+        account = self.account_for_user(user_id)
+        return (
+            account is not None
+            and account.player_id == player_id
+            and self.default_player_id(user_id) == player_id
+        )
+
     def is_eligible_user(self, user_id: int) -> bool:
         account = self.account_for_user(user_id)
         if not self.enabled or account is None:

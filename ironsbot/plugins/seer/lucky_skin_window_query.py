@@ -195,7 +195,10 @@ async def handle_lucky_skin_window_confirmation(  # noqa: PLR0913
     *,
     enter_result_prompt: ResultPrompt,
     target_player_id: int | None = None,
+    authorized_user_id: int | None = None,
 ) -> None:
+    if authorized_user_id is not None and event.user_id != authorized_user_id:
+        return
     if parse_confirmation(event.get_plaintext()) is not True:
         await finish_event_reply(matcher, event, "已取消幸运橱窗查询。")
         return
@@ -256,7 +259,22 @@ async def _enter_login_confirmation(  # noqa: PLR0913
     login_namespace: str,
     enter_result_prompt: ResultPrompt,
 ) -> None:
+    if not service.can_login_account(event.user_id, target_player_id):
+        await finish_event_reply(
+            matcher,
+            event,
+            "❌ 只能由该账号的绑定用户本人确认登录。",
+        )
+        return
     suffix = "" if not target_reference else f"（米米号 {target_player_id}）"
+    authorized_user_id = event.user_id
+
+    def _owner_confirmation(reply_event: MessageEvent) -> bool:
+        return (
+            reply_event.user_id == authorized_user_id
+            and parse_confirmation(reply_event.get_plaintext()) is not None
+        )
+
     await enter_event_reply_conversation(
         matcher,
         event,
@@ -269,11 +287,12 @@ async def _enter_login_confirmation(  # noqa: PLR0913
                     pet_query,
                     enter_result_prompt=enter_result_prompt,
                     target_player_id=target_player_id,
+                    authorized_user_id=authorized_user_id,
                 )
             )
         ],
-        reply_check=lambda reply_event: parse_confirmation(reply_event.get_plaintext())
-        is not None,
+        reply_check=_owner_confirmation,
+        group_reply_check=_owner_confirmation,
         prompt=(
             f"今日幸运橱窗{suffix}尚未获取，需要登录查询。\n"
             "是否继续？\n"

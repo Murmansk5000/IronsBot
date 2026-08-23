@@ -92,10 +92,10 @@
           <div class="price-error">橱窗价格数据异常</div>
           {% else %}
           <div class="pay-row">
-            {% if offer.ticket_icon %}<img class="currency" src="{{ offer.ticket_icon }}" alt="风尚券">{% else %}<span>券</span>{% endif %}
+            <img class="currency" src="{{ offer.ticket_icon }}" alt="风尚券">
             <span>×{{ offer.ticket_num or 0 }}</span>
             <span class="plus">+</span>
-            {% if offer.diamond_icon %}<img class="currency" src="{{ offer.diamond_icon }}" alt="钻石">{% else %}<span>钻</span>{% endif %}
+            <img class="currency" src="{{ offer.diamond_icon }}" alt="钻石">
             <span>×{{ offer.minimum_diamonds or 0 }}</span>
           </div>
           <div class="price-meta">{{ offer.price_text }}</div>
