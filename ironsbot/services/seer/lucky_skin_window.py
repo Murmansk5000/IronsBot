@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
 from struct import unpack
@@ -17,10 +18,13 @@ from sqlmodel import Session, col, select
 
 from ironsbot.core.messaging import MessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
+from ironsbot.services.seer.skin_price import (
+    FASHION_TICKET_VALUE,
+    SkinStorePrice,
+    load_active_skin_store_prices,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ironsbot.config.models.seer import LuckySkinWindowConfig
     from ironsbot.config.player_accounts import PlayerAccount, PlayerAccountRegistry
     from ironsbot.core.features import FeatureService
@@ -33,6 +37,20 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_binding import PlayerBindingStore
 
 logger = logging.getLogger(__name__)
+
+LuckySkinWindowRenderer = Callable[
+    ["LuckySkinWindowResult", tuple["LuckySkinWindowOffer", ...]],
+    Awaitable[bytes],
+]
+
+
+class LuckySkinWindowMessageFormatter(Protocol):
+    async def __call__(
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        user_id: int,
+    ) -> object: ...
 
 LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY = "lucky_skin_window"
 _GET_LUCKY_SKIN_WINDOW = 45866
@@ -122,6 +140,7 @@ class LuckySkinWindowOffer:
     resource_id: int
     name: str
     watched: bool
+    store_price: SkinStorePrice | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +173,7 @@ class LuckySkinWindowService:
         cache: LuckySkinWindowCache,
         *,
         today: Callable[[], date] | None = None,
+        renderer: LuckySkinWindowRenderer | None = None,
     ) -> None:
         self._config = config
         self._features = features
@@ -164,6 +184,7 @@ class LuckySkinWindowService:
         self._watch_preferences = watch_preferences
         self._cache = cache
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
+        self._renderer = renderer
         self._accounts = {
             references.resolve_user(
                 account.user,
@@ -298,7 +319,12 @@ class LuckySkinWindowService:
         account = self._validated_account_for_user(user_id)
         return self._cached_result(account.player_id)
 
-    async def send_daily_notifications(self, delivery: MessageDelivery) -> None:
+    async def send_daily_notifications(
+        self,
+        delivery: MessageDelivery,
+        *,
+        format_message: LuckySkinWindowMessageFormatter | None = None,
+    ) -> None:
         if not self.enabled:
             return
         target_ids = self._subscriptions.filter_subscribed_user_ids(
@@ -315,12 +341,16 @@ class LuckySkinWindowService:
         )
         if not target_ids:
             return
-        notices: list[tuple[MessageTarget, str]] = []
+        notices: list[tuple[MessageTarget, object]] = []
         for user_id in target_ids:
             _subscription, account = self._accounts[user_id]
             try:
                 result = await self._check(account, background=True)
-                message = self.format_result(result, user_id=user_id)
+                message = (
+                    await format_message(result, user_id=user_id)
+                    if format_message is not None
+                    else self.format_result(result, user_id=user_id)
+                )
             except Exception:
                 logger.exception(
                     "lucky skin window scheduled check failed: player_id=%s",
@@ -434,26 +464,81 @@ class LuckySkinWindowService:
         from_cache: bool,
     ) -> LuckySkinWindowResult:
         resolved = self._skin_items_by_reference(skin_ids)
-        offers = tuple(
-            LuckySkinWindowOffer(
-                skin_id=(item.skin_id if item is not None else reference),
-                resource_id=(item.resource_id if item is not None else 0),
-                name=(item.name if item is not None else f"皮肤 {reference}"),
-                watched=False,
+        with self._data.query(
+            partial(load_active_skin_store_prices, skin_ids=skin_ids)
+        ) as store_prices:
+            for reference in skin_ids:
+                item = resolved.get(reference)
+                skin_id = item.skin_id if item is not None else reference
+                if skin_id not in store_prices:
+                    logger.warning(
+                        "lucky skin window store price missing: day=%s skin_id=%s "
+                        "resource_id=%s",
+                        day,
+                        skin_id,
+                        item.resource_id if item is not None else 0,
+                    )
+            offers = tuple(
+                LuckySkinWindowOffer(
+                    skin_id=(item.skin_id if item is not None else reference),
+                    resource_id=(item.resource_id if item is not None else 0),
+                    name=(item.name if item is not None else f"皮肤 {reference}"),
+                    watched=False,
+                    store_price=store_prices.get(
+                        item.skin_id if item is not None else reference
+                    ),
+                )
+                for reference in skin_ids
+                for item in (resolved.get(reference),)
             )
-            for reference in skin_ids
-            for item in (resolved.get(reference),)
-        )
         return LuckySkinWindowResult(day, player_id, offers, from_cache)
 
     def format_result(self, result: LuckySkinWindowResult, *, user_id: int) -> str:
-        watched_ids = frozenset(self._watched_skin_ids(user_id))
+        offers = self._offers_for_user(result, user_id=user_id)
         lines = ["【幸运橱窗】", "今日刷新皮肤："]
-        for index, offer in enumerate(result.offers, start=1):
-            marker = " ★ 关注" if offer.skin_id in watched_ids else ""
+        for index, offer in enumerate(offers, start=1):
+            marker = " ★ 关注" if offer.watched else ""
             identifiers = _skin_identifiers(offer.skin_id, offer.resource_id)
             lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
+            if offer.store_price is None:
+                lines.append("   橱窗价格数据异常")
+            else:
+                lines.extend(_format_offer_price(offer.store_price))
+        lines.append("发送 1-4 查看对应皮肤详情 · 0 退出")
         return "\n".join(lines)
+
+    async def render_result(
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        user_id: int,
+    ) -> bytes | None:
+        if self._renderer is None:
+            return None
+        try:
+            return await self._renderer(
+                result,
+                self._offers_for_user(result, user_id=user_id),
+            )
+        except Exception:
+            logger.exception(
+                "lucky skin window render failed: player_id=%s day=%s",
+                result.player_id,
+                result.day,
+            )
+            return None
+
+    def _offers_for_user(
+        self,
+        result: LuckySkinWindowResult,
+        *,
+        user_id: int,
+    ) -> tuple[LuckySkinWindowOffer, ...]:
+        watched_ids = frozenset(self._watched_skin_ids(user_id))
+        return tuple(
+            replace(offer, watched=offer.skin_id in watched_ids)
+            for offer in result.offers
+        )
 
     def _watched_skin_ids(self, user_id: int) -> tuple[int, ...]:
         self._validated_account_for_user(user_id)
@@ -593,3 +678,22 @@ def _skin_identifiers(skin_id: int, resource_id: int) -> str:
     if resource_id > 0 and resource_id != skin_id:
         return f"皮肤ID：{skin_id}，资源ID：{resource_id}"
     return f"皮肤ID：{skin_id}"
+
+
+def _format_offer_price(price: SkinStorePrice) -> tuple[str, ...]:
+    if price.price <= 0:
+        return ("   橱窗价格数据异常",)
+
+    price_text = f"   橱窗价：{price.price}钻"
+    if price.original_price > 0 and price.original_price != price.price:
+        price_text += f"（原价{price.original_price}钻）"
+    if price.ticket_num <= 0:
+        return (price_text,)
+
+    ticket_discount = price.ticket_num * FASHION_TICKET_VALUE
+    if ticket_discount < price.price:
+        minimum = price.price - ticket_discount
+        ticket_text = f"   最多用{price.ticket_num}张风尚券，最低{minimum}钻"
+    else:
+        ticket_text = f"   最多用{price.ticket_num}张风尚券，可抵扣{ticket_discount}钻"
+    return price_text, ticket_text
