@@ -151,8 +151,54 @@ class PlayerAccountRegistry:
             account = self._private_by_group.get(group_id, {}).get(normalized)
         return account.player_id if account is not None else None
 
+    def find_player_accounts(
+        self,
+        value: object,
+        *,
+        group_id: int | None = None,
+        allow_private: bool = False,
+    ) -> tuple[PlayerAccount, ...]:
+        """Return visible configured accounts whose name or alias contains ``value``."""
+
+        text = str(value).strip()
+        if not text or text.isdecimal():
+            return ()
+        normalized = normalize_command_text(text)
+        visible_player_ids = self._visible_player_ids(
+            group_id=group_id,
+            allow_private=allow_private,
+        )
+        return tuple(
+            account
+            for account in self.accounts
+            if account.player_id in visible_player_ids
+            and any(
+                normalized in normalize_command_text(reference)
+                for reference in (account.name, *account.aliases)
+            )
+        )
+
     def account_for_player_id(self, player_id: int) -> PlayerAccount | None:
         return self._by_player_id.get(player_id)
+
+    def _visible_player_ids(
+        self,
+        *,
+        group_id: int | None,
+        allow_private: bool,
+    ) -> frozenset[int]:
+        if allow_private:
+            return frozenset(self._by_player_id)
+        visible = {
+            account.player_id
+            for account in self._public_by_name.values()
+        }
+        if group_id is not None:
+            visible.update(
+                account.player_id
+                for account in self._private_by_group.get(group_id, {}).values()
+            )
+        return frozenset(visible)
 
     def _build_private_alias_groups(
         self,
