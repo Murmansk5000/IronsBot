@@ -123,7 +123,8 @@ def sort_peak_pool_vote_by_time(
     now = time.now(tz=time.TZ_CN)
 
     def time_distance(obj: PeakPoolVoteORM) -> float:
-        return abs((obj.start_time - now).total_seconds())
+        start_time = time.set_timezone(obj.start_time, time.TZ_CN)
+        return abs((start_time - now).total_seconds())
 
     return sorted(pool_list, key=time_distance)
 
@@ -137,13 +138,15 @@ async def handle_peak_vote(
     pools: list[_VoteRank] = []
     now = time.now(tz=time.TZ_CN)
     for orm in sort_peak_pool_vote_by_time(session.exec(select(PeakPoolVoteORM)).all()):
+        start_time = time.set_timezone(orm.start_time, time.TZ_CN)
+        end_time = time.set_timezone(orm.end_time, time.TZ_CN)
         title = f"限{orm.count}池票选"
-        if orm.start_time > now:
+        if start_time > now:
             title += " / 票选未开始"
-        elif orm.end_time < now:
+        elif end_time < now:
             title += " / 票选已结束"
         else:
-            title += f"<br>票选时间：{orm.start_time.strftime('%Y-%m-%d')} ~ {orm.end_time.strftime('%Y-%m-%d')}"
+            title += f"<br>票选时间：{start_time.strftime('%Y-%m-%d')} ~ {end_time.strftime('%Y-%m-%d')}"
 
         if orm.count == 2:
             pool = await game.get_limit_pool_vote(sub_key=orm.subkey)

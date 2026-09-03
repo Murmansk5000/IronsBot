@@ -10,7 +10,16 @@ def now(tz: timezone | None = None) -> datetime:
     return datetime.now(tz=tz)
 
 
+def set_timezone(dt: datetime, tz: timezone) -> datetime:
+    if tz is None:
+        return dt.astimezone()
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc).astimezone(tz=tz)
+    return dt.astimezone(tz=tz)
+
+
 __all__ = [
     "TZ_CN",
     "now",
+    "set_timezone",
 ]
