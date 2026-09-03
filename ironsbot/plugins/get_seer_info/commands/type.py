@@ -26,13 +26,6 @@ from ironsbot.utils.rule import no_reply, startswith_or_endswith
 from ..depends import SeerAPISession
 from ..group import matcher_group
 from ..render import render_type_matchup
-from ..type_calc import calc_attack_table, calc_defense_table, calc_type_multiplier
-
-__all__ = [
-    "calc_attack_table",
-    "calc_defense_table",
-    "calc_type_multiplier",
-]
 
 PROMPT_MAX_ITEMS = 20
 _MAX_CUSTOM_TYPES = 2

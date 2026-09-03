@@ -11,7 +11,7 @@ from .sync_cmd import build_usage
 
 __plugin_meta__ = PluginMetadata(
     name="数据源",
-    description="赛尔号 API 数据库同步、查询依赖与游戏资源图片获取",
+    description="赛尔号 API 数据库同步、查询依赖、游戏资源图片获取及一些工具函数",
     usage=build_usage(),
     config=Config,
 )

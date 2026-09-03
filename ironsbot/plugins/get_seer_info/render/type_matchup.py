@@ -8,8 +8,8 @@ from sqlalchemy.orm import object_session
 
 from ironsbot.plugins.get_seer_info.render._cache import render_cache
 from ironsbot.plugins.seer_data.image import ElementTypeImageGetter
+from ironsbot.plugins.seer_data.type_calc import calc_attack_table, calc_defense_table
 
-from ..type_calc import calc_attack_table, calc_defense_table
 from ._common import TEMPLATES_PATH, to_data_uri
 
 if TYPE_CHECKING:
