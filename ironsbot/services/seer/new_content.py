@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -112,6 +112,8 @@ class NewContentSnapshot:
     weekly_cycle: str
     items: tuple[NewContentItem, ...]
     category_states: tuple[NewContentCategoryState, ...] = ()
+    source_weekly_cycle: str = ""
+    is_current_week: bool = True
 
     def items_for(self, category: NewContentCategory) -> tuple[NewContentItem, ...]:
         return tuple(item for item in self.items if item.category == category)
@@ -272,39 +274,43 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
         )
         if release is None:
             raise NewContentIndexUnavailableError
-        rows = (
-            connection
-            .exec_driver_sql(
-                """
-            SELECT category, entity_id, name, sort_value, payload_json, change_kind
-            FROM new_content_item
-            ORDER BY category, sort_value, entity_id
-            """
-            )
-            .mappings()
-            .all()
-        )
+        source_weekly_cycle = str(release["weekly_cycle"])
+        is_current_week = source_weekly_cycle == current_new_content_weekly_cycle()
+        rows = ()
         state_rows = ()
-        has_category_state = connection.exec_driver_sql(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type = 'table' AND name = 'new_content_category_state'
-            """
-        ).first()
-        if has_category_state:
-            state_rows = (
+        if is_current_week:
+            rows = (
                 connection
                 .exec_driver_sql(
                     """
-                    SELECT category, comparison_ready, reason
-                    FROM new_content_category_state
-                    ORDER BY category
+                SELECT category, entity_id, name, sort_value, payload_json, change_kind
+                FROM new_content_item
+                ORDER BY category, sort_value, entity_id
                     """
                 )
                 .mappings()
                 .all()
             )
+            has_category_state = connection.exec_driver_sql(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table' AND name = 'new_content_category_state'
+                """
+            ).first()
+            if has_category_state:
+                state_rows = (
+                    connection
+                    .exec_driver_sql(
+                        """
+                        SELECT category, comparison_ready, reason
+                        FROM new_content_category_state
+                        ORDER BY category
+                        """
+                    )
+                    .mappings()
+                    .all()
+                )
     except SQLAlchemyError as error:
         raise NewContentIndexUnavailableError from error
 
@@ -350,6 +356,8 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
         ),
         items=tuple(items),
         category_states=tuple(category_states),
+        source_weekly_cycle=source_weekly_cycle,
+        is_current_week=is_current_week,
     )
 
 
@@ -383,8 +391,33 @@ def _current_content_date(config_version: str, fallback: str) -> str:
     return fallback
 
 
+def current_new_content_weekly_cycle(now: datetime | None = None) -> str:
+    """Return the Friday-starting content week in Shanghai time."""
+
+    shanghai = ZoneInfo("Asia/Shanghai")
+    if now is None:
+        current = datetime.now(shanghai)
+    elif now.tzinfo is None:
+        current = now.replace(tzinfo=shanghai)
+    else:
+        current = now.astimezone(shanghai)
+    current_date = current.date()
+    return (
+        current_date - timedelta(days=(current_date.weekday() - 4) % 7)
+    ).isoformat()
+
+
 def new_content_unavailable_message() -> str:
     return "当前数据版本尚未提供新增内容记录。"
+
+
+def new_content_stale_week_message(snapshot: NewContentSnapshot) -> str:
+    """Explain why a valid release index is hidden after its content week ends."""
+
+    return (
+        f"当前数据版本仍为 {snapshot.source_weekly_cycle} 周期，"
+        "本周暂未获得可验证的新增或修改内容。"
+    )
 
 
 def new_content_category_unavailable_message(

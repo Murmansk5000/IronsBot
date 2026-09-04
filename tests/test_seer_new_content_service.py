@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -12,10 +13,12 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentService,
     NewContentSnapshot,
+    current_new_content_weekly_cycle,
     format_new_content_category_count,
     format_new_content_change_summary,
     format_new_content_item_description,
     new_content_category_preview_items,
+    new_content_stale_week_message,
 )
 
 if TYPE_CHECKING:
@@ -36,9 +39,16 @@ def _service(path: Path) -> NewContentService:
     return NewContentService(cast("SeerDataAccess", FakeData(path)))
 
 
-def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
+def test_reads_embedded_release_index_and_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     path = tmp_path / "seer.sqlite"
     service = _service(path)
+    monkeypatch.setattr(
+        "ironsbot.services.seer.new_content.current_new_content_weekly_cycle",
+        lambda: "2026-07-31",
+    )
     with Session(create_engine(f"sqlite:///{path}")) as session:
         session.connection().exec_driver_sql(
             """
@@ -95,6 +105,8 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
 
     assert snapshot.baseline_established is True
     assert snapshot.weekly_cycle == "2026-07-31"
+    assert snapshot.source_weekly_cycle == "2026-07-31"
+    assert snapshot.is_current_week is True
     assert snapshot.items_for("achievement")[0].payload["point"] == 0
     assert snapshot.items_for("pet_skin")[0].payload["pet_name"] == "测试精灵"
     assert snapshot.items_for("pet_skin")[0].change_kind == "modified"
@@ -209,6 +221,61 @@ def test_current_content_version_uses_shanghai_date_not_baseline() -> None:
     from ironsbot.services.seer.new_content import _current_content_date
 
     assert _current_content_date("20260730210447", "2026-07-24") == "2026-07-31"
+
+
+def test_content_week_starts_at_friday_midnight_in_shanghai() -> None:
+    assert current_new_content_weekly_cycle(
+        datetime(2026, 9, 3, 15, 59, tzinfo=timezone.utc)
+    ) == "2026-08-28"
+    assert current_new_content_weekly_cycle(
+        datetime(2026, 9, 3, 16, 0, tzinfo=timezone.utc)
+    ) == "2026-09-04"
+
+
+def test_hides_previous_week_release_items(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "seer.sqlite"
+    with Session(create_engine(f"sqlite:///{path}")) as session:
+        session.connection().exec_driver_sql(
+            """
+            CREATE TABLE new_content_release (
+                id INTEGER PRIMARY KEY, current_config_version TEXT,
+                weekly_cycle TEXT, baseline_established INTEGER
+            )
+            """
+        )
+        session.connection().exec_driver_sql(
+            """
+            CREATE TABLE new_content_item (
+                category TEXT, entity_id INTEGER, name TEXT, sort_value INTEGER,
+                payload_json TEXT, change_kind TEXT
+            )
+            """
+        )
+        session.connection().exec_driver_sql(
+            "INSERT INTO new_content_release VALUES "
+            "(1, '20260828154058', '2026-08-28', 1)"
+        )
+        session.connection().exec_driver_sql(
+            "INSERT INTO new_content_item VALUES "
+            "('pet', 4939, '上周精灵', 4939, '{}', 'added')"
+        )
+        session.commit()
+    monkeypatch.setattr(
+        "ironsbot.services.seer.new_content.current_new_content_weekly_cycle",
+        lambda: "2026-09-04",
+    )
+
+    snapshot = _service(path).snapshot()
+
+    assert snapshot.is_current_week is False
+    assert snapshot.source_weekly_cycle == "2026-08-28"
+    assert snapshot.items == ()
+    assert new_content_stale_week_message(snapshot) == (
+        "当前数据版本仍为 2026-08-28 周期，本周暂未获得可验证的新增或修改内容。"
+    )
 
 
 def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:
