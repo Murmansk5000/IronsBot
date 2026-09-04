@@ -78,6 +78,42 @@ def test_message_sent_adapter_and_ordinary_messages() -> None:
     assert not is_self_command(ordinary)
 
 
-def test_blank_prefix_is_invalid() -> None:
+@pytest.mark.parametrize("prefix", ["", " ", [], ["演示 ", " "], [""]])
+def test_blank_prefix_is_invalid(prefix: str | list[str]) -> None:
     with pytest.raises(ValidationError):
-        SelfCommandsConfig(prefix=" ")
+        SelfCommandsConfig(prefix=prefix)
+
+
+@pytest.mark.parametrize("prefix", ["演示 ", "示范 "])
+@pytest.mark.parametrize("command", ["帮助", "新增内容", "1", "a1", "0"])
+def test_multiple_prefixes(prefix: str, command: str) -> None:
+    gate = SelfCommandGate(
+        SelfCommandsConfig(enabled=True, prefix=["演示 ", "示范 "])
+    )
+    event = group_message_event(f"{prefix}{command}", user_id=1)
+    gate.prepare(event)
+    assert event.get_plaintext() == command
+    assert is_self_command(event)
+    assert event.user_id == event.self_id
+    assert not _matches(natural_language(), event)
+
+
+@pytest.mark.parametrize("prefix", ["演示 ", "示范 "])
+def test_multiple_prefix_outbound_echo_is_rejected(prefix: str) -> None:
+    gate = SelfCommandGate(
+        SelfCommandsConfig(enabled=True, prefix=["演示 ", "示范 "])
+    )
+    gate.record_outbound(1, 456, Message(f"{prefix}帮助"))
+    with pytest.raises(IgnoredException):
+        gate.prepare(group_message_event(f"{prefix}帮助", user_id=1))
+
+
+def test_longest_prefix_wins_and_duplicate_message_cannot_switch_prefix() -> None:
+    gate = SelfCommandGate(
+        SelfCommandsConfig(enabled=True, prefix=["演", "演示 ", "演示 ", "示范 "])
+    )
+    event = group_message_event("演示 帮助", user_id=1, message_id=5)
+    gate.prepare(event)
+    assert event.get_plaintext() == "帮助"
+    with pytest.raises(IgnoredException):
+        gate.prepare(group_message_event("示范 帮助", user_id=1, message_id=5))
