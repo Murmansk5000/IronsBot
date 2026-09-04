@@ -1,5 +1,8 @@
+import logging
 from dataclasses import dataclass
 from typing import Any, cast
+
+import pytest
 
 from ironsbot.services.seer.player_collection_formatting import (
     format_autocard_rank_info,
@@ -196,6 +199,42 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
     assert "竞技：圣皇0星" not in message
     assert "场次124" not in message
     assert "狂野：当前赛季前2000名未确认" in message
+
+
+def test_peak_logs_when_rank_confirmation_hides_successful_profile_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    peak = UnityPeak(
+        current_k_rank=0,
+        current_k_star=41,
+        current_k_win=10,
+        current_k_all=10,
+    )
+    summary = PeakSeasonRankSummary.empty()
+    summary.wild.queried = True
+    summary.wild.searched_limit = 20_000
+    summary.wild.query_id = "wild-rank-test"
+    with caplog.at_level(logging.INFO):
+        message = format_compact_peak_section(
+            _as_any(peak),
+            summary,
+            _as_any(_LocalSummary()),
+            player_id=PLAYER_ID,
+            query_id="peak-base-test",
+        )
+    assert "狂野：当前赛季前20000名未确认" in message
+    wild_line = next(line for line in message.splitlines() if line.startswith("狂野："))
+    assert "场次10" in wild_line
+    assert "胜率10/10=100.000%" in wild_line
+    record = next(
+        record.getMessage()
+        for record in caplog.records
+        if "mode=wild" in record.getMessage()
+    )
+    assert "query=peak-base-test" in record
+    assert "profile_available=True profile_score=41" in record
+    assert "rank_query=wild-rank-test rank=None" in record
+    assert "selected=当前赛季前20000名未确认" in record
 
 
 def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:

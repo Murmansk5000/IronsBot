@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
 
-from ironsbot.services.seer.sequ_extra import fetch_unity_peak_partial
+from ironsbot.services.seer.sequ_extra import fetch_unity_peak, fetch_unity_peak_partial
 
 _WILD_FIRST_PARAM = 124791
 _STANDARD_FIRST_PARAM = 124801
@@ -34,7 +35,7 @@ class _PeakGame:
         _command_id: int,
         _player_id: int,
         param: int,
-    ) -> tuple[None, SimpleNamespace]:
+    ) -> tuple[SimpleNamespace, SimpleNamespace]:
         self.params.append(param)
         if param == self._timeout_param:
             await asyncio.Event().wait()
@@ -52,7 +53,63 @@ class _PeakGame:
             129446: 8,
             129447: 10,
         }
-        return None, SimpleNamespace(value=values[param])
+        return SimpleNamespace(user_id=654321), SimpleNamespace(value=values[param])
+
+
+@pytest.mark.asyncio
+async def test_peak_logs_raw_values_worker_and_decoded_fields(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        result = await fetch_unity_peak_partial(
+            _PeakGame(timeout_param=-1),
+            712_345_678,
+            timeout_seconds=0.2,
+        )
+    assert result.query_id != "-"
+    assert result.available_modes == frozenset(("standard", "wild", "expert"))
+    assert f"peak base start query={result.query_id}" in caplog.text
+    response = next(
+        record.getMessage()
+        for record in caplog.records
+        if "peak field response" in record.getMessage()
+        and "param=124791" in record.getMessage()
+    )
+    assert f"query={result.query_id}" in response
+    assert "worker=654321" in response
+    assert "value=327686 hex=00050006" in response
+    assert "current_k_star=5, current_k_rank=6" in caplog.text
+    assert f"peak base complete query={result.query_id}" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_mode_failure_logs_previously_received_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        result = await fetch_unity_peak_partial(
+            _PeakGame(timeout_param=124794),
+            712_345_678,
+            timeout_seconds=0.1,
+        )
+    assert result.error_for("wild") == "查询超时"
+    assert "param=124791" in caplog.text and "value=327686" in caplog.text
+    assert (
+        "completed_params=(124791, 124792, 124793) error_type=TimeoutError"
+        in caplog.text
+    )
+    assert result.info.current_k_star == 0
+
+
+@pytest.mark.asyncio
+async def test_full_peak_query_uses_same_diagnostics(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        result = await fetch_unity_peak(_PeakGame(timeout_param=-1), 712_345_678)
+    assert result.current_k_star == _EXPECTED_WILD_STAR
+    assert "param=124791" in caplog.text
+    assert "peak base complete query=" in caplog.text
 
 
 @pytest.mark.asyncio

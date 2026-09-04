@@ -9,13 +9,16 @@ from nonebot.log import logger
 
 
 class RankLogHandler(logging.Handler):
-    """Forward only first-party rank evidence, not HTTP/authentication logs."""
+    """Forward rank/peak evidence only, not HTTP/authentication logs."""
 
     def emit(self, record: logging.LogRecord) -> None:
         if not (
             record.name.startswith("ironsbot.services.seer.rank")
             or record.name.startswith("ironsbot.integrations.headless_seer.rank")
-            or record.name == "ironsbot.integrations.storage.rank_page_cache"
+            or record.name in {
+                "ironsbot.integrations.storage.rank_page_cache",
+                "ironsbot.services.seer.peak_diagnostics",
+            }
         ):
             return
         logger.opt(exception=record.exc_info).log(record.levelname, record.getMessage())

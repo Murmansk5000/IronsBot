@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.player_formatting_common import (
@@ -14,6 +15,8 @@ from ironsbot.services.seer.player_formatting_common import (
     format_win_rate,
     join_metric_parts,
 )
+
+logger = logging.getLogger("ironsbot.services.seer.peak_diagnostics")
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -123,6 +126,7 @@ def format_compact_peak_section(  # noqa: PLR0913
     nick_error: str | None = None,
     available_modes: frozenset[str] | None = None,
     mode_errors: dict[str, str] | None = None,
+    query_id: str = "-",
 ) -> str:
     lines = ["【巅峰之战】", format_player_data_time()]
     if player_id is not None:
@@ -182,6 +186,41 @@ def format_compact_peak_section(  # noqa: PLR0913
         ),
         score_formatter=lambda score: f"{score}分",
     )
+
+    for mode, available, profile_score, rank_result, selected in (
+        (
+            "standard",
+            standard_available,
+            standard_score,
+            peak_rank_summary.standard,
+            standard_current,
+        ),
+        ("wild", wild_available, wild_score, peak_rank_summary.wild, wild_current),
+        (
+            "expert",
+            expert_available,
+            peak.current_z_score,
+            peak_rank_summary.expert,
+            expert_current,
+        ),
+    ):
+        logger.info(
+            "peak display query=%s player_id=%s mode=%s profile_available=%s "
+            "profile_score=%s rank_query=%s rank=%s rank_score=%s "
+            "rank_queried=%s searched_limit=%s rank_failure=%s selected=%s",
+            query_id,
+            player_id,
+            mode,
+            available,
+            profile_score if available else None,
+            rank_result.query_id,
+            rank_result.rank,
+            rank_result.score,
+            rank_result.queried,
+            rank_result.searched_limit,
+            rank_result.failure,
+            selected,
+        )
 
     lines.extend(
         [
