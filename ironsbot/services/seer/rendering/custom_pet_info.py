@@ -51,7 +51,7 @@ from .custom_pet_special_effects import (
     _add_named_status_icons,
     _add_pet_linked_status_effects,
     _add_skill_red_effects,
-    _add_soulmark_highlight_status_effects,
+    _add_soulmark_highlight_effects,
     _assign_special_effect_colors,
     _deduplicate_special_effects,
     _extract_special_effects,
@@ -457,6 +457,36 @@ def _find_partner_upgrade_soulmark_index(
     if not after:
         return None
 
+    contained_index = _contained_partner_upgrade_index(soulmarks, after, before)
+    if contained_index is not None:
+        return contained_index
+    return _similar_partner_upgrade_index(soulmarks, after, before)
+
+
+def _contained_partner_upgrade_index(
+    soulmarks: Sequence[SoulmarkDict],
+    after: str,
+    before: str,
+) -> int | None:
+    after_indexes = _contained_soulmark_indexes(soulmarks, after)
+    before_indexes = _contained_soulmark_indexes(soulmarks, before)
+    if not after_indexes:
+        return None
+    after_index = max(after_indexes, key=lambda index: soulmarks[index]["id"])
+    if not before_indexes:
+        return after_index
+    before_index = max(before_indexes, key=lambda index: soulmarks[index]["id"])
+    if soulmarks[before_index]["id"] > soulmarks[after_index]["id"]:
+        # Some partner-upgrade payloads reverse the before/after fields.
+        return before_index
+    return after_index
+
+
+def _similar_partner_upgrade_index(
+    soulmarks: Sequence[SoulmarkDict],
+    after: str,
+    before: str,
+) -> int | None:
     candidates = [
         (
             SequenceMatcher(
@@ -494,6 +524,21 @@ def _find_partner_upgrade_soulmark_index(
         # chronological fallback: the later ID is the enhanced variant.
         return before_index
     return after_index
+
+
+def _contained_soulmark_indexes(
+    soulmarks: Sequence[SoulmarkDict],
+    partner_description: str,
+) -> list[int]:
+    """Find soulmarks whose complete official text occurs in a partner record."""
+    if not partner_description:
+        return []
+    return [
+        index
+        for index, soulmark in enumerate(soulmarks)
+        if (description := _normalize_soulmark_text(soulmark["desc"]))
+        and (description in partner_description or partner_description in description)
+    ]
 
 
 def _normalize_soulmark_text(value: str | None) -> str:
@@ -602,7 +647,7 @@ async def render_custom_pet_info(
     special_effects = _extract_special_effects(pet)
     _add_pet_linked_status_effects(session, special_effects, pet_id=pet_id)
     _add_skill_red_effects(session, pet, special_effects)
-    _add_soulmark_highlight_status_effects(session, pet, special_effects)
+    _add_soulmark_highlight_effects(session, pet, special_effects)
     _add_named_status_icons(session, special_effects)
     _add_linked_glossary_effects(session, special_effects)
     _add_named_status_icons(session, special_effects)

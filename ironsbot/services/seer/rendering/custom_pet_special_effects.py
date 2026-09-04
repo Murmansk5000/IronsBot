@@ -27,6 +27,7 @@ GLOSSARY_SOURCE = "\u5b98\u65b9\u5173\u8054\u8bcd\u6761"
 STATUS_SOURCE = "\u5b98\u65b9\u72b6\u6001\u5173\u8054"
 STATUS_NAME_SOURCE = "\u5b98\u65b9\u540c\u540d\u72b6\u6001"
 SOULMARK_STATUS_SOURCE_PREFIX = "\u9b42\u5370\u72b6\u6001"
+SOULMARK_EFFECT_SOURCE_PREFIX = "\u9b42\u5370\u8bcd\u6761"
 SKILL_SOURCE_PREFIX = "\u6280\u80fd\u00b7"
 HIDDEN_SKILL_ID = 19002
 _SPECIAL_EFFECT_COLOR = "#f35555"
@@ -275,6 +276,44 @@ def _fetch_status_rows_by_names(
     return by_name
 
 
+def _fetch_effect_descriptions_by_names(
+    session: Any,
+    names: Iterable[str],
+) -> dict[str, str]:
+    clean_names = tuple(dict.fromkeys(name for name in names if name))
+    if not clean_names:
+        return {}
+
+    placeholders = ", ".join(f":name_{index}" for index, _ in enumerate(clean_names))
+    params = {f"name_{index}": name for index, name in enumerate(clean_names)}
+    try:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT name, description
+                FROM {EFFECT_DESCRIPTION_TABLE}
+                WHERE name IN ({placeholders})
+                    AND description <> ''
+                ORDER BY effect_id
+                """
+            ),
+            params,
+        ).all()
+    except SQLAlchemyError:
+        logger.debug(
+            "official effect description data is unavailable "
+            "in the current SQLite release",
+            exc_info=True,
+        )
+        return {}
+
+    return {
+        str(raw_name).strip(): str(raw_description).strip()
+        for raw_name, raw_description in rows
+        if str(raw_name or "").strip() and str(raw_description or "").strip()
+    }
+
+
 def _choose_status_for_context(
     rows: list[tuple[int, str, str | None]],
     context: str,
@@ -337,6 +376,34 @@ def _upsert_status_effect(
     )
 
 
+def _upsert_effect_description(
+    effects: list[SpecialEffectDict],
+    *,
+    name: str,
+    description: str,
+    source: str,
+) -> None:
+    for effect in effects:
+        if effect["name"] != name:
+            continue
+        if effect["desc"] is None:
+            effect["desc"] = description
+        if source not in effect["sources"]:
+            effect["sources"].append(source)
+        return
+
+    effects.append(
+        SpecialEffectDict(
+            name=name,
+            desc=description,
+            sources=[source],
+            glossary_id=None,
+            status_id=None,
+            icon=None,
+        )
+    )
+
+
 def _add_named_status_icons(
     session: Any,
     effects: list[SpecialEffectDict],
@@ -361,14 +428,11 @@ def _add_named_status_icons(
         effect["status_id"] = status_id
 
 
-def _add_soulmark_highlight_status_effects(
-    session: Any,
+def _collect_soulmark_highlight_terms(
     pet: PetORM,
-    effects: list[SpecialEffectDict],
-) -> None:
-    """Use official red/green soulmark highlights as status candidates."""
-    _ensure_effect_ids(effects)
+) -> tuple[dict[str, list[tuple[int, str]]], dict[str, list[int]]]:
     soulmark_terms: dict[str, list[tuple[int, str]]] = {}
+    red_soulmark_terms: dict[str, list[int]] = {}
     for soulmark in pet.soulmark:
         context = "\n".join(
             part
@@ -381,8 +445,21 @@ def _add_soulmark_highlight_status_effects(
         )
         for term in _highlighted_terms(soulmark.analyze_desc, _STATUS_HIGHLIGHT_COLORS):
             soulmark_terms.setdefault(term, []).append((int(soulmark.id), context))
+        for term in _highlighted_terms(
+            soulmark.analyze_desc,
+            (_SPECIAL_EFFECT_COLOR,),
+        ):
+            red_soulmark_terms.setdefault(term, []).append(int(soulmark.id))
+    return soulmark_terms, red_soulmark_terms
 
+
+def _add_soulmark_status_effects(
+    session: Any,
+    effects: list[SpecialEffectDict],
+    soulmark_terms: dict[str, list[tuple[int, str]]],
+) -> set[str]:
     by_name = _fetch_status_rows_by_names(session, soulmark_terms)
+    resolved_status_terms: set[str] = set()
     for term, contexts in soulmark_terms.items():
         rows = by_name.get(term, [])
         if not rows:
@@ -398,6 +475,40 @@ def _add_soulmark_highlight_status_effects(
                 name=name,
                 description=description,
                 source=f"{SOULMARK_STATUS_SOURCE_PREFIX}{soulmark_id}",
+            )
+            resolved_status_terms.add(term)
+    return resolved_status_terms
+
+
+def _add_soulmark_highlight_effects(
+    session: Any,
+    pet: PetORM,
+    effects: list[SpecialEffectDict],
+) -> None:
+    """Resolve official soulmark highlights to statuses or named effect entries."""
+    _ensure_effect_ids(effects)
+    soulmark_terms, red_soulmark_terms = _collect_soulmark_highlight_terms(pet)
+    resolved_status_terms = _add_soulmark_status_effects(
+        session,
+        effects,
+        soulmark_terms,
+    )
+    effect_descriptions = _fetch_effect_descriptions_by_names(
+        session,
+        red_soulmark_terms,
+    )
+    for term, soulmark_ids in red_soulmark_terms.items():
+        if term in resolved_status_terms:
+            continue
+        description = effect_descriptions.get(term)
+        if description is None:
+            continue
+        for soulmark_id in soulmark_ids:
+            _upsert_effect_description(
+                effects,
+                name=term,
+                description=description,
+                source=f"{SOULMARK_EFFECT_SOURCE_PREFIX}{soulmark_id}",
             )
 
 
