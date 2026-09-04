@@ -2,6 +2,7 @@ import asyncio
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 
+import pytest
 from nonebot.adapters.onebot.v11 import Message
 from pytest import MonkeyPatch
 
@@ -10,7 +11,7 @@ from ironsbot.config.models.messaging import (
     PushDeliveryConfig,
     PushUnsubscribeConfig,
 )
-from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.messaging import DeliveryReceipt, MessageTarget
 from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.outbound import (
@@ -25,6 +26,7 @@ PRIVATE_USER_ID = 20
 MENTION_USER_ID = 30
 FANOUT_TARGET_COUNT = 2
 PUSH_ATTEMPT_COUNT = 3
+RECEIPT_MESSAGE_ID = 77
 
 
 class FakeSendError(RuntimeError):
@@ -62,10 +64,10 @@ class FakeBot:
     private_messages: list[tuple[int, Message]] = field(default_factory=list)
     group_messages: list[tuple[int, Message]] = field(default_factory=list)
 
-    async def send_private_msg(self, *, user_id: int, message: Message) -> None:
+    async def send_private_msg(self, *, user_id: int, message: Message) -> object:
         self.private_messages.append((user_id, message))
 
-    async def send_group_msg(self, *, group_id: int, message: Message) -> None:
+    async def send_group_msg(self, *, group_id: int, message: Message) -> object:
         if group_id in self.failed_group_ids:
             raise FakeSendError
         self.group_messages.append((group_id, message))
@@ -516,3 +518,67 @@ def test_target_messages_fan_out_distinct_payloads() -> None:
         "群主/管理员可切换开关，发送 推送时间 管理提醒时间。"
     )
     assert str(bot.private_messages[0][1]) == "second\n\n回复 TD 可管理推送订阅。"
+
+
+@pytest.mark.parametrize(
+    ("send_result", "history_result", "history_error", "expected_status"),
+    [
+        ({"message_id": 77}, {"message_id": 77}, None, "confirmed"),
+        ({"message_id": 77}, None, None, "missing"),
+        ({}, None, None, "missing"),
+        ({"message_id": 77}, None, RuntimeError("offline"), "error"),
+    ],
+)
+def test_target_delivery_receipt_verifies_message_history(
+    send_result: object,
+    history_result: object | None,
+    history_error: Exception | None,
+    expected_status: str,
+) -> None:
+    class ReceiptBot(FakeBot):
+        async def send_private_msg(self, *, user_id: int, message: Message) -> object:
+            await super().send_private_msg(user_id=user_id, message=message)
+            return send_result
+
+        async def get_msg(self, *, message_id: int) -> object:
+            assert message_id == RECEIPT_MESSAGE_ID
+            if history_error is not None:
+                raise history_error
+            return history_result
+
+    receipts: list[DeliveryReceipt] = []
+    bot = ReceiptBot()
+    summary = asyncio.run(
+        _delivery().send_target_messages(
+            [(MessageTarget("private", PRIVATE_USER_ID), "notice")],
+            bot=bot,
+            subscription_key="scheduled_message",
+            receipt_handler=receipts.append,
+            verify_history=True,
+        )
+    )
+
+    assert summary.succeeded == [MessageTarget("private", PRIVATE_USER_ID)]
+    assert len(receipts) == 1
+    assert receipts[0].history_status == expected_status
+    assert len(bot.private_messages) == 1
+
+
+def test_target_delivery_receipt_marks_history_api_as_unsupported() -> None:
+    class NoHistoryBot(FakeBot):
+        async def send_private_msg(self, *, user_id: int, message: Message) -> object:
+            await super().send_private_msg(user_id=user_id, message=message)
+            return {"message_id": 77}
+
+    receipts: list[DeliveryReceipt] = []
+    asyncio.run(
+        _delivery().send_target_messages(
+            [(MessageTarget("private", PRIVATE_USER_ID), "notice")],
+            bot=NoHistoryBot(),
+            subscription_key="scheduled_message",
+            receipt_handler=receipts.append,
+            verify_history=True,
+        )
+    )
+
+    assert receipts[0].history_status == "unsupported"
