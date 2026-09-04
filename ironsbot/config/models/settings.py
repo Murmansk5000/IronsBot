@@ -305,13 +305,14 @@ class SelfCommandsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    prefix: str = "演示 "
+    prefix: str | list[str] = "演示 "
 
     @field_validator("prefix")
     @classmethod
-    def validate_prefix(cls, value: str) -> str:
-        if not value.strip():
-            message = "runtime.self_commands.prefix must not be blank"
+    def validate_prefix(cls, value: str | list[str]) -> str | list[str]:
+        prefixes = [value] if isinstance(value, str) else value
+        if not prefixes or any(not prefix.strip() for prefix in prefixes):
+            message = "runtime.self_commands.prefix must contain nonblank prefixes"
             raise ValueError(message)
         return value
 

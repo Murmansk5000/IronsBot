@@ -36,12 +36,14 @@ class SelfCommandAdapter(Adapter):
 class SelfCommandGate:
     def __init__(self, config: SelfCommandsConfig) -> None:
         self.config = config
+        prefixes = [config.prefix] if isinstance(config.prefix, str) else config.prefix
+        self._prefixes = tuple(sorted(set(prefixes), key=len, reverse=True))
         self._seen: OrderedDict[tuple[int, int, int], float] = OrderedDict()
         self._outbound: OrderedDict[tuple[int, int, str], float] = OrderedDict()
 
     def record_outbound(self, bot_id: int, group_id: int, message: Message) -> None:
         text = message.extract_plain_text()
-        if self.config.enabled and text.startswith(self.config.prefix):
+        if self.config.enabled and text.startswith(self._prefixes):
             key = (bot_id, group_id, text)
             self._outbound[key] = monotonic()
             self._outbound.move_to_end(key)
@@ -65,15 +67,16 @@ class SelfCommandGate:
         self._prune()
         key = (event.self_id, event.group_id, event.message_id)
         text = event.get_plaintext()
+        prefix = next((p for p in self._prefixes if text.startswith(p)), None)
         if (
             not self.config.enabled
             or key in self._seen
-            or not text.startswith(self.config.prefix)
+            or prefix is None
             or (event.self_id, event.group_id, text) in self._outbound
         ):
             raise IgnoredException(UNAPPROVED)
         self._seen[key] = monotonic()
-        command = text[len(self.config.prefix) :].strip()
+        command = text[len(prefix) :].strip()
         if not command or any(
             segment.type not in {"text", "reply"} for segment in event.message
         ):

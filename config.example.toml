@@ -148,7 +148,9 @@ runtime_state = "data/state/runtime_state.sqlite"
 # Enable prefixed commands manually sent by the bot QQ in groups.
 # 还需开启 NapCat 对应连接的 reportSelfMessage；使用机器人 QQ 自己的权限。
 enabled = false
-prefix = "演示 "
+# One prefix or a list; overlapping prefixes use the longest match.
+# 可填写单个字符串或多个前缀；空格保留，重叠时优先匹配最长前缀。
+prefix = ["演示 ", "示范 "]
 
 [runtime.menu]
 # Default: 3
