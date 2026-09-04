@@ -70,6 +70,7 @@ superusers = []
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认按功能分段并预留插入空间，同一优先级不要重复使用。
 help_hint = 0
+mention_reply = -21
 ai_group_at = -20
 bot_mention_block = -19
 server_status = 10
@@ -479,6 +480,24 @@ enabled = true
 # keywords = ["出出"]
 # message = "出出是蛆"
 # feature = "chuchu_reply"
+
+# Default: []
+# EN: User-specific replies triggered only when the configured user @-mentions
+# the bot in a group. This also accepts a current-message @ after replying to
+# another message. It does not affect private messages or ordinary @ replies.
+# ZH: 用户专属 AT 回复。仅当指定用户在群聊中 AT 机器人时触发；回复其它消息后
+# 再 AT 机器人也会触发。私聊和未 AT 的普通消息不会触发。
+# `user_ids` accepts user aliases or QQ IDs. The feature must be enabled in
+# the target group policy; this reply runs before AI @ handling.
+# `user_ids` 可写用户别名或 QQ 号；feature 仍需在目标群策略中启用，且本回复
+# 会优先于 AI 的 AT 处理。
+#
+# [[messaging.mention_replies]]
+# id = "example_user_mention"
+# name = "示例用户 AT 回复"
+# user_ids = ["example_user"]
+# message = "123"
+# feature = "example_user_mention"
 
 # Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its

@@ -22,6 +22,7 @@ from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageConfig,
     MessageKeywordReplyAction,
+    MessageMentionReplyAction,
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
@@ -104,6 +105,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
     *,
     commands: list[MessageCommandAction] | None = None,
     keyword_replies: list[MessageKeywordReplyAction] | None = None,
+    mention_replies: list[MessageMentionReplyAction] | None = None,
     schedules: list[MessageScheduledAction] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
@@ -120,6 +122,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
         push_unsubscribe=PushUnsubscribeConfig(),
         commands=commands or [],
         keyword_replies=keyword_replies or [],
+        mention_replies=mention_replies or [],
         schedules=schedules or [],
     )
     resources = build_test_runtime(
@@ -128,6 +131,7 @@ def _messaging_resources(  # noqa: PLR0913 - focused test fixture factory
             user_policy=user_policy or {},
         ),
         superuser_ids=superusers,
+        command_features=config.command_feature_keys,
         state_path=data_path,
     )
     return MessagingService(
@@ -452,6 +456,40 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
     )
     assert exact_action.id == "exact_reply"
     assert keyword_action.id == "keyword_reply"
+
+
+def test_group_mention_reply_requires_configured_user_and_feature(
+    tmp_path: Path,
+) -> None:
+    messaging = _messaging_resources(
+        tmp_path / "unsubscribe.sqlite",
+        mention_replies=[
+            MessageMentionReplyAction(
+                id="example_user_mention",
+                user_ids=[2002],
+                feature="example_user_mention",
+                message="123",
+            )
+        ],
+        group_policy={"1001": ["example_user_mention"]},
+    )
+    state: dict[str, object] = {}
+
+    assert matcher_rules.match_group_mention_reply(
+        group_member_message_event("", user_id=2002, group_id=1001),
+        state,
+        messaging=messaging,
+    )
+    assert not matcher_rules.match_group_mention_reply(
+        group_member_message_event("", user_id=2003, group_id=1001),
+        {},
+        messaging=messaging,
+    )
+    action = cast(
+        "MessageMentionReplyAction",
+        state[matcher_rules.MESSAGE_ACTION_KEY],
+    )
+    assert action.message == "123"
 
 
 def test_unified_schedule_delivers_to_private_and_group_targets(

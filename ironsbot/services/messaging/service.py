@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.activity import ActivityConfig
     from ironsbot.config.models.messaging import (
         MessageConfig,
+        MessageMentionReplyAction,
         MessageReplyAction,
     )
     from ironsbot.core.features import FeatureService
@@ -114,6 +115,25 @@ class MessagingService:
                 action.feature,
             ),
         )
+
+    def match_group_mention_reply(
+        self,
+        *,
+        user_id: int,
+        group_id: int,
+    ) -> MessageMentionReplyAction | None:
+        for action in self._config.mention_replies:
+            if (
+                action.enabled
+                and user_id in self._features.resolve_user_refs(action.user_ids)
+                and self._features.is_group_feature_allowed(
+                    user_id,
+                    group_id,
+                    action.feature,
+                )
+            ):
+                return action
+        return None
 
     def _find_action(
         self,

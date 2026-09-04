@@ -44,6 +44,22 @@ def match_message_command(
     return False
 
 
+def match_group_mention_reply(
+    event: GroupMessageEvent,
+    state: T_State,
+    *,
+    messaging: MessagingService,
+) -> bool:
+    action = messaging.match_group_mention_reply(
+        user_id=event.user_id,
+        group_id=event.group_id,
+    )
+    if action is None:
+        return False
+    state[MESSAGE_ACTION_KEY] = action
+    return True
+
+
 def is_group_push_subscription_manager(
     messaging: MessagingService,
     event: GroupMessageEvent,

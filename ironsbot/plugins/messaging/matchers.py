@@ -15,10 +15,11 @@ from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
 )
-from ironsbot.runtime.rules import explicit_command
+from ironsbot.runtime.rules import bot_mention_including_reply, explicit_command
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
+    match_group_mention_reply,
     match_message_command,
     match_push_subscription_command,
     match_push_time_command,
@@ -78,6 +79,19 @@ def install(
     messaging: MessagingService,
     command_help_ids: tuple[str, ...],
 ) -> None:
+    mention_reply_matcher = registry.on_message(
+        policy=CommandPolicy.exempt("configured mention reply"),
+        rule=(
+            Rule(bind(match_group_mention_reply, messaging=messaging))
+            & bot_mention_including_reply()
+        ),
+        priority=registry.priority("mention_reply"),
+        block=True,
+    )
+    mention_reply_matcher.append_handler(
+        bind_async(handle_message_command, messaging=messaging)
+    )
+
     if command_help_ids:
         command_matcher = registry.on_message(
             policy=CommandPolicy.command(

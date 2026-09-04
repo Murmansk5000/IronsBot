@@ -18,6 +18,7 @@ from ironsbot.core.time import normalize_daily_time
 
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
+ENABLED_MENTION_USERS_REQUIRED_ERROR = "已启用的 AT 专属回复必须配置 user_ids"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
 COMMAND_ID_FORMAT_ERROR = (
     "command message action id may only contain letters, numbers, dots, "
@@ -311,6 +312,20 @@ class MessageKeywordReplyAction(MessageReplyAction):
         return self
 
 
+class MessageMentionReplyAction(BaseMessageAction):
+    user_ids: OneBotReferenceList = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_enabled_mention_reply_action(self) -> Self:
+        if not self.id:
+            raise ValueError(COMMAND_ID_REQUIRED_ERROR)
+        if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
+            raise ValueError(COMMAND_ID_FORMAT_ERROR)
+        if self.enabled and not self.user_ids:
+            raise ValueError(ENABLED_MENTION_USERS_REQUIRED_ERROR)
+        return self
+
+
 class MessageScheduledAction(BaseMessageAction):
     feature: str = "text_push"
     at_user_ids: OneBotReferenceList = Field(default_factory=list)
@@ -527,6 +542,7 @@ class MessageConfig(BaseModel):
     )
     commands: list[MessageCommandAction] = Field(default_factory=list)
     keyword_replies: list[MessageKeywordReplyAction] = Field(default_factory=list)
+    mention_replies: list[MessageMentionReplyAction] = Field(default_factory=list)
     schedules: list[MessageScheduledAction] = Field(default_factory=list)
     meeting: MeetingConfig = Field(default_factory=MeetingConfig)
     team_audit_welcome: TeamAuditWelcomeConfig = Field(
@@ -537,7 +553,12 @@ class MessageConfig(BaseModel):
     @property
     def command_feature_keys(self) -> frozenset[str]:
         return frozenset(
-            action.feature for action in (*self.commands, *self.keyword_replies)
+            action.feature
+            for action in (
+                *self.commands,
+                *self.keyword_replies,
+                *self.mention_replies,
+            )
         )
 
     @property

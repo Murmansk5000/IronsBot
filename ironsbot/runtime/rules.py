@@ -195,6 +195,15 @@ def bot_mention() -> Rule:
     return Rule(_matches)
 
 
+def bot_mention_including_reply() -> Rule:
+    """Accept a current-message bot @, including when it accompanies a reply."""
+
+    async def _matches(event: Event, _: T_State) -> bool:
+        return message_input_context(event).mentions_bot
+
+    return Rule(_matches)
+
+
 def natural_language() -> Rule:
     """Allow natural language only when it is direct and has no @ segments."""
 
