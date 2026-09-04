@@ -109,6 +109,12 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                     {"show_in_poke": True},
                 ),
                 (
+                    "seer.pet.avatar",
+                    ("头像雷伊", "谱尼头像", "头像70"),
+                    "按名称、序号或别名查询精灵头像",
+                    {"show_in_poke": True},
+                ),
+                (
                     "seer.pet.image",
                     ("雷伊立绘", "雷伊皮肤", "皮肤雷伊"),
                     "查询精灵立绘或皮肤",
@@ -306,18 +312,18 @@ def rank_commands() -> tuple[CommandDescriptor, ...]:
             "查看可用榜单和查询格式",
             {"show_in_poke": True},
         ),
-                (
-                    "rank.global_collection",
-                    "全服图鉴榜",
-                    _global_rank_titles(peak=False),
-                    "查看全服图鉴类榜单；可追加页码、名次、米米号、可见别名、@成员或分数",
+        (
+            "rank.global_collection",
+            "全服图鉴榜",
+            _global_rank_titles(peak=False),
+            "查看全服图鉴类榜单；可追加页码、名次、米米号、可见别名、@成员或分数",
             {"show_in_poke": True},
         ),
-                (
-                    "rank.global_peak",
-                    "全服巅峰段位榜",
-                    _global_rank_titles(peak=True),
-                    "查看全服巅峰段位榜；可追加名次、米米号、可见别名、@成员或分数",
+        (
+            "rank.global_peak",
+            "全服巅峰段位榜",
+            _global_rank_titles(peak=True),
+            "查看全服巅峰段位榜；可追加名次、米米号、可见别名、@成员或分数",
             {},
         ),
         (
