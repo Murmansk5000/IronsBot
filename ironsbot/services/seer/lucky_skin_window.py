@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
 from struct import unpack
+from time import monotonic
 from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
 
@@ -379,11 +380,37 @@ class LuckySkinWindowService:
         )
         if not target_ids:
             return
+        day = self.day_key()
+        logger.info(
+            "lucky skin window daily task started: day=%s targets=%s",
+            day,
+            len(target_ids),
+        )
         notices: list[tuple[MessageTarget, object]] = []
         for user_id in target_ids:
             _subscription, account = self._accounts[user_id]
+            started_at = monotonic()
+            skin_ids: tuple[int, ...] = ()
+            logger.info(
+                "lucky skin window daily query started: day=%s player_id=%s "
+                "target_id=%s",
+                day,
+                account.player_id,
+                user_id,
+            )
             try:
                 result = await self._check(account, background=True)
+                skin_ids = tuple(offer.skin_id for offer in result.offers)
+                logger.info(
+                    "lucky skin window daily query succeeded: day=%s player_id=%s "
+                    "target_id=%s source=%s skin_ids=%s elapsed=%.3fs",
+                    result.day,
+                    account.player_id,
+                    user_id,
+                    "cache" if result.from_cache else "live",
+                    skin_ids,
+                    monotonic() - started_at,
+                )
                 message = (
                     await format_message(result, user_id=user_id)
                     if format_message is not None
@@ -401,13 +428,15 @@ class LuckySkinWindowService:
                 "lucky_skin_window_delivery",
                 today=self.day_key(),
             ):
-                notices.append((MessageTarget("private", user_id), message))
+                target = MessageTarget("private", user_id)
+                notices.append((target, message))
         if notices:
             await delivery.send_target_messages(
                 notices,
                 action_name="lucky skin window daily notice",
                 subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
             )
+
 
     def _validated_account_for_user(
         self,
