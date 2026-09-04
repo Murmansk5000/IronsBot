@@ -458,6 +458,8 @@ enabled = true
 # ZH: 固定文本回复动作默认同时适用于私聊和群聊；实际在哪些位置回复由 feature 的用户/群策略决定。
 # `at_user_ids` accepts user aliases or QQ IDs, only applies to group replies,
 # and is ignored in private chats.
+# 群内可发送“口令 @群成员”，回复会 @ 指定成员而不是发起人；配置的 at_user_ids 仍追加并去重。
+# 此用法仅适用于完整匹配的固定口令，不适用于关键词回复，不支持 @全体成员。
 # Example action fields: id, enabled, feature, message, commands, at_user_ids.
 # `id` uniquely identifies the action. `feature` declares its permission key;
 # that key may then be referenced by features.bundles/group_policy/user_policy.

@@ -15,10 +15,15 @@ from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
 )
-from ironsbot.runtime.rules import bot_mention_including_reply, explicit_command
+from ironsbot.runtime.rules import (
+    bot_mention_including_reply,
+    explicit_command,
+    member_targets_command,
+)
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
+    MESSAGE_TARGET_IDS_KEY,
     match_group_mention_reply,
     match_message_command,
     match_push_subscription_command,
@@ -47,7 +52,7 @@ async def handle_message_command(
     action = state[MESSAGE_ACTION_KEY]
     at_user_ids = (
         [
-            *event_sender_at_user_ids(event),
+            *state.get(MESSAGE_TARGET_IDS_KEY, event_sender_at_user_ids(event)),
             *messaging._features.resolve_user_refs(action.at_user_ids),
         ]
         if isinstance(event, GroupMessageEvent)
@@ -99,7 +104,7 @@ def install(
                 help_ids=command_help_ids,
             ),
             rule=Rule(bind(match_message_command, messaging=messaging))
-            & explicit_command(),
+            & member_targets_command(),
             priority=registry.priority("message_commands"),
             block=True,
         )

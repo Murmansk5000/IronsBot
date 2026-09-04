@@ -9,14 +9,18 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.typing import T_State  # noqa: TC002
 
-from ironsbot.config.models.messaging import MessageKeywordReplyAction
-from ironsbot.runtime.message_input import is_self_command
+from ironsbot.config.models.messaging import (
+    MessageCommandAction,
+    MessageKeywordReplyAction,
+)
+from ironsbot.runtime.message_input import is_self_command, message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
 
 if TYPE_CHECKING:
     from ironsbot.services.messaging.service import MessagingService
 
 MESSAGE_ACTION_KEY = "_message_action"
+MESSAGE_TARGET_IDS_KEY = "_message_target_ids"
 
 
 def match_message_command(
@@ -42,6 +46,14 @@ def match_message_command(
     if action is not None:
         if is_self_command(event) and isinstance(action, MessageKeywordReplyAction):
             return False
+        context = message_input_context(event)
+        if context.has_member_mentions:
+            if (
+                not isinstance(action, MessageCommandAction)
+                or not context.member_user_ids
+            ):
+                return False
+            state[MESSAGE_TARGET_IDS_KEY] = context.member_user_ids
         state[MESSAGE_ACTION_KEY] = action
         return True
 
