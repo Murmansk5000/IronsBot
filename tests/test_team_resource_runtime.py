@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import MagicMock
 
 import nonebot
 import pytest
@@ -78,6 +79,7 @@ TEAM_RESOURCE_SERVICE = _service(TeamResourceConfig())
 resource.install(
     TEAM_RESOURCE_REGISTRY,
     TEAM_RESOURCE_SERVICE,
+    MagicMock(),
 )
 
 
@@ -238,7 +240,7 @@ async def test_team_resource_private_rules_allow_enabled_user() -> None:
         runtime.delivery,
     )
     registry = runtime.matcher_registry()
-    resource.install(registry, service)
+    resource.install(registry, service, MagicMock())
     manage = next(
         matcher
         for matcher in registry.message_matchers

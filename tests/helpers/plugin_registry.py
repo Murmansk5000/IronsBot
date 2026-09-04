@@ -121,6 +121,7 @@ def build_test_plugin_registry(
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
                 register_jobs=lambda _scheduler: None,
+                notice_observers=[],
             ),
             local_rank=object(),
             rank_page_refresh=object(),
@@ -166,6 +167,8 @@ def build_test_plugin_registry(
                     select=_noop_query,
                 ),
                 pet_query=SimpleNamespace(
+                    search_avatar=_noop_query,
+                    select_avatar=_noop_query,
                     search_image=_noop_query,
                     select_image=_noop_query,
                     search_info=_noop_query,
