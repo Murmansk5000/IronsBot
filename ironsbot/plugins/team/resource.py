@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
-    Message,
     MessageEvent,
     PrivateMessageEvent,
 )
@@ -16,11 +15,14 @@ from ironsbot.core.commands import parse_confirmation
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind_async
 from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
-from ironsbot.runtime.replies import finish_event_reply, finish_message_sequence
+from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import explicit_command, member_targets_command
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
+from .overview import TeamOverviewMenus
+
 if TYPE_CHECKING:
+    from ironsbot.services.seer.team import SeerTeamQueryService
     from ironsbot.services.team.resource import TeamResourceService
 
 
@@ -69,6 +71,7 @@ async def handle_team_resource_manage(
     matcher: Matcher,
     event: MessageEvent,
     service: TeamResourceService,
+    menus: TeamOverviewMenus,
 ) -> None:
     target = _subscription_target(event)
     if target is None:
@@ -79,11 +82,7 @@ async def handle_team_resource_manage(
         await matcher.finish()
 
     if command.action == "list":
-        await finish_event_reply(
-            matcher,
-            event,
-            service.subscriptions_message(target),
-        )
+        await handle_team_resource(matcher, event, service, menus)
         return
 
     if isinstance(event, GroupMessageEvent) and not can_manage_group_event(
@@ -146,30 +145,32 @@ async def handle_team_resource(
     matcher: Matcher,
     event: MessageEvent,
     service: TeamResourceService,
+    menus: TeamOverviewMenus,
 ) -> None:
     target = _subscription_target(event)
     if target is None:
         await matcher.finish()
 
-    messages = await service.query_target_messages(target)
-    if not messages:
+    items = await service.query_overview(target)
+    if not items:
         await finish_event_reply(
             matcher,
             event,
             service.subscriptions_message(target),
         )
         return
-    await finish_message_sequence(
-        matcher,
-        [Message(message) for message in messages],
-        event=event,
-    )
+    await menus.open(matcher, event, items)
 
 
 def install(
     registry: MatcherRegistry,
     service: TeamResourceService,
+    team_query: SeerTeamQueryService,
+    notice_timeout_seconds: float = 180,
 ) -> None:
+    menus = TeamOverviewMenus(service, team_query, notice_timeout_seconds)
+    menus.install(registry)
+
     def is_manage(event: MessageEvent) -> bool:
         return _is_team_resource_manage(event, service=service)
 
@@ -194,13 +195,11 @@ def install(
         block=True,
     )
     manage_matcher.append_handler(
-        bind_async(handle_team_resource_manage, service=service)
+        bind_async(handle_team_resource_manage, service=service, menus=menus)
     )
 
     prompt_matcher = registry.on_message(
-        policy=CommandPolicy.exempt(
-            "second-level team subscription confirmation"
-        ),
+        policy=CommandPolicy.exempt("second-level team subscription confirmation"),
         rule=Rule(is_prompt_choice) & explicit_command(),
         priority=priority,
         block=True,
@@ -218,7 +217,9 @@ def install(
         priority=priority,
         block=True,
     )
-    query_matcher.append_handler(bind_async(handle_team_resource, service=service))
+    query_matcher.append_handler(
+        bind_async(handle_team_resource, service=service, menus=menus)
+    )
 
 
 def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:

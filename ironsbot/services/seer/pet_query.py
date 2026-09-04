@@ -66,13 +66,9 @@ class PetQueryService:
         if len(choices) > PET_PROMPT_MAX_ITEMS:
             exact = self._single_character_match(arg, choices)
             if exact is not None:
-                return QueryResult(
-                    reply=await self._build_image_reply(exact.value)
-                )
+                return QueryResult(reply=await self._build_image_reply(exact.value))
             return QueryResult(
-                message=(
-                    f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
-                )
+                message=(f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词：")
             )
         return QueryResult(choices=choices)
 
@@ -80,41 +76,38 @@ class PetQueryService:
         self,
         selection: PetImageSelection,
     ) -> QueryResult[object]:
-        return QueryResult(
-            reply=await self._build_image_reply(selection)
-        )
+        return QueryResult(reply=await self._build_image_reply(selection))
 
     async def search_info(self, arg: str) -> QueryResult[int]:
+        return await self._search_pet(arg, self._build_info_reply)
+
+    async def search_avatar(self, arg: str) -> QueryResult[int]:
+        return await self._search_pet(arg, self._build_avatar_reply)
+
+    async def _search_pet(
+        self,
+        arg: str,
+        build_reply: Callable[[PetORM], Awaitable[QueryReply]],
+    ) -> QueryResult[int]:
         with self._data.resolve(self._data.pet, arg) as values:
             pets = tuple(values)
             if not arg.strip() or not pets:
                 return QueryResult()
             if len(pets) == 1:
-                return QueryResult(
-                    reply=await self._build_info_reply(pets[0])
-                )
+                return QueryResult(reply=await build_reply(pets[0]))
             if len(pets) > PET_PROMPT_MAX_ITEMS:
                 exact = next(
-                    (
-                        pet
-                        for pet in pets
-                        if len(arg) == 1 and pet.name == arg
-                    ),
+                    (pet for pet in pets if len(arg) == 1 and pet.name == arg),
                     None,
                 )
                 if exact is not None:
-                    return QueryResult(
-                        reply=await self._build_info_reply(exact)
-                    )
+                    return QueryResult(reply=await build_reply(exact))
                 return QueryResult(
-                    message=(
-                        f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词："
-                    )
+                    message=(f"重名超过{PET_PROMPT_MAX_ITEMS}个，请重新检索关键词：")
                 )
             return QueryResult(
                 choices=tuple(
-                    QueryChoice(str(pet.name), str(pet.id), int(pet.id))
-                    for pet in pets
+                    QueryChoice(str(pet.name), str(pet.id), int(pet.id)) for pet in pets
                 )
             )
 
@@ -122,12 +115,21 @@ class PetQueryService:
         with self._data.get(self._data.pet, pet_id) as pet:
             if pet is None:
                 return QueryResult(
-                    message=(
-                        f"❌未找到精灵 {pet_id}"
-                        "（这是一个bug，请反馈给开发者）"
-                    )
+                    message=(f"❌未找到精灵 {pet_id}（这是一个bug，请反馈给开发者）")
                 )
             return QueryResult(reply=await self._build_info_reply(pet))
+
+    async def select_avatar(self, pet_id: int) -> QueryResult[object]:
+        with self._data.get(self._data.pet, pet_id) as pet:
+            if pet is None:
+                return QueryResult(message=f"未找到精灵 {pet_id}。")
+            return QueryResult(reply=await self._build_avatar_reply(pet))
+
+    async def _build_avatar_reply(self, pet: PetORM) -> QueryReply:
+        image = await fetch_optional_image(
+            self._images, "pet_head", str(pet.resource_id)
+        )
+        return QueryReply(image=image.data, image_error=image.error)
 
     async def _build_image_reply(
         self,
@@ -163,8 +165,7 @@ class PetQueryService:
         ) as details:
             if details is not None:
                 text += (
-                    f"所属精灵：{details.pet_name}\n"
-                    f"所属系列：{details.series_name}\n"
+                    f"所属精灵：{details.pet_name}\n所属系列：{details.series_name}\n"
                 )
                 if details.card_price:
                     text += f"礼卡价格：{details.card_price}\n"

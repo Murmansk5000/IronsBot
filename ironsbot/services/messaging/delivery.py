@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Protocol
 
-from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.messaging import DeliveryReceipt, MessageTarget
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from ironsbot.core.messaging import TargetSendSummary
 
 MessageLimiter = Callable[[Any, MessageTarget], Any]
+DeliveryReceiptHandler = Callable[[DeliveryReceipt], Awaitable[None] | None]
 
 
 class MessageDelivery(Protocol):
@@ -37,6 +38,8 @@ class MessageDelivery(Protocol):
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
         retry_failed_targets: bool = True,
+        receipt_handler: DeliveryReceiptHandler | None = None,
+        verify_history: bool = False,
     ) -> TargetSendSummary: ...
 
     async def broadcast(  # noqa: PLR0913

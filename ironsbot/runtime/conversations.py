@@ -14,6 +14,7 @@ from ironsbot.runtime.matchers import (
     get_prompt_session_manager,
     get_queued_conversation,
 )
+from ironsbot.runtime.message_input import is_self_command
 from ironsbot.runtime.onebot_reply import event_reply_message_id
 from ironsbot.runtime.replies import build_message, event_sender_at_user_ids
 
@@ -32,7 +33,7 @@ def event_conversation_session_id(namespace: str, event: MessageEvent) -> str:
 
 
 def is_self_message_event(event: MessageEvent) -> bool:
-    return event.user_id == event.self_id
+    return event.user_id == event.self_id and not is_self_command(event)
 
 
 def command_reply_check(commands: tuple[str, ...] | list[str]) -> EventReplyCheck:

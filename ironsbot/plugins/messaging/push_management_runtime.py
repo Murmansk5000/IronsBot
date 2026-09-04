@@ -14,6 +14,7 @@ from ironsbot.runtime.matchers import (
     reject_with_rule,
     update_queued_reply_check,
 )
+from ironsbot.runtime.message_input import is_self_command
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -89,7 +90,10 @@ class PromptFlow:
                 return False
             return (
                 event_conversation_session_id(self.namespace, next_event) == session_id
-                and next_event.user_id != next_event.self_id
+                and (
+                    next_event.user_id != next_event.self_id
+                    or is_self_command(next_event)
+                )
                 and getattr(next_event, "reply", None) is None
                 and self.input_check(next_event, target_type, selection=selection)
             )
@@ -106,7 +110,9 @@ class PromptFlow:
         event_type = (
             GroupMessageEvent if target_type == "group" else PrivateMessageEvent
         )
-        if not isinstance(event, event_type) or event.user_id == event.self_id:
+        if not isinstance(event, event_type) or (
+            event.user_id == event.self_id and not is_self_command(event)
+        ):
             return False
         text = event.get_plaintext().strip()
         return text.isdigit() if selection else bool(text)

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.pet_query import (
     PetImageSelection,
     PetQueryService,
@@ -83,7 +84,7 @@ class FakeImages:
         *,
         fallback: bool = True,
     ) -> bytes:
-        assert kind == "pet_body"
+        assert kind in {"pet_body", "pet_head"}
         assert fallback is False
         return f"image:{key}".encode()
 
@@ -95,6 +96,50 @@ def _pet(pet_id: int, name: str) -> Any:
         resource_id=pet_id,
         skins=[],
     )
+
+
+@pytest.mark.asyncio
+async def test_avatar_uses_resource_id_without_rendering() -> None:
+    data = FakeData()
+    pet = _pet(70, "雷伊")
+    pet.resource_id = 170
+    data.pets = (pet,)
+    rendered: list[Any] = []
+    result = await _service(data, rendered).search_avatar("70")
+    assert result.reply is not None
+    assert result.reply.image == b"image:170"
+    assert not result.reply.text
+    assert rendered == []
+
+
+@pytest.mark.asyncio
+async def test_avatar_choices_and_selection() -> None:
+    data = FakeData()
+    data.pets = (_pet(70, "雷伊"), _pet(71, "精灵示例"))
+    service = _service(data)
+    result = await service.search_avatar("示例")
+    assert [choice.value for choice in result.choices] == [70, 71]
+    selected = await service.select_avatar(71)
+    assert selected.reply is not None
+    assert selected.reply.image == b"image:71"
+    assert (await service.select_avatar(72)).message
+
+
+@pytest.mark.asyncio
+async def test_avatar_failure_has_no_placeholder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail(*_args: object, **kwargs: object) -> bytes:
+        assert kwargs["fallback"] is False
+        raise ImageSourceError("unavailable")
+
+    monkeypatch.setattr(FakeImages, "fetch", fail)
+    data = FakeData()
+    data.pets = (_pet(70, "雷伊"),)
+    result = await _service(data).search_avatar("雷伊")
+    assert result.reply is not None
+    assert result.reply.image is None
+    assert "unavailable" in result.reply.image_error
 
 
 class SessionBoundPet:
@@ -191,18 +236,12 @@ async def test_pet_image_selection_includes_skin_details() -> None:
         price_lines="售价：100",
     )
 
-    result = await _service(data).select_image(
-        PetImageSelection(101, "皮肤")
-    )
+    result = await _service(data).select_image(PetImageSelection(101, "皮肤"))
 
     assert result.reply is not None
     assert result.reply.image == b"image:101"
     assert result.reply.text == (
-        "💎【皮肤】\n"
-        "所属精灵：精灵\n"
-        "所属系列：周年\n"
-        "礼卡价格：20\n"
-        "售价：100"
+        "💎【皮肤】\n所属精灵：精灵\n所属系列：周年\n礼卡价格：20\n售价：100"
     )
 
 
@@ -350,6 +389,4 @@ async def test_pet_info_selection_renders_before_data_session_closes() -> None:
 async def test_pet_info_selection_reports_missing_pet() -> None:
     result = await _service(FakeData()).select_info(99)
 
-    assert result.message == (
-        "❌未找到精灵 99（这是一个bug，请反馈给开发者）"
-    )
+    assert result.message == ("❌未找到精灵 99（这是一个bug，请反馈给开发者）")

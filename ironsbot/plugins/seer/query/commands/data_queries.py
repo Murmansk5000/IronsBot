@@ -62,6 +62,7 @@ from ironsbot.services.seer.new_content import (
     format_new_content_item_description,
     new_content_category_preview_items,
     new_content_category_unavailable_message,
+    new_content_stale_week_message,
     new_content_unavailable_message,
 )
 from ironsbot.services.seer.pet_query import PetImageSelection
@@ -266,7 +267,7 @@ def _install_new_content_commands(
     )
 
 
-async def _start_new_content(  # noqa: PLR0913
+async def _start_new_content(  # noqa: PLR0911, PLR0913
     service: SeerDataQueryService,
     categories: tuple[NewContentCategory, ...] | None,
     group: SeerMatcherGroup,
@@ -283,6 +284,9 @@ async def _start_new_content(  # noqa: PLR0913
         return
     except NewContentIndexUnavailableError:
         await matcher.finish(new_content_unavailable_message())
+        return
+    if not snapshot.is_current_week:
+        await matcher.finish(new_content_stale_week_message(snapshot))
         return
 
     available = available_new_content_categories(group, event)

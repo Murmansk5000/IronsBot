@@ -18,6 +18,12 @@ if TYPE_CHECKING:
 _RAW_AT_PATTERN = re.compile(r"\[(?:CQ:)?at,qq=([^\],]+)")
 
 
+def is_self_command(event: Event) -> bool:
+    return bool(getattr(event, "_ironsbot_self_command", False)) and (
+        getattr(event, "user_id", None) == getattr(event, "self_id", None)
+    )
+
+
 class MessageInputKind(str, Enum):
     """Single routing class, evaluated in the declared precedence order."""
 

@@ -33,7 +33,12 @@ class SqliteBiliImageDeliveryRetryStore:
     def __init__(self, path: str | Path) -> None:
         self._database = SqliteDatabase(
             path,
-            migrations=(SqliteMigration(1, _SCHEMA),),
+            migrations=(
+                SqliteMigration(1, _SCHEMA),
+                # Existing rows predate uncertain-delivery classification.  They may
+                # already have reached QQ, so do not replay them after upgrade.
+                SqliteMigration(2, ("DELETE FROM pending_image_deliveries",)),
+            ),
             row_factory=sqlite3.Row,
         )
 

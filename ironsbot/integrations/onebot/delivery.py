@@ -3,16 +3,19 @@ from __future__ import annotations
 
 import asyncio
 import random
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from inspect import isawaitable
 from math import ceil
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.log import logger
 
 from ironsbot.core.messaging import (
+    DeliveryHistoryStatus,
+    DeliveryReceipt,
     MessageTarget,
     TargetSendSummary,
     broadcast_targets,
@@ -31,6 +34,7 @@ if TYPE_CHECKING:
         PushDeliveryConfig,
         PushUnsubscribeConfig,
     )
+    from ironsbot.services.messaging.delivery import DeliveryReceiptHandler
     from ironsbot.services.messaging.subscriptions import (
         PushDeliverySubscriptions,
         PushTargetType,
@@ -112,6 +116,42 @@ class OneBotMessageSender(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class _TargetSendResult:
+    sent: bool
+    receipt: DeliveryReceipt | None = None
+    uncertain: bool = False
+
+
+def _is_uncertain_delivery_error(error: Exception) -> bool:
+    """Return whether the request may have reached QQ without a response."""
+    error_name = type(error).__name__.casefold()
+    message = str(error).casefold()
+    return (
+        "timeout" in error_name
+        or "network" in error_name
+        or "connection" in error_name
+        or "timeout" in message
+        or "websocket" in message
+        or "connection" in message
+    )
+
+
+def _message_id_from_result(result: object) -> int | None:
+    raw_message_id = (
+        result.get("message_id")
+        if isinstance(result, Mapping)
+        else getattr(result, "message_id", None)
+    )
+    if isinstance(raw_message_id, bool) or not isinstance(raw_message_id, (int, str)):
+        return None
+    try:
+        message_id = int(raw_message_id)
+    except (TypeError, ValueError):
+        return None
+    return message_id if message_id > 0 else None
+
+
+@dataclass(frozen=True, slots=True)
 class OneBotDelivery:
     outbound: GroupOutboundRateLimitService
     push_unsubscribe: PushUnsubscribeConfig
@@ -179,10 +219,12 @@ class OneBotDelivery:
     ) -> TargetSendSummary:
         succeeded = set(summary.succeeded)
         failed = set(summary.failed)
+        uncertain = set(summary.uncertain)
         ordered = list(original_targets)
         return TargetSendSummary(
             [target for target in ordered if target in succeeded],
             [target for target in ordered if target in failed],
+            tuple(target for target in ordered if target in uncertain),
         )
 
     async def _send_target(  # noqa: PLR0913
@@ -196,7 +238,9 @@ class OneBotDelivery:
         interval_seconds: float,
         message_limiter: MessageLimiter | None,
         subscription_key: str | None,
-    ) -> bool:
+        receipt_handler: DeliveryReceiptHandler | None = None,
+        verify_history: bool = False,
+    ) -> _TargetSendResult:
         if index > 0 and interval_seconds > 0:
             await asyncio.sleep(index * interval_seconds)
 
@@ -206,7 +250,7 @@ class OneBotDelivery:
                 f"{action_name} has no connected bot for "
                 f"{target.target_type} {target.target_id}"
             )
-            return False
+            return _TargetSendResult(sent=False)
 
         limited_message = _copy_outbound_message(message)
         if message_limiter is not None:
@@ -233,7 +277,7 @@ class OneBotDelivery:
                 f"{action_name} dropped by outbound push queue for "
                 f"{target.target_type} {target.target_id}: {decision.reason}"
             )
-            return False
+            return _TargetSendResult(sent=False)
 
         try:
             if target.target_type == "private":
@@ -253,7 +297,7 @@ class OneBotDelivery:
                     f"{action_name} was suppressed while sending to "
                     f"{target.target_type} {target.target_id}"
                 )
-                return False
+                return _TargetSendResult(sent=False)
         except Exception as e:  # noqa: BLE001
             self.outbound.rollback(decision.permit)
             logger.warning(
@@ -261,13 +305,80 @@ class OneBotDelivery:
                 f"{target.target_id} via bot "
                 f"{getattr(target_bot, 'self_id', 'explicit')}: {e}"
             )
-            return False
+            return _TargetSendResult(
+                sent=False,
+                uncertain=_is_uncertain_delivery_error(e),
+            )
 
-        logger.info(
-            f"{action_name} sent to {target.target_type} {target.target_id} "
-            f"via bot {getattr(target_bot, 'self_id', 'explicit')}"
+        message_id = _message_id_from_result(result)
+        history_status: DeliveryHistoryStatus = "not_checked"
+        history_error: str | None = None
+        if verify_history:
+            history_status, history_error = await self._verify_message_history(
+                target_bot,
+                message_id,
+            )
+        receipt = DeliveryReceipt(
+            target=target,
+            bot_id=getattr(target_bot, "self_id", None),
+            message_id=message_id,
+            history_status=history_status,
+            history_error=history_error,
         )
-        return True
+        await self._notify_delivery_receipt(receipt_handler, receipt)
+        logger.info(
+            "{} sent to {} {} via bot {} message_id={} history_status={}",
+            action_name,
+            target.target_type,
+            target.target_id,
+            getattr(target_bot, "self_id", "explicit"),
+            message_id,
+            history_status,
+        )
+        return _TargetSendResult(sent=True, receipt=receipt)
+
+    @staticmethod
+    async def _notify_delivery_receipt(
+        handler: DeliveryReceiptHandler | None,
+        receipt: DeliveryReceipt,
+    ) -> None:
+        if handler is None:
+            return
+        try:
+            outcome = handler(receipt)
+            if isawaitable(outcome):
+                await outcome
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "delivery receipt handler failed: target_type={} target_id={} "
+                "message_id={}",
+                receipt.target.target_type,
+                receipt.target.target_id,
+                receipt.message_id,
+            )
+
+    @staticmethod
+    async def _verify_message_history(
+        bot: OneBotMessageSender,
+        message_id: int | None,
+    ) -> tuple[DeliveryHistoryStatus, str | None]:
+        if message_id is None:
+            return "missing", "send result did not include a positive message_id"
+        get_msg = getattr(bot, "get_msg", None)
+        if not callable(get_msg):
+            return "unsupported", "OneBot get_msg is unavailable"
+        try:
+            get_msg_call = cast("Callable[..., Awaitable[object]]", get_msg)
+            result = await asyncio.wait_for(
+                get_msg_call(message_id=message_id),
+                timeout=5.0,
+            )
+        except Exception as error:  # noqa: BLE001
+            return "error", f"{type(error).__name__}: {error}"
+        returned_message_id = _message_id_from_result(result)
+        if returned_message_id == message_id:
+            return "confirmed", None
+        return "missing", f"get_msg returned message_id={returned_message_id!r}"
 
     async def _send_push_batch(  # noqa: PLR0913
         self,
@@ -281,6 +392,8 @@ class OneBotDelivery:
         batch_index: int,
         batch_size: int,
         max_attempts: int,
+        receipt_handler: DeliveryReceiptHandler | None,
+        verify_history: bool,
     ) -> TargetSendSummary:
         bot_keys = [
             key
@@ -299,22 +412,30 @@ class OneBotDelivery:
                         interval_seconds=0.0,
                         message_limiter=message_limiter,
                         subscription_key=subscription_key,
+                        receipt_handler=receipt_handler,
+                        verify_history=verify_history,
                     )
                     for target, message in selected
                 )
             )
         succeeded = [
             target
-            for (target, _message), sent in zip(selected, results, strict=True)
-            if sent
+            for (target, _message), result in zip(selected, results, strict=True)
+            if result.sent
         ]
         failed = [
             target
-            for (target, _message), sent in zip(selected, results, strict=True)
-            if not sent
+            for (target, _message), result in zip(selected, results, strict=True)
+            if not result.sent
         ]
+        uncertain = tuple(
+            target
+            for (target, _message), result in zip(selected, results, strict=True)
+            if not result.sent and result.uncertain
+        )
         logger.info(
-            "{} push attempt {}/{} batch {} size={} targets={} succeeded={} failed={}",
+            "{} push attempt {}/{} batch {} size={} targets={} "
+            "succeeded={} failed={} uncertain={}",
             action_name,
             attempt,
             max_attempts,
@@ -323,8 +444,9 @@ class OneBotDelivery:
             len(selected),
             len(succeeded),
             len(failed),
+            len(uncertain),
         )
-        return TargetSendSummary(succeeded, failed)
+        return TargetSendSummary(succeeded, failed, uncertain)
 
     async def _send_push_targets(  # noqa: PLR0913
         self,
@@ -335,9 +457,12 @@ class OneBotDelivery:
         message_limiter: MessageLimiter | None,
         subscription_key: str,
         retry_failed_targets: bool,
+        receipt_handler: DeliveryReceiptHandler | None,
+        verify_history: bool,
     ) -> TargetSendSummary:
         pending = selected
         succeeded_targets: set[MessageTarget] = set()
+        uncertain_targets: set[MessageTarget] = set()
         batch_size = max(len(pending), 1)
         max_attempts = (
             self.push_delivery.max_attempts if retry_failed_targets else 1
@@ -380,8 +505,11 @@ class OneBotDelivery:
                     batch_index=batch_index,
                     batch_size=batch_size,
                     max_attempts=max_attempts,
+                    receipt_handler=receipt_handler,
+                    verify_history=verify_history,
                 )
                 succeeded_targets.update(summary.succeeded)
+                uncertain_targets.update(summary.uncertain)
                 failed_ids = set(summary.failed)
                 next_pending.extend(
                     item for item in batch if item[0] in failed_ids
@@ -394,6 +522,11 @@ class OneBotDelivery:
                 if target in succeeded_targets
             ],
             [target for target, _message in pending],
+            tuple(
+                target
+                for target, _message in selected
+                if target in uncertain_targets
+            ),
         )
 
     async def send_targets(  # noqa: PLR0913
@@ -420,6 +553,8 @@ class OneBotDelivery:
                 message_limiter=message_limiter,
                 subscription_key=subscription_key,
                 retry_failed_targets=retry_failed_targets,
+                receipt_handler=None,
+                verify_history=False,
             )
             return self._restore_target_order(summary, original_selected)
 
@@ -441,14 +576,19 @@ class OneBotDelivery:
         return TargetSendSummary(
             [
                 target
-                for target, sent in zip(selected, results, strict=True)
-                if sent
+                for target, result in zip(selected, results, strict=True)
+                if result.sent
             ],
             [
                 target
-                for target, sent in zip(selected, results, strict=True)
-                if not sent
+                for target, result in zip(selected, results, strict=True)
+                if not result.sent
             ],
+            tuple(
+                target
+                for target, result in zip(selected, results, strict=True)
+                if not result.sent and result.uncertain
+            ),
         )
 
     async def send_target_messages(  # noqa: PLR0913
@@ -460,6 +600,8 @@ class OneBotDelivery:
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
         retry_failed_targets: bool = True,
+        receipt_handler: DeliveryReceiptHandler | None = None,
+        verify_history: bool = False,
     ) -> TargetSendSummary:
         selected = list(target_messages)
         if subscription_key:
@@ -488,6 +630,8 @@ class OneBotDelivery:
                 message_limiter=message_limiter,
                 subscription_key=subscription_key,
                 retry_failed_targets=retry_failed_targets,
+                receipt_handler=receipt_handler,
+                verify_history=verify_history,
             )
             return self._restore_target_order(
                 summary,
@@ -505,6 +649,8 @@ class OneBotDelivery:
                     interval_seconds=0.0,
                     message_limiter=message_limiter,
                     subscription_key=subscription_key,
+                    receipt_handler=receipt_handler,
+                    verify_history=verify_history,
                 )
                 for target, message in selected
             )
@@ -512,14 +658,19 @@ class OneBotDelivery:
         return TargetSendSummary(
             [
                 target
-                for (target, _message), sent in zip(selected, results, strict=True)
-                if sent
+            for (target, _message), result in zip(selected, results, strict=True)
+            if result.sent
             ],
             [
                 target
-                for (target, _message), sent in zip(selected, results, strict=True)
-                if not sent
+            for (target, _message), result in zip(selected, results, strict=True)
+            if not result.sent
             ],
+            tuple(
+                target
+                for (target, _message), result in zip(selected, results, strict=True)
+                if not result.sent and result.uncertain
+            ),
         )
 
     async def broadcast(  # noqa: PLR0913

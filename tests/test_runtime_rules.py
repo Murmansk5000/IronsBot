@@ -12,6 +12,7 @@ from ironsbot.runtime.message_input import (
 )
 from ironsbot.runtime.rules import (
     bot_mention,
+    bot_mention_including_reply,
     explicit_command,
     member_target_command,
     member_targets_command,
@@ -123,3 +124,18 @@ def test_bot_mentions_and_natural_language_have_disjoint_routes() -> None:
     assert not _matches(natural_language(), reply_bot)
     assert _matches(bot_mention(), direct_bot)
     assert not _matches(bot_mention(), reply_bot)
+
+
+def test_bot_mention_including_reply_requires_a_current_message_at() -> None:
+    direct_bot = group_message_event(
+        message=Message([MessageSegment.at(1), MessageSegment.text("你好")])
+    )
+    reply_bot = group_message_event(
+        message=Message([MessageSegment.at(1), MessageSegment.text("你好")]),
+        reply_sender_user_id=789,
+    )
+    reply_without_at = group_message_event("你好", reply_sender_user_id=1)
+
+    assert _matches(bot_mention_including_reply(), direct_bot)
+    assert _matches(bot_mention_including_reply(), reply_bot)
+    assert not _matches(bot_mention_including_reply(), reply_without_at)

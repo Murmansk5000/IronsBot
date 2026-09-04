@@ -81,11 +81,7 @@ async def _open_docker_maintenance_menu(
     docker_service: DockerUpdateService,
     check_image: bool = False,
 ) -> None:
-    check_message = (
-        await docker_service.check_image_update()
-        if check_image
-        else ""
-    )
+    check_message = await docker_service.check_image_update() if check_image else ""
     prompt = (
         f"{check_message}\n\n{DOCKER_MAINTENANCE_MENU}"
         if check_message
@@ -121,17 +117,18 @@ async def handle_disabled_bare_admin_status(
     await finish_event_reply(
         matcher,
         event,
-        "“开服查询”仅限超级管理员，且必须带 / 前缀。"
-        f"\n{command_help}",
+        f"“开服查询”仅限超级管理员，且必须带 / 前缀。\n{command_help}",
     )
 
 
-def install(
+def install(  # noqa: PLR0913 - plugin dependencies and configured command vocabulary
     registry: MatcherRegistry,
     docker_service: DockerUpdateService,
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
+    *,
+    normal_commands: tuple[str, ...] = NORMAL_SERVER_STATUS_COMMANDS,
 ) -> None:
     async def handle_normal_server_status(
         matcher: Matcher,
@@ -165,7 +162,7 @@ def install(
         )
 
     normal_matcher = registry.on_fullmatch(
-        NORMAL_SERVER_STATUS_COMMANDS,
+        normal_commands,
         policy=CommandPolicy.command(
             "server_status_query",
             help_ids=("server_status.query",),

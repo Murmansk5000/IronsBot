@@ -254,11 +254,14 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                     "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
                 ),
             ),
-            commands=server_status_commands(),
+            commands=server_status_commands(
+                tuple(config.operations.server_status.commands)
+            ),
             install=partial(
                 install_server_status,
                 docker_service=docker_update_service,
                 server_status=server_status,
+                normal_commands=tuple(config.operations.server_status.commands),
                 features=features,
                 commands=resources.commands,
             ),
@@ -470,6 +473,8 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
             install=partial(
                 install_team_resource,
                 service=team_resource_service,
+                team_query=seer_resources.team_query,
+                notice_timeout_seconds=config.runtime.menu.root_timeout_minutes * 60,
             ),
             hooks=PluginHooks(
                 startup=(
@@ -647,10 +652,7 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                     feature_help_visible,
                     features=features,
                     feature="ai_intent",
-                    enabled=(
-                        config.ai.ai_enabled
-                        and config.ai.intent_actions_enabled
-                    ),
+                    enabled=(config.ai.ai_enabled and config.ai.intent_actions_enabled),
                 ),
             ),
             commands=ai_intent_command_descriptors,
