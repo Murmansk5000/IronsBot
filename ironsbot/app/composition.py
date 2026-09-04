@@ -689,10 +689,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         startup_notice=StartupNoticeService(admin_notices),
         commands=command_catalog,
         help_hint=HelpHintService(
-            settings.features.help,
+            settings.messaging.poke,
             settings.onebot_references,
             poke_hint_candidates,
-            promotions=PokePromotionService.from_packaged(settings.features.help),
+            ignored_plugins=tuple(settings.features.help.ignored_plugins),
+            promotions=PokePromotionService.from_packaged(settings.messaging.poke),
         ),
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,

@@ -298,8 +298,11 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
-群或用户；超级管理员也不会绕过黑名单。帮助戳一戳提示的限流配置位于
-`[features.help]`。所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
+群或用户；超级管理员也不会绕过黑名单。戳一戳回复、限流和推荐权重位于
+`[messaging.poke]`，用户/群专属回复分别使用其 `user_replies` / `group_replies` 子表。
+未命中专属回复时仍随机推荐有权限的命令；`[features.help]` 仅保留 `ignored_plugins`，
+同时过滤帮助菜单和戳一戳推荐。旧戳一戳字段不再读取，升级时需同步迁移 TOML。
+所有表示 OneBot QQ 用户、群或 @ 对象的 TOML 值都支持对应别名、
 数字字符串或数字 ID；别名在 `[features.user_aliases]` 和
 `[features.group_aliases]` 中定义，纯数字别名不可用。
 用户命令额度统一放在 `[messaging.command_cooldown]`：同一 QQ 的同一语义命令

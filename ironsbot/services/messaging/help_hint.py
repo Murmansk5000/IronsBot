@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Protocol
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
-    from ironsbot.core.features import HelpConfig
+    from ironsbot.config.models.messaging import PokeConfig
     from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.services.messaging.poke_promotions import PokePromotionService
 
@@ -68,9 +68,10 @@ def _get_poke_reply(
 
 @dataclass(slots=True)
 class HelpHintService:
-    config: HelpConfig
+    config: PokeConfig
     references: OneBotReferenceResolver
     poke_hint_candidates: CommandHintCandidates | None = None
+    ignored_plugins: tuple[str, ...] = ()
     promotions: PokePromotionService | None = None
     chooser: CommandHintChooser = _choose_weighted_candidate
     limiter: SlidingWindowRateLimiter = field(
@@ -81,13 +82,13 @@ class HelpHintService:
         return _get_poke_reply(
             user_id,
             resolve=self.references.resolve_user,
-            replies=self.config.poke_user_replies,
-            location="features.help.poke_user_replies",
+            replies=self.config.user_replies,
+            location="messaging.poke.user_replies",
         ) or _get_poke_reply(
             group_id,
             resolve=self.references.resolve_group,
-            replies=self.config.poke_replies,
-            location="features.help.poke_replies",
+            replies=self.config.group_replies,
+            location="messaging.poke.group_replies",
         )
 
     def get_default_poke_hint(
@@ -103,7 +104,7 @@ class HelpHintService:
             group_id,
             user_id,
             group_role,
-            tuple(self.config.ignored_plugins),
+            self.ignored_plugins,
         )
         if not candidates:
             return None
@@ -122,8 +123,8 @@ class HelpHintService:
             self.limiter.hit(
                 "help_hint",
                 group_id,
-                window_seconds=self.config.hint_window_seconds,
-                max_events=self.config.hint_max_per_window,
+                window_seconds=self.config.window_seconds,
+                max_events=self.config.max_per_window,
                 now=now,
             )
             >= 0
