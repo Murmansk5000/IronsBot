@@ -1015,6 +1015,50 @@ async def test_failed_image_targets_retry_without_resending_successes(
     assert retries.list_pending() == []
 
 
+@pytest.mark.asyncio
+async def test_uncertain_image_delivery_is_not_added_to_retry_outbox(
+    tmp_path: Path,
+) -> None:
+    definite_failure = MessageTarget("group", 1001)
+    uncertain_failure = MessageTarget("group", 1002)
+
+    class UncertainImageDelivery:
+        async def broadcast(
+            self,
+            _message: object,
+            **kwargs: object,
+        ) -> TargetSendSummary:
+            if kwargs["action_name"] == FULL_DYNAMIC_IMAGE_PUSH_ACTION:
+                return TargetSendSummary(
+                    [],
+                    [definite_failure, uncertain_failure],
+                    (uncertain_failure,),
+                )
+            return TargetSendSummary([], [])
+
+    retries = SqliteBiliImageDeliveryRetryStore(tmp_path / "retry.sqlite")
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", UncertainImageDelivery()),
+        PushUnsubscribeStore(tmp_path / "subscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_text_message,
+        append_text_hint,
+        render_images=build_dynamic_images_message,
+        image_delivery_retries=retries,
+    )
+
+    await service.send(
+        _item(),
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001, 1002], [], [], []),
+    )
+
+    assert retries.list_pending() == [
+        (str(_item()["id_str"]), definite_failure, 1),
+    ]
+
+
 def test_content_message_for_image_only_dynamic_omits_synthetic_notice() -> None:
     item = _item(text="")
 

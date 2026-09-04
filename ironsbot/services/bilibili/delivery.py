@@ -193,7 +193,15 @@ class BilibiliPushDeliveryService:
                 retry_failed_targets=False,
             )
             if summary.failed:
-                self._record_image_delivery_failures(item, summary.failed)
+                uncertain_targets = set(summary.uncertain)
+                self._record_image_delivery_failures(
+                    item,
+                    [
+                        target
+                        for target in summary.failed
+                        if target not in uncertain_targets
+                    ],
+                )
                 if self.image_delivery_retries is None:
                     await self._notify_content_delivery_failure(
                         item,
@@ -209,6 +217,11 @@ class BilibiliPushDeliveryService:
                             if target.target_type == "private"
                         ],
                     )
+            self._log_uncertain_image_delivery(
+                dynamic_id(item),
+                summary.uncertain,
+                phase="initial",
+            )
 
     async def retry_failed_images(self) -> None:
         """Retry only persisted image targets left unconfirmed by earlier pushes."""
@@ -270,7 +283,13 @@ class BilibiliPushDeliveryService:
                 retry_failed_targets=False,
             )
             self.image_delivery_retries.resolve(item_id, summary.succeeded)
-            failed = set(summary.failed)
+            self.image_delivery_retries.resolve(item_id, summary.uncertain)
+            self._log_uncertain_image_delivery(
+                item_id,
+                summary.uncertain,
+                phase="retry",
+            )
+            failed = set(summary.failed) - set(summary.uncertain)
             attempts_by_target = dict(retries)
             exhausted = [
                 target
@@ -312,6 +331,24 @@ class BilibiliPushDeliveryService:
         if not item_id:
             return
         self.image_delivery_retries.record_failed(item_id, targets)
+
+    @staticmethod
+    def _log_uncertain_image_delivery(
+        item_id: str | None,
+        targets: tuple[MessageTarget, ...],
+        *,
+        phase: str,
+    ) -> None:
+        if not targets:
+            return
+        logger.warning(
+            "%s %s delivery left unconfirmed; skipping retry to avoid duplicate "
+            "media: dynamic=%s targets=%s",
+            FULL_DYNAMIC_IMAGE_PUSH_ACTION,
+            phase,
+            item_id,
+            [f"{target.target_type}:{target.target_id}" for target in targets],
+        )
 
     def _retry_image_targets(
         self,
