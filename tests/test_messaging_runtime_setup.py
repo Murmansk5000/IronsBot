@@ -458,7 +458,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
     assert keyword_action.id == "keyword_reply"
 
 
-def test_group_mention_reply_requires_configured_user_and_feature(
+def test_group_mention_reply_requires_only_configured_user(
     tmp_path: Path,
 ) -> None:
     messaging = _messaging_resources(
@@ -467,11 +467,9 @@ def test_group_mention_reply_requires_configured_user_and_feature(
             MessageMentionReplyAction(
                 id="example_user_mention",
                 user_ids=[2002],
-                feature="example_user_mention",
                 message="123",
             )
         ],
-        group_policy={"1001": ["example_user_mention"]},
     )
     state: dict[str, object] = {}
 

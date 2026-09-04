@@ -312,8 +312,19 @@ class MessageKeywordReplyAction(MessageReplyAction):
         return self
 
 
-class MessageMentionReplyAction(BaseMessageAction):
+class MessageMentionReplyAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str = ""
+    enabled: bool = True
+    message: str
     user_ids: OneBotReferenceList = Field(default_factory=list)
+
+    @field_validator("id", "name", "message")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        return value.strip()
 
     @model_validator(mode="after")
     def validate_enabled_mention_reply_action(self) -> Self:
@@ -321,6 +332,8 @@ class MessageMentionReplyAction(BaseMessageAction):
             raise ValueError(COMMAND_ID_REQUIRED_ERROR)
         if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
             raise ValueError(COMMAND_ID_FORMAT_ERROR)
+        if not self.message:
+            raise ValueError("消息内容不能为空")
         if self.enabled and not self.user_ids:
             raise ValueError(ENABLED_MENTION_USERS_REQUIRED_ERROR)
         return self
@@ -557,7 +570,6 @@ class MessageConfig(BaseModel):
             for action in (
                 *self.commands,
                 *self.keyword_replies,
-                *self.mention_replies,
             )
         )
 

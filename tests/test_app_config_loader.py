@@ -660,7 +660,7 @@ feature = "chuchu_reply"
     assert config.messaging.command_feature_keys == frozenset({"chuchu_reply"})
 
 
-def test_mention_reply_actions_parse_user_aliases_and_register_features(
+def test_mention_reply_actions_parse_user_aliases_without_features(
     tmp_path: Path,
 ) -> None:
     config_path = tmp_path / "ironsbot.toml"
@@ -672,14 +672,10 @@ main = 123456789
 [features.user_aliases]
 example_user = 234567890
 
-[features.group_policy]
-main = ["example_user_mention"]
-
 [[messaging.mention_replies]]
 id = "example_user_mention"
 user_ids = ["example_user"]
 message = "123"
-feature = "example_user_mention"
 """.strip(),
         encoding="utf-8",
     )
@@ -687,9 +683,7 @@ feature = "example_user_mention"
     config = load_settings(config_path)
 
     assert config.messaging.mention_replies[0].user_ids == ["example_user"]
-    assert config.messaging.command_feature_keys == frozenset(
-        {"example_user_mention"}
-    )
+    assert config.messaging.command_feature_keys == frozenset()
 
 
 

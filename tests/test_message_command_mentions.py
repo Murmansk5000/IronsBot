@@ -4,10 +4,13 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
+from pydantic import ValidationError
 
+from ironsbot.app.command_directory.dynamic import configured_message_commands
 from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageKeywordReplyAction,
+    MessageMentionReplyAction,
 )
 from ironsbot.plugins.messaging import matchers
 from ironsbot.runtime.matchers import MatcherRegistry
@@ -30,10 +33,10 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def command_runtime(
+def installed_messaging(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
-) -> Iterator[tuple[type[Matcher], MessagingService]]:
+) -> Iterator[tuple[list[type[Matcher]], MessagingService]]:
     messaging = _messaging_resources(
         tmp_path / "subscriptions.sqlite",
         commands=[
@@ -54,6 +57,13 @@ def command_runtime(
         ],
         group_policy={"456": ["text"]},
         user_policy={"123": ["text"]},
+        mention_replies=[
+            MessageMentionReplyAction(
+                id="example_mention",
+                user_ids=[123],
+                message="123",
+            )
+        ],
     )
     registry = build_test_runtime(
         state_path=tmp_path / "state.sqlite"
@@ -77,10 +87,18 @@ def command_runtime(
     monkeypatch.setattr(MatcherRegistry, "on_message", capture)
     matchers.install(registry, refresh, messaging, ("messaging.commands",))
     try:
-        yield registered[1], messaging
+        yield registered, messaging
     finally:
         for matcher in registered:
             matcher.destroy()
+
+
+@pytest.fixture
+def command_runtime(
+    installed_messaging: tuple[list[type[Matcher]], MessagingService],
+) -> tuple[type[Matcher], MessagingService]:
+    registered, messaging = installed_messaging
+    return registered[1], messaging
 
 
 class ReplyRecorder:
@@ -176,3 +194,85 @@ async def test_private_reply_stays_plain_text(
         cast("Matcher", recorder), event, state, messaging=messaging
     )
     assert str(recorder.messages[0]) == "加群：202140716"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply_message_id", [None, 999])
+async def test_personal_mention_works_without_group_features_and_replies_to_sender(
+    installed_messaging: tuple[list[type[Matcher]], MessagingService],
+    reply_message_id: int | None,
+) -> None:
+    registered, messaging = installed_messaging
+    matcher = registered[0]
+    event = group_message_event(
+        message=MessageSegment.at(1) + Message(" hello"),
+        group_id=999,
+        reply_message_id=reply_message_id,
+    )
+    state: T_State = {}
+    assert await matcher.rule(cast("Bot", None), event, state)
+    recorder = ReplyRecorder()
+    await matchers.handle_group_mention_reply(cast("Matcher", recorder), event, state)
+    assert str(recorder.messages[0]) == "[CQ:at,qq=123] 123"
+    assert matcher.block
+    assert not any(
+        "mention_reply" in item.id
+        for item in configured_message_commands(messaging._config)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "event",
+    [
+        group_message_event(message=Message(MessageSegment.at(1)), user_id=789),
+        group_message_event(message=Message(MessageSegment.at(789))),
+        group_message_event("hello"),
+        private_message_event("hello"),
+    ],
+)
+async def test_personal_mention_does_not_capture_other_input(
+    installed_messaging: tuple[list[type[Matcher]], MessagingService],
+    event: MessageEvent,
+) -> None:
+    registered, _ = installed_messaging
+    assert not await registered[0].rule(cast("Bot", None), event, {})
+
+
+@pytest.mark.asyncio
+async def test_personal_mention_can_be_disabled(
+    installed_messaging: tuple[list[type[Matcher]], MessagingService],
+) -> None:
+    registered, messaging = installed_messaging
+    messaging._config.mention_replies[0].enabled = False
+    event = group_message_event(message=Message(MessageSegment.at(1)))
+    assert not await registered[0].rule(cast("Bot", None), event, {})
+
+
+@pytest.mark.parametrize("policy", ["group", "user"])
+def test_personal_mention_respects_blacklists(tmp_path: Path, policy: str) -> None:
+    messaging = _messaging_resources(
+        tmp_path / "subscriptions.sqlite",
+        mention_replies=[
+            MessageMentionReplyAction(
+                id="example_mention",
+                user_ids=[123],
+                message="123",
+            )
+        ],
+        group_policy={"456": ["blacklist"]} if policy == "group" else {},
+        user_policy={"123": ["blacklist"]} if policy == "user" else {},
+    )
+    assert messaging.match_group_mention_reply(user_id=123, group_id=456) is None
+
+
+def test_personal_mention_model_rejects_obsolete_feature() -> None:
+    with pytest.raises(ValidationError, match="feature"):
+        MessageMentionReplyAction.model_validate(
+            {
+                "id": "example_mention",
+                "user_ids": [123],
+                "message": "123",
+                "feature": "text",
+            }
+        )
