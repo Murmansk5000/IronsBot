@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date
@@ -669,6 +670,30 @@ def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
     asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
     assert len(game.calls) == EXPECTED_DAILY_NOTICES
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
+
+
+def test_daily_notifications_log_query_audits(
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    service, _game, delivery, _bindings, _headless = _service(tmp_path)
+    caplog.set_level(logging.INFO, logger="ironsbot.services.seer.lucky_skin_window")
+
+    asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "daily task started" in message and "targets=2" in message
+        for message in messages
+    )
+    assert any(
+        "daily query succeeded" in message
+        and "player_id=90001" in message
+        and "skin_ids=(101, 102, 103, 104)" in message
+        for message in messages
+    )
+
+
 
 
 def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> None:
