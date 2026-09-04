@@ -7,6 +7,7 @@ import time
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.rank_lookup_context import RankBudgetExhaustedError
 from ironsbot.services.seer.rank_constants import (
     EXPERT_PEAK_USER_RANK_KEY,
     STANDARD_PEAK_USER_RANK_KEY,
@@ -56,9 +57,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
 ) -> RankLookupResult:
     parallelism = service.rank_probe_parallelism(game)
     batch_enabled = parallelism > 1
-    cached_score = (
-        None if fallback_item is None else int(fallback_item.score)
-    )
+    cached_score = None if fallback_item is None else int(fallback_item.score)
 
     async def fetch_rank_pages(  # noqa: PLR0913
         active_game: Any,
@@ -97,9 +96,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
             ),
             fetch_rank_page=service._fetch_page_result_for_position_lookup,
-            fetch_rank_pages=(
-                service.fetch_page_batch if batch_enabled else None
-            ),
+            fetch_rank_pages=(service.fetch_page_batch if batch_enabled else None),
             anchor_only=anchor_only,
             parallelism=parallelism,
             recent_cache_max_age_seconds=(
@@ -171,7 +168,8 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 fetch_rank_pages=fetch_rank_pages if batch_enabled else None,
                 parallelism=parallelism,
             )
-    except (TimeoutError, asyncio.TimeoutError):
+    except (TimeoutError, asyncio.TimeoutError) as error:
+        result.budget_exhausted = isinstance(error, RankBudgetExhaustedError)
         if fallback_item is not None:
             logger.info(
                 "rank lookup timed out; using last confirmed result: "
@@ -190,7 +188,8 @@ async def execute_rank_lookup(  # noqa: PLR0913
             sub_key,
             user_id,
         )
-        raise
+        result.failure = "查询预算耗尽" if result.budget_exhausted else "查询超时"
+        return result
 
     result = await finalize_visible_lookup(
         service,
@@ -218,6 +217,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
         score_target is None
         and result.rank is None
         and result.cost.used_full_scan
+        and result.scan_complete
         and result.failure is None
     ):
         save_rank_miss(
@@ -225,7 +225,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
             key=key,
             sub_key=sub_key,
             user_id=user_id,
-            searched_limit=result.searched_limit,
+            searched_limit=result.scanned_count,
         )
     return result
 
@@ -240,6 +240,7 @@ def _preserve_public_peak_score(
         key in _PUBLIC_PEAK_SCORE_KEYS
         and result.rank is not None
         and score_target is not None
+        and result.fallback_cached_at is None
     ):
         result.score = score_target
 
@@ -255,9 +256,7 @@ def _log_rank_score_mismatch(  # noqa: PLR0913 - every field is useful in diagno
     cached_score: int | None,
 ) -> None:
     reference_source = "public" if expected_score is not None else "cached"
-    reference_score = (
-        expected_score if expected_score is not None else cached_score
-    )
+    reference_score = expected_score if expected_score is not None else cached_score
     if (
         result.rank is None
         or reference_score is None

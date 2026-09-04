@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import asyncio
+import hashlib
 import logging
 import struct
 import time
@@ -14,6 +15,7 @@ from typing import Any, Generic, TypeGuard, TypeVar, overload
 
 from typing_extensions import Self, TypeVarTuple, Unpack
 
+from ironsbot.core.rank_lookup_context import rank_query_id
 from ironsbot.core.tasks import TaskSpawner
 from ironsbot.services.operations.headless_errors import SocketRecvError
 
@@ -35,6 +37,7 @@ from .listener import EventListener
 _T_CommandID = TypeVar("_T_CommandID", bound=CommandID)
 _T_UnpackedType = TypeVarTuple("_T_UnpackedType")
 logger = logging.getLogger(__name__)
+rank_logger = logging.getLogger("ironsbot.integrations.headless_seer.rank_wire")
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 20.0
 REQUEST_TIMEOUT_DRAIN_SECONDS = 2.0
 REQUEST_HISTORY_LIMIT = 8
@@ -53,6 +56,7 @@ class HeadlessRequestHistoryEntry:
     status: str = "sending"
     finished_at: float | None = None
     error_type: str = ""
+    rank_query_id: str = "-"
 
     def finish(self, status: str, *, error: BaseException | None = None) -> None:
         if self.finished_at is not None:
@@ -389,10 +393,18 @@ class AbstractSocketConnect(
                 command_id=int(command_id),
                 context=self._current_request_context(),
                 started_at=time.monotonic(),
+                rank_query_id=rank_query_id.get(),
             )
             self._request_history.append(entry)
             self._request_entries[future] = entry
             self._pending_requests[command_id].append(future)
+            if command_id == COMMAND_ID.GET_DAILY_RANK_INFO:
+                rank_logger.info(
+                    "rank wire request query=%s command=%s params=%s",
+                    entry.rank_query_id,
+                    command_id,
+                    body,
+                )
             try:
                 await self.send(command_id, *body)
                 entry.status = "等待响应"
@@ -427,6 +439,16 @@ class AbstractSocketConnect(
                 entry.finish("失败", error=exc)
                 raise
             finally:
+                if command_id == COMMAND_ID.GET_DAILY_RANK_INFO:
+                    rank_logger.info(
+                        "rank wire completion query=%s worker=%s status=%s "
+                        "error=%s elapsed=%.3fs",
+                        entry.rank_query_id,
+                        body[0] if body else None,
+                        entry.status,
+                        entry.error_type,
+                        time.monotonic() - entry.started_at,
+                    )
                 self._request_entries.pop(future, None)
 
     async def _drain_timed_out_request(
@@ -623,6 +645,19 @@ class SeerConnect(AbstractSocketConnect[CommandID, HeadInfo, SocketRecvPacketBod
             return None
 
         headinfo = HeadInfo.unpack(packet_bytes[:13])
+        if headinfo.cmd_id == COMMAND_ID.GET_DAILY_RANK_INFO:
+            pending = self._pending_requests.get(headinfo.cmd_id)
+            entry = self._request_entries.get(pending[0]) if pending else None
+            rank_logger.info(
+                "rank wire response query=%s worker=%s command=%s bytes=%s "
+                "elapsed=%s raw_sha256=%s",
+                "-" if entry is None else entry.rank_query_id,
+                headinfo.user_id,
+                headinfo.cmd_id,
+                len(packet_bytes),
+                None if entry is None else time.monotonic() - entry.started_at,
+                hashlib.sha256(packet_bytes).hexdigest(),
+            )
         try:
             headinfo, body = self.unpack(packet_bytes)
         except Exception as exc:

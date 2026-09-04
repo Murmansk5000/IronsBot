@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from ironsbot.services.seer.rank_models import (
     RankLookupCost,
@@ -18,6 +20,8 @@ from ironsbot.services.seer.rank_score_cache import (
 from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection
@@ -263,6 +267,7 @@ def cached_player_lookup(  # noqa: PLR0913
 ) -> tuple[CachedRankLookup | None, RankLookupResult] | None:
     """Return a cached player fact or a cached complete miss proof."""
 
+    query_id = uuid4().hex[:16]
     cached = cache.item(
         key=key,
         sub_key=sub_key,
@@ -270,6 +275,17 @@ def cached_player_lookup(  # noqa: PLR0913
         allow_stale=True,
     )
     if cached is not None:
+        logger.info(
+            "rank cached reply query=%s user_id=%s key=%s sub_key=%s "
+            "status=found rank=%s score=%s cached_at=%s",
+            query_id,
+            user_id,
+            key,
+            sub_key,
+            cached.rank_index + 1,
+            cached.score,
+            cached.fetched_at,
+        )
         return cached, RankLookupResult(
             title=title,
             score_name=score_name,
@@ -278,6 +294,7 @@ def cached_player_lookup(  # noqa: PLR0913
             searched_limit=search_limit,
             queried=True,
             cost=RankLookupCost(cache_page_hits=1),
+            query_id=query_id,
         )
     miss = cache.miss(
         key=key,
@@ -288,10 +305,23 @@ def cached_player_lookup(  # noqa: PLR0913
     )
     if miss is None:
         return None
+    logger.info(
+        "rank cached reply query=%s user_id=%s key=%s sub_key=%s "
+        "status=scanned_missing scanned_count=%s cached_at=%s",
+        query_id,
+        user_id,
+        key,
+        sub_key,
+        miss.searched_limit,
+        miss.fetched_at,
+    )
     return None, RankLookupResult(
         title=title,
         score_name=score_name,
         searched_limit=int(miss.searched_limit),
+        scanned_count=int(miss.searched_limit),
+        scan_complete=True,
+        query_id=query_id,
         queried=True,
         cost=RankLookupCost(cache_page_hits=1),
     )

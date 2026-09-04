@@ -28,11 +28,11 @@ def test_format_rank_position_text_defaults_to_global_summary() -> None:
                 queried=True,
             )
         )
-        == "全服未进入前2000"
+        == "名次未确认"
     )
 
 
-def test_format_rank_position_text_can_keep_zero_limit_for_existing_messages() -> None:
+def test_zero_limit_is_not_absence_proof() -> None:
     result = RankLookupResult(
         title="群星之巅",
         score_name="群星之巅",
@@ -40,11 +40,11 @@ def test_format_rank_position_text_can_keep_zero_limit_for_existing_messages() -
         queried=True,
     )
 
-    assert format_rank_position_text(result) == ""
+    assert format_rank_position_text(result) == "名次未确认"
     assert (
         format_rank_position_text(
             result,
             style=GLOBAL_RANK_MISS_POSITION_STYLE,
         )
-        == "前 0 名未上榜"
+        == "名次未确认"
     )

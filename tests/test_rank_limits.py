@@ -287,7 +287,8 @@ def test_autocard_lookup_limit_overrides_only_autocard_searches(
         )
     )
 
-    assert result.searched_limit == AUTOCARD_LOOKUP_LIMIT
+    assert result.searched_limit == 0
+    assert result.scan_complete
     assert rank._score_search_limit("群星牌") == AUTOCARD_LOOKUP_LIMIT
     assert rank._online_search_limit("图鉴积分") == ONLINE_LIMIT
 

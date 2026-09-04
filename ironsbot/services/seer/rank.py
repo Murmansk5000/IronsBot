@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.core.rank_lookup_context import rank_query_id
 from ironsbot.services.seer import rank_summary
 from ironsbot.services.seer.rank_cache_service import RankCacheQueryMixin
 from ironsbot.services.seer.rank_constants import (
@@ -15,6 +16,10 @@ from ironsbot.services.seer.rank_constants import (
     AUTOCARD_RANK_SUB_KEY,
     PET_KIND_RANK_KEY,
     PET_KIND_RANK_SUB_KEY,
+)
+from ironsbot.services.seer.rank_diagnostics import (
+    diagnose_rank_query,
+    observe_rank_page,
 )
 from ironsbot.services.seer.rank_exclusion_lookups import (
     fetch_visible_rank_range,
@@ -230,6 +235,16 @@ class RankService(RankCacheQueryMixin):
                 end=end,
             )
             if cached is not None:
+                observe_rank_page(
+                    self.exclusion_policy,
+                    key=key,
+                    sub_key=sub_key,
+                    start=start,
+                    end=end,
+                    items=list(cached.items),
+                    fetched_at=cached.fetched_at,
+                    cached=True,
+                )
                 record_rank_page_work(
                     self.exclusion_policy,
                     key=key,
@@ -242,14 +257,20 @@ class RankService(RankCacheQueryMixin):
                     from_cache=True,
                 )
 
+        query_id = rank_query_id.get()
+
         async def fetch_online() -> list[RankEntry]:
-            return await self.fetch_online_page(
-                game,
-                key=key,
-                sub_key=sub_key,
-                start=start,
-                end=end,
-            )
+            token = rank_query_id.set(query_id)
+            try:
+                return await self.fetch_online_page(
+                    game,
+                    key=key,
+                    sub_key=sub_key,
+                    start=start,
+                    end=end,
+                )
+            finally:
+                rank_query_id.reset(token)
 
         scheduler = current_player_rank_page_scheduler()
         started_at = time.monotonic()
@@ -282,31 +303,41 @@ class RankService(RankCacheQueryMixin):
                 )
         except Exception as error:
             _LOGGER.info(
-                "player rank page result: phase=%s key=%s sub_key=%s "
-                "page=%s-%s worker=%s elapsed=%.3fs error=%s",
+                "player rank page result: query=%s phase=%s key=%s sub_key=%s "
+                "page=%s-%s elapsed=%.3fs error=%s",
+                query_id,
                 page_phase,
                 key,
                 sub_key,
                 start + 1,
                 end + 1,
-                getattr(game, "user_id", None),
                 time.monotonic() - started_at,
                 type(error).__name__,
             )
             raise
         _LOGGER.info(
-            "player rank page result: phase=%s key=%s sub_key=%s "
-            "page=%s-%s worker=%s elapsed=%.3fs items=%s",
+            "player rank page result: query=%s phase=%s key=%s sub_key=%s "
+            "page=%s-%s elapsed=%.3fs items=%s",
+            query_id,
             page_phase,
             key,
             sub_key,
             start + 1,
             end + 1,
-            getattr(game, "user_id", None),
             time.monotonic() - started_at,
             len(items),
         )
         fetched_at = time.time()
+        observe_rank_page(
+            self.exclusion_policy,
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=end,
+            items=items,
+            fetched_at=fetched_at,
+            cached=False,
+        )
         self.cache.save(
             key=key,
             sub_key=sub_key,
@@ -414,6 +445,16 @@ class RankService(RankCacheQueryMixin):
                 rank_index=index,
             )
             if cached is not None:
+                observe_rank_page(
+                    self.exclusion_policy,
+                    key=key,
+                    sub_key=sub_key,
+                    start=index,
+                    end=index,
+                    items=[cached],
+                    fetched_at=cached.fetched_at,
+                    cached=True,
+                )
                 return cached
         page_size = self.page_size()
         page_start = self.page_start(index)
@@ -452,6 +493,7 @@ class RankService(RankCacheQueryMixin):
     ) -> list[RankPageResult]:
         page_size = self.page_size()
         normalized_starts = tuple(dict.fromkeys(max(0, start) for start in starts))
+
         async def fetch_parallel_page(start: int) -> RankPageResult:
             token = _PARALLEL_RANK_PAGE_REQUEST.set(True)
             try:
@@ -552,6 +594,7 @@ class RankService(RankCacheQueryMixin):
             fetch_rank_page_result=self.fetch_page_result,
         )
 
+    @diagnose_rank_query
     async def fetch_visible_range_result(  # noqa: PLR0913
         self,
         game: HeadlessGame,
@@ -572,6 +615,7 @@ class RankService(RankCacheQueryMixin):
             count=count,
         )
 
+    @diagnose_rank_query
     async def find_rank(  # noqa: PLR0913
         self,
         game: HeadlessGame,
@@ -628,7 +672,19 @@ class RankService(RankCacheQueryMixin):
             is not None
         ):
             result.searched_limit = cached_miss.searched_limit
+            result.scanned_count = cached_miss.searched_limit
+            result.scan_complete = True
             result.cost.cache_page_hits += 1
+            _LOGGER.info(
+                "rank cached miss query=%s key=%s sub_key=%s user_id=%s "
+                "scanned_count=%s cached_at=%s",
+                rank_query_id.get(),
+                key,
+                sub_key,
+                user_id,
+                cached_miss.searched_limit,
+                cached_miss.fetched_at,
+            )
             return result
         return await execute_rank_lookup(
             self,
@@ -669,6 +725,7 @@ class RankService(RankCacheQueryMixin):
             result.score = pet_kind_count
         return result
 
+    @diagnose_rank_query
     async def fetch_score_segment(  # noqa: PLR0913
         self,
         game: HeadlessGame,

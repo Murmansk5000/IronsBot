@@ -36,6 +36,16 @@ def _resolve_peak_current(
     rank = getattr(result, "rank", None)
     score = getattr(result, "score", None)
     if rank is not None and score is not None:
+        if (
+            result.profile_score is not None
+            and result.observed_score is not None
+            and result.profile_score != result.observed_score
+        ):
+            return (
+                f"个人接口：{score_formatter(result.profile_score)}｜"
+                f"榜单：{score_formatter(result.observed_score)}",
+                True,
+            )
         return score_formatter(int(score)), int(score) == candidate_score
 
     if bool(getattr(result, "queried", False)):
@@ -80,9 +90,7 @@ def format_peak_line(  # noqa: PLR0913
     failure = rank_result.failure
     cached_fallback = format_rank_cache_fallback(rank_result)
     if cached_fallback:
-        rank_text = (
-            f"{format_peak_rank_text(rank_result.rank)}（{cached_fallback}）"
-        )
+        rank_text = f"{format_peak_rank_text(rank_result.rank)}（{cached_fallback}）"
     elif failure:
         rank_text = f"赛季榜{failure}"
     elif rank_result.rank is not None:

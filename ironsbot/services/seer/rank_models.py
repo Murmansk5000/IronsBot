@@ -50,7 +50,26 @@ class RankLookupResult:
     queried: bool = False
     failure: str | None = None
     fallback_cached_at: float | None = None
+    profile_score: int | None = None
+    scanned_count: int = 0
+    scan_complete: bool = False
+    budget_exhausted: bool = False
+    query_id: str = "-"
     cost: RankLookupCost = field(default_factory=RankLookupCost)
+
+    @property
+    def status(self) -> str:
+        if self.failure and "顺序异常" in self.failure:
+            return "order_anomaly"
+        if self.budget_exhausted and self.rank is None:
+            return "budget_exhausted"
+        if self.failure:
+            return "failed"
+        if self.rank is not None:
+            return "found"
+        if self.scan_complete:
+            return "scanned_missing"
+        return "unconfirmed" if self.queried else "not_queried"
 
 
 @dataclass(slots=True)
@@ -88,6 +107,7 @@ class RankScoreSearchResult:
     items: list[RankScoreSearchItem] = field(default_factory=list)
     higher_gap: RankScoreGap | None = None
     lower_gap: RankScoreGap | None = None
+    failure: str | None = None
 
 
 @dataclass(slots=True)
