@@ -589,6 +589,16 @@ GitHub Actions 里的 upstream workflow 只负责定时生成巡检报告，不�
 
 也就是说，上游现在是参考源和补丁来源，不是可以直接同步的主线。
 
+## 机器人账号演示指令
+
+在 TOML 开启 `[runtime.self_commands] enabled = true`，并设置
+`prefix = "演示 "`。NapCat 对应 OneBot 连接也需开启 `reportSelfMessage`。
+在群内用机器人 QQ 手动发送 `演示 精灵雷伊`，即可走正常查询入口；
+菜单继续发送 `演示 1`、`演示 a1` 或 `演示 0`。
+权限和绑定关系均属于机器人 QQ，不继承操作者权限。
+不带前缀的自身消息不会触发，AI、关键词及 AT 自动回复不处理演示消息。
+程序自己发出的同内容前缀消息会在十分钟内被过滤，防止回流循环。
+
 ## 本地开发
 
 ```powershell

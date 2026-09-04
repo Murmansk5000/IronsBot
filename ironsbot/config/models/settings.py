@@ -64,17 +64,14 @@ class SettingsReferenceError(ValueError):
         location: str = "seer.player_accounts",
     ) -> SettingsReferenceError:
         return cls(
-            f"{location} "
-            f"requires environment variable SEER_PASSWORD_{player_id}"
+            f"{location} requires environment variable SEER_PASSWORD_{player_id}"
         )
 
 
 class MatcherPriorityConfigError(ValueError):
     @classmethod
     def mention_reply_order(cls) -> MatcherPriorityConfigError:
-        return cls(
-            "bot.matcher_priority.mention_reply must run before ai_group_at"
-        )
+        return cls("bot.matcher_priority.mention_reply must run before ai_group_at")
 
     @classmethod
     def bot_mention_order(cls) -> MatcherPriorityConfigError:
@@ -304,16 +301,30 @@ class RuntimeMenuConfig(BaseModel):
         return self
 
 
+class SelfCommandsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    prefix: str = "演示 "
+
+    @field_validator("prefix")
+    @classmethod
+    def validate_prefix(cls, value: str) -> str:
+        if not value.strip():
+            message = "runtime.self_commands.prefix must not be blank"
+            raise ValueError(message)
+        return value
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     concurrency: RuntimeConcurrencyConfig = Field(
         default_factory=RuntimeConcurrencyConfig
     )
-    scheduler: RuntimeSchedulerConfig = Field(
-        default_factory=RuntimeSchedulerConfig
-    )
+    scheduler: RuntimeSchedulerConfig = Field(default_factory=RuntimeSchedulerConfig)
     menu: RuntimeMenuConfig = Field(default_factory=RuntimeMenuConfig)
+    self_commands: SelfCommandsConfig = Field(default_factory=SelfCommandsConfig)
 
 
 class Settings(BaseModel):

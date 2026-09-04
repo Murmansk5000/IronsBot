@@ -15,6 +15,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegme
 from nonebot.log import logger
 from nonebot.rule import Rule
 
+from ironsbot.runtime.message_input import is_self_command
 from ironsbot.runtime.onebot_reply import event_reply_message_id
 
 if TYPE_CHECKING:
@@ -58,7 +59,7 @@ def is_current_group_menu_reply(
         return False
     if event.group_id != anchor.group_id or event.self_id != anchor.bot_user_id:
         return False
-    if event.user_id == event.self_id:
+    if event.user_id == event.self_id and not is_self_command(event):
         return False
     # The reply sender metadata is optional in OneBot events.  The tracked
     # message ID was obtained from the bot's own send result, so it is the
@@ -88,9 +89,7 @@ def _normalize_textual_reply_mention(
     ]
     for index in range(len(candidates)):
         candidate = " ".join(candidates[index:])
-        event.message = Message(
-            [*non_text_segments, MessageSegment.text(candidate)]
-        )
+        event.message = Message([*non_text_segments, MessageSegment.text(candidate)])
         try:
             if reply_check(event):
                 return True

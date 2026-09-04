@@ -6,7 +6,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import nonebot
-from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.file_logging import FileLogging
@@ -48,6 +47,10 @@ from ironsbot.integrations.onebot.outbound import (
 )
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.onebot.self_commands import (
+    SelfCommandAdapter,
+    install_self_commands,
+)
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
@@ -169,6 +172,8 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.settings import Settings
     from ironsbot.runtime.plugins import PluginDefinition
+
+
 @dataclass(slots=True)
 class Application:
     settings: Settings
@@ -202,7 +207,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
 
     driver = nonebot.get_driver()
-    driver.register_adapter(OneBotV11Adapter)
+    driver.register_adapter(SelfCommandAdapter)
+    install_self_commands(settings.runtime.self_commands)
     scheduler = SchedulerFacade(timezone=settings.runtime.scheduler.timezone)
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
@@ -319,9 +325,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(
             settings.paths.runtime_state,
-            legacy_paths=(
-                cache_paths.root / "runtime" / "lucky_skin_window.sqlite",
-            ),
+            legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
         ),
         renderer=partial(
             render_lucky_skin_window,
@@ -332,9 +336,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
-    bili_cookie_store = FileBiliCookieStore(
-        bili_data_dir / "bili_cookie_cache.txt"
-    )
+    bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
     bilibili = BilibiliService(
         config=settings.bilibili,
         targets=BiliTargetService(
@@ -342,9 +344,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             features,
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
-            BiliAccountNames(
-                partial(fetch_bili_account_name, http_clients.origin)
-            ),
+            BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
         ),
         cookie_store=bili_cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -490,9 +490,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless,
         RankQueryPolicy(
             player_error=player.format_error,
-            player_timeout_seconds=(
-                settings.seer.player.detail_timeout_seconds
-            ),
+            player_timeout_seconds=(settings.seer.player.detail_timeout_seconds),
             is_superuser=features.is_superuser,
         ),
         player_query_quotas,
@@ -503,12 +501,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             rank_limit=settings.seer.rank.limit,
             batch_limit=settings.seer.local_rank.batch_limit,
             refresh_limit=settings.seer.local_rank.refresh_limit,
-            refresh_max_age_hours=(
-                settings.seer.local_rank.refresh_max_age_hours
-            ),
-            page_cache_ttl_seconds=(
-                settings.seer.rank.page_cache_ttl_seconds
-            ),
+            refresh_max_age_hours=(settings.seer.local_rank.refresh_max_age_hours),
+            page_cache_ttl_seconds=(settings.seer.rank.page_cache_ttl_seconds),
             display_limit=rank_display.limit_for_group,
         ),
         rank,
