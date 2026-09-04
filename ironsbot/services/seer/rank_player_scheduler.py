@@ -15,7 +15,10 @@ from typing import TYPE_CHECKING, Any, Generic, NoReturn, TypeVar
 
 from anyio import create_task_group
 
-from ironsbot.core.rank_lookup_context import rank_page_request_timeout
+from ironsbot.core.rank_lookup_context import (
+    RankBudgetExhaustedError,
+    rank_page_request_timeout,
+)
 from ironsbot.services.seer.rank_models import RankLookupResult
 
 if TYPE_CHECKING:
@@ -228,10 +231,7 @@ class PlayerRankPageScheduler:
                     task_group.start_soon(
                         self._process_request,
                         request,
-                        name=(
-                            "player-rank-page:"
-                            f"{request.lookup_id}:{request.title}"
-                        ),
+                        name=(f"player-rank-page:{request.lookup_id}:{request.title}"),
                     )
 
     def _next_ready_request(self) -> _PageRequest[Any] | None:
@@ -282,7 +282,11 @@ class PlayerRankPageScheduler:
                 timeout=min(remaining_seconds, timeout_seconds),
             )
         except (TimeoutError, asyncio.TimeoutError) as error:
-            timeout_error = TimeoutError(str(error) or "玩家榜单页查询超时")
+            timeout_error = (
+                RankBudgetExhaustedError("玩家榜单查询总时间已到")
+                if self._timed_out()
+                else TimeoutError(str(error) or "玩家榜单页查询超时")
+            )
             if (
                 request.attempt < max_retries
                 and not self._closed
@@ -327,8 +331,7 @@ class PlayerRankPageScheduler:
             if not request.future.done():
                 request.future.set_result(result)
             _LOGGER.info(
-                "player rank page completed: lookup=%s title=%s phase=%s "
-                "elapsed=%.3fs",
+                "player rank page completed: lookup=%s title=%s phase=%s elapsed=%.3fs",
                 request.lookup_id,
                 request.title,
                 request.phase,
@@ -349,13 +352,18 @@ class PlayerRankPageScheduler:
 
     @staticmethod
     def _raise_total_timeout() -> NoReturn:
-        raise TimeoutError("玩家榜单查询总时间已到")
+        raise RankBudgetExhaustedError("玩家榜单查询总时间已到")
 
     def _expire_pending_requests(self) -> None:
         while self._queue:
             request = self._queue.popleft()
             if not request.future.done():
-                request.future.set_exception(TimeoutError("玩家榜单查询已结束"))
+                error = (
+                    RankBudgetExhaustedError("玩家榜单查询总时间已到")
+                    if self._timed_out()
+                    else TimeoutError("玩家榜单查询已结束")
+                )
+                request.future.set_exception(error)
 
 
 def current_player_rank_page_scheduler() -> PlayerRankPageScheduler | None:
@@ -448,10 +456,7 @@ async def run_player_rank_lookup_jobs(
             config.total_timeout_seconds,
             sum(scheduler.lookup_stats(job.id).page_requests for job in ordered_jobs),
             sum(scheduler.lookup_stats(job.id).retries for job in ordered_jobs),
-            sum(
-                item.cost.used_recent_cache_fallback
-                for item in resolved.values()
-            ),
+            sum(item.cost.used_recent_cache_fallback for item in resolved.values()),
             sum(item.failure is not None for item in resolved.values()),
         )
         return resolved

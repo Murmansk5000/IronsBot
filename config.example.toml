@@ -277,39 +277,6 @@ qq_group_manager = ["blacklist"]
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
 ignored_plugins = []
 
-# Default: 60.0
-# EN: Rate-limit window for poke help hints.
-# ZH: 戳一戳帮助提示的限流窗口秒数。
-hint_window_seconds = 60.0
-
-# Default: 3
-# EN: Maximum poke hint count per group and window.
-# ZH: 每个群在一个窗口内最多发送的戳一戳提示次数。
-hint_max_per_window = 3
-
-# Default: 5.0
-# EN: Initial random-selection weight for poke-eligible commands introduced after
-# the promotion baseline. Older commands always have weight 1.0.
-# ZH: 戳一戳可推荐的新命令初始随机权重；基线前已有命令始终为 1.0。
-poke_new_command_initial_weight = 5.0
-
-# Default: 5.0
-# EN: Days for half of a new command's extra poke weight to decay. The total
-# weight smoothly approaches 1.0 instead of dropping to zero.
-# ZH: 新命令额外戳一戳权重减半所需天数；总权重平滑趋近 1.0，不会降为 0。
-poke_new_command_half_life_days = 5.0
-
-# EN: Optional per-group poke replies. Keys may be group aliases or numeric group IDs.
-# Configured text replaces the default help hint when someone pokes the bot in that group.
-# ZH: 可选的群聊戳一戳回复。key 可写群别名或群号；用户专属回复优先，命中后覆盖默认的随机短指令提示。
-# 推荐使用下面的行内写法，避免后续 features.help 字段误进入子表。
-# poke_replies = { example = "你戳了戳机器人。" }
-
-# EN: Optional per-user poke replies. Keys may be user aliases or numeric QQ IDs.
-# User replies take priority over group replies. Quote Chinese aliases in TOML.
-# ZH: 可选的用户专属戳一戳回复。key 可写用户别名或 QQ 号，优先于群回复；中文别名需要加引号。未命中时才按当前权限随机提示一个可用短指令。
-# poke_user_replies = { "example_user" = "这是给该用户的专属回复。" }
-
 # =============================================================================
 # Conversational features and proactive messaging
 # 对话功能与主动消息
@@ -521,6 +488,31 @@ enabled = true
 # Example task fields: id, name, enabled, feature, message, time,
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
+
+[messaging.poke]
+# EN: Poke replies need no feature switch. User reply > group reply > permitted
+# random command > generic hint. Blacklists and existing permissions still apply.
+# ZH: 戳一戳无需单独开启 feature。用户回复优先于群回复；未命中时随机推荐当前用户
+# 有权限的指令，无候选时使用通用提示。仍遵守黑名单，features.help.ignored_plugins
+# 继续同时隐藏帮助菜单和戳一戳推荐中的插件。
+# Default: 60.0; EN: Per-group rate-limit window. ZH: 每群限流窗口秒数。
+window_seconds = 60.0
+# Default: 3; EN: Maximum replies per group/window. ZH: 每群每个窗口最多回复次数。
+max_per_window = 3
+# Default: 5.0; EN: Initial weight of new commands. ZH: 新命令初始推荐权重。
+new_command_initial_weight = 5.0
+# Default: 5.0; EN: Half-life of extra weight in days. ZH: 额外推荐权重的半衰期天数。
+new_command_half_life_days = 5.0
+
+# EN: Optional group alias/ID replies; user-specific replies take priority.
+# ZH: 可选群别名/群号回复，优先级低于用户专属回复。数字 ID 和中文别名作为 key 时加引号。
+# [messaging.poke.group_replies]
+# example_group = "你戳了戳机器人。"
+
+# EN: Optional user alias/QQ ID replies. This is independent of mention_replies.
+# ZH: 可选用户别名/QQ 号专属回复，与 AT 专属回复 mention_replies 独立。
+# [messaging.poke.user_replies]
+# example_user = "这是给该用户的专属回复。"
 
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]

@@ -37,9 +37,7 @@ async def find_rank_by_score(  # noqa: C901, PLR0913
 
     async def fetch_scores(indexes: Sequence[int]) -> list[int | None]:
         if fetch_rank_items is None:
-            scores = await asyncio.gather(
-                *(fetch_score(index) for index in indexes)
-            )
+            scores = await asyncio.gather(*(fetch_score(index) for index in indexes))
             return list(scores)
         items = await fetch_rank_items(
             game,
@@ -62,6 +60,7 @@ async def find_rank_by_score(  # noqa: C901, PLR0913
         parallelism=parallelism,
         fetch_scores=fetch_scores,
     )
+    result.budget_exhausted = score_range.budget_exhausted
     if score_range.last_index is None:
         return result
 
@@ -216,9 +215,13 @@ def _nearby_page_starts(
     starts: list[int] = []
     distance = 0
     while len(starts) < page_limit:
-        candidates = (center,) if distance == 0 else (
-            center - distance * page_size,
-            center + distance * page_size,
+        candidates = (
+            (center,)
+            if distance == 0
+            else (
+                center - distance * page_size,
+                center + distance * page_size,
+            )
         )
         added = False
         for start in candidates:
@@ -251,6 +254,8 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
     parallelism: int = 1,
 ) -> RankLookupResult:
     start = 0
+    result.scanned_count = 0
+    result.scan_complete = False
     while start < limit:
         remaining_pages = (limit - start + page_size - 1) // page_size
         batch_size = min(max(1, parallelism), remaining_pages)
@@ -278,6 +283,7 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
 
         for page_start, items in zip(starts, pages, strict=True):
             end = min(page_start + page_size - 1, limit - 1)
+            result.scanned_count = page_start + min(len(items), end - page_start + 1)
             for offset, item in enumerate(items[: end - page_start + 1]):
                 if item.id == user_id:
                     result.rank = page_start + offset + 1
@@ -285,8 +291,12 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
                     result.observed_score = item.score
                     return result
             if len(items) < end - page_start + 1:
+                result.scan_complete = True
+                result.searched_limit = result.scanned_count
                 return result
 
         start += page_size * len(starts)
 
+    result.scan_complete = True
+    result.searched_limit = result.scanned_count
     return result

@@ -585,6 +585,39 @@ unknown_command_field = true
     assert "messaging.commands[0].unknown_command_field" in output
 
 
+def test_legacy_poke_fields_are_reported_without_migration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.help]
+ignored_plugins = ["seer_query"]
+poke_replies = { "100" = "old group" }
+poke_user_replies = { "200" = "old user" }
+hint_window_seconds = 10.0
+hint_max_per_window = 1
+poke_new_command_initial_weight = 2.0
+poke_new_command_half_life_days = 1.0
+""", encoding="utf-8",
+    )
+    config = load_settings(config_path)
+    output = capsys.readouterr().err
+    for field in (
+        "poke_replies", "poke_user_replies", "hint_window_seconds",
+        "hint_max_per_window", "poke_new_command_initial_weight",
+        "poke_new_command_half_life_days",
+    ):
+        assert f"features.help.{field}" in output
+    assert config.messaging.poke.group_replies == {}
+    assert config.messaging.poke.user_replies == {}
+    assert config.messaging.poke.window_seconds == 60.0  # noqa: PLR2004
+    assert config.messaging.poke.max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
+    assert config.messaging.poke.new_command_initial_weight == 5.0  # noqa: PLR2004
+    assert config.messaging.poke.new_command_half_life_days == 5.0  # noqa: PLR2004
+    assert config.features.help.ignored_plugins == ["seer_query"]
+
+
 def test_unknown_fields_do_not_hide_invalid_known_fields(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
@@ -826,9 +859,9 @@ main_group = ["all"]
 [features.user_policy]
 owner = ["blacklist"]
 
-[features.help]
-poke_replies = { main_group = "group reply" }
-poke_user_replies = { owner = "user reply" }
+[messaging.poke]
+group_replies = { main_group = "group reply" }
+user_replies = { owner = "user reply" }
 
 [bilibili.push.groups.main_group]
 accounts = []
@@ -871,6 +904,8 @@ default_at_users = ["at_user", "202"]
     config = load_settings(config_path)
 
     assert config.superuser_ids == frozenset({200, 300})
+    assert config.messaging.poke.group_replies == {"main_group": "group reply"}
+    assert config.messaging.poke.user_replies == {"owner": "user reply"}
     assert config.onebot_references.resolve_groups(
         ["main_group", "100"],
         location="test.groups",
@@ -884,6 +919,14 @@ default_at_users = ["at_user", "202"]
 @pytest.mark.parametrize(
     ("toml", "expected_path"),
     [
+        (
+            '[messaging.poke.group_replies]\nunknown_group = "reply"',
+            "messaging.poke.group_replies.unknown_group",
+        ),
+        (
+            '[messaging.poke.user_replies]\nunknown_user = "reply"',
+            "messaging.poke.user_replies.unknown_user",
+        ),
         (
             """
 [features.group_policy]
@@ -1805,7 +1848,7 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (
-        app_config.features.help.hint_max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
+        app_config.messaging.poke.max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
     assert app_config.activity.lead_hours == [11, 1]
     assert not app_config.messaging.command_cooldown.enabled

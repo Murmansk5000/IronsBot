@@ -510,6 +510,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
             nick_error=nick_error,
             available_modes=peak_result.available_modes,
             mode_errors=dict(peak_result.mode_errors),
+            query_id=peak_result.query_id,
         ),
         extra_errors,
     )

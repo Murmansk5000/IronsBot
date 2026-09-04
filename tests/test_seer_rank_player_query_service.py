@@ -20,6 +20,47 @@ ACHIEVEMENT_SCORE = 5000
 CURRENT_PEAK_SCORE = 300033
 
 
+@pytest.mark.asyncio
+async def test_pet_profile_and_rank_scores_are_labelled_separately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile_score = 4894
+    board_score = 4646
+    monkeypatch.setattr(
+        rank_player_query,
+        "fetch_unity_part_one",
+        AsyncMock(return_value=SimpleNamespace(pet_kind_num=profile_score)),
+    )
+    rank = build_rank_stub(AsyncMock())
+    monkeypatch.setattr(
+        rank,
+        "find_pet_kind_rank",
+        AsyncMock(
+            return_value=RankLookupResult(
+                title="精灵图鉴",
+                score_name="项",
+                rank=2,
+                score=board_score,
+                observed_score=board_score,
+                queried=True,
+            )
+        ),
+    )
+    local_rank, upsert = build_local_rank_stub(enabled=True)
+    message = await rank_player_query.fetch_rank_player_message(
+        rank,
+        local_rank,
+        FakeGame(),
+        command=RankPlayerCommand(rank_key="精灵图鉴", player_id=PLAYER_ID),
+    )
+    assert "个人接口：4894项｜榜单：4646项｜全服第2" in message
+    assert upsert.await_args is not None
+    assert (
+        upsert.await_args.kwargs["current_metrics"]["pet_kind_count"]["value"]
+        == profile_score
+    )
+
+
 class FakeGame:
     async def get_user_info(self, user_id: int) -> object:
         return SimpleNamespace(user_id=user_id, nick="测试玩家")
@@ -95,8 +136,7 @@ async def test_rank_player_query_fetches_only_achievement_source() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rank_player_query_writes_only_current_metric(
-) -> None:
+async def test_rank_player_query_writes_only_current_metric() -> None:
     async def fake_find_rank(_game: object, **_kwargs: Any) -> RankLookupResult:
         return RankLookupResult(
             title="成就点数",
@@ -110,9 +150,7 @@ async def test_rank_player_query_writes_only_current_metric(
     rank = build_rank_stub(fake_find_rank)
     local_rank, upsert = build_local_rank_stub(
         enabled=True,
-        summary=LocalRankSummary(
-            sample_ranks={"achievement_score": "样本前10%"}
-        ),
+        summary=LocalRankSummary(sample_ranks={"achievement_score": "样本前10%"}),
     )
 
     message = await rank_player_query.fetch_rank_player_message(
@@ -219,7 +257,7 @@ async def test_peak_rank_player_query_retries_without_stale_forever_score(
     )
 
     assert calls == [400000, None]
-    assert "竞技段位：王者33星｜全服第9" in message
+    assert "竞技段位：个人接口：圣皇0星｜榜单：王者33星｜全服第9" in message
     assert upsert.await_args is not None
     stored = upsert.await_args.kwargs
     assert stored["current_metrics"]["peak_standard"]["value"] == CURRENT_PEAK_SCORE

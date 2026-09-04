@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ironsbot.core.features import HelpConfig
+    from ironsbot.config.models.messaging import PokeConfig
 
 _LOGGER = logging.getLogger(__name__)
 POKE_PROMOTION_BASELINE_COMMIT = "f53f7dae"
@@ -39,11 +39,11 @@ class PokePromotionService:
     half_life_days: float
 
     @classmethod
-    def from_packaged(cls, config: HelpConfig) -> PokePromotionService:
+    def from_packaged(cls, config: PokeConfig) -> PokePromotionService:
         return cls.from_path(config, _MANIFEST_PATH)
 
     @classmethod
-    def from_path(cls, config: HelpConfig, path: Path) -> PokePromotionService:
+    def from_path(cls, config: PokeConfig, path: Path) -> PokePromotionService:
         introduced_at = _load_introduced_at(path)
         if introduced_at is None:
             _LOGGER.warning(
@@ -53,8 +53,8 @@ class PokePromotionService:
             introduced_at = {}
         return cls(
             introduced_at=introduced_at,
-            initial_weight=config.poke_new_command_initial_weight,
-            half_life_days=config.poke_new_command_half_life_days,
+            initial_weight=config.new_command_initial_weight,
+            half_life_days=config.new_command_half_life_days,
         )
 
     def weights_for(

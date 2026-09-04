@@ -21,7 +21,7 @@ GLOBAL_RANK_MISS_POSITION_STYLE = RankPositionTextStyle(
 )
 
 
-def format_rank_position_text(
+def format_rank_position_text(  # noqa: PLR0911
     result: RankLookupResult | None,
     *,
     style: RankPositionTextStyle = GLOBAL_RANK_POSITION_STYLE,
@@ -32,10 +32,23 @@ def format_rank_position_text(
     if result.excluded:
         return "不参与公开榜单"
 
+    if result.failure and result.fallback_cached_at is None:
+        return (
+            f"{result.failure}，名次未确认"
+            if "未确认" not in result.failure
+            else result.failure
+        )
+
     if result.rank is not None:
         return f"{style.ranked_prefix}{result.rank}{style.ranked_suffix}"
 
-    if result.queried and (style.include_zero_limit or result.searched_limit > 0):
-        return f"{style.unranked_prefix}{result.searched_limit}{style.unranked_suffix}"
+    if result.scan_complete:
+        return f"已完整查询前{result.scanned_count}条，未找到该玩家"
+
+    if result.budget_exhausted:
+        return "查询预算耗尽，名次未确认"
+
+    if result.queried:
+        return "名次未确认"
 
     return ""

@@ -433,14 +433,14 @@ class Settings(BaseModel):
             location="features.user_policy",
         )
         self._validate_mapping_refs(
-            self.features.help.poke_replies,
+            self.messaging.poke.group_replies,
             resolve=references.resolve_group,
-            location="features.help.poke_replies",
+            location="messaging.poke.group_replies",
         )
         self._validate_mapping_refs(
-            self.features.help.poke_user_replies,
+            self.messaging.poke.user_replies,
             resolve=references.resolve_user,
-            location="features.help.poke_user_replies",
+            location="messaging.poke.user_replies",
         )
         self._validate_mapping_refs(
             self.bilibili.push.groups,

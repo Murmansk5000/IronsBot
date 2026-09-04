@@ -19,6 +19,9 @@ from ironsbot.core.time import normalize_daily_time
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
 ENABLED_MENTION_USERS_REQUIRED_ERROR = "已启用的 AT 专属回复必须配置 user_ids"
+POKE_REPLY_REQUIRED_ERROR = (
+    "messaging.poke replies require non-empty group/user refs and messages"
+)
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
 COMMAND_ID_FORMAT_ERROR = (
     "command message action id may only contain letters, numbers, dots, "
@@ -536,10 +539,34 @@ class TeamAuditWelcomeConfig(BaseModel):
         return self
 
 
+class PokeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group_replies: dict[str, str] = Field(default_factory=dict)
+    user_replies: dict[str, str] = Field(default_factory=dict)
+    window_seconds: float = Field(default=60.0, gt=0)
+    max_per_window: int = Field(default=3, ge=1)
+    new_command_initial_weight: float = Field(default=5.0, ge=1.0)
+    new_command_half_life_days: float = Field(default=5.0, gt=0.0)
+
+    @field_validator("group_replies", "user_replies")
+    @classmethod
+    def normalize_replies(cls, value: dict[str, str]) -> dict[str, str]:
+        replies: dict[str, str] = {}
+        for raw_target, raw_message in value.items():
+            target = raw_target.strip()
+            message = raw_message.strip()
+            if not target or not message:
+                raise ValueError(POKE_REPLY_REQUIRED_ERROR)
+            replies[target] = message
+        return replies
+
+
 class MessageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bot_routing: BotRoutingConfig = Field(default_factory=BotRoutingConfig)
+    poke: PokeConfig = Field(default_factory=PokeConfig)
     command_cooldown: CommandCooldownConfig = Field(
         default_factory=CommandCooldownConfig
     )

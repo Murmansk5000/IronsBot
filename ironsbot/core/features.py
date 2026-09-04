@@ -366,11 +366,6 @@ def _resolve_custom_all_features(
     return frozenset(declared)
 
 
-POKE_REPLY_REQUIRED_ERROR = (
-    "features.help.poke_replies requires non-empty group refs and messages"
-)
-
-
 def _coerce_alias_mapping(
     value: object,
     *,
@@ -395,24 +390,6 @@ class HelpConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ignored_plugins: NormalizedStringList = Field(default_factory=list)
-    poke_replies: dict[str, str] = Field(default_factory=dict)
-    poke_user_replies: dict[str, str] = Field(default_factory=dict)
-    hint_window_seconds: float = Field(default=60.0, gt=0)
-    hint_max_per_window: int = Field(default=3, ge=1)
-    poke_new_command_initial_weight: float = Field(default=5.0, ge=1.0)
-    poke_new_command_half_life_days: float = Field(default=5.0, gt=0.0)
-
-    @field_validator("poke_replies", "poke_user_replies")
-    @classmethod
-    def normalize_poke_replies(cls, value: dict[str, str]) -> dict[str, str]:
-        replies: dict[str, str] = {}
-        for raw_group, raw_message in value.items():
-            group = raw_group.strip()
-            message = raw_message.strip()
-            if not group or not message:
-                raise ValueError(POKE_REPLY_REQUIRED_ERROR)
-            replies[group] = message
-        return replies
 
 
 class FeatureConfig(BaseModel):
