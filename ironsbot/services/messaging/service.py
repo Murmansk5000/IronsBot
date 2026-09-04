@@ -122,15 +122,11 @@ class MessagingService:
         user_id: int,
         group_id: int,
     ) -> MessageMentionReplyAction | None:
+        if self._features.is_conversation_blocked(user_id, group_id):
+            return None
         for action in self._config.mention_replies:
-            if (
-                action.enabled
-                and user_id in self._features.resolve_user_refs(action.user_ids)
-                and self._features.is_group_feature_allowed(
-                    user_id,
-                    group_id,
-                    action.feature,
-                )
+            if action.enabled and user_id in self._features.resolve_user_refs(
+                action.user_ids
             ):
                 return action
         return None

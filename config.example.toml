@@ -458,6 +458,8 @@ enabled = true
 # ZH: 固定文本回复动作默认同时适用于私聊和群聊；实际在哪些位置回复由 feature 的用户/群策略决定。
 # `at_user_ids` accepts user aliases or QQ IDs, only applies to group replies,
 # and is ignored in private chats.
+# 群内可发送“口令 @群成员”，回复会 @ 指定成员而不是发起人；配置的 at_user_ids 仍追加并去重。
+# 此用法仅适用于完整匹配的固定口令，不适用于关键词回复，不支持 @全体成员。
 # Example action fields: id, enabled, feature, message, commands, at_user_ids.
 # `id` uniquely identifies the action. `feature` declares its permission key;
 # that key may then be referenced by features.bundles/group_policy/user_policy.
@@ -493,17 +495,16 @@ enabled = true
 # another message. It does not affect private messages or ordinary @ replies.
 # ZH: 用户专属 AT 回复。仅当指定用户在群聊中 AT 机器人时触发；回复其它消息后
 # 再 AT 机器人也会触发。私聊和未 AT 的普通消息不会触发。
-# `user_ids` accepts user aliases or QQ IDs. The feature must be enabled in
-# the target group policy; this reply runs before AI @ handling.
-# `user_ids` 可写用户别名或 QQ 号；feature 仍需在目标群策略中启用，且本回复
-# 会优先于 AI 的 AT 处理。
+# `user_ids` accepts user aliases or QQ IDs. No feature or group policy is needed.
+# This reply runs before AI @ handling and still respects conversation blacklists.
+# `user_ids` 可写用户别名或 QQ 号；无需配置 feature 或群策略。
+# 默认在所有群生效，优先于 AI 的 AT 处理，仍遵守黑名单；enabled = false 可关闭。
 #
 # [[messaging.mention_replies]]
 # id = "example_user_mention"
 # name = "示例用户 AT 回复"
 # user_ids = ["example_user"]
 # message = "123"
-# feature = "example_user_mention"
 
 # Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its
