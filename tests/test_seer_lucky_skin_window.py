@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date
@@ -17,7 +18,7 @@ from ironsbot.config.models.seer import (
     PlayerAccountConfig,
 )
 from ironsbot.config.player_accounts import build_player_account_registry
-from ironsbot.core.messaging import MessageTarget, TargetSendSummary
+from ironsbot.core.messaging import DeliveryReceipt, MessageTarget, TargetSendSummary
 from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.integrations.storage.lucky_skin_watch import (
     SqliteLuckySkinWatchPreferenceStore,
@@ -218,7 +219,7 @@ class _Delivery:
     ) -> TargetSendSummary:
         del message
         return TargetSendSummary([], [])
-    async def send_target_messages(
+    async def send_target_messages(  # noqa: PLR0913
         self,
         target_messages: Iterable[tuple[MessageTarget, Any]],
         *,
@@ -226,14 +227,26 @@ class _Delivery:
         action_name: str = "message action",
         message_limiter: MessageLimiter | None = None,
         subscription_key: str | None = None,
+        receipt_handler: Any | None = None,
+        verify_history: bool = False,
     ) -> TargetSendSummary:
-        del bot, action_name, message_limiter
+        del bot, action_name, message_limiter, verify_history
         selected = list(target_messages)
         self.batches += 1
         self.messages.extend(
             ([target], str(message), subscription_key)
             for target, message in selected
         )
+        if receipt_handler is not None:
+            for target, _message in selected:
+                receipt_handler(
+                    DeliveryReceipt(
+                        target=target,
+                        bot_id=2947993138,
+                        message_id=target.target_id,
+                        history_status="confirmed",
+                    )
+                )
         return TargetSendSummary([target for target, _message in selected], [])
 
     def default_bot(self) -> None:
@@ -669,6 +682,61 @@ def test_daily_results_are_cached_per_configured_player(tmp_path: Path) -> None:
     asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
     assert len(game.calls) == EXPECTED_DAILY_NOTICES
     assert len(delivery.messages) == EXPECTED_DAILY_NOTICES
+
+
+def test_daily_notifications_log_query_and_delivery_receipts(
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    service, _game, delivery, _bindings, _headless = _service(tmp_path)
+    caplog.set_level(logging.INFO, logger="ironsbot.services.seer.lucky_skin_window")
+
+    asyncio.run(service.send_daily_notifications(cast("MessageDelivery", delivery)))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "daily task started" in message and "targets=2" in message
+        for message in messages
+    )
+    assert any(
+        "daily query succeeded" in message
+        and "player_id=90001" in message
+        and "skin_ids=(101, 102, 103, 104)" in message
+        for message in messages
+    )
+    assert any(
+        "daily delivery receipt" in message
+        and "player_id=90001" in message
+        and "message_id=1001" in message
+        and "history_status=confirmed" in message
+        for message in messages
+    )
+
+
+def test_daily_delivery_history_failure_is_logged_without_a_notification(
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    service, _game, _delivery, _bindings, _headless = _service(tmp_path)
+    target = MessageTarget("private", 1001)
+    caplog.set_level(logging.ERROR, logger="ironsbot.services.seer.lucky_skin_window")
+
+    service._log_daily_delivery_receipt(
+        DeliveryReceipt(
+            target=target,
+            bot_id=2947993138,
+            message_id=1001,
+            history_status="missing",
+            history_error="get_msg returned no message",
+        ),
+        day="2026-08-29",
+        contexts={target: (90001, (101, 102, 103, 104))},
+    )
+
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelno == logging.ERROR
+    assert "player_id=90001" in caplog.records[0].getMessage()
+    assert "history_error=get_msg returned no message" in caplog.records[0].getMessage()
 
 
 def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> None:
