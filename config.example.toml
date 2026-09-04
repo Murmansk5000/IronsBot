@@ -987,6 +987,11 @@ interaction_patterns = ["投票", "应援", "报名", "问卷", "创作激励", 
 # group_a = ["sample_worker"]
 # group_b = ["all"]
 
+[operations.server_status]
+# Ordinary status commands; replaces the entire default list when specified.
+# 普通开服状态口令；配置后整体替换默认列表，不影响管理员命令。
+commands = ["开服了吗", "开服了嘛", "开服了没", "开服没", "关服了吗", "关服了嘛", "开了吗", "关了吗"]
+
 [operations.headless]
 # EN: Connection, heartbeat, timeout, and reconnect parameters for every public
 # query worker. References accept an account name, alias, numeric string, or player ID.
