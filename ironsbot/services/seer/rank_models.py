@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from collections.abc import Mapping
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +51,25 @@ class RankLookupResult:
     queried: bool = False
     failure: str | None = None
     fallback_cached_at: float | None = None
+    fetched_at: float | None = None
     cost: RankLookupCost = field(default_factory=RankLookupCost)
+
+    def record_page(self, start: int, page: RankPageResult) -> None:
+        """Retain the oldest page evidence and its observed query cost."""
+        self.include_observation(page.fetched_at)
+        self.queried = True
+        self.cost.page_starts.append(start)
+        if page.from_cache:
+            self.cost.cache_page_hits += 1
+        else:
+            self.cost.online_page_fetches += 1
+
+    def include_observation(self, fetched_at: float) -> None:
+        self.fetched_at = (
+            fetched_at
+            if self.fetched_at is None
+            else min(self.fetched_at, fetched_at)
+        )
 
 
 @dataclass(slots=True)
@@ -81,7 +103,8 @@ class RankScoreSearchResult:
     total_count: int = 0
     scanned_count: int = 0
     truncated: bool = False
-    fetched_at: float = 0.0
+    budget_exhausted: bool = False
+    fetched_at: float | None = None
     items: list[RankScoreSearchItem] = field(default_factory=list)
     higher_gap: RankScoreGap | None = None
     lower_gap: RankScoreGap | None = None
@@ -99,6 +122,15 @@ class RankScoreMissProof:
 class RankPageResult:
     items: list[Any]
     fetched_at: float
+    from_cache: bool = False
+
+
+@dataclass(slots=True)
+class RankRangeResult:
+    """A composed window; no page read means no observation timestamp."""
+
+    items: list[Any]
+    fetched_at: float | None
     from_cache: bool = False
 
 

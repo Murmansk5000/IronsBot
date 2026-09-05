@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
-from ironsbot.services.operations.request_feedback import send_request_feedback
 from nonebot.exception import FinishedException
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -20,6 +19,7 @@ from ironsbot.plugins.onebot.seer.query.commands.player_context import (
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
@@ -176,6 +176,7 @@ def test_player_detail_reuses_the_base_snapshot(
         more_info=SimpleNamespace(reg_time=1_700_000_000),
         online_info=None,
         team_name="snapshot team",
+        fetched_at=1_700_000_000,
     )
     state: dict[str, object] = {
         PLAYER_ID_KEY: PLAYER_ID,

@@ -375,6 +375,7 @@ async def test_collection_menu_snapshot_reuses_confirmed_nick_and_more_info(
         more_info=SimpleNamespace(total_achieve=5760, pet_all_num=1231),
         online_info=None,
         team_name="snapshot team",
+        fetched_at=1_700_000_000,
     )
 
     reply = await fetch_player_shortcut_reply(
