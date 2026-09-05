@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import io
 import tarfile
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import nonebot
 import pytest
 
+from ironsbot.app import private_extensions
 from ironsbot.app.private_extensions import (
     PRIVATE_EXTENSIONS_ROOT,
     PrivateExtensionCatalog,
@@ -25,9 +26,6 @@ from ironsbot.services.operations.docker_models import (
     DockerImageArchiveRequest,
     DockerImageInfo,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _package_archive(
@@ -124,6 +122,127 @@ def test_invalid_new_archive_preserves_last_valid_package(tmp_path: Path) -> Non
         PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
     )
     assert catalog.plugin_modules == ("ironsbot_private_lineup.plugin",)
+
+
+def test_valid_new_archive_replaces_the_current_package(tmp_path: Path) -> None:
+    install_private_extension_archive(_package_archive(), tmp_path)
+
+    manifest = install_private_extension_archive(
+        _package_archive(module="ironsbot_private_replacement.plugin"),
+        tmp_path,
+    )
+
+    assert manifest.plugin_modules == ("ironsbot_private_replacement.plugin",)
+    catalog = PrivateExtensionCatalog.from_config(
+        PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
+    )
+    assert catalog.plugin_modules == ("ironsbot_private_replacement.plugin",)
+
+
+@pytest.mark.parametrize("fail_backup", [False, True])
+def test_directory_switch_failure_preserves_current_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, fail_backup: bool
+) -> None:
+    install_private_extension_archive(_package_archive(), tmp_path)
+    original_move = private_extensions._move_extension_directory
+
+    def fail_switch(source: Path, destination: Path) -> None:
+        failing_step = (
+            source.name == "current"
+            if fail_backup
+            else source.name.startswith(".staging-")
+        )
+        if failing_step:
+            msg = "injected switch failure"
+            raise PermissionError(msg)
+        original_move(source, destination)
+
+    monkeypatch.setattr(private_extensions, "_move_extension_directory", fail_switch)
+    with pytest.raises(PermissionError, match="injected switch failure"):
+        install_private_extension_archive(
+            _package_archive(module="ironsbot_private_replacement.plugin"), tmp_path
+        )
+
+    catalog = PrivateExtensionCatalog.from_config(
+        PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
+    )
+    assert catalog.plugin_modules == ("ironsbot_private_lineup.plugin",)
+    assert not list(tmp_path.glob(".previous-*"))
+
+
+def test_failed_rollback_retains_valid_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_private_extension_archive(_package_archive(), tmp_path)
+    original_move = private_extensions._move_extension_directory
+
+    def fail_install_and_restore(source: Path, destination: Path) -> None:
+        if destination.name == "current":
+            msg = "injected destination lock"
+            raise PermissionError(msg)
+        original_move(source, destination)
+
+    monkeypatch.setattr(
+        private_extensions, "_move_extension_directory", fail_install_and_restore
+    )
+    with pytest.raises(PrivateExtensionError, match="rollback failed") as failure:
+        install_private_extension_archive(
+            _package_archive(module="ironsbot_private_replacement.plugin"), tmp_path
+        )
+
+    backups = list(tmp_path.glob(".previous-*"))
+    assert len(backups) == 1
+    assert str(backups[0]) in str(failure.value)
+    assert (backups[0] / "ironsbot_private_lineup" / "plugin.py").is_file()
+    assert not (tmp_path / "current").exists()
+
+
+def test_failed_first_install_never_exposes_partial_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def deny_move(_source: Path, _destination: Path) -> None:
+        msg = "injected first install failure"
+        raise PermissionError(msg)
+
+    monkeypatch.setattr(private_extensions, "_move_extension_directory", deny_move)
+    with pytest.raises(PermissionError, match="first install failure"):
+        install_private_extension_archive(_package_archive(), tmp_path)
+
+    assert not (tmp_path / "current").exists()
+    assert not list(tmp_path.glob(".staging-*"))
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_directory_move_has_bounded_permission_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, persistent: bool
+) -> None:
+    source, destination = tmp_path / "source", tmp_path / "destination"
+    source.mkdir()
+    (source / "content").write_bytes(b"complete package")
+    original_rename = Path.rename
+    attempts: list[Path] = []
+    waits: list[float] = []
+
+    def locked_rename(path: Path, target: Path) -> Path:
+        attempts.append(path)
+        if persistent or len(attempts) == 1:
+            msg = "injected lock"
+            raise PermissionError(msg)
+        return original_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", locked_rename)
+    monkeypatch.setattr(private_extensions.time, "sleep", waits.append)
+    if persistent:
+        with pytest.raises(PermissionError, match="injected lock"):
+            private_extensions._move_extension_directory(source, destination)
+        assert len(attempts) == private_extensions._DIRECTORY_MOVE_ATTEMPTS
+        assert source.is_dir()
+        assert not destination.exists()
+    else:
+        private_extensions._move_extension_directory(source, destination)
+        assert (destination / "content").read_bytes() == b"complete package"
+        assert not source.exists()
+    assert len(waits) == len(attempts) - 1
 
 
 def test_private_manifest_rejects_plugin_directory_discovery(tmp_path: Path) -> None:

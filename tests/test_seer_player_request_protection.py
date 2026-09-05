@@ -10,6 +10,10 @@ from ironsbot.services.operations.headless_pool import (
     current_headless_request_priority,
     current_headless_workflow,
 )
+from ironsbot.services.operations.request_feedback import (
+    request_feedback_scope,
+    send_request_feedback,
+)
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestPausedError,
     PlayerRequestProtectionService,
@@ -76,6 +80,36 @@ def _service(
         ),
         headless,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_workflow_uses_entry_feedback_context(*, enabled: bool) -> None:
+    service, _headless = _service(enabled=enabled)
+    messages: list[tuple[str, bool]] = []
+
+    async def send(label: str, *, queued: bool) -> None:
+        messages.append((label, queued))
+
+    async def operation() -> str:
+        workflow = current_headless_workflow()
+        if enabled:
+            assert workflow is not None
+            assert workflow.feedback is feedback
+            await send_request_feedback(queued=True, feedback=workflow.feedback)
+        else:
+            assert workflow is None
+            await send_request_feedback(queued=True)
+        return "result"
+
+    with request_feedback_scope("entry", send) as feedback:
+        result = await service.run(
+            operation, actor=_actor(USER_ID), label="internal workflow",
+        )
+        await send_request_feedback(queued=False)
+
+    assert result == "result"
+    assert messages == [("entry", enabled)]
 
 
 def test_workflows_can_progress_concurrently_before_packet_scheduling() -> None:

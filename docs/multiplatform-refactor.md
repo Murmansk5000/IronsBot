@@ -48,7 +48,48 @@ Task     [██████████] completed only after code, tests, and 
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 当前验证进度（2026-08-15）
+## 本轮验证（2026-09-05）
+
+总任务 `[███□□□□□]`：阶段账本仍为 3/8，本轮只完成阶段内工作项；尚未验收的
+跨仓库发布、真实平台和素材完整性门槛保持未完成，暂无可靠总体 ETA。
+
+- 本地 `main` 仍为 `f19c7089`，本轮只读取该引用，没有合并到 V5。
+- 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
+  也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
+- 私有扩展安装去掉部分复制回退，增加有限权限重试；激活失败恢复旧包，恢复失败
+  保留有效备份并报告路径。见
+  [安装失败保护 Spec](specs/2026-09-05-extension-install-failure-safety.md)，
+  提交 `3d5590a6`，安装/启动测试 26 passed。
+- 新增内容菜单规划迁到 `services.seer.new_content_menu`；OneBot 只保留权限、会话、
+  渲染适配与详情服务调用。普通预告/版本/赛季查询适配器降到 95 行，未保留旧菜单
+  实现或重导出。见 [菜单边界 Spec](specs/2026-09-05-new-content-menu-boundary.md)。
+- 本轮完整回归 1541 passed；其后类型边界修正的相关测试 12 passed。全仓
+  BasedPyright 0 errors，Ruff、compileall 与 diff 检查通过。
+- 没有新增运行依赖。再次检查本机 Docker 时 Linux engine pipe 不存在，实际镜像
+  大小与层体积仍待可用构建环境测量。文件职责拆分不等同于镜像变小。
+- 镜像层审计发现，COPY wheelhouse 后再删除仍会保留其镜像层；V5 改为 BuildKit
+  只读挂载并冻结运行依赖导出。发布测量绑定本次构建 digest 并上传逐层记录；
+  Docker 静态与 Bash 模拟测量测试 16 passed。见
+  [镜像预算 Spec](specs/2026-08-15-runtime-image-budget.md)，实际构建减重尚未验收。
+- 查询提示统一到 `services.operations.request_feedback`：入口、玩家保护与封包
+  调度共享同一上下文及一次性发送状态，工作流可显式保存反馈对象。删除未使用的
+  整数 QQ 去重器及 OneBot 群身份辅助模块，现用 ActorRef 去重逻辑不变。生产代码
+  净减少 258 行，无配置或数据库迁移。见
+  [查询提示 Spec](specs/2026-09-05-request-feedback-consolidation.md)。全仓回归
+  1551 passed（87 条已有依赖告警）；BasedPyright、Ruff、compileall、diff 检查通过。
+- 两套离线迁移共用 `state_migration_files` 的安装/删除/补偿恢复计划。修复 sidecar
+  失败漏恢复、旧库清理中途失败丢失已删除源文件的问题；不引入运行时兼容。
+  [迁移安装 Spec](specs/2026-09-05-offline-state-installation.md) 的临时库故障测试
+  28 passed，全仓 1562 passed（87 条已有依赖告警），类型、Ruff、编译、diff 均通过。
+  未操作生产数据；只保证可捕获异常下的补偿恢复，不宣称断电时的跨库原子性。
+- `SqliteDatabase` 同版本连接改为只读检查；仅有待执行迁移时获取写锁，锁内重查
+  版本。两个真实 WAL 并发读用例由锁超时转为通过；初始化竞争、过新版本、替换文件
+  重查和失败回滚均有测试。见
+  [SQLite 读路径 Spec](specs/2026-09-05-sqlite-schema-read-path.md)。专项 23 passed，
+  全仓 1573 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
+  无新配置、schema 或运行依赖；不把此项误报为镜像体积或生产查询耗时测量。
+
+## 既有阶段验证基线（2026-08-15）
 
 ```text
 总任务  [███░░░░░░░]  已完成阶段 3/8；其余阶段含已验证子项，但尚未完成阶段门
@@ -628,6 +669,12 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会
   明确报告不支持，不再用全局 baseline 猜测每一类内容是否可比较。
+- 新增内容的成就、技能和群星牌圣域详情文本由
+  `services.seer.new_content_details` 统一格式化；OneBot 菜单仅负责将该纯文本投递到
+  当前会话，不得重新内联同一批领域展示规则。
+- 新增内容分类比较、自动展开、聚焦与选项规划由
+  `services.seer.new_content_menu` 持有；`commands.new_content` 把结果适配为既有
+  OneBot Prompt。领域规划不导入 NoneBot；原 `commands.data_queries` 不再参与菜单。
 
 **命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
 新命令不得在 matcher 内自建第二份示例、权限或帮助说明。

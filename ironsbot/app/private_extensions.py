@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 import tarfile
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
@@ -33,6 +34,8 @@ PRIVATE_EXTENSIONS_ROOT = "ironsbot_extensions"
 PRIVATE_EXTENSIONS_MANIFEST = "pyproject.toml"
 PRIVATE_EXTENSIONS_CURRENT_DIRECTORY = "current"
 MAX_PRIVATE_EXTENSION_ARCHIVE_BYTES = 16 * 1024 * 1024
+_DIRECTORY_MOVE_ATTEMPTS = 3
+_DIRECTORY_MOVE_RETRY_SECONDS = 0.1
 _PYTHON_MODULE_PATTERN = re.compile(
     r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\Z"
 )
@@ -379,13 +382,34 @@ def _replace_current_extension_package(destination_root: Path, staging: Path) ->
     moved_current = False
     try:
         if current.exists():
-            current.replace(previous)
+            _move_extension_directory(current, previous)
             moved_current = True
-        staging.replace(current)
+        _move_extension_directory(staging, current)
     except Exception:
-        if moved_current and previous.exists() and not current.exists():
-            previous.replace(current)
+        if moved_current:
+            try:
+                _move_extension_directory(previous, current)
+            except OSError as error:
+                msg = (
+                    "private extension rollback failed; "
+                    f"valid package retained at {previous}"
+                )
+                raise PrivateExtensionError(msg) from error
         raise
-    finally:
+    else:
         if previous.exists():
             shutil.rmtree(previous, ignore_errors=True)
+
+
+def _move_extension_directory(source: Path, destination: Path) -> None:
+    """Retry temporary file locks without exposing a partially copied package."""
+
+    for attempt in range(_DIRECTORY_MOVE_ATTEMPTS):
+        try:
+            source.rename(destination)
+        except PermissionError:  # noqa: PERF203 - bounded filesystem retry
+            if attempt == _DIRECTORY_MOVE_ATTEMPTS - 1:
+                raise
+            time.sleep(_DIRECTORY_MOVE_RETRY_SECONDS)
+        else:
+            return

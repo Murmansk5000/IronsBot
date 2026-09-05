@@ -286,6 +286,14 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "COPY . /app/" not in dockerfile
     assert "ENV PYTHONDONTWRITEBYTECODE=1" in dockerfile
     assert "pip install --no-cache-dir --no-compile" in dockerfile
+    assert "uv export --frozen --no-dev" in dockerfile
+    assert dockerfile.startswith("# syntax=docker/dockerfile:1\n")
+    assert "COPY --from=requirements_stage /wheel" not in dockerfile
+    assert (
+        "RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel"
+        in dockerfile
+    )
+    assert "rm -rf /wheel" not in dockerfile
     assert "/site-packages/pip" in dockerfile
     assert "/site-packages/setuptools" in dockerfile
     assert "/site-packages/wheel" in dockerfile
