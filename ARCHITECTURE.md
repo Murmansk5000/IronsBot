@@ -65,9 +65,9 @@ Current transition items are the OneBot-only configuration compilers and the
 renderer data lookups listed in the Phase 0 guard below. They keep the current
 OneBot application runnable; they are not the architecture that new
 cross-feature work should target. Within Phase 2,
-the standard NoneBot manifest discovery and the `MatcherFactory` construction
-boundary are verified sub-items; the phase itself remains in progress until
-its remaining bridge and ownership conditions are met. `PluginContribution` is
+the standard NoneBot manifest discovery, `MatcherFactory` construction, and
+public extension query/render/cache ports have passed phase acceptance (see
+the phase ledger for evidence). `PluginContribution` is
 the current plugin-local way to submit explicit runtime contributions; it is
 not an application registry or a catch-all authority for every plugin concern.
 Phase 4 removes renderer-owned persistence lookups. No new subsystem may be
@@ -468,6 +468,12 @@ core contract moves, update the external package in the same cross-repository
 phase; do not restore a deleted runtime module as a compatibility shim. An
 extension that still imports a removed path is an unvalidated dependency, even
 if the bundled application tests do not install it.
+
+Player-reference ownership must carry both `ActorRef` and `ConversationRef` to
+the shared resolver. Recognition and execution use the same alias-visibility
+decision, including privileged access; recognition must not load bindings or
+perform network requests. Extensions reuse this contract rather than maintain
+their own alias permission checks.
 
 Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,

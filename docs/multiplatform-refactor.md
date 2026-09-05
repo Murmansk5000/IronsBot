@@ -109,11 +109,19 @@ Task     [██████████] completed only after code, tests, and 
   仅由离线 CLI 路径调用。空/正常/重复/损坏/中断迁移测试、实际私有扩展测试通过。
   公共 1608 passed（87 条已有依赖告警），私有 24 passed，类型、Ruff、编译、diff 通过。
   未修改生产状态或 TOML；阶段 4/5/6/7 的完成条件不变。
+- 阶段 5 修复玩家别名认领与执行的权限分歧：共用 actor + conversation 的引用
+  lookup，六种公开玩家命令和私有阵容都沿同一接口，不新增 AI 保留词。
+  [认领一致性 Spec](specs/2026-09-05-player-reference-ownership.md) 修复前 6 项失败，
+  修复后专项 58 passed、公开全量 1644 passed、私有 26 passed；类型、Ruff、编译和
+  diff 检查通过。还复现了参数化榜单目录认领缺失，见 Phase 5 未完成项；总进度
+  保持 4/8。历史进度展示和私有扩展旧迁移文字已明确更新，无生产或依赖变更。
 
 ## 既有阶段验证基线（2026-08-15）
 
+本节仅记录当时的验收基线，不是当前进度；当前总进度见上方“本轮验证”。
+
 ```text
-总任务  [███░░░░░░░]  已完成阶段 3/8；其余阶段含已验证子项，但尚未完成阶段门
+历史基线（2026-08-15）：当时已完成阶段 3/8；不是当前状态
 Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
 当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
@@ -660,12 +668,11 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   OneBot matcher 只能把事件转换为 `MessageInputContext`，不得临时拼接别名 lookup
   或 resolver。私有阵容扩展的目标也是只通过该 resolver 的
   `has_known_reference()` 进行命令目录认领，真正的消息级解析仍由公开的详情扩展
-  入口完成；但当前外部包仍引用已迁出的
-  `runtime.commands` / `runtime.player_reference_commands`。私有包现已改为导入
-  `core.command_catalog` / `core.player_reference_commands`，并在私有仓库通过其真实
-  `pyproject.toml` 的 `nonebot.load_from_toml()` 隔离 smoke test；不得恢复旧 runtime
-  路径。剩余的 OneBot 可见性和公共 service 依赖仍须投影到 `ironsbot.extensions` 的
-  窄 context，完成前不得把该扩展计入完整跨仓库边界的完成证据。
+  入口完成。私有包现已导入 `core.command_catalog` / `core.player_reference_commands`，
+  其渲染、查询、持久化及可见性经 `ironsbot.extensions` 的窄 context 提供；生产代码
+  不再导入公共 service/integration/plugin 内部实现。真实 manifest 和公开端口验收
+  证据归入 Phase 2；不得恢复旧 runtime 路径。2026-09-05 的进一步审计发现别名
+  认领遗漏 actor 权限，见 [认领一致性 Spec](specs/2026-09-05-player-reference-ownership.md)。
 - `CommandContract.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
@@ -722,7 +729,13 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | 幸运橱窗 | `services.seer.lucky_skin_commands` | 事件转换、登录确认、回复和调度 | 已迁移 |
 | 关于 | `services.about_commands` | 事件转换、版本读取和回复 | 已迁移 |
 | 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
-| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 私有扩展的事件转换、阵容服务调用和回复 | 已迁出历史 `runtime.*` 命令模块并验证真实 manifest；待将剩余 OneBot/service 依赖投影为 extension context |
+| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 动作注册和公开 extension context 适配 | 已迁移，真实 manifest 和查询/渲染/缓存端口验收归入 Phase 2 |
+
+**Phase 5 未完成项的实际复现（2026-09-05）：** `专家榜15名` 可被
+`parse_rank_list_command()` 解析为第 15 名，但只加载真实榜单 contract 的目录对同一
+有 `seer_rank` 权限的私聊用户返回 `claims_direct_input=False`。参数化榜单语法尚未
+统一接入目录认领；必须复用领域解析器处理，不能加 AI 保留词。这项与完整玩家多榜
+失败/渐进返回验收尚未关闭，因此不能把 Phase 5 标成 completed。
 
 ### Phase 6 — 兜底、配置和错误语义
 
