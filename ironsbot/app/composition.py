@@ -5,6 +5,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
@@ -184,6 +185,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ai_service=ai,
         config=settings.bilibili,
     )
+    def feature_visible_for_extension(event: object, feature: str) -> bool:
+        return (
+            isinstance(event, Event)
+            and event_is_feature_visible_in_help(features, event, feature)
+        )
+
     extension_contexts = {
         "player_lineup": PlayerLineupExtensionServices(
             lineup_entries=PublishedPlayerLineupEntryResolver(seer_database),
@@ -199,7 +206,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 requests=player_requests,
             ),
             lineup_cache=PlayerLineupCacheServices(),
-            feature_visible=partial(event_is_feature_visible_in_help, features),
+            feature_visible=feature_visible_for_extension,
             _player_details=player_detail_extensions,
             player_id_resolver=player_id_resolver,
             settings=settings.operations.private_extensions.settings.get(
