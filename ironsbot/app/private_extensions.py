@@ -379,13 +379,22 @@ def _replace_current_extension_package(destination_root: Path, staging: Path) ->
     moved_current = False
     try:
         if current.exists():
-            current.replace(previous)
+            _move_extension_directory(current, previous)
             moved_current = True
-        staging.replace(current)
+        _move_extension_directory(staging, current)
     except Exception:
         if moved_current and previous.exists() and not current.exists():
-            previous.replace(current)
+            _move_extension_directory(previous, current)
         raise
     finally:
         if previous.exists():
             shutil.rmtree(previous, ignore_errors=True)
+
+
+def _move_extension_directory(source: Path, destination: Path) -> None:
+    """Move an extension directory, with a Windows-compatible fallback."""
+
+    try:
+        source.rename(destination)
+    except OSError:
+        shutil.move(str(source), str(destination))
