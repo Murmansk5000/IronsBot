@@ -1,8 +1,26 @@
-{% macro pet_cell(id, name, head_img, type_icon="", long_threshold=7, xlong_threshold=9) %}
-<div class="pet-cell">
+{% macro pet_cell(id, name, head_img, type_icon="", long_threshold=7, xlong_threshold=9, bag_icons=none, restriction=none) %}
+<div class="pet-cell{% if bag_icons %} bag-badges{% endif %}">
     <img class="pet-head-icon" src="{{ head_img }}" />
+    {% if bag_icons %}
+        {% if type_icon %}
+        <div class="bag-type-badge">
+            <img class="bag-type-background" src="{{ bag_icons.type_background }}" alt="" />
+            <img class="pet-type-icon" src="{{ type_icon }}" alt="" />
+        </div>
+        {% endif %}
+        {% if restriction is not none %}
+        <div class="bag-limit-badge" aria-label="限{{ restriction }}">
+            <img class="bag-limit-background" src="{{ bag_icons.ban_background if restriction == 0 else bag_icons.limit_background }}" alt="" />
+            {% if restriction == 0 %}
+            <img class="bag-ban-icon" src="{{ bag_icons.ban }}" alt="禁用" />
+            {% else %}
+            <span class="bag-limit-number">{{ restriction }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    {% endif %}
     <div class="pet-top-bar">
-        {% if type_icon %}<img class="pet-type-icon" src="{{ type_icon }}" />{% endif %}
+        {% if type_icon and not bag_icons %}<img class="pet-type-icon" src="{{ type_icon }}" />{% endif %}
         <span class="pet-id">{{ id }}</span>
     </div>
     <div

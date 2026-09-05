@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass
+from functools import cache as memoize
 from io import BytesIO
 from typing import TYPE_CHECKING, Literal, NamedTuple, TypedDict
 
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
 POOL_OVERHEAD = 18 * 2 + 1 * 2  # pool-section padding + border
 CONTAINER_PADDING = 20 * 2
 MAX_BASE_COLS = 10
-PEAK_POOL_CACHE_VERSION = 11
+PEAK_POOL_CACHE_VERSION = 12
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class PetInPoolDict(TypedDict):
 
 class PoolDict(TypedDict):
     label: str
+    restriction: int | None
     current_count: int
     previous_count: int | None
     rows: int
@@ -204,6 +206,7 @@ async def render_peak_pool(
         template_name="template.html.j2",
         templates={
             "pools": pool_dicts,
+            "bag_icons": _bag_icon_uris(),
             "pool_type": pool_type,
             "change_label": "大师池"
             if snapshot.master
@@ -222,6 +225,22 @@ async def render_peak_pool(
     )
     cache.put("peak_pool", content_key, result)
     return result
+
+
+@memoize
+def _bag_icon_uris() -> dict[str, str]:
+    names = {
+        "type_background": "newpetbagMainPanel_shuxingdi",
+        "limit_background": "peakjihad_sports_pool_numbg",
+        "ban_background": "peakjihad_sports_pool_banbg",
+        "ban": "ban",
+    }
+    return {
+        key: to_data_uri(
+            (PEAK_POOL_TEMPLATE_PATH / "images" / f"{name}.png").read_bytes()
+        )
+        for key, name in names.items()
+    }
 
 
 def _pool_grid_layout(snapshot: PeakPoolRenderSnapshot) -> PoolGridLayout:
@@ -633,6 +652,7 @@ def _pool_dicts(
 
     return [
         {
+            "restriction": None if snapshot.master else section.position,
             "label": (
                 ("未列入" if section.position is None else f"{section.position} 点")
                 if snapshot.master
