@@ -48,7 +48,25 @@ Task     [██████████] completed only after code, tests, and 
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 当前验证进度（2026-08-15）
+## 本轮验证（2026-09-05）
+
+总任务 `[███□□□□□]`：阶段账本仍为 3/8，本轮只完成阶段内工作项；尚未验收的
+跨仓库发布、真实平台和素材完整性门槛保持未完成，暂无可靠总体 ETA。
+
+- 本地 `main` 仍为 `f19c7089`，本轮只读取该引用，没有合并到 V5。
+- 私有扩展安装去掉部分复制回退，增加有限权限重试；激活失败恢复旧包，恢复失败
+  保留有效备份并报告路径。见
+  [安装失败保护 Spec](specs/2026-09-05-extension-install-failure-safety.md)，
+  提交 `3d5590a6`，安装/启动测试 26 passed。
+- 新增内容菜单规划迁到 `services.seer.new_content_menu`；OneBot 只保留权限、会话、
+  渲染适配与详情服务调用。普通预告/版本/赛季查询适配器降到 95 行，未保留旧菜单
+  实现或重导出。见 [菜单边界 Spec](specs/2026-09-05-new-content-menu-boundary.md)。
+- 本轮完整回归 1541 passed；其后类型边界修正的相关测试 12 passed。全仓
+  BasedPyright 0 errors，Ruff、compileall 与 diff 检查通过。
+- 没有新增运行依赖。再次检查本机 Docker 时 Linux engine pipe 不存在，实际镜像
+  大小与层体积仍待可用构建环境测量。文件职责拆分不等同于镜像变小。
+
+## 既有阶段验证基线（2026-08-15）
 
 ```text
 总任务  [███░░░░░░░]  已完成阶段 3/8；其余阶段含已验证子项，但尚未完成阶段门
@@ -631,6 +649,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 新增内容的成就、技能和群星牌圣域详情文本由
   `services.seer.new_content_details` 统一格式化；OneBot 菜单仅负责将该纯文本投递到
   当前会话，不得重新内联同一批领域展示规则。
+- 新增内容分类比较、自动展开、聚焦与选项规划由
+  `services.seer.new_content_menu` 持有；`commands.new_content` 把结果适配为既有
+  OneBot Prompt。领域规划不导入 NoneBot；原 `commands.data_queries` 不再参与菜单。
 
 **命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
 新命令不得在 matcher 内自建第二份示例、权限或帮助说明。

@@ -1,32 +1,37 @@
+import asyncio
 from typing import Literal
 
 import nonebot
+import pytest
+from nonebot.adapters.onebot.v11 import Message
 
 try:
     nonebot.get_driver()
 except ValueError:
     nonebot.init()
 
-from ironsbot.plugins.onebot.seer.query.commands.data_queries import (
+from ironsbot.plugins.onebot.seer.query.commands.new_content import (
     _content_prompt,
-    _focus_new_content_category,
-    _item_description,
-    _NewContentMenuLayout,
+    _render_content_prompt,
 )
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     NewContentItem,
     NewContentSnapshot,
+    format_new_content_item_description,
 )
 from ironsbot.services.seer.new_content_details import (
     format_new_content_autocard_sanctuary_effect_detail,
     format_new_content_skill_detail,
 )
+from ironsbot.services.seer.new_content_menu import (
+    NewContentMenuLayout,
+    focus_new_content_category,
+)
+from tests.helpers.onebot_events import group_message_event
 
 
-def _effect(
-    *, change_kind: Literal["added", "modified"] = "added"
-) -> NewContentItem:
+def _effect(*, change_kind: Literal["added", "modified"] = "added") -> NewContentItem:
     return NewContentItem(
         category="autocard_sanctuary_effect",
         entity_id=9,
@@ -47,7 +52,7 @@ def _effect(
 
 
 def test_sanctuary_effect_list_preserves_sanctuary_context() -> None:
-    assert _item_description(_effect()) == (
+    assert format_new_content_item_description(_effect()) == (
         "新增｜沧岚｜精灵王：精灵王测试｜第 5 回合祝印"
     )
 
@@ -80,7 +85,7 @@ def test_new_skill_detail_includes_effect_and_linked_pet() -> None:
         },
     )
 
-    assert _item_description(skill) == "新增｜38474｜超级噗纽"
+    assert format_new_content_item_description(skill) == "新增｜38474｜超级噗纽"
     detail = format_new_content_skill_detail(skill)
     assert "威力：150｜PP：5" in detail
     assert "效果：测试效果" in detail
@@ -111,7 +116,7 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
 
     prompt = _content_prompt(
         snapshot,
-        _NewContentMenuLayout(
+        NewContentMenuLayout(
             display_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
         ),
     )
@@ -147,7 +152,7 @@ def test_new_content_root_menu_only_lists_categories() -> None:
 
     prompt = _content_prompt(
         snapshot,
-        _NewContentMenuLayout(
+        NewContentMenuLayout(
             display_categories=("pet", "skill"),
         ),
     )
@@ -190,10 +195,10 @@ def test_new_content_category_selection_opens_a_numeric_menu() -> None:
         weekly_cycle="2026-07-31",
         items=(pet, skill, achievement),
     )
-    root_layout = _NewContentMenuLayout(
+    root_layout = NewContentMenuLayout(
         display_categories=("pet", "skill", "achievement"),
     )
-    layout = _focus_new_content_category(root_layout, "achievement")
+    layout = focus_new_content_category(root_layout, "achievement")
 
     prompt = _content_prompt(snapshot, layout)
 
@@ -229,7 +234,7 @@ def test_new_pet_category_uses_plain_numeric_choices() -> None:
 
     prompt = _content_prompt(
         snapshot,
-        _NewContentMenuLayout(
+        NewContentMenuLayout(
             display_categories=("pet",),
             focused_category="pet",
         ),
@@ -268,7 +273,7 @@ def test_new_content_category_shortcut_uses_numeric_keys() -> None:
         weekly_cycle="2026-07-31",
         items=(pet, skill, achievement),
     )
-    layout = _NewContentMenuLayout(
+    layout = NewContentMenuLayout(
         display_categories=("achievement",),
         focused_category="achievement",
     )
@@ -278,3 +283,49 @@ def test_new_content_category_shortcut_uses_numeric_keys() -> None:
     assert "a. " not in prompt.build_message()
     assert "b. " not in prompt.build_message()
     assert "1. 深海之泪" in prompt.build_message()
+
+
+@pytest.mark.parametrize("render_fails", [True, False])
+def test_menu_image_and_text_fallback_share_layout_and_sender(
+    *, render_fails: bool
+) -> None:
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260904",
+        weekly_cycle="2026-09-04",
+        items=(_effect(),),
+    )
+    layout = NewContentMenuLayout(
+        display_categories=("autocard_sanctuary_effect",),
+        focused_category="autocard_sanctuary_effect",
+    )
+    event = group_message_event("新增群星牌圣域")
+    prompt = _content_prompt(snapshot, layout)
+    renderer_calls: list[tuple[object, ...]] = []
+
+    async def renderer(*args: object) -> bytes:
+        renderer_calls.append(args)
+        if render_fails:
+            msg = "injected renderer failure"
+            raise RuntimeError(msg)
+        return b"test image"
+
+    message = asyncio.run(
+        _render_content_prompt(prompt, snapshot, layout, renderer, event)
+    )
+
+    assert isinstance(message, Message)
+    assert message[0].type == "at"
+    assert message[0].data["qq"] == str(event.user_id)
+    assert renderer_calls[0][:3] == (
+        snapshot,
+        layout.display_categories,
+        layout.focused_category,
+    )
+    selection = prompt.get_item_by_input("1")
+    assert selection is not None and selection.value.item == snapshot.items[0]
+    if render_fails:
+        assert "1. 潮涌" in message.extract_plain_text()
+        assert "0.【退出】" in message.extract_plain_text()
+    else:
+        assert message[-1].type == "image"
