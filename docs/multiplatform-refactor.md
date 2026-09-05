@@ -21,8 +21,8 @@
   `tests/test_structure_size_hygiene.py` 强制；按真实职责拆分，不通过移动到
   `utils`、`shared`、`common` 或万能基类规避。
 - `seerapi` 与 `ironsbot-private` 的生产包和构建脚本同样以 800 行作为长期上限。当前
-  `seerapi/scripts/build_seerapi_data_db.py`（5,453 行）与
-  `scripts/build_new_content_index.py`（1,292 行）是已登记的 transition 债务；新功能
+  `seerapi/scripts/build_seerapi_data_db.py`（727 行）已经满足该限制；
+  `scripts/build_new_content_index.py` 已拆至 280 行。新功能
   不得继续写入这些聚合脚本，后续拆分必须按下载协议、二进制解析、资源转换、manifest
   发布和 SQLite 写入等真实职责迁出，并以每次提交的行数下降和构建验证作为证据。
 - 任何阶段都要保留当前 OneBot 用户行为，除非有明确产品决定和特征测试一并更新。
@@ -41,20 +41,26 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [████░░░░░░] 40%  verified phases: 2/7  estimated remaining: 4-7 h
-Phase 3  [██████░░░░] 60%  verified tasks: 3/5  estimated remaining: 1-2 h
-Task     [████████░░] 80%  remaining: boundary tests and smoke test  20-40 min
+Program  [███░░░░░░░]  verified phases: 3/8; percentage awaits a weighted acceptance baseline
+Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
+Task     [██████████] completed only after code, tests, and evidence are committed
 ```
 
-示例中的数字不是当前状态；实际状态由本次任务报告和提交证据决定。
+进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 当前验证进度（2026-08-13）
+## 当前验证进度（2026-08-15）
 
 ```text
-总任务  [████████░░] 79%  已完成阶段 3/8；其余阶段均有已验证子项，预计仍取决于数据发布与跨仓库迁移
+总任务  [███░░░░░░░]  已完成阶段 3/8；其余阶段含已验证子项，但尚未完成阶段门
 Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
 当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
+
+这里刻意不写总体百分比或完成日期。此前的 `79%` 没有可复查的阶段权重，不能由
+“已完成阶段 3/8”推导出来。下一次恢复百分比前，必须先为每个未完成阶段登记有限的
+验收切片、依赖与预计工时；届时百分比只由已提交且验证通过的切片权重计算。实际
+更新进度时仍须同时报告阶段和当前工作项，不能用总百分比掩盖外部发布、数据迁移或
+跨仓库 smoke test 尚未完成的事实。
 
 本次完成的跨仓库证据：
 
@@ -70,8 +76,24 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
   编译和 `git diff --check` 通过。它只覆盖构建自产的 `soulmark_icon_png`，不代表远程
   精灵、皮肤或其他图片资产已具备 manifest，因此不能作为早期 L3 命中的完成证据。
 
-下一步只审计尚未采用 snapshot -> document 管线的渲染路径；未满足同等发布事实和缓存
-验证前，不得把 Phase 4 标为完成。
+- `seerapi` 提交 `39c3339` 将 remote asset repository 和 immutable Git revision 升级为
+  manifest v2 的显式 metadata；IronsBot `a7dd38f4` 在原子加载时验证该契约，并只用
+  发布 revision 构造受保护素材 URL。SeerAPI 全量 260 passed；IronsBot 全量 1521
+  passed、Ruff、静态检查、BasedPyright、编译和 diff 检查通过。
+
+- **渲染资产范围审计（2026-08-15）：** `pet_info`、属性和巅峰 renderer 的图片
+  家族均由当前 `pet_info` scope 覆盖。`new_content_standard` 额外发布
+  `skin_image_resolution.head_resource_id` 中不属于普通精灵的专属头像；外部群星牌 URL
+  即使成功获取也不写入最终图缓存。公共 `seer_data` 的全部 renderer adapter 进入最终图
+  版本指纹，私有阵容继续使用自己的私有源码/模板指纹。幸运橱窗使用皮肤 body，当前没有
+  完整 inventory，故其 L3 最终图缓存保持禁用；这比错误声明素材范围完整更安全。
+
+**真实发布消费者 smoke（2026-08-15）：** 以本地生成的 SeerAPI release 验证后，
+IronsBot 正确读取 immutable repository revision，并为精灵头像生成固定 revision URL。
+该素材快照实际缺少 9 个精灵头像、12 个 body、1 个刻印图标、11 个装备和 11 个称号，
+所以 metadata 正确发布空 `complete_scopes`，下游 L3 final-image cache 全部保持禁用。
+这证明消费者不会用不完整 manifest 缓存图片；Phase 4 的剩余工作是向素材仓库发布这些
+缺失资源，而不是放宽缓存准入或恢复 `main` fallback。
 
 ## 阶段账本与报告纪律
 
@@ -100,10 +122,29 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 | Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
-| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证 | SeerAPI 发布完整 render asset manifest，并对每一类素材做范围完整性验证 | 渲染数据发布契约完成 |
+| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
+
+**配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
+`seer.player.query_limits.bound_other_daily_limit`。已删除
+`other_target_action_daily_limit` 的模型迁移器、运行时协议字段和示例配置；旧字段受
+`extra="forbid"` 直接拒绝。`tests/test_app_config_loader.py` 记录拒绝行为，避免后续为
+旧 TOML 恢复双字段或隐式重命名。
+
+**群星牌 schema 收口（2026-08-13）：** `AutocardService` 只读取 SeerAPI 发布的
+`autocard_role` 官方字段和 `autocard_role_raw` sidecar，已删除旧版仅含 `raw_json` 的
+回退查询与测试夹具。缺少当前表结构会走既有“更新数据库”错误语义，不再双读旧发布物。
+对应 SeerAPI 提交 `246f55c` 同步删除新内容索引对旧角色表的回退，并将索引 fixture
+统一为官方表和 sidecar；两个仓库不再对同一发布物接受不同 schema。
+
+**群星牌 repository 边界（2026-08-13）：** `AutocardService` 已移除直接
+SQLAlchemy/Session/JSON 访问，只通过 `integrations.seer_data.autocard_repository` 获取
+准备好的 `AutocardDataset`。当前 schema 查询、JSON 解包与数据错误属于集成层；服务层
+只保留命令语义、搜索和展示格式化。
+`AutocardSanctuaryService` 同样只接收
+`autocard_sanctuary_repository` 的结构化场地效果行；两个群星牌服务均不再直接执行 SQL。
 
 **Main 吸收记录（2026-08-13）：** 已以 V5 的类型化 B 站服务为唯一业务路径吸收
 `main` 的发布时段加密轮询需求。`BiliBoostWindow`、秒级时钟、槽位去重和 cron
@@ -131,6 +172,11 @@ compileall 与 diff 检查通过。静态 Docker 审计确认运行镜像仍只�
 刷新发布版本；最终图片缓存读取该内存快照，不再为每个 `get`/`put` 额外开 SQLite
 session。未加载数据仍显式返回 `unknown`，因此不会写入无发布版本的缓存。该项是下一步
 `RenderRequestKey` 在 SQL/HTTP 之前安全命中的版本基础，不代表早期缓存本身已经完成。
+
+**发布数据库装载契约（2026-08-15）：** `DatabaseManager` 现支持每个数据源的 staged
+load validator。SeerAPI 在内存替换前必须证明存在 `api_metadata`、`ironsbot_metadata`，且
+`ironsbot_schema_contract_version` 等于消费者支持的版本；失败时保留旧内存库和旧本地文件，
+`/更新数据` 会返回具体契约原因。该校验不接受旧 schema 的双读或静默降级。
 
 **请求级渲染缓存（2026-08-13）：** `a167843a` 将已发布精灵信息、属性克制、巅峰池、
 巅峰票选、巅峰精灵榜和新内容菜单改为先构造确定性请求键，再查最终图片缓存。命中路径
@@ -161,6 +207,24 @@ commit/tree 获取、匿名限流后的 Git tree 回退和 `ls-tree` blob 解析
 测试独立验证。Ruff、`50 passed` 的构建相关测试、CLI 帮助、编译和 diff 检查均通过。这是
 `build_seerapi_data_db.py` 按真实职责逐步拆分的下一块边界，尚未改变群星牌表结构或发布产物。
 
+**发布元数据投影边界（2026-08-15）：** SeerAPI `9d197bd` 将 `ironsbot_metadata` 的
+构造与 SQLite upsert 迁入 `scripts/release_metadata.py`。该投影只接收已经完成的构建事实，
+不读取环境、网络或 SQLite 以外的输入；全量 SeerAPI pytest 为 **269 passed**，Ruff、编译和
+diff 检查通过。入口脚本降至 1,226 行，尚未完成的边界只剩最终发布编排与真实 release consumer smoke。
+
+**发布构建编排边界（2026-08-15）：** SeerAPI `13730e4` 将最终 SQLite 发布事务、
+官方来源读取及经典皮肤素材探测分别迁入 `release_publication.py`、
+`release_source_loaders.py` 与 `release_skin_image_loader.py`。入口脚本现在为 **727 行**，
+只保留 CLI、构建顺序、配置装配和 SQLite 健康检查；所有新增生产模块均低于 800 行。
+构建相关 56 项、SeerAPI 全量 **269 passed**、Ruff、编译、CLI `--help` 与 diff 检查通过。
+真实 release 和 IronsBot 消费者 smoke 仍是 release gate，不能由本地单元测试替代。
+
+**镜像体积基线（2026-08-15）：** Docker 发布工作流现在在 push 后拉取刚发布的首个
+镜像标签，并把 Docker 报告的本地未压缩体积写入 GitHub Actions Summary。当前工作站的
+Docker daemon 未启动，不能伪造实际大小；后续只在有连续发布基线后，才为增长设置预算或
+删除运行依赖。静态审计确认 tests/docs/scripts/dev 依赖均不进入最终镜像，HTML 渲染、
+Pillow、SQLAlchemy 与中文字体有真实运行时调用，不能以“瘦身”为由直接移除。
+
 **效果元数据来源边界（2026-08-13）：** SeerAPI `e82d738` 将官方
 `effectDes.json` 与 `signIconFight.json` 的纯解析和值对象迁入
 `scripts/effect_metadata_sources.py`。发布构建器继续持有 URL、下载、失败日志和 SQLite
@@ -189,6 +253,26 @@ PackageManifest、刻印品质、皮肤商店、道具说明、魂印图标和�
 来源选择和 SQLite 写入；解码模块不依赖环境、网络、UnityPy 或数据库。构建相关 49 项、
 SeerAPI 全量 **259 passed**、Ruff、CLI 帮助、编译和 diff 检查均通过。构建主脚本从 4,671 行
 降至 4,218 行，模块本身 331 行，未改变发布 schema 或运行时消费语义。
+
+**渲染素材 manifest 边界（2026-08-15）：** SeerAPI `86c2de5` 将发布 SQLite 的素材 ID
+枚举、immutable repository snapshot 匹配、scope 完整性、revision 与 consumer metadata 迁入
+`scripts/render_asset_manifest_build.py`。发布构建器只保留环境配置、snapshot adapter、效果图标
+生成、SQLite 表替换与 metadata 写入时机；新模块不读环境、网络、文件、FFDec 或 CLI。旧
+manifest helper 已删除，构建主脚本从 4,553 行降至 4,122 行。SeerAPI 全量 **260 passed**、
+Ruff、CLI 帮助、compileall 和 diff 检查通过。已发布 schema/metadata key 和 IronsBot 消费语义
+没有变化；真实 release consumer smoke 仍是 Phase 4 的未完成门。
+
+**效果图标 PNG renderer 边界（2026-08-15）：** SeerAPI `c1faedf` 将 FFDec sprite/shape
+导出、PNG 透明度与尺寸校验、原子缓存读写以及有限并发迁入
+`scripts/effect_icon_png_renderer.py`；`effect_icon_build_types.py` 统一传递已解析的构建配置和值对象。
+构建器仍保留 Flash/Unity 来源选择与发布 SQLite 编排，因而没有把 Java、FFDec、UnityPy 或 Pillow
+引入 IronsBot runtime。SeerAPI 全量 **260 passed**、Ruff、CLI 帮助、编译和 diff 检查均通过；
+构建主脚本从 4,122 行降至 3,542 行。Flash/Unity source adapter 与 resolver/shard 仍待拆分。
+
+**效果图标 source-path 边界（2026-08-15）：** SeerAPI `6ff44d0` 和 `1f8d029` 将 Flash/Unity
+URL、Unity asset path、来源 URL 与 ID 解析迁入纯 `scripts/effect_icon_source_paths.py`，并补充
+只依赖 `EffectIconBuildConfig` 的直接契约测试。构建器删除 50 行路径规则；Unity bundle 解码和
+Flash HTTP 探测仍在发布编排层，未将未完成的 source adapter 伪装成已完成。
 
 **私有扩展验证入口（2026-08-13）：** 私有仓库 `a278d11` 不再把测试 `pythonpath`
 固定为本机相邻的 `../IronsBot`。测试启动时优先读取 `IRONSBOT_PUBLIC_ROOT`，再回退到
@@ -449,6 +533,11 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
   适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变
   文档；不得把新的数据库读取或展示推断放回 HTML 模板或纯 presenter。
+- 新增内容发布索引、赛季时间和 Flash 座驾素材读取已经分别迁入
+  `integrations.seer_data.new_content_repository`、`season_repository` 与
+  `flash_mount_repository`。`NewContentService`、赛季倒计时和装备服务只消费
+  脱离 Session 的值对象；新功能必须沿用这一 repository 边界，而不是在 service
+  内恢复 SQLAlchemy、JSON 或 Flash 文件访问。
 - 当前最终图片缓存仍在素材准备和 `RenderDocument` 生成之后使用
   `render_document_cache_key()`，其 data URI 确实能保证 miss 路径的像素正确性；但这
   不满足“L3 命中零 SQL/HTTP/presenter”的目标。后续必须由发布数据的 revision 和素材
@@ -459,11 +548,12 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   `release_revision`、可用状态和来源，并发布顺序无关的 manifest revision。它不额外
   下载素材，也不替代原有 SWF -> PNG 构建管线；消费端可以把这一类素材版本放入将来的
   `RenderRequestKey`。
-- 这仍只是第一种发布素材。SeerAPI 尚未发布覆盖 `pet_head`、`pet_body`、
-  `element_type`、`mintmark`、`item`、`sign_buff`、预览图等远端渲染素材的完整
-  manifest。因此早期 L3 命中仍是明确的跨仓库前置工作：IronsBot 只能引用已发布的
-  版本，不能在命中判断时对 HTTP 素材做探测。完整表、模型、构建完整性测试和消费端
-  schema 校验完成前，不得把 Phase 4 标为完成。
+- SeerAPI 现已为 `pet_head`、`pet_body`、`element_type`、`mintmark`、`item`、
+  `sign_buff`、`suit`、`equip` 和 `title` 发布 remote asset manifest，并通过 v2
+  metadata 将 repository/revision 固定给 consumer。IronsBot 只按该 revision 请求这些
+  素材，不能在命中判断时对 mutable HTTP 素材做探测。预览图、任意 URL 群星牌图和未来
+  renderer 仍未纳入该契约；在逐 renderer 范围验证及真实 release smoke 完成前，不得把
+  Phase 4 标为完成。
 - 私有阵容渲染也复用该内容键；私有模板和本地 Pillow 装饰源码以
   `renderer_fingerprint` 作为显式上下文参与键计算，不能维护第二套按阵容参数命中
   的最终缓存。
@@ -538,6 +628,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会
   明确报告不支持，不再用全局 baseline 猜测每一类内容是否可比较。
+- 新增内容的成就、技能和群星牌圣域详情文本由
+  `services.seer.new_content_details` 统一格式化；OneBot 菜单仅负责将该纯文本投递到
+  当前会话，不得重新内联同一批领域展示规则。
 
 **命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
 新命令不得在 matcher 内自建第二份示例、权限或帮助说明。
@@ -622,6 +715,15 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
 
 ## 主线同步记录
 
+- **2026-08-15 / `origin/main` `af2e8810`：** 已抓取，尚未直接合并到 V5。该批次
+  包含活动周快照、竞技池变动展示、幸运橱窗卡片、Docker 维护菜单、更新确认和绑定
+  限制等功能。它依赖已退役的 command-directory / plugin / runtime 路径，与 V5 的
+  NoneBot 插件装载及 command contract 发生结构冲突。后续必须按
+  `docs/specs/` 中的上游同步 Spec 逐项迁入并验证，不得把自动 merge 误报为完成。
+- **2026-08-15 / 活动周快照：** 已在 V5 的 `ActivityService`、活动命令 contract 与
+  `runtime_state.sqlite` 中迁入。`新增活动` 对比当前周和上周已观察到的活动 ID；首周
+  没有上周快照时明确提示，后续只显示差集。未恢复旧活动插件或 command-directory。
+
 - **2026-08-13 / `origin/main` `7757a48f`：** 已合并到 V5 工作分支。该主线修复的
   行为是：B站公开昵称刷新失败时，“TD / 推送管理”仍可打开，选项退化为 UID 并显示
   警告，而不是拒绝整个菜单。V5 保持 `ConversationRef` 作为消息服务的唯一会话
@@ -632,3 +734,27 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   `tests/test_messaging_runtime_setup.py` 共 46 项通过；全量测试 `1505 passed`，
   `ruff check ironsbot tests`、`python -m compileall -q ironsbot` 与
   `git diff --check` 均通过。
+- **2026-08-14 / `origin/main` `24d54d82`、`cc86b1d6`：** 已以 V5 的服务常量和
+  Seer repository 边界吸收开服别名及新增内容竞技池变动入口。后续主线
+  `857d27d8` 将新增内容菜单重做为旧 renderer 的预览矩阵；它不能直接覆盖 V5
+  的快照/Presenter 链路，须在准备好同等的不可变 render document 后再选择性迁移。
+- **2026-08-14 / `origin/main` `32461c12`：** 已迁入 B站缺正文与 Opus 正文截断
+  的详情补全；只有详情正文更完整时才替换。V5 保留自己的 task owner 与 delivery
+  边界，未复制旧 runtime 调度路径。
+
+## 数据读取边界记录
+
+- **2026-08-13：** 刻印角数、皮肤资源解析与每周预告元数据读取已迁入
+  `integrations.seer_data`；赛尔 service 仅保留命令编排与业务格式化。
+  跨领域的正整数转换同时迁入 `core.value_coercion`，避免 repository 反向依赖
+  `services.seer`。相关查询、皮肤、预告、榜单和本地排行测试共 32 项通过。
+- **2026-08-14：** 新增内容发布索引、赛季时间和 Flash 座驾素材读取分别迁入
+  `new_content_repository`、`season_repository`、`flash_mount_repository`。
+  相关聚焦测试共 65 项通过；Ruff、compileall 与 diff 检查通过。
+- **2026-08-14：** 巅峰池、投票、赛季周期及精灵快照读取迁入
+  `peak_repository`。巅峰 service、私有阵容条目解析和 renderer 只消费已脱离
+  ORM Session 的快照；巅峰查询、投票、渲染和架构边界测试共 36 项通过。
+- **2026-08-14：** 皮肤资料与商店价格读取迁入 `skin_price_repository`；价格显示
+  仍是 service 层的纯格式化规则，精灵查询只接收 `SkinDetails`。
+- **2026-08-14：** 幸运橱窗按资源 ID 补全皮肤资料的 ORM 查询迁入
+  `skin_reference_repository`；协议请求、缓存和关注偏好不变。
