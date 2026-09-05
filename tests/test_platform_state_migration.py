@@ -414,3 +414,22 @@ def test_state_migration_cli_exposes_platform_identity_mode(
 
     assert exit_code == 0
     assert "Dry run only; no files were changed." in capsys.readouterr().out
+
+
+def test_state_migration_cli_reports_corrupt_identity_input_without_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_legacy_platform_state(data_root)
+    path = data_root / "state/qq_state.sqlite"
+    _execute(path, ("UPDATE push_unsubscriptions SET target_type = 'invalid'",))
+    original = path.read_bytes()
+    assert (
+        state_migration_main(
+            ("--data-root", str(data_root), "--platform-identities", "--apply")
+        )
+        == 1
+    )
+    assert "Platform identity migration failed" in capsys.readouterr().err
+    assert path.read_bytes() == original
+    assert not list(data_root.glob("platform-identity-migration-backups/*"))
