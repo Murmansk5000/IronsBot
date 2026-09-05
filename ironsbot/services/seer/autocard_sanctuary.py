@@ -5,18 +5,17 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-
 from ironsbot.core.selection import (
     SelectionMenuItem,
     SelectionMenuSection,
     format_selection_menu,
 )
+from ironsbot.integrations.seer_data.autocard_sanctuary_repository import (
+    AutocardSanctuaryRow,
+    load_autocard_sanctuary_rows,
+)
 
 if TYPE_CHECKING:
-    from sqlmodel import Session
-
     from ironsbot.services.seer.data import SeerDataAccess
 
 SANCTUARY_QUERY_PREFIXES = (
@@ -29,30 +28,6 @@ SANCTUARY_QUERY_PREFIXES = (
 SANCTUARY_PROMPT_MAX_ITEMS = 30
 
 _NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
-_MISSING_TABLE_MESSAGE = "数据库缺少群星牌场地效果表，请先更新 IronsBot 数据库。"
-_EMPTY_DATA_MESSAGE = "数据库没有群星牌场地效果数据，请先更新 IronsBot 数据库。"
-_SANCTUARY_EFFECT_QUERY = text(
-    """
-    SELECT
-        effect.id AS effect_id,
-        effect.sanctuary_id,
-        effect.name AS effect_name,
-        effect.description,
-        effect.unlock_round,
-        effect.stage,
-        base.name AS sanctuary_name,
-        base.pic_id AS sanctuary_pet_id,
-        pet.name AS sanctuary_pet_name
-    FROM autocard_season_effect AS effect
-    LEFT JOIN autocard_season_effect AS base
-      ON base.sanctuary_id = effect.sanctuary_id
-     AND base.unlock_round = 0
-    LEFT JOIN pet ON pet.id = base.pic_id
-    ORDER BY effect.sanctuary_id, effect.unlock_round, effect.id
-    """
-)
-
-
 @dataclass(frozen=True, slots=True)
 class SanctuaryEffect:
     id: int
@@ -108,7 +83,8 @@ class AutocardSanctuaryService:
 
     def search(self, arg: str) -> SanctuarySearchResult:
         query = _extract_query_arg(arg)
-        with self._data.query(_load_sanctuary_dataset) as dataset:
+        with self._data.query(load_autocard_sanctuary_rows) as rows:
+            dataset = _build_sanctuary_dataset(rows)
             if not query:
                 return _sanctuary_menu_result(dataset)
             values = _matching_values(dataset, query)
@@ -131,7 +107,8 @@ class AutocardSanctuaryService:
             )
 
     def select(self, value: SanctuaryPromptValue) -> SanctuarySearchResult:
-        with self._data.query(_load_sanctuary_dataset) as dataset:
+        with self._data.query(load_autocard_sanctuary_rows) as rows:
+            dataset = _build_sanctuary_dataset(rows)
             return _selection_result(dataset, value)
 
 
@@ -180,31 +157,26 @@ def _extract_query_arg(arg: str) -> str:
     return query
 
 
-def _load_sanctuary_dataset(session: Session) -> _SanctuaryDataset:
-    try:
-        rows = session.execute(_SANCTUARY_EFFECT_QUERY).all()
-    except SQLAlchemyError as error:
-        raise RuntimeError(_MISSING_TABLE_MESSAGE) from error
-    if not rows:
-        raise RuntimeError(_EMPTY_DATA_MESSAGE)
-
+def _build_sanctuary_dataset(
+    rows: tuple[AutocardSanctuaryRow, ...],
+) -> _SanctuaryDataset:
     effects_by_sanctuary: dict[int, list[SanctuaryEffect]] = {}
     names: dict[int, str] = {}
     pets: dict[int, tuple[int, str]] = {}
     for row in rows:
         effect = SanctuaryEffect(
-            id=_as_int(_row_value(row, "effect_id", 0)),
-            sanctuary_id=_as_int(_row_value(row, "sanctuary_id", 1)),
-            name=_as_text(_row_value(row, "effect_name", 2)),
-            description=_as_text(_row_value(row, "description", 3)),
-            unlock_round=_as_int(_row_value(row, "unlock_round", 4)),
-            stage=_as_int(_row_value(row, "stage", 5)),
+            id=row.effect_id,
+            sanctuary_id=row.sanctuary_id,
+            name=row.effect_name,
+            description=row.description,
+            unlock_round=row.unlock_round,
+            stage=row.stage,
         )
         effects_by_sanctuary.setdefault(effect.sanctuary_id, []).append(effect)
-        if sanctuary_name := _as_text(_row_value(row, "sanctuary_name", 6)):
+        if sanctuary_name := row.sanctuary_name:
             names[effect.sanctuary_id] = sanctuary_name
-        pet_id = _as_int(_row_value(row, "sanctuary_pet_id", 7))
-        pet_name = _as_text(_row_value(row, "sanctuary_pet_name", 8))
+        pet_id = row.sanctuary_pet_id
+        pet_name = row.sanctuary_pet_name
         if pet_id or pet_name:
             pets[effect.sanctuary_id] = (pet_id, pet_name)
 
@@ -230,26 +202,6 @@ def _load_sanctuary_dataset(session: Session) -> _SanctuaryDataset:
     return _SanctuaryDataset(
         tuple(sorted(sanctuaries, key=lambda sanctuary: sanctuary.id))
     )
-
-
-def _row_value(row: object, name: str, index: int) -> object:
-    mapping = getattr(row, "_mapping", None)
-    if mapping is not None:
-        return mapping[name]
-    return row[index]  # type: ignore[index]
-
-
-def _as_int(value: object) -> int:
-    try:
-        return int(str(value))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _as_text(value: object) -> str:
-    return str(value or "").replace("\\n", "\n").strip()
-
-
 def _matching_values(
     dataset: _SanctuaryDataset,
     query: str,
@@ -429,4 +381,3 @@ def _pet_label(sanctuary: Sanctuary) -> str:
 
 def _normalize_name(value: str) -> str:
     return _NAME_STRIP_PATTERN.sub("", value).casefold()
-

@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.integrations.seer_data.skin_image_resolution import SkinImageResolution
 from ironsbot.services.seer.pet_query import (
     PetImageSelection,
     PetQueryService,
 )
-from ironsbot.services.seer.skin_image_resolution import SkinImageResolution
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

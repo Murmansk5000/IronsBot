@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ironsbot.config.models.seer import SeasonCountdownConfig
@@ -72,22 +72,6 @@ def _format_window(window: SeasonWindow, *, now: datetime) -> str:
     )
 
 
-def load_peak_season_window(session: Any) -> SeasonWindow | None:
-    try:
-        from seerapi_models import PeakSeasonORM
-    except ImportError:
-        return None
-
-    season = session.get(PeakSeasonORM, 1)
-    if season is None:
-        return None
-    return SeasonWindow(
-        name="巅峰圣战赛季",
-        start_time=cast("datetime | None", season.start_time),
-        end_time=cast("datetime | None", season.end_time),
-    )
-
-
 def load_autocard_season_window(
     config: SeasonCountdownConfig,
 ) -> SeasonWindow:
@@ -99,7 +83,7 @@ def load_autocard_season_window(
 
 
 def format_season_countdown(
-    session: Any,
+    peak: SeasonWindow | None,
     config: SeasonCountdownConfig,
 ) -> str:
     now = _as_china_time(datetime.now(CHINA_TZ))
@@ -111,7 +95,6 @@ def format_season_countdown(
         "",
     ]
 
-    peak = load_peak_season_window(session)
     if peak is None:
         lines.append("巅峰圣战赛季：未找到赛季数据")
     else:

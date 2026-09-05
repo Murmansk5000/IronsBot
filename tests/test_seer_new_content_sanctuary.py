@@ -8,17 +8,19 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.plugins.onebot.seer.query.commands.data_queries import (
-    _autocard_sanctuary_effect_detail,
     _content_prompt,
     _focus_new_content_category,
     _item_description,
     _NewContentMenuLayout,
-    _skill_detail,
 )
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     NewContentItem,
     NewContentSnapshot,
+)
+from ironsbot.services.seer.new_content_details import (
+    format_new_content_autocard_sanctuary_effect_detail,
+    format_new_content_skill_detail,
 )
 
 
@@ -51,7 +53,9 @@ def test_sanctuary_effect_list_preserves_sanctuary_context() -> None:
 
 
 def test_sanctuary_effect_detail_explains_blessing_context() -> None:
-    detail = _autocard_sanctuary_effect_detail(_effect(change_kind="modified"))
+    detail = format_new_content_autocard_sanctuary_effect_detail(
+        _effect(change_kind="modified")
+    )
 
     assert "状态：修改" in detail
     assert "圣域：沧岚" in detail
@@ -77,7 +81,7 @@ def test_new_skill_detail_includes_effect_and_linked_pet() -> None:
     )
 
     assert _item_description(skill) == "新增｜38474｜超级噗纽"
-    detail = _skill_detail(skill)
+    detail = format_new_content_skill_detail(skill)
     assert "威力：150｜PP：5" in detail
     assert "效果：测试效果" in detail
     assert "超级噗纽（4927）（第五技能）" in detail
