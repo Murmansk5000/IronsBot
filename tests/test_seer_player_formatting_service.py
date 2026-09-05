@@ -189,6 +189,7 @@ def test_format_peak_uses_current_season_rank_instead_of_stale_forever_value() -
         _as_any(peak),
         summary,
         _as_any(_LocalSummary()),
+        fetched_at=REG_TIME,
     )
 
     assert message.splitlines()[1].startswith("获取时间：")
@@ -212,6 +213,7 @@ def test_format_peak_shows_rank_failure_on_the_affected_mode_line() -> None:
         _as_any(peak),
         summary,
         _as_any(_LocalSummary()),
+        fetched_at=REG_TIME,
     )
 
     standard_line = next(
@@ -230,6 +232,7 @@ def test_format_peak_does_not_report_unqueried_mode_as_unranked() -> None:
         _as_any(peak),
         PeakSeasonRankSummary.empty(),
         _as_any(_LocalSummary()),
+        fetched_at=REG_TIME,
     )
 
     expert_line = next(
@@ -256,6 +259,7 @@ def test_format_peak_keeps_successful_mode_when_another_mode_times_out() -> None
         summary,
         _as_any(_LocalSummary()),
         available_modes=frozenset(("expert",)),
+        fetched_at=REG_TIME,
         mode_errors={"standard": "查询超时", "wild": "查询未完成"},
     )
 
@@ -283,6 +287,7 @@ def test_format_peak_does_not_turn_a_first_packet_timeout_into_zero_values() -> 
         PeakSeasonRankSummary.empty(),
         _as_any(_LocalSummary()),
         available_modes=frozenset(),
+        fetched_at=None,
         mode_errors={
             "standard": "查询超时",
             "wild": "查询未完成",
@@ -308,6 +313,7 @@ def test_format_autocard_rank_starts_with_fetch_time() -> None:
         ),
         player_identity="米米号：1269554（XJTLoveness）",
         local_summary=_as_any(_LocalSummary()),
+        fetched_at=REG_TIME,
     )
 
     assert message.splitlines()[1].startswith("获取时间：")
@@ -325,6 +331,7 @@ def test_format_autocard_rank_marks_cached_fallback_after_timeout() -> None:
         ),
         player_identity="米米号：1269554（XJTLoveness）",
         local_summary=_as_any(_LocalSummary()),
+        fetched_at=REG_TIME,
     )
 
     assert "9525分" in message
@@ -352,6 +359,7 @@ def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
         peak_rank_summary=_as_any(Empty()),
         local_summary=_as_any(_LocalSummary()),
         show_peak=False,
+        fetched_at=REG_TIME,
         extra_errors=["在线状态失败"],
     )
 

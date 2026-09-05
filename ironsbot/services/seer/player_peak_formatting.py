@@ -110,13 +110,14 @@ def format_compact_peak_section(  # noqa: PLR0913
     peak_rank_summary: PeakSeasonRankSummary,
     local_summary: LocalRankSummary,
     *,
+    fetched_at: float | None,
     player_id: int | None = None,
     nick: str | None = None,
     nick_error: str | None = None,
     available_modes: frozenset[str] | None = None,
     mode_errors: dict[str, str] | None = None,
 ) -> str:
-    lines = ["【巅峰之战】", format_player_data_time()]
+    lines = ["【巅峰之战】", format_player_data_time(fetched_at)]
     if player_id is not None:
         lines.append(format_player_identity(player_id, nick, nick_error))
 
