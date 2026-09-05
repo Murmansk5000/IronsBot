@@ -7,7 +7,7 @@ from .rules import BOT_COMMAND_ARG_KEY
 
 
 def parse_string_arg(state: T_State) -> str:
-    """统一参数提取，兼容 on_command 和 on_message + startswith_or_endswith 规则。"""
+    """Extract arguments from on_command or a domain affix parser's state."""
     if (arg := state.get(BOT_COMMAND_ARG_KEY, "")) and (stripped := arg.strip()):
         return stripped
 

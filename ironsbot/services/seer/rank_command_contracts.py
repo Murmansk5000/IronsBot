@@ -12,6 +12,7 @@ from ironsbot.core.command_catalog import (
     commands_from_rows,
     parsed_command_input_matcher,
 )
+from ironsbot.core.commands import command_text_matches
 from ironsbot.core.player_reference_commands import is_player_reference_input
 from ironsbot.services.seer.rank_catalog import rank_command_names
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
@@ -212,9 +213,9 @@ def rank_help_command_contracts(
                     "查看全服榜单缓存",
                     {
                         "access": (CommandAccess(audience="superuser"),),
-                        "routing_aliases": RANK_PAGE_OVERVIEW_COMMANDS,
-                        "routing_matcher": parsed_command_input_matcher(
-                            parse_rank_page_cache_status_command
+                        "routing_matcher": lambda text, _context: (
+                            command_text_matches(text, RANK_PAGE_OVERVIEW_COMMANDS)
+                            or parse_rank_page_cache_status_command(text) is not None
                         ),
                     },
                 ),

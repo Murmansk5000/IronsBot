@@ -400,3 +400,15 @@ def test_catalog_rejects_unknown_and_unregistered_direct_command_ids() -> None:
         )
 
     catalog.validate_matcher_registrations(help_ids=("documented",))
+
+
+def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> None:
+    command = CommandContract(
+        id="parsed", plugin_id="example", section="query",
+        examples=("reserved",), routing_aliases=("also reserved",),
+        description="A parser owns admission, not its illustrative examples",
+        routing_matcher=lambda text, _context: text == "accepted",
+    )
+    assert command.matches_direct_input(_context(1), "accepted")
+    assert not command.matches_direct_input(_context(1), "reserved")
+    assert not command.matches_direct_input(_context(1), "also reserved")

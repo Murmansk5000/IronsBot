@@ -140,6 +140,10 @@ Exact spelling preserves required prefixes such as `/`. Optional-prefix syntax
 must be accepted by the domain parser or explicitly registered aliases, never
 by globally stripping punctuation in the catalog. Help and routing consume the
 same domain grammar; an example is not permission to infer another spelling.
+When a contract provides an input matcher, its acceptance or rejection is
+authoritative even for a help example or routing alias. Exact examples and
+aliases are used for admission only by contracts without an input matcher;
+parser-backed contracts must include their accepted aliases in the real grammar.
 
 The type rename does not make the migration complete. Completion still requires
 command parsing ownership, access metadata and documentation fields to move out

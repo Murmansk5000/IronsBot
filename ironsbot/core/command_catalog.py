@@ -287,19 +287,15 @@ class CommandContract:
         normalized_text = normalize_command_text(text)
         if not normalized_text:
             return False
+        if self.routing_matcher is not None:
+            return self.routing_matcher(text, context)
         exact_inputs = {
             normalized
             for value in (*self.examples, *self.routing_aliases)
             if "<" not in value and ">" not in value
             if (normalized := normalize_command_text(value))
         }
-        if normalized_text in exact_inputs:
-            return True
-        return (
-            self.routing_matcher(text, context)
-            if self.routing_matcher is not None
-            else False
-        )
+        return normalized_text in exact_inputs
 
 
 class CommandContribution(Protocol):
