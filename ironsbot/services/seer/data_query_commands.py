@@ -4,6 +4,16 @@
 from __future__ import annotations
 
 WEEKLY_PREVIEW_COMMANDS = ("下周预告",)
+MASTER_POOL_COMMANDS = (
+    "大师池",
+    "大师池变化",
+    "巅峰大师池",
+    "大师精灵池",
+    "新增大师池",
+    "每周大师池",
+    "本周大师池",
+    "更新大师池",
+)
 DATA_VERSION_COMMANDS = ("数据版本",)
 NEW_CONTENT_COMMANDS = (
     "新增内容",

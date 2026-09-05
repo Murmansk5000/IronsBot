@@ -41,6 +41,7 @@ _REQUIRED_FEATURES: dict[NewContentCategory, str | None] = {
     "achievement": None,
     "peak_pool": "seer_peak",
     "peak_expert_pool": "seer_peak",
+    "peak_master_pool": "seer_peak",
     "autocard_card": "seer_autocard",
     "autocard_role": "seer_autocard",
     "autocard_sanctuary_effect": "seer_autocard",
@@ -80,12 +81,13 @@ async def send_peak_pool(
     matcher: Matcher,
     *,
     expert: bool,
+    master: bool = False,
 ) -> None:
     async def report_progress(message: str) -> None:
         await matcher.send(message)
 
     try:
-        result = await peak.pool(expert=expert, progress=report_progress)
+        result = await peak.pool(expert=expert, progress=report_progress, master=master)
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return

@@ -134,10 +134,11 @@ def test_new_content_order_places_skills_before_mintmarks() -> None:
         "equip",
     )
     pool_index = NEW_CONTENT_CATEGORIES.index("peak_pool")
-    assert NEW_CONTENT_CATEGORIES[pool_index - 1 : pool_index + 3] == (
+    assert NEW_CONTENT_CATEGORIES[pool_index - 1 : pool_index + 4] == (
         "achievement",
         "peak_pool",
         "peak_expert_pool",
+        "peak_master_pool",
         "autocard_card",
     )
 

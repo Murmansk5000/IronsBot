@@ -77,7 +77,7 @@ def _schedule(
 ) -> MessageScheduledAction:
     return MessageScheduledAction(
         id=schedule_id,
-        message=message,
+        messages=[message],
         at_user_ids=list(at_user_ids or []),
         time=time,
     )
@@ -378,7 +378,7 @@ def test_unified_command_action_uses_feature_policy_for_each_message_scope(
                 id="activity_link",
                 commands=["activity"],
                 feature="web_activity_link",
-                message="activity link",
+                messages=["activity link"],
                 at_user_ids=[3001],
             )
         ],
@@ -420,7 +420,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="exact_reply",
                 commands=["出出"],
                 feature="text",
-                message="精确回复",
+                messages=["精确回复"],
             )
         ],
         keyword_replies=[
@@ -428,7 +428,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="keyword_reply",
                 keywords=["出出"],
                 feature="text",
-                message="关键词回复",
+                messages=["关键词回复"],
             )
         ],
         group_policy={"1001": ["text"]},
@@ -467,7 +467,7 @@ def test_group_mention_reply_requires_only_configured_user(
             MessageMentionReplyAction(
                 id="example_user_mention",
                 user_ids=[2002],
-                message="123",
+                messages=["123"],
             )
         ],
     )
@@ -487,7 +487,7 @@ def test_group_mention_reply_requires_only_configured_user(
         "MessageMentionReplyAction",
         state[matcher_rules.MESSAGE_ACTION_KEY],
     )
-    assert action.message == "123"
+    assert action.messages == ["123"]
 
 
 def test_unified_schedule_delivers_to_private_and_group_targets(
@@ -521,6 +521,37 @@ def test_unified_schedule_delivers_to_private_and_group_targets(
     assert sent[1]["group_ids"] == [1001]
     assert sent[1]["group_at_user_ids"] == [3001]
     assert sent[1]["subscription_key"] == "daily"
+
+
+def test_schedule_sends_each_part_with_same_targets_and_subscription(
+    monkeypatch: MonkeyPatch, tmp_path: Path,
+) -> None:
+    sent: list[tuple[str, dict[str, object]]] = []
+    messaging = _messaging_resources(
+        tmp_path / "subscriptions.sqlite",
+        user_policy={"2001": ["text_push"]},
+        group_policy={"1001": ["text_push"]},
+    )
+    task = MessageScheduledAction(
+        id="daily", time="23:00", messages=["first", "second", "second"],
+        at_user_ids=[3001],
+    )
+
+    async def fake_broadcast(
+        _delivery: object, message: str, **kwargs: object,
+    ) -> None:
+        sent.append((message, kwargs))
+
+    monkeypatch.setattr(OneBotDelivery, "broadcast", fake_broadcast)
+    asyncio.run(message_schedules.send_schedule(task, messaging=messaging))
+    assert [message for message, _ in sent] == task.messages * 2
+    for _, kwargs in sent:
+        assert kwargs["subscription_key"] == "daily"
+        if "group_ids" in kwargs:
+            assert kwargs["group_ids"] == [1001]
+            assert kwargs["group_at_user_ids"] == [3001]
+        else:
+            assert kwargs["private_user_ids"] == [2001]
 
 
 def test_scheduled_messages_append_fire_manual_ad(
@@ -699,7 +730,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
     )
     task = MessageScheduledAction(
-        message="group push",
+        messages=["group push"],
         at_user_ids=[],
         id="daily",
         time="23:00",

@@ -135,8 +135,7 @@ def _peak_pool_cache_key(
             pool.start_time.isoformat(),
             pool.end_time.isoformat(),
             tuple(
-                (pet.id, pet.name, pet.resource_id, pet.type_id)
-                for pet in pool.pets
+                (pet.id, pet.name, pet.resource_id, pet.type_id) for pet in pool.pets
             ),
         )
         for pool in snapshot.pools
@@ -157,6 +156,7 @@ def _peak_pool_cache_key(
             PEAK_POOL_CACHE_VERSION,
             pool_type,
             snapshot.expert,
+            snapshot.master,
             snapshot.change_state,
             snapshot.content_version,
             pools,
@@ -190,9 +190,7 @@ async def render_peak_pool(
         snapshot=snapshot,
         expert=snapshot.expert,
     )
-    grid_width = (
-        layout.columns * CELL_WIDTH + (layout.columns - 1) * CELL_GAP
-    )
+    grid_width = layout.columns * CELL_WIDTH + (layout.columns - 1) * CELL_GAP
     stage_height, transition_arrows = _pool_transition_arrows(layout)
     transition_overlay = _transition_overlay_uri(
         grid_width + POOL_OVERHEAD,
@@ -207,7 +205,9 @@ async def render_peak_pool(
         templates={
             "pools": pool_dicts,
             "pool_type": pool_type,
-            "change_label": "专家池" if snapshot.expert else "竞技池",
+            "change_label": "大师池"
+            if snapshot.master
+            else ("专家池" if snapshot.expert else "竞技池"),
             "change_state": snapshot.change_state,
             "grid_width": grid_width,
             "grid_columns": layout.columns,
@@ -228,6 +228,20 @@ def _pool_grid_layout(snapshot: PeakPoolRenderSnapshot) -> PoolGridLayout:
     positions: tuple[int | None, ...] = (
         (0, None) if snapshot.expert else (0, 2, 3, None)
     )
+    if snapshot.master:
+        costs = {pool.count for pool in snapshot.pools if pool.pets}
+        costs.update(
+            value
+            for item in snapshot.transitions
+            for value in (item.previous_limit, item.current_limit)
+            if value is not None
+        )
+        positions = tuple(sorted(costs, reverse=True))
+        if any(
+            item.previous_limit is None or item.current_limit is None
+            for item in snapshot.transitions
+        ):
+            positions = (*positions, None)
     current_pets = _current_pool_pets(snapshot, positions)
     transition_lanes = _transition_lanes(snapshot, positions)
     regular = _regular_pool_placements(
@@ -280,9 +294,7 @@ def _transition_lanes(
     snapshot: PeakPoolRenderSnapshot,
     positions: tuple[int | None, ...],
 ) -> tuple[PoolTransitionLane, ...]:
-    position_indexes = {
-        position: index for index, position in enumerate(positions)
-    }
+    position_indexes = {position: index for index, position in enumerate(positions)}
     candidates: list[
         tuple[int, int, int, int, PeakPetSnapshot, int | None, int | None]
     ] = []
@@ -441,12 +453,8 @@ def _place_pool_pets(
         current = transition.current_position
         previous_index = transition.previous_index
         current_index = transition.current_index
-        previous_side: GridSide = (
-            "bottom" if previous_index < current_index else "top"
-        )
-        current_side: GridSide = (
-            "top" if previous_index < current_index else "bottom"
-        )
+        previous_side: GridSide = "bottom" if previous_index < current_index else "top"
+        current_side: GridSide = "top" if previous_index < current_index else "bottom"
         previous_loads = edge_loads[(previous, previous_side)]
         current_loads = edge_loads[(current, current_side)]
         column = dimensions.base_columns + transition.lane
@@ -519,9 +527,7 @@ def _place_pool_section(
         default=0,
     )
     rows = max(1, capacity_rows, boundary_rows)
-    slots: list[PoolPetPlacement | None] = [
-        None
-    ] * (rows * dimensions.columns)
+    slots: list[PoolPetPlacement | None] = [None] * (rows * dimensions.columns)
     for item in reserved:
         row = item.depth if item.side == "top" else rows - 1 - item.depth
         slot_index = row * dimensions.columns + item.column
@@ -550,13 +556,9 @@ async def _pool_image_uris(
         for placement in section.slots
         if placement is not None
     ]
-    unique_rids = {
-        str(placement.pet.resource_id) for placement in placements
-    }
+    unique_rids = {str(placement.pet.resource_id) for placement in placements}
     unique_type_ids = {
-        placement.pet.type_id
-        for placement in placements
-        if placement.pet.type_id > 0
+        placement.pet.type_id for placement in placements if placement.pet.type_id > 0
     }
     rid_list = sorted(unique_rids)
     type_id_list = sorted(unique_type_ids)
@@ -631,7 +633,11 @@ def _pool_dicts(
 
     return [
         {
-            "label": _pool_position_label(section.position, expert=expert),
+            "label": (
+                ("未列入" if section.position is None else f"{section.position} 点")
+                if snapshot.master
+                else _pool_position_label(section.position, expert=expert)
+            ),
             "current_count": current_counts[section.position],
             "previous_count": (
                 None
@@ -640,9 +646,7 @@ def _pool_dicts(
             ),
             "rows": section.rows,
             "slots": [
-                None
-                if placement is None
-                else _pool_pet_dict(placement, image_uris)
+                None if placement is None else _pool_pet_dict(placement, image_uris)
                 for placement in section.slots
             ],
         }
@@ -678,9 +682,7 @@ def _dim_historical_head(data: bytes | None, resource_id: str) -> bytes:
         alpha = rgba.getchannel("A")
         rgb = rgba.convert("RGB")
         grayscale = ImageOps.grayscale(rgb).convert("RGB")
-        dimmed = ImageEnhance.Brightness(
-            Image.blend(rgb, grayscale, 0.75)
-        ).enhance(0.5)
+        dimmed = ImageEnhance.Brightness(Image.blend(rgb, grayscale, 0.75)).enhance(0.5)
         dimmed.putalpha(alpha)
         output = BytesIO()
         dimmed.save(output, format="PNG")

@@ -106,6 +106,7 @@ class PeakPoolRenderSnapshot:
     change_state: PeakPoolChangeState
     content_version: str
     expert: bool
+    master: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,10 +227,7 @@ def snapshot_peak_votes(
 def snapshot_peak_pet_map(
     pets: dict[int, PetORM],
 ) -> dict[int, PeakPetSnapshot]:
-    return {
-        int(pet_id): _snapshot_peak_pet(pet)
-        for pet_id, pet in pets.items()
-    }
+    return {int(pet_id): _snapshot_peak_pet(pet) for pet_id, pet in pets.items()}
 
 
 def _snapshot_peak_pet(pet: PetORM) -> PeakPetSnapshot:
@@ -410,36 +408,62 @@ class PeakQueryService:
         *,
         expert: bool,
         progress: ProgressReporter,
+        master: bool = False,
     ) -> PeakQueryResult:
-        with self._data.query(
-            partial(load_peak_pools, expert=expert)
-        ) as database_pools:
-            pools = snapshot_peak_pools(database_pools)
-        label = "专家禁用池" if expert else "竞技池"
+        if master:
+            from ironsbot.services.seer.master_pool import (
+                MasterPoolUnavailableError,
+                load_master_pools,
+            )
+
+            try:
+                with self._data.query(load_master_pools) as master_pools:
+                    pools = master_pools
+            except MasterPoolUnavailableError:
+                return PeakQueryResult(
+                    message="当前数据版本尚未提供大师池，更新数据后再查询。"
+                )
+        else:
+            with self._data.query(
+                partial(load_peak_pools, expert=expert)
+            ) as database_pools:
+                pools = snapshot_peak_pools(database_pools)
+        label = "大师池" if master else ("专家禁用池" if expert else "竞技池")
         if not pools:
             return PeakQueryResult(
-                message=(
-                    f"❌找不到{label}数据。"
-                    "（这是一个bug，请反馈给开发者）"
-                )
+                message=(f"❌找不到{label}数据。（这是一个bug，请反馈给开发者）")
             )
         await progress("正在生成图片...")
         start_time = pools[0].start_time.strftime("%Y-%m-%d")
         end_time = pools[0].end_time.strftime("%Y-%m-%d")
-        render_snapshot = self._pool_render_snapshot(pools, expert=expert)
+        render_snapshot = self._pool_render_snapshot(
+            pools, expert=expert, master=master
+        )
         image = await self._render_pool(
             render_snapshot,
-            f"{label} / {start_time} ~ {end_time}",
+            (
+                f"{label} / 精灵竞技点 / 配置期次 {start_time}"
+                if master
+                else f"{label} / {start_time} ~ {end_time}"
+            ),
         )
-        return PeakQueryResult(image=image, reference=SeerInfoReference.PEAK_POOL)
+        return PeakQueryResult(
+            image=image,
+            reference=None if master else SeerInfoReference.PEAK_POOL,
+        )
 
     def _pool_render_snapshot(
         self,
         pools: tuple[PeakPoolSnapshot, ...],
         *,
         expert: bool,
+        master: bool = False,
     ) -> PeakPoolRenderSnapshot:
-        category = "peak_expert_pool" if expert else "peak_pool"
+        category = (
+            "peak_master_pool"
+            if master
+            else ("peak_expert_pool" if expert else "peak_pool")
+        )
         try:
             snapshot = self._new_content.snapshot()
         except (DataUnavailableError, NewContentIndexUnavailableError) as error:
@@ -454,6 +478,7 @@ class PeakQueryService:
                 change_state="unavailable",
                 content_version="",
                 expert=expert,
+                master=master,
             )
         if not snapshot.is_category_comparable(category):
             logger.info(
@@ -465,18 +490,13 @@ class PeakQueryService:
                 pools=pools,
                 transitions=(),
                 change_state="unavailable",
-                content_version=(
-                    f"{snapshot.config_version}:{snapshot.weekly_cycle}"
-                ),
+                content_version=(f"{snapshot.config_version}:{snapshot.weekly_cycle}"),
                 expert=expert,
+                master=master,
             )
 
         items = snapshot.items_for(category)
-        current_pets = {
-            pet.id: pet
-            for pool in pools
-            for pet in pool.pets
-        }
+        current_pets = {pet.id: pet for pool in pools for pet in pool.pets}
         missing_ids = {item.entity_id for item in items} - set(current_pets)
         changed_pets: dict[int, PeakPetSnapshot] = {}
         if missing_ids:
@@ -538,6 +558,7 @@ class PeakQueryService:
             change_state="changed" if transitions else "unchanged",
             content_version=f"{snapshot.config_version}:{snapshot.weekly_cycle}",
             expert=expert,
+            master=master,
         )
 
     async def vote(
@@ -567,9 +588,7 @@ class PeakQueryService:
                 rank = await game.get_semi_limit_pool_vote(vote.subkey)
             else:
                 continue
-            pools.append(
-                {"items": rank, "title": title, "pets": list(vote.pets)}
-            )
+            pools.append({"items": rank, "title": title, "pets": list(vote.pets)})
         if not pools:
             return PeakQueryResult(message="❌当前没有进行中的巅峰投票。")
         await progress("正在生成图片...")
@@ -584,9 +603,7 @@ class PeakQueryService:
                 len(pools),
                 PEAK_VOTE_RENDER_TIMEOUT_SECONDS,
             )
-            return PeakQueryResult(
-                message="❌巅峰投票图片生成超时，请稍后再试。"
-            )
+            return PeakQueryResult(message="❌巅峰投票图片生成超时，请稍后再试。")
         except Exception:
             logger.exception("peak vote render failed: pools=%s", len(pools))
             return PeakQueryResult(message="❌巅峰投票图片生成失败，请稍后再试。")
@@ -664,8 +681,7 @@ class PeakQueryService:
         if period is None:
             return PeakQueryResult(
                 message=(
-                    "❌找不到专家禁用池数据。"
-                    "（这是一个bug，请反馈给开发者）"
+                    "❌找不到专家禁用池数据。（这是一个bug，请反馈给开发者）"
                     if monthly
                     else "❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
                 )

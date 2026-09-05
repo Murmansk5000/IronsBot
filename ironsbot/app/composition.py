@@ -208,7 +208,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     driver = nonebot.get_driver()
     driver.register_adapter(SelfCommandAdapter)
-    install_self_commands(settings.runtime.self_commands)
+    runtime_superuser_ids: set[int] = set()
+    install_self_commands(settings.runtime.self_commands, runtime_superuser_ids)
     scheduler = SchedulerFacade(timezone=settings.runtime.scheduler.timezone)
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
@@ -234,6 +235,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.superuser_ids,
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
+        runtime_superuser_ids=runtime_superuser_ids,
     )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,

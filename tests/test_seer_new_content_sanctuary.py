@@ -231,7 +231,10 @@ def test_peak_environment_without_changes_suggests_current_pool_queries() -> Non
         snapshot,
         PEAK_POOL_NEW_CONTENT_CATEGORIES,
         all_categories_comparable=True,
-    ) == "本周竞技池和专家池均未变化。\n可发送“竞技池”或“专家池”查看当前池。"
+    ) == (
+        "本周竞技池、专家池和大师池均未变化。\n"
+        "可发送“竞技池”“专家池”或“大师池”查看当前池。"
+    )
 
 
 def test_peak_environment_without_complete_baseline_keeps_unavailable_message() -> None:
@@ -288,7 +291,7 @@ def test_peak_environment_change_command_starts_the_shared_menu() -> None:
     )
     start_menu.assert_awaited_once_with(
         service,
-        ("peak_pool", "peak_expert_pool"),
+        ("peak_pool", "peak_expert_pool", "peak_master_pool"),
         group,
         matcher,
         state,
@@ -619,16 +622,20 @@ async def test_pool_category_letters_send_existing_full_pool_images(
         {"previous_limit": None, "current_limit": 0},
         "modified",
     )
+    master = NewContentItem(
+        "peak_master_pool", 3, "大师池精灵", 3,
+        {"previous_limit": 20, "current_limit": 10}, "modified",
+    )
     snapshot = NewContentSnapshot(
         baseline_established=True,
         config_version="20260814",
         weekly_cycle="2026-08-14",
-        items=(standard, expert),
+        items=(standard, expert, master),
     )
     prompt = _content_prompt(
         snapshot,
         _NewContentMenuLayout(
-            display_categories=("peak_pool", "peak_expert_pool")
+            display_categories=("peak_pool", "peak_expert_pool", "peak_master_pool")
         ),
     )
     send_pool = AsyncMock()
@@ -653,7 +660,9 @@ async def test_pool_category_letters_send_existing_full_pool_images(
     )
     standard_choice = prompt.get_item_by_input("a")
     expert_choice = prompt.get_item_by_input("b")
+    master_choice = prompt.get_item_by_input("c")
     assert standard_choice is not None and expert_choice is not None
+    assert master_choice is not None
 
     await _resolve_new_content_selection(
         standard_choice,
@@ -665,14 +674,21 @@ async def test_pool_category_letters_send_existing_full_pool_images(
         matcher,  # type: ignore[arg-type]
         group_message_event(),
     )
+    await _resolve_new_content_selection(
+        master_choice,
+        matcher,  # type: ignore[arg-type]
+        group_message_event(),
+    )
 
     assert [item.name for item in prompt.items] == [
         "↗ 竞技池变化",
         "↗ 专家池变化",
+        "↗ 大师池变化",
     ]
     assert all(item.value.item is None for item in prompt.items)
-    assert send_pool.await_args_list[0].kwargs == {"expert": False}
-    assert send_pool.await_args_list[1].kwargs == {"expert": True}
+    assert send_pool.await_args_list[0].kwargs == {"expert": False, "master": False}
+    assert send_pool.await_args_list[1].kwargs == {"expert": True, "master": False}
+    assert send_pool.await_args_list[2].kwargs == {"expert": False, "master": True}
 
 
 def test_new_content_root_menu_separates_added_and_modified_counts() -> None:

@@ -23,6 +23,7 @@ POKE_REPLY_REQUIRED_ERROR = (
     "messaging.poke replies require non-empty group/user refs and messages"
 )
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
+COMMAND_MESSAGES_EMPTY_ERROR = "messages 中的消息内容不能为空"
 COMMAND_ID_FORMAT_ERROR = (
     "command message action id may only contain letters, numbers, dots, "
     "underscores, and hyphens"
@@ -254,14 +255,25 @@ class BotRoutingConfig(BaseModel):
         return None
 
 
-class BaseMessageAction(BaseModel):
+class MessageContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    messages: list[str] = Field(min_length=1)
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, value: list[str]) -> list[str]:
+        messages = [message.strip() for message in value]
+        if any(not message for message in messages):
+            raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
+        return messages
+
+
+class BaseMessageAction(MessageContent):
     id: str = ""
     name: str = ""
     enabled: bool = True
     feature: str = "text"
-    message: str
 
     @field_validator("id", "name")
     @classmethod
@@ -273,14 +285,6 @@ class BaseMessageAction(BaseModel):
     def normalize_feature(cls, value: str) -> str:
         feature = value.strip()
         return feature or "text"
-
-    @field_validator("message")
-    @classmethod
-    def validate_message(cls, value: str) -> str:
-        message = value.strip()
-        if not message:
-            raise ValueError("消息内容不能为空")
-        return message
 
 
 class MessageReplyAction(BaseMessageAction):
@@ -315,16 +319,13 @@ class MessageKeywordReplyAction(MessageReplyAction):
         return self
 
 
-class MessageMentionReplyAction(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class MessageMentionReplyAction(MessageContent):
     id: str
     name: str = ""
     enabled: bool = True
-    message: str
     user_ids: OneBotReferenceList = Field(default_factory=list)
 
-    @field_validator("id", "name", "message")
+    @field_validator("id", "name")
     @classmethod
     def normalize_text(cls, value: str) -> str:
         return value.strip()
@@ -335,8 +336,6 @@ class MessageMentionReplyAction(BaseModel):
             raise ValueError(COMMAND_ID_REQUIRED_ERROR)
         if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):
             raise ValueError(COMMAND_ID_FORMAT_ERROR)
-        if not self.message:
-            raise ValueError("消息内容不能为空")
         if self.enabled and not self.user_ids:
             raise ValueError(ENABLED_MENTION_USERS_REQUIRED_ERROR)
         return self

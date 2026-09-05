@@ -305,6 +305,7 @@ class SelfCommandsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
+    superuser: bool = False
     prefix: str | list[str] = "演示 "
 
     @field_validator("prefix")

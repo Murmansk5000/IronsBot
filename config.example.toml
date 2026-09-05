@@ -146,8 +146,11 @@ runtime_state = "data/state/runtime_state.sqlite"
 
 [runtime.self_commands]
 # Enable prefixed commands manually sent by the bot QQ in groups.
-# 还需开启 NapCat 对应连接的 reportSelfMessage；使用机器人 QQ 自己的权限。
+# 还需开启 NapCat 对应连接的 reportSelfMessage；默认使用机器人 QQ 自己的权限。
 enabled = false
+# Default: false; EN: Let valid prefixed self commands use superuser permissions.
+# ZH: 是否让通过前缀校验的机器人自发指令使用超级管理员权限。
+superuser = false
 # One prefix or a list; overlapping prefixes use the longest match.
 # 可填写单个字符串或多个前缀；空格保留，重叠时优先匹配最长前缀。
 prefix = ["演示 ", "示范 "]
@@ -429,7 +432,9 @@ enabled = true
 # and is ignored in private chats.
 # 群内可发送“口令 @群成员”，回复会 @ 指定成员而不是发起人；配置的 at_user_ids 仍追加并去重。
 # 此用法仅适用于完整匹配的固定口令，不适用于关键词回复，不支持 @全体成员。
-# Example action fields: id, enabled, feature, message, commands, at_user_ids.
+# Example action fields: id, enabled, feature, messages, commands, at_user_ids.
+# EN: Commands, keyword replies, mention replies and schedules use messages only.
+# ZH: 固定口令、关键词回复、AT 专属回复和定时消息统一使用 messages；旧 message 字段已移除。
 # `id` uniquely identifies the action. `feature` declares its permission key;
 # that key may then be referenced by features.bundles/group_policy/user_policy.
 # `id` 唯一标识这条动作；`feature` 同时声明它的权限名，随后可在
@@ -439,8 +444,16 @@ enabled = true
 # [[messaging.commands]]
 # id = "seerinfo_page"
 # commands = ["xm", "xrym", "雷小伊", "重聚"]
-# message = "https://seerinfo.yuyuqaq.cn/"
+# messages = ["https://seerinfo.yuyuqaq.cn/"]
 # feature = "seerinfo_link"
+
+# EN: Each messages item is sent separately in order, including repeated items.
+# ZH: 单条也写成数组；每项单独发送，保持顺序，可重复，不可为空。
+# [[messaging.commands]]
+# id = "triple_reply"
+# commands = ["出出三连"]
+# messages = ["星皇穿了", "咤克斯瞬了", "机盖弹了"]
+# feature = "text"
 
 # Default: []
 # EN: Keyword replies use literal contains matching. They only reply when the
@@ -455,7 +468,7 @@ enabled = true
 # [[messaging.keyword_replies]]
 # id = "chuchu_reply"
 # keywords = ["出出"]
-# message = "出出是蛆"
+# messages = ["出出是蛆"]
 # feature = "chuchu_reply"
 
 # Default: []
@@ -473,7 +486,7 @@ enabled = true
 # id = "example_user_mention"
 # name = "示例用户 AT 回复"
 # user_ids = ["example_user"]
-# message = "123"
+# messages = ["123"]
 
 # Default: []
 # EN: Scheduled text pushes. Each task delivers to users and groups where its
@@ -487,7 +500,7 @@ enabled = true
 # resets TD and push-time preferences for that schedule.
 # `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-# Example task fields: id, name, enabled, feature, message, time,
+# Example task fields: id, name, enabled, feature, messages, time,
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 

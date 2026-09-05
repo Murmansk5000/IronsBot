@@ -13,6 +13,7 @@ from nonebot_plugin_saa import Image, MessageFactory
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data_query_commands import MASTER_POOL_COMMANDS
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -53,10 +54,12 @@ async def _handle_pool(
     matcher: Matcher,
     *,
     expert: bool,
+    master: bool = False,
 ) -> None:
     try:
         result = await service.pool(
             expert=expert,
+            master=master,
             progress=partial(_report_progress, matcher),
         )
     except DataUnavailableError:
@@ -144,6 +147,18 @@ def install(group: SeerMatcherGroup) -> None:
         bind_async(_handle_pool, service, references, expert=True)
     )
 
+    master_pool = group.on_fullmatch(
+        MASTER_POOL_COMMANDS,
+        policy=CommandPolicy.command(
+            "seer_peak_master_pool", help_ids=("seer.peak.master",)
+        ),
+        rule=rule,
+        priority=priority,
+    )
+    master_pool.append_handler(
+        bind_async(_handle_pool, service, references, expert=False, master=True)
+    )
+
     vote = group.on_fullmatch(
         ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"),
         policy=CommandPolicy.command(
@@ -164,9 +179,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    suit.append_handler(
-        bind_async(_handle_item_rank, service, references, kind="套装")
-    )
+    suit.append_handler(bind_async(_handle_item_rank, service, references, kind="套装"))
 
     title = group.on_fullmatch(
         ("竞技称号榜", "狂野称号榜", "专家称号榜"),

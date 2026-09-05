@@ -5,6 +5,7 @@ from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
+    MASTER_POOL_COMMANDS,
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,
     NEW_AUTOCARD_ROLES_COMMANDS,
@@ -183,6 +184,12 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                     {"show_in_poke": True},
                 ),
                 (
+                    "seer.peak.master",
+                    MASTER_POOL_COMMANDS,
+                    "查询大师池精灵竞技点和本周点数变化",
+                    {"show_in_poke": True},
+                ),
+                (
                     "seer.peak.rank",
                     ("竞技套装榜", "狂野称号榜", "竞技精灵月榜"),
                     "查询巅峰套装、称号和精灵榜",
@@ -229,7 +236,7 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                 (
                     "seer.data.peak_environment_changes",
                     PEAK_ENVIRONMENT_CHANGES_COMMANDS,
-                    "查看本周竞技池与专家池环境变化",
+                    "查看本周竞技池、专家池与大师池环境变化",
                     {"features_all": ("seer_data", "seer_peak")},
                 ),
                 (
