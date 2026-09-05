@@ -6,10 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
+from ironsbot.core.platform import validate_reply_deadline
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable
+    from datetime import datetime
 
-    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.platform import ActorRef, ConversationRef, IncomingMessageRef
 
 
 class OutboundMessageError(ValueError):
@@ -32,6 +35,10 @@ class OutboundMessageError(ValueError):
     @classmethod
     def empty_reply_message_id(cls) -> OutboundMessageError:
         return cls("reply message id must not be empty")
+
+    @classmethod
+    def empty_reply_sequence(cls) -> OutboundMessageError:
+        return cls("reply sequence must not be empty")
 
     @classmethod
     def empty_message(cls) -> OutboundMessageError:
@@ -98,10 +105,26 @@ class OutboundMessage:
 class ReplyContext:
     conversation: ConversationRef
     message_id: str
+    sequence: str | None = None
+    reply_deadline: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.message_id.strip():
             raise OutboundMessageError.empty_reply_message_id()
+        if self.sequence is not None and not self.sequence.strip():
+            raise OutboundMessageError.empty_reply_sequence()
+        validate_reply_deadline(self.reply_deadline)
+
+    @classmethod
+    def from_message(cls, message: IncomingMessageRef) -> ReplyContext:
+        """Reply to this event while retaining its transport delivery window."""
+
+        return cls(
+            message.conversation,
+            message.message_id,
+            sequence=message.sequence,
+            reply_deadline=message.reply_deadline,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +143,7 @@ class SendResult:
     message_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    trace_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.delivered and not (self.message_id or "").strip():
