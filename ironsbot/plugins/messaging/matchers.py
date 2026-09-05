@@ -13,8 +13,8 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind, bind_async
 from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
-    finish_event_reply,
     finish_matcher_message,
+    finish_message_sequence,
     send_matcher_message,
 )
 from ironsbot.runtime.rules import (
@@ -60,7 +60,7 @@ async def handle_message_command(
         if isinstance(event, GroupMessageEvent)
         else []
     )
-    messages = action.messages or [action.message]
+    messages = action.messages
     for message in messages[:-1]:
         await send_matcher_message(
             matcher,
@@ -81,7 +81,9 @@ async def handle_group_mention_reply(
     event: GroupMessageEvent,
     state: T_State,
 ) -> None:
-    await finish_event_reply(matcher, event, state[MESSAGE_ACTION_KEY].message)
+    await finish_message_sequence(
+        matcher, state[MESSAGE_ACTION_KEY].messages, event=event, interval_seconds=0
+    )
 
 
 def _action_command_id(

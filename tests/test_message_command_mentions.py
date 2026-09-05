@@ -11,6 +11,7 @@ from ironsbot.config.models.messaging import (
     MessageCommandAction,
     MessageKeywordReplyAction,
     MessageMentionReplyAction,
+    MessageScheduledAction,
 )
 from ironsbot.plugins.messaging import matchers
 from ironsbot.runtime.matchers import MatcherRegistry
@@ -43,7 +44,7 @@ def installed_messaging(
             MessageCommandAction(
                 id="join_group",
                 commands=["加群"],
-                message="加群：202140716",
+                messages=["加群：202140716"],
                 feature="text",
             )
         ],
@@ -51,7 +52,7 @@ def installed_messaging(
             MessageKeywordReplyAction(
                 id="keyword",
                 keywords=["群"],
-                message="keyword reply",
+                messages=["keyword reply"],
                 feature="text",
             )
         ],
@@ -61,7 +62,7 @@ def installed_messaging(
             MessageMentionReplyAction(
                 id="example_mention",
                 user_ids=[123],
-                message="123",
+                messages=["123"],
             )
         ],
     )
@@ -119,16 +120,32 @@ class ReplyRecorder:
         {},
         {"messages": []},
         {"messages": [" "]},
+        {"messages": "one"},
+        {"message": "one"},
         {"message": "one", "messages": ["two"]},
     ],
 )
-def test_fixed_command_rejects_missing_or_ambiguous_messages(
+@pytest.mark.parametrize(
+    ("model", "fields"),
+    [
+        (MessageCommandAction, {"commands": ["出出三连"]}),
+        (MessageKeywordReplyAction, {"keywords": ["出出"]}),
+        (MessageMentionReplyAction, {"user_ids": [123]}),
+        (MessageScheduledAction, {"time": "23:00"}),
+    ],
+)
+def test_message_actions_reject_missing_or_legacy_messages(
     payload: dict[str, object],
+    model: type[
+        MessageCommandAction
+        | MessageKeywordReplyAction
+        | MessageMentionReplyAction
+        | MessageScheduledAction
+    ],
+    fields: dict[str, object],
 ) -> None:
     with pytest.raises(ValidationError):
-        MessageCommandAction.model_validate(
-            {"id": "triple_reply", "commands": ["出出三连"], **payload}
-        )
+        model.model_validate({"id": "triple_reply", **fields, **payload})
 
 
 @pytest.mark.asyncio
@@ -248,6 +265,40 @@ async def test_private_reply_stays_plain_text(
 
 
 @pytest.mark.asyncio
+async def test_keyword_reply_sends_messages_in_order(
+    command_runtime: tuple[type[Matcher], MessagingService],
+) -> None:
+    matcher, messaging = command_runtime
+    messaging._config.keyword_replies[0].messages = ["first", "second"]
+    event = group_message_event("测试群回复")
+    state: T_State = {}
+    assert await matcher.rule(cast("Bot", None), event, state)
+    recorder = ReplyRecorder()
+    await matchers.handle_message_command(
+        cast("Matcher", recorder), event, state, messaging=messaging
+    )
+    assert [str(message) for message in recorder.messages] == [
+        "[CQ:at,qq=123] first", "[CQ:at,qq=123] second"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_personal_mention_sends_messages_in_order(
+    installed_messaging: tuple[list[type[Matcher]], MessagingService],
+) -> None:
+    registered, messaging = installed_messaging
+    messaging._config.mention_replies[0].messages = ["first", "second"]
+    event = group_message_event(message=Message(MessageSegment.at(1)))
+    state: T_State = {}
+    assert await registered[0].rule(cast("Bot", None), event, state)
+    recorder = ReplyRecorder()
+    await matchers.handle_group_mention_reply(cast("Matcher", recorder), event, state)
+    assert [str(message) for message in recorder.messages] == [
+        "[CQ:at,qq=123] first", "[CQ:at,qq=123] second"
+    ]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("reply_message_id", [None, 999])
 async def test_personal_mention_works_without_group_features_and_replies_to_sender(
     installed_messaging: tuple[list[type[Matcher]], MessagingService],
@@ -308,7 +359,7 @@ def test_personal_mention_respects_blacklists(tmp_path: Path, policy: str) -> No
             MessageMentionReplyAction(
                 id="example_mention",
                 user_ids=[123],
-                message="123",
+                messages=["123"],
             )
         ],
         group_policy={"456": ["blacklist"]} if policy == "group" else {},

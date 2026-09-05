@@ -238,7 +238,7 @@ blocked_user = ["blacklist"]
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym", "雷小伊", "重聚"]
-message = "https://seerinfo.yuyuqaq.cn/"
+messages = ["https://seerinfo.yuyuqaq.cn/"]
 feature = "seerinfo_link"
 
 [bilibili.accounts.seer]
