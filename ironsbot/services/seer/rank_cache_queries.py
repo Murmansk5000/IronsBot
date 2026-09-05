@@ -19,6 +19,7 @@ from ironsbot.services.seer.rank_score_cache import (
 )
 from ironsbot.services.seer.rank_score_helpers import (
     score_miss_proof_from_page,
+    score_segment_coverage,
 )
 
 if TYPE_CHECKING:
@@ -84,7 +85,7 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
     )
 
 
-def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915
+def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913
     cache: Any,
     *,
     key: int,
@@ -102,7 +103,7 @@ def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR091
 ) -> RankScoreSearchResult | None:
     """Return a proved score segment from complete cached pages only."""
 
-    if target_score <= 0 or search_limit <= 0:
+    if target_score <= 0 or search_limit <= 0 or tie_page_limit <= 0:
         return None
     start_index = max(0, start_index)
     end_index = start_index + search_limit
@@ -123,7 +124,7 @@ def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR091
 
     def read_page(page_index: int) -> RankPageResult | None:
         aligned = page_start(page_index)
-        if aligned < start_index or aligned >= end_index:
+        if aligned < page_start(start_index) or aligned >= end_index:
             return None
         if aligned not in pages:
             cached = _cached_page(
@@ -142,8 +143,7 @@ def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR091
     if first_page is None:
         return None
 
-    matches = _matching_indexes(pages, target_score=target_score)
-    if not matches:
+    if not any(int(item.score) == target_score for item in first_page.items):
         # The cached score boundaries are raw-server positions.  With hidden
         # users, a missing score cannot safely prove the public visible range.
         if excluded_user_ids:
@@ -169,34 +169,22 @@ def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR091
         )
 
     while True:
-        first_start = page_start(matches[0])
-        if matches[0] != first_start:
-            break
-        previous = read_page(first_start - page_size)
-        if previous is None:
+        coverage = score_segment_coverage(
+            pages,
+            start_index=start_index,
+            end_index=end_index,
+            page_size=page_size,
+            target_score=target_score,
+        )
+        if coverage is None:
             return None
-        if len(pages) > tie_page_limit:
-            return None
-        updated = _matching_indexes(pages, target_score=target_score)
-        if updated[0] == matches[0]:
+        if not coverage.missing_pages:
             break
-        matches = updated
+        for missing_start in coverage.missing_pages:
+            if len(pages) >= tie_page_limit or read_page(missing_start) is None:
+                return None
 
-    while True:
-        last_index = matches[-1]
-        last_start = page_start(last_index)
-        last = pages[last_start]
-        page_end = last_start + len(last.items) - 1
-        if last_index != page_end or len(last.items) < page_size:
-            break
-        following = read_page(last_start + page_size)
-        if following is None or len(pages) > tie_page_limit:
-            return None
-        updated = _matching_indexes(pages, target_score=target_score)
-        if updated[-1] == last_index:
-            break
-        matches = updated
-
+    matches = list(coverage.matches)
     visible_indexes = _visible_match_indexes(
         pages,
         matches=matches,
@@ -356,19 +344,6 @@ def _cached_page(
         items=list(cached.items),
         fetched_at=float(cached.fetched_at),
         from_cache=True,
-    )
-
-
-def _matching_indexes(
-    pages: dict[int, RankPageResult],
-    *,
-    target_score: int,
-) -> list[int]:
-    return sorted(
-        page_start + offset
-        for page_start, page in pages.items()
-        for offset, item in enumerate(page.items)
-        if int(item.score) == target_score
     )
 
 

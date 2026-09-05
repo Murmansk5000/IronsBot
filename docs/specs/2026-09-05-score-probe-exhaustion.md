@@ -56,7 +56,9 @@ latter exposes a fallback scan endpoint as an exact same-score population.
   Production code net change: **+14 lines** across three existing modules;
   no new runtime module, dependency, schema or configuration.
 - No fetch/pull/merge/push or production writes. Local main remains `f19c7089`.
-  This does not change per-stage budgets or prove cache-candidate completeness.
+  This does not change per-stage budgets. Candidate edge/interior completeness
+  is now verified separately in [cache coverage](2026-09-05-score-cache-coverage.md),
+  without claiming that multiple live pages form an atomic snapshot.
 
 Program remains 4/8 verified phases; overall completion and image-size reduction
 are unproven. Rollback is scoped commits only.

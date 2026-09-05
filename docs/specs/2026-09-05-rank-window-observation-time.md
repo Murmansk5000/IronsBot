@@ -77,8 +77,10 @@ remain separate audits; this is not completion of all freshness/error gates.
   process had ended but its output was unavailable, so the final suite above
   was rerun after checking that no test/type-check process remained alive.
 
-Remaining gates include cache-candidate completeness and cache admission/freshness
-policy. Score-probe exhaustion is now carried into results and partial display
+Remaining gates include cache admission/freshness policy and live multi-page
+consistency. Candidate coverage is verified in the separate
+[cache coverage Spec](2026-09-05-score-cache-coverage.md).
+Score-probe exhaustion is now carried into results and partial display
 by the separate [exhaustion Spec](2026-09-05-score-probe-exhaustion.md). That work
 does not change per-stage budgets or complete all bounded-search semantics.
 
