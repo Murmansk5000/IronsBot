@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 import sys
+from io import TextIOWrapper
 
 import nonebot
 from pydantic import ValidationError
@@ -12,7 +13,7 @@ from ironsbot.config.loader import (
 
 CONFIG_LOAD_ERROR_EXIT_CODE = 2
 
-if __name__ == "__main__":
+if __name__ == "__main__" and isinstance(sys.stderr, TextIOWrapper):
     sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
 
 try:
