@@ -319,6 +319,32 @@ Before changing production code, the implementation plan must answer these
 questions in writing. A small bug fix may answer them in one short paragraph;
 a migration must answer each one explicitly.
 
+### Spec-Driven Delivery
+
+For any change that crosses a module boundary, changes a public command,
+configuration, persistence, rendering contract, or another repository, create
+a feature spec from [docs/specs/TEMPLATE.md](docs/specs/TEMPLATE.md) before
+editing production code. The spec is the executable agreement for that change:
+it records the target behaviour, semantic owner, accepted inputs and outputs,
+non-goals, migration and rollback, and acceptance evidence. It is not a second
+architecture document.
+
+Use [docs/specs/README.md](docs/specs/README.md) for the lifecycle and naming
+rules. `ARCHITECTURE.md` remains the authority for durable ownership and target
+contracts; `docs/engineering-workflow.md` remains the authority for how work is
+reviewed and reported; `docs/multiplatform-refactor.md` remains the migration
+ledger. A feature spec links to those documents instead of duplicating them.
+
+Small, local correctness fixes may use a short design note in the commit or
+task instead of a separate spec only when they do not alter a user contract,
+schema, configuration, command syntax, or ownership boundary. If investigation
+widens such a fix, stop and promote it to a spec before adding another patch.
+
+Each implementation step must trace to one acceptance criterion in its spec.
+When facts change, update the spec before changing the implementation; do not
+preserve an obsolete plan through compatibility code. A spec is complete only
+when its verified evidence, remaining risks, and rollback state are recorded.
+
 1. **Semantic owner:** What domain capability owns the behaviour? The answer
    must not be "this plugin already handles something similar."
 2. **Reusable input/output:** Which existing typed value, port, resolver, or
@@ -696,7 +722,11 @@ Those paths, plus private lineup via `PlayerLineupRenderPort`, calculate their
 request key before data/asset preparation. The private lineup keeps its own
 presentation module, but its adapter alone owns asset loading, final-cache
 access, and the HTML render port. The remaining Phase 4 gate is complete,
-scope-aware SeerAPI asset-manifest validation, not another runtime cache order.
+scope-aware SeerAPI asset-manifest validation and revision-bound asset retrieval,
+not another runtime cache order. A build-time manifest that records an immutable
+asset-tree revision is insufficient while a consumer still fetches the mutable
+`main` branch: the resolved asset URL or asset source must be derived from the
+same published revision that participates in the final-image request key.
 Rank and any later renderer paths remain **transition** work. They may receive
 narrow correctness fixes, but new rendering features must start from the target
 pipeline above instead of copying their older data-loading patterns.
@@ -938,8 +968,11 @@ The graph is interpreted as "may depend on":
 
 - `core` imports no other IronsBot layer.
 - `config` imports only `core`.
-- `services` imports `core` and service modules. A service defines the
-  protocols for infrastructure it needs.
+- `services` imports `core` and service modules. It may import the narrow,
+  read-only published-data repositories under `integrations.seer_data`; it
+  must not import transport, scheduler, generic storage, platform adapters,
+  plugins, or the application composition root. A service defines protocols
+  for all other infrastructure it needs.
 - `integrations` imports `core`, configuration value types, and service
   protocols. It never imports plugins or the application composition root.
 - `runtime` imports `core` and NoneBot, but no concrete service or integration.
