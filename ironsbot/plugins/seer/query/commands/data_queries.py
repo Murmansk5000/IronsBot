@@ -326,9 +326,9 @@ async def _start_new_content(  # noqa: PLR0911, PLR0913
         return
     layout = _NewContentMenuLayout(
         display_categories=visible_categories,
-        expanded_categories=frozenset(group.new_content_expanded_categories).intersection(
-            visible_categories
-        ),
+        expanded_categories=frozenset(
+            group.new_content_expanded_categories
+        ).intersection(visible_categories),
         auto_expand_max_items=group.new_content_auto_expand_max_items,
         focused_category=(
             visible_categories[0] if len(visible_categories) == 1 else None
@@ -378,11 +378,11 @@ def _empty_new_content_message(
     *,
     all_categories_comparable: bool = False,
 ) -> str:
-    if (
-        categories == PEAK_POOL_NEW_CONTENT_CATEGORIES
-        and all_categories_comparable
-    ):
-        return "本周竞技池和专家池均未变化。\n可发送“竞技池”或“专家池”查看当前池。"
+    if categories == PEAK_POOL_NEW_CONTENT_CATEGORIES and all_categories_comparable:
+        return (
+            "本周竞技池、专家池和大师池均未变化。\n"
+            "可发送“竞技池”“专家池”或“大师池”查看当前池。"
+        )
     name = (
         "新增群星牌"
         if categories == AUTOCARD_NEW_CONTENT_CATEGORIES
@@ -560,6 +560,7 @@ async def _resolve_new_content_selection(
             services.references,
             matcher,
             expert=action.category == "peak_expert_pool",
+            master=action.category == "peak_master_pool",
         )
         return
     if action.item is not None:
@@ -575,9 +576,11 @@ async def _replace_prompt(
     snapshot = matcher.state.get(NEW_CONTENT_SNAPSHOT_KEY)
     layout = matcher.state.get(NEW_CONTENT_MENU_LAYOUT_KEY)
     services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
-    if not isinstance(snapshot, NewContentSnapshot) or not isinstance(
-        layout, _NewContentMenuLayout
-    ) or not isinstance(services, _NewContentServices):
+    if (
+        not isinstance(snapshot, NewContentSnapshot)
+        or not isinstance(layout, _NewContentMenuLayout)
+        or not isinstance(services, _NewContentServices)
+    ):
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
     await matcher.send(_new_content_rendering_notice(event))

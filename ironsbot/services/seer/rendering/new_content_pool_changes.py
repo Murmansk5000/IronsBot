@@ -69,9 +69,7 @@ def pool_change_preview(
 
     if category == "peak_pool":
         known_transitions = {
-            (previous, current)
-            for previous in _POOL_LIMITS
-            for current in _POOL_LIMITS
+            (previous, current) for previous in _POOL_LIMITS for current in _POOL_LIMITS
         }
         matrix_rows = tuple(
             PoolChangeMatrixRowDict(
@@ -84,6 +82,21 @@ def pool_change_preview(
             for previous in _POOL_LIMITS
         )
         direction_rows: tuple[PoolChangeDirectionRowDict, ...] = ()
+    elif category == "peak_master_pool":
+        known_transitions = set(grouped)
+        matrix_rows = ()
+        direction_rows = tuple(
+            PoolChangeDirectionRowDict(
+                direction=(
+                    f"{_master_cost_label(previous)} → {_master_cost_label(current)}"
+                ),
+                pets=tuple(pets),
+            )
+            for (previous, current), pets in sorted(
+                grouped.items(),
+                key=lambda entry: str(entry[0]),
+            )
+        )
     else:
         known_transitions = {(None, 0), (0, None)}
         matrix_rows = ()
@@ -110,7 +123,13 @@ def pool_change_preview(
         )
     )
     return PoolChangePreviewDict(
-        kind="standard" if category == "peak_pool" else "expert",
+        kind=(
+            "standard"
+            if category == "peak_pool"
+            else "master"
+            if category == "peak_master_pool"
+            else "expert"
+        ),
         title=(
             f"{CATEGORY_NAMES[category]}｜{len(items)} 只"
             if items
@@ -134,6 +153,10 @@ async def load_pool_change_images(
         (item.category, item.entity_id): image
         for item, image in zip(items, image_results, strict=True)
     }
+
+
+def _master_cost_label(value: int | str | None) -> str:
+    return "未列入" if value is None else f"{value} 点"
 
 
 def _pool_limit_key(value: object) -> int | str | None:

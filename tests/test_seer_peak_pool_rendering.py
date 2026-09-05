@@ -107,6 +107,49 @@ def _pool(*pets: PeakPetSnapshot, count: int = 0) -> PeakPoolSnapshot:
 
 
 @pytest.mark.asyncio
+async def test_master_pool_renders_cost_groups_and_changes() -> None:
+    moved = PeakPetSnapshot(5000, "圣灵谱尼", 5000, 4)
+    added = PeakPetSnapshot(4800, "无极圣武", 4800, 5)
+    snapshot = PeakPoolRenderSnapshot(
+        pools=(_pool(moved, count=20), _pool(added, count=35), _pool(count=0)),
+        transitions=(
+            PeakPoolTransitionSnapshot(moved, 35, 20),
+            PeakPoolTransitionSnapshot(added, None, 35),
+        ),
+        change_state="changed",
+        content_version="20260904",
+        expert=False,
+        master=True,
+    )
+    captured: dict[str, Any] = {}
+
+    async def render_html(*_args: object, **kwargs: Any) -> bytes:
+        captured.update(kwargs["templates"])
+        return b"master-image"
+
+    result = await render_peak_pool(
+        _Cache(),
+        _Images(),
+        render_html,
+        snapshot,
+        "大师池",  # type: ignore[arg-type]
+    )
+    assert result == b"master-image"
+    assert captured["change_label"] == "大师池"
+    pools = {pool["label"]: pool for pool in captured["pools"]}
+    assert tuple(pools) == ("35 点", "20 点", "未列入")
+    assert any(
+        pet["id"] == moved.id and pet["historical"]
+        for pet in _filled_slots(pools["35 点"])
+    )
+    assert any(
+        pet["id"] == moved.id and not pet["historical"]
+        for pet in _filled_slots(pools["20 点"])
+    )
+    assert captured["transition_arrows"]
+
+
+@pytest.mark.asyncio
 async def test_standard_pool_renders_current_and_historical_positions() -> None:
     moved = PeakPetSnapshot(1, "迁移精灵", 1001, 4)
     removed = PeakPetSnapshot(2, "移出精灵", 1002, 5)
@@ -137,43 +180,25 @@ async def test_standard_pool_renders_current_and_historical_positions() -> None:
     assert result == b"pool-image"
     pools = {pool["label"]: pool for pool in captured["pools"]}
     assert tuple(pools) == ("限0", "限2", "限3", "不限")
-    assert [
-        (pet["id"], pet["historical"])
-        for pet in _filled_slots(pools["限0"])
-    ] == [
+    assert [(pet["id"], pet["historical"]) for pet in _filled_slots(pools["限0"])] == [
         (1, False)
     ]
-    assert [
-        (pet["id"], pet["historical"])
-        for pet in _filled_slots(pools["限2"])
-    ] == [
+    assert [(pet["id"], pet["historical"]) for pet in _filled_slots(pools["限2"])] == [
         (1, True)
     ]
-    assert [
-        (pet["id"], pet["historical"])
-        for pet in _filled_slots(pools["限3"])
-    ] == [
+    assert [(pet["id"], pet["historical"]) for pet in _filled_slots(pools["限3"])] == [
         (2, True)
     ]
-    assert [
-        (pet["id"], pet["historical"])
-        for pet in _filled_slots(pools["不限"])
-    ] == [
+    assert [(pet["id"], pet["historical"]) for pet in _filled_slots(pools["不限"])] == [
         (2, False)
     ]
-    arrows = {
-        arrow.transition_id: arrow for arrow in captured["transition_arrows"]
-    }
+    arrows = {arrow.transition_id: arrow for arrow in captured["transition_arrows"]}
     assert arrows[0].start_y > arrows[0].line_end_y
     assert arrows[1].start_y < arrows[1].line_end_y
     assert arrows[0].color == UPWARD_ARROW_COLOR
     assert arrows[1].color == DOWNWARD_ARROW_COLOR
-    current_pixel = _data_uri_pixel(
-        _filled_slots(pools["限0"])[0]["head_img"]
-    )
-    historical_pixel = _data_uri_pixel(
-        _filled_slots(pools["限2"])[0]["head_img"]
-    )
+    current_pixel = _data_uri_pixel(_filled_slots(pools["限0"])[0]["head_img"])
+    historical_pixel = _data_uri_pixel(_filled_slots(pools["限2"])[0]["head_img"])
     assert current_pixel == (80, 160, 240, 192)
     assert historical_pixel == (64, 74, 84, 192)
 
@@ -217,10 +242,7 @@ async def test_expert_pool_uses_only_disabled_and_unlimited_sections() -> None:
         pools["不限"], pet_id=entered.id, historical=True, columns=columns
     )
     assert disabled_slot[1] == unlimited_slot[1] == base_columns
-    assert (
-        disabled["head_img"]
-        != unlimited["head_img"]
-    )
+    assert disabled["head_img"] != unlimited["head_img"]
 
 
 @pytest.mark.asyncio
@@ -322,8 +344,7 @@ async def test_adjacent_transition_uses_matching_nearest_edge_slots() -> None:
 async def test_nonadjacent_transition_uses_empty_bypass_column() -> None:
     moved = PeakPetSnapshot(100, "跨级精灵", 1100, 4)
     middle = tuple(
-        PeakPetSnapshot(index, f"限二{index}", 2000 + index, 5)
-        for index in range(1, 5)
+        PeakPetSnapshot(index, f"限二{index}", 2000 + index, 5) for index in range(1, 5)
     )
     snapshot = PeakPoolRenderSnapshot(
         pools=(
@@ -377,9 +398,7 @@ async def test_many_adjacent_transitions_expand_columns_without_stacking() -> No
     )
     snapshot = PeakPoolRenderSnapshot(
         pools=(_pool(*moved, count=2),),
-        transitions=tuple(
-            PeakPoolTransitionSnapshot(pet, 0, 2) for pet in moved
-        ),
+        transitions=tuple(PeakPoolTransitionSnapshot(pet, 0, 2) for pet in moved),
         change_state="changed",
         content_version="many-adjacent",
         expert=False,
@@ -406,12 +425,8 @@ async def test_many_adjacent_transitions_expand_columns_without_stacking() -> No
     assert pools["限0"]["rows"] == pools["限2"]["rows"] == 1
     transition_columns: set[int] = set()
     for pet in moved:
-        old = _pet_slot(
-            pools["限0"], pet_id=pet.id, historical=True, columns=columns
-        )
-        new = _pet_slot(
-            pools["限2"], pet_id=pet.id, historical=False, columns=columns
-        )
+        old = _pet_slot(pools["限0"], pet_id=pet.id, historical=True, columns=columns)
+        new = _pet_slot(pools["限2"], pet_id=pet.id, historical=False, columns=columns)
         assert old[:2] == new[:2]
         assert old[1] >= base_columns
         transition_columns.add(old[1])
@@ -520,11 +535,7 @@ async def test_adjacent_transition_chain_uses_one_minimum_lane() -> None:
         )
     }
     assert transition_columns == {base_columns}
-    assert (
-        pools["限2"]["rows"]
-        == pools["限3"]["rows"]
-        == SHARED_BOUNDARY_ROWS
-    )
+    assert pools["限2"]["rows"] == pools["限3"]["rows"] == SHARED_BOUNDARY_ROWS
 
 
 @pytest.mark.asyncio
@@ -699,8 +710,7 @@ async def test_regular_grid_uses_rows_already_required_by_transition_chain() -> 
     upper = PeakPetSnapshot(101, "上段迁移", 7101, 4)
     lower = PeakPetSnapshot(102, "下段迁移", 7102, 5)
     regular = tuple(
-        PeakPetSnapshot(index, f"普通{index}", 7200 + index, 6)
-        for index in range(1, 8)
+        PeakPetSnapshot(index, f"普通{index}", 7200 + index, 6) for index in range(1, 8)
     )
     snapshot = PeakPoolRenderSnapshot(
         pools=(_pool(*regular, upper, count=2), _pool(lower, count=3)),
@@ -729,9 +739,10 @@ async def test_regular_grid_uses_rows_already_required_by_transition_chain() -> 
     columns = captured["grid_columns"]
     base_columns = captured["base_columns"]
     pools = {pool["label"]: pool for pool in captured["pools"]}
-    assert base_columns == (
-        len(regular) + SHARED_BOUNDARY_ROWS - 1
-    ) // SHARED_BOUNDARY_ROWS
+    assert (
+        base_columns
+        == (len(regular) + SHARED_BOUNDARY_ROWS - 1) // SHARED_BOUNDARY_ROWS
+    )
     assert columns == base_columns + 1
     assert pools["限2"]["rows"] == SHARED_BOUNDARY_ROWS
     regular_rows = {

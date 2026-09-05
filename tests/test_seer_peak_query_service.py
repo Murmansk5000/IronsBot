@@ -171,6 +171,40 @@ def _service(
 
 
 @pytest.mark.asyncio
+async def test_master_pool_query_uses_only_master_weekly_transitions() -> None:
+    data = FakeData()
+    pet = PeakPetSnapshot(5000, "圣灵谱尼", 5000, 1)
+    period = datetime(2026, 9, 4, tzinfo=time.TZ_CN)
+    data.query_result = (PeakPoolSnapshot(1, 20, period, period, (pet,)),)
+    content = FakeNewContent(NewContentSnapshot(
+        baseline_established=True, config_version="20260904",
+        weekly_cycle="2026-09-04", items=(
+            NewContentItem("peak_pool", pet.id, pet.name, pet.id,
+                           {"previous_limit": 2, "current_limit": 0}, "modified"),
+            NewContentItem("peak_master_pool", pet.id, pet.name, pet.id,
+                           {"previous_limit": 35, "current_limit": 20}, "modified"),
+        ),
+    ))
+    rendered: dict[str, Any] = {}
+    progress = []
+
+    async def report(message: str) -> None:
+        progress.append(message)
+
+    result = await _service(data, FakeHeadless(), rendered, content).pool(
+        expert=False, master=True, progress=report,
+    )
+    assert result.image == b"pool"
+    assert result.reference is None
+    snapshot, title = rendered["pool"]
+    assert snapshot.master
+    assert snapshot.transitions == (PeakPoolTransitionSnapshot(pet, 35, 20),)
+    assert title == "大师池 / 精灵竞技点 / 配置期次 2026-09-04"
+    assert rendered["pool_session_open"] is False
+    assert progress == ["正在生成图片..."]
+
+
+@pytest.mark.asyncio
 async def test_peak_pool_query_renders_with_progress() -> None:
     data = FakeData()
     data.query_result = (

@@ -22,6 +22,7 @@ NewContentCategory = Literal[
     "pet",
     "peak_pool",
     "peak_expert_pool",
+    "peak_master_pool",
     "pet_skin",
     "skill",
     "mintmark",
@@ -44,6 +45,7 @@ NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "achievement",
     "peak_pool",
     "peak_expert_pool",
+    "peak_master_pool",
     "autocard_card",
     "autocard_role",
     "autocard_sanctuary_effect",
@@ -60,6 +62,7 @@ AUTOCARD_NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
 PEAK_POOL_NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "peak_pool",
     "peak_expert_pool",
+    "peak_master_pool",
 )
 
 CATEGORY_NAMES: dict[NewContentCategory, str] = {
@@ -67,6 +70,7 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "pet": "新增精灵",
     "peak_pool": "竞技池变化",
     "peak_expert_pool": "专家池变化",
+    "peak_master_pool": "大师池变化",
     "pet_skin": "新增皮肤",
     "skill": "新增技能",
     "mintmark": "新增刻印",
@@ -128,9 +132,7 @@ class NewContentSnapshot:
             category=category,
             comparison_ready=self.baseline_established,
             reason=(
-                "legacy_index"
-                if self.baseline_established
-                else "history_unavailable"
+                "legacy_index" if self.baseline_established else "history_unavailable"
             ),
         )
 
@@ -153,9 +155,7 @@ def new_content_category_preview_items(
     if max_items <= 0:
         return ()
     return tuple(
-        item
-        for item in snapshot.items_for(category)
-        if item.change_kind == "added"
+        item for item in snapshot.items_for(category) if item.change_kind == "added"
     )[:max_items]
 
 
@@ -194,9 +194,7 @@ def format_new_content_change_summary(item: NewContentItem) -> str:
     if not isinstance(values, list):
         return ""
     return "、".join(
-        value.strip()
-        for value in values
-        if isinstance(value, str) and value.strip()
+        value.strip() for value in values if isinstance(value, str) and value.strip()
     )
 
 
@@ -213,8 +211,13 @@ def format_new_content_item_description(item: NewContentItem) -> str:
         pet_name = str(item.payload.get("pet_name", ""))
         text = f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
     elif item.category in PEAK_POOL_NEW_CONTENT_CATEGORIES:
-        previous_limit = _format_peak_pool_limit(item.payload.get("previous_limit"))
-        current_limit = _format_peak_pool_limit(item.payload.get("current_limit"))
+        master = item.category == "peak_master_pool"
+        previous_limit = _format_peak_pool_limit(
+            item.payload.get("previous_limit"), master=master
+        )
+        current_limit = _format_peak_pool_limit(
+            item.payload.get("current_limit"), master=master
+        )
         text = f"修改｜{item.entity_id}｜{previous_limit} → {current_limit}"
     elif item.category == "skill":
         pets = item.payload.get("pets", [])
@@ -246,13 +249,13 @@ def format_new_content_item_description(item: NewContentItem) -> str:
     return f"{text}｜修改：{summary}" if summary else text
 
 
-def _format_peak_pool_limit(value: object) -> str:
+def _format_peak_pool_limit(value: object, *, master: bool = False) -> str:
     if value is None:
-        return "不限"
+        return "未列入" if master else "不限"
     if not isinstance(value, (int, str)):
         return "未知"
     try:
-        return f"限{int(value)}"
+        return f"{int(value)} 点" if master else f"限{int(value)}"
     except (TypeError, ValueError):
         return "未知"
 
@@ -261,8 +264,7 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
     try:
         connection = session.connection()
         release = (
-            connection
-            .exec_driver_sql(
+            connection.exec_driver_sql(
                 """
             SELECT current_config_version, weekly_cycle, baseline_established
             FROM new_content_release
@@ -280,8 +282,7 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
         state_rows = ()
         if is_current_week:
             rows = (
-                connection
-                .exec_driver_sql(
+                connection.exec_driver_sql(
                     """
                 SELECT category, entity_id, name, sort_value, payload_json, change_kind
                 FROM new_content_item
@@ -300,8 +301,7 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
             ).first()
             if has_category_state:
                 state_rows = (
-                    connection
-                    .exec_driver_sql(
+                    connection.exec_driver_sql(
                         """
                         SELECT category, comparison_ready, reason
                         FROM new_content_category_state
@@ -402,9 +402,7 @@ def current_new_content_weekly_cycle(now: datetime | None = None) -> str:
     else:
         current = now.astimezone(shanghai)
     current_date = current.date()
-    return (
-        current_date - timedelta(days=(current_date.weekday() - 4) % 7)
-    ).isoformat()
+    return (current_date - timedelta(days=(current_date.weekday() - 4) % 7)).isoformat()
 
 
 def new_content_unavailable_message() -> str:
