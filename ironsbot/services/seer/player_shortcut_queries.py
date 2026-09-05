@@ -27,6 +27,7 @@ from ironsbot.services.seer.rank_models import (
     RankLookupResult,
     RankSummaryProgress,
 )
+from ironsbot.services.seer.rank_summary import fetch_partial_rank_summary
 from ironsbot.services.seer.sequ_extra import (
     UnityPartOneInfo,
     UnityPeakInfo,
@@ -79,9 +80,7 @@ _PEAK_METRIC_KEYS_BY_MODE: dict[str, frozenset[str]] = {
         ("peak_standard", "peak_standard_win_rate", "peak_standard_matches")
     ),
     "wild": frozenset(("peak_wild", "peak_wild_win_rate", "peak_wild_matches")),
-    "expert": frozenset(
-        ("peak_expert", "peak_expert_win_rate", "peak_expert_matches")
-    ),
+    "expert": frozenset(("peak_expert", "peak_expert_win_rate", "peak_expert_matches")),
 }
 
 
@@ -185,17 +184,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
         ),
     )
     rank_progress = RankSummaryProgress()
-    rank_summary_fallback = PlayerRankSummary.empty()
-
-    def record_rank_summary_error(label: str, error: Exception) -> None:
-        _log_extra_error(label, error)
-        rank_summary_fallback.mark_failure(
-            label,
-            format_player_extra_error(error),
-        )
-
-    rank_summary = await safe_player_extra(
-        "全服排行",
+    rank_summary = await fetch_partial_rank_summary(
         rank.fetch_player_summary(
             game,
             player_id,
@@ -205,11 +194,13 @@ async def _fetch_collection_message(  # noqa: PLR0913
             progress=rank_progress,
             anchor_only=anchor_only,
         ),
-        rank_summary_fallback,
-        None,
-        on_error=record_rank_summary_error,
+        progress=rank_progress,
+        build_partial=lambda results, failure: PlayerRankSummary.from_results(
+            results,
+            pet_kind_count=unity_part_one.pet_kind_num,
+            failure=failure,
+        ),
         timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
-        error_label_factory=lambda: rank_progress.current_title or "全服排行",
     )
     metrics = collect_metrics(
         more_info=more_info,
@@ -287,17 +278,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         available_modes=peak_result.available_modes,
     )
     peak_progress = RankSummaryProgress()
-    peak_summary_fallback = PeakSeasonRankSummary.empty()
-
-    def record_peak_summary_error(label: str, error: Exception) -> None:
-        _log_extra_error(label, error)
-        peak_summary_fallback.mark_failure(
-            label,
-            format_player_extra_error(error),
-        )
-
-    rank_summary = await safe_player_extra(
-        "巅峰赛季榜",
+    rank_summary = await fetch_partial_rank_summary(
         rank.fetch_peak_summary(
             game,
             player_id,
@@ -307,11 +288,12 @@ async def _fetch_peak_message(  # noqa: PLR0913
             progress=peak_progress,
             anchor_only=anchor_only,
         ),
-        peak_summary_fallback,
-        None,
-        on_error=record_peak_summary_error,
+        progress=peak_progress,
+        build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
+            results,
+            failure=failure,
+        ),
         timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
-        error_label_factory=lambda: peak_progress.current_title or "巅峰赛季榜",
     )
     validated_peak = validate_player_peak_season(
         unity_peak,

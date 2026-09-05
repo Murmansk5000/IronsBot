@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any
+from dataclasses import replace
+from functools import partial
+from typing import Any, TypeVar
 
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
@@ -40,6 +43,27 @@ RunLookupJobs = Callable[
     Awaitable[dict[str, RankLookupResult]],
 ]
 _LOGGER = logging.getLogger("ironsbot.seer.rank_summary")
+SummaryT = TypeVar("SummaryT")
+
+
+async def fetch_partial_rank_summary(
+    operation: Awaitable[SummaryT],
+    *,
+    progress: RankSummaryProgress,
+    timeout_seconds: float,
+    build_partial: Callable[[dict[str, RankLookupResult], str], SummaryT],
+) -> SummaryT:
+    """Recover completed boards on failure, without swallowing cancellation."""
+    try:
+        return await asyncio.wait_for(operation, timeout=timeout_seconds)
+    except Exception as error:  # noqa: BLE001
+        _LOGGER.warning(
+            "player rank summary interrupted: completed=%s last_started=%s",
+            tuple(progress.completed),
+            progress.current_title,
+            exc_info=True,
+        )
+        return build_partial(progress.completed, _format_rank_failure(error))
 
 
 def _display_rank_title(title: str) -> str:
@@ -366,12 +390,8 @@ async def fetch_peak_season_rank_summary(  # noqa: PLR0913
             ),
         ),
     )
-    results = await _run_lookup_jobs(jobs, run_lookup_jobs)
-    return PeakSeasonRankSummary(
-        standard=results["standard_peak"],
-        wild=results["wild_peak"],
-        expert=results["expert_peak"],
-    )
+    results = await _run_lookup_jobs(jobs, run_lookup_jobs, progress)
+    return PeakSeasonRankSummary.from_results(results)
 
 
 async def fetch_autocard_rank_summary(
@@ -523,20 +543,10 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
             ),
         ),
     )
-    results = await _run_lookup_jobs(jobs, run_lookup_jobs)
-    breakdown = BookBreakdownSummary(
+    results = await _run_lookup_jobs(jobs, run_lookup_jobs, progress)
+    return PlayerRankSummary.from_results(
+        results,
         pet_kind_count=pet_kind_count,
-        pet_kind=results["pet_kind"],
-        skin=results["skin"],
-        countermark=results["countermark"],
-        outfit_suit=results["outfit_suit"],
-        outfit_part=results["outfit_part"],
-        mount=results["mount"],
-    )
-    return PlayerRankSummary(
-        book=results["book"],
-        achieve=results["achieve"],
-        breakdown=breakdown,
         errors=tuple(errors),
     )
 
@@ -544,7 +554,24 @@ async def fetch_player_rank_summary(  # noqa: PLR0913
 async def _run_lookup_jobs(
     jobs: Sequence[PlayerRankLookupJob],
     runner: RunLookupJobs | None,
+    progress: RankSummaryProgress | None,
 ) -> dict[str, RankLookupResult]:
+    async def record(job: PlayerRankLookupJob) -> RankLookupResult:
+        try:
+            result = await job.operation()
+        except Exception as error:  # noqa: BLE001
+            _LOGGER.warning("player rank item failed: %s", job.id, exc_info=True)
+            result = RankLookupResult(
+                title=job.title,
+                score_name="",
+                score=job.target_score,
+                failure=_format_rank_failure(error),
+            )
+        if progress is not None:
+            progress.completed[job.id] = result
+        return result
+
+    tracked_jobs = tuple(replace(job, operation=partial(record, job)) for job in jobs)
     if runner is not None:
-        return await runner(jobs)
-    return {job.id: await job.operation() for job in jobs}
+        return await runner(tracked_jobs)
+    return {job.id: await job.operation() for job in tracked_jobs}
