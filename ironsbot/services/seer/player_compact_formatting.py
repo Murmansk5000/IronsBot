@@ -28,6 +28,7 @@ def format_compact_player_info(  # noqa: PLR0913
     local_summary: LocalRankSummary,
     show_peak: bool,
     extra_errors: list[str],
+    fetched_at: float | None,
 ) -> str:
     lines = [
         "🤖【玩家信息】",
@@ -50,6 +51,7 @@ def format_compact_player_info(  # noqa: PLR0913
                     unity_peak,
                     peak_rank_summary,
                     local_summary,
+                    fetched_at=fetched_at,
                 ),
             )
         )

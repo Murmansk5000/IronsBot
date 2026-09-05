@@ -332,9 +332,7 @@ class RankQueryService:
         return format_global_rank_score_message(
             spec,
             result,
-            timestamp=(
-                timestamp_text(result.fetched_at) if result.fetched_at else None
-            ),
+            timestamp=timestamp_text(result.fetched_at),
             display_limit=display_limit,
         )
 
