@@ -1,11 +1,75 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from collections.abc import Mapping
+from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 
 from ironsbot.services.seer.rank_models import (
+    RankPageResult,
     RankScoreGap,
     RankScoreMissProof,
     RankScoreSearchItem,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class ScoreSegmentCoverage:
+    matches: tuple[int, ...]
+    missing_pages: tuple[int, ...]
+
+
+def score_segment_coverage(  # noqa: PLR0911
+    pages: Mapping[int, RankPageResult],
+    *,
+    start_index: int,
+    end_index: int,
+    page_size: int,
+    target_score: int,
+) -> ScoreSegmentCoverage | None:
+    """Plan pages proving a contiguous tie and its immediate score boundaries."""
+    if page_size <= 0 or end_index <= start_index:
+        return None
+    if any(
+        start < 0 or start % page_size or len(page.items) > page_size
+        for start, page in pages.items()
+    ):
+        return None
+    observed_end = min(
+        [
+            end_index,
+            *(
+                start + len(page.items)
+                for start, page in pages.items()
+                if len(page.items) < page_size
+            ),
+        ]
+    )
+    entries = sorted(
+        (start + offset, int(item.id), int(item.score))
+        for start, page in pages.items()
+        for offset, item in enumerate(page.items)
+        if start_index <= start + offset < end_index
+    )
+    if any(index >= observed_end for index, _, _ in entries):
+        return None
+    if len({user_id for _, user_id, _ in entries}) != len(entries):
+        return None
+    if any(left[2] < right[2] for left, right in pairwise(entries)):
+        return None
+    matches = tuple(index for index, _, score in entries if score == target_score)
+    if not matches:
+        return None
+
+    # One observed neighbor at each open edge closes the tie; interior pages
+    # must also exist before disconnected hints can become a population count.
+    first_required = max(start_index, matches[0] - 1) // page_size * page_size
+    last_required = min(observed_end - 1, matches[-1] + 1) // page_size * page_size
+    missing = tuple(
+        start
+        for start in range(first_required, last_required + 1, page_size)
+        if start not in pages
+    )
+    return ScoreSegmentCoverage(matches, missing)
 
 
 def rank_score_search_item(item: Any, rank_index: int) -> RankScoreSearchItem:

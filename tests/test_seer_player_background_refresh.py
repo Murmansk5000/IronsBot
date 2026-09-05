@@ -259,6 +259,7 @@ def _pending() -> PendingPlayerQuery:
             more_info=more_info,
             online_info=None,
             team_name="snapshot team",
+            fetched_at=1_700_000_000,
         ),
     )
 

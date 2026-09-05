@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from math import isfinite
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import ObservationTime
 from ironsbot.extensions.contracts import (
     PlayerLineupCachedReply,
     PlayerLineupImageAssets,
@@ -301,22 +302,26 @@ class PlayerLineupQueryServices:
             if message := quota_message():
                 raise PlayerQueryQuotaExceededError(message)
             game = self.headless.get_game()
+            observation = ObservationTime()
             with game.operations.track(
                 "阵容数据查询",
                 f"米米号 {player_id}",
                 source="私有阵容插件",
                 conversation=conversation,
             ):
-                user_info = await game.get_user_info(player_id)
+                user_info = await observation.observe(
+                    lambda: game.get_user_info(player_id)
+                )
                 payload = await asyncio.wait_for(
-                    fetch_packet(
-                        _HeadlessLineupPacketClient(game),
-                        player_id,
-                        timeout_seconds=timeout_seconds,
+                    observation.observe(
+                        lambda: fetch_packet(
+                            _HeadlessLineupPacketClient(game),
+                            player_id,
+                            timeout_seconds=timeout_seconds,
+                        )
                     ),
                     timeout=timeout_seconds,
                 )
-            fetched_at = time.time()
             await self.headless.mark_available(
                 source="私有阵容插件",
                 user_id=int(game.user_id),
@@ -324,11 +329,11 @@ class PlayerLineupQueryServices:
             return PlayerLineupQueryResult(
                 leading_text=(
                     "🐾【公开阵容】\n"
-                    f"{format_player_data_time()}\n"
+                    f"{format_player_data_time(observation.fetched_at)}\n"
                     f"{format_player_identity(player_id, str(user_info.nick))}\n"
                 ),
                 payload=payload,
-                fetched_at=fetched_at,
+                fetched_at=observation.fetched_at,
             )
 
         try:
