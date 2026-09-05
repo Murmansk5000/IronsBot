@@ -1,22 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
+from ironsbot.integrations.seer_data.autocard_repository import (
+    AutocardDataset,
+    load_autocard_dataset,
+)
 
 if TYPE_CHECKING:
-    from sqlmodel import Session
-
     from ironsbot.services.seer.data import SeerDataAccess
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
@@ -24,8 +22,6 @@ AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
 AUTOCARD_QUERY_SUFFIXES = ("群星牌",)
 
 _AUTOCARD_NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
-_AUTOCARD_MISSING_TABLE_MESSAGE = "数据库缺少群星牌表，请先更新 IronsBot 数据库。"
-_AUTOCARD_EMPTY_DATA_MESSAGE = "数据库没有群星牌数据，请先更新 IronsBot 数据库。"
 _CARD_TYPE_NAMES = {
     1: "精灵牌",
     2: "法术牌",
@@ -37,39 +33,6 @@ _AUTOCARD_ASSET_BASE_URL = (
     "newseer/assets/art/autocard/texture"
 )
 _AUTOCARD_NON_PET_CARD_ID_START = 20000
-_AUTOCARD_TABLE_QUERIES = {
-    "autocard_card": text("SELECT raw_json FROM autocard_card ORDER BY id"),
-    "autocard_nature": text("SELECT raw_json FROM autocard_nature ORDER BY id"),
-}
-_AUTOCARD_ROLE_QUERY = text(
-    """
-    SELECT
-        role.id,
-        role.name,
-        role.description,
-        role.health,
-        role.skill_desc,
-        role.element_type_id,
-        raw.pic_id,
-        raw.skill_id,
-        raw.skill_name,
-        raw.skill_upgrade,
-        raw.raw_json
-    FROM autocard_role AS role
-    JOIN autocard_role_raw AS raw ON raw.role_id = role.id
-    ORDER BY role.id
-    """
-)
-_LEGACY_AUTOCARD_ROLE_QUERY = text("SELECT raw_json FROM autocard_role ORDER BY id")
-
-
-@dataclass(slots=True, frozen=True)
-class _AutocardDataset:
-    cards: tuple[dict[str, Any], ...]
-    roles: tuple[dict[str, Any], ...]
-    natures: dict[int, str]
-
-
 @dataclass(slots=True, frozen=True)
 class AutocardPromptValue:
     kind: str
@@ -102,7 +65,7 @@ class AutocardService:
         self._data = data
 
     def search(self, arg: str) -> AutocardSearchResult:
-        with self._data.query(_load_autocard_dataset) as dataset:
+        with self._data.query(load_autocard_dataset) as dataset:
             matches = _search_autocard_items(
                 dataset,
                 _extract_autocard_query_arg(arg),
@@ -125,7 +88,7 @@ class AutocardService:
         )
 
     def select(self, value: AutocardPromptValue) -> AutocardEntry | None:
-        with self._data.query(_load_autocard_dataset) as dataset:
+        with self._data.query(load_autocard_dataset) as dataset:
             item = (
                 _find_autocard_role_by_id(dataset, value.item_id)
                 if value.kind == "role"
@@ -149,27 +112,8 @@ def _extract_autocard_query_arg(arg: str) -> str:
     return query
 
 
-def _load_autocard_dataset(session: Session) -> _AutocardDataset:
-    try:
-        cards = _load_json_rows(session, "autocard_card")
-        roles = _load_role_rows(session)
-        nature_rows = _load_json_rows(session, "autocard_nature")
-    except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError) as e:
-        raise RuntimeError(_AUTOCARD_MISSING_TABLE_MESSAGE) from e
-
-    if not cards and not roles:
-        raise RuntimeError(_AUTOCARD_EMPTY_DATA_MESSAGE)
-
-    natures = {_int_field(row, "id"): str(_field(row, "name")) for row in nature_rows}
-    return _AutocardDataset(
-        cards=cards,
-        roles=roles,
-        natures=natures,
-    )
-
-
 def _find_autocard_card_by_id(
-    dataset: _AutocardDataset,
+    dataset: AutocardDataset,
     item_id: int,
 ) -> dict[str, Any] | None:
     for item in dataset.cards:
@@ -179,7 +123,7 @@ def _find_autocard_card_by_id(
 
 
 def _find_autocard_role_by_id(
-    dataset: _AutocardDataset,
+    dataset: AutocardDataset,
     item_id: int,
 ) -> dict[str, Any] | None:
     for item in dataset.roles:
@@ -189,7 +133,7 @@ def _find_autocard_role_by_id(
 
 
 def _search_autocard_items(
-    dataset: _AutocardDataset,
+    dataset: AutocardDataset,
     query: str,
 ) -> list[tuple[str, dict[str, Any]]]:
     query = query.strip()
@@ -219,7 +163,7 @@ def _search_autocard_items(
 
 
 def _format_autocard_entry(
-    dataset: _AutocardDataset,
+    dataset: AutocardDataset,
     kind: str,
     item: dict[str, Any],
 ) -> str:
@@ -247,7 +191,7 @@ def _build_autocard_prompt_values(
 
 
 def _build_autocard_prompt_text(
-    dataset: _AutocardDataset,
+    dataset: AutocardDataset,
     matches: list[tuple[str, dict[str, Any]]],
 ) -> str:
     return format_selection_menu(
@@ -284,81 +228,6 @@ def _clean_text(value: object) -> str:
     return str(value).replace("\\n", "\n").strip()
 
 
-def _load_json_rows(
-    session: Session,
-    table_name: str,
-) -> tuple[dict[str, Any], ...]:
-    query = _AUTOCARD_TABLE_QUERIES[table_name]
-    rows = session.execute(query).all()
-    result: list[dict[str, Any]] = []
-    for row in rows:
-        mapping = row._mapping if hasattr(row, "_mapping") else None
-        raw_json = mapping["raw_json"] if mapping is not None else row[0]
-        item = json.loads(str(raw_json))
-        if isinstance(item, dict):
-            result.append(item)
-    return tuple(result)
-
-
-def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
-    try:
-        rows = session.execute(_AUTOCARD_ROLE_QUERY).all()
-    except SQLAlchemyError:
-        return _load_legacy_role_rows(session)
-
-    result: list[dict[str, Any]] = []
-    for row in rows:
-        mapping = row._mapping if hasattr(row, "_mapping") else None
-        values = (
-            mapping
-            if mapping is not None
-            else {
-                "id": row[0],
-                "name": row[1],
-                "description": row[2],
-                "health": row[3],
-                "skill_desc": row[4],
-                "element_type_id": row[5],
-                "pic_id": row[6],
-                "skill_id": row[7],
-                "skill_name": row[8],
-                "skill_upgrade": row[9],
-                "raw_json": row[10],
-            }
-        )
-        item = json.loads(str(values["raw_json"]))
-        if not isinstance(item, dict):
-            continue
-        item.update(
-            {
-                "id": int(values["id"]),
-                "name": str(values["name"]),
-                "desc": str(values["description"]),
-                "health": int(values["health"]),
-                "skillTxt": str(values["skill_desc"]),
-                "nature": int(values["element_type_id"]),
-                "picID": int(values["pic_id"]),
-                "skillID": int(values["skill_id"]),
-                "skillName": str(values["skill_name"]),
-                "skillUpgrade": str(values["skill_upgrade"]),
-            }
-        )
-        result.append(item)
-    return tuple(result)
-
-
-def _load_legacy_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
-    rows = session.execute(_LEGACY_AUTOCARD_ROLE_QUERY).all()
-    result: list[dict[str, Any]] = []
-    for row in rows:
-        mapping = row._mapping if hasattr(row, "_mapping") else None
-        raw_json = mapping["raw_json"] if mapping is not None else row[0]
-        item = json.loads(str(raw_json))
-        if isinstance(item, dict):
-            result.append(item)
-    return tuple(result)
-
-
 def _entry_name(item: dict[str, Any]) -> str:
     return str(_field(item, "name", default=""))
 
@@ -380,13 +249,13 @@ def _autocard_image_name(kind: str, item: dict[str, Any]) -> str:
     return f"card_{image_id}" if image_id > 0 else ""
 
 
-def _nature_name(dataset: _AutocardDataset, nature_id: int) -> str:
+def _nature_name(dataset: AutocardDataset, nature_id: int) -> str:
     if nature_id <= 0:
         return "无"
     return dataset.natures.get(nature_id, f"属性{nature_id}")
 
 
-def _format_card(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
+def _format_card(dataset: AutocardDataset, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     type_id = _int_field(item, "type")
     nature_id = _int_field(item, "nature")
@@ -415,7 +284,7 @@ def _format_card(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_role(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
+def _format_role(dataset: AutocardDataset, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     nature_id = _int_field(item, "nature")
     skill_name = _clean_text(_field(item, "skillName", "skill_name", default=""))
@@ -445,7 +314,7 @@ def _format_role(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _prompt_desc(dataset: _AutocardDataset, kind: str, item: dict[str, Any]) -> str:
+def _prompt_desc(dataset: AutocardDataset, kind: str, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     if kind == "role":
         nature = _nature_name(dataset, _int_field(item, "nature"))
@@ -460,7 +329,7 @@ def _prompt_desc(dataset: _AutocardDataset, kind: str, item: dict[str, Any]) -> 
 
 
 def _build_entry(
-    dataset: _AutocardDataset,
+    dataset: AutocardDataset,
     kind: str,
     item: dict[str, Any],
 ) -> AutocardEntry:
