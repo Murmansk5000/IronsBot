@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from ironsbot.core.time import (
+    ObservationTime,
     ScheduledClockTime,
     clock_window_contains,
     daily_time_parts,
@@ -14,6 +15,53 @@ from ironsbot.core.time import (
     normalize_daily_time_with_seconds,
     second_of_day,
 )
+
+
+def test_observation_keeps_oldest_and_cannot_repair_unknown_evidence() -> None:
+    observation = ObservationTime()
+    assert observation.fetched_at is None
+    oldest = 10.0
+    observation.include(20.0)
+    observation.include(oldest)
+    observation.include(30.0)
+    assert observation.fetched_at == oldest
+    observation.include(None)
+    observation.include(40.0)
+    assert observation.fetched_at is None
+
+
+@pytest.mark.asyncio
+async def test_observation_dates_completion_not_start_or_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    clock = [100.0]
+    monkeypatch.setattr(
+        "ironsbot.core.time.now",
+        lambda: datetime.fromtimestamp(clock[0], tz=timezone.utc),
+    )
+    observation = ObservationTime()
+
+    async def fetch() -> str:
+        clock[0] = 200.0
+        return "value"
+
+    assert await observation.observe(fetch) == "value"
+    assert observation.fetched_at == clock[0]
+    for error in (TimeoutError(), asyncio.CancelledError()):
+
+        async def fail(error: BaseException = error) -> None:
+            raise error
+
+        with pytest.raises(type(error)):
+            await observation.observe(fail)
+        assert observation.fetched_at == clock[0]
+
+    never_started = ObservationTime()
+    operation = never_started.observe(fetch)
+    operation.close()
+    assert never_started.fetched_at is None
 
 
 def test_scheduled_clock_time_normalizes_minute_and_second_precision() -> None:

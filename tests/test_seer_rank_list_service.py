@@ -87,6 +87,7 @@ class ScoreResult:
     end_rank: int | None = None
     total_count: int = 0
     truncated: bool = False
+    budget_exhausted: bool = False
     higher_gap: ScoreGap | None = None
     lower_gap: ScoreGap | None = None
 
@@ -507,7 +508,9 @@ def test_format_global_rank_message_uses_timestamp_and_empty_message() -> None:
         start_rank=21,
         requested_count=20,
     ) == "测试榜（第 21 名，截至2026-06-12 10:00:00）\n21. Alice（100） 123分"
-    assert format_global_rank_message(spec, []) == "❌找不到测试榜数据。"
+    assert (
+        format_global_rank_message(spec, [], timestamp="未知") == "❌找不到测试榜数据。"
+    )
 
 
 def test_format_global_rank_score_message() -> None:
@@ -618,7 +621,10 @@ def test_format_rank_score_message_needs_data_without_items_or_boundary() -> Non
         items=[],
     )
 
-    assert format_global_rank_score_message(spec, result) == "❌找不到测试榜数据。"
+    assert (
+        format_global_rank_score_message(spec, result, timestamp="未知")
+        == "❌找不到测试榜数据。"
+    )
 
 
 def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
@@ -631,7 +637,7 @@ def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
         items=[],
     )
 
-    assert format_global_rank_score_message(spec, result) == (
+    assert format_global_rank_score_message(spec, result, timestamp="未知") == (
         "❌999分不在测试榜前 10000 名范围内。\n"
         "当前范围末位约为 1000分。"
     )
@@ -677,7 +683,7 @@ def test_format_global_rank_score_message_shows_missing_score_proof() -> None:
         ),
     )
 
-    assert format_global_rank_score_message(spec, result) == (
+    assert format_global_rank_score_message(spec, result, timestamp="未知") == (
         "❌群星之巅榜没有10000分的用户。\n"
         "相邻分数段：\n"
         "10001分：第 57 名，共 1 人\n"

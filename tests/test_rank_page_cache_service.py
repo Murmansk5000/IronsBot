@@ -2,6 +2,8 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
 
 MOVED_RANK_INDEX = 100
@@ -321,3 +323,71 @@ def test_rank_miss_cache_requires_the_requested_search_coverage(
         user_id=100,
         minimum_limit=MISS_SEARCH_LIMIT + 1,
     ) is None
+
+
+@pytest.mark.parametrize("miss_first", [True, False])
+@pytest.mark.parametrize(
+    ("key", "sub_key", "user_id", "index", "offset", "contradicts"),
+    [
+        (1, 2, 100, 0, 1, True),
+        (1, 2, 100, 0, 0, True),
+        (1, 2, 100, 0, -1, False),
+        (2, 2, 100, 0, 1, False),
+        (1, 3, 100, 0, 1, False),
+        (1, 2, 101, 0, 1, False),
+        (1, 2, 100, MISS_SEARCH_LIMIT, 1, False),
+    ],
+)
+def test_miss_proof_respects_newer_positive_evidence(  # noqa: PLR0913
+    tmp_path: Path,
+    *,
+    miss_first: bool,
+    key: int,
+    sub_key: int,
+    user_id: int,
+    index: int,
+    offset: int,
+    contradicts: bool,
+) -> None:
+    cache = build_cache(tmp_path / "rank.sqlite")
+
+    def save_miss() -> None:
+        cache.save_miss(
+            key=1,
+            sub_key=2,
+            user_id=100,
+            searched_limit=MISS_SEARCH_LIMIT,
+            fetched_at=FETCHED_AT,
+        )
+
+    if miss_first:
+        save_miss()
+    cache.save(
+        key=key,
+        sub_key=sub_key,
+        start=index,
+        end=index,
+        items=[RankItem(user_id, "player", 100)],
+        fetched_at=FETCHED_AT + offset,
+    )
+    if not miss_first:
+        save_miss()
+    proof = cache.miss(key=1, sub_key=2, user_id=100, minimum_limit=MISS_SEARCH_LIMIT)
+    assert (proof is None) == contradicts
+    if proof is not None:
+        assert proof.fetched_at == FETCHED_AT
+
+
+def test_delayed_miss_does_not_replace_newer_proof(tmp_path: Path) -> None:
+    cache = build_cache(tmp_path / "rank.sqlite")
+    for stamp, limit in ((FETCHED_AT, MISS_SEARCH_LIMIT), (FETCHED_AT - 1, 100)):
+        cache.save_miss(
+            key=1,
+            sub_key=2,
+            user_id=100,
+            searched_limit=limit,
+            fetched_at=stamp,
+        )
+    proof = cache.miss(key=1, sub_key=2, user_id=100, minimum_limit=MISS_SEARCH_LIMIT)
+    assert proof is not None
+    assert proof.fetched_at == FETCHED_AT
