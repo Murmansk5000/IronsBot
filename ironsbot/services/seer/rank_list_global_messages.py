@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.local_rank_formatting import format_peak_rating_score
-from ironsbot.services.seer.rank_list_formatting import now_text
 from ironsbot.services.seer.rank_list_models import RANK_LIST_SIZE, GlobalRankSpec
 
 if TYPE_CHECKING:
@@ -36,7 +35,7 @@ def format_global_rank_message(
     spec: GlobalRankSpec,
     items: Sequence[Any],
     *,
-    timestamp: str | None = None,
+    timestamp: str,
     start_rank: int = 1,
     requested_count: int = RANK_LIST_SIZE,
 ) -> str:
@@ -47,9 +46,9 @@ def format_global_rank_message(
 
     range_text = format_rank_window(start_rank, len(items), requested_count)
     if range_text:
-        lines = [f"{spec.title}（{range_text}，截至{timestamp or now_text()}）"]
+        lines = [f"{spec.title}（{range_text}，截至{timestamp}）"]
     else:
-        lines = [f"{spec.title}（截至{timestamp or now_text()}）"]
+        lines = [f"{spec.title}（截至{timestamp}）"]
     lines.extend(
         format_global_rank_line(
             item,

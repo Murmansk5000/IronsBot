@@ -16,7 +16,6 @@ from ironsbot.services.seer.rank_score_lookup import (
     find_rank_by_linear_scan,
     find_rank_by_score,
 )
-from ironsbot.services.seer.rank_work_cache import save_rank_miss
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.rank_models import RankLookupResult
@@ -53,7 +52,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 rank_window_page_starts,
                 window_pages=_CACHED_LOOKUP_WINDOW_PAGES,
             ),
-            fetch_rank_page=service._fetch_page_result_for_position_lookup,
+            fetch_rank_page=service.fetch_page_result,
             anchor_only=anchor_only,
         )
         if cached is not None or limit <= 0 or anchor_only:
@@ -78,8 +77,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 result=result,
                 score_search_probe_limit=service._probe_limit,
                 score_search_tie_page_limit=service._tie_page_limit,
-                fetch_rank_item=service.fetch_item,
-                fetch_rank_page=service.fetch_page,
+                fetch_rank_page=service.fetch_page_result,
             )
         else:
             result.cost.used_full_scan = True
@@ -91,7 +89,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 limit=limit,
                 page_size=page_size,
                 result=result,
-                fetch_rank_page=service.fetch_page,
+                fetch_rank_page=service.fetch_page_result,
             )
     except (TimeoutError, asyncio.TimeoutError):
         if fallback_item is not None:
@@ -127,12 +125,13 @@ async def execute_rank_lookup(  # noqa: PLR0913
         and result.rank is None
         and result.cost.used_full_scan
         and result.failure is None
+        and result.fetched_at is not None
     ):
-        save_rank_miss(
-            service.cache,
+        service.cache.save_miss(
             key=key,
             sub_key=sub_key,
             user_id=user_id,
             searched_limit=result.searched_limit,
+            fetched_at=result.fetched_at,
         )
     return result
