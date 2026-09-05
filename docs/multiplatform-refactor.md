@@ -56,6 +56,8 @@ Task     [██████████] completed only after code, tests, and 
 - 本地 `main` 仍为 `f19c7089`，本轮只读取该引用，没有合并到 V5。
 - 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
   也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
+- 本次再次明确要求 pull 后，已在主检出目录执行 `git pull --ff-only origin main`，
+  返回 Already up to date；main 仍为 `f19c7089`，没有合入 V5。
 - 私有扩展安装去掉部分复制回退，增加有限权限重试；激活失败恢复旧包，恢复失败
   保留有效备份并报告路径。见
   [安装失败保护 Spec](specs/2026-09-05-extension-install-failure-safety.md)，
@@ -88,6 +90,12 @@ Task     [██████████] completed only after code, tests, and 
   [SQLite 读路径 Spec](specs/2026-09-05-sqlite-schema-read-path.md)。专项 23 passed，
   全仓 1573 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
   无新配置、schema 或运行依赖；不把此项误报为镜像体积或生产查询耗时测量。
+- Phase 7 首批模拟平台验收完成：出站上下文保留回复序号/截止时间，推送失败日志
+  保留 trace ID；真实命令权限、绑定和退订仓储通过字符串身份隔离及 capability 测试。
+  [验收 Spec](specs/2026-09-05-platform-capability-acceptance.md) 专项 33 passed，
+  全仓 1589 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
+  模拟器只在测试目录，无新增运行依赖；Phase 7 仅进入 `in_progress`，未接入真实官方
+  平台，未把完整 AI/Seer 流程或真实 OneBot smoke test 记为完成。
 
 ## 既有阶段验证基线（2026-08-15）
 
@@ -166,7 +174,7 @@ IronsBot 正确读取 immutable repository revision，并为精灵头像生成�
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
-| Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
+| Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除
@@ -730,6 +738,18 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   OneBot smoke test 通过。
 
 **删除条件：** 无。本阶段只证明目标可接入真实官方适配器，不提前启用它。
+
+**首批验收范围（2026-09-05）：**
+
+- 测试模拟器只实现现有 `OutboundMessenger`，不进入生产包、不增加运行依赖。
+  回复序号/截止时间沿已有入站/出站值传递，失败日志保留 trace ID。
+- 复用真实 help/about contracts、FeatureService、PlayerIdResolver、绑定仓储、
+  退订仓储与 ProactiveMessageDelivery。图片测试验证二进制出站部件传递及模拟上传，
+  不代表精灵渲染已在真实官方平台验收。
+- 合成的 `fake_*` 错误码及可配置限制只用于验证错误传播，不声称复刻官方协议。
+  真实官方码值/规则、完整 AI/Seer 工作流与真实 OneBot smoke 仍需后续验证。
+- 具体证据见 [首批 capability Spec](specs/2026-09-05-platform-capability-acceptance.md)。
+  本阶段仍为 `in_progress`，不增加已完成阶段数。
 
 ## 工作项登记模板
 

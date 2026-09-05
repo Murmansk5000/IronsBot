@@ -463,6 +463,13 @@ Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
 `ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
 `OutboundMessenger`. They use opaque nonempty string IDs.
+`ReplyContext.from_message` preserves the current inbound event ID, optional
+sequence and timezone-aware deadline, not the quoted event ID. Adapters own
+deadline enforcement; core does not invent a platform's allowed reply duration.
+`SendResult.trace_id` carries transport diagnostics through shared delivery
+logging. The test-only `FakeOfficialPlatform` exercises these values and
+restricted capabilities; its synthetic error codes and limits do not specify
+QQ's real API or constitute a production adapter.
 `integrations.onebot.outbound_messenger.OneBotOutboundMessenger` is the OneBot
 edge adapter for the port: it translates text, images, mentions and reply
 contexts only after a `ConversationRef` has been routed to a OneBot bot. Numeric
