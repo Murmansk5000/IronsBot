@@ -3,14 +3,11 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from ironsbot.state_migration import StateMigrationError, migrate_state_databases
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 LEGACY_PRIVATE_UNSUBSCRIPTION_COUNT = 2
 
@@ -306,3 +303,35 @@ def test_state_migration_rejects_unrelated_existing_targets(tmp_path: Path) -> N
 
     with pytest.raises(StateMigrationError, match="migration namespaces"):
         migrate_state_databases(data_root=data_root)
+
+
+def test_legacy_cleanup_failure_restores_sources_and_removes_new_targets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_legacy_state(data_root)
+    originals = {path: path.read_bytes() for path in data_root.rglob("*.sqlite")}
+    fail_path = data_root / "messaging/push_unsubscriptions.sqlite"
+    original_unlink = Path.unlink
+    already_removed: list[Path] = []
+
+    def fail_legacy_delete(path: Path, *, missing_ok: bool = False) -> None:
+        if path == fail_path:
+            assert already_removed
+            raise PermissionError
+        if path in originals:
+            already_removed.append(path)
+        original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "unlink", fail_legacy_delete)
+        with pytest.raises(PermissionError):
+            migrate_state_databases(data_root=data_root, apply=True)
+
+    assert already_removed
+    for path, original in originals.items():
+        assert path.read_bytes() == original
+    assert not (data_root / "state/qq_state.sqlite").exists()
+    assert not (data_root / "state/runtime_state.sqlite").exists()
+    assert list(data_root.glob("state-migration-backups/*/manifest.json"))
+    assert migrate_state_databases(data_root=data_root, apply=True).applied

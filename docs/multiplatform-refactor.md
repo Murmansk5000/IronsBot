@@ -77,6 +77,11 @@ Task     [██████████] completed only after code, tests, and 
   净减少 258 行，无配置或数据库迁移。见
   [查询提示 Spec](specs/2026-09-05-request-feedback-consolidation.md)。全仓回归
   1551 passed（87 条已有依赖告警）；BasedPyright、Ruff、compileall、diff 检查通过。
+- 两套离线迁移共用 `state_migration_files` 的安装/删除/补偿恢复计划。修复 sidecar
+  失败漏恢复、旧库清理中途失败丢失已删除源文件的问题；不引入运行时兼容。
+  [迁移安装 Spec](specs/2026-09-05-offline-state-installation.md) 的临时库故障测试
+  28 passed，全仓 1562 passed（87 条已有依赖告警），类型、Ruff、编译、diff 均通过。
+  未操作生产数据；只保证可捕获异常下的补偿恢复，不宣称断电时的跨库原子性。
 
 ## 既有阶段验证基线（2026-08-15）
 
