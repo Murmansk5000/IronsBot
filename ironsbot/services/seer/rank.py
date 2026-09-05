@@ -21,7 +21,11 @@ from ironsbot.services.seer.rank_exclusion_lookups import (
 from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, GlobalRankSpec
 from ironsbot.services.seer.rank_live_lookup import execute_rank_lookup
-from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
+from ironsbot.services.seer.rank_models import (
+    RankLookupResult,
+    RankPageResult,
+    RankRangeResult,
+)
 from ironsbot.services.seer.rank_pagination import (
     rank_page_size as configured_page_size,
 )
@@ -291,36 +295,6 @@ class RankService(RankCacheQueryMixin):
         )
         return result.items
 
-    async def fetch_item(
-        self,
-        game: HeadlessGame,
-        *,
-        key: int,
-        sub_key: int,
-        index: int,
-        use_cache: bool = False,
-    ) -> Any | None:
-        if use_cache:
-            cached = self.cache.item_by_index(
-                key=key,
-                sub_key=sub_key,
-                rank_index=index,
-            )
-            if cached is not None:
-                return cached
-        page_size = self.page_size()
-        page_start = self.page_start(index)
-        items = await self.fetch_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=page_start,
-            end=page_start + page_size - 1,
-            use_cache=use_cache,
-        )
-        offset = index - page_start
-        return items[offset] if 0 <= offset < len(items) else None
-
     async def fetch_range(  # noqa: PLR0913
         self,
         game: HeadlessGame,
@@ -351,7 +325,7 @@ class RankService(RankCacheQueryMixin):
         start: int,
         count: int,
         use_cache: bool = False,
-    ) -> RankPageResult:
+    ) -> RankRangeResult:
         return await fetch_rank_range_result(
             game,
             key=key,
@@ -372,7 +346,7 @@ class RankService(RankCacheQueryMixin):
         sub_key: int,
         start_rank: int,
         count: int,
-    ) -> RankPageResult:
+    ) -> RankRangeResult:
         return await fetch_visible_rank_range(
             self,
             game,
@@ -525,7 +499,6 @@ class RankService(RankCacheQueryMixin):
             ),
             score_search_probe_limit=self._probe_limit,
             score_search_tie_page_limit=self._tie_page_limit,
-            fetch_rank_item=self.fetch_item,
             fetch_rank_page_result=self.fetch_page_result,
             score_miss_proof_from_page=score_miss_proof_from_page,
         )

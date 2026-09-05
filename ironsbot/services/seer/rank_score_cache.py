@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import time
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
+from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import (
     RankPageResult,
     RankScoreSearchItem,
@@ -68,7 +68,7 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
         return None
 
     fetched_pages: dict[int, RankPageResult] = {}
-    fetched_times: list[float] = []
+    observation = ObservationTime()
     truncated = False
 
     async def fetch_page(page_start: int) -> RankPageResult | None:
@@ -89,7 +89,7 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
             use_cache=False,
         )
         fetched_pages[page_start] = page_result
-        fetched_times.append(page_result.fetched_at)
+        observation.include(page_result.fetched_at)
         return page_result
 
     for page_start in candidate_starts[:max_pages]:
@@ -181,5 +181,5 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
             )
 
     result.scanned_count = len(result.items)
-    result.fetched_at = max(fetched_times, default=time.time())
+    result.fetched_at = observation.fetched_at
     return result

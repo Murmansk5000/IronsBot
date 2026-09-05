@@ -10,13 +10,298 @@ from ironsbot.config.models.seer import RankQueryConfig
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
 from ironsbot.services.seer.rank import RankService
 from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
-from ironsbot.services.seer.rank_models import RankEntry, RankPageResult
+from ironsbot.services.seer.rank_list_formatting import timestamp_text
+from ironsbot.services.seer.rank_list_global_messages import format_global_rank_message
+from ironsbot.services.seer.rank_list_models import GlobalRankSpec
+from ironsbot.services.seer.rank_list_score_messages import (
+    format_global_rank_score_message,
+)
+from ironsbot.services.seer.rank_models import (
+    RankEntry,
+    RankPageResult,
+    RankScoreSearchItem,
+    RankScoreSearchResult,
+)
 
 PLAYER_ID = 712345678
 SOURCE_TIME = 1_781_234_567.0
 TARGET_INDEX = 19
 LIMIT = 100
 PAGE_SIZE = 10
+TIE_START = 20
+TIE_END = 40
+
+
+def _score_entries(start: int, end: int) -> list[RankEntry]:
+    return [
+        RankEntry(
+            100_000 + index,
+            "player",
+            200 if index < TIE_START else 150 if index < TIE_END else 100,
+        )
+        for index in range(start, end + 1)
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("terminal_empty", [False, True])
+async def test_raw_window_keeps_oldest_page_even_when_terminal_page_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, terminal_empty: bool
+) -> None:
+    rank = _service(tmp_path)
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        return RankPageResult(
+            [] if terminal_empty and start == PAGE_SIZE else _score_entries(start, end),
+            SOURCE_TIME if start == PAGE_SIZE else SOURCE_TIME + 100,
+            from_cache=start == 0,
+        )
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    result = await rank.fetch_range_result(
+        cast("Any", None),
+        key=17,
+        sub_key=0,
+        start=0,
+        count=PAGE_SIZE + 1,
+        use_cache=True,
+    )
+    assert calls == [0, PAGE_SIZE]
+    assert len(result.items) == (PAGE_SIZE if terminal_empty else PAGE_SIZE + 1)
+    assert result.fetched_at == SOURCE_TIME
+    assert not result.from_cache
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [0, -1])
+async def test_empty_request_has_no_page_observation(
+    tmp_path: Path, count: int
+) -> None:
+    rank = _service(tmp_path)
+    raw = await rank.fetch_range_result(
+        cast("Any", None), key=17, sub_key=0, start=0, count=count
+    )
+    visible = await rank.fetch_visible_range_result(
+        cast("Any", None),
+        rank_key="成就点数",
+        key=17,
+        sub_key=0,
+        start_rank=1,
+        count=count,
+    )
+    cached = rank.cached_visible_range_result(
+        rank_key="成就点数", key=17, sub_key=0, start_rank=1, count=count
+    )
+    assert cached is not None
+    assert cached.from_cache
+    for result in (raw, visible, cached):
+        assert result.items == []
+        assert result.fetched_at is None
+    cast("AsyncMock", rank.fetch_online_page).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("excluded", [False, True])
+async def test_cached_window_uses_only_supporting_pages_including_exclusion_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, excluded: bool
+) -> None:
+    rank = replace(
+        _service(tmp_path),
+        exclusions=RankExclusionPolicy(
+            frozenset((100_000,)) if excluded else frozenset(), {}
+        ),
+    )
+    for start in (0, PAGE_SIZE):
+        rank.cache.save(
+            key=17,
+            sub_key=0,
+            start=start,
+            end=start + PAGE_SIZE - 1,
+            items=_score_entries(start, start + PAGE_SIZE - 1),
+            fetched_at=SOURCE_TIME + start,
+        )
+    result = rank.cached_visible_range_result(
+        rank_key="成就点数", key=17, sub_key=0, start_rank=PAGE_SIZE + 1, count=1
+    )
+    assert result is not None
+    assert result.from_cache
+    assert result.fetched_at == (SOURCE_TIME if excluded else SOURCE_TIME + PAGE_SIZE)
+    assert result.items[0].id == 100_000 + PAGE_SIZE + int(excluded)
+    assert (
+        rank.cached_visible_range_result(
+            rank_key="成就点数", key=17, sub_key=0, start_rank=PAGE_SIZE * 3, count=1
+        )
+        is None
+    )
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        return RankPageResult(
+            _score_entries(start, end), SOURCE_TIME + start, from_cache=True
+        )
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    online = await rank.fetch_visible_range_result(
+        cast("Any", None),
+        rank_key="成就点数",
+        key=17,
+        sub_key=0,
+        start_rank=PAGE_SIZE + 1,
+        count=1,
+    )
+    assert online == result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["match", "gap", "below", "empty", "disabled"])
+async def test_score_segment_keeps_probe_and_neighbor_times(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    rank = _service(tmp_path)
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        stamp = SOURCE_TIME + 100
+        if start == LIMIT - PAGE_SIZE:
+            stamp = SOURCE_TIME
+        if kind == "gap" and start == PAGE_SIZE:
+            stamp = SOURCE_TIME - 10
+        return RankPageResult(
+            [] if kind == "empty" else _score_entries(start, end), stamp
+        )
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    target = {"match": 150, "gap": 175, "below": 99, "empty": 150, "disabled": 0}[kind]
+    result = await rank.fetch_score_segment(
+        cast("Any", None),
+        key=17,
+        sub_key=0,
+        title="rank",
+        score_name="score",
+        target_score=target,
+        sample_limit=2,
+    )
+    if kind == "disabled":
+        assert not calls
+        assert result.fetched_at is None
+        return
+    assert calls[0] == LIMIT - PAGE_SIZE
+    assert result.fetched_at == (SOURCE_TIME - 10 if kind == "gap" else SOURCE_TIME)
+    if kind == "match":
+        assert (result.start_rank, result.end_rank, result.total_count) == (21, 40, 20)
+        assert [item.rank_index for item in result.items] == [20, 39]
+    elif kind == "gap":
+        assert result.higher_gap is not None and result.lower_gap is not None
+        assert result.higher_gap.end_rank == result.lower_gap.start_rank - 1
+    else:
+        assert not result.items
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["cache_only", "cached_candidate", "excluded"])
+async def test_score_samples_retain_undisplayed_boundary_page_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    rank = _service(tmp_path)
+    for start in range(0, 60, PAGE_SIZE):
+        rank.cache.save(
+            key=17,
+            sub_key=0,
+            start=start,
+            end=start + PAGE_SIZE - 1,
+            items=_score_entries(start, start + PAGE_SIZE - 1),
+            fetched_at=SOURCE_TIME if start == PAGE_SIZE else SOURCE_TIME + 100,
+        )
+    if route == "cache_only":
+        result = rank.cached_score_segment(
+            rank_key=None,
+            key=17,
+            sub_key=0,
+            title="rank",
+            score_name="score",
+            target_score=150,
+            sample_limit=2,
+        )
+        assert result is not None
+        assert [item.rank_index for item in result.items] == [20, 39]
+        assert result.fetched_at == SOURCE_TIME
+        cast("AsyncMock", rank.fetch_online_page).assert_not_awaited()
+        return
+
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        return RankPageResult(
+            _score_entries(start, end),
+            SOURCE_TIME + 10 if start == PAGE_SIZE else SOURCE_TIME + 100,
+        )
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    if route == "excluded":
+        rank = replace(rank, exclusions=RankExclusionPolicy(frozenset((100_000,)), {}))
+    result = await rank.fetch_score_segment(
+        cast("Any", None),
+        rank_key="成就点数" if route == "excluded" else None,
+        key=17,
+        sub_key=0,
+        title="rank",
+        score_name="score",
+        target_score=150,
+        sample_limit=2,
+    )
+    assert result.fetched_at == SOURCE_TIME + 10
+    assert PAGE_SIZE in calls
+    if route == "excluded":
+        assert calls[0] == 0
+        assert (result.start_rank, result.end_rank) == (20, 39)
+    else:
+        assert [item.rank_index for item in result.items] == [20, 39]
+        assert 0 not in calls
+
+
+@pytest.mark.parametrize("stamp", [None, 0.0, SOURCE_TIME])
+def test_rank_formatters_do_not_invent_observation_time(
+    monkeypatch: pytest.MonkeyPatch, stamp: float | None
+) -> None:
+    def forbidden() -> str:
+        pytest.fail("formatter used the current clock")
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.rank_list_formatting.now_text", forbidden
+    )
+    item = RankScoreSearchItem(id=100_000, nick="player", score=150, rank_index=20)
+    spec = GlobalRankSpec("rank", key=17, sub_key=0, unit="score")
+    timestamp = timestamp_text(stamp)
+    if stamp is None:
+        assert timestamp == "未知"
+    if stamp == 0:
+        assert timestamp == "1970-01-01 08:00:00"
+    score = RankScoreSearchResult(
+        title="rank",
+        score_name="score",
+        target_score=150,
+        queried=True,
+        total_count=1,
+        items=[item],
+        fetched_at=stamp,
+    )
+    assert f"截至{timestamp}" in format_global_rank_message(
+        spec, [item], timestamp=timestamp
+    )
+    assert f"截至{timestamp}" in format_global_rank_score_message(
+        spec, score, timestamp=timestamp
+    )
 
 
 def _service(tmp_path: Path) -> RankService:

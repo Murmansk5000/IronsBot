@@ -5,10 +5,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import (
     RankLookupCost,
     RankLookupResult,
     RankPageResult,
+    RankRangeResult,
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
@@ -34,11 +36,11 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
     count: int,
     page_size: int,
     excluded_user_ids: Collection[int],
-) -> RankPageResult | None:
+) -> RankRangeResult | None:
     """Return a complete requested public window without opening a game socket."""
 
     if count <= 0:
-        return RankPageResult(items=[], fetched_at=0.0, from_cache=True)
+        return RankRangeResult(items=[], fetched_at=None, from_cache=True)
 
     requested_start = max(1, start_rank)
     requested_end = requested_start + count - 1
@@ -53,7 +55,7 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
         )
 
     visible_items: list[Any] = []
-    fetched_at = 0.0
+    observation = ObservationTime()
     raw_start = 0
     while len(visible_items) < requested_end:
         page = _cached_page(
@@ -65,7 +67,7 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
         )
         if page is None:
             return None
-        fetched_at = max(fetched_at, page.fetched_at)
+        observation.include(page.fetched_at)
         visible_items.extend(
             item for item in page.items if int(item.id) not in excluded_user_ids
         )
@@ -75,9 +77,9 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
 
     if len(visible_items) < requested_end:
         return None
-    return RankPageResult(
+    return RankRangeResult(
         items=visible_items[requested_start - 1 : requested_end],
-        fetched_at=fetched_at,
+        fetched_at=observation.fetched_at,
         from_cache=True,
     )
 
@@ -212,7 +214,7 @@ def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR091
             target_score=target_score,
             searched_limit=search_limit,
             queried=True,
-            fetched_at=max(page.fetched_at for page in pages.values()),
+            fetched_at=min(page.fetched_at for page in pages.values()),
         )
     selected_indexes = _selected_match_indexes(
         visible_indexes,
@@ -246,7 +248,7 @@ def fetch_cached_score_segment(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR091
         end_rank=visible_rank_indexes[visible_indexes[-1]] + 1,
         total_count=len(visible_indexes),
         scanned_count=len(items),
-        fetched_at=max(page.fetched_at for page in pages.values()),
+        fetched_at=min(page.fetched_at for page in pages.values()),
         items=items,
     )
 
@@ -307,12 +309,12 @@ def _fetch_cached_raw_range(  # noqa: PLR0913
     start_index: int,
     count: int,
     page_size: int,
-) -> RankPageResult | None:
+) -> RankRangeResult | None:
     request_end = start_index + count - 1
     first_page_start = start_index // page_size * page_size
     last_page_start = request_end // page_size * page_size
     items: list[Any] = []
-    fetched_at = 0.0
+    observation = ObservationTime()
     for page_start in range(first_page_start, last_page_start + 1, page_size):
         page = _cached_page(
             cache,
@@ -323,12 +325,14 @@ def _fetch_cached_raw_range(  # noqa: PLR0913
         )
         if page is None:
             return None
-        fetched_at = max(fetched_at, page.fetched_at)
+        observation.include(page.fetched_at)
         for offset, item in enumerate(page.items):
             rank_index = page_start + offset
             if start_index <= rank_index <= request_end:
                 items.append(item)
-    return RankPageResult(items=items, fetched_at=fetched_at, from_cache=True)
+    return RankRangeResult(
+        items=items, fetched_at=observation.fetched_at, from_cache=True
+    )
 
 
 def _cached_page(

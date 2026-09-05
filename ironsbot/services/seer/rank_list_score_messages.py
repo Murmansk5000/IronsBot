@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.rank_list_formatting import now_text
 from ironsbot.services.seer.rank_list_models import RANK_LIST_MAX_SIZE, GlobalRankSpec
 
 if TYPE_CHECKING:
@@ -20,7 +19,7 @@ def format_global_rank_score_message(
     result: Any,
     *,
     display_limit: int = RANK_LIST_MAX_SIZE,
-    timestamp: str | None = None,
+    timestamp: str,
 ) -> str:
     score_text = format_global_rank_score(result.target_score, spec)
     if not result.queried:
@@ -52,7 +51,7 @@ def format_global_rank_score_message(
     lines = [
         (
             f"{spec.title}（{score_text}，第 {start_rank}-{end_rank} 名，"
-            f"共 {result.total_count} 人，截至{timestamp or now_text()}）"
+            f"共 {result.total_count} 人，截至{timestamp}）"
         )
     ]
     lines.extend(

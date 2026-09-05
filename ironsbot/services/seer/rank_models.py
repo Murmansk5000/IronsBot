@@ -103,7 +103,7 @@ class RankScoreSearchResult:
     total_count: int = 0
     scanned_count: int = 0
     truncated: bool = False
-    fetched_at: float = 0.0
+    fetched_at: float | None = None
     items: list[RankScoreSearchItem] = field(default_factory=list)
     higher_gap: RankScoreGap | None = None
     lower_gap: RankScoreGap | None = None
@@ -121,6 +121,15 @@ class RankScoreMissProof:
 class RankPageResult:
     items: list[Any]
     fetched_at: float
+    from_cache: bool = False
+
+
+@dataclass(slots=True)
+class RankRangeResult:
+    """A composed window; no page read means no observation timestamp."""
+
+    items: list[Any]
+    fetched_at: float | None
     from_cache: bool = False
 
 

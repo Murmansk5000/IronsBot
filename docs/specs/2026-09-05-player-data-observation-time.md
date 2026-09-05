@@ -68,8 +68,9 @@ availability bookkeeping, rendering or persistence, and caches retain the text.
 ## Progress
 
 Slices 1 and 2 are verified against the controlled tests described below.
-Program stays 4/8 verified phases. Composite window/score-segment audit remains
-open as a separate work item; this is not an overall freshness completion claim.
+Program stays 4/8 verified phases. Composite window/score-segment time propagation
+is now verified in the separate [rank window Spec](2026-09-05-rank-window-observation-time.md);
+neither scope is an overall freshness completion claim.
 
 Evidence:
 
@@ -123,13 +124,13 @@ Slice 2 implementation:
   against this worktree. Ruff, BasedPyright (0 errors/warnings), compileall and
   `git diff --check` passed. No live QQ or official API request was used.
 
-Next audit locations: `rank_range`, `rank_cache_queries`, `rank_score_cache`,
-`rank_score_segments` and the range paths in `rank_exclusion_lookups` still
-aggregate some timestamps using `max` or supply current time for empty windows.
-These do not invalidate the verified player-position/detail scope, but block
-closing the overall freshness phase. Evaluate which pages support each result
-before changing that separate contract; a global textual replacement is not
-an accepted fix.
+Follow-up completed in the rank window Spec: `rank_range`, `rank_cache_queries`,
+`rank_score_cache`, `rank_score_segments` and the range paths in
+`rank_exclusion_lookups` preserve supporting page times instead of aggregating
+with `max` or supplying current time for empty windows. The separate acceptance
+covers binary probes and boundary pages, not just a textual replacement.
+Bounded-search completeness, cache policy and real release validation remain
+open; the overall freshness phase is not closed.
 
 Local main remains `f19c7089`; no fetch/pull/merge/push. No real-platform/release
 validation or image-size improvement is claimed. Rollback is scoped code commits

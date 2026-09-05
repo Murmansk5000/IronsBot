@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
@@ -30,7 +30,6 @@ class RankScoreSegmentDependencies:
     fetch_cached_candidates: Callable[..., Awaitable[RankScoreSearchResult | None]]
     score_search_probe_limit: Callable[[int], int]
     score_search_tie_page_limit: Callable[[], int]
-    fetch_rank_item: Callable[..., Awaitable[Any | None]]
     fetch_rank_page_result: Callable[..., Awaitable[RankPageResult]]
     score_miss_proof_from_page: Callable[..., RankScoreMissProof | None]
 
@@ -70,7 +69,7 @@ async def _populate_score_miss_proof_from_online_page(  # noqa: PLR0913
         )
         proof_page_start = previous_page_start
         proof_items = [*previous_page_result.items, *page_result.items]
-        fetched_at = max(previous_page_result.fetched_at, page_result.fetched_at)
+        fetched_at = min(previous_page_result.fetched_at, page_result.fetched_at)
     proof = deps.score_miss_proof_from_page(
         items=proof_items,
         page_start=proof_page_start,
@@ -132,15 +131,21 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if cached_result is not None:
         return cached_result
 
+    observation = ObservationTime()
+
     async def fetch_score(index: int) -> int | None:
-        item = await deps.fetch_rank_item(
+        page_start = deps.rank_page_start(index)
+        page = await deps.fetch_rank_page_result(
             game,
             key=key,
             sub_key=sub_key,
-            index=index,
+            start=page_start,
+            end=page_start + page_size - 1,
             use_cache=False,
         )
-        return None if item is None else int(item.score)
+        observation.include(page.fetched_at)
+        offset = index - page_start
+        return int(page.items[offset].score) if 0 <= offset < len(page.items) else None
 
     score_range = await locate_descending_score_range(
         start_index,
@@ -153,6 +158,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         ),
     )
     result.boundary_score = score_range.boundary_score
+    result.fetched_at = observation.fetched_at
     if score_range.last_index is None:
         return result
 
@@ -170,6 +176,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             result=result,
             deps=deps,
         )
+        observation.include(result.fetched_at)
+        result.fetched_at = observation.fetched_at
         return result
 
     first_same_or_lower = score_range.match_start
@@ -195,7 +203,6 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     max_pages = deps.score_search_tie_page_limit()
     fetched_pages = 0
-    fetched_times: list[float] = []
 
     for page_start in page_starts:
         if sample_indexes is None and fetched_pages >= max_pages:
@@ -210,7 +217,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             end=page_start + page_size - 1,
             use_cache=False,
         )
-        fetched_times.append(page_result.fetched_at)
+        observation.include(page_result.fetched_at)
         fetched_pages += 1
 
         for offset, item in enumerate(page_result.items):
@@ -234,5 +241,5 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             break
 
     result.scanned_count = len(result.items)
-    result.fetched_at = max(fetched_times, default=time.time())
+    result.fetched_at = observation.fetched_at
     return result

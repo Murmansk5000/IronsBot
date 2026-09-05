@@ -3,12 +3,12 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
+from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import (
     RankLookupResult,
-    RankPageResult,
+    RankRangeResult,
     RankScoreGap,
     RankScoreSearchItem,
     RankScoreSearchResult,
@@ -24,13 +24,13 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
     sub_key: int,
     start_rank: int,
     count: int,
-) -> RankPageResult:
+) -> RankRangeResult:
     """Read raw pages until the requested public-rank window is complete."""
 
     safe_start = max(1, start_rank)
     safe_count = max(0, count)
     if safe_count == 0:
-        return RankPageResult(items=[], fetched_at=time.time())
+        return RankRangeResult(items=[], fetched_at=None)
     excluded_ids = service.exclusion_policy.excluded_user_ids(rank_key)
     if not excluded_ids:
         return await service.fetch_range_result(
@@ -43,7 +43,8 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
 
     visible_until = safe_start - 1 + safe_count
     visible_items: list[Any] = []
-    fetched_at = time.time()
+    observation = ObservationTime()
+    from_cache = True
     page_size = service.page_size()
     raw_start = 0
     while len(visible_items) < visible_until:
@@ -55,7 +56,8 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
             end=raw_start + page_size - 1,
             use_cache=False,
         )
-        fetched_at = max(fetched_at, page.fetched_at)
+        observation.include(page.fetched_at)
+        from_cache = from_cache and page.from_cache
         visible_items.extend(
             item
             for item in page.items
@@ -67,9 +69,10 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
         if len(page.items) < page_size:
             break
         raw_start += page_size
-    return RankPageResult(
+    return RankRangeResult(
         visible_items[safe_start - 1 : visible_until],
-        fetched_at,
+        observation.fetched_at,
+        from_cache=from_cache,
     )
 
 
@@ -175,7 +178,7 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     excluded_ids = service.exclusion_policy.excluded_user_ids(rank_key)
     visible_rank = 0
     raw_start = 0
-    fetched_at = time.time()
+    observation = ObservationTime()
     last_raw_score: int | None = None
     higher_items: list[RankScoreSearchItem] = []
     lower_items: list[RankScoreSearchItem] = []
@@ -204,7 +207,7 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             end=raw_start + page_size - 1,
             use_cache=False,
         )
-        fetched_at = max(fetched_at, page.fetched_at)
+        observation.include(page.fetched_at)
         page_has_match = False
         stop_after_page = False
         for item in page.items:
@@ -247,7 +250,7 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             break
         raw_start += page_size
 
-    result.fetched_at = fetched_at
+    result.fetched_at = observation.fetched_at
     result.scanned_count = len(matches)
     if matches:
         result.items = matches
