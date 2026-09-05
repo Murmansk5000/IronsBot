@@ -82,6 +82,12 @@ Task     [██████████] completed only after code, tests, and 
   [迁移安装 Spec](specs/2026-09-05-offline-state-installation.md) 的临时库故障测试
   28 passed，全仓 1562 passed（87 条已有依赖告警），类型、Ruff、编译、diff 均通过。
   未操作生产数据；只保证可捕获异常下的补偿恢复，不宣称断电时的跨库原子性。
+- `SqliteDatabase` 同版本连接改为只读检查；仅有待执行迁移时获取写锁，锁内重查
+  版本。两个真实 WAL 并发读用例由锁超时转为通过；初始化竞争、过新版本、替换文件
+  重查和失败回滚均有测试。见
+  [SQLite 读路径 Spec](specs/2026-09-05-sqlite-schema-read-path.md)。专项 23 passed，
+  全仓 1573 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
+  无新配置、schema 或运行依赖；不把此项误报为镜像体积或生产查询耗时测量。
 
 ## 既有阶段验证基线（2026-08-15）
 
