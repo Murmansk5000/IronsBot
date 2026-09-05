@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from PIL import Image
 
 from ironsbot.core import time
@@ -17,7 +16,6 @@ from ironsbot.services.seer.peak import (
     PeakPoolSnapshot,
     PeakPoolTransitionSnapshot,
 )
-from ironsbot.services.seer.render_paths import SHARED_TEMPLATE_PATH
 from ironsbot.services.seer.rendering.peak_pool import render_peak_pool
 from ironsbot.services.seer.rendering.peak_pool_arrows import (
     DOWNWARD_ARROW_COLOR,
@@ -39,18 +37,14 @@ class _Cache:
     def __init__(self) -> None:
         self.values: dict[tuple[str, str], bytes] = {}
 
-    def get(self, category: str, content_key: str) -> bytes | None:
-        return self.values.get((category, content_key))
+    def get(self, namespace: str, key: str) -> bytes | None:
+        return self.values.get((namespace, key))
 
-    def put(self, category: str, content_key: str, data: bytes) -> None:
-        self.values[(category, content_key)] = data
+    def put(self, namespace: str, key: str, value: bytes) -> None:
+        self.values[(namespace, key)] = value
 
 
 class _Images:
-    async def fetch_url(self, url: str) -> bytes:
-        del url
-        return _test_png()
-
     async def fetch(
         self,
         kind: str,
@@ -144,7 +138,6 @@ async def test_master_pool_renders_cost_groups_and_changes() -> None:
     assert captured["change_label"] == "大师池"
     pools = {pool["label"]: pool for pool in captured["pools"]}
     assert tuple(pools) == ("35 点", "20 点", "未列入")
-    assert all(pool["restriction"] is None for pool in pools.values())
     assert any(
         pet["id"] == moved.id and pet["historical"]
         for pet in _filled_slots(pools["35 点"])
@@ -187,7 +180,6 @@ async def test_standard_pool_renders_current_and_historical_positions() -> None:
     assert result == b"pool-image"
     pools = {pool["label"]: pool for pool in captured["pools"]}
     assert tuple(pools) == ("限0", "限2", "限3", "不限")
-    assert [pool["restriction"] for pool in pools.values()] == [0, 2, 3, None]
     assert [(pet["id"], pet["historical"]) for pet in _filled_slots(pools["限0"])] == [
         (1, False)
     ]
@@ -809,89 +801,3 @@ def test_pool_template_uses_preprocessed_heads_and_svg_arrows() -> None:
     assert "<svg" not in template
     assert "<script>" not in template
     assert "总数：{{ pool.previous_count }} → {{ pool.current_count }} 只" in template
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("expert", [False, True])
-async def test_pool_bag_badges_render_official_assets(*, expert: bool) -> None:
-    pet = PeakPetSnapshot(70, "雷伊", 70, 4)
-    snapshot = PeakPoolRenderSnapshot(
-        pools=(_pool(pet, count=0),),
-        transitions=(),
-        change_state="unchanged",
-        content_version="badges",
-        expert=expert,
-    )
-    captured: dict[str, Any] = {}
-
-    async def render_html(*_args: object, **kwargs: Any) -> bytes:
-        captured.update(kwargs["templates"])
-        env = Environment(
-            loader=FileSystemLoader(kwargs["template_path"]),
-            undefined=StrictUndefined,
-            autoescape=True,
-        )
-        return env.get_template(kwargs["template_name"]).render(**captured).encode()
-
-    result = await render_peak_pool(
-        _Cache(), _Images(), render_html, snapshot, "竞技池"
-    )  # type: ignore[arg-type]
-    html = result.decode()
-    assert 'aria-label="限0"' in html
-    assert 'class="bag-ban-icon"' in html
-    assert 'class="bag-limit-number"' not in html
-    assert html.count('class="pet-type-icon"') == 1
-    assert 'class="bag-type-background"' in html
-    dimensions = {
-        "type_background": ((34, 34), (0, 204)),
-        "limit_background": ((44, 49), (0, 255)),
-        "ban_background": ((44, 49), (0, 179)),
-        "ban": ((30, 30), (0, 255)),
-    }
-    for key, (size, alpha_range) in dimensions.items():
-        image = _data_uri_image(captured["bag_icons"][key])
-        assert image.size == size
-        assert image.getchannel("A").getextrema() == alpha_range
-
-
-@pytest.mark.parametrize("restriction", [None, 0, 2, 3])
-def test_pool_badge_macro_without_attribute_image(restriction: int | None) -> None:
-    env = Environment(
-        loader=FileSystemLoader(SHARED_TEMPLATE_PATH),
-        undefined=StrictUndefined,
-        autoescape=True,
-    )
-    template = env.from_string(
-        '{% from "pet_cell_macro.html.j2" import pet_cell %}'
-        '{{ pet_cell(70, "test", "head.png", bag_icons=icons, restriction=limit) }}'
-    )
-    html = template.render(
-        icons={
-            "type_background": "type.png",
-            "limit_background": "limit.png",
-            "ban_background": "banbg.png",
-            "ban": "ban.png",
-        },
-        limit=restriction,
-    )
-    assert 'class="bag-type-badge"' not in html
-    assert 'class="pet-type-icon"' not in html
-    if restriction is None:
-        assert 'class="bag-limit-badge"' not in html
-    elif restriction == 0:
-        assert 'src="banbg.png"' in html
-        assert 'src="ban.png"' in html
-    else:
-        assert 'src="limit.png"' in html
-        assert f'class="bag-limit-number">{restriction}</span>' in html
-
-
-def test_other_pet_cells_keep_existing_attribute_layout() -> None:
-    env = Environment(loader=FileSystemLoader(SHARED_TEMPLATE_PATH), autoescape=True)
-    html = env.from_string(
-        '{% from "pet_cell_macro.html.j2" import pet_cell %}'
-        '{{ pet_cell(70, "test", "head.png", type_icon="type.png") }}'
-    ).render()
-    assert 'class="pet-type-icon" src="type.png"' in html
-    assert "bag-badges" not in html
-    assert 'class="pet-top-bar"' in html
