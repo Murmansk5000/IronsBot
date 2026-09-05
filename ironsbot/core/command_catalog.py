@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.platform import is_supported_message_actor
 
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -335,11 +336,13 @@ def commands_from_rows(
 
 
 def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
+    if not is_supported_message_actor(context.actor, context.conversation):
+        return False
     if scope == "both":
         return True
     if scope == "group":
         return context.is_group
-    return not context.is_group
+    return context.conversation.kind == "private"
 
 
 def _feature_is_allowed(
