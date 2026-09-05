@@ -1,5 +1,9 @@
+import asyncio
+from collections.abc import Sequence
+
 import pytest
 
+from ironsbot.config.models.seer import PlayerRankLookupConfig
 from ironsbot.services.seer.rank_constants import (
     ACHIEVE_RANK_KEY,
     EXPERT_PEAK_USER_RANK_KEY,
@@ -13,7 +17,13 @@ from ironsbot.services.seer.rank_models import (
     RankLookupResult,
     RankSummaryProgress,
 )
+from ironsbot.services.seer.rank_player_scheduler import (
+    PlayerRankLookupJob,
+    current_player_rank_page_scheduler,
+    run_player_rank_lookup_jobs,
+)
 from ironsbot.services.seer.rank_summary import (
+    fetch_partial_rank_summary,
     fetch_peak_season_rank_summary,
     fetch_player_rank_summary,
 )
@@ -140,35 +150,111 @@ async def test_peak_rank_summary_keeps_expert_score_when_expert_times_out() -> N
     assert summary.expert.failure == "查询超时"
 
 
-def test_peak_rank_summary_marks_only_the_failed_mode_when_title_matches() -> None:
-    summary = PeakSeasonRankSummary.empty()
+def test_peak_rank_summary_reuses_completed_results_and_marks_all_missing() -> None:
+    expert = RankLookupResult(title="专家赛季榜", score_name="分", rank=4)
+    summary = PeakSeasonRankSummary.from_results(
+        {"expert_peak": expert},
+        failure="查询超时",
+    )
 
-    summary.mark_failure("狂野赛季榜", "查询超时")
-
-    assert summary.standard.failure is None
+    assert summary.standard.failure == "查询超时"
     assert summary.wild.failure == "查询超时"
-    assert summary.expert.failure is None
+    assert summary.expert is expert
+    assert expert.failure is None
 
 
-def test_player_rank_summary_marks_only_the_failed_metric() -> None:
-    summary = PlayerRankSummary.empty()
+def test_player_rank_summary_preserves_existing_failure_on_recovery() -> None:
+    book = RankLookupResult(title="图鉴积分", score_name="分", failure="连接断开")
+    summary = PlayerRankSummary.from_results({"book": book}, failure="查询超时")
 
-    summary.mark_failure("图鉴积分榜", "查询超时")
-
-    assert summary.book.failure == "查询超时"
-    assert summary.achieve.failure is None
+    assert summary.book is book
+    assert summary.book.failure == "连接断开"
+    assert summary.achieve.failure == "查询超时"
     assert summary.breakdown.pet_kind is not None
-    assert summary.breakdown.pet_kind.failure is None
+    assert summary.breakdown.pet_kind.failure == "查询超时"
 
 
 def test_peak_rank_summary_marks_all_modes_when_the_whole_section_fails() -> None:
-    summary = PeakSeasonRankSummary.empty()
-
-    summary.mark_failure("巅峰赛季榜", "查询超时")
+    summary = PeakSeasonRankSummary.from_results({}, failure="查询超时")
 
     assert summary.standard.failure == "查询超时"
     assert summary.wild.failure == "查询超时"
     assert summary.expert.failure == "查询超时"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_partial_summary_preserves_failure_and_propagates_cancellation(
+    *,
+    cancel: bool,
+) -> None:
+    progress = RankSummaryProgress()
+    found = asyncio.Event()
+    waiting = asyncio.Event()
+    drained = asyncio.Event()
+
+    async def find_rank(_game: object, **kwargs: object) -> RankLookupResult:
+        if kwargs["key"] == WILD_PEAK_USER_RANK_KEY:
+            message = "invalid rank response"
+            raise ValueError(message)
+        if kwargs["key"] == EXPERT_PEAK_USER_RANK_KEY:
+            found.set()
+            return await _rank_success(_game, **kwargs)
+        scheduler = current_player_rank_page_scheduler()
+        assert scheduler is not None
+
+        async def page() -> None:
+            waiting.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                drained.set()
+
+        await scheduler.fetch_page("standard", page)
+        raise AssertionError
+
+    async def runner(
+        jobs: Sequence[PlayerRankLookupJob],
+    ) -> dict[str, RankLookupResult]:
+        return await run_player_rank_lookup_jobs(jobs, PlayerRankLookupConfig())
+
+    operation = fetch_peak_season_rank_summary(
+        object(),
+        USER_ID,
+        current_peak_sub_key=7,
+        find_rank=find_rank,
+        standard_score=PEAK_SCORE,
+        wild_score=PEAK_SCORE,
+        expert_score=EXPERT_SCORE,
+        progress=progress,
+        run_lookup_jobs=runner,
+    )
+    task = asyncio.create_task(
+        fetch_partial_rank_summary(
+            operation,
+            progress=progress,
+            timeout_seconds=1 if cancel else 0.05,
+            build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
+                results,
+                failure=failure,
+            ),
+        )
+    )
+    await asyncio.wait_for(found.wait(), timeout=1)
+    await asyncio.wait_for(waiting.wait(), timeout=1)
+    if cancel:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        summary = await task
+        assert summary.expert is progress.completed["expert_peak"]
+        assert summary.expert.rank == FOUND_RANK
+        assert summary.standard.failure == "查询超时"
+        assert summary.wild.failure == "查询失败：invalid rank response"
+    assert drained.is_set()
+    assert set(progress.completed) == {"expert_peak", "wild_peak"}
+    assert current_player_rank_page_scheduler() is None
 
 
 @pytest.mark.asyncio
