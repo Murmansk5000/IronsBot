@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -408,10 +409,13 @@ class AiService:
 
 
 def _chat_key(actor: ActorRef, conversation: ConversationRef) -> str:
-    actor_scope = actor.scope_id or ""
-    return (
-        f"{conversation.platform}:{conversation.kind}:{conversation.id}:"
-        f"actor:{actor.platform}:{actor.kind}:{actor_scope}:{actor.id}"
+    return json.dumps(
+        (
+            (conversation.platform.value, conversation.kind, conversation.id),
+            (actor.platform.value, actor.kind, actor.scope_id, actor.id),
+        ),
+        ensure_ascii=False,
+        separators=(",", ":"),
     )
 
 
