@@ -10,7 +10,7 @@ from ironsbot.core.features import Feature
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
-    private_conversation_for_actor,
+    is_supported_message_actor,
 )
 
 if TYPE_CHECKING:
@@ -73,16 +73,14 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        if actor.platform is not conversation.platform:
+        if not is_supported_message_actor(actor, conversation):
             return False
         if conversation.kind == "group":
             return self.conversation_has_feature(conversation, feature) or (
                 self.superuser_bypass and self.is_actor_superuser(actor)
             )
         if conversation.kind == "private":
-            return private_conversation_for_actor(
-                actor
-            ) == conversation and self.is_actor_feature_allowed(actor, feature)
+            return self.is_actor_feature_allowed(actor, feature)
         return False
 
     def is_message_blocked(

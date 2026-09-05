@@ -432,6 +432,16 @@ boundary, even when its source happened to be numeric. Storage audits and
 migrations classify IDs by table ownership and protocol meaning, not by a
 column name such as `user_id` or `group_id`.
 
+Group/private command access and feature decisions share
+`is_supported_message_actor`: the actor platform must match the conversation,
+a scoped member must belong to that group scope, and a private context must
+identify the same unscoped user. This checks identity shape, not authenticated
+membership. Channel/guild IDs may be represented and stored, but these command
+policies deny them until an explicit authorization contract is implemented;
+`both` means group/private, never an implicit future-platform permission grant.
+Administrator notices must report scoped private recipients as failed without
+inventing private IDs, rerouting to their groups, or aborting valid recipients.
+
 Extension callbacks follow the same boundary. A player-detail extension
 receives `PlayerDetailActionRequest(player_id, actor, conversation)`, not a
 tuple of numeric player, QQ-user and group IDs. The public player-command

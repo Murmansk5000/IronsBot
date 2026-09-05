@@ -41,7 +41,7 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [███░░░░░░░]  verified phases: 3/8; percentage awaits a weighted acceptance baseline
+Program  [████□□□□]  verified phases: 4/8; percentage awaits a weighted acceptance baseline
 Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
@@ -50,8 +50,9 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 本轮验证（2026-09-05）
 
-总任务 `[███□□□□□]`：阶段账本仍为 3/8，本轮只完成阶段内工作项；尚未验收的
-跨仓库发布、真实平台和素材完整性门槛保持未完成，暂无可靠总体 ETA。
+总任务 `[████□□□□]`：阶段 1 身份/状态迁移收口验收完成，账本从 3/8 更新为 4/8。
+下方早期记录保留当时的测试与状态；跨仓库发布、真实平台和素材完整性门槛仍未完成，
+暂无可靠总体 ETA。
 
 - 本地 `main` 仍为 `f19c7089`，本轮只读取该引用，没有合并到 V5。
 - 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
@@ -101,6 +102,13 @@ Task     [██████████] completed only after code, tests, and 
   [AI 会话隔离 Spec](specs/2026-09-05-ai-platform-session-isolation.md) 专项
   32 passed，全仓 1596 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 通过。
   验证了真实 AiService/记忆仓储、受限投递及管理员通知；未新增运行依赖或 schema。
+- 阶段 1 按原完成条件做关闭审计，见
+  [身份边界收尾 Spec](specs/2026-09-05-platform-identity-closure.md)。修复跨群作用域
+  权限误判、未声明 channel/guild 被当作私聊、以及 scoped 管理员阻断整批通知的问题；
+  戳一戳限流也在 OneBot 边界转换成 ConversationRef。身份状态库只读当前列，旧转换器
+  仅由离线 CLI 路径调用。空/正常/重复/损坏/中断迁移测试、实际私有扩展测试通过。
+  公共 1608 passed（87 条已有依赖告警），私有 24 passed，类型、Ruff、编译、diff 通过。
+  未修改生产状态或 TOML；阶段 4/5/6/7 的完成条件不变。
 
 ## 既有阶段验证基线（2026-08-15）
 
@@ -173,7 +181,7 @@ IronsBot 正确读取 immutable repository revision，并为精灵头像生成�
 | 阶段 | 当前状态 | 已验证范围 | 下一个完成门 | 不得误报为 |
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
-| Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
+| Phase 1 | `completed` | 身份/权限/冷却/订阅/限流/通知与状态 API 均使用类型化身份；旧身份转换仅在离线 CLI；迁移异常与私有扩展契约均已验收，见 2026-09-05 closure Spec | 后续身份调用必须沿用 core refs；不得恢复旧列读取或私聊身份猜测 | 真实 QQ Official 已接入 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
@@ -457,6 +465,12 @@ pytest、Ruff、编译、`git diff --check` 均通过。
 - `ironsbot-private` 仅使用公开的身份/状态 contract；不读取应用 composition。
 
 **删除条件：** 运行时没有旧整数身份列读取、懒迁移、双读或双写。
+
+**关闭证据（2026-09-05）：** 原完成门逐项清单和仓储/CLI/私有契约审计见
+[身份边界收尾 Spec](specs/2026-09-05-platform-identity-closure.md)。公共全仓
+1608 passed、私有全仓 24 passed，类型、Ruff、编译和 diff 检查通过。
+平台身份与赛尔领域数字已按所有权区分；不能为减少检索命中而把米米号改成 ActorRef。
+这是代码与临时数据的验收，不是生产迁移、真实官方平台或全部渲染发布的完成声明。
 
 ### Phase 2 — 标准 NoneBot 插件装载
 
