@@ -1,9 +1,37 @@
+import asyncio
 from importlib import import_module
-from typing import get_type_hints
+from types import SimpleNamespace
+from typing import Any, cast, get_type_hints
+from unittest.mock import AsyncMock
 
 import nonebot
 import pytest
+from nonebot.exception import FinishedException
+from nonebot.matcher import current_event
 from pytest import MonkeyPatch
+
+from ironsbot.integrations.onebot.conversations import event_conversation_session_id
+from ironsbot.integrations.onebot.matcher_support import (
+    RUNTIME_CONTEXT_TOKEN_STATE_KEY,
+    register_runtime_context,
+)
+from ironsbot.integrations.onebot.prompt_sessions import (
+    QUEUED_CONVERSATION_TICKET_STATE_KEY,
+    QUEUED_CONVERSATION_TOKEN_STATE_KEY,
+    PromptSessionManager,
+)
+from ironsbot.plugins.onebot.seer.query.commands import player_detail_conversation
+from ironsbot.plugins.onebot.seer.query.commands.player_context import PLAYER_ID_KEY
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
+from ironsbot.services.seer.player_query import (
+    PLAYER_COLLECTION_KEY,
+    PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY,
+    PLAYER_DETAIL_COMMANDS_KEY,
+)
+from ironsbot.services.seer.query_result import QueryReply
+from tests.helpers.onebot_events import group_message_event
 
 
 def _ensure_nonebot_initialized() -> None:
@@ -40,3 +68,89 @@ def test_prompt_handler_annotations_resolve_at_runtime(
         hints = get_type_hints(getattr(module, handler_name))
 
         assert {"matcher", "event", "state"} <= set(hints)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_detail_publication_respects_actual_menu_lifecycle(
+    *,
+    cancelled: bool,
+) -> None:
+    manager = PromptSessionManager()
+    event = group_message_event("1")
+    namespace = player_detail_conversation.PLAYER_DETAIL_NAMESPACE
+    session_id = event_conversation_session_id(namespace, event)
+    state: dict[str, Any] = {
+        PLAYER_ID_KEY: 712345678,
+        PLAYER_DETAIL_COMMANDS_KEY: ("1", "0"),
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("1", PLAYER_COLLECTION_KEY),),
+        RUNTIME_CONTEXT_TOKEN_STATE_KEY: register_runtime_context(manager, None),
+    }
+    context = manager.start_queued_conversation(
+        namespace=namespace,
+        event_session_id=event.get_session_id(),
+        conversation_session_id=session_id,
+        state=state,
+        handlers=[],
+        reply_check=lambda incoming: incoming.get_plaintext() in {"1", "0"},
+        parallel=True,
+    )
+    ticket = await context.acquire()
+    assert ticket is not None
+    context.mark_dispatched(ticket)
+    state[QUEUED_CONVERSATION_TOKEN_STATE_KEY] = context.token
+    state[QUEUED_CONVERSATION_TICKET_STATE_KEY] = ticket
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def query(*_args: Any, **_kwargs: Any) -> QueryReply:
+        started.set()
+        await release.wait()
+        return QueryReply(text="partial detail", complete=False)
+
+    service = SimpleNamespace(shortcut=AsyncMock(side_effect=query))
+    matcher = SimpleNamespace(
+        state=state, send=AsyncMock(return_value={"message_id": 99})
+    )
+    event_token = current_event.set(event)
+    task = asyncio.create_task(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", service),
+            PlayerDetailExtensionRegistry(),
+            cast("Any", object()),
+            cast("Any", matcher),
+            event,
+            state,
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        if cancelled:
+            manager.cancel_queued_conversation(state)
+        version = manager.acquire(session_id)
+        next_menu_rule = manager.make_rule(session_id, version, lambda _event: True)
+        release.set()
+        with pytest.raises(FinishedException):
+            await task
+        if cancelled:
+            matcher.send.assert_not_awaited()
+            assert await next_menu_rule(cast("Any", object()), event, {})
+        else:
+            matcher.send.assert_awaited_once()
+            sent = matcher.send.await_args
+            assert sent is not None
+            assert "partial detail" in str(sent.args[0])
+            assert context.matches(group_message_event("1"))
+            assert context.matches(group_message_event("0"))
+            assert not context.matches(group_message_event("收集"))
+            assert not context.matches(
+                group_message_event("1", user_id=event.user_id + 1)
+            )
+            assert not context.matches(
+                group_message_event("1", group_id=event.group_id + 1)
+            )
+    finally:
+        release.set()
+        await asyncio.gather(task, return_exceptions=True)
+        manager.cancel_queued_conversation(state)
+        manager.finish_queued_conversation(state)
+        current_event.reset(event_token)
