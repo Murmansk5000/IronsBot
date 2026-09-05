@@ -1,7 +1,7 @@
 from ironsbot.services.seer.skin_price import (
     SkinShopPrice,
     SkinStorePrice,
-    _format_skin_price_lines,
+    format_skin_price_lines,
 )
 
 
@@ -26,7 +26,7 @@ def test_format_skin_price_lines_dedupes_and_formats_prices() -> None:
         end_time=0,
     )
 
-    assert _format_skin_price_lines(
+    assert format_skin_price_lines(
         shop_price=shop_price,
         store_prices=[store_price, store_price],
         existing_card_price=0,
@@ -47,8 +47,11 @@ def test_format_skin_price_lines_omits_duplicate_card_price() -> None:
         original_price=0,
     )
 
-    assert _format_skin_price_lines(
-        shop_price=shop_price,
-        store_prices=[],
-        existing_card_price=88,
-    ) == ""
+    assert (
+        format_skin_price_lines(
+            shop_price=shop_price,
+            store_prices=[],
+            existing_card_price=88,
+        )
+        == ""
+    )

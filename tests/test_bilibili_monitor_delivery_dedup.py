@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.services.bilibili.monitor import _push_new_dynamics
 from ironsbot.services.bilibili.parser import dynamic_content
 from ironsbot.services.bilibili.push import (
@@ -169,7 +170,12 @@ def test_monitor_releases_discovery_before_slow_delivery(
     monkeypatch.setattr(
         BiliTargetService,
         "push_targets_for_dynamic",
-        lambda *_args, **_kwargs: BiliPushTargets([1001], [], [], []),
+        lambda *_args, **_kwargs: BiliPushTargets(
+            [ConversationRef(Platform.ONEBOT, "group", "1001")],
+            [],
+            [],
+            [],
+        ),
     )
 
     async def send_push(

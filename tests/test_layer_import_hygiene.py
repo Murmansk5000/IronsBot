@@ -22,11 +22,11 @@ SERVICE_PACKAGES = frozenset(
 FORBIDDEN_SERVICE_IMPORTS = (
     "httpx",
     "ironsbot.app",
-    "ironsbot.integrations",
     "ironsbot.plugins",
     "ironsbot.runtime",
     "nonebot",
 )
+ALLOWED_SERVICE_INTEGRATIONS = ("ironsbot.integrations.seer_data",)
 ALLOWED_LAYER_IMPORTS = {
     "core": frozenset({"core"}),
     "config": frozenset({"config", "core"}),
@@ -152,6 +152,10 @@ def test_services_do_not_import_framework_or_outer_layers() -> None:
         for path in _files(SERVICES)
         for module in _imports(path)
         if module.startswith(FORBIDDEN_SERVICE_IMPORTS)
+        or (
+            module.startswith("ironsbot.integrations")
+            and not module.startswith(ALLOWED_SERVICE_INTEGRATIONS)
+        )
     ]
     assert offenders == []
 

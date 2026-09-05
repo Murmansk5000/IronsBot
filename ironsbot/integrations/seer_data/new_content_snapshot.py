@@ -6,8 +6,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.skin_image_resolution import (
+    load_skin_image_resolutions,
+)
 from ironsbot.services.seer.autocard import AutocardPromptValue
-from ironsbot.services.seer.skin_image_resolution import load_skin_image_resolutions
 
 from .new_content_details import (
     NewContentItemDetails,
@@ -168,14 +170,14 @@ class NewContentSnapshotBuilder:
         with self._data.get(self._data.suit, item.entity_id) as suit:
             if suit is None:
                 return _fallback_details(item)
+            bonus = suit.bonus
             return NewContentItemDetails(
                 metadata=f"ID：{suit.id}",
                 description=str(suit.suit_desc or "暂无官方简介").strip(),
                 side_title="套装效果",
                 side_description=(
-                    str(suit.bonus.desc).strip()
-                    if getattr(suit, "bonus", None) is not None
-                    and getattr(suit.bonus, "desc", "")
+                    str(bonus.desc).strip()
+                    if bonus is not None and bonus.desc
                     else "暂无套装效果"
                 ),
             )
