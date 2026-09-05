@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
@@ -14,9 +14,6 @@ from ironsbot.platform_state_migration import (
     migrate_platform_state_identities,
 )
 from ironsbot.state_migration_cli import main as state_migration_main
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class SimulatedInterruptionError(RuntimeError):
@@ -371,6 +368,33 @@ def test_platform_state_migration_rejects_duplicate_target_keys(tmp_path: Path) 
 
     with pytest.raises(PlatformStateMigrationError, match="UNIQUE constraint failed"):
         migrate_platform_state_identities(data_root=data_root)
+
+
+def test_platform_install_failure_restores_each_database_and_allows_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_legacy_platform_state(data_root)
+    originals = {path: path.read_bytes() for path in data_root.rglob("*.sqlite")}
+    original_replace = Path.replace
+    target_runtime = data_root / "state/runtime_state.sqlite"
+
+    def fail_runtime_install(path: Path, target: Path) -> Path:
+        if target == target_runtime and ".platform-migrating-" in path.name:
+            raise PermissionError
+        return original_replace(path, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", fail_runtime_install)
+        with pytest.raises(PermissionError):
+            migrate_platform_state_identities(data_root=data_root, apply=True)
+
+    for path, original in originals.items():
+        assert path.read_bytes() == original
+        assert not migration.table_exists(path, "ironsbot_platform_identity_migration")
+    assert not list(data_root.rglob("*.platform-migrating-*"))
+    assert list(data_root.glob("platform-identity-migration-backups/*/manifest.json"))
+    assert migrate_platform_state_identities(data_root=data_root, apply=True).applied
 
 
 def test_state_migration_cli_exposes_platform_identity_mode(
