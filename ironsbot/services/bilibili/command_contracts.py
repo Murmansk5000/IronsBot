@@ -13,6 +13,7 @@ from ironsbot.services.bilibili.commands import (
     BILI_PUSH_MODE_COMMANDS,
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
+    is_dynamic_update_text,
 )
 
 
@@ -93,7 +94,9 @@ def bilibili_command_contracts() -> tuple[CommandContract, ...]:
                     "立即刷新订阅动态",
                     {
                         "access": (CommandAccess(audience="superuser"),),
-                        "routing_aliases": DYNAMIC_UPDATE_COMMANDS,
+                        "routing_matcher": lambda text, _context: (
+                            is_dynamic_update_text(text)
+                        ),
                     },
                 ),
             ),

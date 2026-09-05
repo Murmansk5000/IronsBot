@@ -254,6 +254,9 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
     assert catalog.claims_direct_input(context, features, "米米号123456")
     assert not catalog.claims_direct_input(context, features, "米米号示例玩家")
     assert not catalog.claims_direct_input(context, features, "活动")
+    assert not catalog.claims_direct_input(context, features, "动态刷新")
+    assert not catalog.claims_direct_input(context, features, "//动态刷新")
+    assert not catalog.claims_direct_input(context, features, "/帮助")
 
 
 def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:

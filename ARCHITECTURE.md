@@ -136,6 +136,10 @@ spelling or declare an explicit input matcher. It must not reserve a broad
 natural-language prefix merely to keep AI from responding: parameterized
 commands claim only inputs their own parser can accept or reject with a
 command-specific validation error.
+Exact spelling preserves required prefixes such as `/`. Optional-prefix syntax
+must be accepted by the domain parser or explicitly registered aliases, never
+by globally stripping punctuation in the catalog. Help and routing consume the
+same domain grammar; an example is not permission to infer another spelling.
 
 The type rename does not make the migration complete. Completion still requires
 command parsing ownership, access metadata and documentation fields to move out

@@ -269,14 +269,14 @@ class CommandContract:
 
         if self.interaction != "direct":
             return False
-        normalized_text = normalize_command_text(text).lstrip("/")
+        normalized_text = normalize_command_text(text)
         if not normalized_text:
             return False
         exact_inputs = {
             normalized
             for value in (*self.examples, *self.routing_aliases)
             if "<" not in value and ">" not in value
-            if (normalized := normalize_command_text(value).lstrip("/"))
+            if (normalized := normalize_command_text(value))
         }
         if normalized_text in exact_inputs:
             return True
@@ -503,9 +503,9 @@ class CommandCatalog:
     ) -> bool:
         """Whether an available direct command owns this exact input spelling.
 
-        This intentionally answers only literal command ownership. Parameterized
-        parser grammar stays with its domain parser until every matcher is
-        migrated to the target command-contract parser interface.
+        Literal aliases preserve their required prefix. Parameterized grammar
+        is delegated to registered domain parsers; the catalog never invents
+        implicit prefixes or resolves message targets on its own.
         """
 
         return any(

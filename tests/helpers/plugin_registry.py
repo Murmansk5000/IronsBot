@@ -407,6 +407,7 @@ def build_test_plugin_registry(
         rank_help_plugin_contribution(
             features=runtime.features,
             commands=resources.commands,
+            player_id_resolver=resources.player_id_resolver,
         ),
         pet_config_plugin_contribution(
             service=resources.pet_config,

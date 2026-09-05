@@ -16,6 +16,17 @@ PlayerReferenceInputMatcher = Callable[[str, "CommandContext"], bool]
 PlayerReferenceRecognizer = Callable[[str, "ActorRef", "ConversationRef"], bool]
 
 
+def is_player_reference_input(
+    reference: str,
+    context: CommandContext,
+    reference_is_known: PlayerReferenceRecognizer,
+) -> bool:
+    """Claim numeric validation or an alias visible to the current caller."""
+    return reference.isdecimal() or reference_is_known(
+        reference, context.actor, context.conversation
+    )
+
+
 def player_reference_input_matcher(
     prefixes: tuple[str, ...],
     reference_is_known: PlayerReferenceRecognizer,
@@ -58,8 +69,6 @@ def player_reference_input_matcher(
         reference = normalized_text[len(prefix) :]
         if not reference:
             return accept_empty
-        return reference.isdecimal() or (
-            reference_is_known(reference, context.actor, context.conversation)
-        )
+        return is_player_reference_input(reference, context, reference_is_known)
 
     return matches

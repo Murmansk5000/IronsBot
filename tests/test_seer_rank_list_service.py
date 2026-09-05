@@ -44,7 +44,6 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_page_cache_status_command,
     parse_rank_player_target_command,
     parse_rank_score_command,
-    with_admin_prefix,
 )
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
@@ -457,13 +456,6 @@ def test_parse_rank_page_cache_refresh_command_reads_optional_global_rank() -> N
     assert parse_rank_page_cache_refresh_command("/刷新榜单 样本图鉴榜") is None
     assert parse_rank_page_cache_refresh_command("/刷新榜单缓存 皮肤榜") is None
     assert parse_rank_page_cache_refresh_command("刷新榜单 皮肤榜") is None
-
-
-def test_with_admin_prefix_adds_slash_to_commands() -> None:
-    assert with_admin_prefix(("样本情况", "刷新样本")) == (
-        "/样本情况",
-        "/刷新样本",
-    )
 
 
 def test_timestamp_text_uses_china_timezone() -> None:

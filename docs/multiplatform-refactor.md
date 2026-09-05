@@ -115,6 +115,12 @@ Task     [██████████] completed only after code, tests, and 
   修复后专项 58 passed、公开全量 1644 passed、私有 26 passed；类型、Ruff、编译和
   diff 检查通过。还复现了参数化榜单目录认领缺失，见 Phase 5 未完成项；总进度
   保持 4/8。历史进度展示和私有扩展旧迁移文字已明确更新，无生产或依赖变更。
+- 榜单 map 的别名、名次/页码/区间、全服分数和玩家引用均由领域 parser 认领；
+  管理常量不再放在插件里重复维护。公共目录保留 `/`，活动与 B站前缀语法也复用
+  各自 parser。[榜单认领 Spec](specs/2026-09-05-rank-command-ownership.md) 专项
+  640 passed，公开全量 2209 passed（87 条既有依赖告警），私有 26 passed；
+  BasedPyright、Ruff、compileall、diff 检查通过，无新增运行依赖或配置变更。
+  声明迁移不等同于全部参数化输入已验收；Phase 5 剩余项见后文，总进度仍为 4/8。
 
 ## 既有阶段验证基线（2026-08-15）
 
@@ -712,6 +718,8 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 
 **命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
 新命令不得在 matcher 内自建第二份示例、权限或帮助说明。
+下表“已迁移”指声明的语义 owner 已迁出插件，不代表该领域全部参数化输入已通过
+认领验收。参数化覆盖是 Phase 5 独立完成条件，不能用声明迁移替代。
 
 | 领域 | 当前唯一命令 contract 来源 | OneBot 插件允许保留的内容 | 状态 |
 | --- | --- | --- | --- |
@@ -731,11 +739,15 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
 | 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 动作注册和公开 extension context 适配 | 已迁移，真实 manifest 和查询/渲染/缓存端口验收归入 Phase 2 |
 
-**Phase 5 未完成项的实际复现（2026-09-05）：** `专家榜15名` 可被
-`parse_rank_list_command()` 解析为第 15 名，但只加载真实榜单 contract 的目录对同一
-有 `seer_rank` 权限的私聊用户返回 `claims_direct_input=False`。参数化榜单语法尚未
-统一接入目录认领；必须复用领域解析器处理，不能加 AI 保留词。这项与完整玩家多榜
-失败/渐进返回验收尚未关闭，因此不能把 Phase 5 标成 completed。
+**参数化认领收口（2026-09-05）：** 原 `专家榜15名` 解析成功但目录不认领的问题，
+在 [榜单认领 Spec](specs/2026-09-05-rank-command-ownership.md) 中让四类榜单直接
+复用 list/score/player parser 修复。管理命令同时复用领域常量与 parser；目录不再
+全局去除 `/`，活动可选前缀和 B站必需前缀由各自领域规则确定。
+
+**Phase 5 仍未完成：** `B站推送模式 example 链接` 可被
+`parse_bili_push_mode_command()` 解析，但其私聊 contract 没有 routing_matcher，
+带 `<账号>` 的帮助占位符不会被当作命令，因此目录仍不认领。这项、其余领域参数化
+输入与完整玩家多榜失败/渐进返回验收还需处理，不能把 Phase 5 标成 completed。
 
 ### Phase 6 — 兜底、配置和错误语义
 
