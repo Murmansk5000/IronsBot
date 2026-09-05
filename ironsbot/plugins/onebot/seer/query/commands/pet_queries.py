@@ -3,11 +3,11 @@
 
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import CommandPolicy
-from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.rules import affix_command, explicit_command
+from ironsbot.services.seer.query_commands import pet_image_input, pet_query_input
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import make_query_handler
-from .query_rules import not_exact_command, not_rank_query
 
 
 def install(group: SeerMatcherGroup) -> None:
@@ -18,11 +18,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.pet.image",),
         ),
         rule=seer_feature_rule(group.features, "seer_pet")
-        & startswith_or_endswith(
-            prefixes=("立绘", "皮肤", "查询立绘"),
-        )
-        & not_rank_query
-        & not_exact_command(group.image_command_texts)
+        & affix_command(pet_image_input(group.image_command_texts))
         & explicit_command(),
         priority=group.matcher_priority("seer_pet"),
     )
@@ -41,12 +37,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.pet.query",),
         ),
         rule=seer_feature_rule(group.features, "seer_pet")
-        & startswith_or_endswith(
-            prefixes=("精灵", "查询精灵信息", "魂印", "技能"),
-            suffixes=("查询精灵信息", "魂印", "技能"),
-        )
-        & not_rank_query
-        & not_exact_command(group.image_command_texts)
+        & affix_command(pet_query_input(group.image_command_texts))
         & explicit_command(),
         priority=group.matcher_priority("seer_pet"),
     )

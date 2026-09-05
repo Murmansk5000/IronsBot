@@ -16,7 +16,8 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.params import parse_string_arg
 from ironsbot.integrations.onebot.permissions import can_manage_group_event
 from ironsbot.integrations.onebot.replies import finish_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.rules import affix_command, explicit_command
+from ironsbot.services.seer.query_commands import team_query_input
 from ironsbot.services.seer.team import TeamQueryActor
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -67,10 +68,7 @@ def install(group: SeerMatcherGroup) -> None:
     matcher = group.on_message(
         policy=CommandPolicy.command("seer_team", help_ids=("seer.team.query",)),
         rule=seer_feature_rule(group.features, "seer_team")
-        & startswith_or_endswith(
-            prefixes=("战队", "查询战队信息"),
-            suffixes=(),
-        )
+        & affix_command(team_query_input)
         & Rule(bind(_capture_team_ids, service))
         & explicit_command(),
         priority=group.matcher_priority("seer_team"),

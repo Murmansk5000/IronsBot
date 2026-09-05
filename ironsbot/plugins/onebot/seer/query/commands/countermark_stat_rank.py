@@ -11,9 +11,12 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.integrations.onebot.matchers import CommandPolicy, bind, bind_async
+from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.seer.countermark_stat_rank_parsing import (
+    parse_countermark_stat_rank_command,
+)
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
@@ -31,11 +34,10 @@ COUNTERMARK_STAT_RANK_KEY = "_countermark_stat_rank"
 
 
 def _match_command(
-    service: CountermarkStatRankService,
     event: Event,
     state: T_State,
 ) -> bool:
-    command = service.parse_command(event.get_plaintext())
+    command = parse_countermark_stat_rank_command(event.get_plaintext())
     if command is None:
         return False
     state[COUNTERMARK_STAT_RANK_KEY] = command
@@ -64,7 +66,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.mintmark.rank",),
         ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
-        & Rule(bind(_match_command, service))
+        & Rule(_match_command)
         & explicit_command(),
         priority=group.matcher_priority("seer_mintmark"),
     )

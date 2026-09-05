@@ -5,7 +5,8 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from ironsbot.core.command_catalog import CommandContract
+from ironsbot.core.affix_commands import AffixCommand
+from ironsbot.core.command_catalog import CommandContract, parsed_command_input_matcher
 from ironsbot.core.commands import normalize_command_text
 
 if TYPE_CHECKING:
@@ -20,9 +21,6 @@ class ImageBackend(Protocol):
     async def get_file(self, file_path: str) -> bytes: ...
 
 
-class InvalidImageArgumentError(Exception): ...
-
-
 class ImageIndexOutOfRangeError(Exception):
     def __init__(self, max_index: int) -> None:
         self.max_index = max_index
@@ -30,6 +28,12 @@ class ImageIndexOutOfRangeError(Exception):
 
 
 class ImageNotFoundError(Exception): ...
+
+
+@dataclass(frozen=True, slots=True)
+class IndexedImageRequest:
+    command_id: str
+    index: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,22 +59,50 @@ class SendpicService:
         self,
         config: SendpicBehaviorConfig,
         provider: Callable[[str], ImageBackend],
+        *,
+        command_starts: tuple[str, ...],
     ) -> None:
+        self.command_starts = command_starts
         self.commands = tuple(
             command
             for command in config.configs
-            if command.enabled
+            if command.enabled and (command.mode == "single" or command_starts)
+        )
+        self._indexed_commands: dict[str, str] = {}
+        for command in self.commands:
+            if command.mode == "indexed":
+                for start in command_starts:
+                    for name in (command.command, *sorted(command.aliases)):
+                        self._indexed_commands.setdefault(start + name, command.id)
+        self._indexed_grammar = AffixCommand(
+            tuple(sorted(self._indexed_commands, key=len, reverse=True)),
+            (),
+            ignorecase=False,
         )
         self._backends = {
             kind: provider(kind)
             for kind in {command.backend for command in self.commands}
         }
 
+    def parse_indexed(self, text: str) -> IndexedImageRequest | None:
+        parsed = self._indexed_grammar(text.lstrip())
+        if parsed is None:
+            return None
+        argument = parsed.argument.lstrip()
+        if argument and not argument.isdecimal():
+            return None
+        try:
+            index = int(argument) if argument else None
+        except ValueError:
+            return None
+        return IndexedImageRequest(self._indexed_commands[parsed.prefix], index)
+
     @property
     def exact_command_texts(self) -> frozenset[str]:
         return frozenset(
-            normalize_command_text(text)
+            normalize_command_text(start + text)
             for command in self.commands
+            for start in (self.command_starts if command.mode == "indexed" else ("",))
             for text in (command.command, *command.aliases)
         )
 
@@ -85,7 +117,7 @@ class SendpicService:
     async def fetch_indexed(
         self,
         command: PicConfig,
-        arg_text: str,
+        index: int | None,
     ) -> SendpicResult:
         if (
             command.mode != "indexed"
@@ -95,7 +127,7 @@ class SendpicService:
             raise ValueError(f"{command.id} 不是编号图库命令")  # noqa: TRY003
         backend = self._backends[command.backend]
         total = await backend.count(command.image_dir)
-        selection = select_image(arg_text, total)
+        selection = select_image(index, total)
         path = build_image_file_path(
             command.image_dir,
             command.image_filename_template,
@@ -114,41 +146,56 @@ def sendpic_command_contracts(
 ) -> tuple[CommandContract, ...]:
     """Describe exactly the configured image commands in the shared catalog."""
 
-    return tuple(
-        CommandContract(
-            id=f"sendpic.{config.id}",
-            plugin_id="sendpic",
-            section="图片",
-            examples=(config.command, *sorted(config.aliases)),
-            description=(
-                "发送配置的图片；可在命令后附加编号"
-                if config.mode == "indexed"
-                else "发送配置的图片"
-            ),
-            features_any=("image",),
-            show_in_poke=True,
+    contracts = []
+    for config in service.commands:
+        names = (config.command, *sorted(config.aliases))
+        if config.mode == "indexed":
+            prefix = "" if "" in service.command_starts else service.command_starts[0]
+            examples = tuple(prefix + name for name in names)
+            matches = parsed_command_input_matcher(
+                service.parse_indexed,
+                accepts=lambda parsed, command_id=config.id: (
+                    parsed.command_id == command_id
+                ),
+            )
+        else:
+            examples = names
+            matches = parsed_command_input_matcher(
+                lambda text, names=names: text if text in names else None
+            )
+        contracts.append(
+            CommandContract(
+                id=f"sendpic.{config.id}",
+                plugin_id="sendpic",
+                section="图片",
+                examples=examples,
+                description=(
+                    "发送配置的图片；可在命令后附加编号"
+                    if config.mode == "indexed"
+                    else "发送配置的图片"
+                ),
+                features_any=("image",),
+                show_in_poke=True,
+                routing_matcher=matches,
+            )
         )
-        for config in service.commands
-    )
+    return tuple(contracts)
 
 
 def select_image(
-    arg_text: str,
+    index: int | None,
     max_index: int,
     *,
     random_index_factory: Callable[[], int] | None = None,
 ) -> ImageSelection:
-    if arg_text.isdigit():
-        selection = ImageSelection(index=int(arg_text), is_random=False)
-    elif not arg_text:
+    is_random = index is None
+    if index is None:
         index = (
             random.randint(1, max_index)  # nosec B311
             if random_index_factory is None
             else random_index_factory()
         )
-        selection = ImageSelection(index=index, is_random=True)
-    else:
-        raise InvalidImageArgumentError
+    selection = ImageSelection(index=index, is_random=is_random)
     if not 1 <= selection.index <= max_index:
         raise ImageIndexOutOfRangeError(max_index)
     return selection
