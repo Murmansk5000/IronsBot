@@ -109,3 +109,17 @@ jobs:
                   labels: ${{ steps.metadata.outputs.labels }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
+
+            - name: Record published image size
+              shell: bash
+              run: |
+                  image="$(printf '%s\n' "${{ steps.metadata.outputs.tags }}" | head -n1)"
+                  docker pull "$image"
+                  bytes="$(docker image inspect "$image" --format '{{.Size}}')"
+                  mib="$(python -c 'import sys; print(f"{int(sys.argv[1]) / 1024 / 1024:.1f}")' "$bytes")"
+                  {
+                    echo '## Docker image size'
+                    echo
+                    echo "- Image: \`$image\`"
+                    echo "- Local uncompressed size: **${mib} MiB** (${bytes} bytes)"
+                  } >> "$GITHUB_STEP_SUMMARY"

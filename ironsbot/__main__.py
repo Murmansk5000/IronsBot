@@ -12,6 +12,9 @@ from ironsbot.config.loader import (
 
 CONFIG_LOAD_ERROR_EXIT_CODE = 2
 
+if __name__ == "__main__":
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+
 try:
     application = bootstrap()
 except ConfigFileNotFoundError as error:
