@@ -346,15 +346,12 @@ class PlayerService(PlayerAccountPolicyMixin):
             source="米米号快捷详情查询",
             conversation=conversation,
         ):
-            message = await asyncio.wait_for(
-                self._details.shortcut(
-                    game,
-                    command,
-                    player_id,
-                    use_cache=False,
-                    anchor_only=anchor_only,
-                ),
-                timeout=self._config.player.detail_timeout_seconds,
+            message = await self._details.shortcut(
+                game,
+                command,
+                player_id,
+                use_cache=False,
+                anchor_only=anchor_only,
             )
         await self._headless.mark_available(
             source="米米号快捷详情查询",
