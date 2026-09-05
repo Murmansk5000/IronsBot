@@ -570,6 +570,32 @@ async def test_autocard_root_menu_uses_group_title() -> None:
     assert captured["menu_title"] == "新增群星牌"
 
 
+@pytest.mark.asyncio
+async def test_external_autocard_image_skips_final_render_cache() -> None:
+    cache = _Cache()
+
+    async def render_html(*_args: object, **_kwargs: object) -> bytes:
+        return b"menu-image"
+
+    await render_new_content_menu(
+        cache,  # type: ignore[arg-type]
+        _Data(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
+        _Autocard(),  # type: ignore[arg-type]
+        render_html,
+        NewContentSnapshot(
+            baseline_established=True,
+            config_version="20260815",
+            weekly_cycle="2026-08-15",
+            items=(_item("autocard_card", 1),),
+        ),
+        ("autocard_card",),
+        "autocard_card",
+    )
+
+    assert cache.saved is None
+
+
 def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
     water_type_id = 3
     attributes = _attributes()

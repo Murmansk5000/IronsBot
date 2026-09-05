@@ -4,8 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.value_coercion import coerce_positive_int
 from ironsbot.services.seer import local_rank_formatting
-from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult

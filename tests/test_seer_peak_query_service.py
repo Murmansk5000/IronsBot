@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.core import time
+from ironsbot.integrations.seer_data.peak_repository import PeakPeriodTimes
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
 from ironsbot.services.seer.peak import (
@@ -75,6 +76,33 @@ class FakeHeadless:
         if self.error is not None:
             raise self.error
         return self.game
+
+
+def _pool_snapshot() -> PeakPoolSnapshot:
+    return PeakPoolSnapshot(
+        id=1,
+        count=2,
+        start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+        end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+        pets=(),
+    )
+
+
+def _vote_snapshot(
+    vote_id: int,
+    subkey: int,
+    start_time: datetime,
+    end_time: datetime,
+    pets: tuple[PeakPetSnapshot, ...] = (),
+) -> peak.PeakVoteSnapshot:
+    return peak.PeakVoteSnapshot(
+        id=vote_id,
+        count=2,
+        subkey=subkey,
+        start_time=start_time,
+        end_time=end_time,
+        pets=pets,
+    )
 
 
 def test_active_peak_pool_limits_uses_only_current_pools_and_strictest_limit() -> None:
@@ -144,15 +172,7 @@ def _service(
 @pytest.mark.asyncio
 async def test_peak_pool_query_renders_with_progress() -> None:
     data = FakeData()
-    data.query_result = (
-        SimpleNamespace(
-            id=1,
-            count=2,
-            start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
-            end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
-            pet=[],
-        ),
-    )
+    data.query_result = (_pool_snapshot(),)
     rendered: dict[str, Any] = {}
     progress: list[str] = []
 
@@ -182,11 +202,9 @@ async def test_peak_pool_query_renders_with_progress() -> None:
 @pytest.mark.asyncio
 async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
     data = FakeData()
-    data.query_result = SimpleNamespace(
-        category="总",
+    data.query_result = PeakPeriodTimes(
         start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
         end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
-        sub_key=1,
     )
     data.models = {
         7: SimpleNamespace(
@@ -232,20 +250,12 @@ async def test_peak_vote_snapshots_pets_before_headless_requests(
     monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
     data = FakeData()
     data.query_result = (
-        SimpleNamespace(
-            id=1,
-            count=2,
-            subkey=99,
-            start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
-            end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
-            pet=[
-                SimpleNamespace(
-                    id=7,
-                    name="雷伊",
-                    resource_id=1007,
-                    type=SimpleNamespace(id=4),
-                )
-            ],
+        _vote_snapshot(
+            1,
+            99,
+            datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+            datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+            (PeakPetSnapshot(7, "雷伊", 1007, 4),),
         ),
     )
     rendered: dict[str, Any] = {}
@@ -280,29 +290,23 @@ async def test_peak_vote_fetches_only_active_pools(
 
     data = FakeData()
     data.query_result = (
-        SimpleNamespace(
-            id=1,
-            count=2,
-            subkey=101,
-            start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
-            end_time=datetime(2026, 7, 2, tzinfo=time.TZ_CN),
-            pet=[],
+        _vote_snapshot(
+            1,
+            101,
+            datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+            datetime(2026, 7, 2, tzinfo=time.TZ_CN),
         ),
-        SimpleNamespace(
-            id=2,
-            count=2,
-            subkey=202,
-            start_time=datetime(2026, 7, 20, 18, 0, tzinfo=time.TZ_CN),
-            end_time=datetime(2026, 7, 20, 20, 0, tzinfo=time.TZ_CN),
-            pet=[],
+        _vote_snapshot(
+            2,
+            202,
+            datetime(2026, 7, 20, 18, tzinfo=time.TZ_CN),
+            datetime(2026, 7, 20, 20, tzinfo=time.TZ_CN),
         ),
-        SimpleNamespace(
-            id=3,
-            count=2,
-            subkey=303,
-            start_time=datetime(2026, 7, 21, tzinfo=time.TZ_CN),
-            end_time=datetime(2026, 7, 22, tzinfo=time.TZ_CN),
-            pet=[],
+        _vote_snapshot(
+            3,
+            303,
+            datetime(2026, 7, 21, tzinfo=time.TZ_CN),
+            datetime(2026, 7, 22, tzinfo=time.TZ_CN),
         ),
     )
     called_subkeys: list[int] = []
@@ -333,13 +337,11 @@ async def test_peak_vote_reports_render_timeout(
 
     data = FakeData()
     data.query_result = (
-        SimpleNamespace(
-            id=1,
-            count=2,
-            subkey=101,
-            start_time=datetime(2026, 7, 20, 18, 0, tzinfo=time.TZ_CN),
-            end_time=datetime(2026, 7, 20, 20, 0, tzinfo=time.TZ_CN),
-            pet=[],
+        _vote_snapshot(
+            1,
+            101,
+            datetime(2026, 7, 20, 18, tzinfo=time.TZ_CN),
+            datetime(2026, 7, 20, 20, tzinfo=time.TZ_CN),
         ),
     )
 
@@ -393,7 +395,10 @@ async def test_peak_item_rank_formats_game_results(
     monkeypatch: MonkeyPatch,
 ) -> None:
     data = FakeData()
-    data.query_result = SimpleNamespace(sub_key=1)
+    data.query_result = PeakPeriodTimes(
+        start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
+        end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
+    )
     data.models = {7: SimpleNamespace(name="勇者套装")}
 
     class FakeGame:

@@ -1,6 +1,6 @@
 from sqlalchemy.exc import SQLAlchemyError
 
-from ironsbot.services.seer.weekly_preview import (
+from ironsbot.integrations.seer_data.weekly_preview_repository import (
     DEFAULT_WEEKLY_PREVIEW_IMAGE_URL,
     DEFAULT_WEEKLY_PREVIEW_SOURCE_URL,
     load_weekly_preview_links,

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
@@ -11,10 +12,23 @@ from ironsbot.integrations.storage.seer_assets import (
     SeerAssetStore,
     SeerAssetStoreLimits,
 )
+from ironsbot.services.seer.images import (
+    ImageSourceError,
+    PublishedRenderAssetSnapshot,
+)
 
 HTTP_NOT_FOUND = 404
 HTTP_OK = 200
 MAX_ASSET_FETCH_CONCURRENCY = 4
+
+
+def _asset_snapshot() -> PublishedRenderAssetSnapshot:
+    return PublishedRenderAssetSnapshot(
+        repository="Murmansk-Seer/seer-unity-assets",
+        revision="a" * 40,
+        manifest_revision="assets-v2",
+        scopes=frozenset({"pet_info"}),
+    )
 
 
 class _ConcurrentDetectingClient(httpx.AsyncClient):
@@ -60,7 +74,7 @@ async def _fetch_many_images(cache_dir: Path) -> int:
     cache = _ConcurrentDetectingClient()
     clients = HttpClients(cache=cache)
     images = SeerAssetStore(
-        HttpSeerImageSource(clients),
+        HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot),
         cache_dir,
         SeerAssetStoreLimits(
             memory_max_size_bytes=1024,
@@ -84,7 +98,7 @@ async def _fetch_many_images(cache_dir: Path) -> int:
 async def _fetch_item_from_fallback_source() -> tuple[bytes, list[str]]:
     cache = _ItemFallbackClient()
     clients = HttpClients(cache=cache)
-    images = HttpSeerImageSource(clients)
+    images = HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot)
     try:
         return await images.fetch("item", "1726710", fallback=False), cache.urls
     finally:
@@ -94,9 +108,21 @@ async def _fetch_item_from_fallback_source() -> tuple[bytes, list[str]]:
 async def _fetch_sign_buff() -> tuple[bytes, list[str]]:
     cache = _ItemFallbackClient()
     clients = HttpClients(cache=cache)
-    images = HttpSeerImageSource(clients)
+    images = HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot)
     try:
         return await images.fetch("sign_buff", "33", fallback=False), cache.urls
+    finally:
+        await clients.close()
+
+
+async def _fetch_without_asset_snapshot() -> list[str]:
+    cache = _ItemFallbackClient()
+    clients = HttpClients(cache=cache)
+    images = HttpSeerImageSource(clients, asset_snapshot_getter=lambda: None)
+    try:
+        with pytest.raises(ImageSourceError):
+            await images.fetch("pet_head", "1", fallback=False)
+        return cache.urls
     finally:
         await clients.close()
 
@@ -109,6 +135,7 @@ def test_item_image_tries_known_asset_categories() -> None:
     data, urls = asyncio.run(_fetch_item_from_fallback_source())
 
     assert data == b"item-image"
+    assert "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[0]
     assert "/item/doodle/icon/1726710.png" in urls[0]
     assert "/item/petitem/icon/1726710.png" in urls[1]
 
@@ -118,6 +145,11 @@ def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
 
     assert data == b"item-image"
     assert urls == [
-        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
         "newseer/assets/art/ui/assets/battleeffect/signbuff/33.png"
     ]
+
+
+def test_manifest_backed_images_do_not_fall_back_to_mutable_main() -> None:
+    assert asyncio.run(_fetch_without_asset_snapshot()) == []
