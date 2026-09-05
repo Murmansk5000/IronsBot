@@ -76,7 +76,9 @@ class PlayerShortcutDependencies:
 
     rank: RankService
     local_rank: LocalRankService
-    timeout_seconds: float = 30.0
+    timeout_seconds: float
+    detail_timeout_seconds: float
+    rank_timeout_seconds: float
 
 
 def parse_player_shortcut_command(text: str) -> PlayerShortcutTargetCommand | None:

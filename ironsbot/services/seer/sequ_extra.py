@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ironsbot.core.binary import BufferReader
+from ironsbot.core.tasks import OperationDeadline
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,7 @@ async def fetch_unity_peak_partial(
 ) -> UnityPeakFetchResult:
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
-    loop = asyncio.get_running_loop()
+    deadline = OperationDeadline.after(timeout_seconds)
     # Keep every mode in its protocol-defined slot. If an earlier mode times
     # out, compacting later values would reinterpret wild/expert fields as a
     # different mode when the complete structure is parsed below.
@@ -156,16 +157,16 @@ async def fetch_unity_peak_partial(
     mode_errors: list[tuple[str, str]] = []
 
     for mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
-        # A slow or unavailable mode must not consume the complete peak-stage
-        # budget.  Each mode is an independently useful result and later modes
-        # should still be queried after an earlier timeout.
-        deadline = loop.time() + timeout_seconds
+        # Share the remaining stage budget; an early failure cannot take every
+        # later mode's turn, and fast modes leave their unused time available.
+        remaining_modes = len(PEAK_PARAMS_BY_MODE) - mode_index
+        mode_deadline = OperationDeadline.after(deadline.remaining() / remaining_modes)
         mode_chunks: list[bytes] = []
         failed_param = params[0]
         try:
             for param in params:
                 failed_param = param
-                remaining = max(0.0, deadline - loop.time())
+                remaining = mode_deadline.remaining()
                 _head, body = await asyncio.wait_for(
                     game.send_and_wait(
                         USER_FOREVER_VALUE_CMD,
@@ -175,7 +176,10 @@ async def fetch_unity_peak_partial(
                     timeout=remaining,
                 )
                 mode_chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
-                await asyncio.sleep(PEAK_QUERY_DELAY_SECONDS)
+                if param != params[-1]:
+                    await asyncio.sleep(
+                        mode_deadline.remaining(PEAK_QUERY_DELAY_SECONDS)
+                    )
         except Exception as error:  # noqa: BLE001
             if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
                 error_text = "查询超时"
