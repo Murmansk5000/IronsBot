@@ -20,6 +20,7 @@ class QueryReply:
     image_error: str = ""
     rank_lookups: tuple[RankLookupResult, ...] = ()
     query_work: QueryWorkResult | None = None
+    # Partial replies are deliverable but cannot populate the complete-reply cache.
     complete: bool = True
 
     @property
