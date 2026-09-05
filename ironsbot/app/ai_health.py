@@ -1,21 +1,29 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.integrations.http.ai import AiApiSettings, check_ai_api
 
 if TYPE_CHECKING:
     from ironsbot.config.models.ai import AiConfig
-    from ironsbot.services.operations.startup import StartupNoticeService
 
 
 STARTUP_CHECK_TIMEOUT_SECONDS = 10.0
 
 
+class StartupNoticeSink(Protocol):
+    def add(
+        self,
+        subscription_key: str,
+        action_name: str,
+        message: str | None,
+    ) -> None: ...
+
+
 async def check_configured_ai_api(
     config: AiConfig,
-    startup_notice: StartupNoticeService,
+    startup_notice: StartupNoticeSink,
 ) -> None:
     """Record the first healthy configured AI model for the startup notice."""
 

@@ -78,6 +78,8 @@ def load_new_content_peak_pool_details(
 def _peak_pool_limit_text(value: object) -> str:
     if value is None:
         return "不限"
+    if not isinstance(value, int | float | str):
+        return "未知"
     try:
         return f"限{int(value)}"
     except (TypeError, ValueError):

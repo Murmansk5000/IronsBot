@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from time import perf_counter
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
 
@@ -20,8 +20,30 @@ AI_MODELS_EMPTY_ERROR = "AI model list is empty"
 logger = logging.getLogger(__name__)
 
 
+class AiHttpResponse(Protocol):
+    @property
+    def status_code(self) -> int: ...
+
+    @property
+    def text(self) -> str: ...
+
+    def json(self) -> object: ...
+
+
+class AiHttpClient(Protocol):
+    async def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, Any],
+        timeout: float,
+        follow_redirects: bool,
+    ) -> AiHttpResponse: ...
+
+
 class HttpAiCompletionClient:
-    def __init__(self, client: httpx.AsyncClient, config: AiConfig) -> None:
+    def __init__(self, client: AiHttpClient, config: AiConfig) -> None:
         self._client = client
         self._config = config
 
@@ -181,7 +203,7 @@ def _test_payload(settings: AiApiSettings) -> dict[str, Any]:
     }
 
 
-def _parse_http_response(response: httpx.Response) -> AiResponseResult:
+def _parse_http_response(response: AiHttpResponse) -> AiResponseResult:
     try:
         data: object = response.json()
     except ValueError:

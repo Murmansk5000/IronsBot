@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING, Any
 
 from httpx import AsyncClient, HTTPStatusError, RequestError
 
-from ironsbot.services.seer.weekly_preview import WEEKLY_PREVIEW_MIRROR_URL
+from ironsbot.integrations.seer_data.weekly_preview_repository import (
+    WEEKLY_PREVIEW_MIRROR_URL,
+)
 from ironsbot.services.seer.weekly_preview_images import (
     WeeklyPreviewImage,
     WeeklyPreviewImageError,

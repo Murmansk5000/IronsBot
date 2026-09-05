@@ -9,11 +9,11 @@ from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
     DEFAULT_TAOMEE_INTERNAL_USER_IDS,
 )
+from ironsbot.core.value_coercion import coerce_positive_int
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.local_rank_formatting import format_metric_display
 from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
-from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from pathlib import Path

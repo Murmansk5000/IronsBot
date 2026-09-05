@@ -7,7 +7,7 @@ PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.countermark_stat_rank_models",
     "ironsbot.services.seer.countermark_stat_rank_parsing",
     "ironsbot.services.seer.countermark_stat_rank_ranking",
-    "ironsbot.services.seer.countermark_stat_rank_repository",
+    "ironsbot.integrations.seer_data.countermark_stat_rank_repository",
     "ironsbot.services.seer.player_collection_formatting",
     "ironsbot.services.seer.player_compact_formatting",
     "ironsbot.services.seer.player_formatting_common",
@@ -21,7 +21,7 @@ PURE_SEER_SERVICE_MODULES = (
     "ironsbot.services.seer.rank_list_score_messages",
     "ironsbot.services.seer.render_paths",
     "ironsbot.services.seer.team",
-    "ironsbot.services.seer.weekly_preview",
+    "ironsbot.integrations.seer_data.weekly_preview_repository",
 )
 
 
