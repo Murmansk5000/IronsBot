@@ -196,7 +196,7 @@ class SeerDatabase:
             "peak_pool_vote": "peak_pool",
             "peak_pet_rank": "peak_pool",
             "new_content": "new_content_standard",
-            "player_lineup": "pet_info",
+            "player_lineup": "peak_pool",
         }.get(category)
         return scope is not None and scope in self._published_render_scopes
 

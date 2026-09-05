@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -17,8 +18,33 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+@pytest.mark.parametrize(
+    ("scopes", "expected_categories"),
+    [
+        (("pet_info",), {"pet_info"}),
+        (("type_matchup",), {"type_matchup"}),
+        (
+            ("peak_pool",),
+            {"peak_pool", "peak_pool_vote", "peak_pet_rank", "player_lineup"},
+        ),
+        (
+            ("type_matchup", "peak_pool"),
+            {
+                "type_matchup",
+                "peak_pool",
+                "peak_pool_vote",
+                "peak_pet_rank",
+                "player_lineup",
+            },
+        ),
+        (("new_content_standard",), {"new_content"}),
+        ((), set()),
+    ],
+)
 def test_seer_database_version_updates_only_when_database_is_loaded(
     tmp_path: Path,
+    scopes: tuple[str, ...],
+    expected_categories: set[str],
 ) -> None:
     source = tmp_path / "seerapi.sqlite"
     engine = create_engine(f"sqlite:///{source}")
@@ -37,12 +63,13 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
                 "('ironsbot_schema_contract_version', '1'), "
                 "('render_asset_manifest_revision', 'assets-v1'), "
                 "('render_asset_manifest_contract_version', '2'), "
-                "('render_asset_manifest_complete_scopes', '[\"pet_info\"]'), "
+                "('render_asset_manifest_complete_scopes', :scopes), "
                 "('render_asset_manifest_asset_repository', "
                 "'Murmansk-Seer/seer-unity-assets'), "
                 "('render_asset_manifest_asset_repository_revision', "
                 "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
-            )
+            ),
+            {"scopes": json.dumps(scopes)},
         )
         session.add(
             ApiMetadataORM(
@@ -65,8 +92,21 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
 
     expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
     assert data.version() == expected_version
-    assert data.render_category_available("pet_info")
-    assert not data.render_category_available("new_content")
+    categories = {
+        "pet_info",
+        "player_lineup",
+        "type_matchup",
+        "peak_pool",
+        "peak_pool_vote",
+        "peak_pet_rank",
+        "new_content",
+        "lucky_skin_window_v1",
+        "preview",
+        "unknown",
+    }
+    assert {
+        category for category in categories if data.render_category_available(category)
+    } == expected_categories
     assert data.render_asset_snapshot() is not None
     assert data.render_asset_cache_identity() == (
         "Murmansk-Seer/seer-unity-assets@"
