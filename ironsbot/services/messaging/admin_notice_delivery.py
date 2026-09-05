@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessage
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +37,15 @@ class OutboundAdminNoticeSender:
         action_name: str,
         interval_seconds: float,
     ) -> AdminNoticeSendSummary:
-        recipients = _notice_recipients(private_actors, group_conversations)
+        scoped = tuple(actor for actor in private_actors if actor.kind == "member")
+        for actor in scoped:
+            _LOGGER.warning(
+                "%s cannot privately address scoped actor: %s", action_name, actor
+            )
+        recipients = _notice_recipients(
+            tuple(actor for actor in private_actors if actor.kind == "user"),
+            group_conversations,
+        )
         summary = await self.delivery.send(
             message,
             (conversation for conversation, _recipient in recipients),
@@ -48,10 +59,7 @@ class OutboundAdminNoticeSender:
                 recipient_by_conversation[conversation]
                 for conversation in summary.succeeded
             ),
-            tuple(
-                recipient_by_conversation[conversation]
-                for conversation in summary.failed
-            ),
+            (*scoped, *(recipient_by_conversation[item] for item in summary.failed)),
         )
 
 
