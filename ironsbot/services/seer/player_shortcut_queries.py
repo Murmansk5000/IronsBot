@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.tasks import OperationDeadline
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_collection_formatting import (
@@ -27,6 +29,7 @@ from ironsbot.services.seer.rank_models import (
     RankLookupResult,
     RankSummaryProgress,
 )
+from ironsbot.services.seer.rank_summary import fetch_partial_rank_summary
 from ironsbot.services.seer.sequ_extra import (
     UnityPartOneInfo,
     UnityPeakInfo,
@@ -79,33 +82,8 @@ _PEAK_METRIC_KEYS_BY_MODE: dict[str, frozenset[str]] = {
         ("peak_standard", "peak_standard_win_rate", "peak_standard_matches")
     ),
     "wild": frozenset(("peak_wild", "peak_wild_win_rate", "peak_wild_matches")),
-    "expert": frozenset(
-        ("peak_expert", "peak_expert_win_rate", "peak_expert_matches")
-    ),
+    "expert": frozenset(("peak_expert", "peak_expert_win_rate", "peak_expert_matches")),
 }
-
-
-def _rank_summary_timeout_seconds(rank: RankService, fallback: float) -> float:
-    """Let the cooperative rank scheduler finish its own bounded request cycle.
-
-    The normal player-detail stage timeout is intentionally short.  Applying it
-    to a multi-board lookup cancels the scheduler midway through a page, which
-    turns unrelated boards into "not queried" results.  The scheduler already
-    has a total budget and a per-page timeout; add one page as a small grace
-    period so it can drain and return partial results itself.
-    """
-
-    player_lookup = getattr(getattr(rank, "config", None), "player_lookup", None)
-    if player_lookup is None:
-        return fallback
-    try:
-        return max(
-            fallback,
-            float(player_lookup.total_timeout_seconds)
-            + float(player_lookup.page_timeout_seconds),
-        )
-    except (AttributeError, TypeError, ValueError):
-        return fallback
 
 
 async def fetch_player_shortcut_reply(
@@ -116,38 +94,52 @@ async def fetch_player_shortcut_reply(
     player_id: int,
     anchor_only: bool = False,
 ) -> QueryReply:
+    deadline = OperationDeadline.after(dependencies.detail_timeout_seconds)
     if command.kind == "collection":
-        text, rank_lookups = await _fetch_collection_message(
+        return await _fetch_collection_message(
             dependencies.rank,
             dependencies.local_rank,
             game,
             player_id=player_id,
             base_snapshot=command.base_snapshot,
             timeout_seconds=dependencies.timeout_seconds,
+            rank_timeout_seconds=dependencies.rank_timeout_seconds,
+            deadline=deadline,
             anchor_only=anchor_only,
         )
-        return QueryReply(text=text, rank_lookups=rank_lookups)
     if command.kind == "peak":
-        text, rank_lookups = await _fetch_peak_message(
+        return await _fetch_peak_message(
             dependencies.rank,
             dependencies.local_rank,
             game,
             player_id=player_id,
             base_snapshot=command.base_snapshot,
             timeout_seconds=dependencies.timeout_seconds,
+            rank_timeout_seconds=dependencies.rank_timeout_seconds,
+            deadline=deadline,
             anchor_only=anchor_only,
         )
-        return QueryReply(text=text, rank_lookups=rank_lookups)
-    text, rank_lookups = await _fetch_autocard_message(
+    return await _fetch_autocard_message(
         dependencies.rank,
         dependencies.local_rank,
         game,
         player_id=player_id,
         base_snapshot=command.base_snapshot,
         timeout_seconds=dependencies.timeout_seconds,
+        rank_timeout_seconds=dependencies.rank_timeout_seconds,
+        deadline=deadline,
         anchor_only=anchor_only,
     )
-    return QueryReply(text=text, rank_lookups=rank_lookups)
+
+
+def _detail_reply(
+    text: str,
+    rank_lookups: tuple[RankLookupResult, ...],
+    *,
+    base_complete: bool,
+) -> QueryReply:
+    reply = QueryReply(text=text, rank_lookups=rank_lookups)
+    return replace(reply, complete=base_complete and reply.rank_lookup_complete)
 
 
 async def _fetch_collection_message(  # noqa: PLR0913
@@ -158,21 +150,23 @@ async def _fetch_collection_message(  # noqa: PLR0913
     player_id: int,
     base_snapshot: PlayerBaseSnapshot | None,
     timeout_seconds: float,
+    rank_timeout_seconds: float,
+    deadline: OperationDeadline,
     anchor_only: bool,
-) -> tuple[str, tuple[RankLookupResult, ...]]:
+) -> QueryReply:
     extra_errors: list[str] = []
     (nick, nick_error), more_info, unity_part_one = await asyncio.gather(
         _resolve_shortcut_nick(
             game,
             player_id=player_id,
             base_snapshot=base_snapshot,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=deadline.remaining(timeout_seconds),
         ),
         _resolve_collection_more_info(
             game,
             player_id=player_id,
             base_snapshot=base_snapshot,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=deadline.remaining(timeout_seconds),
             extra_errors=extra_errors,
         ),
         safe_player_extra(
@@ -181,21 +175,11 @@ async def _fetch_collection_message(  # noqa: PLR0913
             UnityPartOneInfo(),
             extra_errors,
             on_error=_log_extra_error,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=deadline.remaining(timeout_seconds),
         ),
     )
     rank_progress = RankSummaryProgress()
-    rank_summary_fallback = PlayerRankSummary.empty()
-
-    def record_rank_summary_error(label: str, error: Exception) -> None:
-        _log_extra_error(label, error)
-        rank_summary_fallback.mark_failure(
-            label,
-            format_player_extra_error(error),
-        )
-
-    rank_summary = await safe_player_extra(
-        "全服排行",
+    rank_summary = await fetch_partial_rank_summary(
         rank.fetch_player_summary(
             game,
             player_id,
@@ -205,11 +189,13 @@ async def _fetch_collection_message(  # noqa: PLR0913
             progress=rank_progress,
             anchor_only=anchor_only,
         ),
-        rank_summary_fallback,
-        None,
-        on_error=record_rank_summary_error,
-        timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
-        error_label_factory=lambda: rank_progress.current_title or "全服排行",
+        progress=rank_progress,
+        build_partial=lambda results, failure: PlayerRankSummary.from_results(
+            results,
+            pet_kind_count=unity_part_one.pet_kind_num,
+            failure=failure,
+        ),
+        timeout_seconds=deadline.remaining(rank_timeout_seconds),
     )
     metrics = collect_metrics(
         more_info=more_info,
@@ -235,7 +221,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
         on_error=_log_extra_error,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=deadline.remaining(timeout_seconds),
     )
     message = _append_extra_errors(
         format_collection_info(
@@ -251,7 +237,11 @@ async def _fetch_collection_message(  # noqa: PLR0913
         ),
         extra_errors,
     )
-    return message, _player_rank_results(rank_summary)
+    return _detail_reply(
+        message,
+        _player_rank_results(rank_summary),
+        base_complete=not extra_errors and nick_error is None,
+    )
 
 
 async def _fetch_peak_message(  # noqa: PLR0913
@@ -262,20 +252,22 @@ async def _fetch_peak_message(  # noqa: PLR0913
     player_id: int,
     base_snapshot: PlayerBaseSnapshot | None,
     timeout_seconds: float,
+    rank_timeout_seconds: float,
+    deadline: OperationDeadline,
     anchor_only: bool,
-) -> tuple[str, tuple[RankLookupResult, ...]]:
+) -> QueryReply:
     extra_errors: list[str] = []
     (nick, nick_error), peak_result = await asyncio.gather(
         _resolve_shortcut_nick(
             game,
             player_id=player_id,
             base_snapshot=base_snapshot,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=deadline.remaining(timeout_seconds),
         ),
         fetch_unity_peak_partial(
             game,
             player_id,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=deadline.remaining(timeout_seconds),
         ),
     )
     unity_peak = peak_result.info
@@ -287,17 +279,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         available_modes=peak_result.available_modes,
     )
     peak_progress = RankSummaryProgress()
-    peak_summary_fallback = PeakSeasonRankSummary.empty()
-
-    def record_peak_summary_error(label: str, error: Exception) -> None:
-        _log_extra_error(label, error)
-        peak_summary_fallback.mark_failure(
-            label,
-            format_player_extra_error(error),
-        )
-
-    rank_summary = await safe_player_extra(
-        "巅峰赛季榜",
+    rank_summary = await fetch_partial_rank_summary(
         rank.fetch_peak_summary(
             game,
             player_id,
@@ -307,11 +289,12 @@ async def _fetch_peak_message(  # noqa: PLR0913
             progress=peak_progress,
             anchor_only=anchor_only,
         ),
-        peak_summary_fallback,
-        None,
-        on_error=record_peak_summary_error,
-        timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
-        error_label_factory=lambda: peak_progress.current_title or "巅峰赛季榜",
+        progress=peak_progress,
+        build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
+            results,
+            failure=failure,
+        ),
+        timeout_seconds=deadline.remaining(rank_timeout_seconds),
     )
     validated_peak = validate_player_peak_season(
         unity_peak,
@@ -347,7 +330,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
         on_error=_log_extra_error,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=deadline.remaining(timeout_seconds),
     )
     message = _append_extra_errors(
         format_compact_peak_section(
@@ -362,7 +345,13 @@ async def _fetch_peak_message(  # noqa: PLR0913
         ),
         extra_errors,
     )
-    return message, (rank_summary.standard, rank_summary.wild, rank_summary.expert)
+    return _detail_reply(
+        message,
+        (rank_summary.standard, rank_summary.wild, rank_summary.expert),
+        base_complete=not extra_errors
+        and nick_error is None
+        and not peak_result.mode_errors,
+    )
 
 
 async def _fetch_autocard_message(  # noqa: PLR0913
@@ -373,8 +362,10 @@ async def _fetch_autocard_message(  # noqa: PLR0913
     player_id: int,
     base_snapshot: PlayerBaseSnapshot | None,
     timeout_seconds: float,
+    rank_timeout_seconds: float,
+    deadline: OperationDeadline,
     anchor_only: bool,
-) -> tuple[str, tuple[RankLookupResult, ...]]:
+) -> QueryReply:
     extra_errors: list[str] = []
     autocard_fallback = RankLookupResult(
         title="群星之巅榜",
@@ -390,7 +381,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
             game,
             player_id=player_id,
             base_snapshot=base_snapshot,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=deadline.remaining(timeout_seconds),
         ),
         safe_player_extra(
             "群星牌排行",
@@ -402,7 +393,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
             autocard_fallback,
             None,
             on_error=record_autocard_error,
-            timeout_seconds=_rank_summary_timeout_seconds(rank, timeout_seconds),
+            timeout_seconds=deadline.remaining(rank_timeout_seconds),
         ),
     )
     metrics = {
@@ -425,7 +416,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
         LocalRankSummary(),
         extra_errors,
         on_error=_log_extra_error,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=deadline.remaining(timeout_seconds),
     )
     message = _append_extra_errors(
         format_autocard_rank_info(
@@ -439,7 +430,11 @@ async def _fetch_autocard_message(  # noqa: PLR0913
         ),
         extra_errors,
     )
-    return message, (result,)
+    return _detail_reply(
+        message,
+        (result,),
+        base_complete=not extra_errors and nick_error is None,
+    )
 
 
 async def _resolve_shortcut_nick(
