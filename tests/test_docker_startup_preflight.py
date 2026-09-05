@@ -278,6 +278,7 @@ def test_docker_image_runs_preflight_before_application() -> None:
     root = Path(__file__).resolve().parents[1]
     dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
     entrypoint = (root / "docker-entrypoint.sh").read_text(encoding="utf-8")
+    dockerignore = (root / ".dockerignore").read_text(encoding="utf-8")
 
     assert 'ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]' in dockerfile
     assert 'CMD ["python", "-m", "ironsbot"]' in dockerfile
@@ -285,6 +286,24 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "COPY . /app/" not in dockerfile
     assert "ENV PYTHONDONTWRITEBYTECODE=1" in dockerfile
     assert "pip install --no-cache-dir --no-compile" in dockerfile
+    assert "/site-packages/pip" in dockerfile
+    assert "/site-packages/setuptools" in dockerfile
+    assert "/site-packages/wheel" in dockerfile
+    assert ".venv/" in dockerignore
+    assert ".codex/" in dockerignore
+    assert "__pycache__/" in dockerignore
+    assert ".pytest_cache/" in dockerignore
+    for repository_only_path in (
+        "data/",
+        "docker/",
+        "docs/",
+        "scripts/",
+        "tables/",
+        "tables_custom/",
+        "templates/",
+        "tests/",
+    ):
+        assert repository_only_path in dockerignore
     assert "python -m ironsbot.app.docker_preflight" in entrypoint
     assert "while :; do" in entrypoint
     wait_offset = entrypoint.index("while :; do")
