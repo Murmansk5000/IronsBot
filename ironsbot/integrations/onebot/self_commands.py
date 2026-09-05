@@ -34,8 +34,13 @@ class SelfCommandAdapter(Adapter):
 
 
 class SelfCommandGate:
-    def __init__(self, config: SelfCommandsConfig) -> None:
+    def __init__(
+        self,
+        config: SelfCommandsConfig,
+        runtime_superuser_ids: set[int] | None = None,
+    ) -> None:
         self.config = config
+        self._runtime_superuser_ids = runtime_superuser_ids
         prefixes = [config.prefix] if isinstance(config.prefix, str) else config.prefix
         self._prefixes = tuple(sorted(set(prefixes), key=len, reverse=True))
         self._seen: OrderedDict[tuple[int, int, int], float] = OrderedDict()
@@ -86,10 +91,15 @@ class SelfCommandGate:
         event.raw_message = command
         event.to_me = False
         object.__setattr__(event, "_ironsbot_self_command", True)
+        if self.config.superuser and self._runtime_superuser_ids is not None:
+            self._runtime_superuser_ids.add(int(event.self_id))
 
 
-def install_self_commands(config: SelfCommandsConfig) -> None:
-    gate = SelfCommandGate(config)
+def install_self_commands(
+    config: SelfCommandsConfig,
+    runtime_superuser_ids: set[int] | None = None,
+) -> None:
+    gate = SelfCommandGate(config, runtime_superuser_ids)
 
     async def prepare(event: Event) -> None:
         gate.prepare(event)

@@ -470,6 +470,7 @@ class FeatureService:
     superuser_ids: frozenset[int]
     command_features: frozenset[str] = frozenset()
     schedule_features: frozenset[str] = frozenset()
+    runtime_superuser_ids: frozenset[int] | set[int] = frozenset()
     _bundles: Mapping[str, frozenset[str]] = dataclass_field(
         init=False,
         repr=False,
@@ -500,7 +501,7 @@ class FeatureService:
         )
 
     def is_superuser(self, user_id: int) -> bool:
-        return user_id in self.superuser_ids
+        return user_id in self.superuser_ids or user_id in self.runtime_superuser_ids
 
     def is_conversation_blocked(
         self,

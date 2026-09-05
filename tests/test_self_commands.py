@@ -4,6 +4,7 @@ from nonebot.exception import IgnoredException
 from pydantic import ValidationError
 
 from ironsbot.config.models.settings import SelfCommandsConfig
+from ironsbot.core.features import FeatureConfig, FeatureService
 from ironsbot.integrations.onebot.self_commands import (
     SelfCommandAdapter,
     SelfCommandGate,
@@ -37,6 +38,51 @@ def test_self_command_requires_enable_and_prefix() -> None:
     assert not is_self_message_event(event)
     for rule in (natural_language(), bot_mention(), bot_mention_including_reply()):
         assert not _matches(rule, event)
+
+
+def test_self_command_can_grant_runtime_superuser_permission() -> None:
+    runtime_superuser_ids: set[int] = set()
+    features = FeatureService(
+        FeatureConfig(),
+        frozenset({999}),
+        runtime_superuser_ids=runtime_superuser_ids,
+    )
+    gate = SelfCommandGate(
+        SelfCommandsConfig(enabled=True, superuser=True),
+        runtime_superuser_ids,
+    )
+    event = group_message_event("演示 /更新数据", user_id=1)
+
+    assert not features.is_superuser(1)
+    gate.prepare(event)
+
+    assert features.is_superuser(1)
+    assert features.is_superuser(999)
+    assert features.is_group_feature_allowed(1, 456, "db_sync")
+    assert features.users_with_superusers([]) == [999]
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        SelfCommandsConfig(enabled=True, superuser=False),
+        SelfCommandsConfig(enabled=False, superuser=True),
+    ],
+)
+def test_self_command_superuser_permission_requires_both_switches(
+    config: SelfCommandsConfig,
+) -> None:
+    runtime_superuser_ids: set[int] = set()
+    gate = SelfCommandGate(config, runtime_superuser_ids)
+    event = group_message_event("演示 帮助", user_id=1)
+
+    if config.enabled:
+        gate.prepare(event)
+    else:
+        with pytest.raises(IgnoredException):
+            gate.prepare(event)
+
+    assert runtime_superuser_ids == set()
 
 
 def test_outbound_echo_and_duplicate_are_rejected() -> None:
