@@ -77,9 +77,10 @@ remain separate audits; this is not completion of all freshness/error gates.
   process had ended but its output was unavailable, so the final suite above
   was rerun after checking that no test/type-check process remained alive.
 
-Remaining gates include bounded-search completeness and cache admission/freshness
-policy. In particular, exhaustion of score probes must not be presented as a
-confirmed missing score; this slice does not change that independent contract.
+Remaining gates include cache-candidate completeness and cache admission/freshness
+policy. Score-probe exhaustion is now carried into results and partial display
+by the separate [exhaustion Spec](2026-09-05-score-probe-exhaustion.md). That work
+does not change per-stage budgets or complete all bounded-search semantics.
 
 Program remains 4/8 verified phases. No measured image-size improvement is
 claimed. Rollback is scoped code commits only.

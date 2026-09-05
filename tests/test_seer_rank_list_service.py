@@ -87,6 +87,7 @@ class ScoreResult:
     end_rank: int | None = None
     total_count: int = 0
     truncated: bool = False
+    budget_exhausted: bool = False
     higher_gap: ScoreGap | None = None
     lower_gap: ScoreGap | None = None
 

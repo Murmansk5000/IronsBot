@@ -103,6 +103,7 @@ class RankScoreSearchResult:
     total_count: int = 0
     scanned_count: int = 0
     truncated: bool = False
+    budget_exhausted: bool = False
     fetched_at: float | None = None
     items: list[RankScoreSearchItem] = field(default_factory=list)
     higher_gap: RankScoreGap | None = None

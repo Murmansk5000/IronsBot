@@ -158,6 +158,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         ),
     )
     result.boundary_score = score_range.boundary_score
+    result.budget_exhausted = score_range.budget_exhausted
     result.fetched_at = observation.fetched_at
     if score_range.last_index is None:
         return result
@@ -241,5 +242,8 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
             break
 
     result.scanned_count = len(result.items)
+    if result.budget_exhausted:
+        result.total_count = len(result.items)
+        result.end_rank = result.items[-1].rank_index + 1 if result.items else None
     result.fetched_at = observation.fetched_at
     return result
