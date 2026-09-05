@@ -628,6 +628,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   读写，`AiService` 显式 await 读取和记录；事件循环不再直接执行记忆数据库操作。
 - 新增内容索引要求发布 `new_content_category_state`。缺少分类状态的旧数据版本会
   明确报告不支持，不再用全局 baseline 猜测每一类内容是否可比较。
+- 新增内容的成就、技能和群星牌圣域详情文本由
+  `services.seer.new_content_details` 统一格式化；OneBot 菜单仅负责将该纯文本投递到
+  当前会话，不得重新内联同一批领域展示规则。
 
 **命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
 新命令不得在 matcher 内自建第二份示例、权限或帮助说明。
