@@ -126,6 +126,21 @@ def test_invalid_new_archive_preserves_last_valid_package(tmp_path: Path) -> Non
     assert catalog.plugin_modules == ("ironsbot_private_lineup.plugin",)
 
 
+def test_valid_new_archive_replaces_the_current_package(tmp_path: Path) -> None:
+    install_private_extension_archive(_package_archive(), tmp_path)
+
+    manifest = install_private_extension_archive(
+        _package_archive(module="ironsbot_private_replacement.plugin"),
+        tmp_path,
+    )
+
+    assert manifest.plugin_modules == ("ironsbot_private_replacement.plugin",)
+    catalog = PrivateExtensionCatalog.from_config(
+        PrivateExtensionsConfig(enabled=True, data_path=str(tmp_path))
+    )
+    assert catalog.plugin_modules == ("ironsbot_private_replacement.plugin",)
+
+
 def test_private_manifest_rejects_plugin_directory_discovery(tmp_path: Path) -> None:
     with pytest.raises(PrivateExtensionError, match="must not declare plugin_dirs"):
         install_private_extension_archive(
