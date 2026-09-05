@@ -54,6 +54,8 @@ Task     [██████████] completed only after code, tests, and 
 跨仓库发布、真实平台和素材完整性门槛保持未完成，暂无可靠总体 ETA。
 
 - 本地 `main` 仍为 `f19c7089`，本轮只读取该引用，没有合并到 V5。
+- 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
+  也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
 - 私有扩展安装去掉部分复制回退，增加有限权限重试；激活失败恢复旧包，恢复失败
   保留有效备份并报告路径。见
   [安装失败保护 Spec](specs/2026-09-05-extension-install-failure-safety.md)，
@@ -69,6 +71,12 @@ Task     [██████████] completed only after code, tests, and 
   只读挂载并冻结运行依赖导出。发布测量绑定本次构建 digest 并上传逐层记录；
   Docker 静态与 Bash 模拟测量测试 16 passed。见
   [镜像预算 Spec](specs/2026-08-15-runtime-image-budget.md)，实际构建减重尚未验收。
+- 查询提示统一到 `services.operations.request_feedback`：入口、玩家保护与封包
+  调度共享同一上下文及一次性发送状态，工作流可显式保存反馈对象。删除未使用的
+  整数 QQ 去重器及 OneBot 群身份辅助模块，现用 ActorRef 去重逻辑不变。生产代码
+  净减少 258 行，无配置或数据库迁移。见
+  [查询提示 Spec](specs/2026-09-05-request-feedback-consolidation.md)。全仓回归
+  1551 passed（87 条已有依赖告警）；BasedPyright、Ruff、compileall、diff 检查通过。
 
 ## 既有阶段验证基线（2026-08-15）
 
