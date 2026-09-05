@@ -407,6 +407,7 @@ class RankService(RankCacheQueryMixin):
                     sub_key=sub_key,
                     user_id=user_id,
                     minimum_limit=limit,
+                    allow_stale=False,
                 )
             )
             is not None

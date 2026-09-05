@@ -54,7 +54,11 @@ Task     [██████████] completed only after code, tests, and 
 下方早期记录保留当时的测试与状态；跨仓库发布、真实平台和素材完整性门槛仍未完成，
 暂无可靠总体 ETA。
 
-- 本地 `main` 仍为 `f19c7089`，本轮只读取该引用，没有合并到 V5。
+- 最新本地 `main` 为 `963a83c3`（下列早期拉取记录保留其当时状态）。
+  本次仅用本地 `git show` 读取新增的大师池/每周竞技点变化提交，未 fetch、pull 或
+  合并。未来移植需将 `master_pool` 的 SQL 读取放到 repository，新增命令接入当前
+  catalog，并让大师池类别参与快照、素材范围和 L3 键验证；不能直接恢复 main 中
+  的 renderer 数据访问或旧分类推断。这是待移植产品变化，不是已验收功能。
 - 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
   也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
 - 本次再次明确要求 pull 后，已在主检出目录执行 `git pull --ff-only origin main`，
@@ -217,7 +221,7 @@ IronsBot 正确读取 immutable repository revision，并为精灵头像生成�
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
-| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
+| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证；真实私有扩展公开契约已在 Phase 2 验收 | 剩余领域参数化输入覆盖、玩家查询缓存策略及完整发布链路验收 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
 
@@ -863,6 +867,17 @@ Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是�
 静态窗口/页面子集枚举校验完整性。删除重复边界循环，生产净增 5 行，无新运行模块、
 依赖、配置或 schema；未修改 main 或生产环境。新鲜度策略、动态快照与发布验收
 不在本次完成范围内，总进度仍为 4/8。
+
+**否定缓存新鲜度（2026-09-05，Phase 6 切片）：** 在线玩家榜单查询不再继承
+允许旧缓存的全局开关来复用过期“未上榜”；显式纯缓存查询仍保留历史时间。
+同榜同玩家在覆盖范围内已有相同或更新的正向观察时，旧否定证据不可使用；
+延迟完成的否定写入不覆盖更新的证据，也不删除更新的旧坐标。两处既有模块
+生产净增 10 行，无新增运行模块、配置或 schema。见
+[否定缓存 Spec](specs/2026-09-05-rank-miss-freshness.md)：修复前复现 7 项失败，
+专项 93 passed，私有 26 passed，Ruff/类型/编译/diff 通过。公共全量 2433 passed、
+1 failed：唯一失败是启动子进程超过既有 30 秒限制；未改代码或放宽超时的独立
+复跑 1 passed（19.20 秒）。这不是一次全绿的全量运行，启动时延仍留给 Phase 7
+验证。组合详情缓存准入、动态快照和真实发布验收未完成；总进度仍为 4/8。
 
 ### Phase 7 — 未来平台验收
 

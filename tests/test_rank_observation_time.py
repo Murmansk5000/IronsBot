@@ -28,6 +28,8 @@ SOURCE_TIME = 1_781_234_567.0
 TARGET_INDEX = 19
 LIMIT = 100
 PAGE_SIZE = 10
+CACHE_TTL_SECONDS = 3600
+CONFIRMED_SCORE = 101
 TIE_START = 20
 TIE_END = 40
 
@@ -308,7 +310,7 @@ def _service(tmp_path: Path) -> RankService:
     cache = SqliteRankPageCache(
         tmp_path / "rank.sqlite",
         enabled=True,
-        ttl_seconds=3600,
+        ttl_seconds=CACHE_TTL_SECONDS,
         allow_stale=True,
     )
     return RankService(
@@ -430,6 +432,90 @@ async def test_cached_hit_miss_and_timeout_keep_sqlite_time(
     assert fallback.rank == 1
     assert fallback.failure == "查询超时"
     assert fallback.fetched_at == fallback.fallback_cached_at == stamp
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("age", [120, CACHE_TTL_SECONDS, CACHE_TTL_SECONDS + 1])
+async def test_live_miss_requires_fresh_evidence_but_cache_only_can_use_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, age: int
+) -> None:
+    monkeypatch.setattr("time.time", lambda: SOURCE_TIME)
+    rank = _service(tmp_path)
+    stamp = SOURCE_TIME - age
+    rank.cache.save_miss(
+        key=240,
+        sub_key=1,
+        user_id=PLAYER_ID,
+        searched_limit=LIMIT,
+        fetched_at=stamp,
+    )
+    historical = rank.cached_player_lookup(
+        rank_key="群星牌",
+        user_id=PLAYER_ID,
+        title="rank",
+        score_name="score",
+        key=240,
+        sub_key=1,
+    )
+    assert historical is not None
+    assert historical[1].fetched_at == stamp
+    transport = AsyncMock(return_value=[RankEntry(PLAYER_ID, "found", 100)])
+    rank = replace(rank, fetch_online_page=transport)
+    result = await rank.find_rank(
+        cast("Any", None),
+        user_id=PLAYER_ID,
+        title="rank",
+        score_name="score",
+        key=240,
+        sub_key=1,
+    )
+    if age <= CACHE_TTL_SECONDS:
+        transport.assert_not_awaited()
+        assert result.rank is None
+        assert result.fetched_at == stamp
+    else:
+        transport.assert_awaited_once()
+        assert result.rank == 1
+        assert result.fetched_at == SOURCE_TIME
+
+
+@pytest.mark.asyncio
+async def test_new_cached_position_supersedes_miss_and_is_confirmed_online(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("time.time", lambda: SOURCE_TIME)
+    rank = _service(tmp_path)
+    rank.cache.save_miss(
+        key=240,
+        sub_key=1,
+        user_id=PLAYER_ID,
+        searched_limit=LIMIT,
+        fetched_at=SOURCE_TIME - 120,
+    )
+    rank.cache.save(
+        key=240,
+        sub_key=1,
+        start=0,
+        end=0,
+        items=[RankEntry(PLAYER_ID, "cached", 100)],
+        fetched_at=SOURCE_TIME - 60,
+    )
+    transport = AsyncMock(
+        return_value=[RankEntry(PLAYER_ID, "confirmed", CONFIRMED_SCORE)]
+    )
+    rank = replace(rank, fetch_online_page=transport)
+    result = await rank.find_rank(
+        cast("Any", None),
+        user_id=PLAYER_ID,
+        title="rank",
+        score_name="score",
+        key=240,
+        sub_key=1,
+    )
+    transport.assert_awaited_once()
+    assert result.rank == 1
+    assert result.score == CONFIRMED_SCORE
+    assert result.fetched_at == SOURCE_TIME
 
 
 @pytest.mark.asyncio
