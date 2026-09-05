@@ -90,6 +90,7 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
                 cnb_repo=settings.messaging.sendpic.cnb_repo,
                 local_root=settings.messaging.sendpic.local_root,
             ),
+            command_starts=tuple(settings.bot.command_start),
         ),
         team_audit=TeamAuditService(
             settings.messaging.team_audit_welcome,
