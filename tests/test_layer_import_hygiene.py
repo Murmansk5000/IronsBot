@@ -146,6 +146,23 @@ def test_lower_layers_do_not_reference_plugins() -> None:
     assert offenders == []
 
 
+def test_legacy_identity_migration_is_only_reachable_from_offline_tools() -> None:
+    offline = {
+        "ironsbot.state_migration",
+        "ironsbot.state_migration_cli",
+        "ironsbot.platform_state_migration",
+        "ironsbot.integrations.storage.platform_state_schema",
+    }
+    offenders = [
+        f"{_relative(path)} imports {module}"
+        for path in _files()
+        if _module(path) not in offline
+        for module in _imports(path)
+        if module in offline
+    ]
+    assert offenders == []
+
+
 def test_services_do_not_import_framework_or_outer_layers() -> None:
     offenders = [
         f"{_relative(path)} imports {module}"

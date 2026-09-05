@@ -311,6 +311,33 @@ def test_help_hint_limiter_counts_groups_independently() -> None:
     assert service.can_send(2, now=100.0)
 
 
+def test_help_hint_limiter_uses_a_typed_onebot_conversation() -> None:
+    service = _service()
+    group = ConversationRef(Platform.ONEBOT, "group", "1")
+    for _ in range(service.config.hint_max_per_window):
+        assert (
+            service.limiter.hit(
+                "help_hint",
+                group,
+                window_seconds=service.config.hint_window_seconds,
+                max_events=service.config.hint_max_per_window,
+                now=100.0,
+            )
+            >= 0
+        )
+    assert not service.can_send(1, now=100.0)
+    assert (
+        service.limiter.hit(
+            "help_hint",
+            ConversationRef(Platform.QQ_OFFICIAL, "group", "1"),
+            window_seconds=service.config.hint_window_seconds,
+            max_events=service.config.hint_max_per_window,
+            now=100.0,
+        )
+        >= 0
+    )
+
+
 def test_default_poke_hint_only_uses_features_enabled_in_group() -> None:
     service = _service(
         features=FakeFeatures(
