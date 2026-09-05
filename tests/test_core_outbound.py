@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 
 from ironsbot.core.outbound import (
@@ -10,7 +12,12 @@ from ironsbot.core.outbound import (
     SendResult,
     TextPart,
 )
-from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 
 PART_COUNT = 3
 
@@ -48,3 +55,28 @@ def test_send_result_rejects_incomplete_state() -> None:
         SendResult(delivered=True)
     with pytest.raises(ValueError):
         SendResult(delivered=False)
+
+
+def test_both_inbound_and_outbound_reject_naive_deadlines() -> None:
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", "opaque:user")
+    deadline = datetime(2026, 9, 5)  # noqa: DTZ001 - intentionally invalid input
+    with pytest.raises(ValueError, match="timezone"):
+        ReplyContext(conversation, "event", reply_deadline=deadline)
+    with pytest.raises(ValueError, match="timezone"):
+        IncomingMessageRef(
+            Platform.QQ_OFFICIAL,
+            ActorRef(Platform.QQ_OFFICIAL, "opaque:user"),
+            conversation,
+            "event",
+            "query",
+            reply_deadline=deadline,
+        )
+
+
+def test_reply_rejects_empty_sequence() -> None:
+    with pytest.raises(ValueError, match="sequence"):
+        ReplyContext(
+            ConversationRef(Platform.QQ_OFFICIAL, "private", "opaque:user"),
+            "event",
+            sequence=" ",
+        )

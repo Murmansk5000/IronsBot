@@ -190,13 +190,14 @@ class ProactiveMessageDelivery:
         if result.delivered:
             return True
         _LOGGER.warning(
-            "%s failed: platform=%s kind=%s id=%s code=%s message=%s",
+            "%s failed: platform=%s kind=%s id=%s code=%s message=%s trace_id=%s",
             action_name,
             request.conversation.platform.value,
             request.conversation.kind,
             request.conversation.id,
             result.error_code,
             result.error_message,
+            result.trace_id,
         )
         return False
 
