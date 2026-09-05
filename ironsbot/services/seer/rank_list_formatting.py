@@ -20,7 +20,9 @@ def now_text() -> str:
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def timestamp_text(timestamp: float) -> str:
+def timestamp_text(timestamp: float | None) -> str:
+    if timestamp is None:
+        return "未知"
     value = datetime.fromtimestamp(timestamp, timezone(timedelta(hours=8)))
     return value.strftime("%Y-%m-%d %H:%M:%S")
 
