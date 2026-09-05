@@ -20,6 +20,7 @@ from ironsbot.services.seer.rank_constants import (
     STANDARD_PEAK_USER_RANK_KEY,
 )
 from ironsbot.services.seer.rank_models import (
+    PeakSeasonRankSummary,
     PlayerRankSummary,
     RankLookupCost,
     RankLookupResult,
@@ -78,6 +79,7 @@ async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> N
         query.assert_not_awaited()
     assert reply.rank_lookups
     assert all(result.failure == "查询超时" for result in reply.rank_lookups)
+    assert not reply.complete
 
 
 def _dependencies(
@@ -213,6 +215,7 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
     unfinished = [item for item in reply.rank_lookups if item.rank is None]
     assert len(unfinished) == 1
     assert unfinished[0].failure == "查询超时"
+    assert not reply.complete
 
 
 class _Game:
@@ -428,3 +431,101 @@ async def test_direct_collection_inlines_nickname_timeout(
 
     assert f"米米号：{PLAYER_ID}（昵称暂未获取：查询超时）" in reply.text
     assert "玩家昵称失败" not in reply.text
+    assert not reply.complete
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "outcome"),
+    [
+        (kind, outcome)
+        for kind in ("collection", "peak", "autocard")
+        for outcome in ("ok", "miss", "nick", "base", "rank", "restricted", "sample")
+        if (kind, outcome) != ("autocard", "base")
+    ],
+)
+async def test_detail_completeness_uses_all_requested_stages(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: Any,
+    outcome: str,
+) -> None:
+    result = RankLookupResult(
+        title="rank",
+        score_name="score",
+        queried=True,
+        rank=None if outcome == "miss" else 4,
+        score=None if outcome == "miss" else 1421,
+        searched_limit=2000,
+        failure="unavailable" if outcome == "rank" else None,
+        cost=RankLookupCost(restricted_miss=outcome == "restricted"),
+    )
+    rank = SimpleNamespace(
+        fetch_player_summary=AsyncMock(
+            return_value=PlayerRankSummary.from_results(
+                dict.fromkeys(
+                    (
+                        "book",
+                        "achieve",
+                        "pet_kind",
+                        "skin",
+                        "countermark",
+                        "outfit_suit",
+                        "outfit_part",
+                        "mount",
+                    ),
+                    result,
+                )
+            )
+        ),
+        fetch_peak_summary=AsyncMock(
+            return_value=PeakSeasonRankSummary(result, result, result)
+        ),
+        fetch_autocard_summary=AsyncMock(return_value=result),
+        current_peak_sub_key=lambda: 7,
+    )
+    game = SimpleNamespace(
+        get_user_info=AsyncMock(return_value=SimpleNamespace(nick="player")),
+        get_more_user_info=AsyncMock(
+            return_value=SimpleNamespace(total_achieve=5760, pet_all_num=1231)
+        ),
+    )
+    if outcome == "nick":
+        game.get_user_info.side_effect = TimeoutError
+    local = SimpleNamespace(
+        config=SimpleNamespace(enabled=True),
+        upsert_metrics=AsyncMock(return_value=LocalRankSummary()),
+    )
+    if outcome == "sample":
+        local.upsert_metrics.side_effect = TimeoutError
+    collection_base = AsyncMock(
+        return_value=UnityPartOneInfo(pet_kind_num=1326, skin_num=79)
+    )
+    if outcome == "base":
+        collection_base.side_effect = TimeoutError
+    peak_base = AsyncMock(
+        return_value=UnityPeakFetchResult(
+            UnityPeakInfo(current_j_rank=3, current_k_rank=3, current_z_score=1421),
+            frozenset(
+                {"wild", "expert"}
+                if outcome == "base"
+                else {"standard", "wild", "expert"}
+            ),
+            (("standard", "unavailable"),) if outcome == "base" else (),
+        )
+    )
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_part_one",
+        collection_base,
+    )
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_peak_partial",
+        peak_base,
+    )
+    reply = await fetch_player_shortcut_reply(
+        _dependencies(rank, local),
+        game,
+        command=PlayerShortcutCommand(kind=kind, player_id=PLAYER_ID),
+        player_id=PLAYER_ID,
+    )
+    assert reply.text
+    assert reply.complete is (outcome in {"ok", "miss"})

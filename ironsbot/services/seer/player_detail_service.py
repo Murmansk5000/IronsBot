@@ -16,7 +16,6 @@ from ironsbot.services.operations.headless_errors import (
 )
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
-    PlayerBaseSnapshot,
     _BackgroundRefresh,
     _CachedDetailReply,
 )
@@ -135,13 +134,14 @@ class PlayerDetailService:
                 if refreshed is not None:
                     return refreshed
 
+        refresh = self._background_refreshes.get(player_id)
         reply = await self._fetch_shortcut(
             game,
             command=command,
             player_id=player_id,
             anchor_only=anchor_only,
         )
-        self._store_reply(player_id, command.kind, reply)
+        self._store_reply(player_id, command.kind, reply, refresh=refresh)
         return reply
 
     async def cached_or_inflight_reply(
@@ -156,7 +156,7 @@ class PlayerDetailService:
             self._expire_background_refresh(player_id, refresh)
             refresh = None
         future = None if refresh is None else refresh.replies.get(kind)
-        if future is None:
+        if future is None or future.done():
             return None
         return (await asyncio.shield(future)) or self._cached_reply(player_id, kind)
 
@@ -203,31 +203,30 @@ class PlayerDetailService:
                     game,
                     player_id=player_id,
                     kind=kind,
-                    future=future,
-                    base_snapshot=refresh.base_snapshot,
+                    refresh=refresh,
                     conversation=conversation,
                 )
-                for kind, future in refresh.replies.items()
+                for kind in refresh.replies
             )
         )
 
-    async def _run_background_refresh_item(  # noqa: PLR0913
+    async def _run_background_refresh_item(
         self,
         game: HeadlessGame,
         *,
         player_id: int,
         kind: PlayerShortcutKind,
-        future: asyncio.Future[QueryReply | None],
-        base_snapshot: PlayerBaseSnapshot | None,
+        refresh: _BackgroundRefresh,
         conversation: ConversationRef | None,
     ) -> None:
+        future = refresh.replies[kind]
         if future.done():
             return
         try:
             command = PlayerShortcutCommand(
                 kind=kind,
                 player_id=player_id,
-                base_snapshot=base_snapshot,
+                base_snapshot=refresh.base_snapshot,
             )
             logger.info(
                 "米米号后台预热开始：player_id=%s section=%s",
@@ -257,7 +256,7 @@ class PlayerDetailService:
             player_id,
             kind,
         )
-        self._store_reply(player_id, kind, reply)
+        self._store_reply(player_id, kind, reply, refresh=refresh)
 
     def _finish_background_refresh(
         self,
@@ -289,13 +288,20 @@ class PlayerDetailService:
         player_id: int,
         kind: PlayerShortcutKind,
         reply: QueryReply,
+        *,
+        refresh: _BackgroundRefresh | None = None,
     ) -> None:
-        self._cached_replies[(player_id, kind)] = _CachedDetailReply(
-            expires_at=monotonic()
-            + self._config.player.background_refresh.cache_ttl_seconds,
-            reply=reply,
-        )
-        refresh = self._background_refreshes.get(player_id)
+        if (
+            refresh is not None
+            and self._background_refreshes.get(player_id) is not refresh
+        ):
+            return
+        if reply.complete:
+            self._cached_replies[(player_id, kind)] = _CachedDetailReply(
+                expires_at=monotonic()
+                + self._config.player.background_refresh.cache_ttl_seconds,
+                reply=reply,
+            )
         future = None if refresh is None else refresh.replies.get(kind)
         if future is not None and not future.done():
             future.set_result(reply)
@@ -378,10 +384,6 @@ class PlayerDetailService:
             "米米号后台预热超时，清理等待状态：player_id=%s",
             player_id,
         )
-        for future in refresh.replies.values():
-            if not future.done():
-                future.set_result(None)
-        if self._background_refreshes.get(player_id) is refresh:
-            self._background_refreshes.pop(player_id, None)
-
-
+        self._finish_background_refresh(player_id, refresh)
+        if refresh.task is not None and not refresh.task.done():
+            refresh.task.cancel()

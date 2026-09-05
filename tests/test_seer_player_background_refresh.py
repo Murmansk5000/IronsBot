@@ -210,6 +210,7 @@ async def test_detail_deadline_keeps_result_when_sample_stage_runs_out(  # noqa:
     assert "known player" in reply.text
     assert "第4" in reply.text
     assert "样本数据失败：查询超时" in reply.text
+    assert not reply.complete
     assert reply.text.splitlines()[1].startswith("获取时间：")
     assert all(item.failure is None for item in reply.rank_lookups)
     assert current_player_rank_page_scheduler() is None
@@ -543,3 +544,163 @@ def test_background_refresh_expiration_releases_inflight_section(
         assert not service.has_inflight_refresh(PLAYER_ID, "collection")
 
     asyncio.run(run())
+
+
+@pytest.mark.asyncio
+async def test_partial_background_reply_is_delivered_but_not_reused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(enabled=True)
+    release = asyncio.Event()
+    started = asyncio.Event()
+    hold_other_sections = asyncio.Event()
+    partial_reply = QueryReply(text="partial", complete=False)
+
+    async def fetch(
+        *_args: Any, command: PlayerShortcutCommand, **_kwargs: Any
+    ) -> QueryReply:
+        if command.kind != "collection":
+            await hold_other_sections.wait()
+            return QueryReply(text=command.kind)
+        started.set()
+        await release.wait()
+        return partial_reply
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
+        fetch,
+    )
+    game = SimpleNamespace(
+        operations=SimpleNamespace(track=lambda *_a, **_kw: nullcontext())
+    )
+    service.start_background_refresh(cast("Any", game), _pending())
+    refresh = service._background_refreshes[PLAYER_ID]
+    await asyncio.wait_for(started.wait(), timeout=1)
+    waiter = asyncio.create_task(
+        service.cached_or_inflight_reply(PLAYER_ID, "collection")
+    )
+    await asyncio.sleep(0)
+    release.set()
+    try:
+        assert await waiter is partial_reply
+        assert not service._cached_replies
+        assert await service.cached_or_inflight_reply(PLAYER_ID, "collection") is None
+        assert service.has_inflight_refresh(PLAYER_ID, "peak")
+    finally:
+        hold_other_sections.set()
+        assert refresh.task is not None
+        await refresh.task
+
+
+@pytest.mark.asyncio
+async def test_expired_background_producer_cannot_publish_to_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(enabled=True)
+    started = [asyncio.Event(), asyncio.Event()]
+    release = [asyncio.Event(), asyncio.Event()]
+    cancelled = asyncio.Event()
+    generation = 0
+
+    async def fetch(
+        *_args: Any, command: PlayerShortcutCommand, **_kwargs: Any
+    ) -> QueryReply:
+        nonlocal generation
+        if command.kind != "collection":
+            return QueryReply(text=command.kind)
+        current = generation
+        generation += 1
+        started[current].set()
+        try:
+            await release[current].wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            await release[current].wait()
+        return QueryReply(text=f"generation {current}")
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
+        fetch,
+    )
+    game = SimpleNamespace(
+        operations=SimpleNamespace(track=lambda *_a, **_kw: nullcontext())
+    )
+    service.start_background_refresh(cast("Any", game), _pending())
+    old = service._background_refreshes[PLAYER_ID]
+    await asyncio.wait_for(started[0].wait(), timeout=1)
+    service._expire_background_refresh(PLAYER_ID, old)
+    service.start_background_refresh(cast("Any", game), _pending())
+    new = service._background_refreshes[PLAYER_ID]
+    await asyncio.wait_for(started[1].wait(), timeout=1)
+    release[0].set()
+    assert old.task is not None and new.task is not None
+    try:
+        await asyncio.gather(old.task, return_exceptions=True)
+        assert cancelled.is_set()
+        assert service._background_refreshes[PLAYER_ID] is new
+        assert not new.replies["collection"].done()
+        assert service._cached_reply(PLAYER_ID, "collection") is None
+    finally:
+        release[1].set()
+        await new.task
+    assert service._cached_reply(PLAYER_ID, "collection") == QueryReply(
+        text="generation 1"
+    )
+
+
+def test_partial_reply_does_not_replace_complete_cache() -> None:
+    service = _service(enabled=True)
+    complete = QueryReply(text="complete")
+    service._store_reply(PLAYER_ID, "collection", complete)
+    service._store_reply(
+        PLAYER_ID, "collection", QueryReply(text="partial", complete=False)
+    )
+    assert service._cached_reply(PLAYER_ID, "collection") is complete
+
+
+@pytest.mark.asyncio
+async def test_foreground_result_cannot_fulfill_a_replacement_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(enabled=True)
+    loop = asyncio.get_running_loop()
+    old = _BackgroundRefresh(
+        replies={"collection": loop.create_future()}, started_at=monotonic()
+    )
+    new = _BackgroundRefresh(
+        replies={"collection": loop.create_future()}, started_at=monotonic()
+    )
+    service._background_refreshes[PLAYER_ID] = old
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def fetch(*_args: Any, **_kwargs: Any) -> QueryReply:
+        started.set()
+        await release.wait()
+        return QueryReply(text="old foreground result")
+
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
+        fetch,
+    )
+    task = asyncio.create_task(
+        service.shortcut(
+            cast("Any", object()),
+            PlayerShortcutCommand(kind="collection", player_id=PLAYER_ID),
+            PLAYER_ID,
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        service._expire_background_refresh(PLAYER_ID, old)
+        assert await old.replies["collection"] is None
+        service._background_refreshes[PLAYER_ID] = new
+        release.set()
+        assert (await task).text == "old foreground result"
+        assert not new.replies["collection"].done()
+        assert not service._cached_replies
+        service._finish_background_refresh(PLAYER_ID, old)
+        assert service._background_refreshes[PLAYER_ID] is new
+    finally:
+        release.set()
+        await asyncio.gather(task, return_exceptions=True)
+        service._finish_background_refresh(PLAYER_ID, new)

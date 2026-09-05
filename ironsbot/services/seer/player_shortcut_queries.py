@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -95,7 +96,7 @@ async def fetch_player_shortcut_reply(
 ) -> QueryReply:
     deadline = OperationDeadline.after(dependencies.detail_timeout_seconds)
     if command.kind == "collection":
-        text, rank_lookups = await _fetch_collection_message(
+        return await _fetch_collection_message(
             dependencies.rank,
             dependencies.local_rank,
             game,
@@ -106,9 +107,8 @@ async def fetch_player_shortcut_reply(
             deadline=deadline,
             anchor_only=anchor_only,
         )
-        return QueryReply(text=text, rank_lookups=rank_lookups)
     if command.kind == "peak":
-        text, rank_lookups = await _fetch_peak_message(
+        return await _fetch_peak_message(
             dependencies.rank,
             dependencies.local_rank,
             game,
@@ -119,8 +119,7 @@ async def fetch_player_shortcut_reply(
             deadline=deadline,
             anchor_only=anchor_only,
         )
-        return QueryReply(text=text, rank_lookups=rank_lookups)
-    text, rank_lookups = await _fetch_autocard_message(
+    return await _fetch_autocard_message(
         dependencies.rank,
         dependencies.local_rank,
         game,
@@ -131,7 +130,16 @@ async def fetch_player_shortcut_reply(
         deadline=deadline,
         anchor_only=anchor_only,
     )
-    return QueryReply(text=text, rank_lookups=rank_lookups)
+
+
+def _detail_reply(
+    text: str,
+    rank_lookups: tuple[RankLookupResult, ...],
+    *,
+    base_complete: bool,
+) -> QueryReply:
+    reply = QueryReply(text=text, rank_lookups=rank_lookups)
+    return replace(reply, complete=base_complete and reply.rank_lookup_complete)
 
 
 async def _fetch_collection_message(  # noqa: PLR0913
@@ -145,7 +153,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
     rank_timeout_seconds: float,
     deadline: OperationDeadline,
     anchor_only: bool,
-) -> tuple[str, tuple[RankLookupResult, ...]]:
+) -> QueryReply:
     extra_errors: list[str] = []
     (nick, nick_error), more_info, unity_part_one = await asyncio.gather(
         _resolve_shortcut_nick(
@@ -229,7 +237,11 @@ async def _fetch_collection_message(  # noqa: PLR0913
         ),
         extra_errors,
     )
-    return message, _player_rank_results(rank_summary)
+    return _detail_reply(
+        message,
+        _player_rank_results(rank_summary),
+        base_complete=not extra_errors and nick_error is None,
+    )
 
 
 async def _fetch_peak_message(  # noqa: PLR0913
@@ -243,7 +255,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
     rank_timeout_seconds: float,
     deadline: OperationDeadline,
     anchor_only: bool,
-) -> tuple[str, tuple[RankLookupResult, ...]]:
+) -> QueryReply:
     extra_errors: list[str] = []
     (nick, nick_error), peak_result = await asyncio.gather(
         _resolve_shortcut_nick(
@@ -333,7 +345,13 @@ async def _fetch_peak_message(  # noqa: PLR0913
         ),
         extra_errors,
     )
-    return message, (rank_summary.standard, rank_summary.wild, rank_summary.expert)
+    return _detail_reply(
+        message,
+        (rank_summary.standard, rank_summary.wild, rank_summary.expert),
+        base_complete=not extra_errors
+        and nick_error is None
+        and not peak_result.mode_errors,
+    )
 
 
 async def _fetch_autocard_message(  # noqa: PLR0913
@@ -347,7 +365,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
     rank_timeout_seconds: float,
     deadline: OperationDeadline,
     anchor_only: bool,
-) -> tuple[str, tuple[RankLookupResult, ...]]:
+) -> QueryReply:
     extra_errors: list[str] = []
     autocard_fallback = RankLookupResult(
         title="群星之巅榜",
@@ -412,7 +430,11 @@ async def _fetch_autocard_message(  # noqa: PLR0913
         ),
         extra_errors,
     )
-    return message, (result,)
+    return _detail_reply(
+        message,
+        (result,),
+        base_complete=not extra_errors and nick_error is None,
+    )
 
 
 async def _resolve_shortcut_nick(
