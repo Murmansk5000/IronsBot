@@ -15,6 +15,7 @@ from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_event_reply,
     finish_matcher_message,
+    send_matcher_message,
 )
 from ironsbot.runtime.rules import (
     bot_mention_including_reply,
@@ -59,9 +60,17 @@ async def handle_message_command(
         if isinstance(event, GroupMessageEvent)
         else []
     )
+    messages = action.messages or [action.message]
+    for message in messages[:-1]:
+        await send_matcher_message(
+            matcher,
+            message,
+            at_user_ids=at_user_ids,
+            event=event,
+        )
     await finish_matcher_message(
         matcher,
-        action.message,
+        messages[-1],
         at_user_ids=at_user_ids,
         event=event,
     )

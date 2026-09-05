@@ -109,6 +109,57 @@ class ReplyRecorder:
     async def finish(self, message: Message) -> None:
         self.messages.append(message)
 
+    async def send(self, message: Message) -> None:
+        self.messages.append(message)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"messages": []},
+        {"messages": [" "]},
+        {"message": "one", "messages": ["two"]},
+    ],
+)
+def test_fixed_command_rejects_missing_or_ambiguous_messages(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        MessageCommandAction.model_validate(
+            {"id": "triple_reply", "commands": ["出出三连"], **payload}
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("private", [False, True])
+async def test_fixed_command_sends_each_message_in_order(
+    command_runtime: tuple[type[Matcher], MessagingService], *, private: bool
+) -> None:
+    matcher, messaging = command_runtime
+    parts = ["星皇穿了", "咤克斯瞬了", "机盖弹了", "机盖弹了"]
+    messaging._config.commands[0] = MessageCommandAction(
+        id="join_group", commands=["加群"], messages=parts, at_user_ids=[790]
+    )
+    event = (
+        private_message_event("加群", user_id=123)
+        if private
+        else group_message_event(message=Message("加群") + MessageSegment.at(789))
+    )
+    state: T_State = {}
+    assert await matcher.rule(cast("Bot", None), event, state)
+    recorder = ReplyRecorder()
+    await matchers.handle_message_command(
+        cast("Matcher", recorder), event, state, messaging=messaging
+    )
+    assert [
+        message.extract_plain_text().strip() for message in recorder.messages
+    ] == parts
+    for message in recorder.messages:
+        assert [s.data["qq"] for s in message if s.type == "at"] == (
+            [] if private else ["789", "790"]
+        )
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("targets", [(), (789,), (789, 790, 789)])

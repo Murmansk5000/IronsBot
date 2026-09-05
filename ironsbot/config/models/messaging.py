@@ -23,6 +23,8 @@ POKE_REPLY_REQUIRED_ERROR = (
     "messaging.poke replies require non-empty group/user refs and messages"
 )
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
+COMMAND_MESSAGES_EMPTY_ERROR = "messages 中的消息内容不能为空"
+COMMAND_MESSAGE_CHOICE_ERROR = "必须且只能配置 message 或非空 messages 之一"
 COMMAND_ID_FORMAT_ERROR = (
     "command message action id may only contain letters, numbers, dots, "
     "underscores, and hyphens"
@@ -288,10 +290,22 @@ class MessageReplyAction(BaseMessageAction):
 
 
 class MessageCommandAction(MessageReplyAction):
+    message: str = ""
+    messages: list[str] = Field(default_factory=list)
     commands: NormalizedStringList = Field(default_factory=list)
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, value: list[str]) -> list[str]:
+        messages = [message.strip() for message in value]
+        if any(not message for message in messages):
+            raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
+        return messages
 
     @model_validator(mode="after")
     def validate_enabled_command_action(self) -> Self:
+        if bool(self.message) == bool(self.messages):
+            raise ValueError(COMMAND_MESSAGE_CHOICE_ERROR)
         if not self.id:
             raise ValueError(COMMAND_ID_REQUIRED_ERROR)
         if not _SCHEDULE_ID_PATTERN.fullmatch(self.id):

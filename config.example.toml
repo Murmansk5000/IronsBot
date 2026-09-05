@@ -442,6 +442,14 @@ enabled = true
 # message = "https://seerinfo.yuyuqaq.cn/"
 # feature = "seerinfo_link"
 
+# EN: Use messages instead of message to send separate replies in order.
+# ZH: 分条回复用 messages 替代 message；每项单独发送，保持顺序，可重复。两者不能同时配置。
+# [[messaging.commands]]
+# id = "triple_reply"
+# commands = ["出出三连"]
+# messages = ["星皇穿了", "咤克斯瞬了", "机盖弹了"]
+# feature = "text"
+
 # Default: []
 # EN: Keyword replies use literal contains matching. They only reply when the
 # message contains a configured keyword; exact command actions above still win.
