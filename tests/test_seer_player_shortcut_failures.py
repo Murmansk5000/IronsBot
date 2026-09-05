@@ -1,6 +1,7 @@
 import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -12,7 +13,6 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutDependencies,
 )
 from ironsbot.services.seer.player_shortcut_queries import (
-    _rank_summary_timeout_seconds,
     fetch_player_shortcut_reply,
 )
 from ironsbot.services.seer.rank_constants import (
@@ -39,13 +39,62 @@ from ironsbot.services.seer.sequ_extra import (
 )
 
 PLAYER_ID = 813_824_069
-_SCHEDULER_TOTAL_TIMEOUT_SECONDS = 60
-_SCHEDULER_PAGE_TIMEOUT_SECONDS = 8
-_SCHEDULER_GRACEFUL_TIMEOUT_SECONDS = (
-    _SCHEDULER_TOTAL_TIMEOUT_SECONDS + _SCHEDULER_PAGE_TIMEOUT_SECONDS
-)
 _TEST_STAGE_TIMEOUT_SECONDS = 0.01
 _CACHED_AT = 1234567890
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["collection", "peak", "autocard"])
+async def test_expired_detail_budget_does_not_start_more_queries(kind: Any) -> None:
+    game = SimpleNamespace(
+        get_user_info=AsyncMock(),
+        get_more_user_info=AsyncMock(),
+        send_and_wait=AsyncMock(),
+    )
+    rank = SimpleNamespace(
+        fetch_player_summary=AsyncMock(),
+        fetch_peak_summary=AsyncMock(),
+        fetch_autocard_summary=AsyncMock(),
+        current_peak_sub_key=lambda: 7,
+    )
+    local = SimpleNamespace(
+        config=SimpleNamespace(enabled=True), upsert_metrics=AsyncMock()
+    )
+    reply = await fetch_player_shortcut_reply(
+        _dependencies(rank, local, detail_timeout_seconds=0),
+        game,
+        command=PlayerShortcutCommand(kind=kind, player_id=PLAYER_ID),
+        player_id=PLAYER_ID,
+    )
+    for query in (
+        game.get_user_info,
+        game.get_more_user_info,
+        game.send_and_wait,
+        rank.fetch_player_summary,
+        rank.fetch_peak_summary,
+        rank.fetch_autocard_summary,
+        local.upsert_metrics,
+    ):
+        query.assert_not_awaited()
+    assert reply.rank_lookups
+    assert all(result.failure == "查询超时" for result in reply.rank_lookups)
+
+
+def _dependencies(
+    rank: Any,
+    local_rank: Any,
+    *,
+    timeout_seconds: float = 30.0,
+    detail_timeout_seconds: float = 90.0,
+    rank_timeout_seconds: float = _TEST_STAGE_TIMEOUT_SECONDS,
+) -> PlayerShortcutDependencies:
+    return PlayerShortcutDependencies(
+        rank=rank,
+        local_rank=local_rank,
+        timeout_seconds=timeout_seconds,
+        detail_timeout_seconds=detail_timeout_seconds,
+        rank_timeout_seconds=rank_timeout_seconds,
+    )
 
 
 @pytest.mark.asyncio
@@ -138,14 +187,12 @@ async def test_shortcut_summary_timeout_preserves_completed_boards(  # noqa: C90
         "ironsbot.services.seer.player_shortcut_queries.fetch_unity_peak_partial",
         peak_base,
     )
-    monkeypatch.setattr(
-        "ironsbot.services.seer.player_shortcut_queries._rank_summary_timeout_seconds",
-        lambda *_args: 0.05,
-    )
     local = _RecordingLocalRank()
     reply = await fetch_player_shortcut_reply(
-        PlayerShortcutDependencies(
-            rank=cast("Any", Rank()), local_rank=cast("Any", local)
+        _dependencies(
+            rank=cast("Any", Rank()),
+            local_rank=cast("Any", local),
+            rank_timeout_seconds=0.05,
         ),
         _Game(),
         command=PlayerShortcutCommand(kind=kind, player_id=PLAYER_ID),
@@ -220,28 +267,6 @@ class _RankWithoutData:
         return PlayerRankSummary.empty()
 
 
-def test_rank_summary_timeout_leaves_the_scheduler_a_page_to_finish() -> None:
-    rank = SimpleNamespace(
-        config=SimpleNamespace(
-            player_lookup=SimpleNamespace(
-                total_timeout_seconds=_SCHEDULER_TOTAL_TIMEOUT_SECONDS,
-                page_timeout_seconds=_SCHEDULER_PAGE_TIMEOUT_SECONDS,
-            )
-        )
-    )
-
-    assert _rank_summary_timeout_seconds(cast("Any", rank), 22.5) == (
-        _SCHEDULER_GRACEFUL_TIMEOUT_SECONDS
-    )
-
-
-def test_rank_summary_timeout_keeps_the_stage_timeout_for_simple_test_doubles() -> None:
-    assert (
-        _rank_summary_timeout_seconds(cast("Any", _Rank()), _TEST_STAGE_TIMEOUT_SECONDS)
-        == _TEST_STAGE_TIMEOUT_SECONDS
-    )
-
-
 @pytest.mark.asyncio
 async def test_collection_returns_partial_result_with_exact_timeout_stage(
     monkeypatch: pytest.MonkeyPatch,
@@ -262,7 +287,7 @@ async def test_collection_returns_partial_result_with_exact_timeout_stage(
         fetch_unity_part_one,
     )
     reply = await fetch_player_shortcut_reply(
-        PlayerShortcutDependencies(
+        _dependencies(
             rank=cast("Any", _Rank()),
             local_rank=cast("Any", _LocalRank()),
             timeout_seconds=_TEST_STAGE_TIMEOUT_SECONDS,
@@ -302,7 +327,7 @@ async def test_successful_collection_shortcut_adds_player_to_local_sample(
     local_rank = _RecordingLocalRank()
 
     await fetch_player_shortcut_reply(
-        PlayerShortcutDependencies(
+        _dependencies(
             rank=cast("Any", _RankWithoutData()),
             local_rank=cast("Any", local_rank),
         ),
@@ -350,7 +375,7 @@ async def test_collection_menu_snapshot_reuses_confirmed_nick_and_more_info(
     )
 
     reply = await fetch_player_shortcut_reply(
-        PlayerShortcutDependencies(
+        _dependencies(
             rank=cast("Any", _RankWithoutData()),
             local_rank=cast("Any", _LocalRank()),
         ),
@@ -391,7 +416,7 @@ async def test_direct_collection_inlines_nickname_timeout(
         fetch_unity_part_one,
     )
     reply = await fetch_player_shortcut_reply(
-        PlayerShortcutDependencies(
+        _dependencies(
             rank=cast("Any", _RankWithoutData()),
             local_rank=cast("Any", _LocalRank()),
             timeout_seconds=_TEST_STAGE_TIMEOUT_SECONDS,

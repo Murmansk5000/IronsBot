@@ -168,27 +168,25 @@ class PlayerDetailService:
         player_id: int,
         anchor_only: bool,
     ) -> QueryReply:
+        player = self._config.player
+        lookup = self._rank.config.player_lookup
         return await fetch_player_shortcut_reply(
             PlayerShortcutDependencies(
                 rank=self._rank,
                 local_rank=self._local_rank,
-                timeout_seconds=self._detail_stage_timeout_seconds(),
+                timeout_seconds=min(
+                    player.timeout_seconds,
+                    player.detail_timeout_seconds / _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT,
+                ),
+                detail_timeout_seconds=player.detail_timeout_seconds,
+                rank_timeout_seconds=(
+                    lookup.total_timeout_seconds + lookup.page_timeout_seconds
+                ),
             ),
             game,
             command=command,
             player_id=player_id,
             anchor_only=anchor_only,
-        )
-
-    def _detail_stage_timeout_seconds(self) -> float:
-        player_config = self._config.player
-        basic_timeout = float(getattr(player_config, "timeout_seconds", 30.0))
-        detail_timeout = float(
-            getattr(player_config, "detail_timeout_seconds", 90.0)
-        )
-        return min(
-            basic_timeout,
-            detail_timeout / _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT,
         )
 
     async def _run_background_refresh(
@@ -336,14 +334,11 @@ class PlayerDetailService:
                 background=True,
                 conversation=conversation,
             ):
-                return await asyncio.wait_for(
-                    self._fetch_shortcut(
-                        game,
-                        command=command,
-                        player_id=player_id,
-                        anchor_only=False,
-                    ),
-                    timeout=self._config.player.detail_timeout_seconds,
+                return await self._fetch_shortcut(
+                    game,
+                    command=command,
+                    player_id=player_id,
+                    anchor_only=False,
                 )
 
         timeout_seconds = self._background_refresh_timeout_seconds()

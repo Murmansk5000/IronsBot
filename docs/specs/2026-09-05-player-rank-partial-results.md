@@ -1,6 +1,6 @@
 # Player Rank Partial Results
 
-Status: `implementing`
+Status: `verified`
 
 Contract: `target`
 
@@ -43,19 +43,42 @@ new persistence, dependency or alternate query engine is needed.
 | Slice | Acceptance | Status |
 | --- | --- | --- |
 | Summary recovery | Completed boards survive collection/peak summary timeouts; cancellation propagates | verified |
-| Full detail budget | Audit outer detail timeout, request protection and incremental publication; preserve base data | pending |
+| Full detail budget | Shared deadline preserves base/rank data in foreground and background; later stages use remaining time | verified |
 
-The first slice does not prove the complete multi-stage player workflow: the
-outer detail timeout can still interrupt before formatting. Phase 5 stays open
-until that path and progressive publication are verified as well.
+The first slice alone did not prove the complete multi-stage player workflow.
+The second slice verifies the deadline through foreground/background detail
+services; actual conversation publication and cache reuse remain Phase 5 gates.
 
-Confirmed next gate: `PlayerDetailService` allows a basic stage of 22.5 seconds
-with default configuration; the summary guard allows 60 + 8 seconds; local sample
-update can consume another stage. Both foreground `PlayerService._shortcut_live`
-and background `_run_background_shortcut` wrap the whole detail in 90 seconds.
-Their cancellation reaches the domain helper as external cancellation, which
-must propagate. The next slice must consolidate budget ownership rather than
-catch arbitrary cancellation, increase every timeout or add another empty reply.
+Pre-change evidence: `PlayerDetailService` allowed a basic stage of 22.5 seconds
+with default configuration; the summary guard allowed 60 + 8 seconds; local sample
+update could consume another stage. Both foreground `PlayerService._shortcut_live`
+and background `_run_background_shortcut` wrapped the whole detail in 90 seconds.
+Those equal-duration wrappers have now been removed. Their cancellation previously
+reached the domain helper as external cancellation, which must still propagate.
+
+### Full Detail Deadline
+
+- A small monotonic `OperationDeadline` in the existing core task contracts owns
+  remaining-time arithmetic, not task spawning, results, retries or protocol I/O.
+  Collection, peak and autocard use it; no player-specific global context is added.
+- `PlayerDetailService` injects explicit total, per-basic-stage and rank-stage
+  limits from typed configuration. Remove the reflective rank-config/test-double
+  fallback and per-stage configuration attribute defaults.
+- The query pipeline starts one deadline. Every awaited stage receives at most
+  its remaining time. The summary recovery from slice 1 then returns completed
+  ranks; expired sample work is reported separately without discarding the reply.
+- Peak base `timeout_seconds` is a whole-stage budget. Remaining time is shared
+  among remaining modes; no mode receives a fresh copy of the whole stage budget.
+- Remove the equal-duration foreground/background wrappers around the pipeline.
+  Keep the existing background lifecycle watchdog (detail budget plus cleanup
+  grace) as catastrophic-task protection, not another normal query budget.
+- Formatting remains synchronous and happens even after data time is exhausted.
+  The deadline bounds new work, not the duration of cancellation-safe cleanup;
+  genuine external cancellation still propagates. No detached work is introduced.
+- No TOML field is added. Existing `detail_timeout_seconds` becomes the effective
+  shared data budget, rather than a race between independent stage timers.
+- Progressive publication and real protocol/deployment smoke remain separate
+  Phase 5/7 acceptance gates; this slice is not full program completion.
 
 ## User And Data Contract
 
@@ -72,6 +95,11 @@ but shortcut timeout handling no longer discards completed results.
   failures and successful cache metadata remain unchanged.
 - [x] Summary cancellation propagates, drains its owned work and resets context.
 - [x] Successful summaries and local metric updates retain existing behavior.
+- [x] Foreground/background collection, peak and autocard keep confirmed data when
+  sample work exhausts the remaining deadline; external cancellation cleans up
+  without caching a partial workflow.
+- [x] Expired budgets do not start network/sample operations. Peak mode budgets
+  sum to the whole stage allowance instead of multiplying it by three.
 - [x] Ruff, scoped typing, focused/full public tests, private regression,
   compileall and diff checks pass.
 
@@ -93,8 +121,26 @@ but shortcut timeout handling no longer discards completed results.
   error callbacks. Added no production module, dependency, TOML field or database.
 - No main fetch/merge, push or production deployment was performed.
 
+### Full Detail Budget Evidence
+
+- Red regression: all six foreground/background collection/peak/autocard paths
+  raised a whole-detail TimeoutError after their rank data had been obtained.
+- Added cancellation variants and expired-budget tests. The focused deadline,
+  shortcut, background, peak protocol, rank and request-protection suite passed
+  58 tests. The actual deadline/service/summary/scheduler/formatter chain is used;
+  network pages and sample storage are controlled test boundaries.
+- `uv run pytest -q --basetemp=.test-tmp/detail-budget-full`: 2322 passed,
+  271 warnings, 100.37 seconds. Private regression: 26 passed.
+- Ruff, BasedPyright (`ironsbot tests`, zero errors/warnings/notes), compileall
+  and diff checks passed. Existing framework/ORM warnings remain unchanged.
+- Removed reflective stage configuration fallback, the test-double-only rank
+  timeout fallback, and foreground/background equal-budget wrapper timers.
+  Reused the existing core task module; no new production module or dependency.
+- No live protocol timing or Docker image size claim follows from these tests.
+
 ## Progress
 
 Program: 4/8 phases verified, not a percentage of effort. This spec remains a
-Phase 5 slice. Summary recovery is verified; the next full-detail budget slice
-is estimated at 30-60 minutes. Release gates need separate measured verification.
+Phase 5 slice. Both scoped slices are verified. Next: inspect and exercise actual
+detail conversation publication, cancellation and cache semantics (estimated
+30-60 minutes). Release gates need separate measured verification.

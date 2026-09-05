@@ -2,10 +2,46 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from ironsbot.services.seer.sequ_extra import fetch_unity_peak_partial
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+
+
+@pytest.fixture(autouse=True)
+def no_protocol_pacing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ironsbot.services.seer.sequ_extra.PEAK_QUERY_DELAY_SECONDS", 0)
+
+
+@pytest.mark.asyncio
+async def test_peak_modes_share_one_stage_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [100.0]
+    limits: list[float] = []
+    monkeypatch.setattr("ironsbot.core.tasks.monotonic", lambda: now[0])
+
+    async def time_out(operation: Coroutine[Any, Any, Any], *, timeout: float) -> None:
+        operation.close()
+        limits.append(timeout)
+        now[0] += timeout
+        raise TimeoutError
+
+    monkeypatch.setattr("ironsbot.services.seer.sequ_extra.asyncio.wait_for", time_out)
+    result = await fetch_unity_peak_partial(
+        _PeakGame(), 712_345_678, timeout_seconds=0.3
+    )
+    assert limits == pytest.approx([0.1, 0.1, 0.1])
+    assert sum(limits) == pytest.approx(0.3)
+    assert result.available_modes == frozenset()
+    assert all(
+        result.error_for(mode) == "查询超时" for mode in ("standard", "wild", "expert")
+    )
+
 
 _WILD_FIRST_PARAM = 124791
 _STANDARD_FIRST_PARAM = 124801
@@ -56,8 +92,7 @@ class _PeakGame:
 
 
 @pytest.mark.asyncio
-async def test_peak_partial_continues_to_later_modes_after_one_mode_times_out(
-) -> None:
+async def test_peak_partial_continues_to_later_modes_after_one_mode_times_out() -> None:
     result = await fetch_unity_peak_partial(
         _PeakGame(),
         712_345_678,
@@ -81,8 +116,7 @@ async def test_peak_partial_continues_to_later_modes_after_one_mode_times_out(
 
 
 @pytest.mark.asyncio
-async def test_peak_partial_keeps_later_modes_aligned_after_standard_timeout(
-) -> None:
+async def test_peak_partial_keeps_later_modes_aligned_after_standard_timeout() -> None:
     result = await fetch_unity_peak_partial(
         _PeakGame(timeout_param=_STANDARD_FIRST_PARAM),
         712_345_678,
