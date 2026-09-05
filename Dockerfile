@@ -41,8 +41,19 @@ RUN apt-get update \
 
 COPY --from=requirements_stage /wheel /wheel
 
+# The container never installs packages at runtime. Keep its application
+# dependencies, but remove Python's packaging toolchain from the final layer.
 RUN pip install --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
-    && rm -rf /wheel
+    && rm -rf /wheel \
+    && rm -rf /usr/local/lib/python3.10/site-packages/pip \
+        /usr/local/lib/python3.10/site-packages/pip-*.dist-info \
+        /usr/local/lib/python3.10/site-packages/setuptools \
+        /usr/local/lib/python3.10/site-packages/setuptools-*.dist-info \
+        /usr/local/lib/python3.10/site-packages/wheel \
+        /usr/local/lib/python3.10/site-packages/wheel-*.dist-info \
+        /usr/local/bin/pip \
+        /usr/local/bin/pip3 \
+        /usr/local/bin/pip3.10
 
 # Keep the runtime layer independent from repository-only material.  Tests,
 # documentation, local data and build scripts are useful in source checkouts,
