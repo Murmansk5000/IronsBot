@@ -20,13 +20,15 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank_models import PlayerRankSummary, RankLookupResult
     from ironsbot.services.seer.sequ_extra import UnityPartOneInfo
 
-def format_collection_info(
+
+def format_collection_info(  # noqa: PLR0913
     more_info: Any,
     *,
     unity_part_one: UnityPartOneInfo | None,
     rank_summary: PlayerRankSummary,
     local_summary: LocalRankSummary,
     player_identity: str,
+    fetched_at: float | None,
 ) -> str:
     breakdown = rank_summary.breakdown
     outfit_suit_score = (
@@ -115,7 +117,7 @@ def format_collection_info(
             local_key="achievement_count",
         ),
     ]
-    lines = ["📚【收集与排行】", format_player_data_time(), player_identity]
+    lines = ["📚【收集与排行】", format_player_data_time(fetched_at), player_identity]
     lines.extend(line for line in metric_lines if line)
     return "\n".join(lines)
 
@@ -125,8 +127,9 @@ def format_autocard_rank_info(
     *,
     player_identity: str,
     local_summary: LocalRankSummary,
+    fetched_at: float | None,
 ) -> str:
-    lines = ["🃏【群星牌排名】", format_player_data_time(), player_identity]
+    lines = ["🃏【群星牌排名】", format_player_data_time(fetched_at), player_identity]
     sample_text = (
         sample_rank_text(local_summary, "autocard_score")
         if result.score is not None

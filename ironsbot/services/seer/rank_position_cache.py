@@ -15,6 +15,7 @@ def restore_cached_rank_after_timeout(
     result.score = int(cached_item.score)
     result.failure = "查询超时"
     result.fallback_cached_at = float(cached_item.fetched_at)
+    result.fetched_at = result.fallback_cached_at
     return result
 
 
@@ -50,12 +51,7 @@ async def find_rank_by_cached_position(  # noqa: PLR0913
             end=start + page_size - 1,
             use_cache=False,
         )
-        result.queried = True
-        result.cost.page_starts.append(start)
-        if page.from_cache:
-            result.cost.cache_page_hits += 1
-        else:
-            result.cost.online_page_fetches += 1
+        result.record_page(start, page)
         items = page.items
         for offset, item in enumerate(items):
             if item.id == user_id:

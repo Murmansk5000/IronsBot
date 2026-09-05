@@ -4,8 +4,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, TypeVar
 
 from ironsbot.core.commands import csv_items, json_array
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+T = TypeVar("T")
 
 TZ_CN = timezone(timedelta(hours=8))
 TIME_PART_COUNT = 2
@@ -25,6 +31,31 @@ def now(tz: timezone | None = None) -> datetime:
     if tz is None:
         return datetime.now(timezone.utc).astimezone()
     return datetime.now(tz=tz)
+
+
+@dataclass(slots=True)
+class ObservationTime:
+    """Oldest supporting observation; undated evidence stays explicitly unknown."""
+
+    _oldest: float | None = None
+    _unknown: bool = False
+
+    @property
+    def fetched_at(self) -> float | None:
+        return None if self._unknown else self._oldest
+
+    def include(self, fetched_at: float | None) -> None:
+        if fetched_at is None:
+            self._unknown = True
+        else:
+            self._oldest = (
+                fetched_at if self._oldest is None else min(self._oldest, fetched_at)
+            )
+
+    async def observe(self, fetch: Callable[[], Awaitable[T]]) -> T:
+        result = await fetch()
+        self.include(now().timestamp())
+        return result
 
 
 @dataclass(frozen=True, slots=True, order=True)

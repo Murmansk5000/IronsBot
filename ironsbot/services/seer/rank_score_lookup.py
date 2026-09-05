@@ -2,7 +2,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from ironsbot.services.seer.rank_models import RankLookupResult
+from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
 from ironsbot.services.seer.rank_score_search import (
     DescendingScoreSearchLimits,
     locate_descending_score_range,
@@ -21,13 +21,22 @@ async def find_rank_by_score(  # noqa: PLR0913
     result: RankLookupResult,
     score_search_probe_limit: Callable[[int], int],
     score_search_tie_page_limit: Callable[[], int],
-    fetch_rank_item: Callable[..., Awaitable[Any | None]],
-    fetch_rank_page: Callable[..., Awaitable[list[Any]]],
+    fetch_rank_page: Callable[..., Awaitable[RankPageResult]],
 ) -> RankLookupResult:
     result.score = target_score
 
     async def fetch_score(index: int) -> int | None:
-        item = await fetch_rank_item(game, key=key, sub_key=sub_key, index=index)
+        start = index // page_size * page_size
+        page = await fetch_rank_page(
+            game,
+            key=key,
+            sub_key=sub_key,
+            start=start,
+            end=start + page_size - 1,
+        )
+        result.record_page(start, page)
+        offset = index - start
+        item = page.items[offset] if offset < len(page.items) else None
         return None if item is None else int(item.score)
 
     tie_page_limit = score_search_tie_page_limit()
@@ -54,13 +63,15 @@ async def find_rank_by_score(  # noqa: PLR0913
     remaining_tie_pages = tie_page_limit
     while start < tie_end and remaining_tie_pages > 0:
         end = min(start + page_size - 1, tie_end - 1)
-        items = await fetch_rank_page(
+        page = await fetch_rank_page(
             game,
             key=key,
             sub_key=sub_key,
             start=start,
             end=end,
         )
+        result.record_page(start, page)
+        items = page.items
 
         for offset, item in enumerate(items):
             if item.id == user_id:
@@ -86,18 +97,20 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
     limit: int,
     page_size: int,
     result: RankLookupResult,
-    fetch_rank_page: Callable[..., Awaitable[list[Any]]],
+    fetch_rank_page: Callable[..., Awaitable[RankPageResult]],
 ) -> RankLookupResult:
     start = 0
     while start < limit:
         end = min(start + page_size - 1, limit - 1)
-        items = await fetch_rank_page(
+        page = await fetch_rank_page(
             game,
             key=key,
             sub_key=sub_key,
             start=start,
             end=end,
         )
+        result.record_page(start, page)
+        items = page.items
 
         for offset, item in enumerate(items):
             if item.id == user_id:

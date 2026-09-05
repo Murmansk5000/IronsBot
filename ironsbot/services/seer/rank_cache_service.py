@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.rank_exclusions import RankExclusionPolicy
     from ironsbot.services.seer.rank_models import (
         RankLookupResult,
-        RankPageResult,
+        RankRangeResult,
         RankScoreSearchResult,
     )
     from ironsbot.services.seer.rank_page_cache_models import CachedRankLookup
@@ -58,7 +58,7 @@ class RankCacheQueryMixin:
         sub_key: int,
         start_rank: int,
         count: int,
-    ) -> RankPageResult | None:
+    ) -> RankRangeResult | None:
         """Read a complete visible window from cache without a game session."""
 
         return fetch_cached_visible_rank_range(
