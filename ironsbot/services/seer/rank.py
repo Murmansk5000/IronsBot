@@ -53,10 +53,7 @@ from ironsbot.services.seer.rank_score_segments import (
 from ironsbot.services.seer.rank_score_segments import (
     fetch_rank_score_segment as fetch_rank_score_segment_online,
 )
-from ironsbot.services.seer.rank_work_cache import (
-    cached_rank_miss,
-    record_rank_page_work,
-)
+from ironsbot.services.seer.rank_work_cache import record_rank_page_work
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -294,36 +291,6 @@ class RankService(RankCacheQueryMixin):
         )
         return result.items
 
-    async def _fetch_page_result_for_position_lookup(  # noqa: PLR0913
-        self,
-        game: HeadlessGame,
-        *,
-        key: int,
-        sub_key: int,
-        start: int,
-        end: int,
-        use_cache: bool = False,
-    ) -> RankPageResult:
-        """Fetch one position-anchor page through the public page boundary.
-
-        A cached rank position is only an anchor.  Confirmation deliberately
-        reads that page again so the player can move within its 100-place band
-        without becoming a false cache hit.  Calling ``fetch_page`` here also
-        keeps the lookup compatible with the normal page cache and testable
-        through the established page-fetch seam.
-        """
-
-        _ = use_cache
-        items = await self.fetch_page(
-            game,
-            key=key,
-            sub_key=sub_key,
-            start=start,
-            end=end,
-            use_cache=False,
-        )
-        return RankPageResult(items, time.time(), from_cache=False)
-
     async def fetch_item(
         self,
         game: HeadlessGame,
@@ -461,8 +428,7 @@ class RankService(RankCacheQueryMixin):
         if (
             score_target is None
             and (
-                cached_miss := cached_rank_miss(
-                    self.cache,
+                cached_miss := self.cache.miss(
                     key=key,
                     sub_key=sub_key,
                     user_id=user_id,
@@ -472,6 +438,7 @@ class RankService(RankCacheQueryMixin):
             is not None
         ):
             result.searched_limit = cached_miss.searched_limit
+            result.fetched_at = cached_miss.fetched_at
             result.cost.cache_page_hits += 1
             return result
         return await execute_rank_lookup(

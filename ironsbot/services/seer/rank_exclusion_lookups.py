@@ -91,6 +91,7 @@ async def finalize_visible_lookup(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         raw_rank=result.rank,
+        result=result,
     )
     return result
 
@@ -103,6 +104,7 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
     key: int,
     sub_key: int,
     raw_rank: int,
+    result: RankLookupResult,
 ) -> int:
     excluded_ids = service.exclusion_policy.excluded_user_ids(rank_key)
     if not excluded_ids or raw_rank <= 0:
@@ -114,7 +116,7 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
     page_size = service.page_size()
     raw_start = 0
     while raw_start <= raw_target_index:
-        page_items = await service.fetch_page(
+        page = await service.fetch_page_result(
             game,
             key=key,
             sub_key=sub_key,
@@ -122,6 +124,8 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
             end=raw_start + page_size - 1,
             use_cache=False,
         )
+        result.include_observation(page.fetched_at)
+        page_items = page.items
         for offset, item in enumerate(page_items):
             raw_index = raw_start + offset
             if raw_index > raw_target_index:

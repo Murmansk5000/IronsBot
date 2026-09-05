@@ -275,6 +275,7 @@ def cached_player_lookup(  # noqa: PLR0913
             score_name=score_name,
             rank=int(cached.rank_index) + 1,
             score=int(cached.score),
+            fetched_at=cached.fetched_at,
             searched_limit=search_limit,
             queried=True,
             cost=RankLookupCost(cache_page_hits=1),
@@ -292,6 +293,7 @@ def cached_player_lookup(  # noqa: PLR0913
         title=title,
         score_name=score_name,
         searched_limit=int(miss.searched_limit),
+        fetched_at=miss.fetched_at,
         queried=True,
         cost=RankLookupCost(cache_page_hits=1),
     )
