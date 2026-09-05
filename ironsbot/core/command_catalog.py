@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.platform import is_supported_message_actor
 
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -143,6 +144,21 @@ class CommandContext:
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]
+_Parsed = TypeVar("_Parsed")
+
+
+def parsed_command_input_matcher(
+    parser: Callable[[str], _Parsed | None],
+    *,
+    accepts: Callable[[_Parsed], bool] | None = None,
+) -> CommandInputMatcher:
+    """Adapt a pure domain parser without executing its command or guessing syntax."""
+
+    def matches(text: str, _context: CommandContext) -> bool:
+        parsed = parser(text)
+        return parsed is not None and (accepts is None or accepts(parsed))
+
+    return matches
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,14 +284,14 @@ class CommandContract:
 
         if self.interaction != "direct":
             return False
-        normalized_text = normalize_command_text(text).lstrip("/")
+        normalized_text = normalize_command_text(text)
         if not normalized_text:
             return False
         exact_inputs = {
             normalized
             for value in (*self.examples, *self.routing_aliases)
             if "<" not in value and ">" not in value
-            if (normalized := normalize_command_text(value).lstrip("/"))
+            if (normalized := normalize_command_text(value))
         }
         if normalized_text in exact_inputs:
             return True
@@ -335,11 +351,13 @@ def commands_from_rows(
 
 
 def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
+    if not is_supported_message_actor(context.actor, context.conversation):
+        return False
     if scope == "both":
         return True
     if scope == "group":
         return context.is_group
-    return not context.is_group
+    return context.conversation.kind == "private"
 
 
 def _feature_is_allowed(
@@ -500,9 +518,9 @@ class CommandCatalog:
     ) -> bool:
         """Whether an available direct command owns this exact input spelling.
 
-        This intentionally answers only literal command ownership. Parameterized
-        parser grammar stays with its domain parser until every matcher is
-        migrated to the target command-contract parser interface.
+        Literal aliases preserve their required prefix. Parameterized grammar
+        is delegated to registered domain parsers; the catalog never invents
+        implicit prefixes or resolves message targets on its own.
         """
 
         return any(

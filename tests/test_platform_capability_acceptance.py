@@ -1,0 +1,312 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
+
+import pytest
+
+from ironsbot.config.models.messaging import PushUnsubscribeConfig
+from ironsbot.core.command_catalog import (
+    CommandAccess,
+    CommandCatalog,
+    CommandContext,
+    CommandContract,
+)
+from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    MentionPart,
+    OutboundMessage,
+    RemoteImagePart,
+    ReplyContext,
+    SendResult,
+    TextPart,
+)
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
+from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.core.promotions import PromotionCatalog
+from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
+from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.services.about_commands import about_command_contracts
+from ironsbot.services.help_commands import help_command_contracts
+from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+from tests.helpers.fake_official_platform import (
+    RESTRICTED_CAPABILITIES,
+    FakeOfficialPlatform,
+)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+NOW = datetime(2026, 9, 5, tzinfo=timezone.utc)
+GROUP = ConversationRef(Platform.QQ_OFFICIAL, "group", "group:opaque/a")
+MEMBER = ActorRef(Platform.QQ_OFFICIAL, "member:opaque", "member", GROUP.id)
+TEXT = OutboundMessage((TextPart("result"),))
+IMAGE = BinaryImagePart(b"test-image-payload", "image/png", "result.png")
+
+
+def _incoming() -> IncomingMessageRef:
+    return IncomingMessageRef(
+        platform=Platform.QQ_OFFICIAL,
+        actor=MEMBER,
+        conversation=GROUP,
+        message_id="event:opaque",
+        text="query",
+        sequence="sequence:opaque",
+        reply_deadline=NOW + timedelta(seconds=10),
+    )
+
+
+@pytest.mark.asyncio
+async def test_reply_preserves_current_event_metadata_and_uploads() -> None:
+    incoming = replace(_incoming(), reply_to_id="quoted:event")
+    context = ReplyContext.from_message(incoming)
+    transport = FakeOfficialPlatform(NOW)
+    message = OutboundMessage((MentionPart(MEMBER), TextPart("result"), IMAGE))
+
+    result = await transport.reply(context, message)
+
+    assert result.delivered
+    assert result.trace_id == "fake-trace-1"
+    assert context.message_id == incoming.message_id != incoming.reply_to_id
+    assert context.sequence == incoming.sequence
+    assert context.reply_deadline == incoming.reply_deadline
+    assert transport.replies == [context]
+    assert transport.attempts == [(GROUP, message)]
+    assert transport.uploads == [IMAGE]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("elapsed", [10, 11])
+async def test_expired_reply_never_uploads(elapsed: int) -> None:
+    transport = FakeOfficialPlatform(NOW + timedelta(seconds=elapsed))
+    result = await transport.reply(
+        ReplyContext.from_message(_incoming()), OutboundMessage((IMAGE,))
+    )
+    assert result.error_code == "fake_reply_expired"
+    assert transport.uploads == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("flag", "message", "code"),
+    [
+        ("supports_images", OutboundMessage((IMAGE,)), "images_denied"),
+        (
+            "supports_images",
+            OutboundMessage((RemoteImagePart("https://example.test/image.png"),)),
+            "images_denied",
+        ),
+        (
+            "can_mention_members",
+            OutboundMessage((MentionPart(MEMBER),)),
+            "mentions_denied",
+        ),
+        ("can_reply_to_event", TEXT, "reply_denied"),
+        ("supports_group_context", TEXT, "reply_denied"),
+    ],
+)
+async def test_restricted_content_is_rejected_not_silently_removed(
+    flag: str, message: OutboundMessage, code: str
+) -> None:
+    transport = FakeOfficialPlatform(
+        NOW, capabilities=replace(RESTRICTED_CAPABILITIES, **{flag: False})
+    )
+    result = await transport.reply(ReplyContext.from_message(_incoming()), message)
+    assert result.error_code == f"fake_{code}"
+    assert transport.uploads == []
+
+
+@pytest.mark.asyncio
+async def test_member_mention_cannot_escape_group_scope() -> None:
+    transport = FakeOfficialPlatform(NOW)
+    foreign_member = replace(MEMBER, scope_id="another:group")
+    result = await transport.reply(
+        ReplyContext.from_message(_incoming()),
+        OutboundMessage((IMAGE, MentionPart(foreign_member))),
+    )
+    assert result.error_code == "fake_mention_scope"
+    assert transport.uploads == []
+
+
+def _catalog() -> CommandCatalog:
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(id="help", commands=help_command_contracts()),
+            PluginContribution(id="about", commands=about_command_contracts()),
+            PluginContribution(
+                id="example",
+                commands=(
+                    CommandContract(
+                        id="example.manage",
+                        plugin_id="example",
+                        section="Manage",
+                        examples=("/manage",),
+                        description="Manage this group",
+                        access=(CommandAccess("group", "group_manager"),),
+                    ),
+                ),
+            ),
+        ),
+        known_features={"help", "about"},
+    )
+    return catalog
+
+
+def test_real_catalog_policy_uses_opaque_scoped_identities() -> None:
+    catalog = _catalog()
+    private_actor = ActorRef(Platform.QQ_OFFICIAL, "user:opaque")
+    private = ConversationRef(Platform.QQ_OFFICIAL, "private", private_actor.id)
+    features = FeatureService(
+        {GROUP: frozenset({"help", "about"})},
+        {private_actor: frozenset({"help"})},
+        frozenset(),
+    )
+    context = CommandContext(MEMBER, GROUP)
+    assert {c.id for c in catalog.available_for_context(context, features)} == {
+        "help",
+        "about",
+    }
+    assert {c.id for c in catalog.poke_candidates_for_context(context, features)} == {
+        "help"
+    }
+    assert {
+        c.id
+        for c in catalog.available_for_context(
+            replace(context, group_role="admin"), features
+        )
+    } == {"help", "about", "example.manage"}
+    assert {
+        c.id
+        for c in catalog.available_for_context(
+            CommandContext(private_actor, private), features
+        )
+    } == {"help"}
+    foreign = replace(GROUP, id="another:group")
+    assert (
+        catalog.available_for_context(
+            CommandContext(replace(MEMBER, scope_id=foreign.id), foreign), features
+        )
+        == ()
+    )
+    assert not features.is_actor_superuser(replace(MEMBER, platform=Platform.ONEBOT))
+    assert catalog.available_for_context(
+        context, features, ignored_plugins=("help",)
+    ) == (*about_command_contracts(),)
+
+
+def test_real_binding_repository_and_resolver_isolate_identity(tmp_path: Path) -> None:
+    path = tmp_path / "state.sqlite"
+    store = SqlitePlayerBindingStore(path)
+    other_group = replace(MEMBER, scope_id="another:group")
+    other_platform = replace(MEMBER, platform=Platform.ONEBOT)
+    user = ActorRef(Platform.QQ_OFFICIAL, MEMBER.id)
+    bindings = ((MEMBER, 123456), (other_group, 234567), (other_platform, 345678))
+    for actor, player_id in bindings:
+        store.bind(actor=actor, player_id=player_id, player_nick="example")
+    reopened = SqlitePlayerBindingStore(path)
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda actor: reopened.get(actor).player_id,
+    )
+    for actor, player_id in bindings:
+        conversation = ConversationRef(actor.platform, "group", actor.scope_id or "")
+        incoming = replace(
+            _incoming(), platform=actor.platform, actor=actor, conversation=conversation
+        )
+        context = MessageInputContext(incoming, mentions_bot=False)
+        assert resolver.resolve(context, None).player_id == player_id
+        mentioned = replace(incoming, direct_mentions=(actor,))
+        assert (
+            resolver.resolve(
+                MessageInputContext(mentioned, mentions_bot=False), None
+            ).player_id
+            == player_id
+        )
+    assert reopened.get(user).player_id is None
+
+
+def _delivery(
+    transport: FakeOfficialPlatform, store: PushUnsubscribeStore
+) -> ProactiveMessageDelivery:
+    return ProactiveMessageDelivery(
+        transport,
+        FeatureService({}, {}, frozenset()),
+        PromotionCatalog({}),
+        store,
+        PushUnsubscribeConfig(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_real_push_service_does_not_attempt_forbidden_proactive_send(
+    tmp_path: Path,
+) -> None:
+    transport = FakeOfficialPlatform(NOW)
+    delivery = _delivery(transport, PushUnsubscribeStore(tmp_path / "state.sqlite"))
+    result = await delivery.send(TEXT, (GROUP,), action_name="test", interval_seconds=0)
+    assert result.failed == (GROUP,)
+    assert transport.attempts == []
+
+
+@pytest.mark.asyncio
+async def test_persisted_subscription_filters_only_selected_conversation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "state.sqlite"
+    store = PushUnsubscribeStore(path)
+    private = ConversationRef(Platform.QQ_OFFICIAL, "private", GROUP.id)
+    store.unsubscribe(GROUP, "schedule", "example")
+    reopened = PushUnsubscribeStore(path)
+    assert not reopened.is_unsubscribed(
+        replace(GROUP, platform=Platform.ONEBOT), "schedule"
+    )
+    transport = FakeOfficialPlatform(
+        NOW, capabilities=replace(RESTRICTED_CAPABILITIES, can_send_proactively=True)
+    )
+    message = OutboundMessage((TextPart("result"), IMAGE))
+    result = await _delivery(transport, reopened).send(
+        message,
+        (GROUP, private),
+        action_name="test",
+        interval_seconds=0,
+        subscription_key="schedule",
+    )
+    assert result.succeeded == (private,)
+    assert result.failed == ()
+    hinted_message = OutboundMessage(
+        (*message.parts, TextPart(f"\n\n{PushUnsubscribeConfig().hint}"))
+    )
+    assert transport.attempts == [(private, hinted_message)]
+    assert transport.uploads == [IMAGE]
+    assert not reopened.mark_daily_hint_sent(private, "push_subscription_hint")
+
+
+@pytest.mark.asyncio
+async def test_push_failure_preserves_diagnostics(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    transport = FakeOfficialPlatform(
+        NOW,
+        capabilities=replace(RESTRICTED_CAPABILITIES, can_send_proactively=True),
+        failure=SendResult(
+            delivered=False, error_code="fake_rejected", error_message="test error"
+        ),
+    )
+    result = await _delivery(
+        transport, PushUnsubscribeStore(tmp_path / "state.sqlite")
+    ).send(OutboundMessage((IMAGE,)), (GROUP,), action_name="test", interval_seconds=0)
+    assert result.failed == (GROUP,)
+    assert "fake_rejected" in caplog.text
+    assert "test error" in caplog.text
+    assert "trace_id=fake-trace-1" in caplog.text
+    assert transport.uploads == []

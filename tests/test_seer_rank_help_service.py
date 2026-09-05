@@ -1,3 +1,4 @@
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.rank_list_models import (
@@ -29,8 +30,11 @@ def test_rank_help_documents_parseable_query_forms() -> None:
 
 
 def test_rank_command_examples_are_derived_from_rank_specs() -> None:
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None, lambda _actor: None
+    )
     commands = {
-        command.id: command for command in rank_help_command_contracts()
+        command.id: command for command in rank_help_command_contracts(resolver)
     }
 
     assert commands["rank.global_collection"].examples == tuple(

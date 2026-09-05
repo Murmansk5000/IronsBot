@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
-from ironsbot.core.command_catalog import CommandContract
+from functools import partial
+
+from ironsbot.core.command_catalog import CommandContract, parsed_command_input_matcher
+from ironsbot.core.commands import command_text_matches
 from ironsbot.core.semantic_requests import ActionDefinition
 
 LUCKY_SKIN_QUERY_COMMANDS = ("幸运橱窗", "橱窗")
@@ -57,6 +60,24 @@ LUCKY_SKIN_WATCH_RESET_ACTION = ActionDefinition(
 )
 
 
+def is_lucky_skin_query(text: str) -> bool:
+    return command_text_matches(text, LUCKY_SKIN_QUERY_COMMANDS)
+
+
+def is_lucky_skin_watch_exact(text: str, *, commands: tuple[str, ...]) -> bool:
+    return text.strip() in commands
+
+
+def parse_lucky_skin_watch_target(
+    text: str, *, commands: tuple[str, ...]
+) -> str | None:
+    text = text.strip()
+    for command in sorted(commands, key=len, reverse=True):
+        if text.startswith(command):
+            return text[len(command) :].strip() or None
+    return None
+
+
 def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
     """Describe all direct lucky-skin-window commands."""
 
@@ -66,6 +87,7 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             plugin_id="lucky_skin_window",
             section="幸运橱窗",
             examples=("橱窗",),
+            routing_matcher=lambda text, _context: is_lucky_skin_query(text),
             description="查看绑定米米号当天刷新出的四个皮肤",
             features_any=("lucky_skin_window",),
             show_in_poke=True,
@@ -74,7 +96,10 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             id=LUCKY_SKIN_WATCH_LIST_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
-            examples=("关注橱窗 / 订阅橱窗", "橱窗关注 / 橱窗订阅"),
+            examples=LUCKY_SKIN_WATCH_LIST_COMMANDS,
+            routing_matcher=lambda text, _context: is_lucky_skin_watch_exact(
+                text, commands=LUCKY_SKIN_WATCH_LIST_COMMANDS
+            ),
             description="查看当前 QQ 的幸运橱窗关注列表",
             features_any=("lucky_skin_window",),
             show_in_poke=True,
@@ -83,7 +108,13 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             id=LUCKY_SKIN_WATCH_ADD_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
-            examples=("关注橱窗1400538 / 订阅橱窗1400538", "橱窗订阅名称"),
+            examples=("关注橱窗1400538", "订阅橱窗1400538", "橱窗订阅名称"),
+            routing_matcher=parsed_command_input_matcher(
+                partial(
+                    parse_lucky_skin_watch_target,
+                    commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
+                )
+            ),
             description="按皮肤 ID、资源 ID 或名称新增橱窗关注",
             features_any=("lucky_skin_window",),
         ),
@@ -91,7 +122,13 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             id=LUCKY_SKIN_WATCH_REMOVE_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
-            examples=("取消关注橱窗1400538 / 退订橱窗1400538", "橱窗退订名称"),
+            examples=("取消关注橱窗1400538", "退订橱窗1400538", "橱窗退订名称"),
+            routing_matcher=parsed_command_input_matcher(
+                partial(
+                    parse_lucky_skin_watch_target,
+                    commands=LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
+                )
+            ),
             description="取消指定皮肤的橱窗关注",
             features_any=("lucky_skin_window",),
         ),
@@ -99,7 +136,10 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             id=LUCKY_SKIN_WATCH_CLEAR_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
-            examples=("清空关注橱窗 / 清空订阅橱窗",),
+            examples=LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
+            routing_matcher=lambda text, _context: is_lucky_skin_watch_exact(
+                text, commands=LUCKY_SKIN_WATCH_CLEAR_COMMANDS
+            ),
             description="清空当前 QQ 的幸运橱窗关注列表",
             features_any=("lucky_skin_window",),
         ),
@@ -107,7 +147,10 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             id=LUCKY_SKIN_WATCH_RESET_ACTION.id,
             plugin_id="lucky_skin_window",
             section="橱窗关注",
-            examples=("重置关注橱窗 / 重置订阅橱窗",),
+            examples=LUCKY_SKIN_WATCH_RESET_COMMANDS,
+            routing_matcher=lambda text, _context: is_lucky_skin_watch_exact(
+                text, commands=LUCKY_SKIN_WATCH_RESET_COMMANDS
+            ),
             description="恢复 TOML 中配置的初始幸运橱窗关注列表",
             features_any=("lucky_skin_window",),
         ),

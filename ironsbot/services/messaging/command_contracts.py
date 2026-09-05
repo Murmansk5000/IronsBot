@@ -10,6 +10,10 @@ from ironsbot.core.command_catalog import (
     CommandContract,
     commands_from_rows,
 )
+from ironsbot.services.messaging.push_time import PUSH_TIME_COMMANDS
+from ironsbot.services.messaging.subscription_options import (
+    push_subscription_command_texts,
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageConfig
@@ -65,15 +69,6 @@ def messaging_command_contracts(
         for action in config.schedules
         if action.enabled
     )
-    subscription_commands = tuple(
-        dict.fromkeys(
-            (
-                "推送管理",
-                *config.push_unsubscribe.commands,
-                *config.push_unsubscribe.restore_commands,
-            )
-        )
-    )
     return (
         *configured,
         *keyword_replies,
@@ -85,25 +80,30 @@ def messaging_command_contracts(
             (
                 (
                     "messaging.push_subscription",
-                    subscription_commands,
+                    push_subscription_command_texts(
+                        config.push_unsubscribe.commands,
+                        config.push_unsubscribe.restore_commands,
+                    ),
                     "查看当前会话的推送订阅；群主和管理员可切换本群订阅",
-                    {"show_in_poke": True, "interaction": "conversation"},
+                    {"show_in_poke": True},
                 ),
             ),
         ),
         *commands_from_rows(
             "messaging",
-            "本群管理",
+            "推送时间",
             None,
             (
                 (
                     "messaging.push_time",
-                    ("推送时间", "提醒时间"),
-                    "管理本群定时推送和活动提醒时间",
+                    PUSH_TIME_COMMANDS,
+                    "管理当前会话的定时推送和活动提醒时间",
                     {
-                        "access": (CommandAccess("group", "group_manager"),),
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
                         "show_in_poke": True,
-                        "interaction": "conversation",
                     },
                 ),
             ),

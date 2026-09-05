@@ -41,7 +41,7 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [███░░░░░░░]  verified phases: 3/8; percentage awaits a weighted acceptance baseline
+Program  [████□□□□]  verified phases: 4/8; percentage awaits a weighted acceptance baseline
 Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
@@ -50,12 +50,15 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 本轮验证（2026-09-05）
 
-总任务 `[███□□□□□]`：阶段账本仍为 3/8，本轮只完成阶段内工作项；尚未验收的
-跨仓库发布、真实平台和素材完整性门槛保持未完成，暂无可靠总体 ETA。
+总任务 `[████□□□□]`：阶段 1 身份/状态迁移收口验收完成，账本从 3/8 更新为 4/8。
+下方早期记录保留当时的测试与状态；跨仓库发布、真实平台和素材完整性门槛仍未完成，
+暂无可靠总体 ETA。
 
 - 本地 `main` 仍为 `f19c7089`，本轮只读取该引用，没有合并到 V5。
 - 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
   也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
+- 本次再次明确要求 pull 后，已在主检出目录执行 `git pull --ff-only origin main`，
+  返回 Already up to date；main 仍为 `f19c7089`，没有合入 V5。
 - 私有扩展安装去掉部分复制回退，增加有限权限重试；激活失败恢复旧包，恢复失败
   保留有效备份并报告路径。见
   [安装失败保护 Spec](specs/2026-09-05-extension-install-failure-safety.md)，
@@ -88,11 +91,61 @@ Task     [██████████] completed only after code, tests, and 
   [SQLite 读路径 Spec](specs/2026-09-05-sqlite-schema-read-path.md)。专项 23 passed，
   全仓 1573 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
   无新配置、schema 或运行依赖；不把此项误报为镜像体积或生产查询耗时测量。
+- Phase 7 首批模拟平台验收完成：出站上下文保留回复序号/截止时间，推送失败日志
+  保留 trace ID；真实命令权限、绑定和退订仓储通过字符串身份隔离及 capability 测试。
+  [验收 Spec](specs/2026-09-05-platform-capability-acceptance.md) 专项 33 passed，
+  全仓 1589 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
+  模拟器只在测试目录，无新增运行依赖；Phase 7 仅进入 `in_progress`，未接入真实官方
+  平台，未把完整 AI/Seer 流程或真实 OneBot smoke test 记为完成。
+- AI 平台测试复现两个合法群作用域身份因冒号拼接产生相同会话键、串用短期历史。
+  改为完整身份字段的结构化 JSON 编码；保留现有长期记忆策略和 typed SQLite 查询。
+  [AI 会话隔离 Spec](specs/2026-09-05-ai-platform-session-isolation.md) 专项
+  32 passed，全仓 1596 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 通过。
+  验证了真实 AiService/记忆仓储、受限投递及管理员通知；未新增运行依赖或 schema。
+- 阶段 1 按原完成条件做关闭审计，见
+  [身份边界收尾 Spec](specs/2026-09-05-platform-identity-closure.md)。修复跨群作用域
+  权限误判、未声明 channel/guild 被当作私聊、以及 scoped 管理员阻断整批通知的问题；
+  戳一戳限流也在 OneBot 边界转换成 ConversationRef。身份状态库只读当前列，旧转换器
+  仅由离线 CLI 路径调用。空/正常/重复/损坏/中断迁移测试、实际私有扩展测试通过。
+  公共 1608 passed（87 条已有依赖告警），私有 24 passed，类型、Ruff、编译、diff 通过。
+  未修改生产状态或 TOML；阶段 4/5/6/7 的完成条件不变。
+- 阶段 5 修复玩家别名认领与执行的权限分歧：共用 actor + conversation 的引用
+  lookup，六种公开玩家命令和私有阵容都沿同一接口，不新增 AI 保留词。
+  [认领一致性 Spec](specs/2026-09-05-player-reference-ownership.md) 修复前 6 项失败，
+  修复后专项 58 passed、公开全量 1644 passed、私有 26 passed；类型、Ruff、编译和
+  diff 检查通过。还复现了参数化榜单目录认领缺失，见 Phase 5 未完成项；总进度
+  保持 4/8。历史进度展示和私有扩展旧迁移文字已明确更新，无生产或依赖变更。
+- 榜单 map 的别名、名次/页码/区间、全服分数和玩家引用均由领域 parser 认领；
+  管理常量不再放在插件里重复维护。公共目录保留 `/`，活动与 B站前缀语法也复用
+  各自 parser。[榜单认领 Spec](specs/2026-09-05-rank-command-ownership.md) 专项
+  640 passed，公开全量 2209 passed（87 条既有依赖告警），私有 26 passed；
+  BasedPyright、Ruff、compileall、diff 检查通过，无新增运行依赖或配置变更。
+  声明迁移不等同于全部参数化输入已验收；Phase 5 剩余项见后文，总进度仍为 4/8。
+- 订阅类命令复用领域 parser：B站推送参数、战队管理别名、橱窗关注均被目录
+  正确认领，橱窗帮助的组合示例拆为真实可输入命令。战队快捷口令与 TOML 同源，
+  空口令和关闭功能不会留下无效 matcher。见
+  [订阅命令 Spec](specs/2026-09-05-subscription-command-ownership.md)。公开全量
+  2261 passed，私有 26 passed；公开代码与测试类型检查、Ruff、编译、diff 通过。
+  无新依赖或配置，未进行生产部署或镜像体积测量；总进度仍为 4/8。
+- 推送管理、TD、恢复订阅及时间菜单入口改为 direct，各自登记 command/help ID，
+  不再与数字回复一起豁免；私聊时间权限与实际入口对齐。订阅命令文本与时间入口
+  常量由领域模块提供，未放宽 core conversation 认领。见
+  [推送菜单 Spec](specs/2026-09-05-push-menu-command-ownership.md)。公开全量
+  2286 passed，私有 26 passed，类型、Ruff、编译与 diff 通过；生产净增 9 行，
+  无新运行模块、依赖或配置。总进度仍为 4/8。
+- 配置文本与自动关键词各自安装一个 matcher，共用领域选择和回复发送；仅关键词
+  配置不再漏注册，精确优先且单一命中。自动入口保留 automatic 目录语义，不结束
+  旧菜单，冷却键与精确口令分离。见
+  [配置回复 Spec](specs/2026-09-05-configured-reply-registration.md)。公開全量
+  2302 passed，私有 26 passed，类型、Ruff、编译与 diff 通过；没有新模块或依赖。
+  本地 main 只读确认仍为 f19c7089；总进度保持 4/8。
 
 ## 既有阶段验证基线（2026-08-15）
 
+本节仅记录当时的验收基线，不是当前进度；当前总进度见上方“本轮验证”。
+
 ```text
-总任务  [███░░░░░░░]  已完成阶段 3/8；其余阶段含已验证子项，但尚未完成阶段门
+历史基线（2026-08-15）：当时已完成阶段 3/8；不是当前状态
 Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
 当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
@@ -160,13 +213,13 @@ IronsBot 正确读取 immutable repository revision，并为精灵头像生成�
 | 阶段 | 当前状态 | 已验证范围 | 下一个完成门 | 不得误报为 |
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
-| Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
+| Phase 1 | `completed` | 身份/权限/冷却/订阅/限流/通知与状态 API 均使用类型化身份；旧身份转换仅在离线 CLI；迁移异常与私有扩展契约均已验收，见 2026-09-05 closure Spec | 后续身份调用必须沿用 core refs；不得恢复旧列读取或私聊身份猜测 | 真实 QQ Official 已接入 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
-| Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
+| Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除
@@ -445,6 +498,12 @@ pytest、Ruff、编译、`git diff --check` 均通过。
 
 **删除条件：** 运行时没有旧整数身份列读取、懒迁移、双读或双写。
 
+**关闭证据（2026-09-05）：** 原完成门逐项清单和仓储/CLI/私有契约审计见
+[身份边界收尾 Spec](specs/2026-09-05-platform-identity-closure.md)。公共全仓
+1608 passed、私有全仓 24 passed，类型、Ruff、编译和 diff 检查通过。
+平台身份与赛尔领域数字已按所有权区分；不能为减少检索命中而把米米号改成 ActorRef。
+这是代码与临时数据的验收，不是生产迁移、真实官方平台或全部渲染发布的完成声明。
+
 ### Phase 2 — 标准 NoneBot 插件装载
 
 **目标契约：** 标准 `[tool.nonebot.plugins]` 清单、`PluginMetadata`、
@@ -633,12 +692,11 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   OneBot matcher 只能把事件转换为 `MessageInputContext`，不得临时拼接别名 lookup
   或 resolver。私有阵容扩展的目标也是只通过该 resolver 的
   `has_known_reference()` 进行命令目录认领，真正的消息级解析仍由公开的详情扩展
-  入口完成；但当前外部包仍引用已迁出的
-  `runtime.commands` / `runtime.player_reference_commands`。私有包现已改为导入
-  `core.command_catalog` / `core.player_reference_commands`，并在私有仓库通过其真实
-  `pyproject.toml` 的 `nonebot.load_from_toml()` 隔离 smoke test；不得恢复旧 runtime
-  路径。剩余的 OneBot 可见性和公共 service 依赖仍须投影到 `ironsbot.extensions` 的
-  窄 context，完成前不得把该扩展计入完整跨仓库边界的完成证据。
+  入口完成。私有包现已导入 `core.command_catalog` / `core.player_reference_commands`，
+  其渲染、查询、持久化及可见性经 `ironsbot.extensions` 的窄 context 提供；生产代码
+  不再导入公共 service/integration/plugin 内部实现。真实 manifest 和公开端口验收
+  证据归入 Phase 2；不得恢复旧 runtime 路径。2026-09-05 的进一步审计发现别名
+  认领遗漏 actor 权限，见 [认领一致性 Spec](specs/2026-09-05-player-reference-ownership.md)。
 - `CommandContract.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
@@ -678,6 +736,8 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 
 **命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
 新命令不得在 matcher 内自建第二份示例、权限或帮助说明。
+下表“已迁移”指声明的语义 owner 已迁出插件，不代表该领域全部参数化输入已通过
+认领验收。参数化覆盖是 Phase 5 独立完成条件，不能用声明迁移替代。
 
 | 领域 | 当前唯一命令 contract 来源 | OneBot 插件允许保留的内容 | 状态 |
 | --- | --- | --- | --- |
@@ -695,7 +755,50 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | 幸运橱窗 | `services.seer.lucky_skin_commands` | 事件转换、登录确认、回复和调度 | 已迁移 |
 | 关于 | `services.about_commands` | 事件转换、版本读取和回复 | 已迁移 |
 | 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
-| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 私有扩展的事件转换、阵容服务调用和回复 | 已迁出历史 `runtime.*` 命令模块并验证真实 manifest；待将剩余 OneBot/service 依赖投影为 extension context |
+| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 动作注册和公开 extension context 适配 | 已迁移，真实 manifest 和查询/渲染/缓存端口验收归入 Phase 2 |
+
+**参数化认领收口（2026-09-05）：** 原 `专家榜15名` 解析成功但目录不认领的问题，
+在 [榜单认领 Spec](specs/2026-09-05-rank-command-ownership.md) 中让四类榜单直接
+复用 list/score/player parser 修复。管理命令同时复用领域常量与 parser；目录不再
+全局去除 `/`，活动可选前缀和 B站必需前缀由各自领域规则确定。
+
+**订阅类认领收口（2026-09-05）：** B站推送参数和战队管理直接复用领域 parser；
+橱窗解析从 OneBot 移到领域服务。通用 parser 适配器也供榜单复用，None 才表示
+未识别，0 等合法结果不丢失。橱窗每条帮助示例与实际 rule 验证一致；战队 query
+commands 由配置提供，空/禁用配置同步控制目录和 matcher，详见订阅命令 Spec。
+
+**推送菜单入口收口（2026-09-05）：** “推送管理 / TD / 恢复订阅 / 推送时间”
+已改为 direct 并登记真实 matcher command/help ID；共享领域命令文本。私聊时间
+管理与群管理权限均与实际 rule 对照验收，数字/时间回复继续由 PromptFlow 隔离，
+没有把所有 conversation 视为 direct，见推送菜单 Spec。
+
+**配置回复收口（2026-09-05）：** direct / automatic 各自依据已启用配置注册，
+仅关键词配置能独立响应。两类复用领域精确优先与 feature 检查，共用发送 handler；
+自动回复不结束旧会话且不参与 AI 直接认领。同名动作冷却键独立，未保留泛化 ID
+回退，见配置回复 Spec 的安装矩阵和回归证据。
+
+**多榜部分结果收口（2026-09-05）：** 收集、巅峰在汇总超时后改用逐项完成记录，
+不再丢弃已完成的名次、分数、缓存时间和查询成本。正常与部分返回共用模型构造；
+删除按最后一个中文榜名标错的 `mark_failure`。真实汇总/页调度器加受控协议页的
+回归先复现两项失败，修复后针对性 25 项、公共全量 2306 项、私有 26 项通过，
+Ruff、类型检查、编译与 diff 检查通过，见
+[部分结果 Spec](specs/2026-09-05-player-rank-partial-results.md)。
+
+**Phase 5 仍未完成：** 其余领域参数化输入与完整玩家多榜失败/渐进返回验收仍需
+完成。已将 foreground/background 详情预算统一为一个单调时钟截止时间，基础、
+榜单和样本只使用剩余预算；巅峰三个基础模式共享阶段预算，不再各复制一份。
+删除整份详情的同期限取消包装和反射配置回退；真实服务链路的六项旧失败已修复，
+加上取消/零预算边界共 58 项针对性测试、公共全量 2322 项、私有 26 项通过，静态
+检查通过。保留原后台清理宽限看门狗，不把它当作普通数据预算。
+
+**详情发布与缓存归属（2026-09-05）：** 已验收真实详情服务的独立分项回发、
+完整性标记、部分回复不复用，以及过期生产任务不能发布到新一轮等待者。公共
+OneBot 会话入口在修改版本之前检查取消，修复旧任务虽不发消息却使新菜单失效
+的问题；真实详情 handler/会话/Prompt 路径验证数字选择和用户/群隔离。见
+[详情发布 Spec](specs/2026-09-05-player-detail-publication.md)。专项 97 passed，
+公开全量 2348 passed、私有 26 passed，静态检查通过。无新运行模块、依赖或配置。
+这不是生产 QQ/官方服务联调；参数化输入覆盖、缓存数据新鲜度及发布消费者验收
+仍未全部完成。总进度仍为 4/8。
 
 ### Phase 6 — 兜底、配置和错误语义
 
@@ -730,6 +833,21 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   OneBot smoke test 通过。
 
 **删除条件：** 无。本阶段只证明目标可接入真实官方适配器，不提前启用它。
+
+**首批验收范围（2026-09-05）：**
+
+- 测试模拟器只实现现有 `OutboundMessenger`，不进入生产包、不增加运行依赖。
+  回复序号/截止时间沿已有入站/出站值传递，失败日志保留 trace ID。
+- 复用真实 help/about contracts、FeatureService、PlayerIdResolver、绑定仓储、
+  退订仓储与 ProactiveMessageDelivery。图片测试验证二进制出站部件传递及模拟上传，
+  不代表精灵渲染已在真实官方平台验收。
+- 合成的 `fake_*` 错误码及可配置限制只用于验证错误传播，不声称复刻官方协议。
+  真实官方码值/规则、完整 AI/Seer 工作流与真实 OneBot smoke 仍需后续验证。
+- 具体证据见 [首批 capability Spec](specs/2026-09-05-platform-capability-acceptance.md)。
+  本阶段仍为 `in_progress`，不增加已完成阶段数。
+- AI 服务级验收已覆盖结构化会话身份、SQLite 重启记忆与隔离、回复过期以及受限
+  管理员通知，见 [AI 会话隔离 Spec](specs/2026-09-05-ai-platform-session-isolation.md)。
+  模型网络使用测试客户端；这不等于 AI 插件会话或所有意图动作已在另一平台完整验收。
 
 ## 工作项登记模板
 

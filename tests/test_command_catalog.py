@@ -8,6 +8,7 @@ from ironsbot.core.command_catalog import (
     CommandCatalogError,
     CommandContext,
     CommandContract,
+    parsed_command_input_matcher,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
@@ -254,6 +255,25 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
     assert catalog.claims_direct_input(context, features, "米米号123456")
     assert not catalog.claims_direct_input(context, features, "米米号示例玩家")
     assert not catalog.claims_direct_input(context, features, "活动")
+    assert not catalog.claims_direct_input(context, features, "动态刷新")
+    assert not catalog.claims_direct_input(context, features, "//动态刷新")
+    assert not catalog.claims_direct_input(context, features, "/帮助")
+
+
+def test_parser_adapter_accepts_falsy_values_but_not_none() -> None:
+    def parser(text: str) -> int | None:
+        return int(text) if text.isdecimal() else None
+
+    accepts_zero = parsed_command_input_matcher(parser)
+    positive_only = parsed_command_input_matcher(
+        parser, accepts=lambda value: value > 0
+    )
+    context = _context(1)
+    assert accepts_zero("0", context)
+    assert accepts_zero("1", context)
+    assert not accepts_zero("unknown", context)
+    assert not positive_only("0", context)
+    assert positive_only("1", context)
 
 
 def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:

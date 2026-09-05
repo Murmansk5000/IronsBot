@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ironsbot.core.commands import strip_command_prefix
+from ironsbot.core.commands import command_text_matches, strip_command_prefix
 
 DYNAMIC_MENU_COMMANDS = ("动态",)
 DYNAMIC_UPDATE_COMMANDS = ("动态刷新", "动态更新", "刷新动态", "更新动态")
@@ -14,6 +14,14 @@ BILI_PUSH_MODE_COMMANDS = (
     "b站推送模式",
     "b站动态模式",
 )
+
+
+def is_dynamic_update_text(text: str) -> bool:
+    """Recognize the required-prefix refresh command, without authorizing it."""
+    command = strip_command_prefix(text)
+    return command is not None and command_text_matches(
+        command, DYNAMIC_UPDATE_COMMANDS
+    )
 
 
 def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:

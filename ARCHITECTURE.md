@@ -65,9 +65,9 @@ Current transition items are the OneBot-only configuration compilers and the
 renderer data lookups listed in the Phase 0 guard below. They keep the current
 OneBot application runnable; they are not the architecture that new
 cross-feature work should target. Within Phase 2,
-the standard NoneBot manifest discovery and the `MatcherFactory` construction
-boundary are verified sub-items; the phase itself remains in progress until
-its remaining bridge and ownership conditions are met. `PluginContribution` is
+the standard NoneBot manifest discovery, `MatcherFactory` construction, and
+public extension query/render/cache ports have passed phase acceptance (see
+the phase ledger for evidence). `PluginContribution` is
 the current plugin-local way to submit explicit runtime contributions; it is
 not an application registry or a catch-all authority for every plugin concern.
 Phase 4 removes renderer-owned persistence lookups. No new subsystem may be
@@ -136,6 +136,10 @@ spelling or declare an explicit input matcher. It must not reserve a broad
 natural-language prefix merely to keep AI from responding: parameterized
 commands claim only inputs their own parser can accept or reject with a
 command-specific validation error.
+Exact spelling preserves required prefixes such as `/`. Optional-prefix syntax
+must be accepted by the domain parser or explicitly registered aliases, never
+by globally stripping punctuation in the catalog. Help and routing consume the
+same domain grammar; an example is not permission to infer another spelling.
 
 The type rename does not make the migration complete. Completion still requires
 command parsing ownership, access metadata and documentation fields to move out
@@ -257,7 +261,7 @@ feature, persistence schema, or policy decision.
 | Seer request-scheduler requester attribution | target | `PlayerRequestProtectionService` accepts `ActorRef` for priority, pause bypass, workflow telemetry and semantic tracing | The feature policy adapts platform actors to configured superuser state; Seer and queue services must not accept platform user integers. |
 | Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
-| AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. |
+| AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. Derived session keys use structural encoding of all identity fields, never delimiter concatenation of opaque IDs. |
 | Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
 | Bilibili rich-media push delivery | target reference | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `services.bilibili.outbound_delivery.BilibiliDynamicOutboundSender` creates portable parts and delegates routing, retries, rate limits and subscription hints to the shared outbound path | Keep future platform-specific media rendering in platform adapters, never in the Bilibili service. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
@@ -432,6 +436,16 @@ boundary, even when its source happened to be numeric. Storage audits and
 migrations classify IDs by table ownership and protocol meaning, not by a
 column name such as `user_id` or `group_id`.
 
+Group/private command access and feature decisions share
+`is_supported_message_actor`: the actor platform must match the conversation,
+a scoped member must belong to that group scope, and a private context must
+identify the same unscoped user. This checks identity shape, not authenticated
+membership. Channel/guild IDs may be represented and stored, but these command
+policies deny them until an explicit authorization contract is implemented;
+`both` means group/private, never an implicit future-platform permission grant.
+Administrator notices must report scoped private recipients as failed without
+inventing private IDs, rerouting to their groups, or aborting valid recipients.
+
 Extension callbacks follow the same boundary. A player-detail extension
 receives `PlayerDetailActionRequest(player_id, actor, conversation)`, not a
 tuple of numeric player, QQ-user and group IDs. The public player-command
@@ -459,10 +473,23 @@ phase; do not restore a deleted runtime module as a compatibility shim. An
 extension that still imports a removed path is an unvalidated dependency, even
 if the bundled application tests do not install it.
 
+Player-reference ownership must carry both `ActorRef` and `ConversationRef` to
+the shared resolver. Recognition and execution use the same alias-visibility
+decision, including privileged access; recognition must not load bindings or
+perform network requests. Extensions reuse this contract rather than maintain
+their own alias permission checks.
+
 Phase 1 begins with `core.platform` and `core.outbound`: `ActorRef`,
 `ConversationRef`, `IncomingMessageRef`, message parts, `OutboundMessage`,
 `ReplyContext`, `SendResult`, `DeliveryCapabilities`, and
 `OutboundMessenger`. They use opaque nonempty string IDs.
+`ReplyContext.from_message` preserves the current inbound event ID, optional
+sequence and timezone-aware deadline, not the quoted event ID. Adapters own
+deadline enforcement; core does not invent a platform's allowed reply duration.
+`SendResult.trace_id` carries transport diagnostics through shared delivery
+logging. The test-only `FakeOfficialPlatform` exercises these values and
+restricted capabilities; its synthetic error codes and limits do not specify
+QQ's real API or constitute a production adapter.
 `integrations.onebot.outbound_messenger.OneBotOutboundMessenger` is the OneBot
 edge adapter for the port: it translates text, images, mentions and reply
 contexts only after a `ConversationRef` has been routed to a OneBot bot. Numeric

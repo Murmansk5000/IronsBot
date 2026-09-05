@@ -143,6 +143,29 @@ def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
     return ConversationRef(actor.platform, "private", actor.id)
 
 
+def is_supported_message_actor(
+    actor: ActorRef, conversation: ConversationRef
+) -> bool:
+    """Validate group/private identity shape, not actual platform membership."""
+
+    if actor.platform is not conversation.platform:
+        return False
+    if conversation.kind == "group":
+        return actor.kind == "user" or actor.scope_id == conversation.id
+    if conversation.kind == "private":
+        return actor.kind == "user" and actor.id == conversation.id
+    return False
+
+
+def validate_reply_deadline(deadline: datetime | None) -> None:
+    """Require comparable instants at both sides of the transport boundary."""
+
+    if deadline is not None and (
+        deadline.tzinfo is None or deadline.utcoffset() is None
+    ):
+        raise PlatformReferenceError.naive_reply_deadline()
+
+
 @dataclass(frozen=True, slots=True)
 class IncomingMessageRef:
     """Platform-neutral reference and direct-input facts for one message.
@@ -199,11 +222,4 @@ class IncomingMessageRef:
                     error=PlatformReferenceError.empty_message_id,
                 ),
             )
-        if (
-            self.reply_deadline is not None
-            and (
-                self.reply_deadline.tzinfo is None
-                or self.reply_deadline.utcoffset() is None
-            )
-        ):
-            raise PlatformReferenceError.naive_reply_deadline()
+        validate_reply_deadline(self.reply_deadline)

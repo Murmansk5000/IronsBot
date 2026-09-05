@@ -218,6 +218,8 @@ def build_test_plugin_registry(
             ),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
+                enabled=config.seer.team_resource.enabled,
+                query_commands=tuple(config.seer.team_resource.commands),
                 register_jobs=lambda _scheduler: None,
             ),
             local_rank=object(),
@@ -407,6 +409,7 @@ def build_test_plugin_registry(
         rank_help_plugin_contribution(
             features=runtime.features,
             commands=resources.commands,
+            player_id_resolver=resources.player_id_resolver,
         ),
         pet_config_plugin_contribution(
             service=resources.pet_config,

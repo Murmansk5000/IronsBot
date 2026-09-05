@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from random import choice
 from typing import TYPE_CHECKING, Protocol
 
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.services.messaging.rate_limits import SlidingWindowRateLimiter
 
 if TYPE_CHECKING:
@@ -127,7 +128,7 @@ class OneBotHelpHintService:
         return (
             self.limiter.hit(
                 "help_hint",
-                group_id,
+                ConversationRef(Platform.ONEBOT, "group", str(group_id)),
                 window_seconds=self.config.hint_window_seconds,
                 max_events=self.config.hint_max_per_window,
                 now=now,
