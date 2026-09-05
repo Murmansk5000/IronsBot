@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_compact_formatting import (
     format_compact_player_info,
@@ -56,6 +57,7 @@ async def fetch_pending_player_query(
     profile_cache: PlayerProfileCache,
 ) -> PendingPlayerQuery:
     extra_errors: list[str] = []
+    observation = ObservationTime()
     plan = plan_player_query_sections(
         config.player.sections,
         local_rank_enabled=config.local_rank.enabled,
@@ -68,7 +70,7 @@ async def fetch_pending_player_query(
             source="米米号查询",
             conversation=conversation,
         ):
-            result = await game.get_user_info(player_id)
+            result = await observation.observe(lambda: game.get_user_info(player_id))
         record_successful_query_work("profile")
         return result
 
@@ -92,7 +94,9 @@ async def fetch_pending_player_query(
             source="米米号查询",
             conversation=conversation,
         ):
-            result = await game.get_more_user_info(player_id)
+            result = await observation.observe(
+                lambda: game.get_more_user_info(player_id)
+            )
         record_successful_query_work("profile_extra")
         profile_cache.upsert_registration_time(
             player_id=player_id,
@@ -164,6 +168,7 @@ async def fetch_pending_player_query(
         local_summary=LocalRankSummary(),
         show_peak=False,
         extra_errors=extra_errors,
+        fetched_at=observation.fetched_at,
     )
     return PendingPlayerQuery(
         player_id=player_id,
@@ -177,6 +182,7 @@ async def fetch_pending_player_query(
             more_info=more_info,
             online_info=online_info,
             team_name=team_name,
+            fetched_at=observation.fetched_at,
         ),
     )
 

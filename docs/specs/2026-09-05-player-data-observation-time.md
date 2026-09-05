@@ -1,6 +1,6 @@
 # Player Data Observation Time
 
-Status: `implementing`
+Status: `verified`
 
 Contract: `target`
 
@@ -41,6 +41,17 @@ No change to cache-first/live-first admission or quota policy in these slices.
 The score-segment and arbitrary rank-window timestamp aggregation require a
 separate audit before the overall freshness gate can close.
 
+Slice 2 implementation rule: reuse one observation accumulator in `core.time`.
+Successful live reads record completion time; failed/cancelled reads do not.
+Reused evidence contributes its stored timestamp, including an explicit unknown.
+Unknown evidence cannot be made known by a later live read. Partial peak reads
+contribute only fully decoded modes, taking the oldest successful packet within
+those modes. Rank failures without data do not date the successful fields.
+Base snapshot time covers its reusable nickname/collection data; immutable cached
+registration dates are not presented as freshly fetched collection metrics.
+Formatters require an explicit timestamp. Lineup captures time before subsequent
+availability bookkeeping, rendering or persistence, and caches retain the text.
+
 ## Acceptance
 
 - [x] Rank page time survives anchor, linear and binary search.
@@ -49,15 +60,16 @@ separate audit before the overall freshness gate can close.
   contribute observation time without changing existing quota attribution.
 - [x] Binary probes still fetch aligned pages and obey bounded search limits.
 - [x] Artificial position-page wrapper is deleted, without a compatibility path.
-- [ ] Details and lineup use explicit producer timestamps, including cached and
+- [x] Details and lineup use explicit producer timestamps, including cached and
   mixed results; missing source times are never replaced by the current clock.
 - [x] Slice 1 public/private regression, Ruff, typing, compileall and diff checks pass.
+- [x] Slice 2 public/private regression, Ruff, typing, compileall and diff checks pass.
 
 ## Progress
 
-Slice 1 verified. Program stays 4/8 verified phases. Slice 2 and composite
-window/score-segment audit remain open. The detail heading still uses the old
-formatter until slice 2; this is not an end-to-end freshness completion claim.
+Slices 1 and 2 are verified against the controlled tests described below.
+Program stays 4/8 verified phases. Composite window/score-segment audit remains
+open as a separate work item; this is not an overall freshness completion claim.
 
 Evidence:
 
@@ -83,8 +95,41 @@ Evidence:
 Remaining audit: the existing score algorithm resets probe budgets between
 boundary/lower-bound/upper-bound stages. Tests now expose these three bounded
 stages; this is not a single global probe budget. No budget policy was changed
-in this metadata slice. Slice 2 must preserve unknown times and base snapshot
-time without pretending all composite data was observed simultaneously.
+in this metadata slice. Slice 2 preserves unknown times and base snapshot time
+without pretending all composite data was observed simultaneously.
+
+Slice 2 implementation:
+
+- `core.time.ObservationTime` is shared by base snapshots, detail composition,
+  peak packet decoding and the public lineup query port. It captures successful
+  read completion, retains old/unknown evidence, and never stamps failure or
+  cancellation. No new runtime module or dependency was added.
+- All collection/peak/autocard/lineup heading callers pass explicit source time.
+  A timed-out rank's search target is not a fetched score. A cached rank restored
+  after timeout still contributes its original time and stays a partial reply.
+- `tests/test_player_detail_observation_time.py` exercises the actual detail
+  service and formatter pipeline, old snapshot and rank evidence, undated
+  sources, cached reply reuse, timeout fallback and per-board failure isolation.
+  The public lineup port and actual SQLite reopen preserve the same heading.
+- Core tests cover completion, cancellation, failure and never-started reads;
+  the protocol partial-mode test discards successful packets of an incomplete
+  mode from the result time. Base-query fanout confirms that later fields do not
+  redate the original observation. Existing numeric/menu and private-extension
+  tests remain part of regression.
+- Production net change: **+95 lines** across existing modules. No TOML,
+  schema or deployment data changes; no measured image-size claim.
+- Final focused detail regression: **72 passed**. Final full public suite:
+  **2378 passed, 274 dependency warnings, 99.16 seconds**. Private: **26 passed**
+  against this worktree. Ruff, BasedPyright (0 errors/warnings), compileall and
+  `git diff --check` passed. No live QQ or official API request was used.
+
+Next audit locations: `rank_range`, `rank_cache_queries`, `rank_score_cache`,
+`rank_score_segments` and the range paths in `rank_exclusion_lookups` still
+aggregate some timestamps using `max` or supply current time for empty windows.
+These do not invalidate the verified player-position/detail scope, but block
+closing the overall freshness phase. Evaluate which pages support each result
+before changing that separate contract; a global textual replacement is not
+an accepted fix.
 
 Local main remains `f19c7089`; no fetch/pull/merge/push. No real-platform/release
 validation or image-size improvement is claimed. Rollback is scoped code commits

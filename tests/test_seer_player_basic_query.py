@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -103,7 +104,14 @@ async def _wait_for_labels(actual: set[str], expected: Iterable[str]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time() -> None:
+async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [1_800_000_000.0]
+    monkeypatch.setattr(
+        "ironsbot.core.time.now",
+        lambda: datetime.fromtimestamp(clock[0], tz=timezone.utc),
+    )
     release = asyncio.Event()
     game = _Game(release_fanout=release)
     cache = _ProfileCache()
@@ -119,6 +127,8 @@ async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time() 
     )
     await _wait_for_labels(game.started, ("more", "online", "team"))
     assert game.events[0] == "user"
+    profile_observed_at = clock[0]
+    clock[0] += 60
     release.set()
     result = await task
 
@@ -128,6 +138,7 @@ async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time() 
     assert result.base_snapshot.user_info is result.user_info
     assert result.base_snapshot.more_info is result.more_info
     assert result.base_snapshot.team_name == "test team"
+    assert result.base_snapshot.fetched_at == profile_observed_at
     assert "是否在线：在线（服务器：1701，地图类型：0）" in result.player_message
     assert "战队：test team（战队ID：9001，隐藏）" in result.player_message
 

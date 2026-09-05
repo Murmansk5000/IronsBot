@@ -760,6 +760,12 @@ pipeline above instead of copying their older data-loading patterns.
 
 Future data work follows these rules:
 
+- Data producers own observation timestamps. Presenters and text formatters
+  receive an explicit time and never substitute formatting, cache-write or
+  reply-send time. Composite data uses the oldest required observation;
+  undated supporting evidence remains unknown. Failed reads do not date other
+  successful fields, while reused cached facts retain their stored time.
+  Query deadlines still use a monotonic clock, not observation wall time.
 - `seerapi` performs data extraction, normalization, schema validation, SWF to
   PNG conversion, and deterministic association building at build time.
 - IronsBot reads published facts through repositories; it does not repeat
