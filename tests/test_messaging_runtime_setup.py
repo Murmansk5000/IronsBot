@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import nonebot
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
@@ -25,7 +26,10 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
+from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.integrations.onebot.conversations import event_conversation_session_id
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
 )
@@ -33,8 +37,15 @@ from ironsbot.integrations.storage.push_subscriptions import (
     PushPreferencePruneResult,
     PushUnsubscribeStore,
 )
-from ironsbot.plugins.onebot.messaging import matcher_rules
+from ironsbot.plugins.onebot.ai import _capture_ai_prompt
+from ironsbot.plugins.onebot.messaging import matcher_rules, plugin_contribution
+from ironsbot.plugins.onebot.messaging.push_management_runtime import (
+    PUSH_SUBSCRIPTION_FLOW,
+    PUSH_TIME_FLOW,
+    PromptFlow,
+)
 from ironsbot.services.messaging import schedules as message_schedules
+from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.push_time import PushTimeOption
 from ironsbot.services.messaging.scheduled_outbound import (
     ScheduledMessageOutboundSender,
@@ -48,6 +59,7 @@ from ironsbot.services.messaging.subscriptions import (
 from tests.helpers.onebot_events import (
     GroupMemberRole,
     group_member_message_event,
+    group_message_event,
     private_message_event,
 )
 from tests.helpers.runtime import build_test_runtime
@@ -61,6 +73,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.scheduled_delivery import (
         ScheduledMessageDelivery,
     )
+    from ironsbot.services.operations.scheduler import Scheduler
 SUPERUSER_ID = 1002
 OVERRIDE_HOUR = 22
 OVERRIDE_MINUTE = 30
@@ -381,6 +394,140 @@ def test_group_push_subscription_management_command_matches_regular_member(
         _group_event("推送管理", user_id=3003),
         {},
         messaging=_messaging_resources(tmp_path / "unsubscribe.sqlite"),
+    )
+
+
+def _messaging_catalog(config: MessageConfig) -> CommandCatalog:
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="messaging", commands=messaging_command_contracts(config)
+            ),
+        ),
+        known_features={"text", "ai_chat"},
+    )
+    return catalog
+
+
+@pytest.mark.parametrize(
+    "text", ["TD", "td", "退订", "订阅", "恢复订阅", "推送管理", "推送时间", "提醒时间"]
+)
+def test_push_menu_private_entry_is_claimed_and_not_captured_by_ai(
+    tmp_path: Path, text: str
+) -> None:
+    messaging = _messaging_resources(
+        tmp_path / "qq.sqlite", user_policy={"1002": ["ai_chat"]}
+    )
+    catalog = _messaging_catalog(MessageConfig())
+    event = private_message_event(text, user_id=SUPERUSER_ID)
+    assert matcher_rules.match_push_subscription_command(
+        event, {}, messaging=messaging
+    ) or matcher_rules.match_push_time_command(event, {}, messaging=messaging)
+    assert catalog.claims_direct_input(
+        CommandContext(_actor(SUPERUSER_ID), _private(SUPERUSER_ID)),
+        messaging.feature_policy,
+        text,
+    )
+    assert not _capture_ai_prompt(event, {}, messaging.feature_policy, catalog)
+
+
+@pytest.mark.parametrize("text", ["TD", "推送时间"])
+@pytest.mark.parametrize("role", ["member", "admin", "owner"])
+@pytest.mark.parametrize("superuser", [False, True])
+def test_push_menu_group_directory_agrees_with_actual_permission(
+    tmp_path: Path, text: str, role: GroupMemberRole, *, superuser: bool
+) -> None:
+    messaging = _messaging_resources(
+        tmp_path / "qq.sqlite", superusers=(SUPERUSER_ID,) if superuser else ()
+    )
+    event = _group_event(text, role=role)
+    expected = text == "TD" or superuser or role != "member"
+    rule = (
+        matcher_rules.match_push_subscription_command
+        if text == "TD"
+        else matcher_rules.match_push_time_command
+    )
+    assert rule(event, {}, messaging=messaging) is expected
+    assert (
+        _messaging_catalog(MessageConfig()).claims_direct_input(
+            CommandContext(_actor(SUPERUSER_ID), _group(2002), role),
+            messaging.feature_policy,
+            text,
+        )
+        is expected
+    )
+
+
+def test_push_menu_custom_commands_and_non_entry_inputs(tmp_path: Path) -> None:
+    config = MessageConfig(
+        push_unsubscribe=PushUnsubscribeConfig(
+            commands=["stop", "暂停推送"], restore_commands=["resume", "恢复推送"]
+        )
+    )
+    messaging = replace(_messaging_resources(tmp_path / "qq.sqlite"), _config=config)
+    catalog = _messaging_catalog(config)
+    context = CommandContext(_actor(SUPERUSER_ID), _private(SUPERUSER_ID))
+    for text in ("STOP", "暂停推送", "resume", "恢复推送", "推送管理"):
+        assert messaging.matches_subscription_command(text)
+        assert catalog.claims_direct_input(context, messaging.feature_policy, text)
+    for text in ("TD", "订阅", "0", "1", "23:00", "/推送管理", "聊一下推送"):
+        assert not messaging.matches_subscription_command(text)
+        assert not catalog.claims_direct_input(context, messaging.feature_policy, text)
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_push_menu_matchers_own_their_command_ids(
+    tmp_path: Path, *, configured: bool
+) -> None:
+    config = MessageConfig(
+        commands=[MessageCommandAction(id="example", commands=["示例"], message="hi")]
+        if configured
+        else []
+    )
+    messaging = replace(_messaging_resources(tmp_path / "qq.sqlite"), _config=config)
+    runtime = build_test_runtime()
+    registry = runtime.matcher_factory()
+
+    contribution = plugin_contribution(
+        config=config,
+        features=runtime.features,
+        references=runtime.onebot_references,
+        service=messaging,
+        activity_service=cast("ActivityService", object()),
+        scheduler=cast("Scheduler", FakeScheduler()),
+    )
+    assert contribution.install is not None
+    contribution.install(registry)
+    registry.validate_command_catalog(_messaging_catalog(config))
+    registrations = [
+        registry.cooldown_registration(m) for m in registry.message_matchers
+    ]
+    assert ("command", "messaging.push_subscription") in registrations
+    assert ("command", "messaging.push_time") in registrations
+    assert len(registrations) == 2 + configured
+
+
+@pytest.mark.parametrize("flow", [PUSH_SUBSCRIPTION_FLOW, PUSH_TIME_FLOW])
+def test_push_menu_reply_ownership_stays_local_to_its_session(flow: PromptFlow) -> None:
+    event = group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002)
+    session_id = event_conversation_session_id(flow.namespace, event)
+    check = flow.reply_check(session_id, "group")
+    for text in ("0", "1", "2"):
+        assert check(group_message_event(text, user_id=SUPERUSER_ID, group_id=2002))
+    assert not check(group_message_event("1", user_id=1003, group_id=2002))
+    assert not check(group_message_event("1", user_id=SUPERUSER_ID, group_id=2003))
+    assert not check(private_message_event("1", user_id=SUPERUSER_ID))
+    assert not check(group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002))
+    assert not check(group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002))
+    assert not check(
+        group_message_event(
+            "1", user_id=SUPERUSER_ID, group_id=2002, reply_sender_user_id=1
+        )
+    )
+    value_check = flow.reply_check(session_id, "group", selection=False)
+    assert value_check(
+        group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002)
     )
 
 

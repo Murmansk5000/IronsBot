@@ -14,9 +14,11 @@ from ironsbot.core.platform import (
     private_conversation_for_actor,
 )
 from ironsbot.core.time import daily_time_parts_with_seconds
+from ironsbot.services.messaging.push_time import PUSH_TIME_COMMANDS
 from ironsbot.services.messaging.subscription_options import (
     build_push_subscription_menu,
     build_schedule_subscription_options,
+    push_subscription_command_texts,
 )
 from ironsbot.services.messaging.subscriptions import (
     BUILTIN_PUSH_OPTIONS,
@@ -49,9 +51,6 @@ if TYPE_CHECKING:
 ActionT = TypeVar("ActionT", bound="CommandAction")
 KeywordActionT = TypeVar("KeywordActionT", bound="KeywordReplyAction")
 logger = logging.getLogger(__name__)
-
-PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS = ("推送管理",)
-PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 
 
 class PushSubscriptionSubmenuProvider(Protocol):
@@ -139,13 +138,12 @@ class MessagingService:
         )
 
     def matches_subscription_command(self, text: str) -> bool:
-        return any(
-            command_text_matches(text, commands)
-            for commands in (
-                PUSH_SUBSCRIPTION_MANAGEMENT_COMMANDS,
+        return command_text_matches(
+            text,
+            push_subscription_command_texts(
                 self._config.push_unsubscribe.commands,
                 self._config.push_unsubscribe.restore_commands,
-            )
+            ),
         )
 
     def matches_push_time_command(self, text: str) -> bool:

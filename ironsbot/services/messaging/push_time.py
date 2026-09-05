@@ -39,6 +39,7 @@ EligibleConversations = Callable[
 ]
 
 DEFAULT_TEXT = "默认"
+PUSH_TIME_COMMANDS = ("推送时间", "提醒时间")
 TIME_INPUT_ERROR = "请输入 HH:MM 或 HH:MM:SS 时间，例如 22:30；输入“默认”恢复 TOML。"
 LEAD_INPUT_ERROR = "请输入正整数小时列表，例如 24,3,1；输入“默认”恢复 TOML。"
 

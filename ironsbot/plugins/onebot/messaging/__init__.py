@@ -119,7 +119,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
             activity_service=activity_service,
             scheduler=scheduler,
             command_help_ids=tuple(
-                command.id for command in commands if command.interaction == "direct"
+                f"messaging.{action.id}" for action in config.commands if action.enabled
             ),
         ),
         hooks=PluginHooks(

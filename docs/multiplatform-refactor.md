@@ -127,6 +127,12 @@ Task     [██████████] completed only after code, tests, and 
   [订阅命令 Spec](specs/2026-09-05-subscription-command-ownership.md)。公开全量
   2261 passed，私有 26 passed；公开代码与测试类型检查、Ruff、编译、diff 通过。
   无新依赖或配置，未进行生产部署或镜像体积测量；总进度仍为 4/8。
+- 推送管理、TD、恢复订阅及时间菜单入口改为 direct，各自登记 command/help ID，
+  不再与数字回复一起豁免；私聊时间权限与实际入口对齐。订阅命令文本与时间入口
+  常量由领域模块提供，未放宽 core conversation 认领。见
+  [推送菜单 Spec](specs/2026-09-05-push-menu-command-ownership.md)。公开全量
+  2286 passed，私有 26 passed，类型、Ruff、编译与 diff 通过；生产净增 9 行，
+  无新运行模块、依赖或配置。总进度仍为 4/8。
 
 ## 既有阶段验证基线（2026-08-15）
 
@@ -755,11 +761,15 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 未识别，0 等合法结果不丢失。橱窗每条帮助示例与实际 rule 验证一致；战队 query
 commands 由配置提供，空/禁用配置同步控制目录和 matcher，详见订阅命令 Spec。
 
-**Phase 5 仍未完成：** 消息领域的“推送管理 / TD / 恢复订阅 / 推送时间”有直接
-文本入口，目录却标为 conversation；`CommandContract.matches_direct_input()`
-仅接受 direct，因此这些菜单入口不参与 AI 认领。需要区分“打开菜单的命令”和
-“菜单中的回复”，并核对配置及群/私聊权限；不能简单把所有 conversation 视为
-direct。其余领域参数化输入与完整玩家多榜失败/渐进返回验收也仍未完成。
+**推送菜单入口收口（2026-09-05）：** “推送管理 / TD / 恢复订阅 / 推送时间”
+已改为 direct 并登记真实 matcher command/help ID；共享领域命令文本。私聊时间
+管理与群管理权限均与实际 rule 对照验收，数字/时间回复继续由 PromptFlow 隔离，
+没有把所有 conversation 视为 direct，见推送菜单 Spec。
+
+**Phase 5 仍未完成：** 其余领域参数化输入与完整玩家多榜失败/渐进返回验收仍需
+完成。消息配置另有一个待验证边界：只配置 keyword_replies 而没有 commands 时，
+OneBot 配置文本 matcher 目前依赖非空 command_help_ids 才安装；其自动关键词入口
+不能靠直接命令或菜单帮忙注册，需单独验证自动入口与文档登记的对应关系。
 
 ### Phase 6 — 兜底、配置和错误语义
 

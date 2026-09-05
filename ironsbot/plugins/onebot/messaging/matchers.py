@@ -107,14 +107,18 @@ def install(
         )
 
     subscription_matcher = registry.on_message(
-        policy=CommandPolicy.exempt("second-level subscription toggle conversation"),
+        policy=CommandPolicy.command(
+            "messaging.push_subscription", help_ids=("messaging.push_subscription",)
+        ),
         rule=Rule(bind(match_push_subscription_command, messaging=messaging))
         & explicit_command(),
         priority=_message_subscription_priority(registry),
         block=True,
     )
     push_time_matcher = registry.on_message(
-        policy=CommandPolicy.exempt("second-level push time conversation"),
+        policy=CommandPolicy.command(
+            "messaging.push_time", help_ids=("messaging.push_time",)
+        ),
         rule=(
             Rule(bind(match_push_time_command, messaging=messaging))
             & explicit_command()
