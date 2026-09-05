@@ -96,6 +96,11 @@ Task     [██████████] completed only after code, tests, and 
   全仓 1589 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
   模拟器只在测试目录，无新增运行依赖；Phase 7 仅进入 `in_progress`，未接入真实官方
   平台，未把完整 AI/Seer 流程或真实 OneBot smoke test 记为完成。
+- AI 平台测试复现两个合法群作用域身份因冒号拼接产生相同会话键、串用短期历史。
+  改为完整身份字段的结构化 JSON 编码；保留现有长期记忆策略和 typed SQLite 查询。
+  [AI 会话隔离 Spec](specs/2026-09-05-ai-platform-session-isolation.md) 专项
+  32 passed，全仓 1596 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 通过。
+  验证了真实 AiService/记忆仓储、受限投递及管理员通知；未新增运行依赖或 schema。
 
 ## 既有阶段验证基线（2026-08-15）
 
@@ -750,6 +755,9 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   真实官方码值/规则、完整 AI/Seer 工作流与真实 OneBot smoke 仍需后续验证。
 - 具体证据见 [首批 capability Spec](specs/2026-09-05-platform-capability-acceptance.md)。
   本阶段仍为 `in_progress`，不增加已完成阶段数。
+- AI 服务级验收已覆盖结构化会话身份、SQLite 重启记忆与隔离、回复过期以及受限
+  管理员通知，见 [AI 会话隔离 Spec](specs/2026-09-05-ai-platform-session-isolation.md)。
+  模型网络使用测试客户端；这不等于 AI 插件会话或所有意图动作已在另一平台完整验收。
 
 ## 工作项登记模板
 

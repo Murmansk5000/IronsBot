@@ -44,7 +44,7 @@ def format_memory(memory: list[HistoryMessage]) -> str:
         return ""
 
     lines = [
-        "以下是这个 QQ 用户过去和你对话时留下的长期记忆。",
+        "以下是当前用户身份过去和你对话时留下的长期记忆。",
         "这些信息可能来自私聊或不同群聊，只能作为理解用户偏好和上下文的参考；如果和当前消息冲突，以当前消息为准。",
     ]
     for message in memory:
