@@ -5,12 +5,13 @@ from typing import TYPE_CHECKING, cast
 
 from seerapi_models.mintmark import AbilityPartORM, SkillPartORM, UniversalPartORM
 
+from ironsbot.core.value_coercion import coerce_positive_int
+
 from .countermark_stat_rank_models import (
     CountermarkStatRankCommand,
     CountermarkStatRankItem,
     StatSpec,
 )
-from .value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
