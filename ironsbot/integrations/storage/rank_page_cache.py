@@ -311,9 +311,16 @@ class SqliteRankPageCache:
             with self._database.connect() as conn:
                 row = conn.execute(
                     """
-                    SELECT searched_limit, fetched_at
-                    FROM player_rank_misses
-                    WHERE key = ? AND sub_key = ? AND user_id = ?
+                    SELECT m.searched_limit, m.fetched_at
+                    FROM player_rank_misses m
+                    WHERE m.key = ? AND m.sub_key = ? AND m.user_id = ?
+                      AND NOT EXISTS (
+                        SELECT 1 FROM player_rank_last_seen f
+                        WHERE f.key = m.key AND f.sub_key = m.sub_key
+                          AND f.user_id = m.user_id
+                          AND f.rank_index < m.searched_limit
+                          AND f.fetched_at >= m.fetched_at
+                      )
                     """,
                     (key, sub_key, user_id),
                 ).fetchone()
@@ -545,6 +552,7 @@ class SqliteRankPageCache:
                     ON CONFLICT(key, sub_key, user_id) DO UPDATE SET
                         searched_limit = excluded.searched_limit,
                         fetched_at = excluded.fetched_at
+                    WHERE excluded.fetched_at >= player_rank_misses.fetched_at
                     """,
                     (key, sub_key, user_id, searched_limit, timestamp),
                 )
@@ -553,8 +561,9 @@ class SqliteRankPageCache:
                     DELETE FROM player_rank_last_seen
                     WHERE key = ? AND sub_key = ? AND user_id = ?
                       AND rank_index < ?
+                      AND fetched_at < ?
                     """,
-                    (key, sub_key, user_id, searched_limit),
+                    (key, sub_key, user_id, searched_limit, timestamp),
                 )
         except sqlite3.Error as error:
             _LOGGER.warning("failed to write Seer rank miss cache: %s", error)

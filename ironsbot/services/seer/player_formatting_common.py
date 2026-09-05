@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.time import TZ_CN, now
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.seer.formatting import format_datetime
 from ironsbot.services.seer.rank_formatting import format_rank_position_text
 
@@ -24,8 +25,13 @@ COSMIC_SAINT_RANK_VALUE = 4
 COSMIC_SAINT_MIN_STAR = 100
 
 
-def format_player_data_time() -> str:
-    return f"获取时间：{now(tz=TZ_CN).strftime('%Y-%m-%d %H:%M:%S')}"
+def format_player_data_time(fetched_at: float | None) -> str:
+    text = (
+        "未知"
+        if fetched_at is None
+        else datetime.fromtimestamp(fetched_at, tz=TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
+    )
+    return f"获取时间：{text}"
 
 
 def filter_blank_lines(lines: list[str]) -> list[str]:

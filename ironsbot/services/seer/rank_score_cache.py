@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-import time
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
+from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import (
     RankPageResult,
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
-from ironsbot.services.seer.rank_score_helpers import score_segment_sample_indexes
+from ironsbot.services.seer.rank_score_helpers import (
+    score_segment_coverage,
+    score_segment_sample_indexes,
+)
 
 
 def cached_score_candidate_page_starts(  # noqa: PLR0913
@@ -43,7 +46,7 @@ def cached_score_candidate_page_starts(  # noqa: PLR0913
     return sorted(set(starts))
 
 
-async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR0912, PLR0913, PLR0915
+async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR0913
     game: Any,
     *,
     key: int,
@@ -68,12 +71,11 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
         return None
 
     fetched_pages: dict[int, RankPageResult] = {}
-    fetched_times: list[float] = []
-    truncated = False
+    observation = ObservationTime()
 
     async def fetch_page(page_start: int) -> RankPageResult | None:
         page_start = rank_page_start(page_start)
-        if page_start < start_index or page_start >= end_index:
+        if page_start < rank_page_start(start_index) or page_start >= end_index:
             return None
         if page_start in fetched_pages:
             return fetched_pages[page_start]
@@ -89,65 +91,29 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
             use_cache=False,
         )
         fetched_pages[page_start] = page_result
-        fetched_times.append(page_result.fetched_at)
+        observation.include(page_result.fetched_at)
         return page_result
 
     for page_start in candidate_starts[:max_pages]:
         await fetch_page(page_start)
 
-    def collect_matches() -> list[int]:
-        indexes: list[int] = []
-        for page_start, page_result in fetched_pages.items():
-            for offset, item in enumerate(page_result.items):
-                rank_index = page_start + offset
-                if rank_index < start_index or rank_index >= end_index:
-                    continue
-                if int(item.score) == target_score:
-                    indexes.append(rank_index)
-        return sorted(set(indexes))
+    while True:
+        coverage = score_segment_coverage(
+            fetched_pages,
+            start_index=start_index,
+            end_index=end_index,
+            page_size=page_size,
+            target_score=target_score,
+        )
+        if coverage is None:
+            return None
+        if not coverage.missing_pages:
+            break
+        for missing_start in coverage.missing_pages:
+            if await fetch_page(missing_start) is None:
+                return None
 
-    matching_indexes = collect_matches()
-    if not matching_indexes:
-        return None
-
-    while len(fetched_pages) < max_pages:
-        first_index = matching_indexes[0]
-        first_page_start = rank_page_start(first_index)
-        first_page = fetched_pages.get(first_page_start)
-        if first_page_start <= start_index or first_page is None:
-            break
-        if first_index != first_page_start:
-            break
-        previous_page = await fetch_page(first_page_start - page_size)
-        if previous_page is None:
-            truncated = True
-            break
-        matching_indexes = collect_matches()
-        if matching_indexes[0] >= first_index:
-            break
-
-    while len(fetched_pages) < max_pages:
-        last_index = matching_indexes[-1]
-        last_page_start = rank_page_start(last_index)
-        last_page = fetched_pages.get(last_page_start)
-        if last_page is None or not last_page.items:
-            break
-        page_last_index = last_page_start + len(last_page.items) - 1
-        if last_index != page_last_index or len(last_page.items) < page_size:
-            break
-        next_page = await fetch_page(last_page_start + page_size)
-        if next_page is None:
-            truncated = True
-            break
-        matching_indexes = collect_matches()
-        if matching_indexes[-1] <= last_index:
-            break
-
-    if not matching_indexes:
-        return None
-    if truncated:
-        return None
-
+    matching_indexes = coverage.matches
     first_index = matching_indexes[0]
     last_index = matching_indexes[-1]
     sample_indexes = score_segment_sample_indexes(
@@ -181,5 +147,5 @@ async def fetch_rank_score_segment_from_cached_candidates(  # noqa: C901, PLR091
             )
 
     result.scanned_count = len(result.items)
-    result.fetched_at = max(fetched_times, default=time.time())
+    result.fetched_at = observation.fetched_at
     return result

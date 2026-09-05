@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.tasks import OperationDeadline
+from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.local_rank_metrics import collect_metrics
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_collection_formatting import (
@@ -155,12 +156,14 @@ async def _fetch_collection_message(  # noqa: PLR0913
     anchor_only: bool,
 ) -> QueryReply:
     extra_errors: list[str] = []
+    observation = ObservationTime()
     (nick, nick_error), more_info, unity_part_one = await asyncio.gather(
         _resolve_shortcut_nick(
             game,
             player_id=player_id,
             base_snapshot=base_snapshot,
             timeout_seconds=deadline.remaining(timeout_seconds),
+            observation=observation,
         ),
         _resolve_collection_more_info(
             game,
@@ -168,10 +171,11 @@ async def _fetch_collection_message(  # noqa: PLR0913
             base_snapshot=base_snapshot,
             timeout_seconds=deadline.remaining(timeout_seconds),
             extra_errors=extra_errors,
+            observation=observation,
         ),
         safe_player_extra(
             "图鉴基础数据",
-            fetch_unity_part_one(game, player_id),
+            observation.observe(lambda: fetch_unity_part_one(game, player_id)),
             UnityPartOneInfo(),
             extra_errors,
             on_error=_log_extra_error,
@@ -229,6 +233,9 @@ async def _fetch_collection_message(  # noqa: PLR0913
             unity_part_one=unity_part_one,
             rank_summary=rank_summary,
             local_summary=local_summary,
+            fetched_at=_detail_observation_time(
+                observation, _player_rank_results(rank_summary)
+            ),
             player_identity=format_player_identity(
                 player_id,
                 nick,
@@ -257,12 +264,14 @@ async def _fetch_peak_message(  # noqa: PLR0913
     anchor_only: bool,
 ) -> QueryReply:
     extra_errors: list[str] = []
+    observation = ObservationTime()
     (nick, nick_error), peak_result = await asyncio.gather(
         _resolve_shortcut_nick(
             game,
             player_id=player_id,
             base_snapshot=base_snapshot,
             timeout_seconds=deadline.remaining(timeout_seconds),
+            observation=observation,
         ),
         fetch_unity_peak_partial(
             game,
@@ -271,6 +280,8 @@ async def _fetch_peak_message(  # noqa: PLR0913
         ),
     )
     unity_peak = peak_result.info
+    if peak_result.available_modes:
+        observation.include(peak_result.fetched_at)
     for mode, error in peak_result.mode_errors:
         logger.warning("米米号详情字段获取失败：巅峰%s基础数据：%s", mode, error)
     peak_sub_key = rank.current_peak_sub_key()
@@ -337,6 +348,10 @@ async def _fetch_peak_message(  # noqa: PLR0913
             unity_peak,
             rank_summary,
             local_summary,
+            fetched_at=_detail_observation_time(
+                observation,
+                (rank_summary.standard, rank_summary.wild, rank_summary.expert),
+            ),
             player_id=player_id,
             nick=nick,
             nick_error=nick_error,
@@ -367,6 +382,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
     anchor_only: bool,
 ) -> QueryReply:
     extra_errors: list[str] = []
+    observation = ObservationTime()
     autocard_fallback = RankLookupResult(
         title="群星之巅榜",
         score_name="分",
@@ -382,6 +398,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
             player_id=player_id,
             base_snapshot=base_snapshot,
             timeout_seconds=deadline.remaining(timeout_seconds),
+            observation=observation,
         ),
         safe_player_extra(
             "群星牌排行",
@@ -427,6 +444,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
                 nick_error,
             ),
             local_summary=local_summary,
+            fetched_at=_detail_observation_time(observation, (result,)),
         ),
         extra_errors,
     )
@@ -443,12 +461,14 @@ async def _resolve_shortcut_nick(
     player_id: int,
     base_snapshot: PlayerBaseSnapshot | None,
     timeout_seconds: float,
+    observation: ObservationTime,
 ) -> tuple[str, str | None]:
     if base_snapshot is not None and base_snapshot.player_id == player_id:
+        observation.include(base_snapshot.fetched_at)
         return base_snapshot.nick, None
     try:
         user_info = await asyncio.wait_for(
-            game.get_user_info(player_id),
+            observation.observe(lambda: game.get_user_info(player_id)),
             timeout=timeout_seconds,
         )
     except Exception as error:  # noqa: BLE001
@@ -457,23 +477,25 @@ async def _resolve_shortcut_nick(
     return str(getattr(user_info, "nick", "")), None
 
 
-async def _resolve_collection_more_info(
+async def _resolve_collection_more_info(  # noqa: PLR0913
     game: Any,
     *,
     player_id: int,
     base_snapshot: PlayerBaseSnapshot | None,
     timeout_seconds: float,
     extra_errors: list[str],
+    observation: ObservationTime,
 ) -> Any:
     if (
         base_snapshot is not None
         and base_snapshot.player_id == player_id
         and _has_collection_more_info(base_snapshot.more_info)
     ):
+        observation.include(base_snapshot.fetched_at)
         return base_snapshot.more_info
     return await safe_player_extra(
         "收集基础数据",
-        game.get_more_user_info(player_id),
+        observation.observe(lambda: game.get_more_user_info(player_id)),
         SimpleNamespace(total_achieve=0, pet_all_num=0),
         extra_errors,
         on_error=_log_extra_error,
@@ -483,6 +505,17 @@ async def _resolve_collection_more_info(
 
 def _has_collection_more_info(value: Any) -> bool:
     return hasattr(value, "total_achieve") and hasattr(value, "pet_all_num")
+
+
+def _detail_observation_time(
+    observation: ObservationTime, results: tuple[RankLookupResult, ...]
+) -> float | None:
+    for result in results:
+        if result.rank is not None or (
+            not result.failure and (result.score is not None or result.queried)
+        ):
+            observation.include(result.fetched_at)
+    return observation.fetched_at
 
 
 def _peak_metric_keys_for_modes(available_modes: frozenset[str]) -> frozenset[str]:

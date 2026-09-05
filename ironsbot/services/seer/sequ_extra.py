@@ -7,6 +7,7 @@ from typing import Any
 
 from ironsbot.core.binary import BufferReader
 from ironsbot.core.tasks import OperationDeadline
+from ironsbot.core.time import ObservationTime
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class UnityPeakFetchResult:
     info: UnityPeakInfo
     available_modes: frozenset[str]
     mode_errors: tuple[tuple[str, str], ...] = ()
+    fetched_at: float | None = None
 
     def error_for(self, mode: str) -> str | None:
         return dict(self.mode_errors).get(mode)
@@ -155,6 +157,7 @@ async def fetch_unity_peak_partial(
     chunks: list[bytes] = [struct.pack("!I", 0)] * len(PEAK_PARAMS)
     available_modes: list[str] = []
     mode_errors: list[tuple[str, str]] = []
+    observation = ObservationTime()
 
     for mode_index, (mode, params) in enumerate(PEAK_PARAMS_BY_MODE):
         # Share the remaining stage budget; an early failure cannot take every
@@ -162,16 +165,17 @@ async def fetch_unity_peak_partial(
         remaining_modes = len(PEAK_PARAMS_BY_MODE) - mode_index
         mode_deadline = OperationDeadline.after(deadline.remaining() / remaining_modes)
         mode_chunks: list[bytes] = []
+        mode_observation = ObservationTime()
         failed_param = params[0]
         try:
             for param in params:
                 failed_param = param
                 remaining = mode_deadline.remaining()
                 _head, body = await asyncio.wait_for(
-                    game.send_and_wait(
-                        USER_FOREVER_VALUE_CMD,
-                        player_id,
-                        param,
+                    mode_observation.observe(
+                        lambda param=param: game.send_and_wait(
+                            USER_FOREVER_VALUE_CMD, player_id, param
+                        )
                     ),
                     timeout=remaining,
                 )
@@ -199,9 +203,11 @@ async def fetch_unity_peak_partial(
         start = mode_index * len(params)
         chunks[start : start + len(params)] = mode_chunks
         available_modes.append(mode)
+        observation.include(mode_observation.fetched_at)
 
     return UnityPeakFetchResult(
         info=parse_unity_peak(b"".join(chunks)),
         available_modes=frozenset(available_modes),
         mode_errors=tuple(mode_errors),
+        fetched_at=observation.fetched_at,
     )
