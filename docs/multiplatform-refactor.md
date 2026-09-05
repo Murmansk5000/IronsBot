@@ -133,6 +133,12 @@ Task     [██████████] completed only after code, tests, and 
   [推送菜单 Spec](specs/2026-09-05-push-menu-command-ownership.md)。公开全量
   2286 passed，私有 26 passed，类型、Ruff、编译与 diff 通过；生产净增 9 行，
   无新运行模块、依赖或配置。总进度仍为 4/8。
+- 配置文本与自动关键词各自安装一个 matcher，共用领域选择和回复发送；仅关键词
+  配置不再漏注册，精确优先且单一命中。自动入口保留 automatic 目录语义，不结束
+  旧菜单，冷却键与精确口令分离。见
+  [配置回复 Spec](specs/2026-09-05-configured-reply-registration.md)。公開全量
+  2302 passed，私有 26 passed，类型、Ruff、编译与 diff 通过；没有新模块或依赖。
+  本地 main 只读确认仍为 f19c7089；总进度保持 4/8。
 
 ## 既有阶段验证基线（2026-08-15）
 
@@ -766,10 +772,15 @@ commands 由配置提供，空/禁用配置同步控制目录和 matcher，详�
 管理与群管理权限均与实际 rule 对照验收，数字/时间回复继续由 PromptFlow 隔离，
 没有把所有 conversation 视为 direct，见推送菜单 Spec。
 
+**配置回复收口（2026-09-05）：** direct / automatic 各自依据已启用配置注册，
+仅关键词配置能独立响应。两类复用领域精确优先与 feature 检查，共用发送 handler；
+自动回复不结束旧会话且不参与 AI 直接认领。同名动作冷却键独立，未保留泛化 ID
+回退，见配置回复 Spec 的安装矩阵和回归证据。
+
 **Phase 5 仍未完成：** 其余领域参数化输入与完整玩家多榜失败/渐进返回验收仍需
-完成。消息配置另有一个待验证边界：只配置 keyword_replies 而没有 commands 时，
-OneBot 配置文本 matcher 目前依赖非空 command_help_ids 才安装；其自动关键词入口
-不能靠直接命令或菜单帮忙注册，需单独验证自动入口与文档登记的对应关系。
+完成。下一步核对 player_shortcut_queries、player_detail_service 与榜单查询预算，
+以真实服务的失败/超时场景验证已有结果不会被后续失败吞掉，不能只用格式化测试
+替代完整业务流程验收。
 
 ### Phase 6 — 兜底、配置和错误语义
 

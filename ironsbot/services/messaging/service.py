@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from ironsbot.core.commands import command_text_matches, normalize_command_text
 from ironsbot.core.platform import (
@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 ActionT = TypeVar("ActionT", bound="CommandAction")
 KeywordActionT = TypeVar("KeywordActionT", bound="KeywordReplyAction")
 logger = logging.getLogger(__name__)
+ReplyInteraction = Literal["direct", "automatic"]
 
 
 class PushSubscriptionSubmenuProvider(Protocol):
@@ -108,29 +109,24 @@ class MessagingService:
         *,
         actor: ActorRef,
         conversation: ConversationRef,
+        interaction: ReplyInteraction,
     ) -> MessageReplyAction | None:
-        return self._find_action(
-            text,
-            is_allowed=lambda action: self._features.is_feature_allowed(
+        def is_allowed(action: MessageReplyAction) -> bool:
+            return self._features.is_feature_allowed(
                 actor,
                 conversation,
                 action.feature,
-            ),
-        )
+            )
 
-    def _find_action(
-        self,
-        text: str,
-        *,
-        is_allowed: Callable[[MessageReplyAction], bool],
-    ) -> MessageReplyAction | None:
         command = find_command_action(
             text,
             self._config.commands,
             is_allowed=is_allowed,
         )
-        if command is not None:
+        if interaction == "direct":
             return command
+        if command is not None:
+            return None
         return find_keyword_reply_action(
             text,
             self._config.keyword_replies,

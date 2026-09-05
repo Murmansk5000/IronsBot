@@ -64,6 +64,7 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
     activity_service: ActivityService,
     scheduler: Scheduler,
     command_help_ids: tuple[str, ...],
+    keyword_help_ids: tuple[str, ...],
 ) -> None:
     from .matchers import install
 
@@ -78,6 +79,7 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
         messaging=messaging,
         references=references,
         command_help_ids=command_help_ids,
+        keyword_help_ids=keyword_help_ids,
     )
 
 
@@ -120,6 +122,11 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
             scheduler=scheduler,
             command_help_ids=tuple(
                 f"messaging.{action.id}" for action in config.commands if action.enabled
+            ),
+            keyword_help_ids=tuple(
+                f"messaging.keyword.{action.id}"
+                for action in config.keyword_replies
+                if action.enabled
             ),
         ),
         hooks=PluginHooks(
