@@ -7,6 +7,7 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
+    parsed_command_input_matcher,
 )
 from ironsbot.services.bilibili.commands import (
     BILI_ACCOUNT_COMMANDS,
@@ -14,6 +15,7 @@ from ironsbot.services.bilibili.commands import (
     DYNAMIC_MENU_COMMANDS,
     DYNAMIC_UPDATE_COMMANDS,
     is_dynamic_update_text,
+    parse_bili_push_mode_command,
 )
 
 
@@ -38,6 +40,7 @@ def bilibili_command_contracts() -> tuple[CommandContract, ...]:
                     "查看当前会话订阅的账号",
                     {
                         "features_any": (),
+                        "routing_aliases": BILI_ACCOUNT_COMMANDS,
                         "access": (
                             CommandAccess(features_any=("bili_query",)),
                             CommandAccess(
@@ -63,7 +66,12 @@ def bilibili_command_contracts() -> tuple[CommandContract, ...]:
                         for command in BILI_PUSH_MODE_COMMANDS[:1]
                     ),
                     "调整当前会话指定账号的推送模式",
-                    {"access": (CommandAccess("group", "group_manager"),)},
+                    {
+                        "access": (CommandAccess("group", "group_manager"),),
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_bili_push_mode_command
+                        ),
+                    },
                 ),
             ),
         ),
@@ -79,7 +87,12 @@ def bilibili_command_contracts() -> tuple[CommandContract, ...]:
                         for command in BILI_PUSH_MODE_COMMANDS[:1]
                     ),
                     "调整当前私聊订阅账号的推送模式",
-                    {"access": (CommandAccess("private"),)},
+                    {
+                        "access": (CommandAccess("private"),),
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_bili_push_mode_command
+                        ),
+                    },
                 ),
             ),
         ),

@@ -218,6 +218,8 @@ def build_test_plugin_registry(
             ),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
+                enabled=config.seer.team_resource.enabled,
+                query_commands=tuple(config.seer.team_resource.commands),
                 register_jobs=lambda _scheduler: None,
             ),
             local_rank=object(),

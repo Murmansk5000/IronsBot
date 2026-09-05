@@ -7,12 +7,17 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
+    parsed_command_input_matcher,
+)
+from ironsbot.services.team.resource_subscriptions import (
+    parse_team_resource_manage_command,
 )
 
 
 def team_resource_command_contracts(
     *,
     enabled: bool,
+    query_commands: tuple[str, ...],
 ) -> tuple[CommandContract, ...]:
     """Describe query and subscription management commands when enabled."""
 
@@ -26,11 +31,13 @@ def team_resource_command_contracts(
             (
                 (
                     "team_resource.query",
-                    ("战队",),
+                    query_commands,
                     "查看当前会话订阅战队的信息和资源",
                     {"show_in_poke": True},
                 ),
-            ),
+            )
+            if query_commands
+            else (),
         ),
         *commands_from_rows(
             "team_resource",
@@ -47,6 +54,10 @@ def team_resource_command_contracts(
                             CommandAccess("private"),
                         ),
                         "show_in_poke": True,
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_team_resource_manage_command,
+                            accepts=lambda command: command.action == "add",
+                        ),
                     },
                 ),
                 (
@@ -59,18 +70,22 @@ def team_resource_command_contracts(
                             CommandAccess("private"),
                         ),
                         "show_in_poke": True,
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_team_resource_manage_command,
+                            accepts=lambda command: command.action == "remove",
+                        ),
                     },
                 ),
                 (
                     "team_resource.list",
                     ("战队订阅",),
-                    "查看和管理当前会话的战队订阅",
+                    "查看当前会话的战队订阅",
                     {
-                        "access": (
-                            CommandAccess("group", "group_manager"),
-                            CommandAccess("private"),
-                        ),
                         "show_in_poke": True,
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_team_resource_manage_command,
+                            accepts=lambda command: command.action == "list",
+                        ),
                     },
                 ),
             ),

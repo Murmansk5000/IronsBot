@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import normalize_command_text
@@ -144,6 +144,21 @@ class CommandContext:
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]
+_Parsed = TypeVar("_Parsed")
+
+
+def parsed_command_input_matcher(
+    parser: Callable[[str], _Parsed | None],
+    *,
+    accepts: Callable[[_Parsed], bool] | None = None,
+) -> CommandInputMatcher:
+    """Adapt a pure domain parser without executing its command or guessing syntax."""
+
+    def matches(text: str, _context: CommandContext) -> bool:
+        parsed = parser(text)
+        return parsed is not None and (accepts is None or accepts(parsed))
+
+    return matches
 
 
 @dataclass(frozen=True, slots=True)

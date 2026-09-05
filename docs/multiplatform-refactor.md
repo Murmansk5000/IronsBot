@@ -121,6 +121,12 @@ Task     [██████████] completed only after code, tests, and 
   640 passed，公开全量 2209 passed（87 条既有依赖告警），私有 26 passed；
   BasedPyright、Ruff、compileall、diff 检查通过，无新增运行依赖或配置变更。
   声明迁移不等同于全部参数化输入已验收；Phase 5 剩余项见后文，总进度仍为 4/8。
+- 订阅类命令复用领域 parser：B站推送参数、战队管理别名、橱窗关注均被目录
+  正确认领，橱窗帮助的组合示例拆为真实可输入命令。战队快捷口令与 TOML 同源，
+  空口令和关闭功能不会留下无效 matcher。见
+  [订阅命令 Spec](specs/2026-09-05-subscription-command-ownership.md)。公开全量
+  2261 passed，私有 26 passed；公开代码与测试类型检查、Ruff、编译、diff 通过。
+  无新依赖或配置，未进行生产部署或镜像体积测量；总进度仍为 4/8。
 
 ## 既有阶段验证基线（2026-08-15）
 
@@ -744,10 +750,16 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 复用 list/score/player parser 修复。管理命令同时复用领域常量与 parser；目录不再
 全局去除 `/`，活动可选前缀和 B站必需前缀由各自领域规则确定。
 
-**Phase 5 仍未完成：** `B站推送模式 example 链接` 可被
-`parse_bili_push_mode_command()` 解析，但其私聊 contract 没有 routing_matcher，
-带 `<账号>` 的帮助占位符不会被当作命令，因此目录仍不认领。这项、其余领域参数化
-输入与完整玩家多榜失败/渐进返回验收还需处理，不能把 Phase 5 标成 completed。
+**订阅类认领收口（2026-09-05）：** B站推送参数和战队管理直接复用领域 parser；
+橱窗解析从 OneBot 移到领域服务。通用 parser 适配器也供榜单复用，None 才表示
+未识别，0 等合法结果不丢失。橱窗每条帮助示例与实际 rule 验证一致；战队 query
+commands 由配置提供，空/禁用配置同步控制目录和 matcher，详见订阅命令 Spec。
+
+**Phase 5 仍未完成：** 消息领域的“推送管理 / TD / 恢复订阅 / 推送时间”有直接
+文本入口，目录却标为 conversation；`CommandContract.matches_direct_input()`
+仅接受 direct，因此这些菜单入口不参与 AI 认领。需要区分“打开菜单的命令”和
+“菜单中的回复”，并核对配置及群/私聊权限；不能简单把所有 conversation 视为
+direct。其余领域参数化输入与完整玩家多榜失败/渐进返回验收也仍未完成。
 
 ### Phase 6 — 兜底、配置和错误语义
 

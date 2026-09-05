@@ -10,6 +10,7 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
+    parsed_command_input_matcher,
 )
 from ironsbot.core.player_reference_commands import is_player_reference_input
 from ironsbot.services.seer.rank_catalog import rank_command_names
@@ -181,8 +182,8 @@ def rank_help_command_contracts(
                     {
                         "access": (CommandAccess("group", "group_manager"),),
                         "show_in_poke": True,
-                        "routing_matcher": lambda text, _context: (
-                            parse_rank_display_limit_command(text) is not None
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_rank_display_limit_command
                         ),
                     },
                 ),
@@ -212,8 +213,8 @@ def rank_help_command_contracts(
                     {
                         "access": (CommandAccess(audience="superuser"),),
                         "routing_aliases": RANK_PAGE_OVERVIEW_COMMANDS,
-                        "routing_matcher": lambda text, _context: (
-                            parse_rank_page_cache_status_command(text) is not None
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_rank_page_cache_status_command
                         ),
                     },
                 ),
@@ -223,8 +224,8 @@ def rank_help_command_contracts(
                     "刷新全服榜单缓存",
                     {
                         "access": (CommandAccess(audience="superuser"),),
-                        "routing_matcher": lambda text, _context: (
-                            parse_rank_page_cache_refresh_command(text) is not None
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_rank_page_cache_refresh_command
                         ),
                     },
                 ),
@@ -234,8 +235,8 @@ def rank_help_command_contracts(
                     "缓存指定全服榜单区间",
                     {
                         "access": (CommandAccess(audience="superuser"),),
-                        "routing_matcher": lambda text, _context: (
-                            parse_rank_cache_batch_command(text) is not None
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_rank_cache_batch_command
                         ),
                     },
                 ),

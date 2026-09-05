@@ -132,12 +132,16 @@ def test_pet_config_contract_is_owned_by_its_domain_service() -> None:
 
 
 def test_team_resource_contract_is_owned_by_its_domain_service() -> None:
-    commands = _by_id(team_resource_command_contracts(enabled=True))
+    commands = _by_id(
+        team_resource_command_contracts(enabled=True, query_commands=("战队",))
+    )
 
     assert commands["team_resource.query"].examples == ("战队",)
     assert commands["team_resource.subscribe"].examples == ("订阅战队123456",)
     assert commands["team_resource.subscribe"].show_in_poke is True
-    assert team_resource_command_contracts(enabled=False) == ()
+    assert (
+        team_resource_command_contracts(enabled=False, query_commands=("战队",)) == ()
+    )
 
 
 def test_lucky_skin_window_contract_is_owned_by_its_domain_service() -> None:
@@ -145,7 +149,8 @@ def test_lucky_skin_window_contract_is_owned_by_its_domain_service() -> None:
 
     assert commands["seer.lucky_skin_window.query"].examples == ("橱窗",)
     assert commands["seer.lucky_skin_window.watch.add"].examples == (
-        "关注橱窗1400538 / 订阅橱窗1400538",
+        "关注橱窗1400538",
+        "订阅橱窗1400538",
         "橱窗订阅名称",
     )
 
