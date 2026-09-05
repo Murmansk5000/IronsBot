@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
-from .value_coercion import coerce_positive_int
+from ironsbot.core.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from sqlmodel import Session
