@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot.adapters import Event  # noqa: TC002 - dynamic callback annotation
 from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.exception import FinishedException
 
 from ironsbot.core.commands import command_text_matches
 from ironsbot.integrations.onebot.matchers import (
@@ -13,6 +14,7 @@ from ironsbot.integrations.onebot.matchers import (
     enter_prompt_loop,
     get_prompt_session_manager,
     get_queued_conversation,
+    queued_conversation_is_cancelled,
 )
 from ironsbot.integrations.onebot.replies import build_message, event_sender_at_user_ids
 
@@ -119,6 +121,8 @@ async def enter_event_reply_conversation(  # noqa: PLR0913
     allow_group_reply_exit: bool = False,
     parallel: bool = False,
 ) -> None:
+    if queued_conversation_is_cancelled(matcher):
+        raise FinishedException
     queued = get_queued_conversation(matcher)
     if queued is not None and queued.namespace == namespace:
         session_id = queued.conversation_session_id
