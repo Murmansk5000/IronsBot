@@ -240,7 +240,6 @@ def build_test_plugin_registry(
                     season_countdown=_noop_query,
                 ),
                 countermark_rank=SimpleNamespace(
-                    parse_command=lambda _text: None,
                     query=lambda _command: "",
                 ),
                 autocard=SimpleNamespace(

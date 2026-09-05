@@ -11,7 +11,11 @@ from ironsbot.core.command_catalog import (
     parsed_command_input_matcher,
 )
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
+from ironsbot.services.seer.countermark_stat_rank_parsing import (
+    parse_countermark_stat_rank_command,
+)
 from ironsbot.services.seer.data_query_commands import (
+    DATA_QUERY_COMMANDS,
     DATA_QUERY_HELP_EXAMPLES,
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,
@@ -26,6 +30,16 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
     NEW_SUITS_COMMANDS,
+)
+from ironsbot.services.seer.peak import (
+    PEAK_EXPERT_POOL_COMMANDS,
+    PEAK_PET_RANK_COMMANDS,
+    PEAK_POOL_COMMANDS,
+    PEAK_QUERY_COMMANDS,
+    PEAK_RANK_COMMANDS,
+    PEAK_SUIT_RANK_COMMANDS,
+    PEAK_TITLE_RANK_COMMANDS,
+    PEAK_VOTE_COMMANDS,
 )
 from ironsbot.services.seer.query_commands import (
     AUTOCARD_QUERY,
@@ -164,7 +178,11 @@ def seer_command_contracts(
                     "seer.mintmark.rank",
                     ("刻印攻击榜", "六角双攻榜", "特攻双防刻印榜"),
                     "查询刻印数值榜",
-                    {},
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            parse_countermark_stat_rank_command
+                        )
+                    },
                 ),
             ),
         ),
@@ -215,15 +233,32 @@ def seer_command_contracts(
             (
                 (
                     "seer.peak.query",
-                    ("竞技池", "专家池", "巅峰投票"),
+                    (
+                        PEAK_POOL_COMMANDS[0],
+                        PEAK_EXPERT_POOL_COMMANDS[0],
+                        PEAK_VOTE_COMMANDS[0],
+                    ),
                     "查询巅峰池和投票信息",
-                    {"show_in_poke": True},
+                    {
+                        "show_in_poke": True,
+                        "routing_matcher": lambda text, _context: (
+                            text in PEAK_QUERY_COMMANDS
+                        ),
+                    },
                 ),
                 (
                     "seer.peak.rank",
-                    ("竞技套装榜", "狂野称号榜", "竞技精灵月榜"),
+                    (
+                        PEAK_SUIT_RANK_COMMANDS[0],
+                        PEAK_TITLE_RANK_COMMANDS[1],
+                        PEAK_PET_RANK_COMMANDS[0],
+                    ),
                     "查询巅峰套装、称号和精灵榜",
-                    {},
+                    {
+                        "routing_matcher": lambda text, _context: (
+                            text in PEAK_RANK_COMMANDS
+                        )
+                    },
                 ),
             ),
         ),
@@ -258,7 +293,12 @@ def seer_command_contracts(
                     "seer.data.query",
                     DATA_QUERY_HELP_EXAMPLES,
                     "查询赛尔数据和赛季信息",
-                    {"show_in_poke": True},
+                    {
+                        "show_in_poke": True,
+                        "routing_matcher": lambda text, _context: (
+                            text in DATA_QUERY_COMMANDS
+                        ),
+                    },
                 ),
                 (
                     "seer.data.new_content",
