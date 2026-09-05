@@ -96,13 +96,27 @@ class SqliteDatabase:
             return
 
         target_version = self.migrations[-1].version
+        current_version = self._current_migration_version(connection)
+        _validate_database_version(
+            current_version=current_version,
+            target_version=target_version,
+        )
+        if current_version == target_version:
+            return
+
         connection.execute("BEGIN IMMEDIATE")
         try:
+            # Another connection may have upgraded while we waited for the lock.
             current_version = self._current_migration_version(connection)
             _validate_database_version(
                 current_version=current_version,
                 target_version=target_version,
             )
+            if (
+                self.migration_namespace is not None
+                and current_version < target_version
+            ):
+                _ensure_migration_metadata_table(connection)
 
             for migration in self.migrations[current_version:]:
                 for statement in migration.statements:
@@ -120,7 +134,11 @@ class SqliteDatabase:
         if self.migration_namespace is None:
             return int(connection.execute("PRAGMA user_version").fetchone()[0])
 
-        _ensure_migration_metadata_table(connection)
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'ironsbot_schema_migrations'"
+        ).fetchone() is None:
+            return 0
         row = connection.execute(
             "SELECT version FROM ironsbot_schema_migrations WHERE namespace = ?",
             (self.migration_namespace,),
