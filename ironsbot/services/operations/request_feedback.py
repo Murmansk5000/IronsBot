@@ -52,6 +52,15 @@ def request_feedback_scope(
         _request_feedback.reset(token)
 
 
-async def send_request_feedback(*, queued: bool) -> None:
-    if feedback := _request_feedback.get():
-        await feedback.send(queued=queued)
+def current_request_feedback() -> RequestFeedback | None:
+    return _request_feedback.get()
+
+
+async def send_request_feedback(
+    *,
+    queued: bool,
+    feedback: RequestFeedback | None = None,
+) -> None:
+    active = current_request_feedback() if feedback is None else feedback
+    if active is not None:
+        await active.send(queued=queued)
