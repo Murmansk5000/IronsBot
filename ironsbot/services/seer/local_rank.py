@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.core.value_coercion import coerce_positive_int
 from ironsbot.services.seer import local_rank_formatting
 from ironsbot.services.seer.local_rank_metrics import (
     LOCAL_METRICS,
@@ -30,7 +31,6 @@ from ironsbot.services.seer.sequ_extra import (
     fetch_unity_part_one,
     fetch_unity_peak,
 )
-from ironsbot.services.seer.value_coercion import coerce_positive_int
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence

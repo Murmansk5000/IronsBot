@@ -42,6 +42,8 @@ from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
     LuckySkinWindowAccount,
     LuckySkinWindowBindingError,
+    LuckySkinWindowOffer,
+    LuckySkinWindowResult,
     LuckySkinWindowService,
     _parse_skin_ids,
 )
@@ -219,7 +221,11 @@ class _PluginService:
 def _service(
     tmp_path: Path,
     *,
-    renderer: Callable[[object, tuple[object, ...]], Awaitable[bytes]] | None = None,
+    renderer: Callable[
+        [LuckySkinWindowResult, tuple[LuckySkinWindowOffer, ...]],
+        Awaitable[bytes],
+    ]
+    | None = None,
 ) -> tuple[
     LuckySkinWindowService,
     _Game,
@@ -313,9 +319,14 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
 
 
 def test_render_result_uses_the_configured_port(tmp_path: Path) -> None:
-    rendered_inputs: list[tuple[object, tuple[object, ...]]] = []
+    rendered_inputs: list[
+        tuple[LuckySkinWindowResult, tuple[LuckySkinWindowOffer, ...]]
+    ] = []
 
-    async def render(result: object, offers: tuple[object, ...]) -> bytes:
+    async def render(
+        result: LuckySkinWindowResult,
+        offers: tuple[LuckySkinWindowOffer, ...],
+    ) -> bytes:
         rendered_inputs.append((result, offers))
         return b"lucky-window-card"
 

@@ -13,7 +13,9 @@ from ironsbot.integrations.http.weekly_preview_images import (
     MAX_WEEKLY_PREVIEW_BYTES,
     CachedWeeklyPreviewImageSource,
 )
-from ironsbot.services.seer.weekly_preview import WEEKLY_PREVIEW_MIRROR_URL
+from ironsbot.integrations.seer_data.weekly_preview_repository import (
+    WEEKLY_PREVIEW_MIRROR_URL,
+)
 from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageError
 
 if TYPE_CHECKING:

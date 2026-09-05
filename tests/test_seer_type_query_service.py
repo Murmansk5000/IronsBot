@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.services.seer.type_calc import (
+    ElementTypeSnapshot,
     TypeCombinationSnapshot,
     TypeMatchup,
+    TypeMatchupDataset,
 )
 from ironsbot.services.seer.type_query import (
     NORMAL_TYPE_MESSAGE,
@@ -26,7 +28,7 @@ class FakeData:
 
     def __init__(self) -> None:
         self.combinations: tuple[Any, ...] = ()
-        self.matchup: TypeMatchup | None = None
+        self.dataset = TypeMatchupDataset((), (), ())
         self.query_open = False
 
     @contextmanager
@@ -38,10 +40,10 @@ class FakeData:
         yield self.combinations
 
     @contextmanager
-    def query(self, _operation: object) -> Iterator[TypeMatchup | None]:
+    def query(self, _operation: object) -> Iterator[TypeMatchupDataset]:
         self.query_open = True
         try:
-            yield self.matchup
+            yield self.dataset
         finally:
             self.query_open = False
 
@@ -55,17 +57,17 @@ def _type(type_id: int, name: str, *, primary_id: int | None = None) -> Any:
     )
 
 
-def _matchup(target: Any) -> TypeMatchup:
-    return TypeMatchup(
-        target=TypeCombinationSnapshot(
-            id=int(target.id),
-            name=str(target.name),
-            primary_id=int(target.primary_id),
-            secondary_id=target.secondary_id,
-        ),
-        attack_table=[],
-        defense_table=[],
-        cache_key=str(target.id),
+def _dataset(target: Any) -> TypeMatchupDataset:
+    snapshot = TypeCombinationSnapshot(
+        id=int(target.id),
+        name=str(target.name),
+        primary_id=int(target.primary_id),
+        secondary_id=target.secondary_id,
+    )
+    return TypeMatchupDataset(
+        combinations=(snapshot,),
+        elements=(ElementTypeSnapshot(snapshot.primary_id, snapshot.name),),
+        relations=(),
     )
 
 
@@ -87,7 +89,7 @@ async def test_single_type_query_renders_matchup() -> None:
     data = FakeData()
     target = _type(1, "草")
     data.combinations = (target,)
-    data.matchup = _matchup(target)
+    data.dataset = _dataset(target)
     rendered: list[TypeMatchup] = []
     render_session_states: list[bool] = []
 
@@ -102,7 +104,9 @@ async def test_single_type_query_renders_matchup() -> None:
 
     assert result.reply is not None
     assert result.reply.image == b"rendered"
-    assert rendered == [data.matchup]
+    assert [item.target for item in rendered] == [
+        TypeCombinationSnapshot(1, "草", 1, None)
+    ]
     assert render_session_states == [False]
 
 

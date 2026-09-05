@@ -1,8 +1,16 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from pathlib import Path
 
+from ironsbot.app.rendering_composition import FINAL_RENDER_CACHE_INPUTS
+from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
 from ironsbot.integrations.storage.render_cache import UNKNOWN_RENDER_CACHE_VERSION
 from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
+from ironsbot.services.seer.render_paths import SEER_RENDERING_PATH
+
+
+def test_final_cache_version_tracks_all_public_seer_render_adapters() -> None:
+    assert SEER_RENDERING_PATH in FINAL_RENDER_CACHE_INPUTS
+    assert SEER_DATA_RENDERERS_PATH in FINAL_RENDER_CACHE_INPUTS
 
 
 def test_render_cache_version_tracks_data_and_rendering_inputs(tmp_path: Path) -> None:

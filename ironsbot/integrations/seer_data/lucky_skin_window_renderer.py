@@ -8,7 +8,7 @@ import hashlib
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.skin_image_resolution import (
+from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
 from ironsbot.services.seer.images import ImageSourceError, to_data_uri

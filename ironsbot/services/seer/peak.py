@@ -6,18 +6,16 @@ import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
-from functools import partial
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-from seerapi_models import (
-    PeakExpertPoolORM,
-    PeakPoolORM,
-    PeakPoolVoteORM,
-    PeakSeasonORM,
-)
-from sqlmodel import Session, select
-
 from ironsbot.core import time
+from ironsbot.integrations.seer_data.peak_repository import (
+    PeakPeriodTimes,
+    load_peak_period_times,
+    load_peak_pool_snapshots,
+    load_peak_vote_snapshots,
+    snapshot_peak_pet_map,
+)
 from ironsbot.services.operations.headless_errors import (
     ClientNotInitializedError,
     DisconnectedError,
@@ -27,8 +25,6 @@ from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 
 if TYPE_CHECKING:
     from datetime import datetime
-
-    from seerapi_models.pet import PetORM
 
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.data import SeerDataAccess
@@ -92,34 +88,6 @@ class PeakVoteSnapshot:
     pets: tuple[PeakPetSnapshot, ...]
 
 
-def load_peak_pools(
-    session: Session,
-    *,
-    expert: bool,
-) -> tuple[PeakPoolORM | PeakExpertPoolORM, ...]:
-    model = PeakExpertPoolORM if expert else PeakPoolORM
-    return tuple(session.exec(select(model)).all())
-
-
-def load_peak_votes(session: Session) -> tuple[PeakPoolVoteORM, ...]:
-    return tuple(session.exec(select(PeakPoolVoteORM)).all())
-
-
-def snapshot_peak_pools(
-    pools: Iterable[PeakPoolORM | PeakExpertPoolORM],
-) -> tuple[PeakPoolSnapshot, ...]:
-    return tuple(
-        PeakPoolSnapshot(
-            id=int(pool.id),
-            count=int(pool.count),
-            start_time=pool.start_time,
-            end_time=pool.end_time,
-            pets=tuple(_snapshot_peak_pet(pet) for pet in pool.pet),
-        )
-        for pool in pools
-    )
-
-
 def active_peak_pool_limits(
     pools: Iterable[PeakPoolSnapshot],
     *,
@@ -146,64 +114,19 @@ def active_peak_pool_limits(
     return limits
 
 
-def snapshot_peak_votes(
-    votes: Iterable[PeakPoolVoteORM],
-) -> tuple[PeakVoteSnapshot, ...]:
-    return tuple(
-        PeakVoteSnapshot(
-            id=int(vote.id),
-            count=int(vote.count),
-            subkey=int(vote.subkey),
-            start_time=vote.start_time,
-            end_time=vote.end_time,
-            pets=tuple(_snapshot_peak_pet(pet) for pet in vote.pet),
-        )
-        for vote in votes
-    )
-
-
-def snapshot_peak_pet_map(
-    pets: dict[int, PetORM],
-) -> dict[int, PeakPetSnapshot]:
-    return {
-        int(pet_id): _snapshot_peak_pet(pet)
-        for pet_id, pet in pets.items()
-    }
-
-
-def _snapshot_peak_pet(pet: PetORM) -> PeakPetSnapshot:
-    return PeakPetSnapshot(
-        id=int(pet.id),
-        name=str(pet.name),
-        resource_id=int(pet.resource_id),
-        type_id=int(pet.type.id),
-    )
-
-
-def load_peak_pet_period(
-    session: Session,
+def peak_pet_period(
+    times: PeakPeriodTimes | None,
     *,
     monthly: bool,
 ) -> PeakPetPeriod | None:
-    if monthly:
-        pool = session.exec(select(PeakExpertPoolORM)).first()
-        if pool is None:
-            return None
-        return PeakPetPeriod(
-            category="月",
-            start_time=pool.start_time,
-            end_time=pool.end_time,
-            sub_key=datetime_to_sub_key(pool.start_time) + 1000000000,
-        )
-
-    season = session.get(PeakSeasonORM, 1)
-    if season is None:
+    if times is None:
         return None
+    offset = 1000000000 if monthly else 0
     return PeakPetPeriod(
-        category="总",
-        start_time=season.start_time,
-        end_time=season.end_time,
-        sub_key=datetime_to_sub_key(season.start_time),
+        category="月" if monthly else "总",
+        start_time=times.start_time,
+        end_time=times.end_time,
+        sub_key=datetime_to_sub_key(times.start_time) + offset,
     )
 
 
@@ -378,9 +301,9 @@ class PeakQueryService:
         progress: ProgressReporter,
     ) -> PeakQueryResult:
         with self._data.query(
-            partial(load_peak_pools, expert=expert)
-        ) as database_pools:
-            pools = snapshot_peak_pools(database_pools)
+            lambda session: load_peak_pool_snapshots(session, expert=expert)
+        ) as loaded_pools:
+            pools = tuple(loaded_pools)
         label = "专家禁用池" if expert else "竞技池"
         if not pools:
             return PeakQueryResult(
@@ -405,8 +328,8 @@ class PeakQueryService:
         game, error = self._game()
         if game is None:
             return PeakQueryResult(message=error)
-        with self._data.query(load_peak_votes) as database_votes:
-            votes = snapshot_peak_votes(database_votes)
+        with self._data.query(load_peak_vote_snapshots) as loaded_votes:
+            votes = tuple(loaded_votes)
         pools: list[PeakVotePoolInput] = []
         now = time.now(tz=time.TZ_CN)
         for vote in sort_peak_pool_votes_by_time(votes):
@@ -475,9 +398,9 @@ class PeakQueryService:
             return PeakQueryResult(message=error)
         name, peak_type = parse_peak_type(command)
         with self._data.query(
-            partial(load_peak_pet_period, monthly=False)
-        ) as database_period:
-            period = database_period
+            lambda session: load_peak_period_times(session, monthly=False)
+        ) as times:
+            period = peak_pet_period(times, monthly=False)
         if period is None:
             return PeakQueryResult(
                 message="❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
@@ -526,9 +449,9 @@ class PeakQueryService:
         name, peak_type = parse_peak_type(command)
         monthly = "月" in command
         with self._data.query(
-            partial(load_peak_pet_period, monthly=monthly)
-        ) as database_period:
-            period = database_period
+            lambda session: load_peak_period_times(session, monthly=monthly)
+        ) as times:
+            period = peak_pet_period(times, monthly=monthly)
         if period is None:
             return PeakQueryResult(
                 message=(

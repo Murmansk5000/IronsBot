@@ -64,8 +64,14 @@ def test_startup_check_records_first_healthy_model(monkeypatch: MonkeyPatch) -> 
         def __init__(self) -> None:
             self.parts: list[tuple[str, str, str]] = []
 
-        def add(self, key: str, action: str, message: str) -> None:
-            self.parts.append((key, action, message))
+        def add(
+            self,
+            subscription_key: str,
+            action_name: str,
+            message: str | None,
+        ) -> None:
+            assert message is not None
+            self.parts.append((subscription_key, action_name, message))
 
     calls: list[str] = []
 
