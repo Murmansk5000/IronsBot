@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -104,6 +105,7 @@ class RankPageResult:
 @dataclass(slots=True)
 class RankSummaryProgress:
     current_title: str = ""
+    completed: dict[str, RankLookupResult] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -159,31 +161,38 @@ class PlayerRankSummary:
 
     @classmethod
     def empty(cls) -> "PlayerRankSummary":
-        return cls(
-            book=RankLookupResult(title="图鉴积分", score_name="图鉴积分"),
-            achieve=RankLookupResult(title="成就点数", score_name="成就点数"),
-            breakdown=BookBreakdownSummary.empty(),
-        )
+        return cls.from_results({})
 
-    def mark_failure(self, title: str, failure: str) -> None:
-        results = (
-            self.book,
-            self.achieve,
-            self.breakdown.pet_kind,
-            self.breakdown.skin,
-            self.breakdown.countermark,
-            self.breakdown.outfit_suit,
-            self.breakdown.outfit_part,
-            self.breakdown.mount,
+    @classmethod
+    def from_results(
+        cls,
+        results: Mapping[str, RankLookupResult],
+        *,
+        pet_kind_count: int = 0,
+        errors: tuple[str, ...] = (),
+        failure: str | None = None,
+    ) -> "PlayerRankSummary":
+        def item(key: str, title: str, score_name: str) -> RankLookupResult:
+            return results.get(key) or RankLookupResult(
+                title=title,
+                score_name=score_name,
+                failure=failure,
+            )
+
+        return cls(
+            book=item("book", "图鉴积分", "图鉴积分"),
+            achieve=item("achieve", "成就点数", "成就点数"),
+            breakdown=BookBreakdownSummary(
+                pet_kind_count=pet_kind_count,
+                pet_kind=item("pet_kind", "精灵图鉴", "精灵"),
+                skin=item("skin", "皮肤图鉴", "皮肤"),
+                countermark=item("countermark", "刻印图鉴", "刻印"),
+                outfit_suit=item("outfit_suit", "套装图鉴", "套装"),
+                outfit_part=item("outfit_part", "部件图鉴", "部件"),
+                mount=item("mount", "座驾图鉴", "座驾"),
+            ),
+            errors=errors,
         )
-        present_results = tuple(result for result in results if result is not None)
-        matching_results = tuple(
-            result
-            for result in present_results
-            if title in {result.title, f"{result.title}榜"}
-        )
-        for result in matching_results or present_results:
-            result.failure = failure
 
 
 @dataclass(slots=True)
@@ -194,14 +203,24 @@ class PeakSeasonRankSummary:
 
     @classmethod
     def empty(cls) -> "PeakSeasonRankSummary":
-        return cls(
-            standard=RankLookupResult(title="竞技赛季榜", score_name="段位分"),
-            wild=RankLookupResult(title="狂野赛季榜", score_name="段位分"),
-            expert=RankLookupResult(title="专家赛季榜", score_name="专家积分"),
-        )
+        return cls.from_results({})
 
-    def mark_failure(self, title: str, failure: str) -> None:
-        results = (self.standard, self.wild, self.expert)
-        matching_results = tuple(result for result in results if result.title == title)
-        for result in matching_results or results:
-            result.failure = failure
+    @classmethod
+    def from_results(
+        cls,
+        results: Mapping[str, RankLookupResult],
+        *,
+        failure: str | None = None,
+    ) -> "PeakSeasonRankSummary":
+        def item(key: str, title: str, score_name: str) -> RankLookupResult:
+            return results.get(key) or RankLookupResult(
+                title=title,
+                score_name=score_name,
+                failure=failure,
+            )
+
+        return cls(
+            standard=item("standard_peak", "竞技赛季榜", "段位分"),
+            wild=item("wild_peak", "狂野赛季榜", "段位分"),
+            expert=item("expert_peak", "专家赛季榜", "专家积分"),
+        )
