@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -49,8 +48,10 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.state_migration_files import (
-    remove_sqlite_bundle,
-    remove_sqlite_bundles_under,
+    SqliteBundleChange,
+    apply_sqlite_bundle_changes,
+    cleanup_sqlite_bundles,
+    copy_sqlite_bundle,
 )
 
 QQ_STATE_NAMESPACES = frozenset(
@@ -244,7 +245,6 @@ def migrate_state_databases(  # noqa: PLR0913
 
     temp_qq = _temporary_target(qq_state)
     temp_runtime = _temporary_target(runtime_state)
-    installed_targets: list[Path] = []
     try:
         _initialize_state_databases(temp_qq, temp_runtime)
         migrated_rows = _copy_legacy_data(
@@ -264,19 +264,19 @@ def migrate_state_databases(  # noqa: PLR0913
             migrated_rows=migrated_rows,
             created_at=now or datetime.now(timezone.utc),
         )
-        qq_state.parent.mkdir(parents=True, exist_ok=True)
-        runtime_state.parent.mkdir(parents=True, exist_ok=True)
-        temp_qq.replace(qq_state)
-        installed_targets.append(qq_state)
-        temp_runtime.replace(runtime_state)
-        installed_targets.append(runtime_state)
-        remove_sqlite_bundles_under(data_root, (path for _, path in sources))
-    except BaseException:
-        remove_sqlite_bundle(temp_qq)
-        remove_sqlite_bundle(temp_runtime)
-        for installed in installed_targets:
-            remove_sqlite_bundle(installed)
-        raise
+        apply_sqlite_bundle_changes((
+            SqliteBundleChange(qq_state, temp_qq),
+            SqliteBundleChange(runtime_state, temp_runtime),
+            *(
+                SqliteBundleChange(
+                    path, backup=backup_path / "legacy" / path.relative_to(data_root),
+                )
+                for _, path in sources
+                if path.is_relative_to(data_root)
+            ),
+        ))
+    finally:
+        cleanup_sqlite_bundles((temp_qq, temp_runtime))
     return MigrationResult(
         applied=True,
         already_migrated=False,
@@ -344,12 +344,7 @@ def _backup_legacy_sources(
     for _, source_path in sources:
         relative = source_path.relative_to(data_root)
         destination = backup_path / "legacy" / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, destination)
-        for suffix in ("-wal", "-shm"):
-            sidecar = Path(f"{source_path}{suffix}")
-            if sidecar.is_file():
-                shutil.copy2(sidecar, Path(f"{destination}{suffix}"))
+        copy_sqlite_bundle(source_path, destination)
 
 
 def _copy_legacy_data(
