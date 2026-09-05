@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +39,7 @@ async def test_peak_modes_share_one_stage_budget(
     assert limits == pytest.approx([0.1, 0.1, 0.1])
     assert sum(limits) == pytest.approx(0.3)
     assert result.available_modes == frozenset()
+    assert result.fetched_at is None
     assert all(
         result.error_for(mode) == "查询超时" for mode in ("standard", "wild", "expert")
     )
@@ -113,6 +115,32 @@ async def test_peak_partial_continues_to_later_modes_after_one_mode_times_out() 
     assert result.info.history_z_score == _EXPECTED_EXPERT_HISTORY_SCORE
     assert result.info.current_z_win == _EXPECTED_EXPERT_WINS
     assert result.info.current_z_all == _EXPECTED_EXPERT_MATCHES
+
+
+@pytest.mark.asyncio
+async def test_peak_observation_excludes_discarded_partial_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [1_800_000_000.0]
+    monkeypatch.setattr(
+        "ironsbot.core.time.now",
+        lambda: datetime.fromtimestamp(clock[0], tz=timezone.utc),
+    )
+
+    class Game(_PeakGame):
+        async def send_and_wait(
+            self, command_id: int, player_id: int, param: int
+        ) -> tuple[None, SimpleNamespace]:
+            clock[0] += 1
+            return await super().send_and_wait(command_id, player_id, param)
+
+    # The first packet succeeded, but its whole mode is discarded after packet 2.
+    result = await fetch_unity_peak_partial(
+        Game(timeout_param=124802), 712_345_678, timeout_seconds=0.1
+    )
+    assert result.available_modes == frozenset(("wild", "expert"))
+    expected_first_complete_mode_at = 1_800_000_003.0
+    assert result.fetched_at == expected_first_complete_mode_at
 
 
 @pytest.mark.asyncio

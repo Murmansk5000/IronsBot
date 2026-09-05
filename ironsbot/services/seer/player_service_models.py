@@ -23,6 +23,7 @@ class PlayerBaseSnapshot:
     more_info: Any
     online_info: Any | None
     team_name: str
+    fetched_at: float | None
 
     @property
     def nick(self) -> str:
