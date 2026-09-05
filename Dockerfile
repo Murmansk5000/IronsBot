@@ -1,4 +1,5 @@
-FROM python:3.10 as requirements_stage
+# syntax=docker/dockerfile:1
+FROM python:3.10 AS requirements_stage
 
 WORKDIR /wheel
 
@@ -8,7 +9,7 @@ COPY ./pyproject.toml \
   ./uv.lock \
   /wheel/
 
-RUN python -m uv export --no-dev --format requirements.txt --output-file requirements.txt --no-hashes
+RUN python -m uv export --frozen --no-dev --format requirements.txt --output-file requirements.txt --no-hashes
 
 RUN python -m pip wheel --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
 
@@ -39,12 +40,11 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=requirements_stage /wheel /wheel
-
 # The container never installs packages at runtime. Keep its application
 # dependencies, but remove Python's packaging toolchain from the final layer.
-RUN pip install --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
-    && rm -rf /wheel \
+# Mount wheels for installation; copying then deleting them retains a large layer.
+RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel \
+    pip install --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
     && rm -rf /usr/local/lib/python3.10/site-packages/pip \
         /usr/local/lib/python3.10/site-packages/pip-*.dist-info \
         /usr/local/lib/python3.10/site-packages/setuptools \

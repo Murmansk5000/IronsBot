@@ -65,6 +65,10 @@ Task     [██████████] completed only after code, tests, and 
   BasedPyright 0 errors，Ruff、compileall 与 diff 检查通过。
 - 没有新增运行依赖。再次检查本机 Docker 时 Linux engine pipe 不存在，实际镜像
   大小与层体积仍待可用构建环境测量。文件职责拆分不等同于镜像变小。
+- 镜像层审计发现，COPY wheelhouse 后再删除仍会保留其镜像层；V5 改为 BuildKit
+  只读挂载并冻结运行依赖导出。发布测量绑定本次构建 digest 并上传逐层记录；
+  Docker 静态与 Bash 模拟测量测试 16 passed。见
+  [镜像预算 Spec](specs/2026-08-15-runtime-image-budget.md)，实际构建减重尚未验收。
 
 ## 既有阶段验证基线（2026-08-15）
 

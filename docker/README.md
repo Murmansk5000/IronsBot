@@ -41,6 +41,21 @@ ghcr.io/murmansk5000/ironsbot:sha-xxxxxxx
 
 `latest` tracks the `main` branch of this repository.
 
+## Build From Source
+
+Build the Linux image using BuildKit, for example:
+
+```bash
+docker buildx build --load -t ironsbot:local .
+```
+
+The runtime installation temporarily mounts wheels from the build stage. The
+wheel archives are not copied into a runtime layer. Dependencies come from the
+frozen production lockfile; developer tools are excluded. The release workflow
+measures its published digest and retains image inspection and layer history in
+an `image-size-<commit>` artifact. These records distinguish the actual image
+size from the size of files visible inside a container.
+
 ## Version Tags And Changelog
 
 This repository keeps Docker `latest` available, and also publishes extra tags so you can see exactly which build you are running.
