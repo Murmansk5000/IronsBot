@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,6 +28,12 @@ from ironsbot.integrations.storage.platform_state_schema import (
 from ironsbot.integrations.storage.sqlite import (
     open_memory_sqlite_connection,
     open_sqlite_connection,
+)
+from ironsbot.state_migration_files import (
+    SqliteBundleChange,
+    apply_sqlite_bundle_changes,
+    cleanup_sqlite_bundles,
+    copy_sqlite_bundle,
 )
 
 _VERSION = 1
@@ -192,20 +197,15 @@ def migrate_platform_state_identities(  # noqa: PLR0913
         _temporary_path(paths.runtime_state),
         _temporary_path(paths.ai_memory),
     )
-    installed: list[tuple[Path, bool]] = []
     try:
         _build_targets(paths, temporary)
         _validate_target_files(temporary, expected)
-        for source, target in zip(paths.targets, temporary, strict=True):
-            existed = source.is_file()
-            target.replace(source)
-            _remove_sidecars(source)
-            installed.append((source, existed))
-    except BaseException:
-        _restore_sources(installed, backup)
-        for path in temporary:
-            _remove_sqlite_bundle(path)
-        raise
+        apply_sqlite_bundle_changes(tuple(
+            SqliteBundleChange(source, target, backup.files.get(source))
+            for source, target in zip(paths.targets, temporary, strict=True)
+        ))
+    finally:
+        cleanup_sqlite_bundles(temporary)
     return PlatformStateMigrationResult(
         applied=True,
         already_migrated=False,
@@ -514,7 +514,7 @@ def _backup_sources(paths: PlatformStatePaths, root: Path) -> _Backup:
             continue
         relative = _backup_relative(paths.data_root, label, path)
         destination = root / relative
-        _copy_sqlite_bundle(path, destination)
+        copy_sqlite_bundle(path, destination)
         files[path] = destination
     (root / "manifest.json").write_text(
         json.dumps(
@@ -538,22 +538,6 @@ def _backup_relative(data_root: Path, label: str, path: Path) -> Path:
     return Path("external") / label / path.name
 
 
-def _copy_sqlite_bundle(source: Path, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    for suffix in ("-wal", "-shm"):
-        sidecar = Path(f"{source}{suffix}")
-        if sidecar.is_file():
-            shutil.copy2(sidecar, Path(f"{destination}{suffix}"))
-
-
-def _restore_sources(installed: list[tuple[Path, bool]], backup: _Backup) -> None:
-    for source, existed in installed:
-        _remove_sqlite_bundle(source)
-        if existed:
-            _copy_sqlite_bundle(backup.files[source], source)
-
-
 def _temporary_path(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     return path.with_name(f".{path.name}.platform-migrating-{uuid4().hex}")
@@ -564,16 +548,6 @@ def _unique_backup_path(root: Path, timestamp: str) -> Path:
     if not candidate.exists():
         return candidate
     return root / f"{timestamp}-{uuid4().hex[:8]}"
-
-
-def _remove_sidecars(path: Path) -> None:
-    for suffix in ("-wal", "-shm"):
-        Path(f"{path}{suffix}").unlink(missing_ok=True)
-
-
-def _remove_sqlite_bundle(path: Path) -> None:
-    path.unlink(missing_ok=True)
-    _remove_sidecars(path)
 
 
 def _read(path: Path) -> sqlite3.Connection:
