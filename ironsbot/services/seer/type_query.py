@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.seer_data.type_matchup_repository import (
+    load_type_matchup_dataset,
+)
 from ironsbot.services.seer.query_result import (
     QueryChoice,
     QueryReply,
@@ -13,13 +15,11 @@ from ironsbot.services.seer.query_result import (
 from ironsbot.services.seer.type_calc import (
     TypeCombinationSnapshot,
     TypeMatchup,
-    load_custom_type_matchup,
-    load_type_matchup_by_id,
+    custom_type_matchup,
+    type_matchup_by_id,
 )
 
 if TYPE_CHECKING:
-    from seerapi_models.element_type import TypeCombinationORM
-
     from ironsbot.services.seer.data import SeerDataAccess
 
 TypeMatchupRenderer = Callable[[TypeMatchup], Awaitable[bytes]]
@@ -44,7 +44,12 @@ class TypeQueryService:
                 target_id = None
             elif len(combinations) == 1:
                 target = combinations[0]
-                if _contains_normal_type(target):
+                if _contains_normal_type_ids(
+                    int(target.primary_id),
+                    None
+                    if target.secondary_id is None
+                    else int(target.secondary_id),
+                ):
                     return QueryResult(message=NORMAL_TYPE_MESSAGE)
                 target_id = int(target.id)
             elif len(combinations) > PROMPT_MAX_ITEMS:
@@ -59,19 +64,15 @@ class TypeQueryService:
                     )
                 )
         if target_id is None:
-            with self._data.query(
-                partial(load_custom_type_matchup, arg=arg)
-            ) as matchup:
-                resolved_matchup = matchup
+            with self._data.query(load_type_matchup_dataset) as dataset:
+                resolved_matchup = custom_type_matchup(dataset, arg=arg)
             return (
                 QueryResult()
                 if resolved_matchup is None
                 else await self._render_matchup(resolved_matchup)
             )
-        with self._data.query(
-            partial(load_type_matchup_by_id, type_id=target_id)
-        ) as matchup:
-            resolved_matchup = matchup
+        with self._data.query(load_type_matchup_dataset) as dataset:
+            resolved_matchup = type_matchup_by_id(dataset, type_id=target_id)
         return (
             QueryResult()
             if resolved_matchup is None
@@ -79,9 +80,8 @@ class TypeQueryService:
         )
 
     async def select(self, type_id: int) -> QueryResult[int]:
-        with self._data.query(
-            partial(load_type_matchup_by_id, type_id=type_id)
-        ) as matchup:
+        with self._data.query(load_type_matchup_dataset) as dataset:
+            matchup = type_matchup_by_id(dataset, type_id=type_id)
             if matchup is None:
                 return QueryResult(
                     message=(
@@ -101,9 +101,19 @@ class TypeQueryService:
 
 
 def _contains_normal_type(
-    type_combination: TypeCombinationORM | TypeCombinationSnapshot,
+    type_combination: TypeCombinationSnapshot,
 ) -> bool:
-    return NORMAL_TYPE_ID in {
+    return _contains_normal_type_ids(
         type_combination.primary_id,
         type_combination.secondary_id,
+    )
+
+
+def _contains_normal_type_ids(
+    primary_id: int,
+    secondary_id: int | None,
+) -> bool:
+    return NORMAL_TYPE_ID in {
+        primary_id,
+        secondary_id,
     }

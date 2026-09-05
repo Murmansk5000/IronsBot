@@ -253,7 +253,11 @@ class DatabaseSync:
                     f"数据库 '{name}' 同步失败（HTTP 客户端错误）：{message}"
                 )
                 return self._fail(name, local_before, remote, message)
-            except (OSError, ValueError):
+            except ValueError as error:
+                message = f"{type(error).__name__}: {error}".rstrip(": ")
+                logger.exception(f"数据库 '{name}' 同步失败（发布契约或导入错误）")
+                return self._fail(name, local_before, remote, message)
+            except OSError:
                 logger.exception(f"数据库 '{name}' 同步失败（文件或导入错误）")
                 return self._fail(name, local_before, remote, "文件或导入错误")
             else:

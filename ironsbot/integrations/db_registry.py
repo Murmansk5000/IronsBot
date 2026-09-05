@@ -12,6 +12,7 @@ from ironsbot.integrations.storage.sqlite import SqliteDatabase
 
 logger = logging.getLogger(__name__)
 DatabaseLoadListener = Callable[[], object]
+DatabaseLoadValidator = Callable[[Engine], object]
 
 
 class DatabaseManager:
@@ -24,6 +25,7 @@ class DatabaseManager:
     def __init__(self) -> None:
         self._engines: dict[str, Engine] = {}
         self._load_listeners: dict[str, list[DatabaseLoadListener]] = {}
+        self._load_validators: dict[str, list[DatabaseLoadValidator]] = {}
 
     @staticmethod
     def _create_memory_engine() -> Engine:
@@ -53,6 +55,14 @@ class DatabaseManager:
         """注册数据库成功换版后的同步观察器。"""
         self._load_listeners.setdefault(name, []).append(listener)
 
+    def add_load_validator(
+        self,
+        name: str,
+        validator: DatabaseLoadValidator,
+    ) -> None:
+        """Register a validation step for a staged database before replacement."""
+        self._load_validators.setdefault(name, []).append(validator)
+
     def load_from_file(self, name: str, file_path: str) -> None:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
@@ -63,6 +73,12 @@ class DatabaseManager:
                 source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
             finally:
                 raw_conn.close()
+
+        try:
+            self._validate_loaded(name, new_engine)
+        except Exception:
+            new_engine.dispose()
+            raise
 
         old_engine = self._engines.get(name)
         self._engines[name] = new_engine
@@ -93,6 +109,11 @@ class DatabaseManager:
             engine.dispose()
         self._engines.clear()
         self._load_listeners.clear()
+        self._load_validators.clear()
+
+    def _validate_loaded(self, name: str, engine: Engine) -> None:
+        for validator in self._load_validators.get(name, ()):
+            validator(engine)
 
     def _notify_loaded(self, name: str) -> None:
         for listener in self._load_listeners.get(name, ()):

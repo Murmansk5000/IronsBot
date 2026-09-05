@@ -30,7 +30,10 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
-_PET_INFO_CACHE_CATEGORY = "pet_info_v18"
+# Keep this aligned with the published manifest scope. The renderer source
+# fingerprint already invalidates previous layouts without turning the cache
+# category into a versioned implementation detail.
+_PET_INFO_CACHE_CATEGORY = "pet_info"
 PET_INFO_RENDERER_SOURCE_PATH = Path(__file__).resolve()
 
 

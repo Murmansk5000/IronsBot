@@ -13,6 +13,7 @@ from ironsbot.integrations.storage.seer_assets import (
 from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ironsbot.services.seer.images import SeerImageSource
@@ -54,7 +55,12 @@ class FakeImageSource:
         return await self.fetch("url", _url)
 
 
-def _store(source: FakeImageSource, directory: Path) -> SeerAssetStore:
+def _store(
+    source: FakeImageSource,
+    directory: Path,
+    *,
+    source_identity_getter: Callable[[], str] | None = None,
+) -> SeerAssetStore:
     return SeerAssetStore(
         cast("SeerImageSource", source),
         directory,
@@ -64,6 +70,7 @@ def _store(source: FakeImageSource, directory: Path) -> SeerAssetStore:
             max_network_concurrent=4,
             negative_ttl_seconds=300,
         ),
+        source_identity_getter=source_identity_getter,
     )
 
 
@@ -93,6 +100,25 @@ async def test_asset_store_reads_verified_asset_from_disk(tmp_path: Path) -> Non
     restored = FakeImageSource(error=AssertionError("network should not run"))
     assert await _store(restored, tmp_path).fetch("pet_head", "2") == b"persisted"
     assert restored.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_asset_store_does_not_reuse_a_prior_asset_revision(
+    tmp_path: Path,
+) -> None:
+    assert await _store(
+        FakeImageSource(result=b"old"),
+        tmp_path,
+        source_identity_getter=lambda: "assets@old",
+    ).fetch("pet_head", "2") == b"old"
+
+    refreshed = FakeImageSource(result=b"new")
+    assert await _store(
+        refreshed,
+        tmp_path,
+        source_identity_getter=lambda: "assets@new",
+    ).fetch("pet_head", "2") == b"new"
+    assert refreshed.calls == 1
 
 
 @pytest.mark.asyncio

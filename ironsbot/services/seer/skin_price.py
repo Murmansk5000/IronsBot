@@ -1,24 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-import logging
-import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
-
-from seerapi_models import PetSkinORM
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
-from sqlmodel import select
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
-
-    from sqlmodel import Session
+    from collections.abc import Iterable
 
 FASHION_TICKET_VALUE = 10
 MAX_PRICE_ROWS = 3
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,140 +42,7 @@ class SkinDetails:
     price_lines: str
 
 
-def load_skin_details(
-    session: Session,
-    *,
-    resource_id: int,
-) -> SkinDetails | None:
-    model = session.exec(
-        select(PetSkinORM).where(PetSkinORM.resource_id == resource_id)
-    ).first()
-    if model is None:
-        return None
-
-    series_name = "无"
-    if model.series:
-        series_name = model.series.name
-        if model.sub_type:
-            series_name += f" - {model.sub_type.name}"
-
-    return SkinDetails(
-        pet_name=model.pet.name,
-        series_name=series_name,
-        card_price=model.card_price,
-        price_lines=_format_skin_price_lines_for_session(
-            session,
-            model.id,
-            existing_card_price=model.card_price,
-        ),
-    )
-
-
-def _format_skin_price_lines_for_session(
-    session: Session,
-    skin_id: int,
-    *,
-    existing_card_price: int | None = None,
-) -> str:
-    try:
-        shop_price = _load_shop_price(session, skin_id)
-        store_prices = _load_store_prices(session, skin_id)
-    except SQLAlchemyError:
-        logger.exception("failed to load skin price rows from IronsBot SQLite")
-        return ""
-
-    return _format_skin_price_lines(
-        shop_price=shop_price,
-        store_prices=store_prices,
-        existing_card_price=existing_card_price or 0,
-    )
-
-
-def _load_shop_price(
-    session: Session,
-    skin_id: int,
-) -> SkinShopPrice | None:
-    row = session.execute(
-        text(
-            """
-            SELECT skin_id, resource_id, card_price, diamond_price, original_price
-            FROM skin_shop_price
-            WHERE skin_id = :skin_id
-            LIMIT 1
-            """
-        ),
-        params={"skin_id": skin_id},
-    ).first()
-    if row is None:
-        return None
-
-    mapping = cast(
-        "Mapping[str, Any]",
-        row._mapping if hasattr(row, "_mapping") else row,
-    )
-    return SkinShopPrice(
-        skin_id=int(mapping["skin_id"]),
-        resource_id=int(mapping["resource_id"] or 0),
-        card_price=int(mapping["card_price"] or 0),
-        diamond_price=int(mapping["diamond_price"] or 0),
-        original_price=int(mapping["original_price"] or 0),
-    )
-
-
-def _load_store_prices(
-    session: Session,
-    skin_id: int,
-) -> list[SkinStorePrice]:
-    now = int(time.time())
-    rows = session.execute(
-        text(
-            """
-            SELECT
-                skin_id,
-                pool_id,
-                price,
-                original_price,
-                discount_rate,
-                selected_price,
-                ticket_id,
-                ticket_num,
-                start_time,
-                end_time
-            FROM skin_store_price
-            WHERE skin_id = :skin_id
-              AND (start_time <= 0 OR start_time <= :now)
-              AND (end_time <= 0 OR :now <= end_time)
-            ORDER BY pool_id, skin_id, row_index
-            LIMIT :limit
-            """
-        ),
-        params={"skin_id": skin_id, "now": now, "limit": MAX_PRICE_ROWS},
-    ).all()
-
-    prices: list[SkinStorePrice] = []
-    for row in rows:
-        mapping = cast(
-            "Mapping[str, Any]",
-            row._mapping if hasattr(row, "_mapping") else row,
-        )
-        prices.append(
-            SkinStorePrice(
-                skin_id=int(mapping["skin_id"]),
-                pool_id=int(mapping["pool_id"] or 0),
-                price=int(mapping["price"] or 0),
-                original_price=int(mapping["original_price"] or 0),
-                discount_rate=int(mapping["discount_rate"] or 0),
-                selected_price=int(mapping["selected_price"] or 0),
-                ticket_id=int(mapping["ticket_id"] or 0),
-                ticket_num=int(mapping["ticket_num"] or 0),
-                start_time=int(mapping["start_time"] or 0),
-                end_time=int(mapping["end_time"] or 0),
-            )
-        )
-    return prices
-
-
-def _format_skin_price_lines(
+def format_skin_price_lines(
     *,
     shop_price: SkinShopPrice | None,
     store_prices: list[SkinStorePrice],

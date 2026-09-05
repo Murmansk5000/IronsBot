@@ -101,3 +101,4 @@ async def test_render_adapter_closes_sql_session_before_fetching_assets(
     assert result == b"rendered"
     assert captured["templates"]["pet_id"] == 1
     assert cache.values
+    assert {category for category, _key in cache.values} == {"pet_info"}
