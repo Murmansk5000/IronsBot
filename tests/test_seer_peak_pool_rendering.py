@@ -128,11 +128,11 @@ async def test_master_pool_renders_cost_groups_and_changes() -> None:
         return b"master-image"
 
     result = await render_peak_pool(
-        _Cache(),
-        _Images(),
+        _Cache(),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
         render_html,
         snapshot,
-        "大师池",  # type: ignore[arg-type]
+        "大师池",
     )
     assert result == b"master-image"
     assert captured["change_label"] == "大师池"
