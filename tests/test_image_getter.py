@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+from io import BytesIO
 from typing import Any
 
 import httpx
 import pytest
+from PIL import Image
 
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
@@ -11,6 +13,7 @@ from ironsbot.services.seer.images import ImageSourceError
 
 HTTP_NOT_FOUND = 404
 HTTP_OK = 200
+MINTMARK_SOURCE_COUNT = 2
 
 
 class _ConcurrentDetectingClient(httpx.AsyncClient):
@@ -119,6 +122,16 @@ async def _fetch_preview_failure() -> None:
         await clients.close()
 
 
+async def _fetch_mintmark_with_all_sources_unavailable() -> tuple[bytes, list[str]]:
+    cache = _PreviewFallbackClient(fail_all=True)
+    clients = HttpClients(cache=cache)
+    images = HttpSeerImageSource(clients)
+    try:
+        return await images.fetch("mintmark", "20447"), cache.urls
+    finally:
+        await clients.close()
+
+
 def test_image_fetches_are_serialized_for_shared_cache_client() -> None:
     assert asyncio.run(_fetch_many_images()) == 1
 
@@ -155,3 +168,13 @@ def test_empty_image_request_error_keeps_actionable_details() -> None:
 
     assert "ConnectError" in str(captured.value)
     assert "cdn.jsdelivr.net" in str(captured.value)
+
+
+def test_mintmark_uses_local_png_when_all_remote_assets_are_unavailable() -> None:
+    data, urls = asyncio.run(_fetch_mintmark_with_all_sources_unavailable())
+
+    assert len(urls) == MINTMARK_SOURCE_COUNT
+    assert all("dummyimage.com" not in url for url in urls)
+    with Image.open(BytesIO(data)) as image:
+        assert image.format == "PNG"
+        assert image.size == (96, 96)

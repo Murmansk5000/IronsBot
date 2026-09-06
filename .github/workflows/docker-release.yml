@@ -107,5 +107,7 @@ jobs:
                   push: true
                   tags: ${{ steps.metadata.outputs.tags }}
                   labels: ${{ steps.metadata.outputs.labels }}
+                  build-args: |
+                      IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max

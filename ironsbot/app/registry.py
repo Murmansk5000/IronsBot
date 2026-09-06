@@ -141,15 +141,6 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
 
         scheduler.bind(backend)
 
-    async def report_render_crash(_bot: Bot) -> None:
-        from ironsbot.services.seer.render_crash_report import (
-            report_previous_render_crash,
-        )
-
-        await report_previous_render_crash(
-            admin_notices,
-        )
-
     push_time_refresher = partial(
         messaging.refresh_push_time_jobs,
         scheduler=scheduler,
@@ -577,7 +568,6 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                         ),
                     ),
                 ),
-                first_bot_connect=(("render_crash_report", report_render_crash),),
             ),
         ),
         PluginDefinition(
