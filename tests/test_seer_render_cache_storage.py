@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+import pytest
+
 from ironsbot.integrations.storage.render_cache import (
     UNKNOWN_RENDER_CACHE_VERSION,
     FileRenderCache,
@@ -41,6 +43,19 @@ def test_render_cache_skips_unknown_db_version(tmp_path: Path) -> None:
 
     assert cache.get("pet_info", "25") is None
     assert not cache_dir.exists()
+
+
+def test_render_cache_is_scoped_by_current_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _test_cache(tmp_path)
+    monkeypatch.setenv("IRONSBOT_PROJECT_URL", "https://github.com/owner-a/IronsBot")
+    cache.put("pet_info", "25", b"owner-a")
+
+    monkeypatch.setenv("IRONSBOT_PROJECT_URL", "https://github.com/owner-b/IronsBot")
+
+    assert cache.get("pet_info", "25") is None
 
 
 def test_render_cache_cleanup_removes_oldest_files_first(tmp_path: Path) -> None:
