@@ -84,7 +84,7 @@ def test_builtin_push_options_split_startup_admin_notices() -> None:
     assert labels["ai_chat_error_notice"] == "AI聊天异常通知"
     assert labels["bili_login_notice"] == "B站登录通知"
     assert labels["headless_seer_notice"] == "无头赛尔号通知"
-    assert labels["render_crash_notice"] == "精灵渲染崩溃通知"
+    assert labels["render_crash_notice"] == "精灵渲染异常通知"
     assert labels["red_packet_notice"] == "红包提醒"
     assert labels["admin_notice"] == "其他管理通知"
 

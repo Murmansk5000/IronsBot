@@ -266,6 +266,41 @@ async def test_single_pet_info_query_renders_image() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pet_info_render_failure_notifies_current_process() -> None:
+    data = FakeData()
+    pet = _pet(4930, "帝皇铠甲")
+    data.pets = (pet,)
+    notices: list[str] = []
+
+    async def render(_pet: PetORM) -> bytes:
+        failure = RuntimeError("renderer private details")
+        raise failure
+
+    async def notify(message: str) -> object:
+        notices.append(message)
+        return object()
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", FakeImages()),
+        render,
+        notify,
+    )
+
+    with pytest.raises(RuntimeError, match="renderer private details"):
+        await service.search_info("帝皇铠甲")
+
+    assert notices == [
+        "⚠️ 精灵信息渲染失败。\n"
+        "精灵：帝皇铠甲\n"
+        "精灵ID：4930\n"
+        "资源ID：4930\n"
+        "异常类型：RuntimeError"
+    ]
+    assert "private details" not in notices[0]
+
+
+@pytest.mark.asyncio
 async def test_pet_info_query_renders_before_data_session_closes() -> None:
     data = FakeData()
     pet = SessionBoundPet(data)
