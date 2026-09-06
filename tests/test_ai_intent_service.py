@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 
 import pytest
 
-from ironsbot.config.models.ai import AiConfig
+from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
 from ironsbot.core.features import FeatureConfig
 from ironsbot.core.messaging import AiIntentAction
 from ironsbot.services.ai import intent
@@ -151,7 +151,14 @@ def _service(
     request_completion: CompletionRequester = _yes_completion,
 ) -> AiService:
     config = AiConfig(
-        api_key="key",
+        endpoints=[
+            AiEndpointConfig(
+                name="test",
+                base_url="https://example.test/v1",
+                models=["test-model"],
+                api_key="key",
+            )
+        ],
         memory=False,
         intent_actions={action.id: action},
     )

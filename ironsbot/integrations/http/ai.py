@@ -8,8 +8,11 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from ironsbot.services.ai.client import AiRequestTimeoutError
-from ironsbot.services.ai.responses import AiResponseResult, parse_ai_response
+from ironsbot.services.ai.responses import (
+    AiRequestAttempt,
+    AiResponseResult,
+    parse_ai_response,
+)
 
 if TYPE_CHECKING:
     from ironsbot.config.models.ai import AiConfig
@@ -29,37 +32,81 @@ class HttpAiCompletionClient:
         self,
         messages: list[HistoryMessage],
     ) -> AiResponseResult:
-        last_failure: Exception | AiResponseResult | None = None
-        for model in self._config.models:
-            try:
-                response = await self._client.post(
-                    f"{self._config.base_url}/chat/completions",
-                    headers=_authorization_headers(self._config.api_key),
-                    json=_completion_payload(self._config, messages, model=model),
-                    timeout=self._config.timeout,
-                    follow_redirects=True,
+        attempts: list[AiRequestAttempt] = []
+        last_failure: AiResponseResult | None = None
+
+        for endpoint in self._config.configured_endpoints:
+            for model in endpoint.models:
+                try:
+                    response = await self._client.post(
+                        f"{endpoint.base_url}/chat/completions",
+                        headers=_authorization_headers(endpoint.api_key),
+                        json=_completion_payload(self._config, messages, model=model),
+                        timeout=self._config.timeout,
+                        follow_redirects=True,
+                    )
+                except httpx.TimeoutException as exc:
+                    last_failure = AiResponseResult(
+                        status_code=0,
+                        endpoint=endpoint.name,
+                        model=model,
+                        error_kind="timeout",
+                        error_title="接口响应超时",
+                        error_detail=str(exc) or "请求超时",
+                    )
+                    attempts.append(_attempt_from_result(last_failure))
+                    logger.warning(
+                        "AI endpoint timed out: endpoint=%s model=%s",
+                        endpoint.name,
+                        model,
+                    )
+                    break
+                except httpx.HTTPError as exc:
+                    last_failure = AiResponseResult(
+                        status_code=0,
+                        endpoint=endpoint.name,
+                        model=model,
+                        error_kind="network",
+                        error_title="网络请求失败",
+                        error_detail=str(exc),
+                    )
+                    attempts.append(_attempt_from_result(last_failure))
+                    logger.warning(
+                        "AI endpoint request failed: endpoint=%s model=%s error=%s",
+                        endpoint.name,
+                        model,
+                        exc,
+                    )
+                    break
+
+                result = replace(
+                    _parse_http_response(response),
+                    endpoint=endpoint.name,
+                    model=model,
                 )
-            except httpx.HTTPError as exc:
-                logger.warning("AI model request failed: model=%s error=%s", model, exc)
-                last_failure = exc
-                continue
-            result = replace(_parse_http_response(response), model=model)
-            if result.ok:
-                return result
-            logger.warning(
-                "AI model returned an error: model=%s HTTP=%s detail=%s",
-                model,
-                result.status_code,
-                result.error_detail,
-            )
-            last_failure = result
-        if isinstance(last_failure, AiResponseResult):
-            return last_failure
-        if isinstance(last_failure, httpx.TimeoutException):
-            raise AiRequestTimeoutError from last_failure
+                if result.ok:
+                    return replace(result, attempts=tuple(attempts))
+                last_failure = result
+                attempts.append(_attempt_from_result(result))
+                logger.warning(
+                    "AI model returned an error: endpoint=%s model=%s HTTP=%s "
+                    "detail=%s",
+                    endpoint.name,
+                    model,
+                    result.status_code,
+                    result.error_detail,
+                )
+                if _should_switch_endpoint(result):
+                    break
+
         if last_failure is not None:
-            raise last_failure
-        raise RuntimeError(AI_MODELS_EMPTY_ERROR)
+            return replace(last_failure, attempts=tuple(attempts))
+        return AiResponseResult(
+            status_code=0,
+            error_kind="network",
+            error_title="AI 没有可用端点",
+            error_detail=AI_MODELS_EMPTY_ERROR,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +202,20 @@ def _completion_payload(
             "type": "enabled" if config.thinking else "disabled",
         },
     }
+
+
+def _attempt_from_result(result: AiResponseResult) -> AiRequestAttempt:
+    return AiRequestAttempt(
+        endpoint=result.endpoint,
+        model=result.model,
+        status_code=result.status_code or None,
+        error_title=result.error_title,
+        error_detail=result.error_detail,
+    )
+
+
+def _should_switch_endpoint(result: AiResponseResult) -> bool:
+    return result.status_code in {401, 402, 403, 429} or result.status_code >= 500  # noqa: PLR2004
 
 
 def _test_payload(settings: AiApiSettings) -> dict[str, Any]:
