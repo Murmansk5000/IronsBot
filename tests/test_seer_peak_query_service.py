@@ -195,7 +195,7 @@ async def test_master_pool_query_uses_only_master_weekly_transitions() -> None:
         expert=False, master=True, progress=report,
     )
     assert result.image == b"pool"
-    assert result.reference is None
+    assert result.reference is SeerInfoReference.PEAK_MASTER_POOL
     snapshot, title = rendered["pool"]
     assert snapshot.master
     assert snapshot.transitions == (PeakPoolTransitionSnapshot(pet, 35, 20),)

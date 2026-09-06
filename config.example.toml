@@ -1521,6 +1521,7 @@ cache_max_size_mb = 200
 # weekly_preview: 下周预告。
 # bilibili_history: “动态”历史菜单和无历史提示；单条动态仍只保留原文链接。
 # peak_pool: 竞技池和专家池。
+# peak_master_pool: 大师池。
 # peak_vote: 巅峰投票。
 # peak_player_rank: 竞技/狂野/专家全服段位榜。
 # peak_suit_rank: 竞技/狂野/专家套装榜。
@@ -1532,6 +1533,7 @@ server_status = true
 weekly_preview = true
 bilibili_history = true
 peak_pool = true
+peak_master_pool = true
 peak_vote = true
 peak_player_rank = true
 peak_suit_rank = true

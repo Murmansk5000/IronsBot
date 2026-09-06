@@ -688,6 +688,7 @@ class ExternalReferencesConfig(BaseModel):
     weekly_preview: StrictBool = True
     bilibili_history: StrictBool = True
     peak_pool: StrictBool = True
+    peak_master_pool: StrictBool = True
     peak_vote: StrictBool = True
     peak_player_rank: StrictBool = True
     peak_suit_rank: StrictBool = True
