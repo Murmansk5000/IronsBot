@@ -20,43 +20,53 @@ async def check_configured_ai_api(
 ) -> None:
     """Verify a configured AI endpoint without ever exposing its API key."""
 
-    if not config.api_key.strip():
+    available: list[str] = []
+    failures: list[str] = []
+    for endpoint in config.endpoints:
+        if not endpoint.api_key.strip():
+            failures.append(f"{endpoint.name}：未配置 {endpoint.key_environment_name}")
+            continue
+        for model in endpoint.models:
+            result = await check_ai_api(
+                AiApiSettings(
+                    api_key=endpoint.api_key,
+                    base_url=endpoint.base_url,
+                    model=model,
+                    timeout=min(config.timeout, _STARTUP_CHECK_TIMEOUT_SECONDS),
+                    thinking=config.thinking,
+                )
+            )
+            if result.ok:
+                logger.info(
+                    "AI API startup check passed: endpoint={} model={} HTTP {} {} ms",
+                    endpoint.name,
+                    model,
+                    result.status_code,
+                    result.elapsed_ms,
+                )
+                available.append(
+                    f"{endpoint.name}/{model}"
+                    f"（HTTP {result.status_code}，{result.elapsed_ms} ms）"
+                )
+                break
+            failures.append(f"{endpoint.name}/{model}：{result.error}")
+
+    if available:
+        startup_notice.add(
+            "startup_ai_api_check",
+            "AI API startup check",
+            "AI API 检查完成。\n"
+            f"可用：{'；'.join(available)}"
+            + (f"\n不可用：{'；'.join(failures)}" if failures else ""),
+        )
         return
 
-    failures: list[str] = []
-    for model in config.models:
-        result = await check_ai_api(
-            AiApiSettings(
-                api_key=config.api_key,
-                base_url=config.base_url,
-                model=model,
-                timeout=min(config.timeout, _STARTUP_CHECK_TIMEOUT_SECONDS),
-                thinking=config.thinking,
-            )
-        )
-        if result.ok:
-            logger.info(
-                "AI API startup check passed: model={}, HTTP {}, {} ms",
-                model,
-                result.status_code,
-                result.elapsed_ms,
-            )
-            startup_notice.add(
-                "startup_ai_api_check",
-                "AI API startup check",
-                "AI API 检查通过。\n"
-                f"模型：{model}\n"
-                f"HTTP：{result.status_code}\n"
-                f"耗时：{result.elapsed_ms} ms",
-            )
-            return
-        failures.append(f"{model}：{result.error}")
-
     logger.error("AI API startup check failed: {}", "; ".join(failures))
+    endpoint_names = ", ".join(endpoint.name for endpoint in config.endpoints)
     startup_notice.add(
         "startup_ai_api_check",
         "AI API startup check",
         "AI API 检查失败。\n"
-        f"已尝试模型：{', '.join(config.models)}\n"
+        f"已配置端点：{endpoint_names or '无'}\n"
         f"详情：{'；'.join(failures)}",
     )

@@ -5,7 +5,7 @@ import nonebot
 import pytest
 from pytest import MonkeyPatch
 
-from ironsbot.config.models.ai import AiConfig
+from ironsbot.config.models.ai import AiConfig, AiEndpointConfig
 from ironsbot.core.features import FeatureConfig
 from ironsbot.plugins.ai import _is_reserved_private_command
 from ironsbot.services.ai.history import HistoryMessage
@@ -60,7 +60,17 @@ def _ai_service(
     superusers: tuple[int, ...] = (),
     request_completion: CompletionRequester = _successful_completion,
 ) -> AiService:
-    config = AiConfig(api_key="test-key", memory=False)
+    config = AiConfig(
+        endpoints=[
+            AiEndpointConfig(
+                name="test",
+                base_url="https://example.test/v1",
+                models=["test-model"],
+                api_key="test-key",
+            )
+        ],
+        memory=False,
+    )
     runtime = build_test_runtime(
         feature_config=FeatureConfig(
             group_policy={
