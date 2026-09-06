@@ -452,7 +452,11 @@ class PeakQueryService:
         )
         return PeakQueryResult(
             image=image,
-            reference=None if master else SeerInfoReference.PEAK_POOL,
+            reference=(
+                SeerInfoReference.PEAK_MASTER_POOL
+                if master
+                else SeerInfoReference.PEAK_POOL
+            ),
         )
 
     def _pool_render_snapshot(
