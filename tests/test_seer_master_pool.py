@@ -25,13 +25,15 @@ def test_master_pool_database_reads_costs_and_official_resource_ids() -> None:
         session.execute(
             text(
                 "CREATE TABLE peak_master_pool (id INTEGER, cost INTEGER, "
-                "pet_ids_json TEXT, subkey_total INTEGER)"
+                "pet_ids_json TEXT, subkey_total INTEGER, configured_time TEXT)"
             )
         )
         session.execute(
             text(
-                "INSERT INTO peak_master_pool VALUES (1,35,'[5000]',20260904),"
-                "(2,20,'[4354]',20260904),(3,0,'[]',20260904)"
+                "INSERT INTO peak_master_pool VALUES "
+                "(1,35,'[5000]',20260904,'2026_11_27 10:00:00'),"
+                "(2,20,'[4354]',20260904,'2026_11_27 10:00:00'),"
+                "(3,0,'[]',20260904,'2026_11_27 10:00:00')"
             )
         )
         session.execute(
@@ -46,6 +48,9 @@ def test_master_pool_database_reads_costs_and_official_resource_ids() -> None:
     assert [pool.count for pool in pools] == [35, 20, 0]
     assert [pools[0].pets[0].resource_id, pools[1].pets[0].id] == [45000, 4354]
     assert pools[0].start_time.strftime("%Y-%m-%d") == "2026-09-04"
+    assert pools[0].end_time.strftime("%Y-%m-%d %H:%M:%S") == (
+        "2026-11-27 10:00:00"
+    )
     assert pools[2].pets == ()
 
 
