@@ -546,6 +546,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
                 seer_images,
                 render_scheduler.render,
             ),
+            partial(
+                admin_notices.send,
+                subscription_key="render_crash_notice",
+                action_name="pet render failure notice",
+            ),
         ),
         PeakQueryService(
             seer_database,

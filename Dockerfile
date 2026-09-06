@@ -25,8 +25,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ARG IRONSBOT_PROJECT_URL=""
 ENV TZ Asia/Shanghai
 ENV PYTHONPATH=/app
+ENV IRONSBOT_PROJECT_URL=${IRONSBOT_PROJECT_URL}
 # Emit Python stack traces to container logs when a native extension crashes.
 ENV PYTHONFAULTHANDLER=1
 
