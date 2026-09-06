@@ -915,6 +915,12 @@ summary_max_chars = 500
 # ZH: 长动态全文推送是否调用 AI 摘要；关闭后改为发送原文节选。
 summary_use_ai = true
 
+# Default: true
+# EN: Combine multiple static images from one dynamic into an adaptive PNG collage.
+#     Animated images and composition failures fall back to the original images.
+# ZH: 将同一条动态的多张静态图片合成为自适应 PNG 拼图；动态图或合成失败时回退原图。
+combine_images = true
+
 # Default: {}
 # EN: Group push targets keyed by feature group alias or group ID.
 # ZH: 群推送目标，键可以是群别名或群号。

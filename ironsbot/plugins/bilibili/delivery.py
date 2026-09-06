@@ -8,11 +8,18 @@ from nonebot.log import logger
 
 from ironsbot.services.bilibili.parser import (
     dynamic_content,
+    dynamic_id,
     dynamic_image_urls,
     dynamic_url,
     item_author_mid,
     item_author_name,
 )
+from ironsbot.services.messaging.image_collage import (
+    ImageCollageError,
+    ImageCollageService,
+)
+
+MIN_COLLAGE_IMAGES = 2
 
 
 def build_dynamic_link_message(
@@ -81,6 +88,50 @@ def build_dynamic_images_message(item: dict[str, Any]) -> Message | None:
     return message or None
 
 
+async def build_adaptive_dynamic_images_message(
+    item: dict[str, Any],
+    *,
+    image_collage: ImageCollageService | None,
+    combine_images: bool,
+) -> Message | None:
+    """Combine static images, falling back to the original URL segments."""
+
+    fallback = build_dynamic_images_message(item)
+    image_urls = _sanitized_dynamic_image_urls(item)
+    if (
+        not combine_images
+        or image_collage is None
+        or len(image_urls) < MIN_COLLAGE_IMAGES
+    ):
+        return fallback
+    try:
+        collage = await image_collage.compose_urls(image_urls)
+    except ImageCollageError as error:
+        logger.warning(
+            "Bilibili image collage fallback: dynamic={} images={} reason={}",
+            dynamic_id(item),
+            len(image_urls),
+            error,
+        )
+        return fallback
+    except Exception:  # noqa: BLE001 - image delivery must retain its fallback
+        logger.exception(
+            "Bilibili image collage failed unexpectedly: dynamic={} images={}",
+            dynamic_id(item),
+            len(image_urls),
+        )
+        return fallback
+    return Message(MessageSegment.image(collage))
+
+
+def _sanitized_dynamic_image_urls(item: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(
+        sanitized
+        for image_url in dynamic_image_urls(item)
+        if (sanitized := image_url.strip().rstrip("]"))
+    )
+
+
 def build_dynamic_text_message(
     item: dict[str, Any],
     content_override: str | None = None,
@@ -95,11 +146,20 @@ def build_dynamic_text_message(
         return None
 
 
-def build_dynamic_detail_messages(item: dict[str, Any]) -> tuple[Message, ...]:
+async def build_dynamic_detail_messages(
+    item: dict[str, Any],
+    *,
+    image_collage: ImageCollageService | None = None,
+    combine_images: bool = True,
+) -> tuple[Message, ...]:
     """Render a history detail with text and images as separate messages."""
 
     messages = (
         build_dynamic_text_message(item),
-        build_dynamic_images_message(item),
+        await build_adaptive_dynamic_images_message(
+            item,
+            image_collage=image_collage,
+            combine_images=combine_images,
+        ),
     )
     return tuple(message for message in messages if message is not None)

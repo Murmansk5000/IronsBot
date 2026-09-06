@@ -107,6 +107,7 @@ def test_bili_config_defaults_to_official_account() -> None:
     assert config.push.content_max_chars == DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS
     assert config.push.summary_max_chars == DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS
     assert config.push.summary_use_ai
+    assert config.push.combine_images
     assert config.seer_categories.default_muted_categories == list(
         DEFAULT_SEER_MUTED_CATEGORIES
     )
@@ -115,6 +116,10 @@ def test_bili_config_defaults_to_official_account() -> None:
 def test_bili_config_rejects_removed_default_mode() -> None:
     with pytest.raises(ValueError, match="default_mode"):
         _bili_config(push={"default_mode": "full"})
+
+
+def test_bili_config_can_disable_image_collages() -> None:
+    assert not _bili_config(push={"combine_images": False}).push.combine_images
 
 
 def test_bili_config_accepts_alias_group_accounts() -> None:

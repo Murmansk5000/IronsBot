@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         BiliImageDeliveryRetryStore,
     )
     from ironsbot.services.bilibili.targets import BiliTargetService
+    from ironsbot.services.messaging.image_collage import ImageCollageService
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ class BilibiliService:
     fetch_feed: Callable[[str], Awaitable[BiliFeedResponse]]
     fetch_detail: DynamicDetailFetcher
     spawn: TaskSpawner
+    image_collage: ImageCollageService | None = None
     external_references: SeerInfoReferences | None = None
     image_delivery_retries: BiliImageDeliveryRetryStore | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
