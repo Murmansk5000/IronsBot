@@ -327,6 +327,7 @@ PeakPoolRenderer = Callable[
 class PeakVoteRank(TypedDict):
     items: list[RankEntry]
     title: str
+    period: str
     pets: list[PeakPetSnapshot]
 
 
@@ -579,18 +580,26 @@ class PeakQueryService:
             end_time = normalize_peak_vote_time(vote.end_time)
             if not start_time <= now <= end_time:
                 continue
-            title = (
-                f"限{vote.count}池票选"
-                f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
-                f"{end_time:%Y-%m-%d}"
-            )
             if vote.count == LIMIT_POOL_VOTE_COUNT:
+                title = "限制级"
                 rank = await game.get_limit_pool_vote(vote.subkey)
             elif vote.count == SEMI_LIMIT_POOL_VOTE_COUNT:
+                title = "准限制级"
                 rank = await game.get_semi_limit_pool_vote(vote.subkey)
             else:
                 continue
-            pools.append({"items": rank, "title": title, "pets": list(vote.pets)})
+            period = (
+                f"{start_time.month}月{start_time.day}日{start_time.hour}点"
+                f" - {end_time.month}月{end_time.day}日{end_time.hour}点"
+            )
+            pools.append(
+                {
+                    "items": rank,
+                    "title": title,
+                    "period": period,
+                    "pets": list(vote.pets),
+                }
+            )
         if not pools:
             return PeakQueryResult(message="❌当前没有进行中的巅峰投票。")
         await progress("正在生成图片...")
