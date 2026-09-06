@@ -4,6 +4,8 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
+from ironsbot.project_metadata import current_project_url
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
@@ -27,7 +29,8 @@ class FileRenderCache:
         version = self._db_version_getter()
         if version == UNKNOWN_RENDER_CACHE_VERSION:
             return None
-        version_hash = hashlib.sha256(version.encode()).hexdigest()[:12]
+        cache_scope = f"{version}\0{current_project_url()}"
+        version_hash = hashlib.sha256(cache_scope.encode()).hexdigest()[:12]
         return self._cache_dir / f"{category}_{content_key}_{version_hash}.png"
 
     def get(self, category: str, content_key: str) -> bytes | None:
