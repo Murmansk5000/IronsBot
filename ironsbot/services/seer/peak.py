@@ -444,9 +444,9 @@ class PeakQueryService:
         image = await self._render_pool(
             render_snapshot,
             (
-                f"{label} / 精灵竞技点 / {start_time} ~ {end_time}"
+                f"{label} / 精灵竞技点 / 有效期：{start_time} ~ {end_time}"
                 if master
-                else f"{label} / {start_time} ~ {end_time}"
+                else f"{label} / 有效期：{start_time} ~ {end_time}"
             ),
         )
         return PeakQueryResult(

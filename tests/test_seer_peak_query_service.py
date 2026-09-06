@@ -199,13 +199,23 @@ async def test_master_pool_query_uses_only_master_weekly_transitions() -> None:
     snapshot, title = rendered["pool"]
     assert snapshot.master
     assert snapshot.transitions == (PeakPoolTransitionSnapshot(pet, 35, 20),)
-    assert title == "大师池 / 精灵竞技点 / 2026-09-04 ~ 2026-09-04 00:00"
+    assert title == (
+        "大师池 / 精灵竞技点 / 有效期：2026-09-04 ~ 2026-09-04 00:00"
+    )
     assert rendered["pool_session_open"] is False
     assert progress == ["正在生成图片..."]
 
 
 @pytest.mark.asyncio
-async def test_peak_pool_query_renders_with_progress() -> None:
+@pytest.mark.parametrize(
+    ("mode", "label"),
+    (("standard", "竞技池"), ("expert", "专家禁用池")),
+)
+async def test_peak_pool_query_renders_with_progress(
+    mode: str,
+    label: str,
+) -> None:
+    expert = mode == "expert"
     data = FakeData()
     data.query_result = (
         SimpleNamespace(
@@ -223,14 +233,16 @@ async def test_peak_pool_query_renders_with_progress() -> None:
         progress.append(message)
 
     result = await _service(data, FakeHeadless(), rendered).pool(
-        expert=False,
+        expert=expert,
         progress=report,
     )
 
     assert result.image == b"pool"
     assert progress == ["正在生成图片..."]
     assert rendered["pool_session_open"] is False
-    assert rendered["pool"][1] == "竞技池 / 2026-07-01 ~ 2026-07-31"
+    assert rendered["pool"][1] == (
+        f"{label} / 有效期：2026-07-01 ~ 2026-07-31"
+    )
     assert rendered["pool"][0] == PeakPoolRenderSnapshot(
         pools=(
             PeakPoolSnapshot(
@@ -244,7 +256,7 @@ async def test_peak_pool_query_renders_with_progress() -> None:
         transitions=(),
         change_state="unchanged",
         content_version="20260814:2026-08-14",
-        expert=False,
+        expert=expert,
     )
     assert result.reference is SeerInfoReference.PEAK_POOL
 
