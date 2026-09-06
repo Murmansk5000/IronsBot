@@ -2,6 +2,7 @@
 from collections.abc import Mapping
 from typing import Any
 
+from ironsbot.project_metadata import current_project_url
 from ironsbot.services.seer.rendering import TemplatePath
 
 
@@ -15,10 +16,12 @@ async def render_html_template(
 ) -> bytes:
     from nonebot_plugin_htmlkit import template_to_pic
 
+    context = dict(templates)
+    context.setdefault("project_url", current_project_url())
     return await template_to_pic(
         template_path,
         template_name,
-        templates,
+        context,
         max_width=max_width,
         allow_refit=allow_refit,
     )
