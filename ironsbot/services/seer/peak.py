@@ -435,14 +435,16 @@ class PeakQueryService:
             )
         await progress("正在生成图片...")
         start_time = pools[0].start_time.strftime("%Y-%m-%d")
-        end_time = pools[0].end_time.strftime("%Y-%m-%d")
+        end_time = pools[0].end_time.strftime(
+            "%Y-%m-%d %H:%M" if master else "%Y-%m-%d"
+        )
         render_snapshot = self._pool_render_snapshot(
             pools, expert=expert, master=master
         )
         image = await self._render_pool(
             render_snapshot,
             (
-                f"{label} / 精灵竞技点 / 配置期次 {start_time}"
+                f"{label} / 精灵竞技点 / {start_time} ~ {end_time}"
                 if master
                 else f"{label} / {start_time} ~ {end_time}"
             ),

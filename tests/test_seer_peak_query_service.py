@@ -199,7 +199,7 @@ async def test_master_pool_query_uses_only_master_weekly_transitions() -> None:
     snapshot, title = rendered["pool"]
     assert snapshot.master
     assert snapshot.transitions == (PeakPoolTransitionSnapshot(pet, 35, 20),)
-    assert title == "大师池 / 精灵竞技点 / 配置期次 2026-09-04"
+    assert title == "大师池 / 精灵竞技点 / 2026-09-04 ~ 2026-09-04 00:00"
     assert rendered["pool_session_open"] is False
     assert progress == ["正在生成图片..."]
 

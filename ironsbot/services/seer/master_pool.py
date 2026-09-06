@@ -26,7 +26,8 @@ def load_master_pools(session: Session) -> tuple[PeakPoolSnapshot, ...]:
         rows = (
             session.execute(
                 text(
-                    "SELECT id, cost, pet_ids_json, subkey_total FROM peak_master_pool "
+                    "SELECT id, cost, pet_ids_json, subkey_total, configured_time "
+                    "FROM peak_master_pool "
                     "ORDER BY cost DESC, id"
                 )
             )
@@ -52,12 +53,17 @@ def load_master_pools(session: Session) -> tuple[PeakPoolSnapshot, ...]:
         period = datetime.strptime(str(row["subkey_total"]), "%Y%m%d").replace(
             tzinfo=time.TZ_CN,
         )
+        configured_end = datetime.strptime(
+            str(row["configured_time"]), "%Y_%m_%d %H:%M:%S"
+        ).replace(tzinfo=time.TZ_CN)
+        if configured_end < period:
+            raise MasterPoolUnavailableError
         pools.append(
             PeakPoolSnapshot(
                 id=int(row["id"]),
                 count=int(row["cost"]),
                 start_time=period,
-                end_time=period,
+                end_time=configured_end,
                 pets=tuple(
                     pets.get(pet_id)
                     or PeakPetSnapshot(
