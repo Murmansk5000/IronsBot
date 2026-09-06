@@ -24,6 +24,7 @@ from ironsbot.integrations.storage.bilibili_image_delivery_retries import (
 )
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.bilibili.delivery import (
+    build_adaptive_dynamic_images_message,
     build_dynamic_content_message,
     build_dynamic_detail_messages,
     build_dynamic_images_message,
@@ -48,6 +49,7 @@ from ironsbot.services.bilibili.preferences import (
 )
 from ironsbot.services.bilibili.push import build_dynamic_history_snapshot_for_item
 from ironsbot.services.bilibili.targets import BiliPushTargets
+from ironsbot.services.messaging.image_collage import ImageCollageError
 from tests.helpers.runtime import build_test_runtime
 
 if TYPE_CHECKING:
@@ -122,13 +124,85 @@ def test_dynamic_renderers_split_link_from_compact_content() -> None:
     assert "[CQ:image" not in text_rendered
 
 
-def test_dynamic_detail_messages_send_text_before_images() -> None:
-    text_message, image_message = build_dynamic_detail_messages(_item())
+@pytest.mark.asyncio
+async def test_dynamic_detail_messages_send_text_before_images() -> None:
+    text_message, image_message = await build_dynamic_detail_messages(_item())
 
     assert "正文内容" in str(text_message)
     assert "[CQ:image" not in str(text_message)
     assert "正文内容" not in str(image_message)
     assert "[CQ:image" in str(image_message)
+
+
+@pytest.mark.asyncio
+async def test_multiple_dynamic_images_are_replaced_by_one_collage() -> None:
+    item = _item()
+    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
+        {"url": "https://example.test/one.png"},
+        {"url": "https://example.test/two.png"},
+    ]
+
+    class Collage:
+        async def compose_urls(self, urls: object) -> bytes:
+            assert tuple(cast("Any", urls)) == (
+                "https://example.test/one.png",
+                "https://example.test/two.png",
+            )
+            return b"collage-png"
+
+    message = await build_adaptive_dynamic_images_message(
+        item,
+        image_collage=cast("Any", Collage()),
+        combine_images=True,
+    )
+
+    assert message is not None
+    assert [segment.type for segment in message] == ["image"]
+    assert message[0].data["file"].startswith("base64://")
+
+
+@pytest.mark.asyncio
+async def test_dynamic_collage_failure_falls_back_to_all_original_images() -> None:
+    item = _item()
+    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
+        {"url": "https://example.test/one.png"},
+        {"url": "https://example.test/two.png"},
+    ]
+
+    class FailingCollage:
+        async def compose_urls(self, _urls: object) -> bytes:
+            raise ImageCollageError.animated()
+
+    message = await build_adaptive_dynamic_images_message(
+        item,
+        image_collage=cast("Any", FailingCollage()),
+        combine_images=True,
+    )
+
+    assert message is not None
+    assert [segment.type for segment in message] == ["image", "text", "image"]
+
+
+@pytest.mark.asyncio
+async def test_disabled_dynamic_collage_does_not_call_service() -> None:
+    item = _item()
+    item["modules"]["module_dynamic"]["major"]["opus"]["pics"] = [
+        {"url": "https://example.test/one.png"},
+        {"url": "https://example.test/two.png"},
+    ]
+
+    class UnexpectedCollage:
+        async def compose_urls(self, _urls: object) -> bytes:
+            raise AssertionError
+
+    message = await build_adaptive_dynamic_images_message(
+        item,
+        image_collage=cast("Any", UnexpectedCollage()),
+        combine_images=False,
+    )
+
+    assert message is not None
+    assert [segment.type for segment in message] == ["image", "text", "image"]
 
 
 def test_delivery_service_appends_fire_manual_ad_per_target(

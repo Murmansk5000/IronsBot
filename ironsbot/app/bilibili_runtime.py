@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.plugins.bilibili.auth import send_bili_login_notice
 from ironsbot.plugins.bilibili.delivery import (
-    build_dynamic_images_message,
+    build_adaptive_dynamic_images_message,
     build_dynamic_link_message,
     build_dynamic_text_message,
 )
@@ -46,7 +46,11 @@ def build_bilibili_monitor(
         resources.admin_notices,
         service.targets.dynamic_link_tag,
         prepend_text_hint,
-        build_dynamic_images_message,
+        partial(
+            build_adaptive_dynamic_images_message,
+            image_collage=service.image_collage,
+            combine_images=settings.bilibili.push.combine_images,
+        ),
         service.targets.seer_category_uid(),
         service.history,
         service.image_delivery_retries,

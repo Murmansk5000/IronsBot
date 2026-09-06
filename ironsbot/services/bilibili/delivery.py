@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
+from inspect import isawaitable
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.core.bilibili import SeerDynamicCategory, truncate_bilibili_text
@@ -55,7 +56,10 @@ BILIBILI_SUMMARY_MAX_ATTEMPTS = 3
 SUMMARY_FAILURE_FALLBACK_HINT = "（摘要生成失败，完整内容请见传送门）"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
-DynamicImageRenderer = Callable[[dict[str, Any]], Any | None]
+DynamicImageRenderer = Callable[
+    [dict[str, Any]],
+    Any | Awaitable[Any | None],
+]
 
 
 class DynamicSummarizer(Protocol):
@@ -70,6 +74,16 @@ class DynamicSummarizer(Protocol):
 HintAppender = Callable[[Any, str], Any]
 DynamicLinkTagger = Callable[[int, tuple[SeerDynamicCategory, ...]], str | None]
 logger = logging.getLogger(__name__)
+
+
+async def _render_dynamic_images(
+    renderer: DynamicImageRenderer | None,
+    item: dict[str, Any],
+) -> Any | None:
+    if renderer is None:
+        return None
+    rendered = renderer(item)
+    return await rendered if isawaitable(rendered) else rendered
 
 
 def _summary_failure_fallback(content: str, max_chars: int) -> str:
@@ -143,9 +157,7 @@ class BilibiliPushDeliveryService:
             content_message = self.render_content(item, content_override)
 
         image_targets = self._media_targets(full_targets, author_mid, "image")
-        image_message = (
-            self.render_images(item) if self.render_images is not None else None
-        )
+        image_message = await _render_dynamic_images(self.render_images, item)
         if image_message is None:
             image_targets = BiliPushTargets([], [], [], [])
 
@@ -246,10 +258,9 @@ class BilibiliPushDeliveryService:
                     [target for target, _attempts in retries],
                 )
                 continue
-            image_message = (
-                self.render_images(record.item)
-                if self.render_images is not None
-                else None
+            image_message = await _render_dynamic_images(
+                self.render_images,
+                record.item,
             )
             if image_message is None:
                 self.image_delivery_retries.resolve(

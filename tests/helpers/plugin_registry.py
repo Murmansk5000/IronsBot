@@ -104,6 +104,7 @@ def build_test_plugin_registry(
                 ),
                 history=None,
                 image_delivery_retries=None,
+                image_collage=None,
             ),
             bilibili_login=SimpleNamespace(
                 notify_required=_noop_bili_login_notice,

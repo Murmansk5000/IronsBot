@@ -39,6 +39,10 @@ from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
+from ironsbot.integrations.image_collage import (
+    fetch_collage_image,
+    render_adaptive_collage,
+)
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.outbound import (
@@ -103,6 +107,7 @@ from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.help_hint import HelpHintService
+from ironsbot.services.messaging.image_collage import ImageCollageService
 from ironsbot.services.messaging.poke_promotions import PokePromotionService
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.operations.data_sync import DataSyncService
@@ -356,6 +361,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
+        image_collage=ImageCollageService(
+            partial(fetch_collage_image, http_clients.cache),
+            render_adaptive_collage,
+        ),
         external_references=external_references,
         image_delivery_retries=SqliteBiliImageDeliveryRetryStore(
             cache_paths.bilibili_dir() / "image_delivery_retries.sqlite"

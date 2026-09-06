@@ -49,8 +49,13 @@ async def _send_dynamic_detail(
     matcher: Matcher,
     event: MessageEvent,
     item: dict[str, Any],
+    service: BilibiliService,
 ) -> bool:
-    messages = build_dynamic_detail_messages(item)
+    messages = await build_dynamic_detail_messages(
+        item,
+        image_collage=service.image_collage,
+        combine_images=service.config.push.combine_images,
+    )
     if not messages:
         return False
     for message in messages:
@@ -172,6 +177,7 @@ async def handle_dynamic_select_action(
             matcher,
             event,
             selection.record.item,
+            service,
         ):
             await finish_event_reply(
                 matcher,

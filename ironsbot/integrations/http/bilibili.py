@@ -1,3 +1,6 @@
+import logging
+from collections.abc import Mapping
+from copy import deepcopy
 from typing import Any
 
 from httpx import AsyncClient
@@ -9,9 +12,12 @@ from ironsbot.services.bilibili.auth import (
 )
 from ironsbot.services.bilibili.service import BiliFeedResponse
 
+logger = logging.getLogger(__name__)
+
 LIST_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all"
 SPACE_FEED_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
 DYNAMIC_DETAIL_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
+OPUS_DETAIL_URL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detail"
 ACCOUNT_CARD_URL = "https://api.bilibili.com/x/web-interface/card"
 HTTP_OK = 200
 OPUS_STYLE_FEATURE = "itemOpusStyle"
@@ -50,7 +56,122 @@ async def fetch_bili_dynamic_detail(
         follow_redirects=True,
     )
     data: Any = response.json()
+    if not _dynamic_detail_is_truncated(data):
+        return BiliFeedResponse(response.status_code, data)
+
+    try:
+        opus_response = await client.get(
+            OPUS_DETAIL_URL,
+            params={"id": dynamic_id},
+            headers=_dynamic_headers(
+                cookie,
+                referer=f"https://www.bilibili.com/opus/{dynamic_id}",
+            ),
+            timeout=10.0,
+            follow_redirects=True,
+        )
+        opus_data: Any = opus_response.json()
+    except Exception:
+        logger.exception(
+            "Bilibili Opus body completion request failed: id=%s",
+            dynamic_id,
+        )
+        return BiliFeedResponse(response.status_code, data)
+    opus_body = _opus_body(opus_data)
+    if (
+        opus_response.status_code == HTTP_OK
+        and _api_code(opus_data) == 0
+        and opus_body
+    ):
+        data = _replace_dynamic_summary(data, opus_body)
+    else:
+        logger.warning(
+            "Bilibili Opus body completion unavailable: id=%s http=%s code=%s",
+            dynamic_id,
+            opus_response.status_code,
+            _api_code(opus_data),
+        )
     return BiliFeedResponse(response.status_code, data)
+
+
+def _api_code(payload: object) -> object:
+    return payload.get("code") if isinstance(payload, Mapping) else None
+
+
+def _dynamic_detail_is_truncated(payload: object) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    data = payload.get("data")
+    item = data.get("item") if isinstance(data, Mapping) else None
+    modules = item.get("modules") if isinstance(item, Mapping) else None
+    dynamic = (
+        modules.get("module_dynamic") if isinstance(modules, Mapping) else None
+    )
+    major = dynamic.get("major") if isinstance(dynamic, Mapping) else None
+    opus = major.get("opus") if isinstance(major, Mapping) else None
+    summary = opus.get("summary") if isinstance(opus, Mapping) else None
+    return isinstance(summary, Mapping) and summary.get("has_more") is True
+
+
+def _opus_body(payload: object) -> str:
+    return "\n".join(
+        piece
+        for paragraph in _opus_paragraphs(payload)
+        if (piece := _opus_paragraph_text(paragraph))
+    )
+
+
+def _opus_paragraphs(payload: object) -> list[object]:
+    if not isinstance(payload, Mapping):
+        return []
+    data = payload.get("data")
+    item = data.get("item") if isinstance(data, Mapping) else None
+    modules = item.get("modules") if isinstance(item, Mapping) else None
+    if not isinstance(modules, list):
+        return []
+
+    for module in modules:
+        content = module.get("module_content") if isinstance(module, Mapping) else None
+        if isinstance(content, Mapping):
+            paragraphs = content.get("paragraphs")
+            return paragraphs if isinstance(paragraphs, list) else []
+    return []
+
+
+def _opus_paragraph_text(paragraph: object) -> str:
+    if not isinstance(paragraph, Mapping):
+        return ""
+    text = paragraph.get("text")
+    nodes = text.get("nodes") if isinstance(text, Mapping) else None
+    if not isinstance(nodes, list):
+        return ""
+    return "".join(_opus_node_text(node) for node in nodes).strip()
+
+
+def _opus_node_text(node: object) -> str:
+    if not isinstance(node, Mapping):
+        return ""
+    word = node.get("word")
+    value = word.get("words") if isinstance(word, Mapping) else None
+    return value if isinstance(value, str) else ""
+
+
+def _replace_dynamic_summary(payload: object, body: str) -> object:
+    resolved = deepcopy(payload)
+    if not isinstance(resolved, dict):
+        return payload
+    data = resolved.get("data")
+    item = data.get("item") if isinstance(data, dict) else None
+    modules = item.get("modules") if isinstance(item, dict) else None
+    dynamic = modules.get("module_dynamic") if isinstance(modules, dict) else None
+    major = dynamic.get("major") if isinstance(dynamic, dict) else None
+    opus = major.get("opus") if isinstance(major, dict) else None
+    summary = opus.get("summary") if isinstance(opus, dict) else None
+    if not isinstance(summary, dict):
+        return payload
+    summary["text"] = body
+    summary["has_more"] = False
+    return resolved
 
 
 async def fetch_bili_space_feed(
