@@ -30,6 +30,10 @@ from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingSto
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.plugins.seer import lucky_skin_window as lucky_skin_window_plugin
 from ironsbot.plugins.seer import lucky_skin_window_query
+from ironsbot.plugins.seer.query.commands.player_target import (
+    PlayerTargetChoice,
+    PlayerTargetResolution,
+)
 from ironsbot.services.messaging.subscriptions import (
     PushSubscriptionOption,
 )
@@ -302,6 +306,15 @@ class _PluginService:
         self.queries += 1
         return object()
 
+    async def lookup_player_nicks(
+        self,
+        player_ids: Iterable[int],
+    ) -> dict[int, str]:
+        return {
+            player_id: f"游戏昵称{player_id}"
+            for player_id in player_ids
+        }
+
     def format_result(self, _result: object, *, user_id: int) -> str:
         return f"橱窗结果：{user_id}"
 
@@ -331,6 +344,10 @@ def _service(
     bindings.bind(qq_user_id=1002, player_id=90002, player_nick="乙")
     game = _Game()
     sessions = _Sessions(game)
+
+    async def lookup_player_profile(player_id: int) -> SimpleNamespace:
+        return SimpleNamespace(nick=f"游戏昵称{player_id}")
+
     service = LuckySkinWindowService(
         LuckySkinWindowConfig(
             enabled=True,
@@ -373,8 +390,62 @@ def _service(
             legacy_paths=(() if legacy_cache_path is None else (legacy_cache_path,)),
         ),
         today=lambda: date(2026, 8, 3),
+        player_profile_lookup=lookup_player_profile,
     )
     return service, game, _Delivery(), bindings, sessions
+
+
+def test_alias_selection_displays_player_ids_and_live_nicknames(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def enter_selection(*_args: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        lucky_skin_window_query,
+        "enter_player_target_selection",
+        enter_selection,
+    )
+    target = PlayerTargetResolution(
+        None,
+        offer_binding=False,
+        choices=(
+            PlayerTargetChoice(90001, "蛆1"),
+            PlayerTargetChoice(90002, "蛆2"),
+        ),
+    )
+
+    asyncio.run(
+        lucky_skin_window_query._enter_target_selection(
+            cast("Any", _PluginService(cached=None)),
+            cast("Any", _PetQuery()),
+            None,
+            cast("Any", object()),
+            cast("Any", SimpleNamespace(user_id=1001)),
+            cast("Any", {}),
+            target,
+            target_key="target",
+            reference_key="reference",
+            login_namespace="test",
+            enter_result_prompt=cast("Any", object()),
+        )
+    )
+
+    assert captured["choice_details"] == {
+        90001: "米米号：90001，昵称：游戏昵称90001",
+        90002: "米米号：90002，昵称：游戏昵称90002",
+    }
+
+
+def test_lucky_window_profile_lookup_returns_live_nicknames(tmp_path: Path) -> None:
+    service, _game, _delivery, _bindings, _sessions = _service(tmp_path)
+
+    assert asyncio.run(service.lookup_player_nicks((90001, 90002))) == {
+        90001: "游戏昵称90001",
+        90002: "游戏昵称90002",
+    }
 
 
 def test_daily_schedule_uses_configured_second(tmp_path: Path) -> None:
