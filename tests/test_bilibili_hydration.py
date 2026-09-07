@@ -3,6 +3,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ironsbot.core.bilibili import BiliConfig
+from ironsbot.services.bilibili.dynamic_history import (
+    CompactedDynamicContent,
+)
 from ironsbot.services.bilibili.hydration import hydrate_dynamic_item
 from ironsbot.services.bilibili.parser import (
     dynamic_body_hydration_reason,
@@ -239,3 +243,83 @@ def test_service_backfills_recent_truncated_body_without_changing_delivery_state
     assert saved.pushed
     assert dynamic_body_hydration_reason(saved.item) is None
     assert dynamic_content(saved.item) == "完整的历史动态正文"
+
+
+def test_service_backfills_recent_unsummarized_storage(tmp_path: Path) -> None:
+    service = build_test_bilibili_service(tmp_path)
+    source = _item(body="完整长正文" * 500)
+    snapshot = build_dynamic_history_snapshot(
+        source,
+        pub_ts=1,
+        author_mid=SEER_UID,
+        pushed=True,
+    )
+    service.history.save_snapshot(snapshot)
+    service.history.save_summary(
+        "123456",
+        "摘要失败时的节选",
+        generated_by_ai=False,
+    )
+    calls = 0
+
+    async def compact(
+        item: dict[str, Any],
+        author_mid: int,
+        content: str,
+        *,
+        notify_failure: bool = True,
+    ) -> CompactedDynamicContent:
+        del item, author_mid, content
+        nonlocal calls
+        assert not notify_failure
+        calls += 1
+        return CompactedDynamicContent("历史摘要", generated_by_ai=True)
+
+    service.history_content_compactor = compact
+
+    assert asyncio.run(service.backfill_recent_summaries()) == 1
+    saved = service.history.get("123456")
+    assert saved is not None
+    assert saved.summary == "历史摘要"
+    assert saved.summary_generated_by_ai
+    assert asyncio.run(service.backfill_recent_summaries()) == 0
+    assert calls == 1
+
+
+def test_startup_summary_backfill_uses_history_query_limit(tmp_path: Path) -> None:
+    history_query_limit = 2
+    config = BiliConfig.model_validate(
+        {"storage": {"history_query_limit": history_query_limit}}
+    )
+    service = build_test_bilibili_service(tmp_path, config=config)
+    for offset in range(3):
+        service.history.save_snapshot(
+            build_dynamic_history_snapshot(
+                _item(body="完整长正文" * 500, item_id=f"dynamic-{offset}"),
+                pub_ts=offset + 1,
+                author_mid=SEER_UID,
+                pushed=True,
+            )
+        )
+
+    async def compact(
+        item: dict[str, Any],
+        author_mid: int,
+        content: str,
+        *,
+        notify_failure: bool = True,
+    ) -> CompactedDynamicContent:
+        del item, author_mid, content
+        assert not notify_failure
+        return CompactedDynamicContent("历史摘要", generated_by_ai=True)
+
+    service.history_content_compactor = compact
+
+    assert (
+        asyncio.run(service.backfill_recent_summaries())
+        == history_query_limit
+    )
+    records = [service.history.get(f"dynamic-{offset}") for offset in range(3)]
+    assert all(record is not None for record in records)
+    summaries = [record.summary for record in records if record is not None]
+    assert summaries == ["", "历史摘要", "历史摘要"]

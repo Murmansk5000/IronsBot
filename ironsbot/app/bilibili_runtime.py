@@ -57,6 +57,7 @@ def build_bilibili_monitor(
         settings.messaging.push_delivery.max_attempts,
         service.targets.push_targets_for_uid,
     )
+    service.history_content_compactor = push.compact_content_result
     return BilibiliMonitorService(
         service,
         auth_invalid,

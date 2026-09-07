@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from typing import Any
-
 from nonebot.adapters.onebot.v11 import (
     Message,
     MessageEvent,
@@ -21,6 +19,7 @@ from ironsbot.runtime.replies import (
     message_event_target,
     send_event_reply,
 )
+from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
 from ironsbot.services.bilibili.menu import DYNAMIC_IDS_STATE_KEY
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
@@ -48,11 +47,13 @@ async def wait_dynamic_select(
 async def _send_dynamic_detail(
     matcher: Matcher,
     event: MessageEvent,
-    item: dict[str, Any],
+    record: DynamicHistoryRecord,
     service: BilibiliService,
 ) -> bool:
+    content_override = await service.history_content_override(record)
     messages = await build_dynamic_detail_messages(
-        item,
+        record.item,
+        content_override=content_override,
         image_collage=service.image_collage,
         combine_images=service.config.push.combine_images,
     )
@@ -176,7 +177,7 @@ async def handle_dynamic_select_action(
         if selection.record is not None and not await _send_dynamic_detail(
             matcher,
             event,
-            selection.record.item,
+            selection.record,
             service,
         ):
             await finish_event_reply(

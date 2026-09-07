@@ -78,6 +78,6 @@ class BilibiliMonitorService:
         await asyncio.sleep(2)
         await self.check(is_startup_check=True)
         self.service.spawn(
-            self.service.backfill_recent_empty_bodies(),
+            self.service.backfill_recent_history(),
             name="bilibili-history-backfill",
         )
