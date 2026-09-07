@@ -108,6 +108,32 @@ def test_hydrate_dynamic_item_replaces_truncated_opus_body() -> None:
     assert dynamic_content(hydrated) == "这是详情中的完整正文，包含后续活动说明。"
 
 
+def test_article_body_is_hydrated_before_delivery() -> None:
+    source = _item()
+    source["modules"]["module_dynamic"]["major"] = {
+        "article": {"id": 99, "desc": "半截专栏正文"}
+    }
+    detail = _item()
+    detail["modules"]["module_dynamic"]["major"] = {
+        "article": {
+            "id": 99,
+            "desc": "完整专栏正文" * 500,
+            "_ironsbot_body_hydrated": True,
+        }
+    }
+
+    async def fetch_detail(_cookie: str, _dynamic_id: str) -> BiliFeedResponse:
+        return _detail_response(detail)
+
+    hydrated = asyncio.run(
+        hydrate_dynamic_item(source, cookie="", fetch_detail=fetch_detail)
+    )
+
+    assert dynamic_body_hydration_reason(source) == "truncated_article"
+    assert dynamic_body_hydration_reason(hydrated) is None
+    assert dynamic_content(hydrated) == "完整专栏正文" * 500
+
+
 def test_hydrate_dynamic_item_keeps_truncated_body_when_detail_is_not_better() -> None:
     source = _item(body="这是列表中的半截正文", has_more=True)
     detail = _item(body="这是详情中的半截正文", has_more=True)
