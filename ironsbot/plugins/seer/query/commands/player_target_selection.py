@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent
@@ -37,6 +37,7 @@ async def enter_player_target_selection(  # noqa: PLR0913 - prompt context is ex
     select_target: PlayerTargetSelectionCallback,
     *,
     title: str = "请问你想查询哪位玩家？",
+    choice_details: Mapping[int, str] | None = None,
 ) -> None:
     """Present visible partial matches and continue through the caller's flow."""
 
@@ -58,7 +59,14 @@ async def enter_player_target_selection(  # noqa: PLR0913 - prompt context is ex
             items=[
                 PromptItem(
                     choice.label,
-                    f"游戏内ID：{choice.player_id}",
+                    (
+                        choice_details.get(
+                            choice.player_id,
+                            f"游戏内ID：{choice.player_id}",
+                        )
+                        if choice_details is not None
+                        else f"游戏内ID：{choice.player_id}"
+                    ),
                     choice.player_id,
                     semantic_target=SemanticTarget(
                         key=str(choice.player_id),

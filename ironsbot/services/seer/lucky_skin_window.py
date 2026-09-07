@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
@@ -43,6 +43,7 @@ LuckySkinWindowRenderer = Callable[
     ["LuckySkinWindowResult", tuple["LuckySkinWindowOffer", ...]],
     Awaitable[bytes],
 ]
+PlayerProfileLookup = Callable[[int], Awaitable[object]]
 
 
 class LuckySkinWindowMessageFormatter(Protocol):
@@ -175,6 +176,7 @@ class LuckySkinWindowService:
         *,
         today: Callable[[], date] | None = None,
         renderer: LuckySkinWindowRenderer | None = None,
+        player_profile_lookup: PlayerProfileLookup | None = None,
     ) -> None:
         self._config = config
         self._features = features
@@ -187,6 +189,7 @@ class LuckySkinWindowService:
         self._cache = cache
         self._today = today or (lambda: datetime.now(ZoneInfo(config.timezone)).date())
         self._renderer = renderer
+        self._player_profile_lookup = player_profile_lookup
         self._accounts = {
             references.resolve_user(
                 account.user,
@@ -252,6 +255,36 @@ class LuckySkinWindowService:
         if not self.enabled or account is None:
             return False
         return self._bindings.get(user_id).player_id == account.player_id
+
+    async def lookup_player_nicks(
+        self,
+        player_ids: Iterable[int],
+    ) -> dict[int, str]:
+        unique_ids = tuple(dict.fromkeys(player_ids))
+        profile_lookup = self._player_profile_lookup
+        if profile_lookup is None:
+            return {}
+
+        async def lookup(player_id: int) -> tuple[int, str]:
+            try:
+                profile = await asyncio.wait_for(
+                    profile_lookup(player_id),
+                    timeout=self._config.timeout_seconds,
+                )
+            except Exception as error:  # noqa: BLE001 - keep the menu usable
+                logger.warning(
+                    "lucky skin window alias nickname lookup failed: "
+                    "player_id=%s error=%s",
+                    player_id,
+                    type(error).__name__,
+                )
+                return player_id, ""
+            nickname = str(getattr(profile, "nick", "") or "").strip()
+            return player_id, nickname
+
+        return dict(
+            await asyncio.gather(*(lookup(player_id) for player_id in unique_ids))
+        )
 
     def subscription_options(
         self,

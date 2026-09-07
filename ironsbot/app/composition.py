@@ -341,6 +341,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             seer_images,
             render_scheduler.render,
         ),
+        player_profile_lookup=(
+            lambda player_id: headless.get_game().get_user_info(player_id)
+        ),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
     bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
