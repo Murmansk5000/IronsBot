@@ -221,6 +221,7 @@ class BiliStorageConfig(BaseModel):
 
     data_dir: Path = Path("data/bilibili_monitor")
     history_max_items: int = Field(default=1000, ge=1)
+    history_query_limit: int = Field(default=10, ge=1)
 
 
 class BiliPollingConfig(BaseModel):

@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
-from ironsbot.services.bilibili.dynamic_history import save_target_dynamics
+from ironsbot.services.bilibili.dynamic_history import (
+    CompactedDynamicContent,
+    format_compacted_dynamic_content,
+    save_target_dynamics,
+)
 from ironsbot.services.bilibili.hydration import (
     DynamicDetailFetcher,
     hydrate_dynamic_item,
 )
 from ironsbot.services.bilibili.menu import (
-    DYNAMIC_MENU_DEFAULT_LIMIT,
     DynamicDetailSelection,
     DynamicMenuResult,
     build_dynamic_detail_for_selection,
@@ -22,6 +24,7 @@ from ironsbot.services.bilibili.menu import (
 )
 from ironsbot.services.bilibili.parser import (
     dynamic_body_hydration_reason,
+    dynamic_content,
     dynamic_id,
     item_author_mid,
     target_dynamics_from_response,
@@ -38,7 +41,10 @@ if TYPE_CHECKING:
 
     from ironsbot.core.bilibili import BiliConfig
     from ironsbot.core.tasks import TaskSpawner
-    from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
+    from ironsbot.services.bilibili.dynamic_history import (
+        BiliDynamicHistoryStore,
+        DynamicHistoryRecord,
+    )
     from ironsbot.services.bilibili.image_delivery_retries import (
         BiliImageDeliveryRetryStore,
     )
@@ -47,6 +53,17 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.subscriptions import PushTargetType
 
 logger = logging.getLogger(__name__)
+
+
+class HistoryContentCompactor(Protocol):
+    async def __call__(
+        self,
+        item: dict[str, Any],
+        author_mid: int,
+        content: str,
+        *,
+        notify_failure: bool = True,
+    ) -> CompactedDynamicContent: ...
 
 
 class BiliCookieStore(Protocol):
@@ -73,6 +90,7 @@ class BilibiliService:
     image_collage: ImageCollageService | None = None
     external_references: SeerInfoReferences | None = None
     image_delivery_retries: BiliImageDeliveryRetryStore | None = None
+    history_content_compactor: HistoryContentCompactor | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)
@@ -89,6 +107,11 @@ class BilibiliService:
         repr=False,
     )
     _history_backfill_attempted: bool = field(default=False, init=False, repr=False)
+    _history_summary_backfill_attempted: bool = field(
+        default=False,
+        init=False,
+        repr=False,
+    )
 
     async def resolve_dynamic_item(
         self,
@@ -122,6 +145,36 @@ class BilibiliService:
         task = self._delivery_tasks.get(item_id)
         return task is not None and not task.done()
 
+    async def history_content_override(
+        self,
+        record: DynamicHistoryRecord,
+    ) -> str | None:
+        content = dynamic_content(record.item)
+        if len(content) <= self.config.push.content_max_chars:
+            return None
+        if record.summary and record.summary_generated_by_ai:
+            return format_compacted_dynamic_content(
+                CompactedDynamicContent(record.summary, generated_by_ai=True)
+            )
+        if self.history_content_compactor is None:
+            return record.summary or None
+
+        compact = await self.history_content_compactor(
+            record.item,
+            record.uid,
+            content,
+            notify_failure=False,
+        )
+        if compact.text is not None:
+            self.history.save_summary(
+                record.dynamic_id,
+                compact.text,
+                generated_by_ai=compact.generated_by_ai,
+            )
+        if compact.text is not None:
+            return format_compacted_dynamic_content(compact)
+        return record.summary or None
+
     def spawn_delivery(
         self,
         item_id: str,
@@ -144,35 +197,22 @@ class BilibiliService:
 
     async def backfill_recent_empty_bodies(
         self,
-        *,
-        days: int = 7,
-        limit: int = 20,
     ) -> int:
-        """Backfill recent missing or truncated official bodies without delivery."""
+        """Backfill missing bodies among the items exposed by history query."""
 
         if self._history_backfill_attempted:
             return 0
-        account = self.config.accounts.get(self.config.seer_categories.account)
-        if not self.config.seer_categories.enabled or account is None:
-            return 0
 
-        cutoff = int(time.time()) - max(days, 0) * 24 * 60 * 60
         updated = 0
         cookie = self.cookie_store.load()
         if not cookie:
             return 0
         self._history_backfill_attempted = True
         for record in self.history.list(
-            limit=self.config.storage.history_max_items,
-            uid=account.uid,
+            limit=self.config.storage.history_query_limit,
         ):
-            if (
-                record.pub_ts < cutoff
-                or dynamic_body_hydration_reason(record.item) is None
-            ):
+            if dynamic_body_hydration_reason(record.item) is None:
                 continue
-            if updated >= max(limit, 0):
-                break
             resolved = await self.resolve_dynamic_item(record.item, cookie=cookie)
             if dynamic_body_hydration_reason(resolved) is not None:
                 continue
@@ -188,6 +228,44 @@ class BilibiliService:
         if updated:
             logger.info("Bilibili dynamic history bodies backfilled: %s", updated)
         return updated
+
+    async def backfill_recent_summaries(self) -> int:
+        if self._history_summary_backfill_attempted:
+            return 0
+        if self.history_content_compactor is None:
+            return 0
+        self._history_summary_backfill_attempted = True
+
+        updated = 0
+        records = self.history.list(limit=self.config.storage.history_query_limit)
+        for record in reversed(records):
+            if (
+                record.summary_generated_by_ai
+                or len(dynamic_content(record.item))
+                <= self.config.push.content_max_chars
+            ):
+                continue
+            compact = await self.history_content_compactor(
+                record.item,
+                record.uid,
+                dynamic_content(record.item),
+                notify_failure=False,
+            )
+            if compact.text is None:
+                continue
+            self.history.save_summary(
+                record.dynamic_id,
+                compact.text,
+                generated_by_ai=compact.generated_by_ai,
+            )
+            updated += 1
+        if updated:
+            logger.info("Bilibili dynamic history summaries backfilled: %s", updated)
+        return updated
+
+    async def backfill_recent_history(self) -> None:
+        await self.backfill_recent_empty_bodies()
+        await self.backfill_recent_summaries()
 
     async def query_dynamic_menu(
         self,
@@ -245,7 +323,7 @@ class BilibiliService:
             )
 
         records = self.history.list(
-            limit=DYNAMIC_MENU_DEFAULT_LIMIT,
+            limit=self.config.storage.history_query_limit,
             uids=query_uids,
         )
         if not records:

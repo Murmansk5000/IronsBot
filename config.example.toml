@@ -837,6 +837,12 @@ data_dir = "data/bilibili_monitor"
 # Example: 2000
 history_max_items = 1000
 
+# Default: 10
+# EN: Recent dynamic items shown in history and checked during startup backfill.
+# ZH: 历史动态菜单展示条数，也是启动时正文与摘要回填的检查条数。
+# Example: 20
+history_query_limit = 10
+
 [bilibili.polling]
 # The scheduler wakes on every exact wall-clock minute at check_second,
 # independent of the bot startup second. The intervals below decide whether that regular

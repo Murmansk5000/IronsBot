@@ -64,6 +64,7 @@ if TYPE_CHECKING:
 PUB_TS = 1781004683
 EXPECTED_FULL_PUSH_COUNT = 2
 QUERY_ENABLED_GROUP_ID = 1001
+SUMMARY_MAX_CHARS = 500
 
 
 def _item(
@@ -132,6 +133,16 @@ async def test_dynamic_detail_messages_send_text_before_images() -> None:
     assert "[CQ:image" not in str(text_message)
     assert "正文内容" not in str(image_message)
     assert "[CQ:image" in str(image_message)
+
+
+@pytest.mark.asyncio
+async def test_dynamic_detail_messages_can_render_a_saved_summary() -> None:
+    text_message, _image_message = await build_dynamic_detail_messages(
+        _item(text="完整原文" * 500),
+        content_override="历史摘要",
+    )
+
+    assert str(text_message) == "历史摘要"
 
 
 @pytest.mark.asyncio
@@ -637,6 +648,66 @@ async def test_801_character_dynamic_uses_a_500_character_ai_summary(
     assert summaries == [(content, 500)]
 
 
+@pytest.mark.asyncio
+async def test_long_dynamic_saves_original_and_generated_summary(
+    tmp_path: Path,
+) -> None:
+    sent: list[object] = []
+
+    class RecordingDelivery:
+        async def broadcast(
+            self,
+            message: object,
+            **_kwargs: object,
+        ) -> TargetSendSummary:
+            sent.append(message)
+            return TargetSendSummary([], [])
+
+    async def summarize(text: str, *, max_chars: int) -> str:
+        del text
+        assert max_chars == SUMMARY_MAX_CHARS
+        return "持久化摘要"
+
+    item = _item(text="完整原文" * 500)
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    snapshot = build_dynamic_history_snapshot_for_item(
+        item,
+        pub_ts=PUB_TS,
+        suppress_patterns=[],
+    )
+    assert snapshot is not None
+    history.save_snapshot(snapshot)
+    service = BilibiliPushDeliveryService(
+        cast("MessageDelivery", RecordingDelivery()),
+        PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
+        build_dynamic_link_message,
+        build_dynamic_content_message,
+        append_text_hint,
+        None,
+        summarize=summarize,
+        content_max_chars=800,
+        summary_max_chars=SUMMARY_MAX_CHARS,
+        history=history,
+    )
+
+    await service.send(
+        item,
+        PUB_TS,
+        1310714247,
+        BiliPushTargets([1001], [], [], []),
+    )
+
+    saved = history.get(str(item["id_str"]))
+    assert saved is not None
+    assert saved.item == item
+    assert saved.summary == "持久化摘要"
+    assert saved.summary_generated_by_ai
+    assert any(
+        "本条动态文本过长，AI总结如下：\n持久化摘要" in str(call)
+        for call in sent
+    )
+
+
 def test_bilibili_fallback_truncation_keeps_a_complete_list_item() -> None:
     text = "一、第一项内容。\n二、第二项内容。\n三、第三项内容。"
 
@@ -682,7 +753,7 @@ async def test_delivery_retries_an_oversized_ai_summary_until_it_fits(
         admin_notices=cast("Any", RecordingAdminNotices()),
     )
 
-    summary = await service._content_override(
+    summary = await service.compact_content(
         _item(text="这是一条需要摘要的长动态正文。"),
         1310714247,
         "这是一条需要摘要的长动态正文。",
@@ -753,6 +824,7 @@ async def test_full_dynamic_uses_truncated_content_when_summary_fails(
     assert "调用异常：TypeError" in str(admin_notices[0]["message"])
     assert admin_notices[0]["action_name"] == BILIBILI_SUMMARY_FAILURE_ACTION
     assert "摘要生成失败，完整内容请见传送门" in str(sent[-1]["message"])
+    assert "AI总结如下" not in str(sent[-1]["message"])
 
 
 @pytest.mark.asyncio
@@ -927,6 +999,7 @@ async def test_full_dynamic_delegates_image_delivery_to_common_push_pipeline(
         ) -> TargetSendSummary:
             sent.append({"message": message, **kwargs})
             return TargetSendSummary([], [])
+
     service = BilibiliPushDeliveryService(
         cast("MessageDelivery", PartiallyFailingDelivery()),
         PushUnsubscribeStore(tmp_path / "push_unsubscriptions.sqlite"),
@@ -1063,9 +1136,7 @@ async def test_failed_image_targets_retry_without_resending_successes(
         render_images=build_dynamic_images_message,
         history=history,
         image_delivery_retries=retries,
-        retry_targets_for_uid=lambda _uid: BiliPushTargets(
-            [1001, 1002], [], [], []
-        ),
+        retry_targets_for_uid=lambda _uid: BiliPushTargets([1001, 1002], [], [], []),
     )
 
     await service.send(

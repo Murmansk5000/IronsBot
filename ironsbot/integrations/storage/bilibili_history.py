@@ -62,9 +62,31 @@ def _ensure_delivery_claim_columns(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_summary_column(conn: sqlite3.Connection) -> None:
+    ensure_sqlite_columns(
+        conn,
+        table_name="dynamics",
+        columns={"summary": "summary TEXT NOT NULL DEFAULT ''"},
+    )
+
+
+def _ensure_summary_source_column(conn: sqlite3.Connection) -> None:
+    ensure_sqlite_columns(
+        conn,
+        table_name="dynamics",
+        columns={
+            "summary_generated_by_ai": (
+                "summary_generated_by_ai INTEGER NOT NULL DEFAULT 0"
+            )
+        },
+    )
+
+
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA, _ensure_dynamic_columns),
     SqliteMigration(2, callback=_ensure_delivery_claim_columns),
+    SqliteMigration(3, callback=_ensure_summary_column),
+    SqliteMigration(4, callback=_ensure_summary_source_column),
 )
 
 
@@ -84,6 +106,8 @@ def _record_from_row(row: sqlite3.Row) -> DynamicHistoryRecord | None:
             bool(row["pushed"]),
             bool(row["suppressed"]),
             str(row["suppression_reason"] or ""),
+            str(row["summary"] or ""),
+            bool(row["summary_generated_by_ai"]),
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
         _LOGGER.warning("failed to parse Bilibili dynamic history row: %s", e)
@@ -234,6 +258,34 @@ class SqliteBiliDynamicHistoryStore:
             suppression_reason=snapshot.suppression_reason,
         )
 
+    def save_summary(
+        self,
+        dynamic_id: str,
+        summary: str,
+        *,
+        generated_by_ai: bool,
+    ) -> None:
+        cleaned = summary.strip()
+        if not dynamic_id or not cleaned:
+            return
+        try:
+            with self._database.connect() as conn:
+                conn.execute(
+                    """
+                    UPDATE dynamics
+                    SET summary = ?, summary_generated_by_ai = ?, updated_at = ?
+                    WHERE dynamic_id = ?
+                    """,
+                    (
+                        cleaned,
+                        1 if generated_by_ai else 0,
+                        time.time(),
+                        dynamic_id,
+                    ),
+                )
+        except sqlite3.Error as error:
+            _LOGGER.warning("failed to save Bilibili dynamic summary: %s", error)
+
     def list(
         self,
         *,
@@ -243,7 +295,8 @@ class SqliteBiliDynamicHistoryStore:
     ) -> list[DynamicHistoryRecord]:
         query = (
             "SELECT dynamic_id, uid, author_name, pub_ts, brief, raw_json, "
-            "pushed, suppressed, suppression_reason FROM dynamics"
+            "pushed, suppressed, suppression_reason, summary, "
+            "summary_generated_by_ai FROM dynamics"
         )
         params: list[int] = []
         uid_list = (
@@ -280,7 +333,8 @@ class SqliteBiliDynamicHistoryStore:
                 row = conn.execute(
                     """
                     SELECT dynamic_id, uid, author_name, pub_ts, brief, raw_json,
-                        pushed, suppressed, suppression_reason
+                        pushed, suppressed, suppression_reason, summary,
+                        summary_generated_by_ai
                     FROM dynamics
                     WHERE dynamic_id = ?
                     """,

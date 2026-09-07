@@ -58,6 +58,32 @@ def test_save_dynamic_history_snapshot_persists_fields(tmp_path: Path) -> None:
     assert saved.pushed
     assert saved.suppressed
     assert saved.suppression_reason == "test rule"
+    assert saved.summary == ""
+
+
+def test_dynamic_history_keeps_original_and_summary(tmp_path: Path) -> None:
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    item = _dynamic_item(text="完整原文" * 500)
+    snapshot = DynamicHistorySnapshot(
+        item=item,
+        pub_ts=PUB_TS,
+        author_mid=AUTHOR_UID,
+        author_name="Seer",
+        brief="test dynamic",
+    )
+    history.save_snapshot(snapshot)
+    history.save_summary(
+        "dynamic-1",
+        "摘要内容",
+        generated_by_ai=True,
+    )
+    history.save_snapshot(snapshot)
+
+    saved = history.get("dynamic-1")
+    assert saved is not None
+    assert saved.item == item
+    assert saved.summary == "摘要内容"
+    assert saved.summary_generated_by_ai
 
 
 def test_save_target_dynamic_history_builds_and_saves_snapshots(

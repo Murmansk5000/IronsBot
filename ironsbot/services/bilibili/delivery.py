@@ -15,6 +15,10 @@ from ironsbot.core.onebot_group_identity import (
     format_group_label,
     resolve_group_name,
 )
+from ironsbot.services.bilibili.dynamic_history import (
+    CompactedDynamicContent,
+    format_compacted_dynamic_content,
+)
 from ironsbot.services.bilibili.parser import dynamic_content, dynamic_id
 from ironsbot.services.bilibili.preferences import (
     BiliPushMedia,
@@ -149,12 +153,16 @@ class BilibiliPushDeliveryService:
         text_targets = self._media_targets(full_targets, author_mid, "text")
         content_message = None
         if content and text_targets.has_targets:
-            content_override = await self._content_override(
+            compacted = await self.compact_content_result(
                 item,
                 author_mid,
                 content,
             )
-            content_message = self.render_content(item, content_override)
+            self._save_history_summary(item, compacted)
+            content_message = self.render_content(
+                item,
+                format_compacted_dynamic_content(compacted),
+            )
 
         image_targets = self._media_targets(full_targets, author_mid, "image")
         image_message = await _render_dynamic_images(self.render_images, item)
@@ -479,14 +487,33 @@ class BilibiliPushDeliveryService:
         tag = self.link_tag_for(author_mid, categories)
         return self.prepend_link_tag(message, tag) if tag else message
 
-    async def _content_override(
+    async def compact_content(
         self,
         item: dict[str, Any],
         author_mid: int,
         content: str,
+        *,
+        notify_failure: bool = True,
     ) -> str | None:
+        return (
+            await self.compact_content_result(
+                item,
+                author_mid,
+                content,
+                notify_failure=notify_failure,
+            )
+        ).text
+
+    async def compact_content_result(
+        self,
+        item: dict[str, Any],
+        author_mid: int,
+        content: str,
+        *,
+        notify_failure: bool = True,
+    ) -> CompactedDynamicContent:
         if len(content) <= self.content_max_chars:
-            return None
+            return CompactedDynamicContent(None)
         summary: str | None = None
         failure_reason: str | None = None
         if self.summary_use_ai and self.summarize is not None:
@@ -529,15 +556,34 @@ class BilibiliPushDeliveryService:
                     BILIBILI_SUMMARY_MAX_ATTEMPTS,
                     failure_reason,
                 )
-        if failure_reason is not None:
+        if failure_reason is not None and notify_failure:
             await self._notify_summary_failure(
                 item,
                 author_mid,
                 failure_reason,
             )
         if summary is not None:
-            return summary
-        return _summary_failure_fallback(content, self.summary_max_chars)
+            return CompactedDynamicContent(summary, generated_by_ai=True)
+        return CompactedDynamicContent(
+            _summary_failure_fallback(content, self.summary_max_chars)
+        )
+
+    def _save_history_summary(
+        self,
+        item: dict[str, Any],
+        compacted: CompactedDynamicContent,
+    ) -> None:
+        if (
+            compacted.text is None
+            or self.history is None
+            or not (item_id := dynamic_id(item))
+        ):
+            return
+        self.history.save_summary(
+            item_id,
+            compacted.text,
+            generated_by_ai=compacted.generated_by_ai,
+        )
 
     async def _notify_summary_failure(
         self,

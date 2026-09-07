@@ -149,13 +149,14 @@ def build_dynamic_text_message(
 async def build_dynamic_detail_messages(
     item: dict[str, Any],
     *,
+    content_override: str | None = None,
     image_collage: ImageCollageService | None = None,
     combine_images: bool = True,
 ) -> tuple[Message, ...]:
     """Render a history detail with text and images as separate messages."""
 
     messages = (
-        build_dynamic_text_message(item),
+        build_dynamic_text_message(item, content_override),
         await build_adaptive_dynamic_images_message(
             item,
             image_collage=image_collage,
