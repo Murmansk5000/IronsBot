@@ -20,6 +20,11 @@ from ironsbot.services.seer.ids import (
     is_valid_team_id,
 )
 from ironsbot.services.seer.team import format_team_info
+from ironsbot.services.team.overview import (
+    TeamOverviewItem,
+    format_team_overview,
+    load_team_overview,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -46,6 +51,7 @@ class TeamResourceResult(NamedTuple):
     team_name: str
     message: str
     resource: int
+    member_count: int | None = None
 
 
 class TeamResourceSubscriptionTarget(NamedTuple):
@@ -399,7 +405,7 @@ class TeamResourceService:
                 "“订阅战队123456”添加。"
             )
 
-        at_user_ids = self.default_at_user_ids
+        at_user_ids = (user_id,)
         result = TeamResourceResult(
             prompt.team_id,
             prompt.team_name,
@@ -424,16 +430,26 @@ class TeamResourceService:
             "还可以继续发送“订阅战队123456”添加更多战队。"
         )
 
-    async def query_target_messages(
+    async def query_overview(
         self,
         target: TeamResourceSubscriptionTarget,
-    ) -> list[str]:
-        return await self.query_messages(
-            (
-                subscription.team_id
-                for subscription in self._subscriptions_for_target(target)
-            ),
-            group_id=target.group_id,
+        *,
+        first_team_id: int | None = None,
+    ) -> tuple[TeamOverviewItem, ...]:
+        subscriptions = self._subscriptions_for_target(target)
+
+        async def load(team_id: int, fallback_name: str) -> TeamOverviewItem:
+            try:
+                return TeamOverviewItem.from_result(
+                    await self.query(team_id, group_id=target.group_id)
+                )
+            except TeamResourceQueryError as error:
+                return TeamOverviewItem(team_id, fallback_name, error=str(error))
+
+        return await load_team_overview(
+            [(item.team_id, item.team_name) for item in subscriptions],
+            load,
+            first_team_id=first_team_id,
         )
 
     async def query_messages(
@@ -473,9 +489,11 @@ class TeamResourceService:
     async def scan(self) -> None:
         if not self.enabled:
             return
-        notices: list[tuple[MessageTarget, str]] = []
+        grouped: dict[
+            tuple[str, int], list[tuple[TeamOverviewItem, tuple[int, ...], str]]
+        ] = {}
         for target, subscription in self._all_subscriptions():
-            if not self._target_has_feature(target):
+            if not self.target_has_feature(target):
                 continue
             try:
                 result = await self.query(
@@ -492,16 +510,37 @@ class TeamResourceService:
             )
             if result.resource >= subscription.threshold:
                 continue
-            notices.append(
+            grouped.setdefault((target.kind, target.target_id), []).append(
                 (
-                    MessageTarget(target.kind, target.target_id, target.at_user_ids),
+                    TeamOverviewItem.from_result(result),
+                    target.at_user_ids,
                     self._resource_notice(result, subscription),
                 )
             )
+        notices: list[tuple[MessageTarget, str]] = []
+        for (kind, target_id), entries in grouped.items():
+            items = tuple(entry[0] for entry in entries)
+            mentions = tuple(
+                dict.fromkeys(user for _, users, _ in entries for user in users)
+            )
+            target = MessageTarget(
+                "group" if kind == "group" else "private", target_id, mentions
+            )
+            notices.append(
+                (
+                    target,
+                    format_team_overview(items, include_selection_hint=False)
+                    + "\n\n"
+                    + "\n".join(entry[2] for entry in entries),
+                )
+            )
+
+
         if notices:
             await self._delivery.send_target_messages(
                 notices,
                 action_name="team resource subscription notice",
+                subscription_key=TEAM_RESOURCE_FEATURE,
             )
 
     def register_jobs(self, scheduler: Scheduler) -> None:
@@ -551,6 +590,7 @@ class TeamResourceService:
             info.name,
             format_team_info(info, {"basic", "resource"}),
             info.score,
+            info.member_count,
         )
 
     async def _query_message(
@@ -608,13 +648,13 @@ class TeamResourceService:
                 subscription,
             )
 
-    def _target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
+    def target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
         if target.is_group:
-            return self._features.group_has_feature(
+            return self.enabled and self._features.group_has_feature(
                 target.target_id,
                 TEAM_RESOURCE_FEATURE,
             )
-        return self._features.user_has_feature(
+        return self.enabled and self._features.user_has_feature(
             target.target_id,
             TEAM_RESOURCE_FEATURE,
         )

@@ -13,6 +13,7 @@ from ironsbot.services.operations.headless_errors import (
     SocketRecvError,
 )
 from ironsbot.services.seer.team import (
+    PlayerTeamLookup,
     SeerTeamQueryService,
     TeamBossActivityStatus,
     TeamQueryActor,
@@ -139,13 +140,28 @@ async def test_player_team_query_reuses_team_details() -> None:
     actor = TeamQueryActor(1, None, can_manage=False)
     reply = await service.query_player_team(148758762, actor)
     assert headless.game.queried_teams == [TEAM_ID]
-    assert "战队 Boss：剩余能量 4/200｜活动状态：暂无法确认" in reply
+    assert (
+        "战队 Boss：累计削减能量 196｜最大体力通常为 200"
+        "｜活动状态：暂无法确认"
+    ) in reply
     headless.available = False
     headless.game.player_result = SimpleNamespace(team_id=0)
     reply = await service.query_player_team(148758762, actor)
     assert "当前未加入战队" in reply
     assert headless.game.queried_teams == [TEAM_ID]
     assert headless.available
+
+
+@pytest.mark.asyncio
+async def test_player_team_lookup_returns_structured_team_id() -> None:
+    service, _headless, _resource = _service()
+
+    lookup = await service.lookup_player_team(
+        148758762,
+        TeamQueryActor(1, None, can_manage=False),
+    )
+
+    assert lookup == PlayerTeamLookup(team_id=TEAM_ID)
 
 
 @pytest.mark.asyncio
@@ -207,12 +223,16 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
     assert "战队ID：123456" in message
     assert "战队等级：9" in message
     assert "战队资源：777" in message
-    assert "战队 Boss：剩余能量 4/200｜活动状态：暂无法确认" in message
+    assert (
+        "战队 Boss：累计削减能量 196｜最大体力通常为 200"
+        "｜活动状态：暂无法确认"
+    ) in message
     assert "【文本】" not in message
     assert "标语：一起冲" in message
     assert "公告：今晚集合" in message
     assert (
-        "战队 Boss：剩余能量 4/200｜活动状态：暂无法确认\n标语：一起冲"
+        "战队 Boss：累计削减能量 196｜最大体力通常为 200"
+        "｜活动状态：暂无法确认\n标语：一起冲"
         in message
     )
     assert "【设施等级】" not in message
@@ -221,23 +241,25 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
 
 
 @pytest.mark.parametrize(
-    ("damage", "expected"),
+    "damage",
     [
-        (0, "剩余能量 200/200"),
-        (196, "剩余能量 4/200"),
-        (200, "剩余能量 0/200"),
-        (-1, "能量数据异常（已削减能量：-1）"),
-        (201, "能量数据异常（已削减能量：201）"),
+        0,
+        196,
+        200,
+        445,
     ],
 )
-def test_team_boss_energy_display(damage: int, expected: str) -> None:
+def test_team_boss_energy_display(damage: int) -> None:
     info = TeamInfo(total_boss_dmg=damage)
     message = format_team_info(
         info,
         {"basic", "resource", "facilities"},
         include_boss=True,
     )
-    assert f"战队 Boss：{expected}｜活动状态：暂无法确认" in message
+    assert (
+        f"战队 Boss：累计削减能量 {damage}｜最大体力通常为 200"
+        "｜活动状态：暂无法确认"
+    ) in message
     assert message.count("战队 Boss：") == 1
     assert "战队Boss总伤害" not in message
     assert "【文本】" not in message
@@ -250,7 +272,6 @@ def test_team_boss_energy_display(damage: int, expected: str) -> None:
     ("status", "label"),
     [
         (TeamBossActivityStatus.OPEN, "开启"),
-        (TeamBossActivityStatus.CLOSED, "关闭"),
         (TeamBossActivityStatus.UNKNOWN, "暂无法确认"),
     ],
 )
@@ -265,6 +286,18 @@ def test_team_boss_activity_status_is_explicit(
         boss_activity_status=status,
     )
     assert f"活动状态：{label}" in message
+
+
+def test_team_boss_is_hidden_when_activity_is_closed() -> None:
+    message = format_team_info(
+        TeamInfo(total_boss_dmg=445),
+        {"resource"},
+        include_boss=True,
+        boss_activity_status=TeamBossActivityStatus.CLOSED,
+    )
+
+    assert "战队 Boss：" not in message
+    assert "活动状态：关闭" not in message
 
 
 def test_team_resource_format_does_not_include_active_query_details() -> None:

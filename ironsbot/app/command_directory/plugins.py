@@ -92,9 +92,7 @@ def bilibili_commands() -> tuple[CommandDescriptor, ...]:
             (
                 (
                     "bilibili.refresh",
-                    tuple(
-                        f"/{command}" for command in DYNAMIC_UPDATE_COMMANDS[:1]
-                    ),
+                    tuple(f"/{command}" for command in DYNAMIC_UPDATE_COMMANDS[:1]),
                     "立即刷新订阅动态",
                     {"access": (CommandAccess(audience="superuser"),)},
                 ),
@@ -131,9 +129,7 @@ def activity_commands() -> tuple[CommandDescriptor, ...]:
             (
                 (
                     "activity.current",
-                    tuple(
-                        f"/{command}" for command in CURRENT_ACTIVITY_COMMANDS[:1]
-                    ),
+                    tuple(f"/{command}" for command in CURRENT_ACTIVITY_COMMANDS[:1]),
                     "查询完整活动列表",
                     {"access": (CommandAccess(audience="superuser"),)},
                 ),
@@ -154,7 +150,7 @@ def team_resource_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
                 (
                     "team_resource.query",
                     ("战队",),
-                    "查看已订阅战队的信息和资源",
+                    "查看已订阅战队的编号概览，输入序号继续查询详情",
                     {"show_in_poke": True},
                 ),
             ),
@@ -191,7 +187,7 @@ def team_resource_commands(*, enabled: bool) -> tuple[CommandDescriptor, ...]:
                 (
                     "team_resource.list",
                     ("战队订阅",),
-                    "查看和管理战队订阅",
+                    "查看订阅战队的编号概览与详情",
                     {
                         "access": (
                             CommandAccess("group", "group_manager"),
