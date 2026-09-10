@@ -1663,6 +1663,10 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
+# Default: 90.0; EN: Maximum seconds to wait for a Watchtower image handoff. ZH: Watchtower 镜像交接最多等待秒数；超过后按下方开关处理。
+handoff_timeout_seconds = 90.0
+# Default: true; EN: When Watchtower cannot finish the handoff, stop the stale updater and continue booting the current image. This does not roll back a target image that has already started successfully. ZH: Watchtower 无法完成交接时，停止残留更新器并继续启动当前镜像；不回滚已经成功启动的目标镜像。
+fallback_to_current_image_on_handoff_failure = true
 
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。
