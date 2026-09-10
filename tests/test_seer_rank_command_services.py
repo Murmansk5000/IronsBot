@@ -30,6 +30,10 @@ from ironsbot.services.seer.rank_queries import (
     RankQueryService,
 )
 
+DISPLAY_LIMIT = 20
+NORMAL_USER_ID = 41
+SUPERUSER_ID = 42
+
 if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.local_rank import LocalRankService
@@ -70,7 +74,7 @@ class FakeDisplay:
 
     @staticmethod
     def limit_for_group(_group_id: int | None) -> int:
-        return 20
+        return DISPLAY_LIMIT
 
     def set_group_limit(
         self,
@@ -172,6 +176,7 @@ def _query_service(
         RankQueryPolicy(
             player_error=lambda _player_id, error: str(error),
             player_timeout_seconds=5,
+            is_superuser=lambda _user_id: False,
         ),
     )
 
@@ -230,6 +235,7 @@ async def test_exhausted_quota_returns_cache_without_headless_access() -> None:
         RankQueryPolicy(
             player_error=lambda _player_id, error: str(error),
             player_timeout_seconds=5,
+            is_superuser=lambda _user_id: False,
         ),
         cast("Any", ExhaustedQuota()),
     )
@@ -252,6 +258,54 @@ async def test_exhausted_quota_returns_cache_without_headless_access() -> None:
     assert "缓存数据" in score_reply.text
     assert "缓存数据" in player_reply.text
     assert "cached" in player_reply.text
+
+
+@pytest.mark.asyncio
+async def test_score_query_selects_superuser_search_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = RankQueryService(
+        cast("RankService", FakeRank()),
+        cast("LocalRankService", FakeLocalRank()),
+        cast("RankDisplayService", FakeDisplay()),
+        cast("HeadlessService", SimpleNamespace(get_game=object)),
+        RankQueryPolicy(
+            player_error=lambda _player_id, error: str(error),
+            player_timeout_seconds=5,
+            is_superuser=lambda user_id: user_id == SUPERUSER_ID,
+        ),
+    )
+    selected_limits: list[bool] = []
+
+    async def fake_score_message(
+        _game: object,
+        _command: RankScoreCommand,
+        *,
+        display_limit: int,
+        group_id: int | None,
+        use_superuser_limit: bool,
+    ) -> str:
+        assert display_limit == DISPLAY_LIMIT
+        assert group_id is None
+        selected_limits.append(use_superuser_limit)
+        return "ok"
+
+    monkeypatch.setattr(service, "_score_message", fake_score_message)
+
+    normal = await service.score_reply(
+        RankScoreCommand(rank_key="图鉴积分", score=999),
+        group_id=None,
+        qq_user_id=NORMAL_USER_ID,
+    )
+    superuser = await service.score_reply(
+        RankScoreCommand(rank_key="图鉴积分", score=999),
+        group_id=None,
+        qq_user_id=SUPERUSER_ID,
+    )
+
+    assert normal.text == "ok"
+    assert superuser.text == "ok"
+    assert selected_limits == [False, True]
 
 
 @pytest.mark.asyncio

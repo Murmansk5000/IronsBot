@@ -141,6 +141,15 @@ def format_metric_line(
     local_key: str,
 ) -> str | None:
     value_text = str(value) if value is not None and value >= 0 else "暂无数据"
+    if (
+        rank_result is not None
+        and rank_result.profile_score is not None
+        and rank_result.observed_score is not None
+        and rank_result.profile_score != rank_result.observed_score
+    ):
+        value_text = (
+            f"个人接口：{rank_result.profile_score}｜榜单：{rank_result.observed_score}"
+        )
     failure = None if rank_result is None else getattr(rank_result, "failure", None)
     cached_fallback = format_rank_cache_fallback(rank_result)
     rank_text = (
