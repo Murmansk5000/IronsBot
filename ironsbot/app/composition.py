@@ -124,12 +124,14 @@ from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
-from ironsbot.services.seer.player_detail_service import PlayerDetailService
 from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
 from ironsbot.services.seer.player_request_protection import (
     PlayerRequestProtectionService,
 )
-from ironsbot.services.seer.player_service import PlayerService
+from ironsbot.services.seer.player_service import (
+    PlayerDetailService,
+    PlayerService,
+)
 from ironsbot.services.seer.rank import RankService
 from ironsbot.services.seer.rank_admin import (
     RankAdminPolicy,
@@ -164,8 +166,6 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.settings import Settings
     from ironsbot.runtime.plugins import PluginDefinition
-
-
 @dataclass(slots=True)
 class Application:
     settings: Settings
@@ -313,7 +313,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(
             settings.paths.runtime_state,
-            legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
+            legacy_paths=(
+                cache_paths.root / "runtime" / "lucky_skin_window.sqlite",
+            ),
         ),
         renderer=partial(
             render_lucky_skin_window,
@@ -327,7 +329,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
-    bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
+    bili_cookie_store = FileBiliCookieStore(
+        bili_data_dir / "bili_cookie_cache.txt"
+    )
     bilibili = BilibiliService(
         config=settings.bilibili,
         targets=BiliTargetService(
@@ -335,7 +339,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             features,
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
-            BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
+            BiliAccountNames(
+                partial(fetch_bili_account_name, http_clients.origin)
+            ),
         ),
         cookie_store=bili_cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -478,7 +484,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless,
         RankQueryPolicy(
             player_error=player.format_error,
-            player_timeout_seconds=(settings.seer.player.detail_timeout_seconds),
+            player_timeout_seconds=(
+                settings.seer.player.detail_timeout_seconds
+            ),
         ),
         player_query_quotas,
         player_requests,
@@ -488,8 +496,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             rank_limit=settings.seer.rank.limit,
             batch_limit=settings.seer.local_rank.batch_limit,
             refresh_limit=settings.seer.local_rank.refresh_limit,
-            refresh_max_age_hours=(settings.seer.local_rank.refresh_max_age_hours),
-            page_cache_ttl_seconds=(settings.seer.rank.page_cache_ttl_seconds),
+            refresh_max_age_hours=(
+                settings.seer.local_rank.refresh_max_age_hours
+            ),
+            page_cache_ttl_seconds=(
+                settings.seer.rank.page_cache_ttl_seconds
+            ),
             display_limit=rank_display.limit_for_group,
         ),
         rank,

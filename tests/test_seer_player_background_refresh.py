@@ -1,3 +1,4 @@
+from ironsbot.config.models.seer import SeerConfig
 import asyncio
 from contextlib import nullcontext
 from time import monotonic
@@ -7,13 +8,14 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ironsbot.services.seer.player_detail_service import PlayerDetailService
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
-from ironsbot.services.seer.player_service import PendingPlayerQuery, PlayerService
-from ironsbot.services.seer.player_service_models import (
-    PlayerBaseSnapshot,
+from ironsbot.services.seer.player_service import (
+    PendingPlayerQuery,
+    PlayerDetailService,
+    PlayerService,
     _BackgroundRefresh,
 )
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_service_support import shortcut_timeout_seconds
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
@@ -26,15 +28,10 @@ def _service(
     enabled: bool,
     detail_timeout_seconds: float = 30.0,
 ) -> PlayerDetailService:
-    config = SimpleNamespace(
-        player=SimpleNamespace(
-            background_refresh=SimpleNamespace(
-                enabled=enabled,
-                cache_ttl_seconds=300.0,
-            ),
-            detail_timeout_seconds=detail_timeout_seconds,
-        )
-    )
+    config = SeerConfig()
+    config.player.background_refresh.enabled = enabled
+    config.player.background_refresh.cache_ttl_seconds = 300.0
+    config.player.detail_timeout_seconds = detail_timeout_seconds
 
     def spawn(coroutine: Any, *, name: str) -> asyncio.Task[None]:
         return asyncio.create_task(coroutine, name=name)
@@ -119,7 +116,8 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
         fetch,
     )
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_detail_service._BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS",
+        "ironsbot.services.seer.player_service."
+        "_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS",
         0.01,
     )
 
@@ -135,7 +133,9 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
 
         game = cast(
             "Any",
-            SimpleNamespace(operations=SimpleNamespace(track=track)),
+            SimpleNamespace(
+                operations=SimpleNamespace(track=track)
+            ),
         )
         service.start_background_refresh(game, _pending(), group_id=987654321)
         await asyncio.wait_for(tracked.wait(), timeout=0.1)
@@ -311,7 +311,9 @@ def test_peak_shortcut_reserves_the_rank_lookup_budget() -> None:
         config=cast(
             "Any",
             SimpleNamespace(
-                player=SimpleNamespace(detail_timeout_seconds=detail_timeout_seconds),
+                player=SimpleNamespace(
+                    detail_timeout_seconds=detail_timeout_seconds
+                ),
                 rank=SimpleNamespace(
                     player_lookup=SimpleNamespace(
                         total_timeout_seconds=60.0,
@@ -338,6 +340,7 @@ def test_peak_shortcut_reserves_the_rank_lookup_budget() -> None:
 def test_background_refresh_expiration_releases_inflight_section(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("ironsbot.services.seer.player_detail_service._BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS", 0.01)
     started = asyncio.Event()
 
     async def fetch(
@@ -357,6 +360,15 @@ def test_background_refresh_expiration_releases_inflight_section(
 
     async def run() -> None:
         service = _service(enabled=True, detail_timeout_seconds=0.01)
+        spawned: list[asyncio.Task[None]] = []
+        original_spawn = service._spawn
+
+        def capture_spawn(coroutine: Any, *, name: str) -> asyncio.Task[None]:
+            task = original_spawn(coroutine, name=name)
+            spawned.append(task)
+            return task
+
+        monkeypatch.setattr(service, "_spawn", capture_spawn)
         game = cast(
             "Any",
             SimpleNamespace(
@@ -366,11 +378,21 @@ def test_background_refresh_expiration_releases_inflight_section(
             ),
         )
         service.start_background_refresh(game, _pending())
-        await started.wait()
-        assert service.has_inflight_refresh(PLAYER_ID, "collection")
-
-        await asyncio.sleep(0.03)
-
-        assert not service.has_inflight_refresh(PLAYER_ID, "collection")
+        assert len(spawned) == 1
+        producer = spawned[0]
+        refresh = service._background_refreshes[PLAYER_ID]
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1.0)
+            assert service.has_inflight_refresh(PLAYER_ID, "collection")
+            await asyncio.wait_for(asyncio.shield(producer), timeout=1.0)
+            assert producer.done() and not producer.cancelled()
+            assert refresh.replies["collection"].done()
+            assert refresh.replies["collection"].result() is None
+            assert PLAYER_ID not in service._background_refreshes
+            assert not service.has_inflight_refresh(PLAYER_ID, "collection")
+        finally:
+            if not producer.done():
+                producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
 
     asyncio.run(run())

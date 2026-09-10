@@ -25,6 +25,9 @@ from ironsbot.services.seer.ids import (
 )
 from ironsbot.services.seer.player_account_policy import PlayerAccountPolicyMixin
 from ironsbot.services.seer.player_basic_query import fetch_pending_player_query
+from ironsbot.services.seer.player_detail_service import (
+    PlayerDetailService,  # noqa: TC001 - compatibility export
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_profile_cache import NullPlayerProfileCache
 from ironsbot.services.seer.player_query import (
@@ -39,6 +42,7 @@ from ironsbot.services.seer.player_request_protection import (
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
     PlayerQueryResult,
+    _BackgroundRefresh,  # noqa: F401 - compatibility export
 )
 from ironsbot.services.seer.player_service_support import (
     PLAYER_REQUEST_ERRORS,
@@ -51,7 +55,13 @@ from ironsbot.services.seer.player_shortcuts import (
     player_shortcut_semantic_request,
 )
 from ironsbot.services.seer.query_result import QueryReply
-from ironsbot.services.seer.query_work import QueryWorkMeter, run_with_query_work
+from ironsbot.services.seer.query_work import (
+    QueryWorkMeter,
+    run_with_query_work,
+)
+
+_BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
+_PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -61,7 +71,6 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
     from ironsbot.services.seer.player_binding import PlayerBindingStore
-    from ironsbot.services.seer.player_detail_service import PlayerDetailService
     from ironsbot.services.seer.player_profile_cache import PlayerProfileCache
     from ironsbot.services.seer.player_query_limits import PlayerQueryQuotaService
     from ironsbot.services.seer.player_request_protection import (
@@ -201,7 +210,9 @@ class PlayerService(PlayerAccountPolicyMixin):
         binding = self._bindings.get(qq_user_id)
         if binding.player_id == player_id:
             nick = f"（{binding.player_nick}）" if binding.player_nick else ""
-            return PlayerQueryResult(message=f"当前已绑定该米米号：{player_id}{nick}。")
+            return PlayerQueryResult(
+                message=f"当前已绑定该米米号：{player_id}{nick}。"
+            )
         if binding.player_id is not None:
             change_error = self._binding_change_error(qq_user_id)
             if change_error:
@@ -342,7 +353,9 @@ class PlayerService(PlayerAccountPolicyMixin):
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             return QueryReply(text=self.format_error(player_id, error))
         except Exception as error:  # noqa: BLE001
-            return QueryReply(text=player_query_failure_message(player_id, error))
+            return QueryReply(
+                text=player_query_failure_message(player_id, error)
+            )
         return replace(message, query_work=meter.result())
 
     def record_returned_shortcut(
@@ -432,7 +445,9 @@ class PlayerService(PlayerAccountPolicyMixin):
             )
             return PlayerQueryResult(pending=pending)
         except (TimeoutError, asyncio.TimeoutError):
-            return PlayerQueryResult(message=player_query_timeout_message(player_id))
+            return PlayerQueryResult(
+                message=player_query_timeout_message(player_id)
+            )
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
             if isinstance(error, (NotLoggedInError, DisconnectedError)):
                 await self._headless.mark_unavailable(
