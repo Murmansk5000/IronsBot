@@ -13,6 +13,7 @@ from nonebot_plugin_saa import Image, MessageFactory
 from ironsbot.runtime.matchers import CommandPolicy, bind_async
 from ironsbot.runtime.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data_query_commands import MASTER_POOL_COMMANDS
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -53,10 +54,12 @@ async def _handle_pool(
     matcher: Matcher,
     *,
     expert: bool,
+    master: bool = False,
 ) -> None:
     try:
         result = await service.pool(
             expert=expert,
+            master=master,
             progress=partial(_report_progress, matcher),
         )
     except DataUnavailableError:
@@ -121,7 +124,7 @@ def install(group: SeerMatcherGroup) -> None:
     priority = group.matcher_priority("seer_peak")
 
     pool = group.on_fullmatch(
-        ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池"),
+        ("竞技池", "竞技池变化", "巅峰竞技池", "竞技精灵池", "限制池"),
         policy=CommandPolicy.command(
             "seer_peak_pool",
             help_ids=("seer.peak.query",),
@@ -132,7 +135,7 @@ def install(group: SeerMatcherGroup) -> None:
     pool.append_handler(bind_async(_handle_pool, service, references, expert=False))
 
     expert_pool = group.on_fullmatch(
-        ("专家池", "巅峰专家池", "专家禁用池"),
+        ("专家池", "专家池变化", "巅峰专家池", "专家禁用池"),
         policy=CommandPolicy.command(
             "seer_peak_expert_pool",
             help_ids=("seer.peak.query",),
@@ -142,6 +145,18 @@ def install(group: SeerMatcherGroup) -> None:
     )
     expert_pool.append_handler(
         bind_async(_handle_pool, service, references, expert=True)
+    )
+
+    master_pool = group.on_fullmatch(
+        MASTER_POOL_COMMANDS,
+        policy=CommandPolicy.command(
+            "seer_peak_master_pool", help_ids=("seer.peak.master",)
+        ),
+        rule=rule,
+        priority=priority,
+    )
+    master_pool.append_handler(
+        bind_async(_handle_pool, service, references, expert=False, master=True)
     )
 
     vote = group.on_fullmatch(
@@ -164,9 +179,7 @@ def install(group: SeerMatcherGroup) -> None:
         rule=rule,
         priority=priority,
     )
-    suit.append_handler(
-        bind_async(_handle_item_rank, service, references, kind="套装")
-    )
+    suit.append_handler(bind_async(_handle_item_rank, service, references, kind="套装"))
 
     title = group.on_fullmatch(
         ("竞技称号榜", "狂野称号榜", "专家称号榜"),

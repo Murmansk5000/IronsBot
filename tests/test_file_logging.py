@@ -18,6 +18,9 @@ def test_rank_evidence_is_written_to_normal_and_error_files(tmp_path: Path) -> N
         source.info("rank query=%s entry=%s", "correlated", "player")
         wire.info("rank query=%s worker=%s raw_sha256=%s", "correlated", 123456, "abc")
         source.error("rank query=%s inverted=True", "correlated")
+        peak = logging.getLogger("ironsbot.services.seer.peak_diagnostics")
+        peak.info("peak field response query=peak-test param=124791 value=41")
+        peak.error("peak base mode failed query=peak-test param=124794")
         logging.getLogger("ironsbot.services.seer.unrelated").warning(
             "unrelated-marker"
         )
@@ -33,6 +36,8 @@ def test_rank_evidence_is_written_to_normal_and_error_files(tmp_path: Path) -> N
     assert "entry=player" not in error_text
     assert "unrelated-marker" not in normal_text
     assert "http-secret-marker" not in normal_text
+    assert "peak field response query=peak-test param=124791 value=41" in normal_text
+    assert "peak base mode failed query=peak-test param=124794" in error_text
 
 
 def test_file_logging_registers_file_sink(tmp_path: Path) -> None:

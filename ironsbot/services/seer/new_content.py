@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 NewContentCategory = Literal[
     "achievement",
     "pet",
+    "peak_pool",
+    "peak_expert_pool",
+    "peak_master_pool",
     "pet_skin",
     "skill",
     "mintmark",
@@ -40,6 +43,9 @@ NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "equip",
     "mount",
     "achievement",
+    "peak_pool",
+    "peak_expert_pool",
+    "peak_master_pool",
     "autocard_card",
     "autocard_role",
     "autocard_sanctuary_effect",
@@ -53,17 +59,25 @@ AUTOCARD_NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
     "autocard_role",
     "autocard_sanctuary_effect",
 )
+PEAK_POOL_NEW_CONTENT_CATEGORIES: tuple[NewContentCategory, ...] = (
+    "peak_pool",
+    "peak_expert_pool",
+    "peak_master_pool",
+)
 
 CATEGORY_NAMES: dict[NewContentCategory, str] = {
     "achievement": "新增成就",
     "pet": "新增精灵",
+    "peak_pool": "竞技池变化",
+    "peak_expert_pool": "专家池变化",
+    "peak_master_pool": "大师池变化",
     "pet_skin": "新增皮肤",
     "skill": "新增技能",
     "mintmark": "新增刻印",
     "suit": "新增套装",
     "equip": "新增部件",
     "mount": "新增座驾",
-    "autocard_card": "新增群星牌",
+    "autocard_card": "新增群星牌卡牌",
     "autocard_role": "新增群星牌角色",
     "autocard_sanctuary_effect": "新增群星牌圣域",
 }
@@ -102,6 +116,8 @@ class NewContentSnapshot:
     weekly_cycle: str
     items: tuple[NewContentItem, ...]
     category_states: tuple[NewContentCategoryState, ...] = ()
+    source_weekly_cycle: str = ""
+    is_current_week: bool = True
 
     def items_for(self, category: NewContentCategory) -> tuple[NewContentItem, ...]:
         return tuple(item for item in self.items if item.category == category)
@@ -116,9 +132,7 @@ class NewContentSnapshot:
             category=category,
             comparison_ready=self.baseline_established,
             reason=(
-                "legacy_index"
-                if self.baseline_established
-                else "history_unavailable"
+                "legacy_index" if self.baseline_established else "history_unavailable"
             ),
         )
 
@@ -126,15 +140,23 @@ class NewContentSnapshot:
         return self.category_state(category).comparison_ready
 
 
-def is_new_content_category_auto_expanded(
+def new_content_category_preview_items(
     snapshot: NewContentSnapshot,
     category: NewContentCategory,
     max_items: int,
-) -> bool:
-    """Expand short root-menu categories; zero disables automatic expansion."""
+) -> tuple[NewContentItem, ...]:
+    """Return only bounded additions for a root-menu category preview.
 
-    item_count = len(snapshot.items_for(category))
-    return 0 < item_count <= max_items
+    Corrections are deliberately kept behind the category entry.  A root menu
+    should advertise this week's genuinely new content without letting a long
+    list of adjustments hide it or consume the configured preview budget.
+    """
+
+    if max_items <= 0:
+        return ()
+    return tuple(
+        item for item in snapshot.items_for(category) if item.change_kind == "added"
+    )[:max_items]
 
 
 def format_new_content_category_count(
@@ -163,6 +185,19 @@ class NewContentService:
             return snapshot
 
 
+def format_new_content_change_summary(item: NewContentItem) -> str:
+    """Return the publisher-provided field summary for a modified item."""
+
+    if item.change_kind != "modified":
+        return ""
+    values = item.payload.get("change_summary")
+    if not isinstance(values, list):
+        return ""
+    return "、".join(
+        value.strip() for value in values if isinstance(value, str) and value.strip()
+    )
+
+
 def format_new_content_item_description(item: NewContentItem) -> str:
     """Keep text and rendered new-content menus on the same item wording."""
 
@@ -171,11 +206,20 @@ def format_new_content_item_description(item: NewContentItem) -> str:
         point = int(item.payload.get("point", 0))
         titles = item.payload.get("titles", [])
         title_text = f"｜称号：{titles[0].get('name', '')}" if titles else ""
-        return f"{change}｜{item.entity_id}｜{point} 点{title_text}"
-    if item.category == "pet_skin":
+        text = f"{change}｜{item.entity_id}｜{point} 点{title_text}"
+    elif item.category == "pet_skin":
         pet_name = str(item.payload.get("pet_name", ""))
-        return f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
-    if item.category == "skill":
+        text = f"{change}｜{item.entity_id}｜{pet_name or '未关联精灵'}"
+    elif item.category in PEAK_POOL_NEW_CONTENT_CATEGORIES:
+        master = item.category == "peak_master_pool"
+        previous_limit = _format_peak_pool_limit(
+            item.payload.get("previous_limit"), master=master
+        )
+        current_limit = _format_peak_pool_limit(
+            item.payload.get("current_limit"), master=master
+        )
+        text = f"修改｜{item.entity_id}｜{previous_limit} → {current_limit}"
+    elif item.category == "skill":
         pets = item.payload.get("pets", [])
         names = (
             "、".join(
@@ -186,27 +230,41 @@ def format_new_content_item_description(item: NewContentItem) -> str:
             if isinstance(pets, list)
             else ""
         )
-        return f"{change}｜{item.entity_id}{f'｜{names}' if names else ''}"
-    if item.category in {"autocard_card", "autocard_role"}:
+        text = f"{change}｜{item.entity_id}{f'｜{names}' if names else ''}"
+    elif item.category in {"autocard_card", "autocard_role"}:
         kind = "角色" if item.category == "autocard_role" else "卡牌"
-        return f"{change}｜{item.entity_id}｜{kind}"
-    if item.category == "autocard_sanctuary_effect":
+        text = f"{change}｜{item.entity_id}｜{kind}"
+    elif item.category == "autocard_sanctuary_effect":
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
         sanctuary = sanctuary or f"圣域 {int(item.payload.get('sanctuary_id', 0))}"
         pet_name = str(item.payload.get("sanctuary_pet_name", "")).strip()
         pet = f"｜精灵王：{pet_name}" if pet_name else ""
         unlock_round = int(item.payload.get("unlock_round", 0))
         phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
-        return f"{change}｜{sanctuary}{pet}｜{phase}"
-    return f"{change}｜{item.entity_id}"
+        text = f"{change}｜{sanctuary}{pet}｜{phase}"
+    else:
+        text = f"{change}｜{item.entity_id}"
+
+    summary = format_new_content_change_summary(item)
+    return f"{text}｜修改：{summary}" if summary else text
+
+
+def _format_peak_pool_limit(value: object, *, master: bool = False) -> str:
+    if value is None:
+        return "未列入" if master else "不限"
+    if not isinstance(value, (int, str)):
+        return "未知"
+    try:
+        return f"{int(value)} 点" if master else f"限{int(value)}"
+    except (TypeError, ValueError):
+        return "未知"
 
 
 def _load_snapshot(session: Session) -> NewContentSnapshot:
     try:
         connection = session.connection()
         release = (
-            connection
-            .exec_driver_sql(
+            connection.exec_driver_sql(
                 """
             SELECT current_config_version, weekly_cycle, baseline_established
             FROM new_content_release
@@ -218,39 +276,41 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
         )
         if release is None:
             raise NewContentIndexUnavailableError
-        rows = (
-            connection
-            .exec_driver_sql(
-                """
-            SELECT category, entity_id, name, sort_value, payload_json, change_kind
-            FROM new_content_item
-            ORDER BY category, sort_value, entity_id
-            """
-            )
-            .mappings()
-            .all()
-        )
+        source_weekly_cycle = str(release["weekly_cycle"])
+        is_current_week = source_weekly_cycle == current_new_content_weekly_cycle()
+        rows = ()
         state_rows = ()
-        has_category_state = connection.exec_driver_sql(
-            """
-            SELECT 1
-            FROM sqlite_master
-            WHERE type = 'table' AND name = 'new_content_category_state'
-            """
-        ).first()
-        if has_category_state:
-            state_rows = (
-                connection
-                .exec_driver_sql(
+        if is_current_week:
+            rows = (
+                connection.exec_driver_sql(
                     """
-                    SELECT category, comparison_ready, reason
-                    FROM new_content_category_state
-                    ORDER BY category
+                SELECT category, entity_id, name, sort_value, payload_json, change_kind
+                FROM new_content_item
+                ORDER BY category, sort_value, entity_id
                     """
                 )
                 .mappings()
                 .all()
             )
+            has_category_state = connection.exec_driver_sql(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table' AND name = 'new_content_category_state'
+                """
+            ).first()
+            if has_category_state:
+                state_rows = (
+                    connection.exec_driver_sql(
+                        """
+                        SELECT category, comparison_ready, reason
+                        FROM new_content_category_state
+                        ORDER BY category
+                        """
+                    )
+                    .mappings()
+                    .all()
+                )
     except SQLAlchemyError as error:
         raise NewContentIndexUnavailableError from error
 
@@ -296,6 +356,8 @@ def _load_snapshot(session: Session) -> NewContentSnapshot:
         ),
         items=tuple(items),
         category_states=tuple(category_states),
+        source_weekly_cycle=source_weekly_cycle,
+        is_current_week=is_current_week,
     )
 
 
@@ -329,8 +391,31 @@ def _current_content_date(config_version: str, fallback: str) -> str:
     return fallback
 
 
+def current_new_content_weekly_cycle(now: datetime | None = None) -> str:
+    """Return the Friday-starting content week in Shanghai time."""
+
+    shanghai = ZoneInfo("Asia/Shanghai")
+    if now is None:
+        current = datetime.now(shanghai)
+    elif now.tzinfo is None:
+        current = now.replace(tzinfo=shanghai)
+    else:
+        current = now.astimezone(shanghai)
+    current_date = current.date()
+    return (current_date - timedelta(days=(current_date.weekday() - 4) % 7)).isoformat()
+
+
 def new_content_unavailable_message() -> str:
     return "当前数据版本尚未提供新增内容记录。"
+
+
+def new_content_stale_week_message(snapshot: NewContentSnapshot) -> str:
+    """Explain why a valid release index is hidden after its content week ends."""
+
+    return (
+        f"当前数据版本仍为 {snapshot.source_weekly_cycle} 周期，"
+        "本周暂未获得可验证的新增或修改内容。"
+    )
 
 
 def new_content_category_unavailable_message(

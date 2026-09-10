@@ -5,6 +5,7 @@ from ironsbot.app.command_directory.rows import commands_from_rows
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 from ironsbot.services.seer.data_query_commands import (
     DATA_QUERY_HELP_EXAMPLES,
+    MASTER_POOL_COMMANDS,
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,
     NEW_AUTOCARD_ROLES_COMMANDS,
@@ -17,6 +18,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
     NEW_SUITS_COMMANDS,
+    PEAK_ENVIRONMENT_CHANGES_COMMANDS,
 )
 from ironsbot.services.seer.rank_catalog import rank_command_names
 from ironsbot.services.seer.rank_list_models import GLOBAL_RANKS, LOCAL_RANKS
@@ -167,8 +169,18 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
             (
                 (
                     "seer.peak.query",
-                    ("竞技池", "专家池", "巅峰投票"),
-                    "查询巅峰池和投票信息",
+                    (
+                        "竞技池 / 竞技池变化",
+                        "专家池 / 专家池变化",
+                        "巅峰投票",
+                    ),
+                    "查询当前巅峰池、本周位置变化和投票信息",
+                    {"show_in_poke": True},
+                ),
+                (
+                    "seer.peak.master",
+                    MASTER_POOL_COMMANDS,
+                    "查询大师池精灵竞技点和本周点数变化",
                     {"show_in_poke": True},
                 ),
                 (
@@ -214,6 +226,12 @@ def seer_query_commands() -> tuple[CommandDescriptor, ...]:
                     NEW_CONTENT_COMMANDS,
                     "查看本周官方新增内容分类",
                     {},
+                ),
+                (
+                    "seer.data.peak_environment_changes",
+                    PEAK_ENVIRONMENT_CHANGES_COMMANDS,
+                    "查看本周竞技池、专家池与大师池环境变化",
+                    {"features_all": ("seer_data", "seer_peak")},
                 ),
                 (
                     "seer.data.new_pet",

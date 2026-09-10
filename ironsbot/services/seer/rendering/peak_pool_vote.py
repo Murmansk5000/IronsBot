@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.peak import PeakPetSnapshot
     from ironsbot.services.seer.rank_models import RankEntry
 
-TABLE_WIDTH = 400
+TABLE_WIDTH = 900
 CONTAINER_PADDING = 20 * 2
 
 
@@ -24,18 +24,22 @@ class VoteRankDict(TypedDict):
     pet_id: int
     name: str
     score: int
+    percentage: int
     head_img: str
     type_icon: str
 
 
 class VotePoolDict(TypedDict):
     title: str
+    period: str
+    total_votes: int
     ranks: list[VoteRankDict]
 
 
 class VotePoolInput(TypedDict):
     items: "list[RankEntry]"
     title: str
+    period: str
     pets: "list[PeakPetSnapshot]"
 
 
@@ -78,6 +82,7 @@ async def render_peak_pool_vote(
     pool_dicts: list[VotePoolDict] = []
     for pool in pools:
         ranks: list[VoteRankDict] = []
+        total_votes = sum(max(info.score, 0) for info in pool["items"])
         for i, info in enumerate(pool["items"], 1):
             pet = pet_map.get(info.id)
             if pet is not None:
@@ -94,6 +99,11 @@ async def render_peak_pool_vote(
                     "pet_id": info.id,
                     "name": name,
                     "score": info.score,
+                    "percentage": (
+                        round(max(info.score, 0) / total_votes * 100)
+                        if total_votes
+                        else 0
+                    ),
                     "head_img": head_img,
                     "type_icon": type_icon,
                 }
@@ -101,6 +111,8 @@ async def render_peak_pool_vote(
         pool_dicts.append(
             {
                 "title": pool["title"],
+                "period": pool["period"],
+                "total_votes": total_votes,
                 "ranks": ranks,
             }
         )
