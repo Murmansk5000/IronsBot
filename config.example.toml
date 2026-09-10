@@ -955,18 +955,19 @@ enabled = true
 account = "seer"
 # Default: "Asia/Shanghai"; EN: Timezone used by preview schedule matching. ZH: 预告发布时间判断使用的时区。
 timezone = "Asia/Shanghai"
-# New targets mute lottery/result pushes by default. All other categories subscribe by default.
-# 新群/私聊默认 TD 抽奖/中奖，其余分类默认订阅；TD 菜单中的设置会单独保存。
-default_muted_categories = ["lottery"]
+# New targets mute lottery and winning pushes by default. All other categories subscribe by default.
+# 新群/私聊默认 TD 抽奖和中奖，其余分类默认订阅；TD 菜单中的设置会单独保存。
+default_muted_categories = ["lottery", "winning"]
 # Monday/Wednesday afternoon is only an extra hint. A preview still needs a text match.
 # 周一、周三 17:00-18:00 仅辅助识别预告，不能单独将动态判为预告。
 preview_windows = [{ weekdays = ["mon", "wed"], start = "17:00:00", end = "18:00:00" }]
 # Text patterns used together with preview_windows.
 preview_window_patterns = ["新版本", "即将到来", "长图"]
-# The twelve TD categories are lottery, version_preview, version_guide, pet, skin,
+# The thirteen TD categories are lottery, winning, version_preview, version_guide, pet, skin,
 # skill_showcase, autocard, competition, story (main storyline), event, interaction, other.
 # 下列正则可按官方文案变化自行增减；other 只在没有命中其他分类时自动使用。
-lottery_patterns = ["抽奖", "中奖", "私信通知", "抽奖结果"]
+lottery_patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
+winning_patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 version_preview_patterns = ["新版本.*即将到来", "查看下方长图"]
 version_guide_patterns = ["一图掌握", "版本更新指引", "版本福利"]
 pet_patterns = ["全新精灵", "精灵觉醒", "精灵.*即将登场"]
@@ -1179,8 +1180,8 @@ timeout_seconds = 15.0
 [seer.team]
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
-# Default: ["basic", "resource"]; EN: Enabled team sections. ZH: 战队展示区块。
-sections = ["basic", "resource"]
+# Default: ["basic", "resource", "text"]; EN: Enabled team sections. ZH: 战队展示区块。
+sections = ["basic", "resource", "text"]
 
 [seer.team_resource]
 # Default: true; EN: Enable subscribed team query and resource notices. ZH: 启用战队订阅查询与资源提醒。
@@ -1662,6 +1663,10 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
+# Default: 90.0; EN: Maximum seconds to wait for a Watchtower image handoff. ZH: Watchtower 镜像交接最多等待秒数；超过后按下方开关处理。
+handoff_timeout_seconds = 90.0
+# Default: true; EN: When Watchtower cannot finish the handoff, stop the stale updater and continue booting the current image. This does not roll back a target image that has already started successfully. ZH: Watchtower 无法完成交接时，停止残留更新器并继续启动当前镜像；不回滚已经成功启动的目标镜像。
+fallback_to_current_image_on_handoff_failure = true
 
 [operations.restart]
 # Default: false; EN: Enable scheduled bot restart. ZH: 启用定时重启。

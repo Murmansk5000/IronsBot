@@ -88,7 +88,7 @@ def test_background_refresh_is_disabled_by_default(
         return QueryReply(text=command.kind)
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 
@@ -116,7 +116,7 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
         return QueryReply(text=f"{command.kind} reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
     monkeypatch.setattr(
@@ -185,7 +185,7 @@ def test_background_refresh_reports_inflight_section(
         return QueryReply(text=f"{command.kind} reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 
@@ -231,7 +231,7 @@ def test_direct_shortcut_bypasses_and_releases_pending_background_refresh(
         return QueryReply(text="collection reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 
@@ -357,7 +357,7 @@ def test_background_refresh_expiration_releases_inflight_section(
         return QueryReply(text=f"{command.kind} reply")
 
     monkeypatch.setattr(
-        "ironsbot.services.seer.player_service.fetch_player_shortcut_reply",
+        "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
         fetch,
     )
 

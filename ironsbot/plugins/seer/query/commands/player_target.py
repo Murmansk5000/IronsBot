@@ -111,9 +111,7 @@ def resolve_event_player_reference_target(  # noqa: PLR0911 - explicit outcomes 
             accounts.find_player_accounts(
                 normalized,
                 group_id=(
-                    event_group_id(event)
-                    if isinstance(event, MessageEvent)
-                    else None
+                    event_group_id(event) if isinstance(event, MessageEvent) else None
                 ),
                 allow_private=allow_private,
             ),
@@ -167,6 +165,11 @@ def resolve_event_player_target(  # noqa: PLR0913 - event resolution inputs are 
     ):
         return explicit_target
     explicit_player_id = explicit_target.player_id
+    if (
+        explicit_player_id is not None
+        and not message_input_context(event).has_member_mentions
+    ):
+        return explicit_target
 
     if explicit_player_id is None and not allow_default:
         context = message_input_context(event)
@@ -275,9 +278,5 @@ def protected_shortcut_target_error(
     if not target.is_shortcut_target or target.player_id is None:
         return None
     check = getattr(service, "shortcut_target_access_error", None)
-    result = (
-        check(requester_user_id, target.player_id)
-        if callable(check)
-        else None
-    )
+    result = check(requester_user_id, target.player_id) if callable(check) else None
     return result if isinstance(result, str) else None

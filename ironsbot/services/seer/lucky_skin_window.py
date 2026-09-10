@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MIT
 """Public lucky skin window lookup backed by an authenticated game session."""
-
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +8,6 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from functools import partial
-from struct import unpack
 from time import monotonic
 from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
@@ -19,8 +17,25 @@ from sqlmodel import Session, col, select
 
 from ironsbot.core.messaging import DeliveryReceipt, MessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
+from ironsbot.services.seer.lucky_skin_window_formatting import (
+    format_offer_price as _format_offer_price,
+)
+from ironsbot.services.seer.lucky_skin_window_protocol import (
+    LuckySkinWindowBindingError,
+    LuckySkinWindowError,  # noqa: F401 - compatibility export
+    LuckySkinWindowNotConfiguredError,
+    LuckySkinWindowPayloadError,  # noqa: F401 - compatibility export
+)
+from ironsbot.services.seer.lucky_skin_window_protocol import (
+    fetch_skin_ids as _fetch_skin_ids,
+)
+from ironsbot.services.seer.lucky_skin_window_protocol import (
+    parse_skin_ids as _parse_skin_ids,  # noqa: F401 - compatibility export
+)
+from ironsbot.services.seer.lucky_skin_window_protocol import (
+    required_password as _required_password,
+)
 from ironsbot.services.seer.skin_price import (
-    FASHION_TICKET_VALUE,
     SkinStorePrice,
     load_active_skin_store_prices,
 )
@@ -32,7 +47,6 @@ if TYPE_CHECKING:
     from ironsbot.core.onebot_references import OneBotReferenceResolver
     from ironsbot.services.messaging.delivery import MessageDelivery
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
-    from ironsbot.services.operations.headless import HeadlessGame
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.player_binding import PlayerBindingStore
@@ -55,38 +69,6 @@ class LuckySkinWindowMessageFormatter(Protocol):
     ) -> object: ...
 
 LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY = "lucky_skin_window"
-_GET_LUCKY_SKIN_WINDOW = 45866
-_REQUEST = (
-    # The official-client capture includes 668 in the packet head's result
-    # field. SeerGame derives that value from its connection state, so it must
-    # not be copied into this request body.
-    0,
-    0,
-    18,
-    203247,
-    31101,
-    31102,
-    31103,
-    31104,
-    108937,
-    108938,
-    108939,
-    108940,
-    108941,
-    108942,
-    108943,
-    401009,
-    401010,
-    401007,
-    401008,
-    351005,
-    351004,
-)
-# The server returns the four refreshed skin IDs immediately after the eight
-# fixed response fields.  The following field is unrelated metadata, so using
-# offset 9 silently dropped the first offer and appended that metadata instead.
-_SKIN_OFFSET = 8
-_SKIN_COUNT = 4
 
 
 class LuckySkinWindowCache(Protocol):
@@ -106,34 +88,6 @@ class LuckySkinWatchPreferenceStore(Protocol):
     def get(self, qq_user_id: int) -> tuple[int, ...] | None: ...
 
     def set(self, qq_user_id: int, skin_ids: tuple[int, ...]) -> None: ...
-
-
-class LuckySkinWindowError(RuntimeError):
-    @classmethod
-    def packet_request_failed(cls) -> LuckySkinWindowError:
-        return cls("lucky skin window packet request failed")
-
-
-class LuckySkinWindowNotConfiguredError(LuckySkinWindowError):
-    pass
-
-
-class LuckySkinWindowBindingError(LuckySkinWindowError):
-    pass
-
-
-class LuckySkinWindowPayloadError(LuckySkinWindowError):
-    @classmethod
-    def unaligned(cls) -> LuckySkinWindowPayloadError:
-        return cls("skin window payload is not uint32 aligned")
-
-    @classmethod
-    def truncated(cls) -> LuckySkinWindowPayloadError:
-        return cls("skin window payload is truncated")
-
-    @classmethod
-    def invalid_skin_ids(cls) -> LuckySkinWindowPayloadError:
-        return cls("skin window payload has invalid skin IDs")
 
 
 @dataclass(frozen=True, slots=True)
@@ -751,47 +705,6 @@ class LuckySkinWindowService:
         return resolved
 
 
-async def _fetch_skin_ids(
-    game: HeadlessGame,
-    *,
-    timeout_seconds: float,
-    background: bool,
-) -> tuple[int, ...]:
-    try:
-        with game.operations.track(
-            "幸运橱窗检查",
-            source="幸运橱窗专用会话",
-            background=background,
-        ):
-            _head, payload = await game.send_and_wait(
-                _GET_LUCKY_SKIN_WINDOW,
-                *_REQUEST,
-                timeout=timeout_seconds,
-            )
-    except (ConnectionError, TimeoutError) as error:
-        raise LuckySkinWindowError.packet_request_failed() from error
-    return _parse_skin_ids(payload)
-
-
-def _parse_skin_ids(payload: bytes | bytearray | memoryview) -> tuple[int, ...]:
-    data = bytes(payload)
-    if len(data) % 4:
-        raise LuckySkinWindowPayloadError.unaligned()
-    values = unpack(f"!{len(data) // 4}I", data)
-    if len(values) < _SKIN_OFFSET + _SKIN_COUNT:
-        raise LuckySkinWindowPayloadError.truncated()
-    skin_ids = tuple(values[_SKIN_OFFSET : _SKIN_OFFSET + _SKIN_COUNT])
-    if len(skin_ids) != _SKIN_COUNT or any(skin_id <= 0 for skin_id in skin_ids):
-        raise LuckySkinWindowPayloadError.invalid_skin_ids()
-    return skin_ids
-
-
-def _required_password(account: PlayerAccount) -> str:
-    if account.password is None:
-        raise LuckySkinWindowNotConfiguredError
-    return account.password
-
-
 def _load_skin_records_by_resource_id(
     session: Session,
     *,
@@ -816,22 +729,3 @@ def _skin_identifiers(skin_id: int, resource_id: int) -> str:
     if resource_id > 0 and resource_id != skin_id:
         return f"皮肤ID：{skin_id}，资源ID：{resource_id}"
     return f"皮肤ID：{skin_id}"
-
-
-def _format_offer_price(price: SkinStorePrice) -> tuple[str, ...]:
-    if price.price <= 0:
-        return ("   橱窗价格数据异常",)
-
-    price_text = f"   橱窗价：{price.price}钻"
-    if price.original_price > 0 and price.original_price != price.price:
-        price_text += f"（原价{price.original_price}钻）"
-    if price.ticket_num <= 0:
-        return (price_text,)
-
-    ticket_discount = price.ticket_num * FASHION_TICKET_VALUE
-    if ticket_discount < price.price:
-        minimum = price.price - ticket_discount
-        ticket_text = f"   最多用{price.ticket_num}张风尚券，最低{minimum}钻"
-    else:
-        ticket_text = f"   最多用{price.ticket_num}张风尚券，可抵扣{ticket_discount}钻"
-    return price_text, ticket_text

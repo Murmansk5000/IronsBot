@@ -56,6 +56,7 @@ DEFAULT_OUTBOUND_MAX_MESSAGES = 10
 DEFAULT_HELP_HINT_MAX_PER_WINDOW = 3
 DEFAULT_RENDER_CACHE_MAX_SIZE_MB = 200
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
+DEFAULT_DOCKER_UPDATE_HANDOFF_TIMEOUT_SECONDS = 90.0
 DEFAULT_DATA_SYNC_INTERVAL_MINUTES = 5
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
@@ -145,6 +146,11 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.watchtower_image == "containrrr/watchtower:latest"
     assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
+    assert (
+        docker_update.handoff_timeout_seconds
+        == DEFAULT_DOCKER_UPDATE_HANDOFF_TIMEOUT_SECONDS
+    )
+    assert docker_update.fallback_to_current_image_on_handoff_failure
     assert docker_update.registry_username == ""
     assert docker_update.registry_token == ""
 

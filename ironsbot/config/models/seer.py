@@ -315,7 +315,9 @@ class TeamQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timeout_seconds: float = Field(default=20, gt=0)
-    sections: list[str] = Field(default_factory=lambda: ["basic", "resource"])
+    sections: list[str] = Field(
+        default_factory=lambda: ["basic", "resource", "text"]
+    )
 
     @field_validator("sections", mode="before")
     @classmethod
