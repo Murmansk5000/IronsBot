@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
+if TYPE_CHECKING:
+    from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
+    from ironsbot.services.seer.team import SeerTeamQueryService
 
 PLAYER_ID_KEY = "player_id"
 PLAYER_CONVERSATION_NAMESPACE = "seer_player"
@@ -24,3 +28,4 @@ class PlayerDetailMenuContext:
     has_peak: bool
     has_autocard: bool
     base_snapshot: PlayerBaseSnapshot | None = None
+    team_query: SeerTeamQueryService | None = None

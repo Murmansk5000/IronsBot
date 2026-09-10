@@ -474,6 +474,7 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
                 install_team_resource,
                 service=team_resource_service,
                 team_query=seer_resources.team_query,
+                player=seer_resources.player,
                 notice_timeout_seconds=config.runtime.menu.root_timeout_minutes * 60,
             ),
             hooks=PluginHooks(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import nonebot
 import pytest
@@ -21,9 +21,12 @@ from ironsbot.integrations.storage.team_resources import (
     TeamResourceSubscriptionStore,
 )
 from ironsbot.services.operations.headless import HeadlessService
+from ironsbot.services.seer.team import PlayerTeamLookup
 from ironsbot.services.team.resource import (
+    TeamOverviewItem,
     TeamResourceResult,
     TeamResourceService,
+    TeamResourceSubscriptionTarget,
     TeamResourceSubscriptionUpdate,
 )
 from tests.helpers.onebot_events import group_message_event, private_message_event
@@ -79,6 +82,7 @@ TEAM_RESOURCE_SERVICE = _service(TeamResourceConfig())
 resource.install(
     TEAM_RESOURCE_REGISTRY,
     TEAM_RESOURCE_SERVICE,
+    MagicMock(),
     MagicMock(),
 )
 
@@ -195,6 +199,201 @@ def test_team_resource_manage_uses_command_cooldown() -> None:
     )
 
 
+def test_team_resource_manage_rule_claims_member_mutation_for_permission_reply(
+) -> None:
+    event = group_message_event(
+        f"订阅战队{TEAM_ID} {TEAM_THRESHOLD}",
+        group_id=GROUP_ID,
+        sender={"role": "member"},
+    )
+
+    target = resource._subscription_target(event)
+    assert target is not None
+    assert TEAM_RESOURCE_SERVICE.allows_target(event.user_id, target)
+    assert resource._is_team_resource_manage(
+        event,
+        service=TEAM_RESOURCE_SERVICE,
+    )
+
+
+@pytest.mark.asyncio
+async def test_team_resource_manage_tells_member_that_admin_permission_is_required(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    event = group_message_event(
+        f"订阅战队{TEAM_ID} {TEAM_THRESHOLD}",
+        group_id=GROUP_ID,
+        sender={"role": "member"},
+    )
+    finish = AsyncMock()
+    matcher = cast("Matcher", object())
+    monkeypatch.setattr(resource, "finish_event_reply", finish)
+
+    await resource.handle_team_resource_manage(
+        matcher,
+        event,
+        TEAM_RESOURCE_SERVICE,
+        cast("Any", object()),
+    )
+
+    finish.assert_awaited_once_with(
+        matcher,
+        event,
+        "只有群主、管理员或超级管理员可以修改战队订阅。",
+    )
+
+
+def test_team_resource_manage_rule_ignores_disabled_conversation() -> None:
+    event = group_message_event(
+        f"订阅战队{TEAM_ID} {TEAM_THRESHOLD}",
+        group_id=999,
+        sender={"role": "admin"},
+    )
+
+    assert not resource._is_team_resource_manage(
+        event,
+        service=TEAM_RESOURCE_SERVICE,
+    )
+
+
+def test_team_resource_group_target_defaults_to_operator_without_mentions() -> None:
+    target = TeamResourceSubscriptionTarget("group", GROUP_ID)
+
+    assert resource._with_default_group_reminder(target, 123) == (
+        "group",
+        GROUP_ID,
+        (123,),
+    )
+    mentioned = TeamResourceSubscriptionTarget("group", GROUP_ID, (234,))
+    assert resource._with_default_group_reminder(mentioned, 123) == mentioned
+
+
+@pytest.mark.asyncio
+async def test_group_overview_prepends_the_requesters_bound_team() -> None:
+    event = group_message_event("战队", user_id=123)
+    service = MagicMock()
+    service.query_overview = AsyncMock(
+        return_value=(TeamOverviewItem(9876543, "所属战队", 60, 500),)
+    )
+    player = MagicMock()
+    player.default_player_id.return_value = 148758762
+    team_query = MagicMock()
+    team_query.lookup_player_team = AsyncMock(
+        return_value=PlayerTeamLookup(team_id=9876543)
+    )
+    menus = MagicMock(player=player, query=team_query)
+    menus.open = AsyncMock()
+
+    await resource.handle_team_resource(
+        cast("Matcher", object()),
+        event,
+        service,
+        menus,
+    )
+
+    service.query_overview.assert_awaited_once_with(
+        TeamResourceSubscriptionTarget("group", GROUP_ID),
+        first_team_id=9876543,
+    )
+    menus.open.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_private_overview_includes_the_requesters_bound_team() -> None:
+    event = private_message_event("战队", user_id=123)
+    service = MagicMock()
+    service.is_superuser.return_value = False
+    service.query_overview = AsyncMock(
+        return_value=(TeamOverviewItem(9876543, "所属战队", 60, 500),)
+    )
+    player = MagicMock()
+    player.default_player_id.return_value = 148758762
+    team_query = MagicMock()
+    team_query.lookup_player_team = AsyncMock(
+        return_value=PlayerTeamLookup(team_id=9876543)
+    )
+    menus = MagicMock(player=player, query=team_query)
+    menus.open = AsyncMock()
+
+    await resource.handle_team_resource(
+        cast("Matcher", object()),
+        event,
+        service,
+        menus,
+    )
+
+    service.query_overview.assert_awaited_once_with(
+        TeamResourceSubscriptionTarget("private", 123),
+        first_team_id=9876543,
+    )
+    menus.open.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_group_overview_keeps_subscriptions_when_bound_team_lookup_fails(
+) -> None:
+    event = group_message_event("战队", user_id=123)
+    service = MagicMock()
+    service.query_overview = AsyncMock(
+        return_value=(TeamOverviewItem(1234567, "订阅战队", 60, 500),)
+    )
+    player = MagicMock()
+    player.default_player_id.return_value = 148758762
+    team_query = MagicMock()
+    team_query.lookup_player_team = AsyncMock(
+        return_value=PlayerTeamLookup(error="连接已断开")
+    )
+    menus = MagicMock(player=player, query=team_query)
+    menus.open = AsyncMock()
+
+    await resource.handle_team_resource(
+        cast("Matcher", object()),
+        event,
+        service,
+        menus,
+    )
+
+    service.query_overview.assert_awaited_once_with(
+        TeamResourceSubscriptionTarget("group", GROUP_ID),
+        first_team_id=None,
+    )
+    menus.open.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_team_resource_admin_without_mentions_subscribes_self(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    event = group_message_event(
+        f"订阅战队{TEAM_ID} {TEAM_THRESHOLD}",
+        user_id=123,
+        sender={"role": "admin"},
+    )
+    service = MagicMock()
+    service.parse_manage.return_value = TEAM_RESOURCE_SERVICE.parse_manage(
+        event.get_plaintext()
+    )
+    service.allows_target.return_value = True
+    service.add_target_subscription = AsyncMock(return_value="已订阅")
+    finish = AsyncMock()
+    monkeypatch.setattr(resource, "finish_event_reply", finish)
+
+    await resource.handle_team_resource_manage(
+        cast("Matcher", object()),
+        event,
+        service,
+        cast("Any", object()),
+    )
+
+    call = service.add_target_subscription.await_args
+    assert call is not None
+    assert call.kwargs["target"] == TeamResourceSubscriptionTarget(
+        "group",
+        GROUP_ID,
+        (123,),
+    )
+
+
 @pytest.mark.asyncio
 async def test_team_resource_manage_rule_allows_manual_mentions_and_replies() -> None:
     message = Message(
@@ -240,7 +439,7 @@ async def test_team_resource_private_rules_allow_enabled_user() -> None:
         runtime.delivery,
     )
     registry = runtime.matcher_registry()
-    resource.install(registry, service, MagicMock())
+    resource.install(registry, service, MagicMock(), MagicMock())
     manage = next(
         matcher
         for matcher in registry.message_matchers

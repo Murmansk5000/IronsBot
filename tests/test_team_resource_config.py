@@ -191,3 +191,30 @@ def test_team_resource_prompt_can_be_marked_handled(tmp_path: Path) -> None:
 
     assert store.has_prompted_group(987654321)
     assert store.get_pending_prompt(987654321) is None
+
+
+def test_team_resource_prompt_subscription_defaults_reminder_to_operator(
+    tmp_path: Path,
+) -> None:
+    service, store = _service(
+        TeamResourceConfig(default_at_users=[ADMIN_ID]),
+        {},
+        tmp_path / "team_resource.sqlite",
+    )
+    store.mark_group_prompted(
+        group_id=987654321,
+        team_id=TEAM_ID,
+        team_name="示例战队",
+        prompted_by=OWNER_ID,
+    )
+
+    message = service.answer_prompt(
+        group_id=987654321,
+        user_id=OWNER_ID,
+        accepted=True,
+    )
+
+    subscriptions = store.list_group(987654321)
+    assert message is not None
+    assert f"提醒对象：{OWNER_ID}" in message
+    assert subscriptions[0].at_user_ids == (OWNER_ID,)

@@ -56,6 +56,33 @@ async def test_overview_order_and_partial_failure(
 
 
 @pytest.mark.asyncio
+async def test_overview_places_bound_team_first_and_deduplicates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = _service(TeamResourceConfig(enabled=True), tmp_path / "state.sqlite")
+    for team_id in (1234569, 1234567):
+        _subscribe(service, team_id)
+    queried: list[int] = []
+
+    async def query(
+        _self: TeamResourceService, team_id: int, **_kwargs: Any
+    ) -> TeamResourceResult:
+        queried.append(team_id)
+        return TeamResourceResult(team_id, f"战队{team_id}", "details", 500, 66)
+
+    monkeypatch.setattr(TeamResourceService, "query", query)
+    target = TeamResourceSubscriptionTarget("group", 456)
+
+    items = await service.query_overview(target, first_team_id=1234568)
+    assert [item.team_id for item in items] == [1234568, 1234569, 1234567]
+
+    queried.clear()
+    items = await service.query_overview(target, first_team_id=1234567)
+    assert [item.team_id for item in items] == [1234567, 1234569]
+    assert queried == [1234567, 1234569]
+
+
+@pytest.mark.asyncio
 async def test_notices_merge_thresholds_mentions_and_receipts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -95,7 +122,7 @@ async def test_notices_merge_thresholds_mentions_and_receipts(
 def _menus() -> TeamOverviewMenus:
     service = MagicMock()
     service.allows_target.return_value = True
-    return TeamOverviewMenus(service, MagicMock(), 180)
+    return TeamOverviewMenus(service, MagicMock(), MagicMock(), 180)
 
 
 def test_notification_anchor_scope_latest_and_expiry() -> None:

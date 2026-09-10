@@ -128,7 +128,7 @@ async def test_profile_cache_miss_fetches_parallel_fields_and_writes_reg_time() 
     assert result.base_snapshot.more_info is result.more_info
     assert result.base_snapshot.team_name == "test team"
     assert "是否在线：在线（服务器：1701，地图类型：0）" in result.player_message
-    assert "战队：test team（战队ID：9001，隐藏）" in result.player_message
+    assert "战队：" not in result.player_message
 
 
 @pytest.mark.asyncio

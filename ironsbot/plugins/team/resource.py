@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
@@ -17,13 +18,17 @@ from ironsbot.runtime.message_input import message_input_context
 from ironsbot.runtime.permissions import can_manage_group_event
 from ironsbot.runtime.replies import finish_event_reply
 from ironsbot.runtime.rules import explicit_command, member_targets_command
+from ironsbot.services.seer.team import TeamQueryActor
 from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
 from .overview import TeamOverviewMenus
 
 if TYPE_CHECKING:
+    from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.team import SeerTeamQueryService
     from ironsbot.services.team.resource import TeamResourceService
+
+logger = logging.getLogger(__name__)
 
 
 def _is_team_resource_query(
@@ -46,11 +51,15 @@ def _is_team_resource_manage(
 ) -> bool:
     command = service.parse_manage(event.get_plaintext())
     target = _subscription_target(event)
-    return (
-        command is not None
-        and target is not None
-        and service.allows_target(event.user_id, target)
-    )
+    if (
+        command is None
+        or target is None
+        or not service.target_has_feature(target)
+    ):
+        return False
+    if command.action == "list":
+        return service.allows_target(event.user_id, target)
+    return service.enabled
 
 
 def _is_team_resource_prompt_choice(
@@ -96,6 +105,9 @@ async def handle_team_resource_manage(
         )
         return
 
+    if not service.allows_target(event.user_id, target):
+        await matcher.finish()
+
     team_id = command.team_id
     if team_id is None:
         await matcher.finish()
@@ -114,6 +126,7 @@ async def handle_team_resource_manage(
                 "手动输入 @QQ号 不会保存为提醒对象。",
             )
             return
+        target = _with_default_group_reminder(target, event.user_id)
         message = await service.add_target_subscription(
             target=target,
             team_id=team_id,
@@ -151,7 +164,13 @@ async def handle_team_resource(
     if target is None:
         await matcher.finish()
 
-    items = await service.query_overview(target)
+    first_team_id = await _bound_player_team_id(
+        event,
+        service,
+        menus.player,
+        menus.query,
+    )
+    items = await service.query_overview(target, first_team_id=first_team_id)
     if not items:
         await finish_event_reply(
             matcher,
@@ -166,9 +185,10 @@ def install(
     registry: MatcherRegistry,
     service: TeamResourceService,
     team_query: SeerTeamQueryService,
+    player: PlayerService,
     notice_timeout_seconds: float = 180,
 ) -> None:
-    menus = TeamOverviewMenus(service, team_query, notice_timeout_seconds)
+    menus = TeamOverviewMenus(service, team_query, player, notice_timeout_seconds)
     menus.install(registry)
 
     def is_manage(event: MessageEvent) -> bool:
@@ -222,6 +242,36 @@ def install(
     )
 
 
+async def _bound_player_team_id(
+    event: MessageEvent,
+    service: TeamResourceService,
+    player: PlayerService,
+    team_query: SeerTeamQueryService,
+) -> int | None:
+    player_id = player.default_player_id(event.user_id)
+    if player_id is None:
+        return None
+    group_id = event.group_id if isinstance(event, GroupMessageEvent) else None
+    lookup = await team_query.lookup_player_team(
+        player_id,
+        TeamQueryActor(
+            event.user_id,
+            group_id,
+            can_manage_group_event(service, event)
+            if isinstance(event, GroupMessageEvent)
+            else service.is_superuser(event.user_id),
+        ),
+    )
+    if lookup.error is not None:
+        logger.info(
+            "bound player team lookup skipped: user_id=%s player_id=%s reason=%s",
+            event.user_id,
+            player_id,
+            lookup.error,
+        )
+    return lookup.team_id
+
+
 def _at_user_ids_from_event(event: GroupMessageEvent) -> tuple[int, ...]:
     return message_input_context(event).member_user_ids
 
@@ -238,3 +288,16 @@ def _subscription_target(
     if isinstance(event, PrivateMessageEvent):
         return TeamResourceSubscriptionTarget("private", event.user_id)
     return None
+
+
+def _with_default_group_reminder(
+    target: TeamResourceSubscriptionTarget,
+    operator_id: int,
+) -> TeamResourceSubscriptionTarget:
+    if not target.is_group or target.at_user_ids:
+        return target
+    return TeamResourceSubscriptionTarget(
+        target.kind,
+        target.target_id,
+        (operator_id,),
+    )
