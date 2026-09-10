@@ -167,7 +167,7 @@ keep-runtime-typing = true
 pythonVersion = "3.11"
 pythonPlatform = "All"
 typeCheckingMode = "standard"
-exclude = [".codex", ".tmp", ".uv-cache", ".venv", "build"]
+exclude = [".codex", ".tmp", ".uv-cache", ".venv", "build", "tmp"]
 venvPath = "."
 venv = ".venv"
 
