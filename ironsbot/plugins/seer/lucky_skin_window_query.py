@@ -61,6 +61,10 @@ async def _enter_target_selection(  # noqa: PLR0913 - explicit query dependencie
     login_namespace: str,
     enter_result_prompt: ResultPrompt,
 ) -> None:
+    player_nicks = await service.lookup_player_nicks(
+        choice.player_id for choice in target.choices
+    )
+
     async def select_player_target(
         player_id: int,
         selection_matcher: Matcher,
@@ -91,6 +95,13 @@ async def _enter_target_selection(  # noqa: PLR0913 - explicit query dependencie
         state,
         target,
         select_player_target,
+        choice_details={
+            choice.player_id: (
+                f"米米号：{choice.player_id}，昵称："
+                f"{player_nicks.get(choice.player_id) or '暂未获取'}"
+            )
+            for choice in target.choices
+        },
     )
 
 
