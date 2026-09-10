@@ -248,17 +248,18 @@ async def _bound_player_team_id(
     player: PlayerService,
     team_query: SeerTeamQueryService,
 ) -> int | None:
-    if not isinstance(event, GroupMessageEvent):
-        return None
     player_id = player.default_player_id(event.user_id)
     if player_id is None:
         return None
+    group_id = event.group_id if isinstance(event, GroupMessageEvent) else None
     lookup = await team_query.lookup_player_team(
         player_id,
         TeamQueryActor(
             event.user_id,
-            event.group_id,
-            can_manage_group_event(service, event),
+            group_id,
+            can_manage_group_event(service, event)
+            if isinstance(event, GroupMessageEvent)
+            else service.is_superuser(event.user_id),
         ),
     )
     if lookup.error is not None:

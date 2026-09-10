@@ -299,6 +299,37 @@ async def test_group_overview_prepends_the_requesters_bound_team() -> None:
 
 
 @pytest.mark.asyncio
+async def test_private_overview_includes_the_requesters_bound_team() -> None:
+    event = private_message_event("战队", user_id=123)
+    service = MagicMock()
+    service.is_superuser.return_value = False
+    service.query_overview = AsyncMock(
+        return_value=(TeamOverviewItem(9876543, "所属战队", 60, 500),)
+    )
+    player = MagicMock()
+    player.default_player_id.return_value = 148758762
+    team_query = MagicMock()
+    team_query.lookup_player_team = AsyncMock(
+        return_value=PlayerTeamLookup(team_id=9876543)
+    )
+    menus = MagicMock(player=player, query=team_query)
+    menus.open = AsyncMock()
+
+    await resource.handle_team_resource(
+        cast("Matcher", object()),
+        event,
+        service,
+        menus,
+    )
+
+    service.query_overview.assert_awaited_once_with(
+        TeamResourceSubscriptionTarget("private", 123),
+        first_team_id=9876543,
+    )
+    menus.open.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_group_overview_keeps_subscriptions_when_bound_team_lookup_fails(
 ) -> None:
     event = group_message_event("战队", user_id=123)
