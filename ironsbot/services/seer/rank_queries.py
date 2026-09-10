@@ -87,6 +87,7 @@ T = TypeVar("T")
 class RankQueryPolicy:
     player_error: PlayerErrorFormatter
     player_timeout_seconds: float
+    is_superuser: Callable[[int], bool]
 
 
 class RankQueryService:
@@ -189,6 +190,9 @@ class RankQueryService:
                 display_limit=self.default_limit(group_id),
             ) or QueryReply(text=quota_message)
         meter = QueryWorkMeter("foreground")
+        use_superuser_limit = (
+            qq_user_id is not None and self._policy.is_superuser(int(qq_user_id))
+        )
         try:
             text = await self._run_headless_request(
                 lambda: self._score_message_with_work(
@@ -197,6 +201,7 @@ class RankQueryService:
                     command,
                     display_limit=self.default_limit(group_id),
                     group_id=group_id,
+                    use_superuser_limit=use_superuser_limit,
                 ),
                 user_id=qq_user_id,
                 label="榜单分数查询",
@@ -310,7 +315,7 @@ class RankQueryService:
         with query_work_scope(meter):
             return await self._global_message(game, command, group_id=group_id)
 
-    async def _score_message_with_work(
+    async def _score_message_with_work(  # noqa: PLR0913
         self,
         meter: QueryWorkMeter,
         game: HeadlessGame,
@@ -318,6 +323,7 @@ class RankQueryService:
         *,
         display_limit: int,
         group_id: int | None,
+        use_superuser_limit: bool,
     ) -> str:
         with query_work_scope(meter):
             return await self._score_message(
@@ -325,6 +331,7 @@ class RankQueryService:
                 command,
                 display_limit=display_limit,
                 group_id=group_id,
+                use_superuser_limit=use_superuser_limit,
             )
 
     async def _fetch_player_message(
@@ -415,6 +422,7 @@ class RankQueryService:
         *,
         display_limit: int,
         group_id: int | None,
+        use_superuser_limit: bool,
     ) -> str:
         spec = self._rank.get_spec(command.rank_key)
         if self._rank.spec_needs_sub_key(spec):
@@ -434,6 +442,7 @@ class RankQueryService:
                 target_score=command.score,
                 rank_key=command.rank_key,
                 sample_limit=display_limit,
+                use_superuser_limit=use_superuser_limit,
             )
         logger.info(
             "rank score lookup completed: title=%s key=%s sub_key=%s "

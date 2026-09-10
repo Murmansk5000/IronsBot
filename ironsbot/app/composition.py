@@ -487,6 +487,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             player_timeout_seconds=(
                 settings.seer.player.detail_timeout_seconds
             ),
+            is_superuser=features.is_superuser,
         ),
         player_query_quotas,
         player_requests,

@@ -1,4 +1,5 @@
 import asyncio
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -48,6 +49,10 @@ LARGE_SEGMENT_START_INDEX = 856
 LARGE_SEGMENT_END_INDEX = 1156
 LARGE_SEGMENT_SAMPLE_LIMIT = 50
 AUTOCARD_LOOKUP_LIMIT = 10_000
+
+
+def _recent_fetched_at() -> float:
+    return time.time()
 
 try:
     nonebot.get_driver()
@@ -282,9 +287,64 @@ def test_autocard_lookup_limit_overrides_only_autocard_searches(
         )
     )
 
-    assert result.searched_limit == AUTOCARD_LOOKUP_LIMIT
+    assert result.searched_limit == 0
+    assert result.scan_complete
     assert rank._score_search_limit("群星牌") == AUTOCARD_LOOKUP_LIMIT
     assert rank._online_search_limit("图鉴积分") == ONLINE_LIMIT
+
+
+def test_superuser_score_limit_multiplies_each_configured_rank_limit() -> None:
+    rank, _cache = _build_rank(rank_limit=RANK_LIMIT)
+    rank.config.lookup_limits["群星牌"] = AUTOCARD_LOOKUP_LIMIT
+
+    assert rank._score_search_limit("图鉴积分") == RANK_LIMIT
+    assert rank._score_search_limit(
+        "图鉴积分",
+        use_superuser_limit=True,
+    ) == (RANK_LIMIT * 2)
+    assert rank._score_search_limit(
+        "群星牌",
+        use_superuser_limit=True,
+    ) == (AUTOCARD_LOOKUP_LIMIT * 2)
+
+    rank.config.superuser_score_limit_multiplier = 3
+
+    assert rank._score_search_limit(
+        "群星牌",
+        use_superuser_limit=True,
+    ) == (AUTOCARD_LOOKUP_LIMIT * 3)
+
+
+def test_score_segment_applies_superuser_limit_to_all_rank_paths() -> None:
+    rank, _cache = _build_rank(rank_limit=RANK_LIMIT)
+
+    regular_result = asyncio.run(
+        rank.fetch_score_segment(
+            GAME,
+            rank_key="图鉴积分",
+            title="图鉴积分榜",
+            score_name="分",
+            key=156,
+            sub_key=1,
+            target_score=0,
+            use_superuser_limit=True,
+        )
+    )
+    excluded_result = asyncio.run(
+        rank.fetch_score_segment(
+            GAME,
+            rank_key="精灵图鉴",
+            title="精灵图鉴榜",
+            score_name="只",
+            key=156,
+            sub_key=3,
+            target_score=0,
+            use_superuser_limit=True,
+        )
+    )
+
+    assert regular_result.searched_limit == RANK_LIMIT * 2
+    assert excluded_result.searched_limit == RANK_LIMIT * 2
 
 
 def test_cached_full_rank_miss_skips_a_repeat_scan(
@@ -333,7 +393,7 @@ def test_rank_lookup_reuses_cached_rank_when_live_confirmation_times_out(
         nick="缓存玩家",
         score=CACHED_SCORE,
         rank_index=CACHED_RANK_INDEX,
-        fetched_at=FETCHED_AT,
+        fetched_at=_recent_fetched_at(),
         is_stale=True,
     )
     monkeypatch.setattr(cache, "item", lambda **_: cached)
@@ -357,7 +417,7 @@ def test_rank_lookup_reuses_cached_rank_when_live_confirmation_times_out(
     assert result.rank == CACHED_RANK
     assert result.score == CACHED_SCORE
     assert result.failure == "查询超时"
-    assert result.fallback_cached_at == FETCHED_AT
+    assert result.fallback_cached_at == cached.fetched_at
 
 
 def test_cache_only_rank_queries_never_fetch_online_pages(
@@ -1293,7 +1353,7 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
         nick="cached",
         score=CACHED_SCORE,
         rank_index=LOOKUP_INDEX,
-        fetched_at=FETCHED_AT,
+        fetched_at=_recent_fetched_at(),
         is_stale=False,
     )
 
@@ -1306,6 +1366,7 @@ def test_fresh_cached_rank_is_verified_online_when_score_matches(
         start: int,
         end: int,
         use_cache: bool = True,
+        **_kwargs: object,
     ) -> list[RankItem]:
         _ = (key, sub_key)
         requested_ranges.append((start, end))
@@ -1344,7 +1405,7 @@ def test_cached_rank_without_target_score_is_verified_nearby(
         nick="cached",
         score=CACHED_SCORE,
         rank_index=LOOKUP_INDEX,
-        fetched_at=FETCHED_AT,
+        fetched_at=_recent_fetched_at(),
         is_stale=False,
     )
 
@@ -1357,6 +1418,7 @@ def test_cached_rank_without_target_score_is_verified_nearby(
         start: int,
         end: int,
         use_cache: bool = True,
+        **_kwargs: object,
     ) -> list[RankItem]:
         _ = (key, sub_key, use_cache)
         requested_ranges.append((start, end))
@@ -1392,7 +1454,7 @@ def test_cached_rank_confirms_its_own_page_before_expanding(
         nick="cached",
         score=CACHED_SCORE,
         rank_index=109,
-        fetched_at=FETCHED_AT,
+        fetched_at=_recent_fetched_at(),
         is_stale=True,
     )
     monkeypatch.setattr(cache, "item", lambda **_: cached_item)
@@ -1438,7 +1500,7 @@ def test_anchor_only_rank_lookup_never_expands_beyond_cached_page(
         nick="cached",
         score=CACHED_SCORE,
         rank_index=109,
-        fetched_at=FETCHED_AT,
+        fetched_at=_recent_fetched_at(),
         is_stale=True,
     )
     monkeypatch.setattr(cache, "item", lambda **_: cached_item)
