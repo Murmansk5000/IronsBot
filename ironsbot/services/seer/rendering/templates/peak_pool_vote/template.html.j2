@@ -1,207 +1,184 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta charset="utf-8">
     <style type="text/css">
-        html,
+        html, body { margin: 0; padding: 0; overflow: hidden; }
         body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
+            background: #07101f;
+            color: #f5f8ff;
+            font-family: "Microsoft YaHei", "Source Han Sans SC", sans-serif;
         }
-
-        body {
-            background-color: #1a3a6a;
-            color: #ffffff;
-            font-family: "Microsoft YaHei", "Source Han Sans SC", "Source Han Sans CN", sans-serif;
-        }
-
         .container {
             width: 100%;
             padding: 20px;
             box-sizing: border-box;
+            background:
+                radial-gradient(circle at 18% 8%, rgba(49, 86, 180, .18), transparent 28%),
+                linear-gradient(180deg, #10182c 0, #07101f 38%, #081426 100%);
         }
-
         .page-header {
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
-            padding-bottom: 12px;
-            border-bottom: 2px solid #4a8ada;
-            margin-bottom: 20px;
-        }
-
-        .page-title {
-            font-size: 28px;
-            font-weight: bold;
-            color: #ffffff;
-            letter-spacing: 2px;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
-        }
-
-        .page-time {
-            font-size: 13px;
-            color: #8ab4e8;
-            white-space: nowrap;
-        }
-
-        .pool-section {
-            background-color: #2a5a9a;
-            padding: 18px;
-            margin-bottom: 16px;
-            border-radius: 4px;
-            border: 1px solid #4a8ada;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        }
-
-        .pool-header {
-            font-size: 20px;
-            font-weight: bold;
-            color: #ffffff;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-        }
-
-        .rank-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .rank-row {
-            display: flex;
             align-items: center;
-            gap: 12px;
-            background-color: rgba(26, 58, 106, 0.5);
-            border-radius: 6px;
-            padding: 8px 12px;
+            padding: 0 2px 14px;
+            border-bottom: 1px solid #263653;
+            margin-bottom: 16px;
         }
-
-        .rank-row.top-1 {
-            background: linear-gradient(90deg, rgba(255, 215, 0, 0.25), transparent 60%);
+        .page-title { font-size: 28px; font-weight: 800; }
+        .page-time { color: #8998b2; font-size: 13px; white-space: nowrap; }
+        .pool-section { margin-bottom: 22px; }
+        .pool-header {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin-bottom: 11px;
+            border-left: 4px solid #3284ff;
+            padding-left: 10px;
         }
-
-        .rank-row.top-2 {
-            background: linear-gradient(90deg, rgba(192, 192, 192, 0.2), transparent 60%);
+        .pool-title { color: #ffb83d; font-size: 21px; font-weight: 800; }
+        .pool-period { color: #9ba9be; font-size: 13px; }
+        .pool-total { color: #667996; font-size: 12px; margin-left: auto; }
+        .rank-grid {
+            display: flex;
+            flex-wrap: wrap;
+            width: 900px;
+            gap: 9px;
         }
-
-        .rank-row.top-3 {
-            background: linear-gradient(90deg, rgba(205, 127, 50, 0.2), transparent 60%);
+        .rank-card {
+            position: relative;
+            flex: none;
+            width: 142px;
+            min-width: 0;
+            padding: 4px;
+            background: #111a2b;
+            border: 1px solid #26344d;
+            border-radius: 7px;
+            box-sizing: border-box;
         }
-
-        .rank-number {
-            width: 32px;
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-            color: #8ab4e8;
-            flex-shrink: 0;
+        .rank-card.top-1 { border-color: #d6ac37; }
+        .rank-card.top-2 { border-color: #aab6c8; }
+        .rank-card.top-3 { border-color: #b5784d; }
+        .portrait {
+            position: relative;
+            width: 100%;
+            height: 132px;
+            overflow: hidden;
+            border-radius: 4px;
+            background: #1c2940;
         }
-
-        .rank-row.top-1 .rank-number {
-            color: #ffd700;
-            font-size: 22px;
-        }
-
-        .rank-row.top-2 .rank-number {
-            color: #c0c0c0;
-            font-size: 20px;
-        }
-
-        .rank-row.top-3 .rank-number {
-            color: #cd7f32;
-            font-size: 20px;
-        }
-
-        {% include "pet_cell.css" %}
-
-        .pet-cell {
-            width: 80px;
-            height: 80px;
-            flex-shrink: 0;
-        }
-
-        .pet-type-icon {
-            width: 14px;
-            height: 14px;
-        }
-
-        .pet-id {
-            font-size: 11px;
-        }
-
-        .pet-name {
-            font-size: 12px;
-            padding: 10px 2px 3px 2px;
-        }
-
-        .rank-row.top-1 .pet-cell {
-            border-color: #ffd700;
-        }
-
-        .rank-row.top-2 .pet-cell {
-            border-color: #c0c0c0;
-        }
-
-        .rank-row.top-3 .pet-cell {
-            border-color: #cd7f32;
-        }
-
-        .vote-score {
-            font-size: 16px;
-            font-weight: bold;
-            color: #ffffff;
-            flex-shrink: 0;
-            margin-left: auto;
-            text-align: right;
-        }
-
-        .vote-score .unit {
-            font-size: 12px;
-            color: #8ab4e8;
-            margin-left: 2px;
-        }
-
-        .footer {
-            background-color: #1a3a6a;
-            padding: 15px 32px;
-            text-align: center;
+        .portrait img.head { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .rank-badge {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            min-width: 23px;
+            height: 23px;
+            padding: 0 4px;
+            border-radius: 12px;
+            box-sizing: border-box;
+            background: rgba(22, 28, 42, .84);
+            border: 1px solid rgba(255,255,255,.25);
             font-size: 13px;
-            color: #a0c0e0;
-            border-top: 1px solid #4a8ada;
+            font-weight: 800;
+            line-height: 21px;
+            text-align: center;
+        }
+        .top-1 .rank-badge { color: #ffe06b; border-color: #d6ac37; }
+        .top-2 .rank-badge { color: #e5ecf5; border-color: #aab6c8; }
+        .top-3 .rank-badge { color: #f1b48b; border-color: #b5784d; }
+        .type-icon {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 22px;
+            height: 22px;
+            object-fit: contain;
+            filter: drop-shadow(0 1px 2px #000);
+        }
+        .pet-id {
+            position: absolute;
+            left: 5px;
+            bottom: 4px;
+            color: #d5deeb;
+            font-size: 11px;
+            font-weight: 700;
+            text-shadow: 0 1px 3px #000, 0 0 2px #000;
+        }
+        .percentage {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            min-width: 34px;
+            padding: 3px 5px;
+            background: #d64b58;
+            color: white;
+            font-size: 12px;
+            font-weight: 800;
+            text-align: center;
+        }
+        .pet-name {
+            height: 31px;
+            padding: 6px 2px 1px;
+            box-sizing: border-box;
+            overflow: hidden;
+            color: #f4f7fc;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 18px;
+            text-align: center;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .vote-score {
+            color: #55d9df;
+            font-size: 12px;
+            font-weight: 700;
+            text-align: center;
+            padding-bottom: 4px;
+        }
+        .footer {
+            border-top: 1px solid #263653;
+            padding-top: 12px;
+            color: #72839e;
+            font-size: 12px;
+            text-align: center;
         }
     </style>
 </head>
-
 <body>
-    {% from "pet_cell_macro.html.j2" import pet_cell %}
     <div class="container">
         <div class="page-header">
-            <div class="page-title">巅峰池票选结果</div>
+            <div class="page-title">竞技池票选</div>
             <div class="page-time">生成于 {{ generated_at }}</div>
         </div>
 
         {% for pool in pools %}
-        <div class="pool-section">
-            <div class="pool-header">{{ pool.title }}</div>
-            <div class="rank-list">
+        <section class="pool-section">
+            <div class="pool-header">
+                <span class="pool-title">{{ pool.title }}</span>
+                <span class="pool-period">[{{ pool.period }}]</span>
+                <span class="pool-total">共 {{ pool.ranks|length }} 只 · {{ pool.total_votes }} 票</span>
+            </div>
+            <div class="rank-grid">
                 {% for rank in pool.ranks %}
-                <div
-                    class="rank-row{% if rank.rank == 1 %} top-1{% elif rank.rank == 2 %} top-2{% elif rank.rank == 3 %} top-3{% endif %}">
-                    <div class="rank-number">{{ rank.rank }}</div>
-                    {{ pet_cell(id=rank.pet_id, name=rank.name, head_img=rank.head_img, type_icon=rank.type_icon,
-                    long_threshold=6, xlong_threshold=8) }}
-                    <div class="vote-score">{{ rank.score }}<span class="unit">票</span></div>
+                <div class="rank-card{% if rank.rank == 1 %} top-1{% elif rank.rank == 2 %} top-2{% elif rank.rank == 3 %} top-3{% endif %}">
+                    <div class="portrait">
+                        {% if rank.head_img %}<img class="head" src="{{ rank.head_img }}">{% endif %}
+                        <span class="rank-badge">{{ rank.rank }}</span>
+                        {% if rank.type_icon %}<img class="type-icon" src="{{ rank.type_icon }}">{% endif %}
+                        <span class="pet-id">{{ rank.pet_id }}</span>
+                        <span class="percentage">{{ rank.percentage }}%</span>
+                    </div>
+                    <div class="pet-name">{{ rank.name }}</div>
+                    <div class="vote-score">得票数：{{ rank.score }}</div>
                 </div>
                 {% endfor %}
             </div>
-        </div>
+        </section>
         {% endfor %}
 
         <div class="footer">IronsBot · 开源赛尔号信息查询机器人<br>项目链接：{{ project_url }}</div>
     </div>
 </body>
-
 </html>
