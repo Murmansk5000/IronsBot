@@ -632,7 +632,7 @@ def test_format_rank_score_message_needs_data_without_items_or_boundary() -> Non
     assert format_global_rank_score_message(spec, result) == "❌找不到测试榜数据。"
 
 
-def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
+def test_format_global_rank_score_message_boundary_is_not_absence_proof() -> None:
     spec = GlobalRankSpec("测试榜", key=1, sub_key=2, unit="分")
     result = ScoreResult(
         queried=True,
@@ -643,8 +643,8 @@ def test_format_global_rank_score_message_keeps_boundary_rejection() -> None:
     )
 
     assert format_global_rank_score_message(spec, result) == (
-        "❌999分不在测试榜前 10000 名范围内。\n"
-        "当前范围末位约为 1000分。"
+        "按分数定位未确认测试榜中999分的用户。\n"
+        "已读取范围末位约为 1000分。"
     )
 
 
@@ -689,8 +689,8 @@ def test_format_global_rank_score_message_shows_missing_score_proof() -> None:
     )
 
     assert format_global_rank_score_message(spec, result) == (
-        "❌群星之巅榜没有10000分的用户。\n"
-        "相邻分数段：\n"
+        "按分数定位未确认群星之巅榜中10000分的用户。\n"
+        "已读取的相邻分数段：\n"
         "10001分：第 57 名，共 1 人\n"
         "57. 流苏（910731260） 10001分\n"
         "9970分：第 58 名，共 1 人\n"
