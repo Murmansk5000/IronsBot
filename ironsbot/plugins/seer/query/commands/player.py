@@ -71,6 +71,7 @@ from .player_target_selection import enter_player_target_selection
 if TYPE_CHECKING:
     from ironsbot.core.features import FeatureService
     from ironsbot.services.seer.player_service import PlayerService
+    from ironsbot.services.seer.team import SeerTeamQueryService
 
 @dataclass(frozen=True, slots=True)
 class PlayerCommandDependencies:
@@ -83,6 +84,7 @@ class PlayerCommandDependencies:
         default_factory=lambda: PlayerAccountRegistry(())
     )
     external_references: SeerInfoReferences | None = None
+    team_query: SeerTeamQueryService | None = None
 
 
 _PLAYER_TARGET_KEY = "_player_target"
@@ -491,6 +493,7 @@ async def _send_pending_player_query(
         has_peak=plan.needs_peak_section,
         has_autocard=plan.has_autocard_rank,
         base_snapshot=pending.base_snapshot,
+        team_query=dependencies.team_query,
         on_sent=after_initial_reply_sent,
     )
 
@@ -515,6 +518,7 @@ def install(group: SeerMatcherGroup) -> None:
         group.resources.player_detail_extensions,
         group.player_accounts,
         group.resources.external_references,
+        group.resources.team_query,
     )
     reservation_matcher = group.on_message(
         policy=CommandPolicy.exempt("pending player detail menu reservation"),

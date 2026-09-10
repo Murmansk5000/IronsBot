@@ -473,6 +473,8 @@ def build_plugin_registry(  # noqa: C901, PLR0915 - declarative registry
             install=partial(
                 install_team_resource,
                 service=team_resource_service,
+                team_query=seer_resources.team_query,
+                player=seer_resources.player,
             ),
             hooks=PluginHooks(
                 startup=(
