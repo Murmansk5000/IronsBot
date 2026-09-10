@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
 import asyncio
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
 
 _BACKGROUND_REFRESH_TIMEOUT_GRACE_SECONDS = 5.0
 _PLAYER_DETAIL_TIMEOUT_STAGE_COUNT = 4
-logger = logging.getLogger("ironsbot.services.seer.player_service")
+logger = logging.getLogger(__name__)
 
 
 class PlayerDetailService:
@@ -72,7 +73,6 @@ class PlayerDetailService:
         refresh_config = self._config.player.background_refresh
         if not refresh_config.enabled:
             return
-
         kinds = background_refresh_kinds(pending.section_plan)
         if not kinds or pending.player_id in self._background_refreshes:
             return
@@ -137,7 +137,10 @@ class PlayerDetailService:
 
     async def cached_or_inflight_reply(
         self,
-        player_id: int, kind: PlayerShortcutKind, *, wait_for_inflight: bool = True,
+        player_id: int,
+        kind: PlayerShortcutKind,
+        *,
+        wait_for_inflight: bool = True,
     ) -> QueryReply | None:
         if (cached := self._cached_reply(player_id, kind)) is not None:
             return cached
