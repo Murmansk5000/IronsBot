@@ -190,7 +190,7 @@ def test_format_docker_image_check_does_not_offer_side_effects() -> None:
 
     assert "检测到新镜像：ironsbot" in reply
     assert "当前镜像ID" in reply
-    assert "最新镜像ID" in reply
+    assert "Docker Hub latest 镜像ID" in reply
     assert "oldcommitabc old change" in reply
     assert "newcommitabc new change" in reply
     assert "2026-07-05 02:00:00" in reply
@@ -213,6 +213,26 @@ def test_format_docker_image_check_reports_matching_remote_digest() -> None:
 
     assert "Docker 镜像已是最新" in reply
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
+
+
+def test_format_docker_image_check_distinguishes_stale_latest_from_main() -> None:
+    reply = format_docker_image_check_reply(
+        container_name="ironsbot",
+        image="murmansk5000/ironsbot:latest",
+        result=DockerImageCheckResult(
+            ok=True,
+            up_to_date=True,
+            current_image_id="sha256:current-image-id",
+            remote_digest="sha256:remote-manifest-digest",
+            current_image_revision="f7fc6546c7ff",
+            remote_image_revision="f7fc6546c7ff",
+            github_main_revision="499223c8f23ad9be9e3320725ee70a7b77a14ad5",
+        ),
+    )
+
+    assert "GitHub main：499223c8f23a" in reply
+    assert "Docker Hub latest 尚未对齐 GitHub main" in reply
+    assert "本机与 Docker Hub latest 一致，但两者均落后 GitHub main" in reply
 
 
 def test_inspect_registry_image_info_reads_remote_oci_config() -> None:
