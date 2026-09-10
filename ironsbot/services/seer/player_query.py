@@ -24,6 +24,7 @@ PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
 PLAYER_AUTOCARD_KEY = "_player_autocard_message"
+PLAYER_TEAM_KEY = "_player_team_message"
 PLAYER_DETAIL_COMMANDS_KEY = "_player_detail_commands"
 PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY = "_player_detail_builtin_selections"
 PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY = "_player_detail_extension_selections"
@@ -63,8 +64,13 @@ _PLAYER_DETAIL_REQUESTS = (
         menu_label="群星牌",
     ),
 )
+_PLAYER_TEAM_REQUEST = PlayerDetailReplyRequest(
+    key=PLAYER_TEAM_KEY,
+    label="战队信息",
+    menu_label="战队",
+)
 _PLAYER_DETAIL_REQUEST_BY_KEY = {
-    request.key: request for request in _PLAYER_DETAIL_REQUESTS
+    request.key: request for request in (*_PLAYER_DETAIL_REQUESTS, _PLAYER_TEAM_REQUEST)
 }
 
 
@@ -350,13 +356,14 @@ def _available_builtin_detail_requests(
     return tuple(requests)
 
 
-def plan_player_detail_prompt(
+def plan_player_detail_prompt(  # noqa: PLR0913
     *,
     has_collection: bool,
     has_peak: bool,
     has_autocard: bool,
     supports_conversation: bool,
     extension_actions: Iterable[PlayerDetailExtensionAction] = (),
+    team_menu_text: str | None = None,
 ) -> PlayerDetailPromptPlan:
     builtin_requests = _available_builtin_detail_requests(
         has_collection=has_collection,
@@ -364,19 +371,30 @@ def plan_player_detail_prompt(
         has_autocard=has_autocard,
     )
     extensions = tuple(extension_actions)
-    builtin_selections = tuple(
+    primary_builtin_selections = tuple(
         (str(index), request.key)
         for index, request in enumerate(builtin_requests, start=1)
     )
     extension_selections = tuple(
         (str(index), action.id)
-        for index, action in enumerate(extensions, start=len(builtin_selections) + 1)
+        for index, action in enumerate(
+            extensions,
+            start=len(primary_builtin_selections) + 1,
+        )
     )
+    team_selection = (
+        (
+            str(len(primary_builtin_selections) + len(extension_selections) + 1),
+            PLAYER_TEAM_KEY,
+        ),
+    ) if team_menu_text else ()
+    builtin_selections = (*primary_builtin_selections, *team_selection)
     has_actions = bool(builtin_selections or extension_selections)
     accepted_commands = _unique_commands(
         (
-            *(selection for selection, _ in builtin_selections),
+            *(selection for selection, _ in primary_builtin_selections),
             *(selection for selection, _ in extension_selections),
+            *(selection for selection, _ in team_selection),
             "0",
         )
         if has_actions
@@ -388,7 +406,7 @@ def plan_player_detail_prompt(
             *(
                 _format_player_detail_menu_item(selection, request.menu_label)
                 for selection, request in zip(
-                    builtin_selections,
+                    primary_builtin_selections,
                     builtin_requests,
                     strict=True,
                 )
@@ -400,6 +418,10 @@ def plan_player_detail_prompt(
                     extensions,
                     strict=True,
                 )
+            ),
+            *(
+                f"{selection}.【战队】{team_menu_text}"
+                for selection, _ in team_selection
             ),
             EXIT_SELECTION_LINE,
         )

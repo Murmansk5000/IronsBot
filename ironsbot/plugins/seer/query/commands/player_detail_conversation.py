@@ -17,6 +17,7 @@ from ironsbot.core.request_coordination import (
     RequestDecision,
     request_response_scope,
 )
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.runtime.conversations import (
     begin_event_reply_conversation,
     command_reply_check,
@@ -48,6 +49,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_COMMANDS_KEY,
     PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY,
     PLAYER_PEAK_KEY,
+    PLAYER_TEAM_KEY,
     is_player_detail_exit,
     plan_player_detail_prompt,
     resolve_player_detail_reply,
@@ -67,6 +69,7 @@ from .player_context import (
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,
 )
+from .player_team_detail import player_team_menu_text, query_player_team_detail
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -74,12 +77,18 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
     from ironsbot.services.seer.player_shortcuts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
+    from ironsbot.services.seer.team import SeerTeamQueryService
 
 _SHORTCUT_KINDS = {
     PLAYER_COLLECTION_KEY: "collection",
     PLAYER_PEAK_KEY: "peak",
     PLAYER_AUTOCARD_KEY: "autocard",
 }
+_TEAM_DETAIL_ACTION = ActionDefinition(
+    "seer.team.query",
+    "战队查询",
+    cooldown_key="seer_team",
+)
 _SELECTION_PAIR_LENGTH = 2
 
 
@@ -143,7 +152,7 @@ async def reserve_player_detail_conversation(
     matcher.state[QUEUED_CONVERSATION_KEEP_OPEN_STATE_KEY] = True
 
 
-async def handle_player_detail_reply(  # noqa: PLR0913
+async def handle_player_detail_reply(  # noqa: C901, PLR0913
     service: PlayerService,
     extensions: PlayerDetailExtensionRegistry,
     features: FeatureService,
@@ -233,6 +242,26 @@ async def handle_player_detail_reply(  # noqa: PLR0913
     if detail_request is None:
         raise FinishedException
 
+    if detail_request.key == PLAYER_TEAM_KEY:
+        menu_context = state.get(PLAYER_DETAIL_MENU_CONTEXT_KEY)
+        if not isinstance(menu_context, PlayerDetailMenuContext):
+            raise FinishedException
+        team_reply = await query_player_team_detail(menu_context, features, event)
+        if team_reply is None:
+            raise FinishedException
+        await _deliver_player_detail_result(
+            service,
+            extensions,
+            features,
+            matcher,
+            event,
+            state,
+            keep_menu_context=is_shared_reply,
+            action="team",
+            prompt=team_reply,
+        )
+        return
+
     kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
     menu_context = state.get(PLAYER_DETAIL_MENU_CONTEXT_KEY)
     base_snapshot = (
@@ -321,6 +350,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
     has_peak: bool = False,
     has_autocard: bool = False,
     base_snapshot: PlayerBaseSnapshot | None = None,
+    team_query: SeerTeamQueryService | None = None,
     on_sent: Callable[[], None] | None = None,
 ) -> None:
     prompt_plan = _configure_player_detail_state(
@@ -334,6 +364,7 @@ async def send_player_info_with_detail_prompt(  # noqa: PLR0913
             has_peak=has_peak,
             has_autocard=has_autocard,
             base_snapshot=base_snapshot,
+            team_query=team_query,
         ),
     )
     prompt = "\n".join((player_message, *prompt_plan.prompt_lines))
@@ -605,6 +636,7 @@ def _configure_player_detail_state(
         has_autocard=menu_context.has_autocard,
         supports_conversation=isinstance(event, MessageEvent),
         extension_actions=visible_extensions,
+        team_menu_text=player_team_menu_text(features, event, menu_context),
     )
     state[PLAYER_DETAIL_COMMANDS_KEY] = prompt_plan.accepted_commands
     state[PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY] = prompt_plan.builtin_selections
@@ -665,6 +697,16 @@ def _player_detail_semantic_request(
     )
     if detail_request is None:
         return None
+    if detail_request.key == PLAYER_TEAM_KEY:
+        return SemanticRequest(
+            action=_TEAM_DETAIL_ACTION,
+            target=player_shortcut_semantic_request(
+                kind="collection",
+                player_id=player_id,
+                source=SemanticRequestSource.MENU,
+            ).target,
+            source=SemanticRequestSource.MENU,
+        )
     kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
     return player_shortcut_semantic_request(
         kind=kind,

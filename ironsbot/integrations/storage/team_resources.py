@@ -84,7 +84,7 @@ class TeamResourceSubscriptionStore:
                 SELECT group_id, team_id, team_name, threshold, at_user_ids,
                        created_by, updated_by, created_at, updated_at
                 FROM team_resource_subscriptions
-                ORDER BY group_id, team_id
+                ORDER BY group_id, created_at, rowid
                 """
             ).fetchall()
         return [_row_to_subscription(row) for row in rows]
@@ -97,7 +97,7 @@ class TeamResourceSubscriptionStore:
                        created_by, updated_by, created_at, updated_at
                 FROM team_resource_subscriptions
                 WHERE group_id = ?
-                ORDER BY team_id
+                ORDER BY created_at, rowid
                 """,
                 (group_id,),
             ).fetchall()
@@ -140,7 +140,7 @@ class TeamResourceSubscriptionStore:
                 """
                 SELECT user_id, team_id, team_name, threshold, created_at, updated_at
                 FROM team_resource_private_subscriptions
-                ORDER BY user_id, team_id
+                ORDER BY user_id, created_at, rowid
                 """
             ).fetchall()
         return [_row_to_private_subscription(row) for row in rows]
@@ -152,7 +152,7 @@ class TeamResourceSubscriptionStore:
                 SELECT user_id, team_id, team_name, threshold, created_at, updated_at
                 FROM team_resource_private_subscriptions
                 WHERE user_id = ?
-                ORDER BY team_id
+                ORDER BY created_at, rowid
                 """,
                 (user_id,),
             ).fetchall()
