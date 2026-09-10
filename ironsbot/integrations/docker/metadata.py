@@ -13,6 +13,30 @@ if TYPE_CHECKING:
 GITHUB_REPO_PATH_PARTS = 2
 logger = logging.getLogger(__name__)
 
+
+async def resolve_github_branch_revision(
+    repository: tuple[str, str],
+    branch: str = "main",
+) -> str:
+    """Return a GitHub branch head SHA without exposing authentication details."""
+
+    owner, name = repository
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        response = await client.get(
+            f"https://api.github.com/repos/{owner}/{name}/commits/{branch}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "IronsBot-DockerUpdate",
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+    revision = payload.get("sha") if isinstance(payload, dict) else None
+    if not isinstance(revision, str) or not revision.strip():
+        msg = "GitHub branch response did not include a commit SHA"
+        raise RuntimeError(msg)
+    return revision.strip()
+
 def github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:
     source = labels.get("org.opencontainers.image.source", "").strip()
     if not source:
