@@ -16,6 +16,9 @@ from ironsbot.plugins.seer.query.commands.player_context import (
     PLAYER_ID_KEY,
     PlayerDetailMenuContext,
 )
+from ironsbot.plugins.seer.query.commands.player_team_detail import (
+    player_team_menu_text,
+)
 from ironsbot.runtime.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
@@ -30,6 +33,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_DETAIL_COMMANDS_KEY,
     PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY,
     PLAYER_PEAK_KEY,
+    PLAYER_TEAM_KEY,
 )
 from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcuts import PlayerShortcutCommand
@@ -96,6 +100,160 @@ def test_player_info_prompt_includes_visible_private_extension(
     assert state[PLAYER_DETAIL_EXTENSION_SELECTIONS_KEY] == (
         ("2", "private_action"),
     )
+
+
+def test_player_info_prompt_places_team_after_private_actions(
+    monkeypatch: Any,
+) -> None:
+    enter_conversation = AsyncMock(side_effect=FinishedException)
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "enter_event_reply_conversation",
+        enter_conversation,
+    )
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="lineup",
+            feature="private_feature",
+            label="阵容",
+            aliases=("阵容",),
+            command_help_id="private.lineup",
+            query=AsyncMock(return_value=QueryReply(text="lineup")),
+            action=ActionDefinition("lineup", "阵容"),
+        )
+    )
+    features = SimpleNamespace(
+        is_group_feature_allowed=lambda *_args: True,
+        is_superuser=lambda _user_id: False,
+    )
+    snapshot = PlayerBaseSnapshot(
+        player_id=PLAYER_ID,
+        user_info=SimpleNamespace(team_id=9_260_775),
+        more_info=SimpleNamespace(),
+        online_info=None,
+        team_name="星痕",
+    )
+
+    with suppress(FinishedException):
+        asyncio.run(
+            player_detail_conversation.send_player_info_with_detail_prompt(
+                cast("Any", object()),
+                cast("Any", features),
+                extensions,
+                cast("Any", object()),
+                group_message_event("米米号"),
+                {},
+                player_id=PLAYER_ID,
+                player_message="player",
+                has_collection=True,
+                has_peak=True,
+                has_autocard=True,
+                base_snapshot=snapshot,
+                team_query=cast("Any", object()),
+            )
+        )
+
+    call = enter_conversation.await_args
+    assert call is not None
+    prompt = call.kwargs["prompt"]
+    assert "4.【阵容】" in prompt
+    assert "5.【战队】星痕（战队ID：9260775）" in prompt
+
+
+@pytest.mark.parametrize(
+    ("team_id", "allowed"),
+    [
+        (0, True),
+        (9_260_775, False),
+    ],
+)
+def test_player_team_menu_is_hidden_without_team_or_permission(
+    team_id: int,
+    *,
+    allowed: bool,
+) -> None:
+    features = SimpleNamespace(
+        is_group_feature_allowed=lambda *_args: allowed,
+        is_superuser=lambda _user_id: False,
+    )
+    context = PlayerDetailMenuContext(
+        player_id=PLAYER_ID,
+        has_collection=True,
+        has_peak=True,
+        has_autocard=True,
+        base_snapshot=PlayerBaseSnapshot(
+            player_id=PLAYER_ID,
+            user_info=SimpleNamespace(team_id=team_id),
+            more_info=SimpleNamespace(),
+            online_info=None,
+            team_name="星痕",
+        ),
+        team_query=cast("Any", object()),
+    )
+
+    assert (
+        player_team_menu_text(
+            cast("Any", features),
+            group_message_event("米米号"),
+            context,
+        )
+        is None
+    )
+
+
+def test_player_detail_team_selection_reuses_team_query_service(
+    monkeypatch: Any,
+) -> None:
+    team_query = SimpleNamespace(query=AsyncMock(return_value="team detail"))
+    finish_result = AsyncMock()
+    monkeypatch.setattr(
+        player_detail_conversation,
+        "_finish_player_detail_result",
+        finish_result,
+    )
+    event = group_message_event("5")
+    features = SimpleNamespace(
+        is_superuser=lambda _user_id: False,
+        is_group_feature_allowed=lambda *_args: True,
+    )
+    snapshot = PlayerBaseSnapshot(
+        player_id=PLAYER_ID,
+        user_info=SimpleNamespace(team_id=9_260_775),
+        more_info=SimpleNamespace(),
+        online_info=None,
+        team_name="星痕",
+    )
+    state: dict[str, object] = {
+        PLAYER_ID_KEY: PLAYER_ID,
+        PLAYER_DETAIL_MENU_CONTEXT_KEY: PlayerDetailMenuContext(
+            player_id=PLAYER_ID,
+            has_collection=True,
+            has_peak=True,
+            has_autocard=True,
+            base_snapshot=snapshot,
+            team_query=cast("Any", team_query),
+        ),
+        PLAYER_DETAIL_BUILTIN_SELECTIONS_KEY: (("5", PLAYER_TEAM_KEY),),
+    }
+
+    asyncio.run(
+        player_detail_conversation.handle_player_detail_reply(
+            cast("Any", object()),
+            PlayerDetailExtensionRegistry(),
+            cast("Any", features),
+            cast("Any", object()),
+            event,
+            cast("Any", state),
+        )
+    )
+
+    team_query.query.assert_awaited_once()
+    assert team_query.query.await_args.args[0] == (9_260_775,)
+    finish_result.assert_awaited_once()
+    finish_call = finish_result.await_args
+    assert finish_call is not None
+    assert finish_call.kwargs["prompt"] == "team detail"
 
 
 def test_player_detail_uses_the_shared_shortcut_executor(

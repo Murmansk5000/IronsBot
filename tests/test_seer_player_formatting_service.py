@@ -476,7 +476,6 @@ def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     message = format_compact_player_info(
         user_info,
         more_info,
-        team_name="无",
         online_info=None,
         unity_peak=_as_any(Empty()),
         peak_rank_summary=_as_any(Empty()),
@@ -488,6 +487,6 @@ def test_format_compact_player_info_keeps_basic_sections_and_errors() -> None:
     assert "🤖【玩家信息】" in message
     assert "米米号：712345678（赛小息）" in message
     assert "注册时间：2000年1月1日 08:00:00" in message
-    assert "战队：未加入" in message
+    assert "战队：" not in message
     assert "在线状态失败" in message
     assert "\n\n" not in message

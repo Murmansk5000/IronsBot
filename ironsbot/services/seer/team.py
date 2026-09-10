@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from ironsbot.services.team.resource import TeamResourceService
 
 MAX_TEAM_QUERY_IDS = 3
-TEAM_BOSS_MAX_ENERGY = 200
+TEAM_BOSS_USUAL_MAX_ENERGY = 200
 
 
 class TeamBossActivityStatus(StrEnum):
@@ -43,6 +43,12 @@ class TeamQueryActor:
     user_id: int
     group_id: int | None
     can_manage: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerTeamLookup:
+    team_id: int | None = None
+    error: str | None = None
 
 
 class SeerTeamQueryService:
@@ -66,6 +72,18 @@ class SeerTeamQueryService:
         return tuple(dict.fromkeys(int(item) for item in re.findall(r"\d+", text)))
 
     async def query_player_team(self, player_id: int, actor: TeamQueryActor) -> str:
+        lookup = await self.lookup_player_team(player_id, actor)
+        if lookup.error is not None:
+            return lookup.error
+        if lookup.team_id is None:
+            return f"米米号 {player_id} 当前未加入战队。"
+        return await self.query((lookup.team_id,), actor)
+
+    async def lookup_player_team(
+        self,
+        player_id: int,
+        actor: TeamQueryActor,
+    ) -> PlayerTeamLookup:
         try:
             game = self._headless.get_game()
             with game.operations.track(
@@ -79,28 +97,32 @@ class SeerTeamQueryService:
                     timeout=self._config.timeout_seconds,
                 )
         except TimeoutError:
-            return f"米米号 {player_id} 的所属战队查询超时，请稍后再试。"
+            return PlayerTeamLookup(
+                error=f"米米号 {player_id} 的所属战队查询超时，请稍后再试。"
+            )
         except (NotLoggedInError, DisconnectedError) as error:
             await self._headless.mark_unavailable(str(error), source="战队查询")
-            return format_player_query_error(
-                player_id,
-                error,
-                self._error_message,
+            return PlayerTeamLookup(
+                error=format_player_query_error(
+                    player_id,
+                    error,
+                    self._error_message,
+                )
             )
         except SocketRecvError as error:
-            return format_player_query_error(
-                player_id,
-                error,
-                self._error_message,
+            return PlayerTeamLookup(
+                error=format_player_query_error(
+                    player_id,
+                    error,
+                    self._error_message,
+                )
             )
         await self._headless.mark_available(
             source="战队查询",
             user_id=int(game.user_id),
         )
         team_id = int(getattr(info, "team_id", 0) or 0)
-        if team_id == 0:
-            return f"米米号 {player_id} 当前未加入战队。"
-        return await self.query((team_id,), actor)
+        return PlayerTeamLookup(team_id=team_id or None)
 
     async def query(  # noqa: C901 - distinct query failures retain their messages
         self,
@@ -237,13 +259,14 @@ def _append_section(
 def _format_team_boss(
     total_damage: int,
     activity_status: TeamBossActivityStatus,
-) -> str:
-    if not 0 <= total_damage <= TEAM_BOSS_MAX_ENERGY:
-        energy = f"能量数据异常（已削减能量：{total_damage}）"
-    else:
-        remaining = TEAM_BOSS_MAX_ENERGY - total_damage
-        energy = f"剩余能量 {remaining}/{TEAM_BOSS_MAX_ENERGY}"
-    return f"战队 Boss：{energy}｜活动状态：{activity_status.value}"
+) -> str | None:
+    if activity_status is TeamBossActivityStatus.CLOSED:
+        return None
+    return (
+        f"战队 Boss：累计削减能量 {total_damage}"
+        f"｜最大体力通常为 {TEAM_BOSS_USUAL_MAX_ENERGY}"
+        f"｜活动状态：{activity_status.value}"
+    )
 
 
 def format_team_info(
@@ -270,10 +293,13 @@ def format_team_info(
         f"成员数：{info.member_count}",
         f"战队资源：{info.score}",
     ]
-    if include_boss:
-        resource_lines.append(
-            _format_team_boss(info.total_boss_dmg, boss_activity_status)
-        )
+    boss_line = (
+        _format_team_boss(info.total_boss_dmg, boss_activity_status)
+        if include_boss
+        else None
+    )
+    if boss_line is not None:
+        resource_lines.append(boss_line)
     _append_section(
         lines,
         enabled_sections,

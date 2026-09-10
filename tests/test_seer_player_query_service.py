@@ -10,6 +10,7 @@ from ironsbot.services.seer.player_query import (
     PLAYER_AUTOCARD_KEY,
     PLAYER_COLLECTION_KEY,
     PLAYER_PEAK_KEY,
+    PLAYER_TEAM_KEY,
     PlayerDetailPromptPlan,
     PlayerQuerySectionPlan,
     extract_player_query_arg,
@@ -104,6 +105,61 @@ def test_player_detail_prompt_assigns_standard_menu_numbers_in_registration_orde
         ),
         extension_selections=(("4", "private_action"),),
         should_enter_conversation=True,
+    )
+
+
+def test_player_detail_prompt_places_team_after_optional_extensions() -> None:
+    extension = PlayerDetailExtensionAction(
+        id="lineup",
+        feature="private_feature",
+        label="阵容",
+        aliases=("阵容",),
+        command_help_id="private.lineup",
+        query=AsyncMock(return_value=QueryReply(text="ok")),
+        action=ActionDefinition("lineup", "阵容"),
+    )
+
+    plan = plan_player_detail_prompt(
+        has_collection=True,
+        has_peak=True,
+        has_autocard=True,
+        supports_conversation=True,
+        extension_actions=(extension,),
+        team_menu_text="星痕（战队ID：9260775）",
+    )
+
+    assert plan.prompt_lines == (
+        "回复数字查看详情：",
+        "1.【收集】",
+        "2.【巅峰】",
+        "3.【群星牌】",
+        "4.【阵容】",
+        "5.【战队】星痕（战队ID：9260775）",
+        "0.【退出】",
+    )
+    assert plan.accepted_commands == ("1", "2", "3", "4", "5", "0")
+    assert plan.builtin_selections[-1] == ("5", PLAYER_TEAM_KEY)
+
+
+def test_player_detail_prompt_assigns_team_number_from_available_actions() -> None:
+    plan = plan_player_detail_prompt(
+        has_collection=False,
+        has_peak=True,
+        has_autocard=False,
+        supports_conversation=True,
+        team_menu_text="星痕（战队ID：9260775）",
+    )
+
+    assert plan.prompt_lines == (
+        "回复数字查看详情：",
+        "1.【巅峰】",
+        "2.【战队】星痕（战队ID：9260775）",
+        "0.【退出】",
+    )
+    assert plan.accepted_commands == ("1", "2", "0")
+    assert plan.builtin_selections == (
+        ("1", PLAYER_PEAK_KEY),
+        ("2", PLAYER_TEAM_KEY),
     )
 
 

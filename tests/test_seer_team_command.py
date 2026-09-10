@@ -186,6 +186,16 @@ def test_team_command_leaves_unknown_alias_unmatched() -> None:
     assert not target.recognized
 
 
+def test_bare_team_command_is_left_for_the_overview_menu() -> None:
+    state: dict[str, object] = {}
+
+    assert not team._capture_team_ids(
+        _group(),
+        group_message_event("战队"),
+        state,
+    )
+
+
 @pytest.mark.asyncio
 async def test_explicit_player_id_is_not_treated_as_a_protected_shortcut(
     monkeypatch: pytest.MonkeyPatch,
