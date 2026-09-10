@@ -114,6 +114,8 @@ def format_docker_image_check_reply(
     result: DockerImageCheckResult,
 ) -> str:
     """Format a read-only registry comparison for an administrator."""
+    if result.ok and not result.missing_socket:
+        return _format_docker_revision_check(container_name, image, result)
     return format_docker_update_reply(
         container_name=container_name,
         image=image,
@@ -130,6 +132,92 @@ def format_docker_image_check_reply(
             missing_socket=result.missing_socket,
         ),
         check_only=True,
+    )
+
+
+def _format_docker_revision_check(
+    container_name: str,
+    image: str,
+    result: DockerImageCheckResult,
+) -> str:
+    current = format_image_version(
+        result.current_image_id,
+        result.current_image_created,
+    )
+    remote = format_image_version(
+        result.remote_image_id or result.remote_digest,
+        result.remote_image_created,
+    )
+    lines = [
+        (
+            f"Docker 镜像已是最新（相对 Docker Hub）：{container_name}"
+            if result.up_to_date
+            else f"检测到新镜像：{container_name}"
+        ),
+        f"目标镜像：{image}",
+        f"本机当前镜像ID：{current}",
+        f"Docker Hub latest 镜像ID：{remote}",
+    ]
+    if current_commit := visible_image_commit_summary(result.current_image_commit):
+        lines.append(f"本机代码：{current_commit}")
+    if remote_commit := visible_image_commit_summary(result.remote_image_commit):
+        lines.append(f"Docker Hub 代码：{remote_commit}")
+
+    if result.github_main_revision:
+        lines.append(f"GitHub main：{_short_revision(result.github_main_revision)}")
+        if _revisions_match(result.remote_image_revision, result.github_main_revision):
+            lines.append("Docker Hub latest 已对齐 GitHub main。")
+        else:
+            lines.append(
+                "Docker Hub latest 尚未对齐 GitHub main，"
+                "构建可能仍在进行或已失败。"
+            )
+        if _revisions_match(result.current_image_revision, result.github_main_revision):
+            lines.append("结论：本机运行镜像已对齐 GitHub main。")
+        elif result.up_to_date:
+            lines.append(
+                "结论：本机与 Docker Hub latest 一致，"
+                "但两者均落后 GitHub main。"
+            )
+        else:
+            lines.append(
+                "结论：本机落后 Docker Hub latest 和 GitHub main，"
+                "可选择更新镜像。"
+            )
+    else:
+        lines.append(
+            "GitHub main 检查失败："
+            f"{result.github_main_error or '未知错误'}"
+        )
+        lines.append(
+            "结论："
+            + (
+                "本机与 Docker Hub latest 一致。"
+                if result.up_to_date
+                else "本机落后 Docker Hub latest，可选择更新镜像。"
+            )
+        )
+    if not result.up_to_date:
+        lines.append("操作：等待确认后更新并重启。")
+    lines.append("本次只检查，未拉取镜像、未创建 Watchtower、未重启容器。")
+    return "\n".join(lines)
+
+
+def _short_revision(revision: str) -> str:
+    return revision.strip()[:12] or "未知"
+
+
+def _revisions_match(left: str, right: str) -> bool:
+    normalized_left = left.strip().lower()
+    normalized_right = right.strip().lower()
+    return bool(
+        normalized_left
+        and normalized_right
+        and (
+            normalized_left == normalized_right
+            or normalized_left.startswith(normalized_right)
+            or normalized_right.startswith(normalized_left)
+        )
     )
 
 
