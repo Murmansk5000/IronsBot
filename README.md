@@ -381,6 +381,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 `[seer.rank]` 的 `lookup_limits` 是按榜单名称设置的玩家排名查询范围映射，默认 `{}`。
 合法键为：图鉴积分、成就点数、精灵图鉴、皮肤图鉴、套装图鉴、部件图鉴、座驾图鉴、刻印图鉴、群星牌、竞技段位、狂野段位、专家段位；使用这些规范名称，不使用榜单标题或别名。值为非负整数，未知键或负数会被拒绝。
 未单独设置的榜单，在已有正分数的排名查找中使用 `limit`（默认 10000），否则使用 `online_limit`（默认 2000）；已设置的榜单使用自己的值覆盖对应默认范围。调用方显式请求更小范围时仍取较小值。
+本历史阶段另有分数查询倍率：现有调用方启用超级用户分数范围参数时，上述分数查询范围乘以 `superuser_score_limit_multiplier`（默认 2），再受调用方显式请求范围约束；普通查询及无分数查询不因此自动扩大，群权限不变。
 `0` 将该榜的查找范围上限设为零，不是无限制。它不是功能开关；缓存及结果核验另有路径，不能据此保证零网络请求。
 例如，在现有 `[seer.rank]` 表内添加 `lookup_limits = { "群星牌" = 10000 }`，只为群星牌设置范围；不添加该行则保持默认空映射。
 此项不设置全服榜展示行数，不调整后台 `page_refresh` 预热范围，也不改变群开关或权限。全服榜展示行数仍由 `display_limit`、`display_limits`、`max_display_limit` 等展示配置控制。
@@ -528,7 +529,7 @@ image = "murmansk5000/ironsbot-private:latest"
 
 ```text
 DOCKER_REGISTRY_USERNAME=murmansk5000
-DOCKER_REGISTRY_TOKEN=YOUR_DOCKER_REGISTRY_TOKEN
+DOCKER_REGISTRY_TOKEN=private-image-pull-token
 ```
 
 私有扩展包在公开主镜像启动前通过已挂载的 Docker socket 拉取，因此 Unraid 的 Repository
