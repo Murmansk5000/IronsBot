@@ -1243,6 +1243,15 @@ taomee_internal_user_ids = [
 
 # 玩家详情里的收集/巅峰多榜查询采用逐页轮转：某个榜响应慢时，其他榜可继续查询。
 [seer.rank.player_lookup]
+# EN: [seer.rank.player_lookup] recent-cache settings (not a total query timeout).
+# recent_cache_max_age_seconds defaults to 600 seconds: recent confirmed ranks
+# use the fast online anchor path. recent_cache_anchor_timeout_seconds defaults
+# to 5 seconds for that recent anchor page; on timeout keep the cached result
+# without retrying or expanding the search. Both settings must be greater than 0.
+# ZH: 以下配置属于 [seer.rank.player_lookup]，不是查询总超时。
+# recent_cache_max_age_seconds 默认 600 秒：近期确认的名次优先走快速联网锚点；
+# recent_cache_anchor_timeout_seconds 默认 5 秒：限制该近期缓存锚点页的等待，
+# 超时保留缓存，不重试或扩圈。两项均须大于 0；不改变查询范围或权限。
 # Default: 8; EN: Timeout for one official leaderboard page request.
 # ZH: 单次官方榜单页请求最多等待秒数。
 page_timeout_seconds = 8

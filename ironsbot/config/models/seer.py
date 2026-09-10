@@ -433,6 +433,8 @@ class PlayerRankLookupConfig(BaseModel):
     page_timeout_seconds: float = Field(default=8, gt=0)
     total_timeout_seconds: float = Field(default=60, gt=0)
     page_retry_count: int = Field(default=1, ge=0, le=3)
+    recent_cache_max_age_seconds: float = Field(default=600, gt=0)
+    recent_cache_anchor_timeout_seconds: float = Field(default=5, gt=0)
 
     @model_validator(mode="after")
     def validate_budget(self) -> "PlayerRankLookupConfig":
@@ -485,6 +487,7 @@ class RankQueryConfig(BaseModel):
     limit: int = Field(default=10000, ge=0)
     online_limit: int = Field(default=2000, ge=0)
     lookup_limits: dict[str, int] = Field(default_factory=dict)
+    superuser_score_limit_multiplier: int = Field(default=2, ge=1)
     page_size: int = Field(default=100, ge=1)
     display_limit: int = Field(default=10, ge=1, le=MAX_RANK_DISPLAY_LIMIT)
     max_display_limit: int = Field(

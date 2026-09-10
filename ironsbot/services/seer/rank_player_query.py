@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -8,6 +9,7 @@ from ironsbot.services.seer.local_rank_formatting import format_metric_display
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_formatting_common import (
     format_player_identity,
+    format_rank_cache_fallback,
     join_metric_parts,
 )
 from ironsbot.services.seer.player_query import calculate_player_peak_scores
@@ -17,6 +19,7 @@ from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.sequ_extra import fetch_unity_part_one, fetch_unity_peak
 
 _PEAK_KEYS = frozenset(("竞技段位", "狂野段位", "专家段位"))
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.local_rank import LocalRankService
@@ -68,6 +71,7 @@ async def fetch_rank_player_result(
         and result.rank is None
         and result.queried
         and not result.cost.restricted_miss
+        and not result.failure
     ):
         result = await rank.find_rank(
             game,
@@ -86,6 +90,11 @@ async def fetch_rank_player_result(
         if result.score is not None
         else target.value
     )
+    if target.value is not None and command.rank_key not in _PEAK_KEYS:
+        score = target.value
+    observed_score = result.observed_score
+    if observed_score is None and result.rank is not None:
+        observed_score = result.score
     if (
         command.rank_key not in _PEAK_KEYS
         and result.score is None
@@ -105,12 +114,35 @@ async def fetch_rank_player_result(
         season_sub_key=spec.sub_key if command.rank_key in _PEAK_KEYS else None,
         clear_when_missing=command.rank_key in _PEAK_KEYS,
     )
+    rank_text = format_rank_position_text(result)
+    if cached_fallback := format_rank_cache_fallback(result):
+        rank_text = f"{rank_text}（{cached_fallback}）"
+    board_source = "榜单缓存" if result.fallback_cached_at is not None else "榜单"
     metric_text = join_metric_parts(
-        display or "暂无数据",
-        format_rank_position_text(result),
+        (
+            f"个人接口：{_format_score(metric_key, target.value, spec.unit)}｜"
+            f"{board_source}：{_format_score(metric_key, observed_score, spec.unit)}"
+            if target.value is not None
+            and observed_score is not None
+            and target.value != observed_score
+            else display or "暂无数据"
+        ),
+        rank_text,
         local_summary.sample_rank(metric_key),
     )
     title = spec.title.removesuffix("榜")
+    logger.info(
+        "rank player reply query=%s user_id=%s key=%s sub_key=%s "
+        "profile_score=%s rank_score=%s status=%s text=%s",
+        result.query_id,
+        command.player_id,
+        spec.key,
+        spec.sub_key,
+        target.value,
+        observed_score,
+        result.status,
+        metric_text,
+    )
     return RankPlayerQueryResult(
         "\n".join(
             (

@@ -103,6 +103,8 @@ _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA),
     SqliteMigration(2, (_NEGATIVE_LOOKUP_SCHEMA,)),
     SqliteMigration(3, (_LAST_SEEN_SCHEMA, _LAST_SEEN_BACKFILL)),
+    # Old misses did not certify the actual contiguous scan coverage.
+    SqliteMigration(4, ("DELETE FROM player_rank_misses",)),
 )
 _LOGGER = logging.getLogger(__name__)
 

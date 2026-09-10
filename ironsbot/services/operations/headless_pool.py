@@ -471,6 +471,12 @@ class PooledHeadlessGame:
         return self._dispatcher.healthy_worker_count > 0
 
     @property
+    def idle_worker_count(self) -> int:
+        """Current spare packet capacity, used to size one rank probe batch."""
+
+        return self._dispatcher.idle_worker_count
+
+    @property
     def user_id(self) -> int:
         return _last_worker_user_id.get() or self._dispatcher.primary_user_id
 

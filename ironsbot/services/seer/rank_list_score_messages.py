@@ -23,6 +23,8 @@ def format_global_rank_score_message(
     timestamp: str | None = None,
 ) -> str:
     score_text = format_global_rank_score(result.target_score, spec)
+    if getattr(result, "failure", None):
+        return f"{spec.title}：{result.failure}"
     if not result.queried:
         return f"❌{spec.title}分数查询未启用。"
     if not result.items:
@@ -31,19 +33,14 @@ def format_global_rank_score_message(
         if result.target_score < result.boundary_score:
             boundary_score = format_global_rank_score(result.boundary_score, spec)
             return (
-                f"❌{score_text}不在{spec.title}前 {result.searched_limit} 名范围内。\n"
-                f"当前范围末位约为 {boundary_score}。"
+                f"按分数定位未确认{spec.title}中{score_text}的用户。\n"
+                f"已读取范围末位约为 {boundary_score}。"
             )
         proof_lines = _format_score_gap_proof(spec, result)
+        lines = [f"按分数定位未确认{spec.title}中{score_text}的用户。"]
         if proof_lines:
-            lines = [f"❌{spec.title}没有{score_text}的用户。"]
-            lines.append("相邻分数段：")
+            lines.append("已读取的相邻分数段：")
             lines.extend(proof_lines)
-        else:
-            lines = [
-                f"❌{spec.title}前 {result.searched_limit} 名"
-                f"没有{score_text}的用户。"
-            ]
         return "\n".join(lines)
 
     shown = _score_items_for_display(result.items, display_limit)
