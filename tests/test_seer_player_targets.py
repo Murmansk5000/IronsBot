@@ -219,6 +219,8 @@ def test_event_player_target_unifies_default_number_alias_and_member_forms() -> 
     assert default_target.player_id == REQUESTER_PLAYER_ID
     assert numeric_target.player_id == PLAYER_ID
     assert alias_target.player_id == PLAYER_ID
+    assert not numeric_target.is_shortcut_target
+    assert alias_target.is_shortcut_target
     assert member_target.player_id == PLAYER_ID
 
 
