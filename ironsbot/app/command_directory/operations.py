@@ -16,7 +16,9 @@ from ironsbot.plugins.operations.status.command_text import (
 from ironsbot.runtime.commands import CommandAccess, CommandDescriptor
 
 
-def server_status_commands() -> tuple[CommandDescriptor, ...]:
+def server_status_commands(
+    examples: tuple[str, ...] = NORMAL_SERVER_STATUS_COMMANDS,
+) -> tuple[CommandDescriptor, ...]:
     return (
         *commands_from_rows(
             "server_status",
@@ -25,7 +27,7 @@ def server_status_commands() -> tuple[CommandDescriptor, ...]:
             (
                 (
                     "server_status.query",
-                    NORMAL_SERVER_STATUS_COMMANDS,
+                    examples,
                     "查询当前维护和开服状态",
                     {"show_in_poke": True},
                 ),
@@ -49,11 +51,7 @@ def server_status_commands() -> tuple[CommandDescriptor, ...]:
                     "server_status.headless_instances",
                     HEADLESS_INSTANCE_STATUS_COMMANDS,
                     "查看公共查询池与临时专用会话的当前在线实例数",
-                    {
-                        "access": (
-                            CommandAccess(scope="private", audience="superuser"),
-                        )
-                    },
+                    {"access": (CommandAccess(scope="private", audience="superuser"),)},
                 ),
             ),
         ),
