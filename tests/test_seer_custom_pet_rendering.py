@@ -304,6 +304,40 @@ def test_partition_soulmarks_uses_real_partner_upgrade_without_duplication() -> 
     assert upgraded == [upgraded_soulmark]
 
 
+def test_partition_soulmarks_uses_partner_text_containment_before_similarity() -> None:
+    partner = PetPartner(
+        group_id=6,
+        name="Partner group",
+        cost_item_id=1,
+        cost_item_name="Contract badge",
+        cost_item_quantity=8,
+        members=(),
+        before_description="base soulmark effect",
+        after_description=(
+            "upgraded soulmark effect\n"
+            "executor: long official explanation\n"
+            "array: another official explanation"
+        ),
+        skill=None,
+    )
+    base_soulmark: custom_pet_info.SoulmarkDict = {
+        **_soulmark_dict(1482),
+        "desc": "base soulmark effect",
+    }
+    upgraded_soulmark: custom_pet_info.SoulmarkDict = {
+        **_soulmark_dict(2139),
+        "desc": "upgraded soulmark effect",
+    }
+
+    base, upgraded = custom_pet_info._partition_soulmarks(
+        [base_soulmark, upgraded_soulmark],
+        partner,
+    )
+
+    assert base == [base_soulmark]
+    assert upgraded == [upgraded_soulmark]
+
+
 def test_partition_soulmarks_corrects_reversed_partner_description_fields() -> None:
     partner = PetPartner(
         group_id=7,
