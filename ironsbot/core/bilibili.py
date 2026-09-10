@@ -43,6 +43,7 @@ DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS = 300.0
 MAX_CLOCK_SECOND = 59
 SeerDynamicCategory = Literal[
     "lottery",
+    "winning",
     "version_preview",
     "version_guide",
     "pet",
@@ -57,6 +58,7 @@ SeerDynamicCategory = Literal[
 ]
 SEER_DYNAMIC_CATEGORIES: tuple[SeerDynamicCategory, ...] = (
     "lottery",
+    "winning",
     "version_preview",
     "version_guide",
     "pet",
@@ -69,9 +71,13 @@ SEER_DYNAMIC_CATEGORIES: tuple[SeerDynamicCategory, ...] = (
     "interaction",
     "other",
 )
-DEFAULT_SEER_MUTED_CATEGORIES: tuple[SeerDynamicCategory, ...] = ("lottery",)
+DEFAULT_SEER_MUTED_CATEGORIES: tuple[SeerDynamicCategory, ...] = (
+    "lottery",
+    "winning",
+)
 DEFAULT_SEER_CATEGORY_PATTERNS: dict[str, list[str]] = {
-    "lottery": ["抽奖", "中奖", "私信通知", "抽奖结果"],
+    "lottery": ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"],
+    "winning": ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"],
     "version_preview": ["新版本.*即将到来", "查看下方长图"],
     "version_guide": ["一图掌握", "版本更新指引", "版本福利"],
     "pet": ["全新精灵", "精灵觉醒", "精灵.*即将登场"],
@@ -407,6 +413,9 @@ class BiliSeerCategoryConfig(BaseModel):
     lottery_patterns: NormalizedStringList = Field(
         default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["lottery"])
     )
+    winning_patterns: NormalizedStringList = Field(
+        default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["winning"])
+    )
     version_preview_patterns: NormalizedStringList = Field(
         default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["version_preview"])
     )
@@ -437,6 +446,18 @@ class BiliSeerCategoryConfig(BaseModel):
     interaction_patterns: NormalizedStringList = Field(
         default_factory=lambda: list(DEFAULT_SEER_CATEGORY_PATTERNS["interaction"])
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_combined_lottery_category(cls, value: object) -> object:
+        """Preserve legacy "抽奖/中奖" TD choices when the category splits."""
+        if not isinstance(value, dict) or "winning_patterns" in value:
+            return value
+        data = dict(value)
+        muted = data.get("default_muted_categories")
+        if isinstance(muted, list) and "lottery" in muted and "winning" not in muted:
+            data["default_muted_categories"] = [*muted, "winning"]
+        return data
 
     @field_validator("account")
     @classmethod
@@ -486,6 +507,7 @@ class BiliSeerCategoryConfig(BaseModel):
     def category_patterns(self) -> dict[SeerDynamicCategory, list[str]]:
         return {
             "lottery": self.lottery_patterns,
+            "winning": self.winning_patterns,
             "version_preview": self.version_preview_patterns,
             "version_guide": self.version_guide_patterns,
             "pet": self.pet_patterns,
