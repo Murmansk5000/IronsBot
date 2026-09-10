@@ -19,6 +19,7 @@ from ironsbot.services.seer.rendering.custom_pet_info import (
 from ironsbot.services.seer.rendering.custom_pet_special_effects import (
     GLOSSARY_SOURCE,
     SKILL_SOURCE_PREFIX,
+    SOULMARK_EFFECT_SOURCE_PREFIX,
     SOULMARK_STATUS_SOURCE_PREFIX,
     STATUS_NAME_SOURCE,
     STATUS_SOURCE,
@@ -26,7 +27,7 @@ from ironsbot.services.seer.rendering.custom_pet_special_effects import (
     _add_named_status_icons,
     _add_pet_linked_status_effects,
     _add_skill_red_effects,
-    _add_soulmark_highlight_status_effects,
+    _add_soulmark_highlight_effects,
     _assign_special_effect_colors,
     _deduplicate_special_effects,
     _extract_special_effects,
@@ -394,7 +395,7 @@ def test_green_soulmark_highlight_matches_status_by_description() -> None:
     effects: list[Any] = []
 
     with Session(engine) as session:
-        _add_soulmark_highlight_status_effects(session, cast("Any", pet), effects)
+        _add_soulmark_highlight_effects(session, cast("Any", pet), effects)
 
     assert effects == [
         {
@@ -411,6 +412,109 @@ def test_green_soulmark_highlight_matches_status_by_description() -> None:
             "sources": [f"{SOULMARK_STATUS_SOURCE_PREFIX}1940"],
             "glossary_id": None,
             "status_id": 113,
+            "icon": None,
+        },
+    ]
+
+
+def test_soulmark_red_effect_descriptions_fallback_after_statuses() -> None:
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE special_effect_status (
+                    status_id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    show_monster_id INTEGER NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE effect_description (
+                    effect_id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO special_effect_status
+                    (status_id, name, description, show_monster_id)
+                VALUES (202, 'executor', 'status description', 0)
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO effect_description (effect_id, name, description)
+                VALUES
+                    (557, 'collapse', 'collapse description'),
+                    (558, 'barrier', 'barrier description'),
+                    (559, 'array', 'array description')
+                """
+            )
+        )
+
+    pet = SimpleNamespace(
+        soulmark=[
+            SimpleNamespace(
+                id=2139,
+                desc="upgraded soulmark",
+                analyze_desc=(
+                    "[color=#f35555]executor[/color] remains active; "
+                    "[color=#f35555]collapse[/color] triggers after self actions; "
+                    "[color=#f35555]barrier[/color] triggers after opponent actions; "
+                    "[color=#f35555]array[/color] triggers at round end"
+                ),
+                desc_formatting_adjustment="",
+            )
+        ]
+    )
+    effects: list[SpecialEffectDict] = []
+
+    with Session(engine) as session:
+        _add_soulmark_highlight_effects(session, cast("Any", pet), effects)
+
+    assert effects == [
+        {
+            "name": "executor",
+            "desc": "status description",
+            "sources": [f"{SOULMARK_STATUS_SOURCE_PREFIX}2139"],
+            "glossary_id": None,
+            "status_id": 202,
+            "icon": None,
+        },
+        {
+            "name": "collapse",
+            "desc": "collapse description",
+            "sources": [f"{SOULMARK_EFFECT_SOURCE_PREFIX}2139"],
+            "glossary_id": None,
+            "status_id": None,
+            "icon": None,
+        },
+        {
+            "name": "barrier",
+            "desc": "barrier description",
+            "sources": [f"{SOULMARK_EFFECT_SOURCE_PREFIX}2139"],
+            "glossary_id": None,
+            "status_id": None,
+            "icon": None,
+        },
+        {
+            "name": "array",
+            "desc": "array description",
+            "sources": [f"{SOULMARK_EFFECT_SOURCE_PREFIX}2139"],
+            "glossary_id": None,
+            "status_id": None,
             "icon": None,
         },
     ]
@@ -529,7 +633,7 @@ def test_same_status_description_falls_back_to_lowest_status_id() -> None:
     effects: list[Any] = []
 
     with Session(engine) as session:
-        _add_soulmark_highlight_status_effects(session, cast("Any", pet), effects)
+        _add_soulmark_highlight_effects(session, cast("Any", pet), effects)
 
     assert effects[0]["status_id"] == KNIGHT_DUEL_LOST_BASE_STATUS_ID
 

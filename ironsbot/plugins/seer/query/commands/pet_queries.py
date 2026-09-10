@@ -12,6 +12,22 @@ from .query_rules import not_fixed_image_command, not_rank_query
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.pet_query
+    avatar_matcher = group.on_message(
+        policy=CommandPolicy.command("seer_pet_avatar", help_ids=("seer.pet.avatar",)),
+        rule=seer_feature_rule(group.features, "seer_pet")
+        & startswith_or_endswith(prefixes=("头像",), suffixes=("头像",))
+        & not_fixed_image_command
+        & explicit_command(),
+        priority=group.matcher_priority("seer_pet"),
+    )
+    avatar_matcher.append_handler(
+        make_query_handler(
+            service.search_avatar,
+            service.select_avatar,
+            "选择要查询头像的精灵：",
+            ActionDefinition("seer_pet_avatar", "精灵头像查询"),
+        )
+    )
     image_matcher = group.on_message(
         policy=CommandPolicy.command(
             "seer_pet_image",
