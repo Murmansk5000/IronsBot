@@ -690,6 +690,7 @@ class ExternalReferencesConfig(BaseModel):
     weekly_preview: StrictBool = True
     bilibili_history: StrictBool = True
     peak_pool: StrictBool = True
+    peak_master_pool: StrictBool = True
     peak_vote: StrictBool = True
     peak_player_rank: StrictBool = True
     peak_suit_rank: StrictBool = True
@@ -698,7 +699,7 @@ class ExternalReferencesConfig(BaseModel):
 
 
 class NewContentConfig(BaseModel):
-    """Control which weekly-content categories expand on the root menu."""
+    """Control root previews of genuinely new weekly-content entries."""
 
     model_config = ConfigDict(extra="forbid")
 
