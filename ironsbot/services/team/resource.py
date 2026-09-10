@@ -20,7 +20,11 @@ from ironsbot.services.seer.ids import (
     is_valid_team_id,
 )
 from ironsbot.services.seer.team import format_team_info
-from ironsbot.services.team.overview import TeamOverviewItem, format_team_overview
+from ironsbot.services.team.overview import (
+    TeamOverviewItem,
+    format_team_overview,
+    load_team_overview,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
@@ -408,7 +412,7 @@ class TeamResourceService:
                 "“订阅战队123456”添加。"
             )
 
-        at_user_ids = self.default_at_user_ids
+        at_user_ids = (user_id,)
         result = TeamResourceResult(
             prompt.team_id,
             prompt.team_name,
@@ -436,21 +440,24 @@ class TeamResourceService:
     async def query_overview(
         self,
         target: TeamResourceSubscriptionTarget,
+        *,
+        first_team_id: int | None = None,
     ) -> tuple[TeamOverviewItem, ...]:
-        items: list[TeamOverviewItem] = []
-        for subscription in self._subscriptions_for_target(target):
+        subscriptions = self._subscriptions_for_target(target)
+
+        async def load(team_id: int, fallback_name: str) -> TeamOverviewItem:
             try:
-                result = await self.query(
-                    subscription.team_id, group_id=target.group_id
+                return TeamOverviewItem.from_result(
+                    await self.query(team_id, group_id=target.group_id)
                 )
-                items.append(TeamOverviewItem.from_result(result))
-            except TeamResourceQueryError as error:  # noqa: PERF203 - isolate each team's failure
-                items.append(
-                    TeamOverviewItem(
-                        subscription.team_id, subscription.team_name, error=str(error)
-                    )
-                )
-        return tuple(items)
+            except TeamResourceQueryError as error:
+                return TeamOverviewItem(team_id, fallback_name, error=str(error))
+
+        return await load_team_overview(
+            [(item.team_id, item.team_name) for item in subscriptions],
+            load,
+            first_team_id=first_team_id,
+        )
 
     async def query_messages(
         self,
@@ -493,7 +500,7 @@ class TeamResourceService:
             tuple[str, int], list[tuple[TeamOverviewItem, tuple[int, ...], str]]
         ] = {}
         for target, subscription in self._all_subscriptions():
-            if not self._target_has_feature(target):
+            if not self.target_has_feature(target):
                 continue
             try:
                 result = await self.query(
@@ -655,13 +662,13 @@ class TeamResourceService:
                 subscription,
             )
 
-    def _target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
+    def target_has_feature(self, target: TeamResourceSubscriptionTarget) -> bool:
         if target.is_group:
-            return self._features.group_has_feature(
+            return self.enabled and self._features.group_has_feature(
                 target.target_id,
                 TEAM_RESOURCE_FEATURE,
             )
-        return self._features.user_has_feature(
+        return self.enabled and self._features.user_has_feature(
             target.target_id,
             TEAM_RESOURCE_FEATURE,
         )

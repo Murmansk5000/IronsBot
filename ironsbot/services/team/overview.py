@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from ironsbot.services.team.resource import TeamResourceResult
+
+
+class TeamOverviewLoader(Protocol):
+    async def __call__(self, team_id: int, fallback_name: str) -> TeamOverviewItem: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,3 +42,21 @@ def format_team_overview(items: Sequence[TeamOverviewItem]) -> str:
         lines.append(f"{index}. 【{item.team_id}】{item.name}\n{item.description}")
     lines.append("输入编号查看详情；群聊引用本条消息后输入，输入 0 退出。")
     return "\n".join(lines)
+
+
+async def load_team_overview(
+    subscriptions: Sequence[tuple[int, str]],
+    loader: TeamOverviewLoader,
+    *,
+    first_team_id: int | None = None,
+) -> tuple[TeamOverviewItem, ...]:
+    names = dict(subscriptions)
+    team_ids = list(names)
+    if first_team_id is not None:
+        team_ids = [
+            first_team_id,
+            *(item for item in team_ids if item != first_team_id),
+        ]
+    return tuple(
+        [await loader(team_id, names.get(team_id, "")) for team_id in team_ids]
+    )

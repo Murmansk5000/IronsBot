@@ -27,6 +27,7 @@ from ironsbot.services.team.resource import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
     from ironsbot.core.messaging import DeliveryReceipt
+    from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.team import SeerTeamQueryService
     from ironsbot.services.team.resource import TeamResourceService
 
@@ -46,10 +47,12 @@ class TeamOverviewMenus:
         self,
         service: TeamResourceService,
         query: SeerTeamQueryService,
+        player: PlayerService,
         timeout_seconds: float,
     ) -> None:
         self.service = service
         self.query = query
+        self.player = player
         self.timeout_seconds = timeout_seconds
         self.notices: dict[tuple[int, str, int], NoticeMenu] = {}
 
