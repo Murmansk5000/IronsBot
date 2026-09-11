@@ -93,6 +93,8 @@ MAIN_BOT_ID = 111111111
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
 DEFAULT_PUSH_DELIVERY_MAX_ATTEMPTS = 3
 DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR = 3
+DEFAULT_PUSH_DELIVERY_MAX_PARALLEL_TARGETS = 5
+DEFAULT_PUSH_DELIVERY_TRANSPORT_COOLDOWN_SECONDS = 60.0
 DEFAULT_PUSH_DELIVERY_DELAY_MIN_SECONDS = 2.0
 DEFAULT_PUSH_DELIVERY_DELAY_MAX_SECONDS = 5.0
 TEAM_RESOURCE_THRESHOLD = 2000
@@ -126,6 +128,14 @@ def _assert_default_push_delivery(push_delivery: PushDeliveryConfig) -> None:
     assert (
         push_delivery.retry_batch_divisor
         == DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR
+    )
+    assert (
+        push_delivery.max_parallel_targets
+        == DEFAULT_PUSH_DELIVERY_MAX_PARALLEL_TARGETS
+    )
+    assert (
+        push_delivery.transport_failure_cooldown_seconds
+        == DEFAULT_PUSH_DELIVERY_TRANSPORT_COOLDOWN_SECONDS
     )
     assert (
         push_delivery.batch_delay_min_seconds

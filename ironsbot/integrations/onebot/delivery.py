@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from inspect import isawaitable
 from math import ceil
@@ -26,10 +25,18 @@ from .outbound import (
     is_outbound_suppressed_result,
     use_preacquired_push_permit,
 )
+from .push_guard import (
+    OneBotTransportCircuit,
+    PushBatchCoordinator,
+    PushBatchResult,
+    TargetSendResult,
+    is_transport_unavailable_error,
+    is_uncertain_delivery_error,
+    ordered_push_targets,
+    push_target_sort_key,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
     from ironsbot.config.models.messaging import (
         PushDeliveryConfig,
         PushUnsubscribeConfig,
@@ -44,29 +51,6 @@ if TYPE_CHECKING:
 
 MessageLimiter = Callable[[str | Message, MessageTarget], str | Message]
 PUSH_SUBSCRIPTION_HINT_KEY = "push_subscription_hint"
-
-
-@dataclass(slots=True)
-class PushBatchCoordinator:
-    """Prevent concurrent background batches from overloading one QQ client."""
-
-    _locks: dict[str, asyncio.Lock] = field(default_factory=dict)
-    _locks_guard: asyncio.Lock = field(default_factory=asyncio.Lock)
-
-    @asynccontextmanager
-    async def acquire(self, bot_keys: Iterable[str]) -> AsyncIterator[None]:
-        keys = sorted(set(bot_keys))
-        async with self._locks_guard:
-            locks = [self._locks.setdefault(key, asyncio.Lock()) for key in keys]
-        for lock in locks:
-            await lock.acquire()
-        try:
-            yield
-        finally:
-            for lock in reversed(locks):
-                lock.release()
-
-
 def _copy_outbound_message(message: str | Message) -> str | Message:
     return message.copy() if isinstance(message, Message) else message
 
@@ -115,27 +99,6 @@ class OneBotMessageSender(Protocol):
     async def send_group_msg(self, *, group_id: int, message: Message) -> object: ...
 
 
-@dataclass(frozen=True, slots=True)
-class _TargetSendResult:
-    sent: bool
-    receipt: DeliveryReceipt | None = None
-    uncertain: bool = False
-
-
-def _is_uncertain_delivery_error(error: Exception) -> bool:
-    """Return whether the request may have reached QQ without a response."""
-    error_name = type(error).__name__.casefold()
-    message = str(error).casefold()
-    return (
-        "timeout" in error_name
-        or "network" in error_name
-        or "connection" in error_name
-        or "timeout" in message
-        or "websocket" in message
-        or "connection" in message
-    )
-
-
 def _message_id_from_result(result: object) -> int | None:
     raw_message_id = (
         result.get("message_id")
@@ -163,44 +126,17 @@ class OneBotDelivery:
     batch_coordinator: PushBatchCoordinator = field(
         default_factory=PushBatchCoordinator
     )
+    _transport_circuit: OneBotTransportCircuit = field(
+        default_factory=OneBotTransportCircuit,
+        compare=False,
+        repr=False,
+    )
 
     def default_bot(self) -> OneBotMessageSender | None:
         return self.bot_router.default_bot()
 
     def bot_for_target(self, target: MessageTarget) -> OneBotMessageSender | None:
         return self.bot_router.for_target(target)
-
-    def _ordered_push_targets(
-        self,
-        targets: Iterable[MessageTarget],
-    ) -> list[MessageTarget]:
-        return [
-            target
-            for index, target in sorted(
-                enumerate(targets),
-                key=lambda item: self._push_target_sort_key(item[1], item[0]),
-            )
-        ]
-
-    def _push_target_sort_key(
-        self,
-        target: MessageTarget,
-        index: int,
-    ) -> tuple[int, int, int, int]:
-        target_type_order = 0 if target.target_type == "group" else 1
-        aliases = (
-            self.group_alias_order if target_type_order == 0 else self.user_alias_order
-        )
-        alias_order = {
-            target_id: position for position, target_id in enumerate(aliases)
-        }
-        position = alias_order.get(target.target_id)
-        return (
-            target_type_order,
-            0 if position is not None else 1,
-            position if position is not None else target.target_id,
-            index,
-        )
 
     def _bot_key(
         self,
@@ -211,6 +147,65 @@ class OneBotDelivery:
         if target_bot is None:
             return None
         return str(getattr(target_bot, "self_id", id(target_bot)))
+
+    def _target_bot_for_send(
+        self,
+        target: MessageTarget,
+        explicit_bot: OneBotMessageSender | None,
+        *,
+        action_name: str,
+        subscription_key: str | None,
+    ) -> tuple[OneBotMessageSender | None, TargetSendResult | None]:
+        target_bot = explicit_bot or self.bot_router.for_target(target)
+        if target_bot is None:
+            logger.warning(
+                "{} has no connected bot for {} {}",
+                action_name,
+                target.target_type,
+                target.target_id,
+            )
+            return None, TargetSendResult(sent=False)
+        if subscription_key and self._transport_circuit.is_open(target_bot):
+            logger.info(
+                "{} skipped for {} {} because the OneBot transport circuit is open",
+                action_name,
+                target.target_type,
+                target.target_id,
+            )
+            return target_bot, TargetSendResult(
+                sent=False,
+                transport_unavailable=True,
+            )
+        return target_bot, None
+
+    def _send_error_result(
+        self,
+        error: Exception,
+        *,
+        target: MessageTarget,
+        target_bot: OneBotMessageSender,
+        action_name: str,
+    ) -> TargetSendResult:
+        transport_unavailable = is_transport_unavailable_error(error)
+        if transport_unavailable:
+            self._transport_circuit.open(
+                target_bot,
+                self.push_delivery.transport_failure_cooldown_seconds,
+                error,
+            )
+        logger.warning(
+            "{} failed to send to {} {} via bot {}: {}",
+            action_name,
+            target.target_type,
+            target.target_id,
+            getattr(target_bot, "self_id", "explicit"),
+            error,
+        )
+        return TargetSendResult(
+            sent=False,
+            uncertain=is_uncertain_delivery_error(error),
+            transport_unavailable=transport_unavailable,
+        )
 
     @staticmethod
     def _restore_target_order(
@@ -240,17 +235,18 @@ class OneBotDelivery:
         subscription_key: str | None,
         receipt_handler: DeliveryReceiptHandler | None = None,
         verify_history: bool = False,
-    ) -> _TargetSendResult:
+    ) -> TargetSendResult:
         if index > 0 and interval_seconds > 0:
             await asyncio.sleep(index * interval_seconds)
 
-        target_bot = bot or self.bot_router.for_target(target)
-        if target_bot is None:
-            logger.warning(
-                f"{action_name} has no connected bot for "
-                f"{target.target_type} {target.target_id}"
-            )
-            return _TargetSendResult(sent=False)
+        target_bot, preflight_failure = self._target_bot_for_send(
+            target,
+            bot,
+            action_name=action_name,
+            subscription_key=subscription_key,
+        )
+        if preflight_failure is not None or target_bot is None:
+            return preflight_failure or TargetSendResult(sent=False)
 
         limited_message = _copy_outbound_message(message)
         if message_limiter is not None:
@@ -277,7 +273,7 @@ class OneBotDelivery:
                 f"{action_name} dropped by outbound push queue for "
                 f"{target.target_type} {target.target_id}: {decision.reason}"
             )
-            return _TargetSendResult(sent=False)
+            return TargetSendResult(sent=False)
 
         try:
             if target.target_type == "private":
@@ -297,19 +293,17 @@ class OneBotDelivery:
                     f"{action_name} was suppressed while sending to "
                     f"{target.target_type} {target.target_id}"
                 )
-                return _TargetSendResult(sent=False)
+                return TargetSendResult(sent=False)
         except Exception as e:  # noqa: BLE001
             self.outbound.rollback(decision.permit)
-            logger.warning(
-                f"{action_name} failed to send to {target.target_type} "
-                f"{target.target_id} via bot "
-                f"{getattr(target_bot, 'self_id', 'explicit')}: {e}"
-            )
-            return _TargetSendResult(
-                sent=False,
-                uncertain=_is_uncertain_delivery_error(e),
+            return self._send_error_result(
+                e,
+                target=target,
+                target_bot=target_bot,
+                action_name=action_name,
             )
 
+        self._transport_circuit.close(target_bot)
         message_id = _message_id_from_result(result)
         history_status: DeliveryHistoryStatus = "not_checked"
         history_error: str | None = None
@@ -335,7 +329,7 @@ class OneBotDelivery:
             message_id,
             history_status,
         )
-        return _TargetSendResult(sent=True, receipt=receipt)
+        return TargetSendResult(sent=True, receipt=receipt)
 
     @staticmethod
     async def _notify_delivery_receipt(
@@ -394,59 +388,75 @@ class OneBotDelivery:
         max_attempts: int,
         receipt_handler: DeliveryReceiptHandler | None,
         verify_history: bool,
-    ) -> TargetSendSummary:
+    ) -> PushBatchResult:
         bot_keys = [
             key
             for target, _message in selected
             if (key := self._bot_key(target, bot)) is not None
         ]
         async with self.batch_coordinator.acquire(bot_keys):
-            results = await asyncio.gather(
-                *(
-                    self._send_target(
-                        target,
-                        message,
-                        index=0,
-                        bot=bot,
-                        action_name=action_name,
-                        interval_seconds=0.0,
-                        message_limiter=message_limiter,
-                        subscription_key=subscription_key,
-                        receipt_handler=receipt_handler,
-                        verify_history=verify_history,
+            results: list[TargetSendResult] = []
+            parallelism = self.push_delivery.max_parallel_targets
+            for start in range(0, len(selected), parallelism):
+                chunk = selected[start : start + parallelism]
+                chunk_results = await asyncio.gather(
+                    *(
+                        self._send_target(
+                            target,
+                            message,
+                            index=0,
+                            bot=bot,
+                            action_name=action_name,
+                            interval_seconds=0.0,
+                            message_limiter=message_limiter,
+                            subscription_key=subscription_key,
+                            receipt_handler=receipt_handler,
+                            verify_history=verify_history,
+                        )
+                        for target, message in chunk
                     )
-                    for target, message in selected
                 )
-            )
+                results.extend(chunk_results)
+                if any(result.transport_unavailable for result in chunk_results):
+                    break
+        attempted = selected[: len(results)]
         succeeded = [
             target
-            for (target, _message), result in zip(selected, results, strict=True)
+            for (target, _message), result in zip(attempted, results, strict=True)
             if result.sent
         ]
         failed = [
             target
-            for (target, _message), result in zip(selected, results, strict=True)
+            for (target, _message), result in zip(attempted, results, strict=True)
             if not result.sent
-        ]
+        ] + [target for target, _message in selected[len(results) :]]
         uncertain = tuple(
             target
-            for (target, _message), result in zip(selected, results, strict=True)
+            for (target, _message), result in zip(attempted, results, strict=True)
             if not result.sent and result.uncertain
+        )
+        transport_unavailable = any(
+            result.transport_unavailable for result in results
         )
         logger.info(
             "{} push attempt {}/{} batch {} size={} targets={} "
-            "succeeded={} failed={} uncertain={}",
+            "attempted={} succeeded={} failed={} uncertain={} transport_unavailable={}",
             action_name,
             attempt,
             max_attempts,
             batch_index,
             batch_size,
             len(selected),
+            len(results),
             len(succeeded),
             len(failed),
             len(uncertain),
+            transport_unavailable,
         )
-        return TargetSendSummary(succeeded, failed, uncertain)
+        return PushBatchResult(
+            TargetSendSummary(succeeded, failed, uncertain),
+            transport_unavailable,
+        )
 
     async def _send_push_targets(  # noqa: PLR0913
         self,
@@ -467,6 +477,7 @@ class OneBotDelivery:
         max_attempts = (
             self.push_delivery.max_attempts if retry_failed_targets else 1
         )
+        transport_unavailable = False
         for attempt in range(1, max_attempts + 1):
             if not pending:
                 break
@@ -495,7 +506,7 @@ class OneBotDelivery:
                         batch_index,
                     )
                     await asyncio.sleep(delay)
-                summary = await self._send_push_batch(
+                batch_result = await self._send_push_batch(
                     batch,
                     bot=bot,
                     action_name=action_name,
@@ -508,13 +519,36 @@ class OneBotDelivery:
                     receipt_handler=receipt_handler,
                     verify_history=verify_history,
                 )
+                summary = batch_result.summary
                 succeeded_targets.update(summary.succeeded)
                 uncertain_targets.update(summary.uncertain)
                 failed_ids = set(summary.failed)
                 next_pending.extend(
                     item for item in batch if item[0] in failed_ids
                 )
+                if batch_result.transport_unavailable:
+                    later_batches = batches[batch_index:]
+                    next_pending.extend(
+                        item for later_batch in later_batches for item in later_batch
+                    )
+                    transport_unavailable = True
+                    logger.error(
+                        "{} push aborted after OneBot transport failure: "
+                        "attempt={}/{} succeeded={} pending={} pending_targets={}",
+                        action_name,
+                        attempt,
+                        max_attempts,
+                        len(succeeded_targets),
+                        len(next_pending),
+                        [
+                            f"{target.target_type}:{target.target_id}"
+                            for target, _message in next_pending
+                        ],
+                    )
+                    break
             pending = next_pending
+            if transport_unavailable:
+                break
         return TargetSendSummary(
             [
                 target
@@ -544,8 +578,13 @@ class OneBotDelivery:
         selected = list(dict.fromkeys(targets))
         if subscription_key:
             selected = self._filter_subscribed_targets(selected, subscription_key)
-            original_selected = selected
-            selected = self._ordered_push_targets(original_selected)
+        original_selected = selected
+        selected = ordered_push_targets(
+            original_selected,
+            group_alias_order=self.group_alias_order,
+            user_alias_order=self.user_alias_order,
+        )
+        if subscription_key:
             summary = await self._send_push_targets(
                 [(target, message) for target in selected],
                 bot=bot,
@@ -573,7 +612,7 @@ class OneBotDelivery:
                 for index, target in enumerate(selected)
             )
         )
-        return TargetSendSummary(
+        summary = TargetSendSummary(
             [
                 target
                 for target, result in zip(selected, results, strict=True)
@@ -590,6 +629,7 @@ class OneBotDelivery:
                 if not result.sent and result.uncertain
             ),
         )
+        return self._restore_target_order(summary, original_selected)
 
     async def send_target_messages(  # noqa: PLR0913
         self,
@@ -616,15 +656,20 @@ class OneBotDelivery:
                 for target, message in selected
                 if target in allowed
             ]
-            original_selected = selected
-            ordered_indexes = sorted(
-                range(len(selected)),
-                key=lambda index: self._push_target_sort_key(
-                    selected[index][0], index
-                ),
-            )
+        original_selected = selected
+        ordered_indexes = sorted(
+            range(len(selected)),
+            key=lambda index: push_target_sort_key(
+                selected[index][0],
+                index,
+                group_alias_order=self.group_alias_order,
+                user_alias_order=self.user_alias_order,
+            ),
+        )
+        selected = [selected[index] for index in ordered_indexes]
+        if subscription_key:
             summary = await self._send_push_targets(
-                [selected[index] for index in ordered_indexes],
+                selected,
                 bot=bot,
                 action_name=action_name,
                 message_limiter=message_limiter,
@@ -655,7 +700,7 @@ class OneBotDelivery:
                 for target, message in selected
             )
         )
-        return TargetSendSummary(
+        summary = TargetSendSummary(
             [
                 target
             for (target, _message), result in zip(selected, results, strict=True)
@@ -671,6 +716,10 @@ class OneBotDelivery:
                 for (target, _message), result in zip(selected, results, strict=True)
                 if not result.sent and result.uncertain
             ),
+        )
+        return self._restore_target_order(
+            summary,
+            [target for target, _message in original_selected],
         )
 
     async def broadcast(  # noqa: PLR0913
