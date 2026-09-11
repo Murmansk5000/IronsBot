@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ironsbot.core.features import HelpConfig
+from ironsbot.config.models.messaging import PokeConfig
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.onebot_references import OneBotReferenceResolver
 from ironsbot.runtime.commands import (
@@ -177,7 +177,8 @@ def _catalog() -> CommandCatalog:
 
 def _service(  # noqa: PLR0913 - concise test fixture options
     *,
-    config: HelpConfig | None = None,
+    config: PokeConfig | None = None,
+    ignored_plugins: tuple[str, ...] = (),
     group_aliases: dict[str, int] | None = None,
     user_aliases: dict[str, int] | None = None,
     features: FakeFeatures | None = None,
@@ -205,7 +206,8 @@ def _service(  # noqa: PLR0913 - concise test fixture options
         )
 
     return HelpHintService(
-        config=config or HelpConfig(),
+        config=config or PokeConfig(),
+        ignored_plugins=ignored_plugins,
         references=OneBotReferenceResolver(
             group_aliases=group_aliases or {},
             user_aliases=user_aliases or {},
@@ -236,7 +238,7 @@ def test_is_poke_at_bot_checks_poke_target() -> None:
 def test_group_poke_reply_prefers_configured_group_alias() -> None:
     service = _service(
         group_aliases={"example": 987654321},
-        config=HelpConfig(poke_replies={"example": "自定义戳一戳回复"}),
+        config=PokeConfig(group_replies={"example": "自定义戳一戳回复"}),
     )
 
     assert service.get_poke_reply(group_id=987654321, user_id=1) == (
@@ -247,7 +249,7 @@ def test_group_poke_reply_prefers_configured_group_alias() -> None:
 
 def test_group_poke_reply_accepts_numeric_group_id() -> None:
     service = _service(
-        config=HelpConfig(poke_replies={"987654321": "数字群号回复"}),
+        config=PokeConfig(group_replies={"987654321": "数字群号回复"}),
     )
 
     assert service.get_poke_reply(group_id=987654321, user_id=1) == "数字群号回复"
@@ -256,7 +258,7 @@ def test_group_poke_reply_accepts_numeric_group_id() -> None:
 def test_user_poke_reply_accepts_chinese_user_alias() -> None:
     service = _service(
         user_aliases={"示例昵称": 1234567890},
-        config=HelpConfig(poke_user_replies={"示例昵称": "用户专属回复"}),
+        config=PokeConfig(user_replies={"示例昵称": "用户专属回复"}),
     )
 
     assert service.get_poke_reply(group_id=None, user_id=1234567890) == (
@@ -269,9 +271,9 @@ def test_user_poke_reply_takes_priority_over_group_reply() -> None:
     service = _service(
         group_aliases={"example": 987654321},
         user_aliases={"example_user": 1234567890},
-        config=HelpConfig(
-            poke_replies={"example": "群专属回复"},
-            poke_user_replies={"example_user": "用户专属回复"},
+        config=PokeConfig(
+            group_replies={"example": "群专属回复"},
+            user_replies={"example_user": "用户专属回复"},
         ),
     )
 
@@ -283,6 +285,37 @@ def test_user_poke_reply_takes_priority_over_group_reply() -> None:
         service.get_poke_reply(group_id=987654321, user_id=2345678901)
         == "群专属回复"
     )
+
+
+@pytest.mark.parametrize("field", ["group_replies", "user_replies"])
+@pytest.mark.parametrize("replies", [{" ": "reply"}, {"123": " "}])
+def test_poke_config_rejects_empty_targets_or_replies(
+    field: str, replies: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError, match="non-empty group/user refs and messages"):
+        PokeConfig.model_validate({field: replies})
+
+
+def test_poke_config_trims_reply_targets_and_text() -> None:
+    config = PokeConfig(
+        group_replies={" example ": " group reply "},
+        user_replies={" 123 ": " user reply "},
+    )
+    assert config.group_replies == {"example": "group reply"}
+    assert config.user_replies == {"123": "user reply"}
+
+
+@pytest.mark.parametrize("field", ["window_seconds", "max_per_window"])
+def test_poke_config_rejects_invalid_rate_limits(field: str) -> None:
+    with pytest.raises(ValueError):
+        PokeConfig.model_validate({field: 0})
+
+
+def test_poke_limiter_uses_custom_window_and_count() -> None:
+    service = _service(config=PokeConfig(window_seconds=10.0, max_per_window=1))
+    assert service.can_send(987654321, now=100.0)
+    assert not service.can_send(987654321, now=109.0)
+    assert service.can_send(987654321, now=111.0)
 
 
 def test_help_hint_limiter_allows_three_group_hints_per_minute() -> None:
@@ -378,7 +411,7 @@ def test_group_poke_hint_uses_the_poking_users_permission() -> None:
 
 def test_default_poke_hint_excludes_ignored_plugins() -> None:
     service = _service(
-        config=HelpConfig(ignored_plugins=["seer_query"]),
+        ignored_plugins=("seer_query",),
         features=FakeFeatures(
             group_features={987654321: {"pet_config"}},
             private_features={},
@@ -447,17 +480,17 @@ def test_new_poke_command_weight_decays_from_five_to_three() -> None:
     ) == _TEN_DAY_PROMOTION_WEIGHT
 
 
-def test_help_config_rejects_invalid_new_command_promotion_weights() -> None:
+def test_poke_config_rejects_invalid_new_command_promotion_weights() -> None:
     with pytest.raises(ValueError):
-        HelpConfig(poke_new_command_initial_weight=0.5)
+        PokeConfig(new_command_initial_weight=0.5)
     with pytest.raises(ValueError):
-        HelpConfig(poke_new_command_half_life_days=0.0)
+        PokeConfig(new_command_half_life_days=0.0)
 
 
 def test_missing_poke_promotion_manifest_uses_uniform_weights(
     tmp_path: Path,
 ) -> None:
-    service = PokePromotionService.from_path(HelpConfig(), tmp_path / "missing.json")
+    service = PokePromotionService.from_path(PokeConfig(), tmp_path / "missing.json")
 
     assert service.weight_for("seer.autocard.sanctuary") == 1.0
 

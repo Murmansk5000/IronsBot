@@ -5,8 +5,9 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, Protocol
 
 from ironsbot.services.bilibili.parser import (
+    dynamic_body_hydration_reason,
+    dynamic_content,
     dynamic_id,
-    has_dynamic_body,
     item_author_mid,
 )
 
@@ -38,11 +39,21 @@ async def hydrate_dynamic_item(
     cookie: str,
     fetch_detail: DynamicDetailFetcher,
 ) -> dict[str, Any]:
-    """Fill an otherwise textless feed item with its Opus-style detail item."""
+    """Fill a missing or truncated feed item with its Opus-style detail item."""
 
     item_id = dynamic_id(item)
-    if has_dynamic_body(item) or not item_id:
+    hydration_reason = dynamic_body_hydration_reason(item)
+    if hydration_reason is None or not item_id:
         return item
+
+    list_content_length = len(dynamic_content(item))
+    logger.info(
+        "Bilibili dynamic detail hydration requested: id=%s reason=%s "
+        "list_length=%s",
+        item_id,
+        hydration_reason,
+        list_content_length,
+    )
 
     try:
         response = await fetch_detail(cookie, item_id)
@@ -63,13 +74,35 @@ async def hydrate_dynamic_item(
         return item
     if dynamic_id(resolved) != item_id:
         logger.warning("Bilibili dynamic detail ID mismatch: expected=%s", item_id)
-        return item
-    author_mid = item_author_mid(item)
-    if author_mid and item_author_mid(resolved) != author_mid:
+    elif (
+        (author_mid := item_author_mid(item))
+        and item_author_mid(resolved) != author_mid
+    ):
         logger.warning(
             "Bilibili dynamic detail author mismatch: id=%s expected=%s",
             item_id,
             author_mid,
         )
-        return item
-    return resolved
+    else:
+        detail_content_length = len(dynamic_content(resolved))
+        detail_reason = dynamic_body_hydration_reason(resolved)
+        if detail_reason is None and detail_content_length > list_content_length:
+            logger.info(
+                "Bilibili dynamic detail hydration completed: id=%s reason=%s "
+                "list_length=%s detail_length=%s",
+                item_id,
+                hydration_reason,
+                list_content_length,
+                detail_content_length,
+            )
+            return resolved
+        logger.warning(
+            "Bilibili dynamic detail hydration rejected: id=%s reason=%s "
+            "list_length=%s detail_length=%s detail_reason=%s",
+            item_id,
+            hydration_reason,
+            list_content_length,
+            detail_content_length,
+            detail_reason,
+        )
+    return item

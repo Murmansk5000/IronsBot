@@ -10,7 +10,7 @@ def test_message_schedule_is_documented_as_automatic_not_a_command() -> None:
                     id="daily_reminder",
                     name="每日签到提醒",
                     feature="custom_reminder",
-                    message="提醒内容",
+                    messages=["提醒内容"],
                     time="23:05",
                 )
             ]

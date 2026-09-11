@@ -304,7 +304,10 @@ class BiliTargetService:
         if self.is_seer_category_uid(uid):
             return PushSubscriptionOption(
                 key=key,
-                label="赛尔号 B站动态设置",
+                label=bili_push_subscription_label(
+                    uid,
+                    self.account_names.name_for_uid(uid),
+                ),
                 feature="bili_push",
                 unsubscribed=key in unsubscribed,
                 submenu_key=seer_category_submenu_key(uid),

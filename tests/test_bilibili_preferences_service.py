@@ -60,3 +60,34 @@ def test_bili_push_preference_store_persists_category_target_preferences(
 
     assert store.category_muted("group", 1001, 123456, "lottery") is True
     assert store.category_muted("private", 1001, 123456, "lottery") is None
+
+
+def test_bili_push_preference_migrates_lottery_choice_to_winning(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "bili_preferences.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE ironsbot_schema_migrations (
+                namespace TEXT PRIMARY KEY,
+                version INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO ironsbot_schema_migrations VALUES
+                ('bilibili_preferences', 2, '2026-01-01T00:00:00Z');
+            CREATE TABLE bili_push_category_preferences (
+                target_type TEXT NOT NULL, target_id INTEGER NOT NULL,
+                uid INTEGER NOT NULL, category TEXT NOT NULL, muted INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (target_type, target_id, uid, category)
+            );
+            INSERT INTO bili_push_category_preferences VALUES
+                ('group', 1001, 123456, 'lottery', 1, '2026-01-01T00:00:00Z');
+            """
+        )
+
+    store = SqliteBiliPushPreferenceStore(db_path)
+
+    assert store.category_muted("group", 1001, 123456, "lottery") is True
+    assert store.category_muted("group", 1001, 123456, "winning") is True

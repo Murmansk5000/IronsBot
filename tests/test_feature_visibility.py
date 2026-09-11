@@ -67,7 +67,7 @@ def _settings(
                 id="test_message",
                 commands=["测试消息"],
                 feature="text",
-                message="测试回复",
+                messages=["测试回复"],
             )
         ]
     return settings

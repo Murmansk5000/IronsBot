@@ -66,7 +66,35 @@ def test_seer_dynamic_classification_covers_gameplay_and_fallback_categories() -
         _item("恭喜玩家中奖，请及时查看私信通知。"),
         pub_ts=_timestamp(3, 12, 0),
         config=config,
+    ) == ("winning",)
+
+
+def test_seer_dynamic_classification_distinguishes_lottery_and_winning() -> None:
+    config = BiliConfig().seer_categories
+
+    assert classify_seer_dynamic(
+        _item("参与抽奖，赢取限量奖励！"),
+        pub_ts=_timestamp(3, 12, 0),
+        config=config,
     ) == ("lottery",)
+    assert classify_seer_dynamic(
+        _item("抽奖结果公布，恭喜中奖玩家。"),
+        pub_ts=_timestamp(3, 12, 0),
+        config=config,
+    ) == ("winning",)
+
+
+def test_legacy_combined_lottery_default_mutes_winning_too() -> None:
+    config = BiliConfig.model_validate(
+        {
+            "seer_categories": {
+                "default_muted_categories": ["lottery"],
+                "lottery_patterns": ["抽奖"],
+            }
+        }
+    )
+
+    assert config.seer_categories.default_muted_categories == ["lottery", "winning"]
 
 
 def test_seer_dynamic_classification_uses_short_topic_name() -> None:
