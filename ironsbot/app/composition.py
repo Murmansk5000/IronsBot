@@ -6,7 +6,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import nonebot
-from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.file_logging import FileLogging
@@ -40,6 +39,10 @@ from ironsbot.integrations.http.server_notice import HttpServerNoticeSource
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
+from ironsbot.integrations.image_collage import (
+    fetch_collage_image,
+    render_adaptive_collage,
+)
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.outbound import (
@@ -48,6 +51,10 @@ from ironsbot.integrations.onebot.outbound import (
 )
 from ironsbot.integrations.onebot.promotions import append_fire_manual_ad_for_target
 from ironsbot.integrations.onebot.router import BotRouter
+from ironsbot.integrations.onebot.self_commands import (
+    SelfCommandAdapter,
+    install_self_commands,
+)
 from ironsbot.integrations.process import terminate_bot_process
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.seer_data.database import SeerDatabase
@@ -56,6 +63,9 @@ from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
+)
+from ironsbot.integrations.storage.bilibili_image_delivery_retries import (
+    SqliteBiliImageDeliveryRetryStore,
 )
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
@@ -97,6 +107,7 @@ from ironsbot.services.bilibili.targets import BiliTargetService
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 from ironsbot.services.messaging.help_hint import HelpHintService
+from ironsbot.services.messaging.image_collage import ImageCollageService
 from ironsbot.services.messaging.poke_promotions import PokePromotionService
 from ironsbot.services.messaging.sendpic import SendpicService
 from ironsbot.services.operations.data_sync import DataSyncService
@@ -166,6 +177,8 @@ if TYPE_CHECKING:
 
     from ironsbot.config.models.settings import Settings
     from ironsbot.runtime.plugins import PluginDefinition
+
+
 @dataclass(slots=True)
 class Application:
     settings: Settings
@@ -199,7 +212,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     from ironsbot.services.messaging.service import MessagingService
 
     driver = nonebot.get_driver()
-    driver.register_adapter(OneBotV11Adapter)
+    driver.register_adapter(SelfCommandAdapter)
+    runtime_superuser_ids: set[int] = set()
+    install_self_commands(settings.runtime.self_commands, runtime_superuser_ids)
     scheduler = SchedulerFacade(timezone=settings.runtime.scheduler.timezone)
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
@@ -225,6 +240,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         settings.superuser_ids,
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
+        runtime_superuser_ids=runtime_superuser_ids,
     )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,
@@ -241,6 +257,9 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.onebot_references,
         ),
         subscriptions,
+        settings.messaging.push_delivery,
+        tuple(settings.features.group_aliases.values()),
+        tuple(settings.features.user_aliases.values()),
     )
     push_message_limiter = partial(append_fire_manual_ad_for_target, features)
     admin_notices = AdminNoticeService(features, delivery)
@@ -313,9 +332,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(
             settings.paths.runtime_state,
-            legacy_paths=(
-                cache_paths.root / "runtime" / "lucky_skin_window.sqlite",
-            ),
+            legacy_paths=(cache_paths.root / "runtime" / "lucky_skin_window.sqlite",),
         ),
         renderer=partial(
             render_lucky_skin_window,
@@ -329,9 +346,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
     )
     bili_data_dir = settings.bilibili.storage.data_dir
-    bili_cookie_store = FileBiliCookieStore(
-        bili_data_dir / "bili_cookie_cache.txt"
-    )
+    bili_cookie_store = FileBiliCookieStore(bili_data_dir / "bili_cookie_cache.txt")
     bilibili = BilibiliService(
         config=settings.bilibili,
         targets=BiliTargetService(
@@ -339,9 +354,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             features,
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
-            BiliAccountNames(
-                partial(fetch_bili_account_name, http_clients.origin)
-            ),
+            BiliAccountNames(partial(fetch_bili_account_name, http_clients.origin)),
         ),
         cookie_store=bili_cookie_store,
         history=SqliteBiliDynamicHistoryStore(
@@ -351,7 +364,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
+        image_collage=ImageCollageService(
+            partial(fetch_collage_image, http_clients.cache),
+            render_adaptive_collage,
+        ),
         external_references=external_references,
+        image_delivery_retries=SqliteBiliImageDeliveryRetryStore(
+            cache_paths.bilibili_dir() / "image_delivery_retries.sqlite"
+        ),
     )
     bilibili_login = BilibiliLoginService(
         settings.bilibili.login_notice_cooldown_seconds,
@@ -484,9 +504,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless,
         RankQueryPolicy(
             player_error=player.format_error,
-            player_timeout_seconds=(
-                settings.seer.player.detail_timeout_seconds
-            ),
+            player_timeout_seconds=(settings.seer.player.detail_timeout_seconds),
             is_superuser=features.is_superuser,
         ),
         player_query_quotas,
@@ -497,12 +515,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             rank_limit=settings.seer.rank.limit,
             batch_limit=settings.seer.local_rank.batch_limit,
             refresh_limit=settings.seer.local_rank.refresh_limit,
-            refresh_max_age_hours=(
-                settings.seer.local_rank.refresh_max_age_hours
-            ),
-            page_cache_ttl_seconds=(
-                settings.seer.rank.page_cache_ttl_seconds
-            ),
+            refresh_max_age_hours=(settings.seer.local_rank.refresh_max_age_hours),
+            page_cache_ttl_seconds=(settings.seer.rank.page_cache_ttl_seconds),
             display_limit=rank_display.limit_for_group,
         ),
         rank,
@@ -689,10 +703,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         startup_notice=StartupNoticeService(admin_notices),
         commands=command_catalog,
         help_hint=HelpHintService(
-            settings.features.help,
+            settings.messaging.poke,
             settings.onebot_references,
             poke_hint_candidates,
-            promotions=PokePromotionService.from_packaged(settings.features.help),
+            ignored_plugins=tuple(settings.features.help.ignored_plugins),
+            promotions=PokePromotionService.from_packaged(settings.messaging.poke),
         ),
         private_extensions=private_extensions,
         private_extension_runtime=private_extension_runtime,

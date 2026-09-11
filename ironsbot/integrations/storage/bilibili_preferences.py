@@ -35,6 +35,17 @@ _MIGRATIONS = (
             "ON bili_push_category_preferences (uid, target_type, target_id)",
         ),
     ),
+    # The original lottery category covered both prize draws and results.
+    # Preserve every target's existing choice when those become independent.
+    SqliteMigration(
+        3,
+        (
+            "INSERT OR IGNORE INTO bili_push_category_preferences "
+            "(target_type, target_id, uid, category, muted, updated_at) "
+            "SELECT target_type, target_id, uid, 'winning', muted, updated_at "
+            "FROM bili_push_category_preferences WHERE category = 'lottery'",
+        ),
+    ),
 )
 MIGRATION_NAMESPACE = "bilibili_preferences"
 

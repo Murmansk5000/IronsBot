@@ -60,6 +60,26 @@ class MessageTarget(NamedTuple):
 class TargetSendSummary(NamedTuple):
     succeeded: list[MessageTarget]
     failed: list[MessageTarget]
+    uncertain: tuple[MessageTarget, ...] = ()
+
+
+DeliveryHistoryStatus = Literal[
+    "not_checked",
+    "confirmed",
+    "missing",
+    "unsupported",
+    "error",
+]
+
+
+class DeliveryReceipt(NamedTuple):
+    """Best-effort evidence returned by a successful OneBot delivery."""
+
+    target: MessageTarget
+    bot_id: int | str | None
+    message_id: int | None
+    history_status: DeliveryHistoryStatus
+    history_error: str | None = None
 
 
 class AiIntentAction(BaseModel):

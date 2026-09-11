@@ -12,6 +12,21 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 
 
+class CompactedDynamicContent(NamedTuple):
+    text: str | None
+    generated_by_ai: bool = False
+
+
+def format_compacted_dynamic_content(
+    compacted: CompactedDynamicContent,
+) -> str | None:
+    if compacted.text is None:
+        return None
+    if compacted.generated_by_ai:
+        return f"本条动态文本过长，AI总结如下：\n{compacted.text}"
+    return compacted.text
+
+
 class DynamicHistoryRecord(NamedTuple):
     dynamic_id: str
     uid: int
@@ -22,6 +37,8 @@ class DynamicHistoryRecord(NamedTuple):
     pushed: bool
     suppressed: bool
     suppression_reason: str
+    summary: str = ""
+    summary_generated_by_ai: bool = False
 
 
 class BiliDynamicHistoryStore(Protocol):
@@ -32,6 +49,14 @@ class BiliDynamicHistoryStore(Protocol):
     def advance_checkpoint(self, uid: int, pub_ts: int) -> None: ...
 
     def save_snapshot(self, snapshot: DynamicHistorySnapshot) -> None: ...
+
+    def save_summary(
+        self,
+        dynamic_id: str,
+        summary: str,
+        *,
+        generated_by_ai: bool,
+    ) -> None: ...
 
     def list(
         self,
