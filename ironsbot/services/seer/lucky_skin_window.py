@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from seerapi_models import PetSkinORM
 from sqlmodel import Session, col, select
 
-from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.messaging import DeliveryReceipt, MessageTarget
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.seer.lucky_skin_window_formatting import (
     format_offer_price as _format_offer_price,
@@ -374,6 +374,7 @@ class LuckySkinWindowService:
             len(target_ids),
         )
         notices: list[tuple[MessageTarget, object]] = []
+        audit_contexts: dict[MessageTarget, tuple[int, tuple[int, ...]]] = {}
         for user_id in target_ids:
             _subscription, account = self._accounts[user_id]
             started_at = monotonic()
@@ -417,13 +418,50 @@ class LuckySkinWindowService:
             ):
                 target = MessageTarget("private", user_id)
                 notices.append((target, message))
+                audit_contexts[target] = (account.player_id, skin_ids)
         if notices:
             await delivery.send_target_messages(
                 notices,
                 action_name="lucky skin window daily notice",
                 subscription_key=LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+                receipt_handler=partial(
+                    self._log_daily_delivery_receipt,
+                    day=day,
+                    contexts=audit_contexts,
+                ),
+                verify_history=True,
             )
 
+    @staticmethod
+    def _log_daily_delivery_receipt(
+        receipt: DeliveryReceipt,
+        *,
+        day: str,
+        contexts: dict[MessageTarget, tuple[int, tuple[int, ...]]],
+    ) -> None:
+        player_id, skin_ids = contexts.get(receipt.target, (None, ()))
+        details = (
+            "lucky skin window daily delivery receipt: day=%s player_id=%s "
+            "target_id=%s bot_id=%s skin_ids=%s message_id=%s "
+            "history_status=%s"
+        )
+        values = (
+            day,
+            player_id,
+            receipt.target.target_id,
+            receipt.bot_id,
+            skin_ids,
+            receipt.message_id,
+            receipt.history_status,
+        )
+        if receipt.history_status == "confirmed":
+            logger.info(details, *values)
+            return
+        logger.error(
+            details + " history_error=%s",
+            *values,
+            receipt.history_error,
+        )
 
     def _validated_account_for_user(
         self,

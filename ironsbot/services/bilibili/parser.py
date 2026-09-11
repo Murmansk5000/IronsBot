@@ -173,9 +173,11 @@ def _structured_dynamic_text_pieces(item: dict[str, Any]) -> list[str]:
     dynamic = _module_dynamic(item)
     major = _mapping(dynamic.get("major"))
     opus = _mapping(major.get("opus"))
+    article = _mapping(major.get("article"))
     archive = _mapping(major.get("archive"))
     pieces = [
         _text_value(opus.get("summary")),
+        _text_value(article.get("desc")),
         _text_value(dynamic.get("desc")),
         _text_value(archive.get("desc")),
     ]
@@ -215,6 +217,23 @@ def has_dynamic_body(item: dict[str, Any]) -> bool:
     """Whether an item has actual post text rather than author metadata."""
 
     return bool(dynamic_text_pieces(item))
+
+
+def dynamic_body_hydration_reason(item: dict[str, Any]) -> str | None:
+    """Return why a feed item needs its detail body resolved, if at all."""
+
+    if not has_dynamic_body(item):
+        return "missing"
+
+    major = _mapping(_module_dynamic(item).get("major"))
+    opus = _mapping(major.get("opus"))
+    summary = _mapping(opus.get("summary"))
+    if summary.get("has_more") is True:
+        return "truncated"
+    article = _mapping(major.get("article"))
+    if article.get("id") and article.get("_ironsbot_body_hydrated") is not True:
+        return "truncated_article"
+    return None
 
 
 def dynamic_brief(item: dict[str, Any]) -> str:

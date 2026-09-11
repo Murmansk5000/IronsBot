@@ -64,12 +64,15 @@ class SettingsReferenceError(ValueError):
         location: str = "seer.player_accounts",
     ) -> SettingsReferenceError:
         return cls(
-            f"{location} "
-            f"requires environment variable SEER_PASSWORD_{player_id}"
+            f"{location} requires environment variable SEER_PASSWORD_{player_id}"
         )
 
 
 class MatcherPriorityConfigError(ValueError):
+    @classmethod
+    def mention_reply_order(cls) -> MatcherPriorityConfigError:
+        return cls("bot.matcher_priority.mention_reply must run before ai_group_at")
+
     @classmethod
     def bot_mention_order(cls) -> MatcherPriorityConfigError:
         return cls("bot.matcher_priority.ai_group_at must run before bot_mention_block")
@@ -112,6 +115,7 @@ class MatcherPriorityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     help_hint: int = Field(default=0, ge=0)
+    mention_reply: int = Field(default=-21, ge=-100)
     ai_group_at: int = Field(default=-20, ge=-100)
     bot_mention_block: int = Field(default=-19, ge=-100)
     server_status: int = Field(default=10, ge=0)
@@ -146,6 +150,8 @@ class MatcherPriorityConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_bot_mention_order(self) -> MatcherPriorityConfig:
+        if self.mention_reply >= self.ai_group_at:
+            raise MatcherPriorityConfigError.mention_reply_order()
         if self.ai_group_at >= self.bot_mention_block:
             raise MatcherPriorityConfigError.bot_mention_order()
         return self
@@ -295,16 +301,32 @@ class RuntimeMenuConfig(BaseModel):
         return self
 
 
+class SelfCommandsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    superuser: bool = False
+    prefix: str | list[str] = "演示 "
+
+    @field_validator("prefix")
+    @classmethod
+    def validate_prefix(cls, value: str | list[str]) -> str | list[str]:
+        prefixes = [value] if isinstance(value, str) else value
+        if not prefixes or any(not prefix.strip() for prefix in prefixes):
+            message = "runtime.self_commands.prefix must contain nonblank prefixes"
+            raise ValueError(message)
+        return value
+
+
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     concurrency: RuntimeConcurrencyConfig = Field(
         default_factory=RuntimeConcurrencyConfig
     )
-    scheduler: RuntimeSchedulerConfig = Field(
-        default_factory=RuntimeSchedulerConfig
-    )
+    scheduler: RuntimeSchedulerConfig = Field(default_factory=RuntimeSchedulerConfig)
     menu: RuntimeMenuConfig = Field(default_factory=RuntimeMenuConfig)
+    self_commands: SelfCommandsConfig = Field(default_factory=SelfCommandsConfig)
 
 
 class Settings(BaseModel):
@@ -413,14 +435,14 @@ class Settings(BaseModel):
             location="features.user_policy",
         )
         self._validate_mapping_refs(
-            self.features.help.poke_replies,
+            self.messaging.poke.group_replies,
             resolve=references.resolve_group,
-            location="features.help.poke_replies",
+            location="messaging.poke.group_replies",
         )
         self._validate_mapping_refs(
-            self.features.help.poke_user_replies,
+            self.messaging.poke.user_replies,
             resolve=references.resolve_user,
-            location="features.help.poke_user_replies",
+            location="messaging.poke.user_replies",
         )
         self._validate_mapping_refs(
             self.bilibili.push.groups,
@@ -484,6 +506,11 @@ class Settings(BaseModel):
             references.resolve_users(
                 action.at_user_ids,
                 location=f"messaging.keyword_replies[{index}].at_user_ids",
+            )
+        for index, action in enumerate(self.messaging.mention_replies):
+            references.resolve_users(
+                action.user_ids,
+                location=f"messaging.mention_replies[{index}].user_ids",
             )
         for index, action in enumerate(self.messaging.schedules):
             references.resolve_users(

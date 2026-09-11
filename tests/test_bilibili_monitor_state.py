@@ -107,6 +107,7 @@ def test_bili_config_defaults_to_official_account() -> None:
     assert config.push.content_max_chars == DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS
     assert config.push.summary_max_chars == DEFAULT_BILI_PUSH_SUMMARY_MAX_CHARS
     assert config.push.summary_use_ai
+    assert config.push.combine_images
     assert config.seer_categories.default_muted_categories == list(
         DEFAULT_SEER_MUTED_CATEGORIES
     )
@@ -115,6 +116,10 @@ def test_bili_config_defaults_to_official_account() -> None:
 def test_bili_config_rejects_removed_default_mode() -> None:
     with pytest.raises(ValueError, match="default_mode"):
         _bili_config(push={"default_mode": "full"})
+
+
+def test_bili_config_can_disable_image_collages() -> None:
+    assert not _bili_config(push={"combine_images": False}).push.combine_images
 
 
 def test_bili_config_accepts_alias_group_accounts() -> None:
@@ -460,7 +465,7 @@ def test_bili_push_subscription_options_are_per_uid(
     ]
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号 B站动态设置",
+        f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}",
     ]
 
     cast("PushUnsubscribeStore", service.unsubscribe_store).unsubscribe_target(
@@ -506,7 +511,7 @@ def test_bili_push_subscription_options_use_public_account_names(
 
     assert [option.label for option in options] == [
         f"B站动态：{FIRE_BILI_ACCOUNT_NAME}",
-        "赛尔号 B站动态设置",
+        f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}",
     ]
 
 
@@ -532,7 +537,7 @@ def test_bili_push_subscription_options_fall_back_to_uid(
 
     assert [option.label for option in options] == [
         f"B站动态（UID：{FIRE_BILI_UID}）",
-        "赛尔号 B站动态设置",
+        f"B站动态（UID：{DEFAULT_BILI_ACCOUNT_UID}）",
     ]
 
 
@@ -552,7 +557,7 @@ def test_seer_category_subscription_submenu_and_target_filtering(
         if option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
     )
 
-    assert option.label == "赛尔号 B站动态设置"
+    assert option.label == f"B站动态：{DEFAULT_BILI_ACCOUNT_NAME}"
     assert option.submenu_key == seer_category_submenu_key(DEFAULT_BILI_ACCOUNT_UID)
 
     submenu = service.subscription_submenu("group", group_id, option)

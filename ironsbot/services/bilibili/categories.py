@@ -15,7 +15,8 @@ from ironsbot.core.time import clock_window_contains
 from ironsbot.services.bilibili.parser import dynamic_classification_text
 
 SEER_CATEGORY_LABELS: dict[SeerDynamicCategory, str] = {
-    "lottery": "抽奖/中奖",
+    "lottery": "抽奖",
+    "winning": "中奖",
     "version_preview": "版本预告",
     "version_guide": "版本上线/更新指引",
     "pet": "新精灵",
