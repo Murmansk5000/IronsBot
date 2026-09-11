@@ -1505,7 +1505,10 @@ merge_connected = true
 # autocard_card、autocard_role、autocard_sanctuary_effect。
 # EN: Root-menu categories whose genuinely new entries may be previewed.
 #     Modified entries always stay folded until the category submenu is opened.
+#     Skill previews only include new skills belonging to pets not added that week.
 # ZH: 根菜单中可展开预览“真正新增”项目的分类；修改项始终折叠，进入分类子菜单后查看。
+#     技能预览只展示非本周新增精灵获得的新技能。
+# Example: ["skill"]
 expanded_categories = []
 # Default: 5; EN: Maximum items rendered for each configured root-menu preview.
 # Set 0 to disable ordinary previews. Focused category menus still show all items.
