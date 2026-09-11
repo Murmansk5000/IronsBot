@@ -48,7 +48,7 @@ def _schedule_display_name(index: int, task: ScheduledPushTask) -> str:
     if configured_name:
         return configured_name
 
-    message_name = _schedule_display_name_from_message(task.message)
+    message_name = _schedule_display_name_from_message("\n".join(task.messages))
     if message_name:
         return message_name
 

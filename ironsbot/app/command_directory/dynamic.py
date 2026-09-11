@@ -26,7 +26,11 @@ def messaging_help_visible(
 ) -> bool:
     if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return False
-    actions = [*config.commands, *config.keyword_replies, *config.schedules]
+    actions = [
+        *config.commands,
+        *config.keyword_replies,
+        *config.schedules,
+    ]
     return any(
         action.enabled
         and event_is_feature_visible_in_help(features, event, action.feature)
