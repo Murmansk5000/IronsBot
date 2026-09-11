@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -61,6 +62,7 @@ _AUTOCARD_ROLE_QUERY = text(
     """
 )
 _LEGACY_AUTOCARD_ROLE_QUERY = text("SELECT raw_json FROM autocard_role ORDER BY id")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True, frozen=True)
@@ -68,6 +70,9 @@ class _AutocardDataset:
     cards: tuple[dict[str, Any], ...]
     roles: tuple[dict[str, Any], ...]
     natures: dict[int, str]
+    cards_by_id: dict[int, dict[str, Any]]
+    card_pair_base_ids: dict[int, int]
+    awakened_ids_by_base_id: dict[int, int]
 
 
 @dataclass(slots=True, frozen=True)
@@ -87,6 +92,15 @@ class AutocardEntry:
     skill_name: str = ""
     skill_text: str = ""
     skill_upgrade: str = ""
+    additional_image_urls: tuple[str, ...] = ()
+
+    @property
+    def image_urls(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                url for url in (self.image_url, *self.additional_image_urls) if url
+            )
+        )
 
 
 @dataclass(slots=True, frozen=True)
@@ -126,11 +140,10 @@ class AutocardService:
 
     def select(self, value: AutocardPromptValue) -> AutocardEntry | None:
         with self._data.query(_load_autocard_dataset) as dataset:
-            item = (
-                _find_autocard_role_by_id(dataset, value.item_id)
-                if value.kind == "role"
-                else _find_autocard_card_by_id(dataset, value.item_id)
-            )
+            if value.kind == "role":
+                item = _find_autocard_role_by_id(dataset, value.item_id)
+            else:
+                item = _find_autocard_card_by_id(dataset, value.item_id)
         return None if item is None else _build_entry(dataset, value.kind, item)
 
 
@@ -161,21 +174,55 @@ def _load_autocard_dataset(session: Session) -> _AutocardDataset:
         raise RuntimeError(_AUTOCARD_EMPTY_DATA_MESSAGE)
 
     natures = {_int_field(row, "id"): str(_field(row, "name")) for row in nature_rows}
+    cards_by_id = {_int_field(card, "id"): card for card in cards}
+    card_pair_base_ids, awakened_ids_by_base_id = _index_card_pairs(cards_by_id)
     return _AutocardDataset(
         cards=cards,
         roles=roles,
         natures=natures,
+        cards_by_id=cards_by_id,
+        card_pair_base_ids=card_pair_base_ids,
+        awakened_ids_by_base_id=awakened_ids_by_base_id,
     )
+
+
+def _index_card_pairs(
+    cards_by_id: dict[int, dict[str, Any]],
+) -> tuple[dict[int, int], dict[int, int]]:
+    base_ids: dict[int, int] = {}
+    awakened_ids: dict[int, int] = {}
+    for base_id, card in cards_by_id.items():
+        target_id = _int_field(card, "composeTo")
+        if _int_field(card, "compose") != 0 or target_id <= 0:
+            continue
+        target = cards_by_id.get(target_id)
+        if target is None or _int_field(target, "compose") != 1:
+            logger.warning(
+                "invalid autocard compose relation: base_id=%s target_id=%s",
+                base_id,
+                target_id,
+            )
+            continue
+        existing_base_id = base_ids.get(target_id)
+        if existing_base_id is not None:
+            logger.warning(
+                "duplicate autocard compose target: target_id=%s base_ids=%s,%s",
+                target_id,
+                existing_base_id,
+                base_id,
+            )
+            continue
+        base_ids[base_id] = base_id
+        base_ids[target_id] = base_id
+        awakened_ids[base_id] = target_id
+    return base_ids, awakened_ids
 
 
 def _find_autocard_card_by_id(
     dataset: _AutocardDataset,
     item_id: int,
 ) -> dict[str, Any] | None:
-    for item in dataset.cards:
-        if _int_field(item, "id") == item_id:
-            return item
-    return None
+    return dataset.cards_by_id.get(item_id)
 
 
 def _find_autocard_role_by_id(
@@ -197,16 +244,19 @@ def _search_autocard_items(
         return []
     if query.startswith("卡") and query[1:].isdigit():
         card = _find_autocard_card_by_id(dataset, int(query[1:]))
-        return [("card", card)] if card is not None else []
+        if card is None:
+            return []
+        base, awakened = _card_pair(dataset, card)
+        return [("card_group" if awakened is not None else "card", base)]
 
     normalized_query = _normalize_name(query)
-    entries: list[tuple[str, dict[str, Any]]] = [
-        ("card", card) for card in dataset.cards
-    ] + [("role", role) for role in dataset.roles]
+    entries = _grouped_card_search_entries(dataset) + [
+        ("role", role) for role in dataset.roles
+    ]
     exact = [
         (kind, item)
         for kind, item in entries
-        if _normalize_name(_entry_name(item)) == normalized_query
+        if normalized_query in _entry_search_names(dataset, kind, item)
     ]
     if exact:
         return exact
@@ -214,8 +264,54 @@ def _search_autocard_items(
     return [
         (kind, item)
         for kind, item in entries
-        if normalized_query in _normalize_name(_entry_name(item))
+        if any(
+            normalized_query in name
+            for name in _entry_search_names(dataset, kind, item)
+        )
     ]
+
+
+def _entry_search_names(
+    dataset: _AutocardDataset,
+    kind: str,
+    item: dict[str, Any],
+) -> tuple[str, ...]:
+    names = [_normalize_name(_entry_name(item))]
+    if kind == "card_group":
+        _base, awakened = _card_pair(dataset, item)
+        if awakened is not None:
+            names.append(_normalize_name(_entry_name(awakened)))
+    return tuple(dict.fromkeys(names))
+
+
+def _grouped_card_search_entries(
+    dataset: _AutocardDataset,
+) -> list[tuple[str, dict[str, Any]]]:
+    entries: list[tuple[str, dict[str, Any]]] = []
+    consumed_ids: set[int] = set()
+    for card in dataset.cards:
+        item_id = _int_field(card, "id")
+        if item_id in consumed_ids:
+            continue
+        base, awakened = _card_pair(dataset, card)
+        consumed_ids.add(_int_field(base, "id"))
+        if awakened is not None:
+            consumed_ids.add(_int_field(awakened, "id"))
+        entries.append(("card_group" if awakened is not None else "card", base))
+    return entries
+
+
+def _card_pair(
+    dataset: _AutocardDataset,
+    item: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    item_id = _int_field(item, "id")
+    base_id = dataset.card_pair_base_ids.get(item_id)
+    if base_id is None:
+        return item, None
+    base = dataset.cards_by_id[base_id]
+    awakened_id = dataset.awakened_ids_by_base_id[base_id]
+    return base, dataset.cards_by_id[awakened_id]
 
 
 def _format_autocard_entry(
@@ -225,6 +321,10 @@ def _format_autocard_entry(
 ) -> str:
     if kind == "role":
         return _format_role(dataset, item)
+    if kind == "card_group":
+        base, awakened = _card_pair(dataset, item)
+        if awakened is not None:
+            return _format_card_group(dataset, base, awakened)
     return _format_card(dataset, item)
 
 
@@ -254,7 +354,10 @@ def _build_autocard_prompt_text(
         title="请问你想查询的群星牌资料是……",
         items=tuple(
             SelectionMenuItem(
-                label=f"{_entry_name(item)}（{_prompt_desc(dataset, kind, item)}）"
+                label=(
+                    f"{_entry_display_name(dataset, kind, item)}"
+                    f"（{_prompt_desc(dataset, kind, item)}）"
+                )
             )
             for kind, item in matches
         ),
@@ -363,6 +466,20 @@ def _entry_name(item: dict[str, Any]) -> str:
     return str(_field(item, "name", default=""))
 
 
+def _entry_display_name(
+    dataset: _AutocardDataset,
+    kind: str,
+    item: dict[str, Any],
+) -> str:
+    base_name = _entry_name(item)
+    if kind != "card_group":
+        return base_name
+    _base, awakened = _card_pair(dataset, item)
+    if awakened is None or _entry_name(awakened) == base_name:
+        return base_name
+    return f"{base_name} / {_entry_name(awakened)}"
+
+
 def _card_variant(item: dict[str, Any]) -> str:
     return "金色" if _int_field(item, "compose") else "普通"
 
@@ -415,6 +532,77 @@ def _format_card(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_card_group(
+    dataset: _AutocardDataset,
+    base: dict[str, Any],
+    awakened: dict[str, Any],
+) -> str:
+    type_id = _int_field(base, "type")
+    base_name = _entry_name(base)
+    awakened_name = _entry_name(awakened)
+    identity = (
+        f"{base_name}（普通ID：{_int_field(base, 'id')}｜"
+        f"觉醒ID：{_int_field(awakened, 'id')}）"
+        if base_name == awakened_name
+        else (
+            f"普通：{base_name}（ID：{_int_field(base, 'id')}）｜"
+            f"觉醒：{awakened_name}（ID：{_int_field(awakened, 'id')}）"
+        )
+    )
+    lines = [
+        "🃏【群星牌】",
+        identity,
+        (
+            f"类型：{_CARD_TYPE_NAMES.get(type_id, f'类型{type_id}')}"
+            f"｜属性：{_nature_name(dataset, _int_field(base, 'nature'))}"
+            f"｜等级：{_int_field(base, 'level')}"
+            f"｜费用：{_int_field(base, 'cost')}"
+        ),
+    ]
+    _append_variant_field(
+        lines,
+        label="身材",
+        base_value=_card_body(base),
+        awakened_value=_card_body(awakened),
+    )
+    _append_variant_field(
+        lines,
+        label="效果",
+        base_value=_clean_text(_field(base, "cardTxt", "card_txt", default="")),
+        awakened_value=_clean_text(
+            _field(awakened, "cardTxt", "card_txt", default="")
+        ),
+    )
+    _append_variant_field(
+        lines,
+        label="描述",
+        base_value=_clean_text(_field(base, "des", default="")),
+        awakened_value=_clean_text(_field(awakened, "des", default="")),
+    )
+    return "\n".join(lines)
+
+
+def _card_body(item: dict[str, Any]) -> str:
+    attack = _int_field(item, "attack")
+    health = _int_field(item, "health")
+    return f"{attack}/{health}" if attack or health else ""
+
+
+def _append_variant_field(
+    lines: list[str],
+    *,
+    label: str,
+    base_value: str,
+    awakened_value: str,
+) -> None:
+    if base_value == awakened_value:
+        if base_value:
+            lines.append(f"{label}：{base_value}")
+        return
+    lines.append(f"普通{label}：{base_value or '暂无'}")
+    lines.append(f"觉醒{label}：{awakened_value or '暂无'}")
+
+
 def _format_role(dataset: _AutocardDataset, item: dict[str, Any]) -> str:
     item_id = _int_field(item, "id")
     nature_id = _int_field(item, "nature")
@@ -451,6 +639,17 @@ def _prompt_desc(dataset: _AutocardDataset, kind: str, item: dict[str, Any]) -> 
         nature = _nature_name(dataset, _int_field(item, "nature"))
         return f"角色 {item_id} {nature}"
 
+    if kind == "card_group":
+        base, awakened = _card_pair(dataset, item)
+        if awakened is not None:
+            nature = _nature_name(dataset, _int_field(base, "nature"))
+            type_name = _CARD_TYPE_NAMES.get(_int_field(base, "type"), "卡牌")
+            return (
+                f"{type_name} 普通{_int_field(base, 'id')}/"
+                f"觉醒{_int_field(awakened, 'id')} "
+                f"Lv{_int_field(base, 'level')} {nature}"
+            )
+
     nature = _nature_name(dataset, _int_field(item, "nature"))
     type_name = _CARD_TYPE_NAMES.get(_int_field(item, "type"), "卡牌")
     return (
@@ -465,12 +664,19 @@ def _build_entry(
     item: dict[str, Any],
 ) -> AutocardEntry:
     is_role = kind == "role"
+    base, awakened = (
+        _card_pair(dataset, item) if kind == "card_group" else (item, None)
+    )
+    primary_image_url = _autocard_image_url("card", base) if awakened else ""
+    awakened_image_url = (
+        _autocard_image_url("card", awakened) if awakened is not None else ""
+    )
     return AutocardEntry(
-        kind=kind,
-        item_id=_int_field(item, "id"),
-        name=_entry_name(item),
+        kind="card" if kind == "card_group" else kind,
+        item_id=_int_field(base, "id"),
+        name=_entry_name(base),
         text=_format_autocard_entry(dataset, kind, item),
-        image_url=_autocard_image_url(kind, item),
+        image_url=primary_image_url or _autocard_image_url(kind, item),
         description=_clean_text(_field(item, "desc" if is_role else "des", default="")),
         skill_name=(
             _clean_text(_field(item, "skillName", "skill_name", default=""))
@@ -490,4 +696,5 @@ def _build_entry(
             if is_role
             else ""
         ),
+        additional_image_urls=(awakened_image_url,) if awakened_image_url else (),
     )
