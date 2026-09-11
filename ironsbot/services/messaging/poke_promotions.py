@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.messaging import PokeConfig
 
 _LOGGER = logging.getLogger(__name__)
-POKE_PROMOTION_BASELINE_COMMIT = "6ec8ce6621f6d093fd3faaa1beb4890a2bbb880d"
+POKE_PROMOTION_BASELINE_COMMIT = "f53f7dae"
 _MANIFEST_SCHEMA_VERSION = 1
 _MANIFEST_PATH = (
     Path(__file__).resolve().parents[2]

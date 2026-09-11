@@ -154,9 +154,57 @@ def new_content_category_preview_items(
 
     if max_items <= 0:
         return ()
-    return tuple(
+    additions = tuple(
         item for item in snapshot.items_for(category) if item.change_kind == "added"
-    )[:max_items]
+    )
+    if category == "skill":
+        additions = _existing_pet_skill_additions(snapshot, additions)
+    return additions[:max_items]
+
+
+def _existing_pet_skill_additions(
+    snapshot: NewContentSnapshot,
+    skills: tuple[NewContentItem, ...],
+) -> tuple[NewContentItem, ...]:
+    new_pets = tuple(
+        item
+        for item in snapshot.items_for("pet")
+        if item.change_kind == "added"
+    )
+    new_pet_ids = {item.entity_id for item in new_pets}
+    new_pet_names = {item.name.strip() for item in new_pets if item.name.strip()}
+    return tuple(
+        skill
+        for skill in skills
+        if _skill_belongs_to_existing_pet(skill, new_pet_ids, new_pet_names)
+    )
+
+
+def _skill_belongs_to_existing_pet(
+    skill: NewContentItem,
+    new_pet_ids: set[int],
+    new_pet_names: set[str],
+) -> bool:
+    pets = skill.payload.get("pets")
+    if not isinstance(pets, list) or not pets:
+        return False
+    for pet in pets:
+        if not isinstance(pet, dict):
+            continue
+        raw_id = pet.get("id")
+        pet_id = (
+            raw_id
+            if isinstance(raw_id, int) and not isinstance(raw_id, bool)
+            else 0
+        )
+        pet_name = str(pet.get("name", "")).strip()
+        if pet_id:
+            if pet_id not in new_pet_ids:
+                return True
+            continue
+        if pet_name and pet_name not in new_pet_names:
+            return True
+    return False
 
 
 def format_new_content_category_count(
