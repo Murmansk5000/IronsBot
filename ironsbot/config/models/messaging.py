@@ -464,6 +464,8 @@ class PushDeliveryConfig(BaseModel):
 
     max_attempts: int = Field(default=3, ge=1)
     retry_batch_divisor: int = Field(default=3, ge=2)
+    max_parallel_targets: int = Field(default=5, ge=1)
+    transport_failure_cooldown_seconds: float = Field(default=60.0, ge=0)
     batch_delay_min_seconds: float = Field(default=2.0, ge=0)
     batch_delay_max_seconds: float = Field(default=5.0, ge=0)
 

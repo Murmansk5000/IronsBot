@@ -270,6 +270,9 @@ default_at_users = ["owner"]
 # 取消订阅战队123456
 ```
 
+`[features.group_aliases]` 的书写顺序也是群推送优先级：越靠前越先提交；
+需要明确控制顺序的推送群都应定义别名，未定义别名的群排在后面并按群号排序。
+
 配置字段、默认值、中英文说明和示例集中维护在
 [config.example.toml](config.example.toml)。查询权限和推送权限是分开的功能名，
 例如 `bili_query` 和 `bili_push`；`admin_notice` 只用于管理员通知，不包含在

@@ -182,8 +182,10 @@ superuser_bypass = true
 
 [features.group_aliases]
 # Default: empty table
-# EN: Named QQ group IDs used by policies.
-# ZH: 群别名，把易读名称映射到 QQ 群号。
+# EN: Named QQ group IDs used by policies. Table order is also push priority:
+# earlier aliases are submitted first; unlisted groups follow by numeric ID.
+# ZH: 群别名，把易读名称映射到 QQ 群号。本表顺序同时是推送优先级：
+# 越靠前越先提交；未定义别名的群排在其后并按群号排序。
 group_a = 987654321
 group_b = 876543210
 
@@ -556,13 +558,21 @@ group_hint = "发送 TD、订阅 或 推送管理 可查看推送订阅；群主
 
 [messaging.push_delivery]
 # Default: 3
-# EN: Total attempts for a background push; the first full fan-out counts.
-# ZH: 主动推送的总发送轮数，首次全量发送也计入。
+# EN: Total attempts for a background push; the first bounded fan-out counts.
+# ZH: 主动推送的总发送轮数，首次有限并发发送也计入。
 max_attempts = 3
 # Default: 3
 # EN: Divide the next retry batch capacity by this value, rounded up.
 # ZH: 每轮失败后，下一轮批次容量除以此数并向上取整。
 retry_batch_divisor = 3
+# Default: 5
+# EN: Maximum targets submitted concurrently to one QQ transport.
+# ZH: 同一个 QQ 连接同时提交的最多目标数；明确断线后停止剩余目标。
+max_parallel_targets = 5
+# Default: 60.0
+# EN: Pause background submissions after a clear QQ transport failure.
+# ZH: 检测到 1006514 等明确 QQ 连接故障后暂停后台发送的秒数。
+transport_failure_cooldown_seconds = 60.0
 # Default: 2.0 / 5.0
 # EN: Random delay range before retry batches and between later batches.
 # ZH: 缩小批次后的首次重试，以及后续批次之间的随机等待秒数范围。

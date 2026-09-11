@@ -33,6 +33,11 @@ class FakeSendError(RuntimeError):
     pass
 
 
+class OfflineSendError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("1006514: 网络连接异常!")
+
+
 @dataclass
 class FakeOutboundService(GroupOutboundRateLimitService):
     decisions: list[OutboundRateLimitDecision] = field(default_factory=list)
@@ -338,7 +343,56 @@ def test_push_delivery_retries_with_smaller_batches() -> None:
 
     assert summary.succeeded == targets
     assert summary.failed == []
-    assert bot.max_active_by_attempt == {1: 9, 2: 3, 3: 1}
+    assert bot.max_active_by_attempt == {1: 5, 2: 3, 3: 1}
+
+
+def test_push_delivery_aborts_after_transport_failure() -> None:
+    class OfflineBot(FakeBot):
+        def __init__(self) -> None:
+            super().__init__(self_id=1001)
+            self.attempted: list[int] = []
+
+        async def send_group_msg(self, *, group_id: int, message: Message) -> None:
+            self.attempted.append(group_id)
+            if group_id == GROUP_ID + 4:
+                raise OfflineSendError
+            await super().send_group_msg(group_id=group_id, message=message)
+
+    bot = OfflineBot()
+    delivery = _delivery(
+        push_delivery=PushDeliveryConfig(
+            max_attempts=3,
+            max_parallel_targets=2,
+            batch_delay_min_seconds=0,
+            batch_delay_max_seconds=0,
+        ),
+        group_alias_order=(GROUP_ID + 4, GROUP_ID + 2),
+    )
+    targets = [MessageTarget("group", GROUP_ID + index) for index in range(5)]
+
+    first = asyncio.run(
+        delivery.send_targets(
+            targets,
+            "hello",
+            bot=bot,
+            subscription_key="scheduled_message",
+        )
+    )
+    second = asyncio.run(
+        delivery.send_targets(
+            targets,
+            "again",
+            bot=bot,
+            subscription_key="scheduled_message",
+        )
+    )
+
+    assert bot.attempted == [GROUP_ID + 4]
+    assert first.succeeded == []
+    assert first.failed == targets
+    assert first.uncertain == ()
+    assert second.succeeded == []
+    assert second.failed == targets
 
 
 def test_push_delivery_only_retries_failed_targets() -> None:
@@ -443,6 +497,34 @@ def test_push_delivery_orders_targets_by_alias_definition() -> None:
         PRIVATE_USER_ID + 2,
         PRIVATE_USER_ID,
         PRIVATE_USER_ID + 1,
+    ]
+
+
+def test_non_subscription_delivery_uses_group_alias_priority() -> None:
+    bot = FakeBot()
+    delivery = _delivery(
+        group_alias_order=(GROUP_ID + 2, GROUP_ID),
+    )
+    targets = [
+        MessageTarget("group", GROUP_ID + 1),
+        MessageTarget("group", GROUP_ID),
+        MessageTarget("group", GROUP_ID + 2),
+    ]
+
+    summary = asyncio.run(
+        delivery.send_targets(
+            targets,
+            "hello",
+            bot=bot,
+            interval_seconds=0,
+        )
+    )
+
+    assert summary.succeeded == targets
+    assert [group_id for group_id, _message in bot.group_messages] == [
+        GROUP_ID + 2,
+        GROUP_ID,
+        GROUP_ID + 1,
     ]
 
 
