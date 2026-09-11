@@ -218,6 +218,76 @@ def test_root_category_preview_includes_only_actual_additions() -> None:
     )
 
 
+def test_skill_preview_only_includes_skills_for_existing_pets() -> None:
+    new_pet = NewContentItem("pet", 100, "本周精灵", 100, {}, "added")
+    new_pet_skill = NewContentItem(
+        "skill",
+        1,
+        "本周精灵自带技能",
+        1,
+        {"pets": [{"id": 100, "name": "本周精灵"}]},
+        "added",
+    )
+    existing_pet_skill = NewContentItem(
+        "skill",
+        2,
+        "旧精灵新增技能",
+        2,
+        {"pets": [{"id": 200, "name": "旧精灵"}]},
+        "added",
+    )
+    shared_skill = NewContentItem(
+        "skill",
+        3,
+        "新旧精灵共用技能",
+        3,
+        {
+            "pets": [
+                {"id": 100, "name": "本周精灵"},
+                {"id": 200, "name": "旧精灵"},
+            ]
+        },
+        "added",
+    )
+    unknown_pet_skill = NewContentItem(
+        "skill",
+        4,
+        "关联信息缺失技能",
+        4,
+        {},
+        "added",
+    )
+    modified_skill = NewContentItem(
+        "skill",
+        5,
+        "修改技能",
+        5,
+        {"pets": [{"id": 200, "name": "旧精灵"}]},
+        "modified",
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260911",
+        weekly_cycle="2026-09-11",
+        items=(
+            new_pet,
+            new_pet_skill,
+            existing_pet_skill,
+            shared_skill,
+            unknown_pet_skill,
+            modified_skill,
+        ),
+    )
+
+    assert new_content_category_preview_items(snapshot, "skill", 3) == (
+        existing_pet_skill,
+        shared_skill,
+    )
+    assert new_content_category_preview_items(snapshot, "skill", 1) == (
+        existing_pet_skill,
+    )
+
+
 def test_current_content_version_uses_shanghai_date_not_baseline() -> None:
     from ironsbot.services.seer.new_content import _current_content_date
 
