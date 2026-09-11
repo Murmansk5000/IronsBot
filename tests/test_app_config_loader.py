@@ -23,6 +23,7 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
+    PushDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.operations import (
@@ -90,6 +91,12 @@ CUSTOM_PLAYER_REQUEST_REPEAT_WINDOW_SECONDS = 480.0
 CUSTOM_PLAYER_REQUEST_REPEAT_PAUSE_SECONDS = 240.0
 MAIN_BOT_ID = 111111111
 DEFAULT_RED_PACKET_NOTICE_COOLDOWN = 60.0
+DEFAULT_PUSH_DELIVERY_MAX_ATTEMPTS = 3
+DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR = 3
+DEFAULT_PUSH_DELIVERY_MAX_PARALLEL_TARGETS = 5
+DEFAULT_PUSH_DELIVERY_TRANSPORT_COOLDOWN_SECONDS = 60.0
+DEFAULT_PUSH_DELIVERY_DELAY_MIN_SECONDS = 2.0
+DEFAULT_PUSH_DELIVERY_DELAY_MAX_SECONDS = 5.0
 TEAM_RESOURCE_THRESHOLD = 2000
 
 
@@ -114,6 +121,30 @@ def _assert_default_push_unsubscribe(
     )
     assert "TD" in push_unsubscribe.hint
     assert "可查看推送订阅" in push_unsubscribe.group_hint
+
+
+def _assert_default_push_delivery(push_delivery: PushDeliveryConfig) -> None:
+    assert push_delivery.max_attempts == DEFAULT_PUSH_DELIVERY_MAX_ATTEMPTS
+    assert (
+        push_delivery.retry_batch_divisor
+        == DEFAULT_PUSH_DELIVERY_RETRY_BATCH_DIVISOR
+    )
+    assert (
+        push_delivery.max_parallel_targets
+        == DEFAULT_PUSH_DELIVERY_MAX_PARALLEL_TARGETS
+    )
+    assert (
+        push_delivery.transport_failure_cooldown_seconds
+        == DEFAULT_PUSH_DELIVERY_TRANSPORT_COOLDOWN_SECONDS
+    )
+    assert (
+        push_delivery.batch_delay_min_seconds
+        == DEFAULT_PUSH_DELIVERY_DELAY_MIN_SECONDS
+    )
+    assert (
+        push_delivery.batch_delay_max_seconds
+        == DEFAULT_PUSH_DELIVERY_DELAY_MAX_SECONDS
+    )
 
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
@@ -282,6 +313,7 @@ def test_example_config_parses() -> None:  # noqa: PLR0915
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
     _assert_default_push_unsubscribe(config.messaging.push_unsubscribe)
+    _assert_default_push_delivery(config.messaging.push_delivery)
     assert config.messaging.red_packet_notice.enabled
     assert (
         config.messaging.red_packet_notice.cooldown_seconds
@@ -356,14 +388,14 @@ def test_example_config_has_no_unknown_fields() -> None:
 def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
         MessageScheduledAction(
-            message="私聊定时推送",
+            messages=["私聊定时推送"],
             time="23:00",
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
         MessageScheduledAction(
             id="每日 提醒",
-            message="私聊定时推送",
+            messages=["私聊定时推送"],
             time="23:00",
         )
 
@@ -372,7 +404,7 @@ def test_scheduled_push_migrates_legacy_hour_and_minute() -> None:
     action = MessageScheduledAction.model_validate(
         {
             "id": "daily",
-            "message": "私聊定时推送",
+            "messages": ["私聊定时推送"],
             "hour": 23,
             "minute": 5,
         }
@@ -387,12 +419,12 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
             schedules=[
                 MessageScheduledAction(
                     id="daily",
-                    message="私聊定时推送",
+                    messages=["私聊定时推送"],
                     time="23:00",
                 ),
                 MessageScheduledAction(
                     id="daily",
-                    message="群聊定时推送",
+                    messages=["群聊定时推送"],
                     time="23:00",
                 ),
             ],
@@ -406,7 +438,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
     ):
         MessageCommandAction(
             commands=["hello"],
-            message="world",
+            messages=["world"],
         )
 
     with pytest.raises(
@@ -416,7 +448,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         MessageCommandAction(
             id="daily reminder",
             commands=["hello"],
-            message="world",
+            messages=["world"],
         )
 
 
@@ -436,6 +468,17 @@ def test_outbound_rate_limit_requires_distinct_nonempty_windows() -> None:
         match=r"contains duplicate window_seconds",
     ):
         OutboundRateLimitConfig(windows=[window, window])
+
+
+def test_push_delivery_requires_a_valid_delay_range() -> None:
+    with pytest.raises(
+        ValidationError,
+        match=r"push_delivery\.batch_delay_max_seconds",
+    ):
+        PushDeliveryConfig(
+            batch_delay_min_seconds=5,
+            batch_delay_max_seconds=2,
+        )
 
 
 def test_command_cooldown_rejects_unknown_message_placeholders() -> None:
@@ -541,7 +584,7 @@ old_player_setting = true
 [[messaging.commands]]
 id = "hello"
 commands = ["hello"]
-message = "world"
+messages = ["world"]
 feature = "text_push"
 unknown_command_field = true
 """.strip(),
@@ -556,6 +599,39 @@ unknown_command_field = true
     assert "unknown_top_level" in output
     assert "seer.player.old_player_setting" in output
     assert "messaging.commands[0].unknown_command_field" in output
+
+
+def test_legacy_poke_fields_are_reported_without_migration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.help]
+ignored_plugins = ["seer_query"]
+poke_replies = { "100" = "old group" }
+poke_user_replies = { "200" = "old user" }
+hint_window_seconds = 10.0
+hint_max_per_window = 1
+poke_new_command_initial_weight = 2.0
+poke_new_command_half_life_days = 1.0
+""", encoding="utf-8",
+    )
+    config = load_settings(config_path)
+    output = capsys.readouterr().err
+    for field in (
+        "poke_replies", "poke_user_replies", "hint_window_seconds",
+        "hint_max_per_window", "poke_new_command_initial_weight",
+        "poke_new_command_half_life_days",
+    ):
+        assert f"features.help.{field}" in output
+    assert config.messaging.poke.group_replies == {}
+    assert config.messaging.poke.user_replies == {}
+    assert config.messaging.poke.window_seconds == 60.0  # noqa: PLR2004
+    assert config.messaging.poke.max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
+    assert config.messaging.poke.new_command_initial_weight == 5.0  # noqa: PLR2004
+    assert config.messaging.poke.new_command_half_life_days == 5.0  # noqa: PLR2004
+    assert config.features.help.ignored_plugins == ["seer_query"]
 
 
 def test_unknown_fields_do_not_hide_invalid_known_fields(tmp_path: Path) -> None:
@@ -584,7 +660,7 @@ def test_unified_message_actions_parse_as_toml_arrays_of_tables(
 [[messaging.commands]]
 id = "activity_link"
 commands = ["activity"]
-message = "activity link"
+messages = ["activity link"]
 feature = "web_activity_link"
 at_user_ids = [123456789]
 
@@ -592,7 +668,7 @@ at_user_ids = [123456789]
 id = "daily_reminder"
 name = "Daily reminder"
 time = "23:00"
-message = "daily message"
+messages = ["daily message"]
 feature = "text_push"
 at_user_ids = [123456789]
 """.strip(),
@@ -621,7 +697,7 @@ main = ["chuchu_reply"]
 [[messaging.keyword_replies]]
 id = "chuchu_reply"
 keywords = ["出出"]
-message = "出出是蛆"
+messages = ["出出是蛆"]
 feature = "chuchu_reply"
 """.strip(),
         encoding="utf-8",
@@ -631,6 +707,32 @@ feature = "chuchu_reply"
 
     assert config.messaging.keyword_replies[0].keywords == ["出出"]
     assert config.messaging.command_feature_keys == frozenset({"chuchu_reply"})
+
+
+def test_mention_reply_actions_parse_user_aliases_without_features(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[features.group_aliases]
+main = 123456789
+
+[features.user_aliases]
+example_user = 234567890
+
+[[messaging.mention_replies]]
+id = "example_user_mention"
+user_ids = ["example_user"]
+messages = ["123"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_settings(config_path)
+
+    assert config.messaging.mention_replies[0].user_ids == ["example_user"]
+    assert config.messaging.command_feature_keys == frozenset()
 
 
 
@@ -652,7 +754,7 @@ main = ["standard"]
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym"]
-message = "https://seerinfo.yuyuqaq.cn/"
+messages = ["https://seerinfo.yuyuqaq.cn/"]
 feature = "seerinfo_link"
 """.strip(),
         encoding="utf-8",
@@ -689,7 +791,7 @@ owner = ["custom_reminder"]
 [[messaging.schedules]]
 id = "custom_reminder"
 time = "23:00"
-message = "remember"
+messages = ["remember"]
 feature = "custom_reminder"
 """.strip(),
         encoding="utf-8",
@@ -773,9 +875,9 @@ main_group = ["all"]
 [features.user_policy]
 owner = ["blacklist"]
 
-[features.help]
-poke_replies = { main_group = "group reply" }
-poke_user_replies = { owner = "user reply" }
+[messaging.poke]
+group_replies = { main_group = "group reply" }
+user_replies = { owner = "user reply" }
 
 [bilibili.push.groups.main_group]
 accounts = []
@@ -795,14 +897,14 @@ owner = "primary"
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-message = "custom reply"
+messages = ["custom reply"]
 feature = "private_extension"
 at_user_ids = ["at_user", "202"]
 
 [[messaging.schedules]]
 id = "custom_schedule"
 time = "12:00"
-message = "scheduled reply"
+messages = ["scheduled reply"]
 feature = "private_extension"
 at_user_ids = ["at_user", 202]
 
@@ -818,6 +920,8 @@ default_at_users = ["at_user", "202"]
     config = load_settings(config_path)
 
     assert config.superuser_ids == frozenset({200, 300})
+    assert config.messaging.poke.group_replies == {"main_group": "group reply"}
+    assert config.messaging.poke.user_replies == {"owner": "user reply"}
     assert config.onebot_references.resolve_groups(
         ["main_group", "100"],
         location="test.groups",
@@ -831,6 +935,14 @@ default_at_users = ["at_user", "202"]
 @pytest.mark.parametrize(
     ("toml", "expected_path"),
     [
+        (
+            '[messaging.poke.group_replies]\nunknown_group = "reply"',
+            "messaging.poke.group_replies.unknown_group",
+        ),
+        (
+            '[messaging.poke.user_replies]\nunknown_user = "reply"',
+            "messaging.poke.user_replies.unknown_user",
+        ),
         (
             """
 [features.group_policy]
@@ -850,7 +962,7 @@ unknown_group = ["seer"]
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-message = "custom reply"
+messages = ["custom reply"]
 feature = "text"
 at_user_ids = ["unknown_user"]
 """,
@@ -1752,7 +1864,7 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (
-        app_config.features.help.hint_max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
+        app_config.messaging.poke.max_per_window == DEFAULT_HELP_HINT_MAX_PER_WINDOW
     )
     assert app_config.activity.lead_hours == [11, 1]
     assert not app_config.messaging.command_cooldown.enabled

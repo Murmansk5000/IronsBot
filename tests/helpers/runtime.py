@@ -8,6 +8,7 @@ from ironsbot.config.models.messaging import (
     BotRoutingConfig,
     CommandCooldownConfig,
     OutboundRateLimitConfig,
+    PushDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.settings import MatcherPriorityConfig
@@ -84,6 +85,9 @@ def build_test_runtime(  # noqa: PLR0913
             ),
         ),
         PushUnsubscribeStore(state_path),
+        PushDeliveryConfig(),
+        tuple(resolved_feature_config.group_aliases.values()),
+        tuple(resolved_feature_config.user_aliases.values()),
     )
     return TestRuntime(
         features=features,

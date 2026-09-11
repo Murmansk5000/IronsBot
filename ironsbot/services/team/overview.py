@@ -36,14 +36,11 @@ class TeamOverviewItem:
         return f"人数：{members}，资源数：{self.resource}"
 
 
-def format_team_overview(
-    items: Sequence[TeamOverviewItem], *, include_selection_hint: bool = True,
-) -> str:
+def format_team_overview(items: Sequence[TeamOverviewItem]) -> str:
     lines = ["当前战队信息概览如下："]
     for index, item in enumerate(items, 1):
         lines.append(f"{index}. 【{item.team_id}】{item.name}\n{item.description}")
-    if include_selection_hint:
-        lines.append("输入编号查看详情；群聊引用本条消息后输入，输入 0 退出。")
+    lines.append("输入编号查看详情；群聊引用本条消息后输入，输入 0 退出。")
     return "\n".join(lines)
 
 

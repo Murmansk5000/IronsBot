@@ -14,11 +14,19 @@ from ironsbot.runtime.matchers import CommandPolicy, MatcherRegistry, bind, bind
 from ironsbot.runtime.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
+    finish_message_sequence,
+    send_matcher_message,
 )
-from ironsbot.runtime.rules import explicit_command
+from ironsbot.runtime.rules import (
+    bot_mention_including_reply,
+    explicit_command,
+    member_targets_command,
+)
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
+    MESSAGE_TARGET_IDS_KEY,
+    match_group_mention_reply,
     match_message_command,
     match_push_subscription_command,
     match_push_time_command,
@@ -46,17 +54,35 @@ async def handle_message_command(
     action = state[MESSAGE_ACTION_KEY]
     at_user_ids = (
         [
-            *event_sender_at_user_ids(event),
+            *state.get(MESSAGE_TARGET_IDS_KEY, event_sender_at_user_ids(event)),
             *messaging._features.resolve_user_refs(action.at_user_ids),
         ]
         if isinstance(event, GroupMessageEvent)
         else []
     )
+    messages = action.messages
+    for message in messages[:-1]:
+        await send_matcher_message(
+            matcher,
+            message,
+            at_user_ids=at_user_ids,
+            event=event,
+        )
     await finish_matcher_message(
         matcher,
-        action.message,
+        messages[-1],
         at_user_ids=at_user_ids,
         event=event,
+    )
+
+
+async def handle_group_mention_reply(
+    matcher: Matcher,
+    event: GroupMessageEvent,
+    state: T_State,
+) -> None:
+    await finish_message_sequence(
+        matcher, state[MESSAGE_ACTION_KEY].messages, event=event, interval_seconds=0
     )
 
 
@@ -78,6 +104,17 @@ def install(
     messaging: MessagingService,
     command_help_ids: tuple[str, ...],
 ) -> None:
+    mention_reply_matcher = registry.on_message(
+        policy=CommandPolicy.exempt("configured mention reply"),
+        rule=(
+            Rule(bind(match_group_mention_reply, messaging=messaging))
+            & bot_mention_including_reply()
+        ),
+        priority=registry.priority("mention_reply"),
+        block=True,
+    )
+    mention_reply_matcher.append_handler(handle_group_mention_reply)
+
     if command_help_ids:
         command_matcher = registry.on_message(
             policy=CommandPolicy.command(
@@ -85,7 +122,7 @@ def install(
                 help_ids=command_help_ids,
             ),
             rule=Rule(bind(match_message_command, messaging=messaging))
-            & explicit_command(),
+            & member_targets_command(),
             priority=registry.priority("message_commands"),
             block=True,
         )
@@ -94,14 +131,20 @@ def install(
         )
 
     subscription_matcher = registry.on_message(
-        policy=CommandPolicy.command("message.push_subscription"),
+        policy=CommandPolicy.command(
+            "message.push_subscription",
+            help_ids=("messaging.push_subscription",),
+        ),
         rule=Rule(bind(match_push_subscription_command, messaging=messaging))
         & explicit_command(),
         priority=_message_subscription_priority(registry),
         block=True,
     )
     push_time_matcher = registry.on_message(
-        policy=CommandPolicy.command("message.push_time"),
+        policy=CommandPolicy.command(
+            "message.push_time",
+            help_ids=("messaging.push_time",),
+        ),
         rule=(
             Rule(bind(match_push_time_command, messaging=messaging))
             & explicit_command()

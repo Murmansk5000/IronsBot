@@ -186,8 +186,10 @@ def install(
     service: TeamResourceService,
     team_query: SeerTeamQueryService,
     player: PlayerService,
+    notice_timeout_seconds: float = 180,
 ) -> None:
-    menus = TeamOverviewMenus(service, team_query, player)
+    menus = TeamOverviewMenus(service, team_query, player, notice_timeout_seconds)
+    menus.install(registry)
 
     def is_manage(event: MessageEvent) -> bool:
         return _is_team_resource_manage(event, service=service)

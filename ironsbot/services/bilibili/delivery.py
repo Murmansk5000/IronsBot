@@ -3,17 +3,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
+from inspect import isawaitable
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.core.bilibili import SeerDynamicCategory, truncate_bilibili_text
+from ironsbot.core.messaging import MessageTarget
 from ironsbot.core.onebot_group_identity import (
     format_group_label,
     resolve_group_name,
 )
-from ironsbot.services.bilibili.parser import dynamic_content
+from ironsbot.services.bilibili.dynamic_history import (
+    CompactedDynamicContent,
+    format_compacted_dynamic_content,
+)
+from ironsbot.services.bilibili.parser import dynamic_content, dynamic_id
 from ironsbot.services.bilibili.preferences import (
     BiliPushMedia,
     bili_push_media_subscription_key,
@@ -22,7 +28,10 @@ from ironsbot.services.bilibili.preferences import (
 from ironsbot.services.bilibili.targets import BiliPushTargets
 
 if TYPE_CHECKING:
-    from ironsbot.core.messaging import MessageTarget
+    from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
+    from ironsbot.services.bilibili.image_delivery_retries import (
+        BiliImageDeliveryRetryStore,
+    )
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.delivery import (
         MessageDelivery,
@@ -43,10 +52,6 @@ BILI_PUSH_ADMIN_HINT_KEY = "bilibili_admin_hint"
 DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT = "发送 TD 可按标签退订赛尔号动态。"
 SEER_DYNAMIC_TAG_UNSUBSCRIBE_HINT_KEY = "seer_dynamic_tag_unsubscribe_hint"
-# The first send counts toward the total.  Failed rich-media delivery therefore
-# receives at most two retries before a single administrator notice is sent.
-FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
-FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
 FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 BILIBILI_SUMMARY_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
@@ -55,7 +60,10 @@ BILIBILI_SUMMARY_MAX_ATTEMPTS = 3
 SUMMARY_FAILURE_FALLBACK_HINT = "（摘要生成失败，完整内容请见传送门）"
 DynamicLinkRenderer = Callable[[dict[str, Any], int], Any | None]
 DynamicContentRenderer = Callable[[dict[str, Any], str | None], Any | None]
-DynamicImageRenderer = Callable[[dict[str, Any]], Any | None]
+DynamicImageRenderer = Callable[
+    [dict[str, Any]],
+    Any | Awaitable[Any | None],
+]
 
 
 class DynamicSummarizer(Protocol):
@@ -70,6 +78,16 @@ class DynamicSummarizer(Protocol):
 HintAppender = Callable[[Any, str], Any]
 DynamicLinkTagger = Callable[[int, tuple[SeerDynamicCategory, ...]], str | None]
 logger = logging.getLogger(__name__)
+
+
+async def _render_dynamic_images(
+    renderer: DynamicImageRenderer | None,
+    item: dict[str, Any],
+) -> Any | None:
+    if renderer is None:
+        return None
+    rendered = renderer(item)
+    return await rendered if isawaitable(rendered) else rendered
 
 
 def _summary_failure_fallback(content: str, max_chars: int) -> str:
@@ -105,6 +123,10 @@ class BilibiliPushDeliveryService:
     prepend_link_tag: HintAppender | None = None
     render_images: DynamicImageRenderer | None = None
     media_preferences_uid: int | None = None
+    history: BiliDynamicHistoryStore | None = None
+    image_delivery_retries: BiliImageDeliveryRetryStore | None = None
+    image_retry_max_attempts: int = 3
+    retry_targets_for_uid: Callable[[int], BiliPushTargets] | None = None
 
     async def send(
         self,
@@ -131,17 +153,19 @@ class BilibiliPushDeliveryService:
         text_targets = self._media_targets(full_targets, author_mid, "text")
         content_message = None
         if content and text_targets.has_targets:
-            content_override = await self._content_override(
+            compacted = await self.compact_content_result(
                 item,
                 author_mid,
                 content,
             )
-            content_message = self.render_content(item, content_override)
+            self._save_history_summary(item, compacted)
+            content_message = self.render_content(
+                item,
+                format_compacted_dynamic_content(compacted),
+            )
 
         image_targets = self._media_targets(full_targets, author_mid, "image")
-        image_message = (
-            self.render_images(item) if self.render_images is not None else None
-        )
+        image_message = await _render_dynamic_images(self.render_images, item)
         if image_message is None:
             image_targets = BiliPushTargets([], [], [], [])
 
@@ -178,68 +202,201 @@ class BilibiliPushDeliveryService:
             )
 
         if image_message is not None:
-            await self._send_images_with_retries(
-                item,
-                author_mid,
+            summary = await self.delivery.broadcast(
                 image_message,
-                image_targets,
+                group_ids=image_targets.full_group_ids,
+                private_user_ids=image_targets.full_user_ids,
+                action_name=FULL_DYNAMIC_IMAGE_PUSH_ACTION,
                 subscription_key=subscription_key,
+                # QQ may deliver rich media after its OneBot request times out.
+                # Do not turn an ambiguous failure into duplicate images.
+                retry_failed_targets=False,
+            )
+            if summary.failed:
+                uncertain_targets = set(summary.uncertain)
+                self._record_image_delivery_failures(
+                    item,
+                    [
+                        target
+                        for target in summary.failed
+                        if target not in uncertain_targets
+                    ],
+                )
+                if self.image_delivery_retries is None:
+                    await self._notify_content_delivery_failure(
+                        item,
+                        author_mid,
+                        [
+                            target.target_id
+                            for target in summary.failed
+                            if target.target_type == "group"
+                        ],
+                        [
+                            target.target_id
+                            for target in summary.failed
+                            if target.target_type == "private"
+                        ],
+                    )
+            self._log_uncertain_image_delivery(
+                dynamic_id(item),
+                summary.uncertain,
+                phase="initial",
             )
 
-    async def _send_images_with_retries(
+    async def retry_failed_images(self) -> None:
+        """Retry only persisted image targets left unconfirmed by earlier pushes."""
+
+        if (
+            self.history is None
+            or self.image_delivery_retries is None
+            or self.retry_targets_for_uid is None
+        ):
+            return
+        retries_by_dynamic: dict[str, list[tuple[MessageTarget, int]]] = {}
+        for retry in self.image_delivery_retries.list_pending():
+            retries_by_dynamic.setdefault(retry.dynamic_id, []).append(
+                (retry.target, retry.attempts)
+            )
+
+        for item_id, retries in retries_by_dynamic.items():
+            record = self.history.get(item_id)
+            if record is None:
+                self.image_delivery_retries.resolve(
+                    item_id,
+                    [target for target, _attempts in retries],
+                )
+                continue
+            image_message = await _render_dynamic_images(
+                self.render_images,
+                record.item,
+            )
+            if image_message is None:
+                self.image_delivery_retries.resolve(
+                    item_id,
+                    [target for target, _attempts in retries],
+                )
+                continue
+
+            retry_targets = self._retry_image_targets(record.uid, retries)
+            current_targets = {target for target, _attempts in retries}
+            retained_targets = {
+                MessageTarget("group", group_id)
+                for group_id in retry_targets.full_group_ids
+            } | {
+                MessageTarget("private", user_id)
+                for user_id in retry_targets.full_user_ids
+            }
+            self.image_delivery_retries.resolve(
+                item_id,
+                current_targets - retained_targets,
+            )
+            if not retained_targets:
+                continue
+
+            summary = await self.delivery.broadcast(
+                image_message,
+                group_ids=retry_targets.full_group_ids,
+                private_user_ids=retry_targets.full_user_ids,
+                action_name=f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry",
+                subscription_key=bili_push_subscription_key(record.uid),
+                retry_failed_targets=False,
+            )
+            self.image_delivery_retries.resolve(item_id, summary.succeeded)
+            self.image_delivery_retries.resolve(item_id, summary.uncertain)
+            self._log_uncertain_image_delivery(
+                item_id,
+                summary.uncertain,
+                phase="retry",
+            )
+            failed = set(summary.failed) - set(summary.uncertain)
+            attempts_by_target = dict(retries)
+            exhausted = [
+                target
+                for target in failed
+                if (
+                    attempts_by_target.get(target, 0) + 1
+                    >= self.image_retry_max_attempts
+                )
+            ]
+            self.image_delivery_retries.record_failed(
+                item_id,
+                failed - set(exhausted),
+            )
+            self.image_delivery_retries.resolve(item_id, exhausted)
+            if exhausted:
+                await self._notify_content_delivery_failure(
+                    record.item,
+                    record.uid,
+                    [
+                        target.target_id
+                        for target in exhausted
+                        if target.target_type == "group"
+                    ],
+                    [
+                        target.target_id
+                        for target in exhausted
+                        if target.target_type == "private"
+                    ],
+                )
+
+    def _record_image_delivery_failures(
         self,
         item: dict[str, Any],
-        author_mid: int,
-        content_message: Any,
-        targets: BiliPushTargets,
-        *,
-        subscription_key: str,
+        targets: list[MessageTarget],
     ) -> None:
-        remaining_group_ids = targets.full_group_ids
-        remaining_user_ids = targets.full_user_ids
-        for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
-            action_name = (
-                FULL_DYNAMIC_IMAGE_PUSH_ACTION
-                if attempt == 1
-                else f"{FULL_DYNAMIC_IMAGE_PUSH_ACTION} retry {attempt}/"
-                f"{FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS}"
-            )
-            summary = await self.delivery.broadcast(
-                content_message,
-                group_ids=remaining_group_ids,
-                private_user_ids=remaining_user_ids,
-                action_name=action_name,
-                subscription_key=subscription_key,
-            )
-            remaining_group_ids = [
-                target.target_id
-                for target in summary.failed
-                if target.target_type == "group"
-            ]
-            remaining_user_ids = [
-                target.target_id
-                for target in summary.failed
-                if target.target_type == "private"
-            ]
-            if not remaining_group_ids and not remaining_user_ids:
-                return
-            if attempt < FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS:
-                logger.warning(
-                    "%s failed for %s group and %s private targets; retrying "
-                    "attempt %s/%s",
-                    FULL_DYNAMIC_IMAGE_PUSH_ACTION,
-                    len(remaining_group_ids),
-                    len(remaining_user_ids),
-                    attempt + 1,
-                    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
-                )
-                await asyncio.sleep(FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS)
+        if self.image_delivery_retries is None:
+            return
+        item_id = dynamic_id(item)
+        if not item_id:
+            return
+        self.image_delivery_retries.record_failed(item_id, targets)
 
-        await self._notify_content_delivery_failure(
-            item,
+    @staticmethod
+    def _log_uncertain_image_delivery(
+        item_id: str | None,
+        targets: tuple[MessageTarget, ...],
+        *,
+        phase: str,
+    ) -> None:
+        if not targets:
+            return
+        logger.warning(
+            "%s %s delivery left unconfirmed; skipping retry to avoid duplicate "
+            "media: dynamic=%s targets=%s",
+            FULL_DYNAMIC_IMAGE_PUSH_ACTION,
+            phase,
+            item_id,
+            [f"{target.target_type}:{target.target_id}" for target in targets],
+        )
+
+    def _retry_image_targets(
+        self,
+        author_mid: int,
+        retries: list[tuple[MessageTarget, int]],
+    ) -> BiliPushTargets:
+        if self.retry_targets_for_uid is None:
+            return BiliPushTargets([], [], [], [])
+        configured = self.retry_targets_for_uid(author_mid)
+        subscription_key = bili_push_subscription_key(author_mid)
+        eligible = self._media_targets(
+            self._subscribed_full_targets(configured, subscription_key),
             author_mid,
-            remaining_group_ids,
-            remaining_user_ids,
+            "image",
+        )
+        retry_target_set = {target for target, _attempts in retries}
+        return BiliPushTargets(
+            [
+                group_id
+                for group_id in eligible.full_group_ids
+                if MessageTarget("group", group_id) in retry_target_set
+            ],
+            [],
+            [
+                user_id
+                for user_id in eligible.full_user_ids
+                if MessageTarget("private", user_id) in retry_target_set
+            ],
+            [],
         )
 
     async def _notify_content_delivery_failure(
@@ -251,10 +408,9 @@ class BilibiliPushDeliveryService:
     ) -> None:
         if self.admin_notices is None:
             logger.error(
-                "%s exhausted %s attempts without an admin notice service: "
+                "%s exhausted adaptive delivery without an admin notice service: "
                 "author=%s dynamic=%s groups=%s users=%s",
                 FULL_DYNAMIC_PUSH_ACTION,
-                FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
                 author_mid,
                 item.get("id_str", "unknown"),
                 failed_group_ids,
@@ -280,7 +436,7 @@ class BilibiliPushDeliveryService:
         ]
         await self.admin_notices.send_private_to_superusers(
             "⚠️ B站动态图片发送失败\n"
-            f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次，仍未完成。\n"
+            "累计投递仍未确认，已停止后续重试以避免重复图片。\n"
             f"UID：{author_mid}\n"
             f"动态ID：{item.get('id_str', '未知')}\n"
             f"失败目标：{'；'.join(target_lines)}\n"
@@ -331,14 +487,33 @@ class BilibiliPushDeliveryService:
         tag = self.link_tag_for(author_mid, categories)
         return self.prepend_link_tag(message, tag) if tag else message
 
-    async def _content_override(
+    async def compact_content(
         self,
         item: dict[str, Any],
         author_mid: int,
         content: str,
+        *,
+        notify_failure: bool = True,
     ) -> str | None:
+        return (
+            await self.compact_content_result(
+                item,
+                author_mid,
+                content,
+                notify_failure=notify_failure,
+            )
+        ).text
+
+    async def compact_content_result(
+        self,
+        item: dict[str, Any],
+        author_mid: int,
+        content: str,
+        *,
+        notify_failure: bool = True,
+    ) -> CompactedDynamicContent:
         if len(content) <= self.content_max_chars:
-            return None
+            return CompactedDynamicContent(None)
         summary: str | None = None
         failure_reason: str | None = None
         if self.summary_use_ai and self.summarize is not None:
@@ -381,15 +556,34 @@ class BilibiliPushDeliveryService:
                     BILIBILI_SUMMARY_MAX_ATTEMPTS,
                     failure_reason,
                 )
-        if failure_reason is not None:
+        if failure_reason is not None and notify_failure:
             await self._notify_summary_failure(
                 item,
                 author_mid,
                 failure_reason,
             )
         if summary is not None:
-            return summary
-        return _summary_failure_fallback(content, self.summary_max_chars)
+            return CompactedDynamicContent(summary, generated_by_ai=True)
+        return CompactedDynamicContent(
+            _summary_failure_fallback(content, self.summary_max_chars)
+        )
+
+    def _save_history_summary(
+        self,
+        item: dict[str, Any],
+        compacted: CompactedDynamicContent,
+    ) -> None:
+        if (
+            compacted.text is None
+            or self.history is None
+            or not (item_id := dynamic_id(item))
+        ):
+            return
+        self.history.save_summary(
+            item_id,
+            compacted.text,
+            generated_by_ai=compacted.generated_by_ai,
+        )
 
     async def _notify_summary_failure(
         self,

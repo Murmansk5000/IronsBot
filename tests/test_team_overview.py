@@ -1,11 +1,11 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from ironsbot.config.models.seer import TeamResourceConfig
-from ironsbot.core.messaging import TargetSendSummary
+from ironsbot.core.messaging import DeliveryReceipt, MessageTarget, TargetSendSummary
 from ironsbot.integrations.onebot.delivery import OneBotDelivery
 from ironsbot.plugins.team.overview import TeamOverviewMenus
 from ironsbot.runtime.prompts import PromptItem
@@ -18,7 +18,7 @@ from ironsbot.services.team.resource import (
     TeamResourceSubscriptionUpdate,
     format_team_overview,
 )
-from tests.helpers.onebot_events import group_message_event
+from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.test_team_resource_runtime import _service
 
 FAILED_TEAM = 1234567
@@ -83,7 +83,7 @@ async def test_overview_places_bound_team_first_and_deduplicates(
 
 
 @pytest.mark.asyncio
-async def test_notices_merge_thresholds_and_mentions(
+async def test_notices_merge_thresholds_mentions_and_receipts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = _service(TeamResourceConfig(enabled=True), tmp_path / "state.sqlite")
@@ -91,6 +91,10 @@ async def test_notices_merge_thresholds_and_mentions(
     _subscribe(service, 1234567, (102, 103))
     _subscribe(service, 1234568)
     sent: list[Any] = []
+    recorded: list[Any] = []
+    service.notice_observers.append(
+        lambda receipt, items: recorded.append((receipt, items))
+    )
 
     async def query(
         _self: TeamResourceService, team_id: int, **_kwargs: Any
@@ -102,6 +106,7 @@ async def test_notices_merge_thresholds_and_mentions(
     async def send(_self: Any, messages: Any, **kwargs: Any) -> TargetSendSummary:
         sent.extend(messages)
         target = messages[0][0]
+        kwargs["receipt_handler"](DeliveryReceipt(target, 1, 99, "not_checked"))
         assert kwargs["subscription_key"] == "team_resource_subscription"
         return TargetSendSummary([target], [])
 
@@ -111,18 +116,76 @@ async def test_notices_merge_thresholds_and_mentions(
     assert len(sent) == 1
     assert sent[0][0].at_user_ids == (101, 102, 103)
     assert "1234568" not in sent[0][1]
+    assert [item.team_id for item in recorded[0][1]] == [1234569, 1234567]
 
 
 def _menus() -> TeamOverviewMenus:
     service = MagicMock()
     service.allows_target.return_value = True
-    return TeamOverviewMenus(service, MagicMock(), MagicMock())
+    return TeamOverviewMenus(service, MagicMock(), MagicMock(), 180)
 
 
+def test_notification_anchor_scope_latest_and_expiry() -> None:
+    menus = _menus()
+    items = (TeamOverviewItem(1234567, "示例战队", 60, 500),)
+    menus.record_notice(
+        DeliveryReceipt(MessageTarget("group", 456), 1, 99, "not_checked"), items
+    )
+    event = group_message_event("1", reply_sender_user_id=1, reply_message_id=99)
+    assert menus.match_notice(event, {})
+    assert not menus.match_notice(group_message_event("1"), {})
+    assert not menus.match_notice(
+        group_message_event(
+            "1", group_id=457, reply_sender_user_id=1, reply_message_id=99
+        ),
+        {},
+    )
+    assert not menus.match_notice(
+        group_message_event(
+            "1", self_id=2, reply_sender_user_id=1, reply_message_id=99
+        ),
+        {},
+    )
+    menus.record_notice(
+        DeliveryReceipt(MessageTarget("group", 456), 1, 100, "not_checked"), items
+    )
+    assert not menus.match_notice(event, {})
+    menus.notices[(1, "group", 456)].expires_at = 0
+    assert not menus.match_notice(
+        group_message_event("1", reply_sender_user_id=1, reply_message_id=100), {}
+    )
 
 
+def test_notification_private_and_feature_filter() -> None:
+    menus = _menus()
+    menus.record_notice(
+        DeliveryReceipt(MessageTarget("private", 123), 1, 99, "not_checked"), ()
+    )
+    assert menus.match_notice(private_message_event("0"), {})
+    cast("Any", menus.service).allows_target.return_value = False
+    assert not menus.match_notice(private_message_event("0"), {})
 
 
+@pytest.mark.asyncio
+async def test_notification_exit_only_consumes_current_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    menus = _menus()
+    menus.record_notice(
+        DeliveryReceipt(MessageTarget("group", 456), 1, 99, "not_checked"), ()
+    )
+    event = group_message_event("0", reply_sender_user_id=1, reply_message_id=99)
+    state: dict[str, Any] = {}
+    assert menus.match_notice(event, state)
+    monkeypatch.setattr(
+        "ironsbot.plugins.team.overview.finish_event_reply", AsyncMock()
+    )
+    await menus.handle_notice(MagicMock(), event, state)
+    assert not menus.match_notice(event, {})
+    other = group_message_event(
+        "0", user_id=124, reply_sender_user_id=1, reply_message_id=99
+    )
+    assert menus.match_notice(other, {})
 
 
 @pytest.mark.asyncio

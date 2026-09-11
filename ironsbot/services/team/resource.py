@@ -4,11 +4,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol
 
 from ironsbot.core.commands import command_text_matches
-from ironsbot.core.messaging import MessageTarget
+from ironsbot.core.messaging import DeliveryReceipt, MessageTarget
 from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
@@ -27,7 +27,7 @@ from ironsbot.services.team.overview import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
 
     from ironsbot.config.models.seer import TeamResourceConfig
     from ironsbot.core.features import FeatureService
@@ -205,6 +205,13 @@ class TeamResourceService:
     _references: OneBotReferenceResolver
     _features: FeatureService
     _delivery: MessageDelivery
+    notice_observers: list[
+        Callable[[DeliveryReceipt, tuple[TeamOverviewItem, ...]], None]
+    ] = field(
+        default_factory=list,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def enabled(self) -> bool:
@@ -518,8 +525,10 @@ class TeamResourceService:
                 )
             )
         notices: list[tuple[MessageTarget, str]] = []
+        snapshots: dict[tuple[str, int], tuple[TeamOverviewItem, ...]] = {}
         for (kind, target_id), entries in grouped.items():
             items = tuple(entry[0] for entry in entries)
+            snapshots[(kind, target_id)] = items
             mentions = tuple(
                 dict.fromkeys(user for _, users, _ in entries for user in users)
             )
@@ -529,18 +538,23 @@ class TeamResourceService:
             notices.append(
                 (
                     target,
-                    format_team_overview(items, include_selection_hint=False)
+                    format_team_overview(items)
                     + "\n\n"
                     + "\n".join(entry[2] for entry in entries),
                 )
             )
 
+        def received(receipt: DeliveryReceipt) -> None:
+            items = snapshots[(receipt.target.target_type, receipt.target.target_id)]
+            for observer in self.notice_observers:
+                observer(receipt, items)
 
         if notices:
             await self._delivery.send_target_messages(
                 notices,
                 action_name="team resource subscription notice",
                 subscription_key=TEAM_RESOURCE_FEATURE,
+                receipt_handler=received,
             )
 
     def register_jobs(self, scheduler: Scheduler) -> None:
