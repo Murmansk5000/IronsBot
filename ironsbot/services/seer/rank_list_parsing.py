@@ -24,10 +24,6 @@ from ironsbot.services.seer.rank_list_models import (
 from ironsbot.services.seer.rank_peak import parse_peak_rating_score_text
 
 
-def with_admin_prefix(commands: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(f"/{command}" for command in commands)
-
-
 def parse_rank_list_command(
     text: str,
     *,
