@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from seerapi_models import PetORM, SkillORM, TypeCombinationORM
 
-from ironsbot.core.value_coercion import require_int
+from ironsbot.core.value_coercion import require_bool_flag, require_int
 from ironsbot.services.seer.rendering.analyze_description import (
     format_analyze_description,
     format_plain_analyze_description,
@@ -101,7 +101,7 @@ def load_new_content_skill_details(
                 type_name = str(skill_type.name)
                 type_available = True
     category_id = _payload_int(payload, "category_id")
-    must_hit = bool(payload.get("must_hit", False))
+    must_hit = require_bool_flag(payload.get("must_hit", False), field="skill.must_hit")
     raw_crit_rate = payload.get("crit_rate")
     crit_rate = (
         _payload_int(payload, "crit_rate")

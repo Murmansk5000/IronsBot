@@ -9,7 +9,11 @@ from ironsbot.core.rank_exclusions import (
     DEFAULT_RANK_EXCLUSION_USER_IDS_BY_RANK,
     DEFAULT_TAOMEE_INTERNAL_USER_IDS,
 )
-from ironsbot.core.value_coercion import coerce_positive_int, require_int
+from ironsbot.core.value_coercion import (
+    coerce_positive_int,
+    require_bool_flag,
+    require_int,
+)
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.local_rank_formatting import format_metric_display
@@ -43,6 +47,15 @@ def test_require_int_accepts_lossless_values_and_rejects_malformed_values() -> N
         require_int(object(), field="score")
     with pytest.raises(ValueError, match="score"):
         require_int(42.5, field="score")
+
+
+def test_require_bool_flag_rejects_truthy_non_boolean_values() -> None:
+    enabled: object = True
+    assert require_bool_flag(enabled, field="enabled") is True
+    assert require_bool_flag(0, field="enabled") is False
+
+    with pytest.raises(ValueError, match="enabled"):
+        require_bool_flag("false", field="enabled")
 
 
 def test_format_metric_display_decodes_peak_scores() -> None:

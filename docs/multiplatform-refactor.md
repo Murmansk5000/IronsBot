@@ -41,7 +41,7 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [██████□□]  verified phases: 6/8; percentage awaits a weighted acceptance baseline
+Program  [███████□]  verified phases: 7/8; percentage awaits a weighted acceptance baseline
 Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
@@ -50,8 +50,8 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 本轮验证（2026-09-12）
 
-总任务 `[██████□□]`：Phase 0、1、2、3、4、5 已验收，当前为 6/8；Phase 4 和 5
-关闭依据见各阶段的整体审计记录。Phase 6、7 继续进行，不按阶段数推算整体百分比。
+总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
+对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
 下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
 
 - 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
@@ -240,7 +240,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
-| Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
+| Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
 | Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
@@ -1584,6 +1584,21 @@ SQLAlchemy 读取故障保留 cause 和日志；仅实际无赛季记录仍返�
 双重停止，明确区分未完同分段与已观察到的短页/低分边界。
 153 项相关测试及定向类型、Ruff、编译、diff 通过；未重复全量回归。
 未增加模块、库、配置或请求。局部证据不替代整体阶段验收，进度保持 4/8。
+
+**Phase 6 整体验收（2026-09-12）：** 逐项复核配置模型、Seer 发布集成、缓存降级、
+后台任务边界和用户可见部分结果。配置只接受目标字段；发布数据库由 SeerAPI 在最终
+后处理后写入完整表清单和 DDL 指纹，机器人在原子替换前重算验证。发布字段统一使用
+无损整数和严格布尔标志，损坏 JSON、错误结构、未知新增内容分类/变更类型、缺表及
+查询故障均明确失败，不再转换成 `0`、空集合、`未知` 或完整图片缓存。
+
+Seer 发布集成层的宽异常捕获只保留协议错误码的人类说明查询；该辅助查询失败会记录
+日志并保留调用方已有的原始错误码。AST 架构测试固定这一个许可点，防止 repository
+重新加入“异常即空数据”。外部图片缺失、官方预告链接、网络发送失败、后台任务隔离和
+已标注获取时间的缓存结果属于明确的可观察降级，不是发布事实 fallback。QQ 号、直接
+@、绑定等目标平台可能无法表达的能力按平台延期规则留到 Phase 7 末尾，不阻塞本阶段。
+
+最终公共全量回归 `3138 passed, 7 skipped`；跳过项均要求显式真实发布素材。Ruff、
+BasedPyright、compileall、差异检查及发布数据架构守卫通过。Phase 6 关闭，总进度 7/8。
 
 ### Phase 7 — 未来平台验收
 

@@ -233,7 +233,9 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
     for row in index.items:
         category = row.category
         if category not in NEW_CONTENT_CATEGORIES:
-            continue
+            raise ValueError(category)
+        if row.change_kind not in {"added", "modified"}:
+            raise ValueError(row.change_kind)
         items.append(
             NewContentItem(
                 category=category,  # type: ignore[arg-type]
@@ -241,14 +243,14 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
                 name=row.name,
                 sort_value=row.sort_value,
                 payload=row.payload,
-                change_kind="modified" if row.change_kind == "modified" else "added",
+                change_kind=row.change_kind,  # type: ignore[arg-type]
             )
         )
     category_states: list[NewContentCategoryState] = []
     for row in index.category_states:
         category = row.category
         if category not in NEW_CONTENT_CATEGORIES:
-            continue
+            raise ValueError(category)
         category_states.append(
             NewContentCategoryState(
                 category=category,  # type: ignore[arg-type]

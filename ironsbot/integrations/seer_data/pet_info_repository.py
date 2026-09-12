@@ -45,7 +45,7 @@ class PetInfoRepository:
     def load(self, session: Session, pet_id: int) -> PetInfoSnapshot | None:
         try:
             return self._load(session, pet_id)
-        except SQLAlchemyError as error:
+        except (SQLAlchemyError, TypeError, ValueError) as error:
             logger.exception("published pet data query failed: pet_id=%s", pet_id)
             raise PublishedDataIncompleteError("pet_info", entity_id=pet_id) from error
 

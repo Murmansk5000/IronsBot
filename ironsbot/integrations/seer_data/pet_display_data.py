@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import text
 
+from ironsbot.core.value_coercion import require_bool_flag
 from ironsbot.services.seer.pet_info_views import (
     PetDerivedDisplayData,
     PetSoulmarkDisplayAddition,
@@ -230,15 +231,22 @@ def _load_soulmark_display_additions(
                 if row["formatting_adjustment"] is not None
                 else None
             ),
-            intensified=bool(row["intensified"]),
+            intensified=require_bool_flag(
+                row["intensified"], field="pet_soulmark_display_addition.intensified"
+            ),
             intensified_to_id=(
                 int(row["intensified_to_id"])
                 if row["intensified_to_id"] is not None
                 else None
             ),
-            is_adv=bool(row["is_adv"]),
+            is_adv=require_bool_flag(
+                row["is_adv"], field="pet_soulmark_display_addition.is_adv"
+            ),
             pve_effective=(
-                bool(row["pve_effective"])
+                require_bool_flag(
+                    row["pve_effective"],
+                    field="pet_soulmark_display_addition.pve_effective",
+                )
                 if row["pve_effective"] is not None
                 else None
             ),
@@ -249,8 +257,9 @@ def _load_soulmark_display_additions(
 
 
 def _tags_from_json(value: object) -> tuple[str, ...]:
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, ValueError):
-        return ()
-    return tuple(str(tag) for tag in parsed) if isinstance(parsed, list) else ()
+    parsed = json.loads(str(value))
+    if not isinstance(parsed, list) or not all(
+        isinstance(tag, str) for tag in parsed
+    ):
+        raise TypeError("pet_soulmark_display_addition.tags_json")
+    return tuple(parsed)

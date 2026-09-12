@@ -937,6 +937,7 @@ def test_missing_required_resource_id_stays_required(resource_id: int) -> None:
     "item",
     [
         _item("skill", 9, type_id="invalid"),
+        _item("skill", 9, must_hit="false"),
         _item("pet", 9, resource_id="invalid"),
         _item("achievement", 9, titles="invalid"),
         _item("autocard_sanctuary_effect", 9, unlock_round="invalid"),

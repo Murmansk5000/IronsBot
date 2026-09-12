@@ -21,6 +21,16 @@ def require_int(value: object, *, field: str) -> int:
         raise ValueError(field) from error
 
 
+def require_bool_flag(value: object, *, field: str) -> bool:
+    """Return a published boolean without accepting truthy malformed values."""
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    raise ValueError(field)
+
+
 def coerce_positive_int(value: object) -> int | None:
     try:
         number = int(cast("Any", value))

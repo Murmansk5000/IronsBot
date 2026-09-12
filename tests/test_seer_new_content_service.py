@@ -168,6 +168,105 @@ def test_missing_index_is_explicitly_unavailable(tmp_path: Path) -> None:
         _service(tmp_path / "empty.sqlite").snapshot()
 
 
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("payload_json", "{"),
+        ("payload_json", "[]"),
+        ("category", "unsupported"),
+        ("change_kind", "renamed"),
+    ],
+)
+def test_malformed_index_item_is_explicitly_unavailable(
+    tmp_path: Path,
+    column: str,
+    value: object,
+) -> None:
+    path = tmp_path / "malformed.sqlite"
+    with Session(create_engine(f"sqlite:///{path}")) as session:
+        connection = session.connection()
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_release "
+            "(id INTEGER PRIMARY KEY, current_config_version TEXT, "
+            "weekly_cycle TEXT, baseline_established INTEGER)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_item "
+            "(category TEXT, entity_id INTEGER, name TEXT, sort_value INTEGER, "
+            "payload_json TEXT, change_kind TEXT)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_category_state "
+            "(category TEXT, comparison_ready INTEGER, reason TEXT)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO new_content_release VALUES "
+            "(1, '20260731', '2026-07-31', 1)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO new_content_item VALUES "
+            "('skill', 1, '测试技能', 1, '{}', 'added')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO new_content_category_state VALUES "
+            "('skill', 1, 'ready')"
+        )
+        connection.exec_driver_sql(
+            f"UPDATE new_content_item SET {column} = ?",
+            (value,),
+        )
+        session.commit()
+
+    with pytest.raises(NewContentIndexUnavailableError):
+        _service(path).snapshot()
+
+
+@pytest.mark.parametrize(
+    ("table", "column"),
+    [
+        ("new_content_release", "baseline_established"),
+        ("new_content_category_state", "comparison_ready"),
+    ],
+)
+def test_malformed_index_flag_is_explicitly_unavailable(
+    tmp_path: Path,
+    table: str,
+    column: str,
+) -> None:
+    path = tmp_path / "malformed-flag.sqlite"
+    with Session(create_engine(f"sqlite:///{path}")) as session:
+        connection = session.connection()
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_release "
+            "(id INTEGER PRIMARY KEY, current_config_version TEXT, "
+            "weekly_cycle TEXT, baseline_established INTEGER)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_item "
+            "(category TEXT, entity_id INTEGER, name TEXT, sort_value INTEGER, "
+            "payload_json TEXT, change_kind TEXT)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_category_state "
+            "(category TEXT, comparison_ready INTEGER, reason TEXT)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO new_content_release VALUES "
+            "(1, '20260731', '2026-07-31', 1)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO new_content_category_state VALUES "
+            "('skill', 1, 'ready')"
+        )
+        connection.exec_driver_sql(
+            f"UPDATE {table} SET {column} = 'true'"
+        )
+        session.commit()
+
+    with pytest.raises(NewContentIndexUnavailableError):
+        _service(path).snapshot()
+
+
 def test_index_without_category_states_is_explicitly_unavailable(
     tmp_path: Path,
 ) -> None:

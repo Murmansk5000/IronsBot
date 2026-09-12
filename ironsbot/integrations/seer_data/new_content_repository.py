@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from ironsbot.core.value_coercion import require_bool_flag, require_int
+
 if TYPE_CHECKING:
     from sqlmodel import Session
 
@@ -95,32 +97,42 @@ def load_new_content_index(session: Session) -> NewContentIndex:
     except SQLAlchemyError as error:
         raise NewContentIndexRepositoryError from error
 
-    return NewContentIndex(
-        config_version=str(release["current_config_version"]),
-        weekly_cycle=str(release["weekly_cycle"]),
-        baseline_established=bool(release["baseline_established"]),
-        items=tuple(_index_item(row) for row in rows),
-        category_states=tuple(
-            NewContentIndexCategoryState(
-                category=str(row["category"]),
-                comparison_ready=bool(row["comparison_ready"]),
-                reason=str(row["reason"]),
-            )
-            for row in state_rows
-        ),
-    )
+    try:
+        return NewContentIndex(
+            config_version=str(release["current_config_version"]),
+            weekly_cycle=str(release["weekly_cycle"]),
+            baseline_established=require_bool_flag(
+                release["baseline_established"],
+                field="new_content_release.baseline_established",
+            ),
+            items=tuple(_index_item(row) for row in rows),
+            category_states=tuple(
+                NewContentIndexCategoryState(
+                    category=str(row["category"]),
+                    comparison_ready=require_bool_flag(
+                        row["comparison_ready"],
+                        field="new_content_category_state.comparison_ready",
+                    ),
+                    reason=str(row["reason"]),
+                )
+                for row in state_rows
+            ),
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise NewContentIndexRepositoryError from error
 
 
 def _index_item(row: Any) -> NewContentIndexItem:
-    try:
-        payload = json.loads(str(row["payload_json"]))
-    except json.JSONDecodeError:
-        payload = {}
+    payload = json.loads(str(row["payload_json"]))
+    if not isinstance(payload, dict):
+        raise TypeError("new_content_item.payload_json")
     return NewContentIndexItem(
         category=str(row["category"]),
-        entity_id=int(row["entity_id"]),
+        entity_id=require_int(row["entity_id"], field="new_content_item.entity_id"),
         name=str(row["name"]),
-        sort_value=int(row["sort_value"]),
-        payload=payload if isinstance(payload, dict) else {},
+        sort_value=require_int(
+            row["sort_value"], field="new_content_item.sort_value"
+        ),
+        payload=payload,
         change_kind=str(row["change_kind"]),
     )
