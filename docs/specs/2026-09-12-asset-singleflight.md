@@ -103,3 +103,26 @@ existing ORM relationship warnings. Ruff, targeted BasedPyright (0 errors and
 warnings), compileall and diff checks passed. Failure tests check candidate
 dispose exactly once, no listener call, unchanged engine identity and readable
 old data; missing-file case also proves no source directory was created.
+
+## Engine Snapshot Lifetime
+
+Target: DatabaseManager.snapshot(names) leases immutable engine references,
+without holding SQL sessions open. Publication immediately swaps the active
+engine; disposal waits until the last snapshot releases the retired engine.
+session/all_sessions share this lifetime mechanism; register and close retire
+engines through the same path. Protect registry/reference bookkeeping with an
+RLock, never held while user query code runs. No file copies or new database.
+Tests query old and new data across a load, share multiple leases, and verify
+disposal only after the last lease (including close/re-register paths).
+This establishes the generic prerequisite; renderers still need to bind their
+metadata/image/cache transaction to the snapshot before phase acceptance.
+
+Verified: database-manager/version tests 19 passed in 7.37 seconds, with 2
+existing ORM relationship warnings. The threaded publication test keeps a
+single-database session open, publishes on another thread with a bounded wait,
+and reads old/new values through the respective sessions. Nested snapshots and
+all_sessions verify exactly-once retirement after the final lease; exception
+exit also releases the engine. Ruff, targeted BasedPyright (0 errors/warnings),
+compileall and diff checks passed. No dependency, configuration or schema change.
+This does not claim thread-safe listener publication or full renderer snapshot
+binding; the lock protects registry and reference lifetime bookkeeping only.

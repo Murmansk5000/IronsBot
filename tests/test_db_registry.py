@@ -1,4 +1,5 @@
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -36,6 +37,123 @@ def test_database_manager_loads_sqlite_file_into_memory(tmp_path: Path) -> None:
     manager.close()
 
     assert row == "alpha"
+
+
+@pytest.mark.parametrize("operation", ["load", "register", "close"])
+def test_old_engine_lives_until_last_snapshot_exits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    path = tmp_path / "source.sqlite"
+    with sqlite3.connect(path) as source:
+        source.execute("CREATE TABLE sample (value TEXT)")
+        source.execute("INSERT INTO sample VALUES ('old')")
+    manager = DatabaseManager()
+    manager.load_from_file("unit", str(path))
+    old = manager.get_engine("unit")
+    assert old is not None
+    dispose = Mock(wraps=old.dispose)
+    monkeypatch.setattr(old, "dispose", dispose)
+    with manager.snapshot(("unit", "missing", "unit")) as snapshot:
+        assert set(snapshot) == {"unit"}
+        with manager.all_sessions() as sessions:
+            assert (
+                sessions["unit"]
+                .connection()
+                .exec_driver_sql("SELECT value FROM sample")
+                .scalar_one()
+                == "old"
+            )
+            if operation == "load":
+                with sqlite3.connect(path) as source:
+                    source.execute("UPDATE sample SET value='new'")
+                manager.load_from_file("unit", str(path))
+                with manager.session("unit") as fresh:
+                    assert fresh is not None
+                    assert (
+                        fresh.connection()
+                        .exec_driver_sql("SELECT value FROM sample")
+                        .scalar_one()
+                        == "new"
+                    )
+            elif operation == "register":
+                manager.register("unit")
+            else:
+                manager.close()
+            assert manager.get_engine("unit") is not old
+            assert (
+                sessions["unit"]
+                .connection()
+                .exec_driver_sql("SELECT value FROM sample")
+                .scalar_one()
+                == "old"
+            )
+            dispose.assert_not_called()
+        dispose.assert_not_called()
+        with snapshot["unit"].connect() as connection:
+            assert (
+                connection.exec_driver_sql("SELECT value FROM sample").scalar_one()
+                == "old"
+            )
+    dispose.assert_called_once_with()
+    manager.close()
+    dispose.assert_called_once_with()
+
+
+def test_snapshot_exception_releases_retired_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = DatabaseManager()
+    manager.register("unit")
+    engine = manager.get_engine("unit")
+    assert engine is not None
+    dispose = Mock(wraps=engine.dispose)
+    monkeypatch.setattr(engine, "dispose", dispose)
+    with pytest.raises(RuntimeError), manager.snapshot():
+        manager.close()
+        raise RuntimeError
+    dispose.assert_called_once_with()
+
+
+def test_session_retains_old_data_during_threaded_publication(tmp_path: Path) -> None:
+    path = tmp_path / "source.sqlite"
+    with sqlite3.connect(path) as source:
+        source.execute("CREATE TABLE sample (value TEXT)")
+        source.execute("INSERT INTO sample VALUES ('old')")
+    manager = DatabaseManager()
+    manager.load_from_file("unit", str(path))
+    try:
+        # Join after the session exits even if publication times out, so a lock
+        # regression fails the assertion rather than deadlocking test teardown.
+        with (
+            ThreadPoolExecutor(max_workers=1) as executor,
+            manager.session("unit") as old,
+        ):
+            assert old is not None
+            connection = old.connection()
+            assert (
+                connection.exec_driver_sql("SELECT value FROM sample").scalar_one()
+                == "old"
+            )
+            with sqlite3.connect(path) as source:
+                source.execute("UPDATE sample SET value='new'")
+            publication = executor.submit(manager.load_from_file, "unit", str(path))
+            publication.result(timeout=5)
+            assert (
+                connection.exec_driver_sql("SELECT value FROM sample").scalar_one()
+                == "old"
+            )
+            with manager.session("unit") as fresh:
+                assert fresh is not None
+                assert (
+                    fresh.connection()
+                    .exec_driver_sql("SELECT value FROM sample")
+                    .scalar_one()
+                    == "new"
+                )
+    finally:
+        manager.close()
 
 
 def test_database_manager_notifies_listener_after_atomic_load(
