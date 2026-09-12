@@ -1333,8 +1333,14 @@ def test_cached_rank_confirms_its_own_page_before_expanding(
         **_kwargs: object,
     ) -> list[RankItem]:
         requested_ranges.append((start, end))
-        items = [RankItem(id=index, score=20_000 - index) for index in range(100)]
-        items[49] = RankItem(id=712345678, nick="moved", score=CACHED_SCORE + 5)
+        items = [
+            RankItem(id=index, score=CACHED_SCORE + 5 + MOVED_RANK - 1 - index)
+            for index in range(start, end + 1)
+        ]
+        if start <= MOVED_RANK - 1 <= end:
+            items[MOVED_RANK - 1 - start] = RankItem(
+                id=712345678, nick="moved", score=CACHED_SCORE + 5
+            )
         return items
 
     rank = replace(rank, fetch_online_page=fake_fetch_rank_page)
