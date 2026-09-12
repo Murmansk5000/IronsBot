@@ -81,16 +81,17 @@ class SeerAssetStore:
     ) -> bytes:
         request = source.prepare(kind, key, fallback=fallback)
         cache_key = _cache_key(
-            "prepared-image-v1",
+            "prepared-image-v2",
             request.identity,
             kind,
             key,
-            str(fallback),
         )
-        return await self._get_or_fetch(
-            cache_key,
-            request.fetch,
-        )
+        try:
+            return await self._get_or_fetch(cache_key, request.fetch)
+        except ImageSourceError:
+            if request.fallback is None:
+                raise
+            return request.fallback()
 
     async def fetch_url(self, url: str) -> bytes:
         cache_key = _cache_key("url", url)

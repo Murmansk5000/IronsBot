@@ -160,8 +160,10 @@ def test_manifest_backed_images_do_not_fall_back_to_mutable_main() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure_status", [404, 410, 503])
 async def test_strict_render_assets_retry_failure_without_caching_placeholder(
     tmp_path: Path,
+    failure_status: int,
 ) -> None:
     urls: list[str] = []
     failing = True
@@ -170,25 +172,27 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
         urls.append(str(request.url))
         if request.url.host == "dummyimage.com":
             return httpx.Response(200, content=b"placeholder")
-        return httpx.Response(503 if failing else 200, content=b"real-art")
+        return httpx.Response(failure_status if failing else 200, content=b"real-art")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         clients = HttpClients(cache=client, origin=client)
         store = SeerAssetStore(
             HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot),
             tmp_path,
-            SeerAssetStoreLimits(1024, 1024 * 1024, 4, 300),
+            SeerAssetStoreLimits(1024, 1024 * 1024, 4, 0),
             spawn=TaskOwner().create,
         )
-        # An old permissive request may have cached a placeholder under its key.
+        # A permissive request can display a placeholder but cannot cache it.
         placeholder = await store.fetch("pet_head", "70")
         assert placeholder.startswith(b"\x89PNG\r\n\x1a\n")
         assert all("dummyimage.com" not in url for url in urls)
+        assert not await asyncio.to_thread(lambda: list(tmp_path.rglob("*.bin")))
         urls.clear()
         with pytest.raises(ImageSourceError):
             await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
         assert all("dummyimage.com" not in url for url in urls)
         failing = False
+        assert await store.fetch("pet_head", "70") == b"real-art"
         recovered = await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
         assert recovered.pet_heads == ((70, "data:image/png;base64,cmVhbC1hcnQ="),)
         request_count = len(urls)

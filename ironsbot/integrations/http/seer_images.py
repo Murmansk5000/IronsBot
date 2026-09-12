@@ -77,7 +77,13 @@ class HttpSeerImageSource:
         *,
         fallback: bool = True,
     ) -> bytes:
-        return await self.prepare(kind, key, fallback=fallback).fetch()
+        request = self.prepare(kind, key, fallback=fallback)
+        try:
+            return await request.fetch()
+        except ImageSourceError:
+            if request.fallback is None:
+                raise
+            return request.fallback()
 
     def prepare(
         self,
@@ -92,15 +98,18 @@ class HttpSeerImageSource:
         urls = self._urls_for(kind, key, snapshot)
         return PreparedImageRequest(
             identity=snapshot.cache_identity if snapshot is not None else "unversioned",
-            fetch=partial(self._fetch_urls, kind, urls, fallback=fallback),
+            fetch=partial(self._fetch_urls, kind, urls),
+            fallback=(
+                partial(_local_fallback_image, kind)
+                if fallback and kind in _FALLBACK_KINDS
+                else None
+            ),
         )
 
     async def _fetch_urls(
         self,
         kind: ImageKind,
         urls: tuple[str, ...],
-        *,
-        fallback: bool,
     ) -> bytes:
         last_error: ImageSourceError | None = None
         for url in urls:
@@ -112,8 +121,6 @@ class HttpSeerImageSource:
             except (HTTPStatusError, RequestError) as error:  # noqa: PERF203
                 last_error = _image_source_error(error)
         error = last_error or ImageSourceError("所有图片 URL 均请求失败")
-        if fallback and kind in _FALLBACK_KINDS:
-            return _local_fallback_image(kind)
         raise error
 
     def _urls_for(
