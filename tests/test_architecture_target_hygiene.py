@@ -207,6 +207,16 @@ def _legacy_feature_policy_calls(path: Path) -> set[str]:
     }
 
 
+def test_runtime_does_not_restore_the_retired_seerapi_http_client() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} imports {module}"
+        for path in _python_files(PACKAGE)
+        for module in _imports(path)
+        if module == "seerapi" or module.startswith("seerapi.")
+    ]
+    assert offenders == []
+
+
 def test_core_and_services_do_not_import_adapter_transport_types() -> None:
     offenders = [
         f"{path.relative_to(ROOT).as_posix()} imports {module}"
