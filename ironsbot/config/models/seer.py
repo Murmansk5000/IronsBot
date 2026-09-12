@@ -73,9 +73,7 @@ RANK_PAGE_REFRESH_ACTIVE_PAIR_ERROR = (
     "seer.rank.page_refresh.active_start and active_end must be configured together"
 )
 PLAYER_RANK_LOOKUP_TIMEOUT_ERROR = "player lookup total timeout must cover one page"
-TEAM_RESOURCE_TIME_ERROR = (
-    "seer.team_resource.times must contain daily HH:MM:SS times"
-)
+TEAM_RESOURCE_TIME_ERROR = "seer.team_resource.times must contain daily HH:MM:SS times"
 PLAYER_ACCOUNT_NAME_ERROR = "seer.player_accounts name must not be empty"
 PLAYER_ACCOUNT_ALIASES_ERROR = (
     "seer.player_accounts aliases must not contain empty values"
@@ -238,6 +236,7 @@ class PlayerQueryLimitsConfig(BaseModel):
     unbound_daily_limit: int = Field(default=30, ge=0)
     superuser_bypass: bool = True
 
+
 class PlayerRequestProtectionConfig(BaseModel):
     """Serialize live player lookups and pause briefly after disconnects."""
 
@@ -298,7 +297,7 @@ class TeamQueryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     timeout_seconds: float = Field(default=20, gt=0)
-    sections: list[str] = Field(default_factory=lambda: ["basic", "resource"])
+    sections: list[str] = Field(default_factory=lambda: ["basic", "resource", "text"])
 
     @field_validator("sections", mode="before")
     @classmethod

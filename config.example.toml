@@ -1019,8 +1019,8 @@ timeout_seconds = 15.0
 [seer.team]
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
-# Default: ["basic", "resource"]; EN: Enabled team sections. ZH: 战队展示区块。
-sections = ["basic", "resource"]
+# Default: ["basic", "resource", "text"]; EN: Enabled team sections. ZH: 战队展示区块。
+sections = ["basic", "resource", "text"]
 
 [seer.mintmark]
 # Default: true
