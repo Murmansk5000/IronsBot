@@ -946,6 +946,15 @@ pyproject.toml 并保留许可证，但本机 Docker daemon 未运行，未宣�
 
 ### Phase 5 — 业务服务和通用解析
 
+**玩家图文出口复用（2026-09-12）：** target 收口。快捷查询、数字菜单及详情扩展
+统一调用现有 `QueryReply.to_outbound()` 和 OneBot message renderer；删除
+`_build_shortcut_reply_message`、`_query_reply_message`、`_reply_text`，不新增包装器。
+快捷查询不再丢弃只有 image_error 的失败说明，正文与图片错误共存时均按统一契约
+交付。真实快捷处理器覆盖文本、仅错误、部分正文与错误、图文，并验证图片编码；
+详情会话的真实服务/取消测试继续通过。公共相关 36 passed，私有 43 passed，
+全量 Ruff、basedpyright、compileall 通过；生产两文件合计净减 28 行，无依赖或
+配置变化。安装入口交叉验收尚未整体完成，不提前关闭 Phase 5；总进度 4/8。
+
 **目标契约：** 领域服务、统一别名解析和 `PlayerIdResolver`。
 
 **唯一目标路径：** AI、玩家、榜单、订阅和战队等业务各自只拥有领域规则；所有
