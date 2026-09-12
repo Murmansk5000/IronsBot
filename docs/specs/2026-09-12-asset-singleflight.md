@@ -525,3 +525,36 @@ cache tests remain covered. Their stubbed subprocess fixtures now provide valid
 tool paths for the moved checks. Targeted BasedPyright reports 0 errors/warnings;
 Ruff, compileall and diff pass. A full real-network producer rerun after this fix
 has not yet been performed; previous artifact hashes describe the pre-fix run.
+
+## Post-Fix Real Build and Native Cache Acceptance
+
+The subsequent real-network build at producer commit 825ea05 completed normally
+with REQUIRE_CACHED=1 and PNG_RENDER_ENABLED=0. Output:
+`seerapi/tmp/v5-release-acceptance-fixed/seerapi-data.sqlite`, 58,413,056 bytes,
+SHA256 `1ef66a0039326f1f2a8d2ca523af02e6e44da7134f3edff5ce15e0d385119845`.
+Full integrity_check returned ok. The unchanged V5 DatabaseManager/SeerDatabase
+accepted schema contract 1 and asset contract 2. Source publication and manifest
+revisions match the previous run; binary hash equality is not assumed.
+
+Metadata reports 2108 Unity PNGs, zero reusable Flash PNGs and four missing icons.
+The run validates strict combined-source build/load, not preservation of a large
+real Flash cache or visual equivalence to Flash. Those source-preference cases
+remain supported by the focused regression tests, not this network experiment.
+Only type_matchup remains a proven complete render scope.
+
+Native rendering against this new validated artifact produced complete, partial
+and empty lineup images at 490x704, with 48197/1115/323 RGB colors respectively.
+Grass type-matchup produced an 848x3453 PNG (1,295,126 bytes); visual inspection
+confirmed populated attack/defense icon grids, readable values and no overlapping
+sections. Two consecutive adapter calls returned identical bytes with exactly
+one native-render invocation. Generated evidence is in the ignored local directory
+`.tmp/lineup-v5-fixed-acceptance/`, including report.json.
+
+The first type-cache assertion failed because the probe set a 1 MiB total cache
+budget, smaller than the resulting image. With an isolated 32 MiB probe budget
+the check passes; production defaults to 500 MiB and was not changed. This is not
+a production cache defect. This adapter-level probe does not prove zero SQL on
+the full TypeQueryService cache-hit path. It uses explicit Windows fontconfig;
+default font discovery, Linux/native deployment, full renderer coverage and live
+platform acceptance remain open. The two existing ORM relationship warnings also
+remain. No production data, main checkout or remote release was changed.
