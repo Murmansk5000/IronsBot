@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         NewContentCategory,
         NewContentSnapshot,
     )
+    from ironsbot.services.seer.new_content_details import NewContentDetailService
     from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.pet_query import PetQueryService
     from ironsbot.services.seer.player_detail_extensions import (
@@ -60,4 +61,5 @@ class SeerQueryResources:
     rank_queries: RankQueryService
     rank_admin: RankAdminService
     new_content_menu: NewContentMenuRenderer
+    new_content_details: NewContentDetailService
     external_references: SeerInfoReferences

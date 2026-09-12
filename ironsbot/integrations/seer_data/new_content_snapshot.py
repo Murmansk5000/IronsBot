@@ -6,6 +6,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from seerapi_models import (
+    EquipORM,
+    MintmarkORM,
+    PetORM,
+    PetSkinORM,
+    SuitORM,
+    TitlePartORM,
+)
+
 from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
@@ -19,7 +28,7 @@ from .new_content_details import (
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.autocard import AutocardEntry, AutocardService
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.new_content import (
         NewContentCategory,
         NewContentItem,
@@ -62,7 +71,7 @@ class NewContentPreparedItem:
 class NewContentSnapshotBuilder:
     """Read release facts and create immutable menu rows in one sync phase."""
 
-    def __init__(self, data: SeerDataAccess, autocard: AutocardService) -> None:
+    def __init__(self, data: SeerDataReader, autocard: AutocardService) -> None:
         self._data = data
         self._autocard = autocard
 
@@ -115,7 +124,9 @@ class NewContentSnapshotBuilder:
         return _fallback_details(item)
 
     def _pet_details(self, item: NewContentItem) -> NewContentItemDetails:
-        with self._data.get(self._data.pet, item.entity_id) as pet:
+        with self._data.query(
+            lambda session: session.get(PetORM, item.entity_id)
+        ) as pet:
             if pet is None:
                 return _fallback_details(item)
             attributes = pet.base_stats.to_model().round()
@@ -136,7 +147,9 @@ class NewContentSnapshotBuilder:
             )
 
     def _skin_details(self, item: NewContentItem) -> NewContentItemDetails:
-        with self._data.get(self._data.pet_skin, item.entity_id) as skin:
+        with self._data.query(
+            lambda session: session.get(PetSkinORM, item.entity_id)
+        ) as skin:
             if skin is None:
                 return _fallback_details(item)
             pet = skin.pet
@@ -151,10 +164,13 @@ class NewContentSnapshotBuilder:
                 gender_id=None if pet is None else int(pet.gender.id),
                 type_name="" if pet is None else str(pet.type.name),
                 gender_name=("" if pet is None else _gender_name(str(pet.gender.name))),
+                complete=pet is not None,
             )
 
     def _mintmark_details(self, item: NewContentItem) -> NewContentItemDetails:
-        with self._data.get(self._data.mintmark, item.entity_id) as mintmark:
+        with self._data.query(
+            lambda session: session.get(MintmarkORM, item.entity_id)
+        ) as mintmark:
             if mintmark is None:
                 return _fallback_details(item)
             attributes = _mintmark_attributes(mintmark)
@@ -164,10 +180,13 @@ class NewContentSnapshotBuilder:
                 stats=() if attributes is None else _two_column_stats(attributes),
                 stats_layout="two_column",
                 stats_total="" if attributes is None else _stats_total(attributes),
+                complete=attributes is not None or mintmark.skill_part is not None,
             )
 
     def _suit_details(self, item: NewContentItem) -> NewContentItemDetails:
-        with self._data.get(self._data.suit, item.entity_id) as suit:
+        with self._data.query(
+            lambda session: session.get(SuitORM, item.entity_id)
+        ) as suit:
             if suit is None:
                 return _fallback_details(item)
             bonus = suit.bonus
@@ -183,7 +202,9 @@ class NewContentSnapshotBuilder:
             )
 
     def _equip_details(self, item: NewContentItem) -> NewContentItemDetails:
-        with self._data.get(self._data.equip, item.entity_id) as equip:
+        with self._data.query(
+            lambda session: session.get(EquipORM, item.entity_id)
+        ) as equip:
             if equip is None:
                 return _fallback_details(item)
             part_name = _EQUIP_PART_TYPE_NAMES.get(
@@ -204,8 +225,12 @@ class NewContentSnapshotBuilder:
     def _achievement_details(self, item: NewContentItem) -> NewContentItemDetails:
         title_id, title_name = _first_title(item)
         bonus = "暂无称号加成"
+        complete = True
         if title_id:
-            with self._data.get(self._data.title, title_id) as title:
+            with self._data.query(
+                lambda session: session.get(TitlePartORM, title_id)
+            ) as title:
+                complete = title is not None
                 if title is not None and title.ability_desc:
                     bonus = str(title.ability_desc).strip()
         point = int(item.payload.get("point", 0))
@@ -215,6 +240,7 @@ class NewContentSnapshotBuilder:
             description="",
             side_title="称号加成",
             side_description=bonus,
+            complete=complete,
         )
 
     def _autocard_entry(self, item: NewContentItem) -> AutocardEntry | None:
@@ -267,9 +293,9 @@ class NewContentSnapshotBuilder:
         if item.category == "autocard_sanctuary_effect":
             relation_kind, resource_id = _sanctuary_relation(item.payload)
             if relation_kind == "pet":
-                return _seer_asset("pet_head", resource_id)
+                return _seer_asset("pet_head", resource_id, required=True)
             if relation_kind == "card":
-                return _autocard_asset(autocard_entry, layout="portrait")
+                return _autocard_asset(autocard_entry, required=True, layout="portrait")
         return None
 
     def _skin_head_resource_id(self, item: NewContentItem) -> int:
@@ -289,13 +315,11 @@ def _seer_asset(
     resource_id: int,
     *,
     required: bool = False,
-    fallback_data: bytes | None = None,
 ) -> NewContentAssetRequest:
     return NewContentAssetRequest(
         kind=kind,
-        key=str(resource_id),
-        required=required and resource_id > 0,
-        fallback_data=fallback_data,
+        key=str(resource_id) if resource_id > 0 else None,
+        required=required,
     )
 
 
@@ -306,7 +330,9 @@ def _autocard_asset(
     layout: str = "square",
 ) -> NewContentAssetRequest | None:
     if entry is None or not entry.image_url:
-        return None
+        return (
+            NewContentAssetRequest(required=True, layout=layout) if required else None
+        )
     return NewContentAssetRequest(
         url=entry.image_url,
         required=required,
@@ -353,6 +379,7 @@ def _fallback_details(item: NewContentItem) -> NewContentItemDetails:
     return NewContentItemDetails(
         metadata=f"{change}｜ID：{item.entity_id}",
         description="暂无官方简介",
+        complete=False,
     )
 
 
