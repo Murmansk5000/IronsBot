@@ -204,6 +204,67 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("permissive_first", [True, False])
+async def test_shared_download_keeps_each_callers_fallback_policy(
+    tmp_path: Path, *, permissive_first: bool,
+) -> None:
+    started, release, both_prepared = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    prepared = 0
+    requests = 0
+    policies = (permissive_first, not permissive_first)
+
+    def snapshot() -> PublishedRenderAssetSnapshot:
+        nonlocal prepared
+        prepared += 1
+        if prepared == len(policies):
+            both_prepared.set()
+        return _asset_snapshot()
+
+    async def respond(_request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        started.set()
+        await release.wait()
+        return httpx.Response(503)
+
+    owner = TaskOwner()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        store = SeerAssetStore(
+            HttpSeerImageSource(
+                HttpClients(cache=client, origin=client),
+                asset_snapshot_getter=snapshot,
+            ),
+            tmp_path,
+            SeerAssetStoreLimits(1024, 1024 * 1024, 4, 0),
+            spawn=owner.create,
+        )
+        tasks: list[asyncio.Task[bytes]] = []
+        try:
+            tasks.append(asyncio.create_task(
+                store.fetch("pet_head", "70", fallback=permissive_first)
+            ))
+            await asyncio.wait_for(started.wait(), timeout=5)
+            tasks.append(asyncio.create_task(
+                store.fetch("pet_head", "70", fallback=not permissive_first)
+            ))
+            await asyncio.wait_for(both_prepared.wait(), timeout=5)
+            release.set()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            permissive, strict = results if permissive_first else results[::-1]
+            assert isinstance(permissive, bytes)
+            assert permissive.startswith(b"\x89PNG\r\n\x1a\n")
+            assert isinstance(strict, ImageSourceError)
+            assert requests == 1
+            assert not await asyncio.to_thread(lambda: list(tmp_path.rglob("*.bin")))
+        finally:
+            release.set()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await owner.cancel_all()
+
+
+@pytest.mark.asyncio
 async def test_queued_asset_request_keeps_its_captured_revision(tmp_path: Path) -> None:
     current = _asset_snapshot()
     captured = asyncio.Event()
