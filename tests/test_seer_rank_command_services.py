@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.local_rank_models import LocalRankCacheStats
 from ironsbot.services.seer.rank_admin import (
     RankAdminPolicy,
@@ -102,6 +103,22 @@ async def test_rank_page_conflict_is_reported_without_false_list(
     )
     message = await service.list(RankListCommand(kind="global", rank_key="图鉴积分"))
     assert message == str(RankPageConflictError())
+
+
+@pytest.mark.asyncio
+async def test_local_season_failure_does_not_read_unscoped_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error = DataUnavailableError("巅峰赛季数据读取失败")
+    monkeypatch.setattr(FakeRank, "current_peak_sub_key", Mock(side_effect=error))
+    local = FakeLocalRank()
+    entries = Mock(side_effect=AssertionError("must not read all seasons"))
+    monkeypatch.setattr(local, "entries", entries)
+    message = await _query_service(local, FakeDisplay()).list(
+        RankListCommand(kind="local", rank_key="专家段位")
+    )
+    assert message == str(error)
+    entries.assert_not_called()
 
 
 @pytest.mark.asyncio

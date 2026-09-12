@@ -1228,6 +1228,16 @@ Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是�
 
 ### Phase 6 — 兜底、配置和错误语义
 
+**赛季读取失败隔离（2026-09-12）：** target 错误语义。移除
+`SeerDatabase.peak_season_start()` 的全异常转 None：未加载数据库显式报不可用，
+SQLAlchemy 读取故障保留 cause 和日志；仅实际无赛季记录仍返回 None。巅峰详情将
+赛季标识读取纳入现有 `fetch_partial_rank_summary`，读取失败时保留在线基础数据、
+逐榜标注失败、拒绝完整缓存和未限定赛季的样本写入。榜单列表/分数入口返回
+数据不可用原因，本地赛季榜不继续读全部赛季。真实 SQLite 删除赛季表验证故障
+与空表区别；详情/会话/榜单/时间专项 80 passed，数据库与详情专项 46 passed
+（两组有重叠，不相加）。全量 Ruff、basedpyright、compileall、diff 通过，未重复
+全量 pytest。无新模块、配置或依赖，总进度仍为 4/8。
+
 **配置模型旧导入收口（2026-09-12）：** target 清理。幸运橱窗调用方直接从
 `config.models.seer_lucky` 引用配置模型，删除 `seer` 中标注 compatibility 的
 重导出；聚合配置以模块限定名引用实际模型。配置格式及默认值不变，无新包装器。

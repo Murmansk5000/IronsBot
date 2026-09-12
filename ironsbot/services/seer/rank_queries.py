@@ -17,6 +17,7 @@ from ironsbot.services.operations.headless_errors import (
     NotLoggedInError,
     SocketRecvError,
 )
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
     is_valid_player_id,
@@ -114,9 +115,9 @@ class RankQueryService:
         actor: ActorRef | None = None,
         conversation: ConversationRef | None = None,
     ) -> str:
-        if command.kind == "local":
-            return self._local_message(command)
         try:
+            if command.kind == "local":
+                return self._local_message(command)
             return await self._run_headless_request(
                 lambda: self._global_message(
                     self._headless.get_game(),
@@ -128,7 +129,7 @@ class RankQueryService:
             )
         except _PLAYER_REQUEST_ERRORS as error:
             return player_request_protection_message(error)
-        except RankPageConflictError as error:
+        except (RankPageConflictError, DataUnavailableError) as error:
             return str(error)
 
     async def score(
@@ -151,7 +152,7 @@ class RankQueryService:
             )
         except _PLAYER_REQUEST_ERRORS as error:
             return player_request_protection_message(error)
-        except RankPageConflictError as error:
+        except (RankPageConflictError, DataUnavailableError) as error:
             return str(error)
 
     async def player(  # noqa: C901, PLR0911 - distinct query failure replies
