@@ -876,6 +876,15 @@ revision 做离线原生渲染，修复空位/缺图造成行高变化，三种�
 准确回调类型。88 项构建/元数据测试及目标类型、Ruff、compileall 通过。
 修复后的真实网络构建尚未重跑，上一条产物 hash 仍指修复前产物，阶段仍为 4/8。
 
+**2026-09-12 / 渲染阶段回归检查点：** 属性查询缓存前移到服务入口，真实 SQLite
+探针确认首次 6 条 SQL、命中 0 条；去掉适配器重复缓存和计算模型旧键。素材
+singleflight 接入已有 TaskSpawner，停机由应用统一取消，保留单个等待者取消
+不影响共享下载。公共全量 2833 passed（319 条已有警告）、私有 43 passed
+（含原生渲染），全量类型、Ruff、编译与 diff 通过。私有镜像修复被忽略的
+pyproject.toml 并保留许可证，但本机 Docker daemon 未运行，未宣称构建或
+镜像体积验收通过。详见资产 singleflight 和 runtime image inventory 两份 Spec。
+总阶段数仍为 4/8；剩余真实渲染覆盖、Flash 保真及平台部署验收继续开放。
+
 ### Phase 5 — 业务服务和通用解析
 
 **目标契约：** 领域服务、统一别名解析和 `PlayerIdResolver`。

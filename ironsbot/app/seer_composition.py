@@ -200,6 +200,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             cache_paths,
             settings.seer.render,
             seer_database,
+            spawn=task_owner.create,
         )
     )
 

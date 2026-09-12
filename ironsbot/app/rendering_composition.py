@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ironsbot.config.models.seer import RenderConfig
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.seer_data.database import SeerDatabase, SeerReadSnapshot
     from ironsbot.integrations.storage.seer_assets import SeerAssetStore
@@ -77,6 +78,8 @@ def build_seer_rendering_components(
     cache_paths: CachePaths,
     render_config: RenderConfig,
     seer_database: SeerDatabase,
+    *,
+    spawn: TaskSpawner,
 ) -> tuple[SeerImageSource, RenderCoordinator, SeerRenderSessions]:
     """Build the single image source, rendered-image cache, and native gate."""
     images = build_seer_asset_store(
@@ -86,6 +89,7 @@ def build_seer_rendering_components(
         ),
         cache_paths.assets_dir(),
         render_config,
+        spawn=spawn,
     )
     versions = RenderCacheVersion(seer_database.version, FINAL_RENDER_CACHE_INPUTS)
     cache = FileRenderCache(

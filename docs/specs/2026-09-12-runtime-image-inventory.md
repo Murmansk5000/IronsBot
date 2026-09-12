@@ -31,3 +31,21 @@ Rollback: code revert. Program 4/8; estimate 20-40 minutes for this item, overal
 ETA unestablished. Focused packaging/workflow tests: 16 passed in 1.97 seconds.
 Ruff and diff checks passed. No image size reduction or live image execution is
 claimed; these tests mock Docker and exercise the release shell contract.
+
+## Private Extension Build Context
+
+The private Dockerfile explicitly copies pyproject.toml, but .dockerignore
+excluded that file. Remove that exclusion; retain and copy the root LICENSE
+alongside the manifest and extension package. Exclude local virtual environments,
+credentials, test output, fontconfig cache and uv.lock from the context. Test and
+font caches are also ignored by Git; the existing untracked uv.lock is untouched.
+This fixes a required build input, not measured image size. The existing private
+manifest tests now check source existence, COPY instructions and these explicit
+ignore entries (2 passed). They do not implement a full Dockerignore parser.
+
+Docker version was attempted on this host; the dockerDesktopLinuxEngine named
+pipe is absent. No image build or size measurement is claimed. Private runtime
+tests, including opt-in native lineup rendering, passed 42 cases before this
+packaging-only change. No daemon was started and no remote build was triggered.
+The final private suite including the added packaging case passed 43 tests in
+3.37 seconds, with native rendering enabled. Private commit: 4a3d007.

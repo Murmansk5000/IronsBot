@@ -13,6 +13,7 @@ from seerapi_models import ApiMetadataORM
 from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.app.rendering_composition import SeerRenderSessions
 from ironsbot.extensions.contracts import PlayerLineupSlot
 from ironsbot.integrations.db_registry import DatabaseManager
@@ -42,6 +43,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sqlalchemy.engine import Engine
+
+    from ironsbot.services.seer.images import ImageKind
 
 
 def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, datetime]:
@@ -432,7 +435,7 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
     tmp_path: Path,
     category: str,
     scope: str,
-    kind: str,
+    kind: ImageKind,
 ) -> None:
     source = tmp_path / "seerapi.sqlite"
     engine, _ = _create_release(source, (scope,))
@@ -453,6 +456,7 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
             ),
             tmp_path / "assets",
             SeerAssetStoreLimits(1024, 1024 * 1024, 1, 30),
+            spawn=TaskOwner().create,
         )
         versions = RenderCacheVersion(data.version, ())
         cache = FileRenderCache(tmp_path / "renders", 1024, version_getter=versions)
@@ -542,7 +546,7 @@ async def _check_bound_render_inputs(  # noqa: PLR0913 - publication test inputs
     source: Path,
     *,
     category: str,
-    kind: str,
+    kind: ImageKind,
 ) -> None:
     with sessions.open() as old:
         old_entry = old.cache.entry(category, "1")

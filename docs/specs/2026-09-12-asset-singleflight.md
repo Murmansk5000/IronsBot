@@ -612,3 +612,25 @@ non-image response through the existing broad resolver, so the image probe uses
 an unambiguous ID; no search semantics were relaxed to make acceptance pass.
 Evidence remains in `.tmp/lineup-v5-fixed-acceptance/report.json`. This verifies
 the local type query path, not live platform deployment or completion of Phase 4.
+
+## Application-Owned Asset Flights
+
+The phase checkpoint found one real architecture violation: the asset store
+created its shared download tasks directly instead of using ApplicationLifecycle's
+TaskOwner. Initial full suite: 2831 passed, 1 failed, 319 warnings (138.59s).
+Do not whitelist this store in the architecture test. Inject the existing required
+TaskSpawner through rendering composition and the asset-store builder. The
+singleflight map still owns deduplication; TaskOwner owns task lifetime and
+shutdown. No second lifecycle or default standalone spawner is added.
+
+An explicit test cancels the only waiter, verifies its shielded download remains
+registered with TaskOwner, shuts down the owner, then verifies cancellation and
+successful retry without a stale flight. Asset/image/snapshot/architecture/startup
+focused tests pass (48). Full type checking also exposed overly broad str
+annotations in snapshot tests; use ImageKind and the real TaskOwner test port.
+Exclude generated .test-tmp from type-checker discovery, not source or tests.
+Final checkpoint: 2833 public tests passed, 319 warnings, 123.04 seconds;
+43 private tests passed with native rendering enabled. Full BasedPyright reports
+zero errors/warnings; Ruff, compileall and diff checks pass. Existing NoneBot
+ForwardRef deprecation and ORM relationship warnings remain. No phase-completion
+claim follows solely from this suite: real image/deployment acceptance is open.
