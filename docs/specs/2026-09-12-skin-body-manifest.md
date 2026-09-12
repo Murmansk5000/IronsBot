@@ -36,3 +36,27 @@ local basedpyright executable. No full producer type-clean claim.
 IronsBot runtime was not changed. Existing consumer still does not advertise
 lucky-window cache scope. Next gate is a real revision-pinned release inventory
 and consumer request/material coverage, including unresolved offer fallbacks.
+
+## Real Inventory And Consumer Key
+
+Read-only verification of the public release on 2026-09-12:
+
+- SQLite SHA256: `a9dabe9c1b5414c672fdf65323934933d8304b467f64c0c93e49b2f2232de705`.
+- Config package: `20260911183817`; SQLite quick_check: `ok`.
+- Asset revision: `1b53a16cfe32d36d921a04fbd8423116c5b1e2e1`, 42,196 blobs.
+  REST recursive tree returned HTTP 500; existing blob-free Git adapter succeeded.
+- All 268 resolution rows have positive body IDs and corresponding immutable
+  body blobs. New producer skin_body proof succeeds for this resolved inventory.
+- The full pet_skin table has 868 rows. This is NOT proof of coverage for every
+  dynamic offer or all skins, and the published database has no new manifest.
+
+Replace the consumer's hand-built/truncated hash with render_request_cache_key.
+Hash day, player identity and the actual ordered offer dataclasses, including
+names, resource IDs and watch state. Do not hash from_cache: it changes delivery
+provenance, not rendered pixels. Do not enable category scope in this batch.
+Regression covers changed offer fields/order and an early hit that cannot query
+the repository, load images or invoke native rendering. Run only the affected
+rendering/cache tests and static checks; no deployment or real browser claim.
+
+Consumer verification: 6 focused rendering/cache tests passed in 2.05 seconds;
+Ruff and targeted BasedPyright passed (0 errors/warnings). No full-suite rerun.

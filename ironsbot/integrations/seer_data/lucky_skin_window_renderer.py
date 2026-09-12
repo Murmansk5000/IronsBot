@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
@@ -12,6 +11,7 @@ from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
 from ironsbot.services.seer.images import ImageSourceError, to_data_uri
+from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.lucky_skin_window import (
     present_lucky_skin_window,
     render_lucky_skin_window_document,
@@ -37,7 +37,9 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
     offers: tuple[LuckySkinWindowOffer, ...],
 ) -> bytes:
     """Render one result while isolating missing skin art to its own card."""
-    content_key = _cache_key(result, offers)
+    content_key = render_request_cache_key(
+        "lucky_skin_window_v1", (result.day, result.player_id, offers)
+    )
     if cached := cache.get("lucky_skin_window_v1", content_key):
         return cached
 
@@ -82,20 +84,3 @@ async def _load_skin_image(
             await images.fetch("pet_body", str(resource_id), fallback=False)
         )
     return skin_id, ""
-
-
-def _cache_key(
-    result: LuckySkinWindowResult,
-    offers: tuple[LuckySkinWindowOffer, ...],
-) -> str:
-    raw = "|".join(
-        (
-            result.day,
-            str(result.player_id),
-            *(
-                f"{offer.skin_id}:{offer.resource_id}:{int(offer.watched)}"
-                for offer in offers
-            ),
-        )
-    )
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
