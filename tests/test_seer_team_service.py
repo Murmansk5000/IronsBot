@@ -10,7 +10,9 @@ from ironsbot.config.models.seer import TeamQueryConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
+    TeamBossActivityStatus,
     TeamQueryActor,
+    format_team_info,
 )
 
 if TYPE_CHECKING:
@@ -41,7 +43,7 @@ class TeamInfo:
     tech_center_level: int = 3
     bonus_center_level: int = 4
     res_center_level: int = 5
-    total_boss_dmg: int = 9999
+    total_boss_dmg: int = 196
     interest: int = 1
     join_flag: int = 2
     visit_flag: int = 3
@@ -105,7 +107,7 @@ def _service(
     headless = FakeHeadless(result)
     team_resource = FakeTeamResource()
     service = SeerTeamQueryService(
-        TeamQueryConfig(sections=["basic", "resource"]),
+        TeamQueryConfig(),
         cast("HeadlessService", headless),
         lambda _code: None,
         cast("TeamResourceService", team_resource),
@@ -116,9 +118,12 @@ def _service(
 def test_team_service_parses_unique_ids_before_validation() -> None:
     service, _headless, _resource = _service()
 
-    assert service.parse_team_ids(
-        "战队123456 99 123456 2000000001 654321"
-    ) == (123456, 99, 2000000001, 654321)
+    assert service.parse_team_ids("战队123456 99 123456 2000000001 654321") == (
+        123456,
+        99,
+        2000000001,
+        654321,
+    )
 
 
 @pytest.mark.asyncio
@@ -134,9 +139,67 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
     assert "战队ID：123456" in message
     assert "战队等级：9" in message
     assert "战队资源：777" in message
+    assert "战队 Boss：剩余能量 4/200｜活动状态：暂无法确认" in message
+    assert "标语：一起冲" in message
+    assert "公告：今晚集合" in message
+    assert "【文本】" not in message
     assert "【设施等级】" not in message
     assert headless.available
     assert not resource.offered
+
+
+@pytest.mark.parametrize(
+    ("damage", "expected"),
+    [
+        (0, "剩余能量 200/200"),
+        (196, "剩余能量 4/200"),
+        (200, "剩余能量 0/200"),
+        (-1, "能量数据异常（已削减能量：-1）"),
+        (201, "能量数据异常（已削减能量：201）"),
+    ],
+)
+def test_team_boss_energy_display(damage: int, expected: str) -> None:
+    info = TeamInfo(total_boss_dmg=damage)
+    message = format_team_info(
+        info,
+        {"basic", "resource", "facilities"},
+        include_boss=True,
+    )
+
+    assert f"战队 Boss：{expected}｜活动状态：暂无法确认" in message
+    assert message.count("战队 Boss：") == 1
+    assert "战队Boss总伤害" not in message
+    assert "战队 Boss：" not in format_team_info(info, {"basic"})
+
+
+@pytest.mark.parametrize(
+    ("status", "label"),
+    [
+        (TeamBossActivityStatus.OPEN, "开启"),
+        (TeamBossActivityStatus.CLOSED, "关闭"),
+        (TeamBossActivityStatus.UNKNOWN, "暂无法确认"),
+    ],
+)
+def test_team_boss_activity_status_is_explicit(
+    status: TeamBossActivityStatus,
+    label: str,
+) -> None:
+    message = format_team_info(
+        TeamInfo(),
+        {"resource"},
+        include_boss=True,
+        boss_activity_status=status,
+    )
+
+    assert f"活动状态：{label}" in message
+
+
+def test_team_resource_format_does_not_include_active_query_details() -> None:
+    message = format_team_info(TeamInfo(), {"basic", "resource"})
+
+    assert "战队 Boss：" not in message
+    assert "标语：" not in message
+    assert "公告：" not in message
 
 
 @pytest.mark.asyncio
@@ -169,10 +232,13 @@ async def test_team_service_adds_subscription_prompt_for_group_manager() -> None
 async def test_team_service_formats_timeout() -> None:
     service, _headless, _resource = _service(TimeoutError())
 
-    assert await service.query(
-        (TEAM_ID,),
-        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
-    ) == "❌ 战队 123456 查询超时，请稍后再试。"
+    assert (
+        await service.query(
+            (TEAM_ID,),
+            TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+        )
+        == "❌ 战队 123456 查询超时，请稍后再试。"
+    )
 
 
 @pytest.mark.asyncio
