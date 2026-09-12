@@ -7,8 +7,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from pydantic import ValidationError
-
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.seer_ids import is_valid_player_id
@@ -197,43 +195,6 @@ def _environment_secret(
     return str(value)
 
 
-def _format_config_path(location: tuple[str | int, ...]) -> str:
-    result = ""
-    for part in location:
-        if isinstance(part, int):
-            result += f"[{part}]"
-        elif result:
-            result += f".{part}"
-        else:
-            result = part
-    return result
-
-
-def _unknown_field_paths(data: dict[str, Any]) -> tuple[str, ...]:
-    """Collect strict-model extra-field diagnostics before ignoring them."""
-
-    try:
-        Settings.model_validate(data)
-    except ValidationError as exc:
-        paths = [
-            _format_config_path(error["loc"])
-            for error in exc.errors()
-            if error["type"] == "extra_forbidden"
-        ]
-        return tuple(dict.fromkeys(paths))
-    return ()
-
-
-def _report_ignored_unknown_fields(paths: tuple[str, ...]) -> None:
-    if not paths:
-        return
-    details = "\n".join(f"- {path}" for path in paths)
-    sys.stderr.write(
-        "IronsBot 配置含无法识别的字段，已忽略并继续启动：\n"
-        f"{details}\n"
-    )
-
-
 def load_settings(
     path: str | Path | None = None,
     *,
@@ -258,7 +219,4 @@ def load_settings(
             env=values,
         )
     _inject_player_account_passwords(data, env=values)
-    unknown_paths = _unknown_field_paths(data)
-    settings = Settings.model_validate(data, extra="ignore")
-    _report_ignored_unknown_fields(unknown_paths)
-    return settings
+    return Settings.model_validate(data)
