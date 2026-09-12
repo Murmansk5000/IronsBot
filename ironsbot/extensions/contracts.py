@@ -64,6 +64,7 @@ class PlayerLineupPetSnapshot:
     resource_id: int
     type_id: int
     peak_pool_limit: int | None
+    complete: bool
     skin_name: str | None = None
 
 
