@@ -13,10 +13,10 @@ from ironsbot.services.messaging.sendpic import (
 )
 
 
-def _service(root: Path) -> SendpicService:
+def _service(root: Path, *commands: PicConfig) -> SendpicService:
     backend = LocalBackend(root)
     return SendpicService(
-        SendpicBehaviorConfig(),
+        SendpicBehaviorConfig(configs=list(commands)),
         lambda _kind: backend,
         command_starts=("/", ""),
     )
@@ -27,14 +27,14 @@ def test_sendpic_service_raises_for_missing_single_image(
 ) -> None:
     command = PicConfig(
         id="missing",
-        backend="builtin",
+        backend="local",
         command="missing",
         mode="single",
         image_file="missing.png",
     )
 
     with pytest.raises(ImageNotFoundError):
-        asyncio.run(_service(tmp_path).fetch_single(command))
+        asyncio.run(_service(tmp_path, command).fetch_single(command))
 
 
 def test_sendpic_service_reads_single_image(
@@ -45,40 +45,31 @@ def test_sendpic_service_reads_single_image(
 
     command = PicConfig(
         id="sample",
-        backend="builtin",
+        backend="local",
         command="sample",
         mode="single",
         image_file="sample.png",
     )
 
-    assert asyncio.run(_service(tmp_path).fetch_single(command)) == b"abc"
+    assert asyncio.run(_service(tmp_path, command).fetch_single(command)) == b"abc"
 
 
-def test_packaged_single_image_aliases_use_one_config() -> None:
-    service = _service(Path())
-    commands = {command.id: command for command in service.commands}
-
-    config = commands["anniversary-random-table"]
-    assert config.command == "周年庆伪随机表"
-    assert config.aliases == {"伪随机表"}
-    assert config.image_file == "周年庆伪随机表.png"
+def test_image_commands_are_empty_by_default() -> None:
+    assert SendpicBehaviorConfig().configs == []
 
 
-def test_custom_config_can_disable_packaged_command() -> None:
-    config = SendpicBehaviorConfig(
-        configs=[  # type: ignore[reportArgumentType]
-            {
-                "id": "skill-stone",
-                "enabled": False,
-            }
-        ]
-    )
-
-    enabled_ids = {command.id for command in config.configs if command.enabled}
-    assert "skill-stone" not in enabled_ids
+def test_builtin_backend_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        PicConfig(
+            id="legacy",
+            backend="builtin",  # type: ignore[arg-type]
+            command="legacy",
+            mode="single",
+            image_file="legacy.png",
+        )
 
 
-def test_custom_gallery_extends_packaged_commands_and_command_index() -> None:
+def test_custom_gallery_defines_complete_command_index() -> None:
     service = SendpicService(
         SendpicBehaviorConfig(
             configs=[  # type: ignore[reportArgumentType]
@@ -97,11 +88,8 @@ def test_custom_gallery_extends_packaged_commands_and_command_index() -> None:
         command_starts=("/", ""),
     )
 
-    assert {command.id for command in service.commands} >= {
-        "study-table",
-        "example-gallery",
-    }
-    assert service.exact_command_texts >= {"学习力", "学习力表", "表情", "表情包"}
+    assert {command.id for command in service.commands} == {"example-gallery"}
+    assert service.exact_command_texts == {"表情", "表情包", "/表情", "/表情包"}
 
 
 def test_sendpic_command_contracts_follow_enabled_configurations() -> None:
@@ -134,3 +122,15 @@ def test_sendpic_command_contracts_follow_enabled_configurations() -> None:
 def test_legacy_enabled_ids_field_is_rejected() -> None:
     with pytest.raises(ValidationError):
         SendpicBehaviorConfig(enabled_ids=["skill-stone"])  # type: ignore[call-arg]
+
+
+def test_duplicate_config_ids_are_rejected() -> None:
+    config = {
+        "id": "duplicate",
+        "backend": "local",
+        "command": "图片",
+        "mode": "single",
+        "image_file": "image.png",
+    }
+    with pytest.raises(ValidationError, match="图片命令 ID 重复"):
+        SendpicBehaviorConfig(configs=[config, config])  # type: ignore[list-item]

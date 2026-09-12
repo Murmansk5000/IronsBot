@@ -1676,9 +1676,11 @@ SeerAPI 发布的仓库名和 commit revision 生成，不复制素材，也不�
 
 2026-09-13：冻结生产依赖复核为 59 个包；隔离 Python 3.10 Windows 环境展开约
 64.49 MiB。逐项导入与所有权审计未发现可安全删除的直接运行依赖，开发用 Node、
-BasedPyright、pytest、Ruff 和审计工具均未进入生产导出。现有五张固定图片约
-13.65 MiB，属于显式图片指令，不是应迁往 SeerAPI 的官方发布素材。Linux 层大小仍以
-候选镜像 CI 产物为准，本地数据不冒充镜像测量结果。
+BasedPyright、pytest、Ruff 和审计工具均未进入生产导出。五张约 13.65 MiB 的固定图片
+属于部署者内容而非 SeerAPI 官方发布素材，已连同硬编码默认命令和专用 `builtin`
+后端移出程序包；通用图片命令只接受 TOML 显式配置的 `local/cnb` 后端。Linux 层大小
+仍以候选镜像 CI 产物为准，本地源码差额不冒充镜像测量结果。收口后公共全量回归
+`3142 passed, 7 skipped`，Ruff、BasedPyright、compileall 与差异检查通过。
 
 ## 工作项登记模板
 

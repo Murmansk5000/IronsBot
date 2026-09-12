@@ -12,8 +12,9 @@ Dockerfile/build context and the existing release measurement step.
 - Root LICENSE/LICENSING files are excluded and not copied. Retain them explicitly
   in the runtime, alongside existing third-party notices. Slimming must not strip
   distribution notices. This does not claim a complete licensing audit.
-- The five largest bundled PNGs total about 14 MB and remain used assets. Do not
-  delete them or required htmlkit/SAA dependencies without a replacement path.
+- The five deployer-specific sendpic PNGs total about 14 MB. Move their command
+  ownership to explicit TOML local/CNB configuration, then remove the packaged
+  files and the private `builtin` backend; retain required htmlkit/SAA dependencies.
 - Extend the existing digest-pinned image-size artifact with a runtime directory
   inventory (KiB). Run only du in a network-disabled disposable container;
   never start the bot or read deployment configuration. This distinguishes code,
@@ -151,9 +152,10 @@ active feature or merely move the same dependency behind an implicit import.
 Development-only `nodejs_wheel`, BasedPyright, pytest, Ruff and audit tooling do
 not occur in the frozen production export. The Dockerfile already exports with
 `--no-dev`, installs only that wheel set, and removes pip/setuptools/wheel from
-the final stage. The five bundled sendpic PNGs remain explicit user-facing
-commands and total about 13.65 MiB; they are not SeerAPI publication assets and
-must not be silently deleted as part of producer-resource cleanup.
+the final stage. The five deployer-specific sendpic PNGs and their hard-coded
+defaults have now been removed, reducing the application payload by about
+13.65 MiB. Fixed-image support remains available through explicit TOML `local`
+or `cnb` commands; the old private `builtin` backend is intentionally rejected.
 
 Pinned Seer render assets remain owned by the producer publication. The consumer
 derives both GitHub Raw and jsDelivr URLs from the exact repository and commit
