@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.integrations.seer_data.skin_image_resolution import SkinImageResolution
+from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
 from ironsbot.services.seer.pet_query import (
     PetImageSelection,
     PetQueryService,
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 
     from ironsbot.services.seer.data import SeerDataAccess
     from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.query_result import QueryResult
 
 
 class FakeData:
@@ -131,6 +133,67 @@ def _service(
         cast("SeerImageSource", FakeImages()),
         render,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["search_info", "select_info"])
+@pytest.mark.parametrize(
+    "failure",
+    [ImageSourceStatusError(404, "Not Found"), ImageSourceError("download timed out")],
+)
+async def test_pet_info_asset_failure_is_deliverable_and_can_recover(
+    entry: str, failure: ImageSourceError,
+) -> None:
+    data = FakeData()
+    data.pets = (_pet(1, "精灵"),)
+    calls = 0
+
+    async def render(_pet_id: int) -> bytes:
+        nonlocal calls
+        assert not data.session_active
+        calls += 1
+        if calls == 1:
+            raise failure
+        return b"rendered"
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data), cast("SeerImageSource", FakeImages()), render,
+    )
+
+    async def query() -> QueryResult[Any]:
+        return (
+            await service.search_info("精灵")
+            if entry == "search_info"
+            else await service.select_info(1)
+        )
+
+    failed = (await query()).reply
+    assert failed is not None
+    assert not failed.complete
+    assert failed.image is None
+    assert "素材获取失败" in failed.image_error
+    assert "精灵" in failed.leading_text
+    assert failed.to_outbound().parts
+    recovered = (await query()).reply
+    assert recovered is not None
+    assert recovered.complete
+    assert recovered.image == b"rendered"
+
+
+@pytest.mark.asyncio
+async def test_pet_info_does_not_disguise_renderer_defects_as_missing_assets() -> None:
+    data = FakeData()
+    data.pets = (_pet(1, "精灵"),)
+
+    async def render(_pet_id: int) -> bytes:
+        message = "invalid render document"
+        raise ValueError(message)
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data), cast("SeerImageSource", FakeImages()), render,
+    )
+    with pytest.raises(ValueError, match="invalid render document"):
+        await service.select_info(1)
 
 
 @pytest.mark.asyncio
