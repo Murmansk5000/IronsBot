@@ -232,6 +232,11 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
             856: SimpleNamespace(head_resource_id=1856),
         },
     )
+    monkeypatch.setattr(
+        new_content_rendering,
+        "load_flash_mount_image",
+        lambda _data, _mount_id: None,
+    )
     snapshot = NewContentSnapshot(
         baseline_established=True,
         config_version="20260803",
@@ -384,7 +389,9 @@ async def test_new_content_closes_data_context_before_fetching_assets() -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_mount_image_uses_pending_notice_without_cache() -> None:
+async def test_missing_mount_image_uses_pending_notice_without_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured: dict[str, Any] = {}
 
     async def render_html(
@@ -400,6 +407,11 @@ async def test_missing_mount_image_uses_pending_notice_without_cache() -> None:
         return b"menu-image"
 
     cache = _Cache()
+    monkeypatch.setattr(
+        new_content_rendering,
+        "load_flash_mount_image",
+        lambda _data, _mount_id: None,
+    )
     snapshot = NewContentSnapshot(
         baseline_established=True,
         config_version="20260806",

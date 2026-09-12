@@ -1376,7 +1376,7 @@ Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是�
 魂印顺序、魂印 PNG、展示校正、道具价格和伙伴表读取失败时返回空集合的兼容路径；
 也删除旧价格列探测、旧伙伴字段倒置及机器人侧“微光秘境/共振晶体”名称修正。
 SeerAPI 候选产物已经直接发布规范名称和强化前后描述，消费者只接受当前 schema。
-发布表 SQL 失败统一转换为带精灵 ID 的 `PetInfoDataError`，查询明确回复“精灵资料
+发布表 SQL 失败统一转换为带精灵 ID 的 `PublishedDataIncompleteError`，查询明确回复“精灵资料
 数据不完整”，标记 `complete=False`，不调用 renderer、不写完整图片缓存；真正的
 空查询结果仍保持为空。
 
@@ -1389,10 +1389,18 @@ OneBot 编码和受限平台模拟上传。Ruff、BasedPyright、compileall 和 
 通过恢复运行时空结果来掩盖。Phase 6 保持 `in_progress`，总进度保持 5/8。
 
 **刻印角数事实错误语义（2026-09-12）：** `mintmark_quality` 查询失败不再返回空
-映射。仓库将 SQL 故障转换为 `CountermarkStatRankDataError`，服务记录完整异常并向
+映射。仓库将 SQL 故障转换为 `PublishedDataIncompleteError`，服务记录完整异常并向
 用户明确回复“刻印角数数据不完整”；普通属性榜也不会再带着缺失角数继续生成结果。
 真正存在但没有匹配记录的空映射仍保留原有业务语义。专项 `18 passed`，Ruff、
 BasedPyright 和 diff 检查通过；无新配置、依赖、数据库或 QQ 身份改动。
+
+**发布数据错误接口收口（2026-09-12）：** 精灵资料、刻印角数和构建期 Flash 座驾
+PNG 统一使用 `PublishedDataIncompleteError(component, entity_id)`，删除两个领域专用
+异常及 Flash 旧数据库缺表时只记录一次 warning、随后返回 `None` 的进程级兼容状态。
+座驾 PNG 表缺失现在与“表存在但该座驾没有 PNG”严格区分：前者记录异常并返回不完整
+结果，后者仍可显示“官方图片暂未上线”。新内容渲染也不再把缺表伪装成无图片。
+相关精灵、刻印、装备、新内容专项 `89 passed`；Ruff、BasedPyright、compileall 和
+diff 检查通过。该接口只表达发布事实完整性，不涉及平台或 QQ 身份。
 
 **赛季读取失败隔离（2026-09-12）：** target 错误语义。移除
 `SeerDatabase.peak_season_start()` 的全异常转 None：未加载数据库显式报不可用，

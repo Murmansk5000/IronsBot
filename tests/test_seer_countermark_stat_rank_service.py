@@ -17,13 +17,13 @@ from ironsbot.services.seer.countermark_stat_rank_messages import (
 )
 from ironsbot.services.seer.countermark_stat_rank_models import (
     CountermarkStatRankCommand,
-    CountermarkStatRankDataError,
     CountermarkStatRankItem,
     StatSpec,
 )
 from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -60,7 +60,7 @@ class FakeRankData:
 class BrokenRankData:
     @contextmanager
     def query(self, _operation: object) -> Iterator[object]:
-        raise CountermarkStatRankDataError
+        raise PublishedDataIncompleteError("mintmark_quality")
         yield  # pragma: no cover
 
 
@@ -310,7 +310,7 @@ def test_countermark_service_reports_missing_published_quality_table() -> None:
 def test_countermark_repository_rejects_missing_published_quality_table() -> None:
     with (
         Session(create_engine("sqlite://")) as session,
-        pytest.raises(CountermarkStatRankDataError),
+        pytest.raises(PublishedDataIncompleteError),
     ):
         load_mintmark_quality_session(session)
 

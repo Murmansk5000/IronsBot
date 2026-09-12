@@ -11,8 +11,8 @@ from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
 from ironsbot.integrations.seer_data.skin_price_repository import load_skin_details
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import ImageSourceError, fetch_optional_image
-from ironsbot.services.seer.pet_info_views import PetInfoDataError
 from ironsbot.services.seer.query_result import (
     QueryChoice,
     QueryReply,
@@ -185,10 +185,11 @@ class PetQueryService:
                 image_error="精灵图片素材获取失败，暂时无法生成资料图。",
                 complete=False,
             )
-        except PetInfoDataError as error:
+        except PublishedDataIncompleteError as error:
             logger.error(
-                "pet info data is incomplete: pet_id=%s",
-                error.pet_id,
+                "pet info data is incomplete: pet_id=%s component=%s",
+                error.entity_id,
+                error.component,
                 exc_info=True,
             )
             return QueryReply(

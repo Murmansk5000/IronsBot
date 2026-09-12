@@ -8,7 +8,7 @@ from ironsbot.integrations.seer_data.pet_info_repository import (
     PetInfoRepository,
     _load_item_exchange_prices,
 )
-from ironsbot.services.seer.pet_info_views import PetInfoDataError
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 
 ACTIVATION_ITEM_ID = 1728296
 CURRENCY_ITEM_ID = 1726710
@@ -157,11 +157,12 @@ def test_load_item_exchange_prices_rejects_database_without_published_table() ->
 def test_pet_info_repository_translates_published_schema_failures() -> None:
     with (
         Session(create_engine("sqlite://")) as session,
-        pytest.raises(PetInfoDataError) as raised,
+        pytest.raises(PublishedDataIncompleteError) as raised,
     ):
         PetInfoRepository().load(session, 1)
 
-    assert raised.value.pet_id == 1
+    assert raised.value.component == "pet_info"
+    assert raised.value.entity_id == 1
 
 
 def test_load_item_exchange_prices_uses_published_source_and_currency_names() -> None:

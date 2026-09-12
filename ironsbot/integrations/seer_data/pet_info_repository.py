@@ -13,9 +13,9 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session, col, select
 
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.pet_info_views import (
     PetCoreSnapshot,
-    PetInfoDataError,
     PetInfoSnapshot,
     PetItemPriceSnapshot,
     PetItemSnapshot,
@@ -47,7 +47,7 @@ class PetInfoRepository:
             return self._load(session, pet_id)
         except SQLAlchemyError as error:
             logger.exception("published pet data query failed: pet_id=%s", pet_id)
-            raise PetInfoDataError(pet_id) from error
+            raise PublishedDataIncompleteError("pet_info", entity_id=pet_id) from error
 
     def _load(self, session: Session, pet_id: int) -> PetInfoSnapshot | None:
         pet = session.get(PetORM, pet_id)

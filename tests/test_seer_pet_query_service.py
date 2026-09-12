@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.integrations.seer_data.skin_image_resolution import SkinImageResolution
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
-from ironsbot.services.seer.pet_info_views import PetInfoDataError
 from ironsbot.services.seer.pet_query import (
     PetImageSelection,
     PetQueryService,
@@ -203,7 +203,7 @@ async def test_pet_info_reports_incomplete_published_data() -> None:
     data.pets = (_pet(1, "精灵"),)
 
     async def render(_pet_id: int) -> bytes:
-        raise PetInfoDataError(1)
+        raise PublishedDataIncompleteError("pet_info", entity_id=1)
 
     service = PetQueryService(
         cast("SeerDataAccess", data), cast("SeerImageSource", FakeImages()), render,

@@ -10,14 +10,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-class PetInfoDataError(RuntimeError):
-    """The published database cannot provide a complete pet snapshot."""
-
-    def __init__(self, pet_id: int) -> None:
-        self.pet_id = pet_id
-        super().__init__(f"published pet data is incomplete for pet {pet_id}")
-
-
 @dataclass(frozen=True, slots=True)
 class PetStatsSnapshot:
     """Six displayed pet stats, already rounded by the data repository."""

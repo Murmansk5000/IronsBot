@@ -11,9 +11,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from ironsbot.core.value_coercion import coerce_positive_int
-from ironsbot.services.seer.countermark_stat_rank_models import (
-    CountermarkStatRankDataError,
-)
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 
 if TYPE_CHECKING:
     from sqlmodel import Session
@@ -23,7 +21,7 @@ def load_mintmark_quality_session(session: Session) -> dict[int, int]:
     try:
         rows = session.execute(MINTMARK_QUALITY_QUERY).all()
     except SQLAlchemyError as error:
-        raise CountermarkStatRankDataError from error
+        raise PublishedDataIncompleteError("mintmark_quality") from error
 
     quality_map: dict[int, int] = {}
     for row in rows:

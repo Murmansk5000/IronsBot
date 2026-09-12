@@ -10,12 +10,10 @@ from ironsbot.integrations.seer_data.countermark_stat_rank_repository import (
 from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
 )
-from ironsbot.services.seer.countermark_stat_rank_models import (
-    CountermarkStatRankDataError,
-)
 from ironsbot.services.seer.countermark_stat_rank_ranking import (
     collect_countermark_rank_items,
 )
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.countermark_stat_rank_models import (
@@ -44,7 +42,7 @@ class CountermarkStatRankService:
                     command,
                     quality_map,
                 )
-        except CountermarkStatRankDataError:
+        except PublishedDataIncompleteError:
             logger.exception("published mintmark quality data is unavailable")
             return MISSING_MINTMARK_QUALITY_MESSAGE
         return build_countermark_stat_rank_message(
