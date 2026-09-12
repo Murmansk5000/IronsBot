@@ -107,8 +107,9 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
     assert {
         category for category in categories if data.render_category_available(category)
     } == expected_categories
-    assert data.render_asset_snapshot() is not None
-    assert data.render_asset_cache_identity() == (
+    snapshot = data.render_asset_snapshot()
+    assert snapshot is not None
+    assert snapshot.cache_identity == (
         "Murmansk-Seer/seer-unity-assets@"
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:assets-v1"
     )

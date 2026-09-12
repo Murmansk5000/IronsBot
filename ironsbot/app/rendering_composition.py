@@ -45,7 +45,6 @@ def build_seer_rendering_components(
         ),
         cache_paths.assets_dir(),
         render_config,
-        source_identity_getter=seer_database.render_asset_cache_identity,
     )
     cache = FileRenderCache(
         cache_paths.render_dir(),
@@ -56,7 +55,11 @@ def build_seer_rendering_components(
         ),
         category_available=seer_database.render_category_available,
     )
-    return images, cache, RenderCoordinator(
-        render_html_template,
-        render_config.native_timeout_seconds,
+    return (
+        images,
+        cache,
+        RenderCoordinator(
+            render_html_template,
+            render_config.native_timeout_seconds,
+        ),
     )

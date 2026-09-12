@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -10,13 +11,16 @@ from ironsbot.integrations.storage.seer_assets import (
     SeerAssetStore,
     SeerAssetStoreLimits,
 )
-from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
+from ironsbot.services.seer.images import (
+    ImageSourceError,
+    ImageSourceStatusError,
+    PreparedImageRequest,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.images import ImageKind, SeerImageRequestSource
 
 
 SECOND_FETCH_COUNT = 2
@@ -28,9 +32,11 @@ class FakeImageSource:
         *,
         result: bytes = b"asset",
         error: Exception | None = None,
+        identity: str = "test",
     ) -> None:
         self.result = result
         self.error = error
+        self.identity = identity
         self.calls = 0
         self.started = asyncio.Event()
         self.release: asyncio.Event | None = None
@@ -54,15 +60,20 @@ class FakeImageSource:
     async def fetch_url(self, _url: str) -> bytes:
         return await self.fetch("url", _url)
 
+    def prepare(
+        self, kind: ImageKind, key: str, *, fallback: bool
+    ) -> PreparedImageRequest:
+        return PreparedImageRequest(
+            self.identity, partial(self.fetch, kind, key, fallback=fallback)
+        )
+
 
 def _store(
     source: FakeImageSource,
     directory: Path,
-    *,
-    source_identity_getter: Callable[[], str] | None = None,
 ) -> SeerAssetStore:
     return SeerAssetStore(
-        cast("SeerImageSource", source),
+        cast("SeerImageRequestSource", source),
         directory,
         SeerAssetStoreLimits(
             memory_max_size_bytes=1024,
@@ -70,7 +81,6 @@ def _store(
             max_network_concurrent=4,
             negative_ttl_seconds=300,
         ),
-        source_identity_getter=source_identity_getter,
     )
 
 
@@ -108,19 +118,17 @@ async def test_asset_store_does_not_reuse_a_prior_asset_revision(
 ) -> None:
     assert (
         await _store(
-            FakeImageSource(result=b"old"),
+            FakeImageSource(result=b"old", identity="assets@old"),
             tmp_path,
-            source_identity_getter=lambda: "assets@old",
         ).fetch("pet_head", "2")
         == b"old"
     )
 
-    refreshed = FakeImageSource(result=b"new")
+    refreshed = FakeImageSource(result=b"new", identity="assets@new")
     assert (
         await _store(
             refreshed,
             tmp_path,
-            source_identity_getter=lambda: "assets@new",
         ).fetch("pet_head", "2")
         == b"new"
     )

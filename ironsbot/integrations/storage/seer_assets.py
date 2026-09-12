@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.config.models.seer import RenderConfig
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.images import SeerImageRequestSource
 
 
 _NEGATIVE_STATUS_CODES = frozenset({404, 410})
@@ -42,11 +42,9 @@ class SeerAssetStore:
 
     def __init__(
         self,
-        source: SeerImageSource,
+        source: SeerImageRequestSource,
         cache_dir: Path,
         limits: SeerAssetStoreLimits,
-        *,
-        source_identity_getter: Callable[[], str] | None = None,
     ) -> None:
         self._source = source
         self._memory = _MemoryAssetCache(limits.memory_max_size_bytes)
@@ -55,7 +53,6 @@ class SeerAssetStore:
         self._negative_ttl_seconds = limits.negative_ttl_seconds
         self._negative: dict[str, float] = {}
         self._inflight: dict[str, asyncio.Task[bytes]] = {}
-        self._source_identity_getter = source_identity_getter or (lambda: "legacy")
 
     async def fetch(
         self,
@@ -64,16 +61,17 @@ class SeerAssetStore:
         *,
         fallback: bool = True,
     ) -> bytes:
+        request = self._source.prepare(kind, key, fallback=fallback)
         cache_key = _cache_key(
-            "image",
-            self._source_identity_getter(),
+            "prepared-image-v1",
+            request.identity,
             kind,
             key,
             str(fallback),
         )
         return await self._get_or_fetch(
             cache_key,
-            lambda: self._source.fetch(kind, key, fallback=fallback),
+            request.fetch,
         )
 
     async def fetch_url(self, url: str) -> bytes:
@@ -183,11 +181,9 @@ def _cache_key(*parts: str) -> str:
 
 
 def build_seer_asset_store(
-    source: SeerImageSource,
+    source: SeerImageRequestSource,
     cache_dir: Path,
     render_config: RenderConfig,
-    *,
-    source_identity_getter: Callable[[], str],
 ) -> SeerAssetStore:
     """Build the shared Seer image asset port from application configuration."""
     return SeerAssetStore(
@@ -201,5 +197,4 @@ def build_seer_asset_store(
             max_network_concurrent=render_config.asset_fetch_max_concurrent,
             negative_ttl_seconds=render_config.asset_negative_ttl_seconds,
         ),
-        source_identity_getter=source_identity_getter,
     )

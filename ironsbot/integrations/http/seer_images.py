@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError, RequestError
 
-from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
+from ironsbot.services.seer.images import (
+    ImageSourceError,
+    ImageSourceStatusError,
+    PreparedImageRequest,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -65,8 +70,33 @@ class HttpSeerImageSource:
         *,
         fallback: bool = True,
     ) -> bytes:
+        return await self.prepare(kind, key, fallback=fallback).fetch()
+
+    def prepare(
+        self,
+        kind: ImageKind,
+        key: str,
+        *,
+        fallback: bool,
+    ) -> PreparedImageRequest:
+        snapshot = (
+            self._asset_snapshot_getter() if kind in _PINNED_ASSET_PATHS else None
+        )
+        urls = self._urls_for(kind, key, snapshot)
+        return PreparedImageRequest(
+            identity=snapshot.cache_identity if snapshot is not None else "unversioned",
+            fetch=partial(self._fetch_urls, kind, urls, fallback=fallback),
+        )
+
+    async def _fetch_urls(
+        self,
+        kind: ImageKind,
+        urls: tuple[str, ...],
+        *,
+        fallback: bool,
+    ) -> bytes:
         last_error: ImageSourceError | None = None
-        for url in self._urls_for(kind, key):
+        for url in urls:
             try:
                 return await self._get(
                     self._clients.origin if kind == "preview" else self._clients.cache,
@@ -79,11 +109,15 @@ class HttpSeerImageSource:
             return await self._fallback(error)
         raise error
 
-    def _urls_for(self, kind: ImageKind, key: str) -> tuple[str, ...]:
+    def _urls_for(
+        self,
+        kind: ImageKind,
+        key: str,
+        snapshot: PublishedRenderAssetSnapshot | None,
+    ) -> tuple[str, ...]:
         paths = _PINNED_ASSET_PATHS.get(kind)
         if paths is None:
             return tuple(template.format(key) for template in _URLS[kind])
-        snapshot = self._asset_snapshot_getter()
         if snapshot is None:
             raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
         root = (

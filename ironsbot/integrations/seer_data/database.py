@@ -205,10 +205,6 @@ class SeerDatabase:
 
         return self._published_render_assets
 
-    def render_asset_cache_identity(self) -> str:
-        snapshot = self._published_render_assets
-        return "unknown" if snapshot is None else snapshot.cache_identity
-
     def _refresh_published_version(self) -> None:
         """Refresh only after an atomic database load, never per cache lookup."""
         try:

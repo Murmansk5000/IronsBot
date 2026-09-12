@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -191,3 +192,40 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
             == recovered
         )
         assert len(urls) == request_count
+
+
+@pytest.mark.asyncio
+async def test_queued_asset_request_keeps_its_captured_revision(tmp_path: Path) -> None:
+    current = _asset_snapshot()
+    captured = asyncio.Event()
+    urls: list[str] = []
+
+    def snapshot() -> PublishedRenderAssetSnapshot:
+        captured.set()
+        return current
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(200, content=request.url.path.encode())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        store = SeerAssetStore(
+            HttpSeerImageSource(
+                HttpClients(cache=client, origin=client),
+                asset_snapshot_getter=snapshot,
+            ),
+            tmp_path,
+            SeerAssetStoreLimits(1024, 1024 * 1024, 1, 300),
+        )
+        first = asyncio.create_task(store.fetch("pet_body", "70", fallback=False))
+        await captured.wait()
+        current = replace(current, revision="b" * 40, manifest_revision="assets-v3")
+        old = await first
+        assert ("a" * 40).encode() in old
+        new = await store.fetch("pet_body", "70", fallback=False)
+        assert ("b" * 40).encode() in new
+        assert old != new
+        before_hit = len(urls)
+        current = _asset_snapshot()
+        assert await store.fetch("pet_body", "70", fallback=False) == old
+        assert len(urls) == before_hit
