@@ -1656,6 +1656,13 @@ GitHub Raw 官方素材连接失败而明确失败，未生成图片或缓存伪
 不因外部站点波动重复全矩阵。Docker 29.5.2 客户端可用，但本机 Linux daemon 未运行，
 因此仍不声明真实镜像启动验收。
 
+同日后续将不可变素材下载扩展为 GitHub Raw 与 jsDelivr 双入口；两者都由同一个
+SeerAPI 发布的仓库名和 commit revision 生成，不复制素材，也不回退到可变 main。
+此前失败的巅峰投票与竞技精灵榜真实原生用例定向复测 `2 passed`，至此七类真实发布
+渲染均已有通过证据。相关素材、数据库和渲染专项 `57 passed`，最终公共全量回归
+`3141 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过；Linux
+镜像与真实平台发送仍未验收。
+
 共享 service 的命令说明、AI 分类提示和 B站失败通知不再写死 QQ/OneBot 名称，改用
 当前账号/平台语义；AST 守卫禁止 service 用户文案重新出现适配器名称。OneBot 插件
 自身的 QQ 文案保留。需要 QQ 号、直接 @ 或绑定且目标平台 API 无法表达的操作继续按

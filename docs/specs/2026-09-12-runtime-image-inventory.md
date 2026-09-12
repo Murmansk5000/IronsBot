@@ -154,3 +154,10 @@ not occur in the frozen production export. The Dockerfile already exports with
 the final stage. The five bundled sendpic PNGs remain explicit user-facing
 commands and total about 13.65 MiB; they are not SeerAPI publication assets and
 must not be silently deleted as part of producer-resource cleanup.
+
+Pinned Seer render assets remain owned by the producer publication. The consumer
+derives both GitHub Raw and jsDelivr URLs from the exact repository and commit
+revision published by SeerAPI, trying the CDN only after Raw fails. It never
+embeds those official assets in the application image and never falls back to a
+mutable branch. The two native render cases previously blocked by Raw network
+failures pass with this route (`2 passed`, real release database and HTML render).

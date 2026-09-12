@@ -23,6 +23,7 @@ from ironsbot.services.seer.images import (
 HTTP_NOT_FOUND = 404
 HTTP_OK = 200
 MAX_ASSET_FETCH_CONCURRENCY = 4
+PINNED_ASSET_SOURCE_COUNT = 2
 
 
 def _asset_snapshot() -> PublishedRenderAssetSnapshot:
@@ -141,7 +142,9 @@ def test_item_image_tries_known_asset_categories() -> None:
     assert data == b"item-image"
     assert "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[0]
     assert "/item/doodle/icon/1726710.png" in urls[0]
-    assert "/item/petitem/icon/1726710.png" in urls[1]
+    assert "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[1]
+    assert "/item/doodle/icon/1726710.png" in urls[1]
+    assert "/item/petitem/icon/1726710.png" in urls[2]
 
 
 def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
@@ -153,6 +156,33 @@ def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
         "newseer/assets/art/ui/assets/battleeffect/signbuff/33.png"
     ]
+
+
+@pytest.mark.asyncio
+async def test_pinned_asset_retries_same_revision_through_cdn() -> None:
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        status = (
+            HTTP_NOT_FOUND
+            if request.url.host == "raw.githubusercontent.com"
+            else HTTP_OK
+        )
+        return httpx.Response(status, content=b"item-image")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_asset_snapshot,
+        )
+        assert await source.fetch("sign_buff", "33", fallback=False) == b"item-image"
+
+    assert len(urls) == PINNED_ASSET_SOURCE_COUNT
+    assert "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[0]
+    assert "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/" in urls[1]
+    assert urls[0].endswith("/signbuff/33.png")
+    assert urls[1].endswith("/signbuff/33.png")
 
 
 def test_manifest_backed_images_do_not_fall_back_to_mutable_main() -> None:
@@ -254,7 +284,7 @@ async def test_shared_download_keeps_each_callers_fallback_policy(
             assert isinstance(permissive, bytes)
             assert permissive.startswith(b"\x89PNG\r\n\x1a\n")
             assert isinstance(strict, ImageSourceError)
-            assert requests == 1
+            assert requests == PINNED_ASSET_SOURCE_COUNT
             assert not await asyncio.to_thread(lambda: list(tmp_path.rglob("*.bin")))
         finally:
             release.set()
