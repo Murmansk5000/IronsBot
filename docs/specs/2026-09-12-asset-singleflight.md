@@ -558,3 +558,23 @@ the full TypeQueryService cache-hit path. It uses explicit Windows fontconfig;
 default font discovery, Linux/native deployment, full renderer coverage and live
 platform acceptance remain open. The two existing ORM relationship warnings also
 remain. No production data, main checkout or remote release was changed.
+
+## Ordered Custom-Type Cache Identity
+
+Target: final-image identity includes every presentation-affecting input.
+Baseline: DIY type titles and primary/secondary icons retain user input order.
+Inspection found that custom_type_matchup sorted IDs only in its cache key, so
+grass+water and water+grass could share the first rendered image despite different
+titles and icon order. Keep IDs ordered in the existing key and use a v2 prefix
+to reject old unordered entries. No additional cache, module, dependency or TOML
+field is introduced; obsolete entries expire through normal cache cleanup.
+
+The regression uses the real FileRenderCache and renderer adapter with controlled
+image/native ports. It checks both an empty cache and a seeded legacy entry,
+opposite input orders, and separator variants sharing the same ordered result.
+Exactly two renders and two sets of asset requests are required across four
+requests. The seeded-cache case failed before the change. Type query/render tests
+pass (18 cases), including session closure before awaiting, cancellation, normal
+type exclusion and menu behavior. This is cache-identity acceptance only:
+TypeQueryService still resolves names and loads the matchup dataset before the
+adapter cache check. Zero-SQL hits remain open rather than being claimed here.

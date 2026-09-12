@@ -75,8 +75,7 @@ def custom_type_matchup(
         dataset,
         target=target,
         cache_key=(
-            "custom_type_matchup_"
-            + "_".join(map(str, sorted(item.id for item in elements)))
+            "custom_type_matchup_v2_" + "_".join(str(item.id) for item in elements)
         ),
     )
 
