@@ -757,9 +757,15 @@ asset materialization, and reject a release lacking an asset-manifest revision.
 Those paths, plus private lineup via `PlayerLineupRenderPort`, calculate their
 request key before data/asset preparation. The private lineup keeps its own
 presentation module, but its adapter alone owns asset loading, final-cache
-access, and the HTML render port. The remaining Phase 4 gate is complete,
-scope-aware SeerAPI asset-manifest validation and revision-bound asset retrieval,
-not another runtime cache order. A build-time manifest that records an immutable
+access, and the HTML render port. The remaining Phase 4 consumer gate is
+scope-aware SeerAPI asset-manifest validation, revision-bound asset retrieval,
+and tested behavior for complete, missing, and failed assets. It does not require
+every official asset to exist. Asset collection, conversion, and publication
+belong to the producer; missing upstream resources remain producer backlog,
+not a reason to add extraction or conversion to the bot. An incomplete scope
+must still be excluded from complete final-image caching. Phase closure requires
+consumer evidence across the declared render categories, not merely changing
+this gate or passing one renderer test. A build-time manifest that records an immutable
 asset-tree revision is insufficient while a consumer still fetches the mutable
 `main` branch: the resolved asset URL or asset source must be derived from the
 same published revision that participates in the final-image request key.

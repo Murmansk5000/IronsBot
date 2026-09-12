@@ -207,8 +207,9 @@ Phase 2 [██████████] 100%  私有阵容已只依赖文档化
 IronsBot 正确读取 immutable repository revision，并为精灵头像生成固定 revision URL。
 该素材快照实际缺少 9 个精灵头像、12 个 body、1 个刻印图标、11 个装备和 11 个称号，
 所以 metadata 正确发布空 `complete_scopes`，下游 L3 final-image cache 全部保持禁用。
-这证明消费者不会用不完整 manifest 缓存图片；Phase 4 的剩余工作是向素材仓库发布这些
-缺失资源，而不是放宽缓存准入或恢复 `main` fallback。
+这证明消费者不会用不完整 manifest 缓存图片。该次审计曾把补齐这些资源作为
+Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被下方消费者验收门
+替代。缺图补齐归 SeerAPI 发布侧；不得放宽缓存准入或恢复 `main` fallback。
 
 ## 阶段账本与报告纪律
 
@@ -237,7 +238,7 @@ IronsBot 正确读取 immutable repository revision，并为精灵头像生成�
 | Phase 1 | `completed` | 身份/权限/冷却/订阅/限流/通知与状态 API 均使用类型化身份；旧身份转换仅在离线 CLI；迁移异常与私有扩展契约均已验收，见 2026-09-05 closure Spec | 后续身份调用必须沿用 core refs；不得恢复旧列读取或私聊身份猜测 | 真实 QQ Official 已接入 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
-| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
+| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 各 renderer 验证完整/缺图/失败的消费行为及版本绑定，用有效 release 完成 consumer smoke；上游补图不作为消费者阶段门 | 渲染数据发布契约完成 |
 | Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证；真实私有扩展公开契约已在 Phase 2 验收 | 剩余领域参数化输入覆盖、玩家查询缓存策略及完整发布链路验收 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
@@ -630,7 +631,16 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 资产 cache、最终图片 cache、singleflight、并发、完整性和超时策略集中实现；
 - renderer 在首次 `await` 前已不持有 DB session；
 - 宠物、属性、竞技池、排行、投票和阵容逐项迁移并有快照/像素/缓存测试；
-- release schema、所需表和完整资源在构建端与消费端均验证。
+- release schema、所需表、素材范围和版本绑定在构建端与消费端均验证；
+- 消费者验证正常 PNG、缺图降级、下载失败与恢复，以及不完整结果不写完整缓存。
+  不要求官方全部素材齐全；上游素材缺口单独由 SeerAPI 处理。
+
+**职责边界确认（2026-09-12）：** 官方图标采集、SWF 转 PNG 和素材发布属于
+SeerAPI。机器人通过发布事实取得 PNG 对应关系，复用素材下载缓存并排版最终回复图。
+不得为了收尾在机器人新增资源采集或转换。以上调整替代历史记录中“补齐全部缺图
+才能关闭 Phase 4”的要求，不追溯改写测试结果，也不自动将阶段标为完成。
+仍需逐类证明消费路径和缓存行为；新产物只需满足明确的 schema 与素材可用状态契约，
+不能把缺图伪报为完整。Phase 5 已并行进行，4/8 表示四个已验收阶段，不是它尚未开始。
 
 **删除条件：** 运行时 SWF 转换、renderer 数据库读取和文本关联猜测全部删除。
 
