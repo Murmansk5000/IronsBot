@@ -933,6 +933,22 @@ def test_missing_required_resource_id_stays_required(resource_id: int) -> None:
     assert asset.key is None
 
 
+@pytest.mark.parametrize(
+    "item",
+    [
+        _item("skill", 9, type_id="invalid"),
+        _item("pet", 9, resource_id="invalid"),
+        _item("achievement", 9, titles="invalid"),
+        _item("autocard_sanctuary_effect", 9, unlock_round="invalid"),
+    ],
+)
+def test_malformed_published_payload_is_not_rendered_as_complete(
+    item: NewContentItem,
+) -> None:
+    with pytest.raises(PublishedDataIncompleteError):
+        _prepared(_RichData({}), item)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["row", "query", "type", "prop"])
 async def test_partial_menu_recovers_then_hits_complete_file_cache(

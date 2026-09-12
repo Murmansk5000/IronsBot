@@ -15,6 +15,7 @@ from seerapi_models import (
     TitlePartORM,
 )
 
+from ironsbot.core.value_coercion import require_int
 from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
@@ -91,13 +92,17 @@ class NewContentSnapshotBuilder:
     def prepare_item(self, item: NewContentItem) -> NewContentPreparedItem:
         """Resolve every database and service value before the renderer awaits."""
 
-        autocard_entry = self._autocard_entry(item)
-        details = self._item_details(item, autocard_entry)
-        return NewContentPreparedItem(
-            item=item,
-            details=details,
-            asset=self._asset_request(item, autocard_entry),
-        )
+        try:
+            autocard_entry = self._autocard_entry(item)
+            details = self._item_details(item, autocard_entry)
+            asset = self._asset_request(item, autocard_entry)
+        except DataUnavailableError:
+            raise
+        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as error:
+            raise PublishedDataIncompleteError(
+                f"new_content_{item.category}", entity_id=item.entity_id
+            ) from error
+        return NewContentPreparedItem(item=item, details=details, asset=asset)
 
     def _item_details(
         self,
@@ -281,7 +286,10 @@ class NewContentSnapshotBuilder:
         if item.category == "skill":
             return None
         if item.category in {"pet", "peak_pool"}:
-            resource_id = int(item.payload.get("resource_id", item.entity_id))
+            resource_id = require_int(
+                item.payload.get("resource_id", item.entity_id),
+                field=f"{item.category}.resource_id",
+            )
             return _seer_asset("pet_head", resource_id, required=True)
         if item.category == "pet_skin":
             return _seer_asset(
@@ -318,7 +326,10 @@ class NewContentSnapshotBuilder:
         return (
             resolution.head_resource_id
             if resolution is not None and resolution.head_resource_id > 0
-            else int(item.payload.get("resource_id", item.entity_id))
+            else require_int(
+                item.payload.get("resource_id", item.entity_id),
+                field="pet_skin.resource_id",
+            )
         )
 
 
@@ -378,7 +389,9 @@ def _fallback_details(item: NewContentItem) -> NewContentItemDetails:
     change = "修改" if item.change_kind == "modified" else "新增"
     if item.category == "autocard_sanctuary_effect":
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
-        phase = int(item.payload.get("unlock_round", 0))
+        phase = require_int(
+            item.payload.get("unlock_round", 0), field="sanctuary.unlock_round"
+        )
         return NewContentItemDetails(
             metadata=f"ID：{item.entity_id}",
             description=(
@@ -441,16 +454,20 @@ def _gender_name(value: str) -> str:
 
 def _first_title(item: NewContentItem) -> tuple[int, str]:
     titles = item.payload.get("titles", [])
-    first_title = titles[0] if isinstance(titles, list) and titles else {}
+    if not isinstance(titles, list):
+        raise TypeError("achievement.titles")
+    if not titles:
+        return 0, ""
+    first_title = titles[0]
     if not isinstance(first_title, dict):
-        return 0, ""
-    try:
-        return (
-            int(first_title.get("id", first_title.get("title_id", 0))),
-            str(first_title.get("name", "")),
-        )
-    except (TypeError, ValueError):
-        return 0, ""
+        raise TypeError("achievement.titles")
+    return (
+        require_int(
+            first_title.get("id", first_title.get("title_id", 0)),
+            field="achievement.title_id",
+        ),
+        str(first_title.get("name", "")),
+    )
 
 
 def _sanctuary_relation(payload: dict[str, object]) -> tuple[str, int]:
@@ -476,13 +493,10 @@ def _sanctuary_relation(payload: dict[str, object]) -> tuple[str, int]:
 
 def _payload_id(payload: dict[str, object], *keys: str) -> int:
     for key in keys:
-        raw_value = payload.get(key, 0)
-        if not isinstance(raw_value, int | str | float):
+        raw_value = payload.get(key)
+        if raw_value is None:
             continue
-        try:
-            value = int(raw_value)
-        except (TypeError, ValueError):
-            continue
+        value = require_int(raw_value, field=key)
         if value > 0:
             return value
     return 0

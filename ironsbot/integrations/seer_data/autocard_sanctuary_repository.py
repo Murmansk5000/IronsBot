@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from ironsbot.core.value_coercion import require_int
+
 if TYPE_CHECKING:
     from sqlmodel import Session
 
@@ -89,12 +91,7 @@ def _value(row: object, name: str, index: int) -> object:
 
 
 def _as_int(value: object) -> int:
-    if isinstance(value, bool):
-        raise TypeError
-    try:
-        return int(str(value))
-    except (TypeError, ValueError) as error:
-        raise ValueError from error
+    return require_int(value, field="autocard_sanctuary")
 
 
 def _as_text(value: object) -> str:

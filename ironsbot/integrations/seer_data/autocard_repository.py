@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from ironsbot.core.value_coercion import require_int
+
 if TYPE_CHECKING:
     from sqlmodel import Session
 
@@ -76,7 +78,7 @@ def load_autocard_dataset(session: Session) -> AutocardDataset:
         cards=cards,
         roles=roles,
         natures={
-            _required_int(row.get("id"), field="autocard_nature.id"): str(
+            require_int(row.get("id"), field="autocard_nature.id"): str(
                 row.get("name") or ""
             )
             for row in nature_rows
@@ -97,7 +99,7 @@ def _load_json_rows(
             raise TypeError(table_name)
         if table_name == "autocard_card":
             for field in _CARD_INTEGER_FIELDS:
-                item[field] = _required_int(
+                item[field] = require_int(
                     item.get(field),
                     field=f"autocard_card.{field}",
                 )
@@ -131,20 +133,20 @@ def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
             raise TypeError("autocard_role_raw")
         item.update(
             {
-                "id": _required_int(columns["id"], field="autocard_role.id"),
+                "id": require_int(columns["id"], field="autocard_role.id"),
                 "name": str(columns["name"]),
                 "desc": str(columns["description"]),
-                "health": _required_int(
+                "health": require_int(
                     columns["health"], field="autocard_role.health"
                 ),
                 "skillTxt": str(columns["skill_desc"]),
-                "nature": _required_int(
+                "nature": require_int(
                     columns["element_type_id"], field="autocard_role.element_type_id"
                 ),
-                "picID": _required_int(
+                "picID": require_int(
                     columns["pic_id"], field="autocard_role_raw.pic_id"
                 ),
-                "skillID": _required_int(
+                "skillID": require_int(
                     columns["skill_id"], field="autocard_role_raw.skill_id"
                 ),
                 "skillName": str(columns["skill_name"]),
@@ -153,12 +155,3 @@ def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
         )
         values.append(item)
     return tuple(values)
-
-
-def _required_int(value: object, *, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int | float | str):
-        raise TypeError(field)
-    try:
-        return int(value)
-    except (TypeError, ValueError) as error:
-        raise ValueError(field) from error

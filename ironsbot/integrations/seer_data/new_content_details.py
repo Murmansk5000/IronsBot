@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from seerapi_models import PetORM, SkillORM, TypeCombinationORM
 
+from ironsbot.core.value_coercion import require_int
 from ironsbot.services.seer.rendering.analyze_description import (
     format_analyze_description,
     format_plain_analyze_description,
@@ -81,12 +82,7 @@ def load_new_content_peak_pool_details(
 def _peak_pool_limit_text(value: object) -> str:
     if value is None:
         return "不限"
-    if not isinstance(value, int | float | str):
-        return "未知"
-    try:
-        return f"限{int(value)}"
-    except (TypeError, ValueError):
-        return "未知"
+    return f"限{require_int(value, field='peak_pool.limit')}"
 
 
 def load_new_content_skill_details(
@@ -199,13 +195,7 @@ def _skill_effect_text(effect: object) -> str:
 
 
 def _payload_int(payload: dict[str, object], key: str) -> int:
-    value = payload.get(key, 0)
-    if not isinstance(value, int | float | str):
-        return 0
-    try:
-        return int(value)
-    except ValueError:
-        return 0
+    return require_int(payload.get(key, 0), field=f"skill.{key}")
 
 
 def _skill_related_pets(value: object) -> str:
