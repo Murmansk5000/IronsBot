@@ -15,6 +15,7 @@ from sqlmodel import Session, col, select
 
 from ironsbot.services.seer.pet_info_views import (
     PetCoreSnapshot,
+    PetInfoDataError,
     PetInfoSnapshot,
     PetItemPriceSnapshot,
     PetItemSnapshot,
@@ -35,12 +36,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 ITEM_EXCHANGE_PRICE_TABLE = "item_exchange_price"
 MAX_ITEM_EXCHANGE_PRICE_ROWS = 3
-_LEGACY_CURRENCY_NAMES = {1726710: "共鸣锚点", 1726992: "共振晶体"}
-_SPECIAL_SKILL_SHOP_SOURCE_KEY = "special_skill_shop"
-_SPECIAL_SKILL_SHOP_SOURCE_NAME = "微光秘境"
-_NORMALIZED_PARTNER_UPGRADE_SOURCE = (
-    "ConfigPackage/partnerEffectUpgrade.bytes#normalized-v1"
-)
 _HIDDEN_SKILL_ID = 19002
 
 
@@ -48,6 +43,13 @@ class PetInfoRepository:
     """Load every database value required for one detached pet render snapshot."""
 
     def load(self, session: Session, pet_id: int) -> PetInfoSnapshot | None:
+        try:
+            return self._load(session, pet_id)
+        except SQLAlchemyError as error:
+            logger.exception("published pet data query failed: pet_id=%s", pet_id)
+            raise PetInfoDataError(pet_id) from error
+
+    def _load(self, session: Session, pet_id: int) -> PetInfoSnapshot | None:
         pet = session.get(PetORM, pet_id)
         if pet is None:
             return None
@@ -255,28 +257,16 @@ def _load_item_exchange_prices(
     ids = tuple(sorted({int(item_id) for item_id in item_ids if item_id > 0}))
     if not ids:
         return {}
-    columns = _table_columns(session, ITEM_EXCHANGE_PRICE_TABLE)
-    item_name = (
-        "COALESCE(NULLIF(item.name, ''), NULLIF(exchange_price.item_name, ''), '')"
-        if "item_name" in columns
-        else "COALESCE(item.name, '')"
-    )
-    currency_name = (
-        "COALESCE(NULLIF(exchange_price.currency_name, ''), "
-        "NULLIF(currency.name, ''), '')"
-        if "currency_name" in columns
-        else "COALESCE(currency.name, '')"
-    )
     statement = text(
         f"""
         SELECT exchange_price.item_id,
-               CASE WHEN exchange_price.source_key = :special_key
-                    THEN :special_name
-                    ELSE exchange_price.source_name
-               END AS source_name,
-               {item_name} AS item_name,
+               exchange_price.source_name,
+               COALESCE(NULLIF(item.name, ''),
+                        NULLIF(exchange_price.item_name, ''), '') AS item_name,
                exchange_price.item_quantity, exchange_price.currency_item_id,
-               {currency_name} AS currency_name, exchange_price.amount,
+               COALESCE(NULLIF(exchange_price.currency_name, ''),
+                        NULLIF(currency.name, ''), '') AS currency_name,
+               exchange_price.amount,
                exchange_price.purchase_limit
         FROM {ITEM_EXCHANGE_PRICE_TABLE} AS exchange_price
         LEFT JOIN item ON item.id = exchange_price.item_id
@@ -288,19 +278,13 @@ def _load_item_exchange_prices(
                  exchange_price.amount, exchange_price.source_entry_id
         """
     ).bindparams(bindparam("item_ids", expanding=True))
-    try:
-        rows = session.execute(
-            statement,
-            {
-                "item_ids": ids,
-                "now": int(time.time()),
-                "special_key": _SPECIAL_SKILL_SHOP_SOURCE_KEY,
-                "special_name": _SPECIAL_SKILL_SHOP_SOURCE_NAME,
-            },
-        ).mappings()
-    except SQLAlchemyError:
-        logger.debug("item exchange price data is unavailable", exc_info=True)
-        return {}
+    rows = session.execute(
+        statement,
+        {
+            "item_ids": ids,
+            "now": int(time.time()),
+        },
+    ).mappings()
 
     result: dict[int, list[PetItemPriceSnapshot]] = {}
     for row in rows:
@@ -317,8 +301,7 @@ def _load_item_exchange_prices(
                 item_quantity=int(row["item_quantity"] or 1),
                 currency_item_id=currency_id,
                 currency_name=(
-                    currency_name
-                    or _LEGACY_CURRENCY_NAMES.get(currency_id, f"道具{currency_id}")
+                    currency_name or f"未收录道具（{currency_id}）"
                 ),
                 amount=int(row["amount"]),
                 purchase_limit=(
@@ -331,14 +314,6 @@ def _load_item_exchange_prices(
     return {item_id: tuple(prices) for item_id, prices in result.items()}
 
 
-def _table_columns(session: Session, name: str) -> set[str]:
-    try:
-        rows = session.execute(text(f"PRAGMA table_info({name})")).mappings()
-        return {str(row["name"]) for row in rows}
-    except SQLAlchemyError:
-        return set()
-
-
 def _load_partner(session: Session, pet_id: int) -> PetPartnerSnapshot | None:
     statement = text(
         """
@@ -347,14 +322,10 @@ def _load_partner(session: Session, pet_id: int) -> PetPartnerSnapshot | None:
                COALESCE(NULLIF(cost_item.name, ''), partner_group.cost_item_name)
                    AS cost_item_name,
                partner_group.cost_item_quantity,
-               CASE WHEN partner_upgrade.source = :normalized_source
-                    THEN COALESCE(partner_upgrade.before_description, '')
-                    ELSE COALESCE(partner_upgrade.after_description, '')
-               END AS before_description,
-               CASE WHEN partner_upgrade.source = :normalized_source
-                    THEN COALESCE(partner_upgrade.after_description, '')
-                    ELSE COALESCE(partner_upgrade.before_description, '')
-               END AS after_description,
+               COALESCE(partner_upgrade.before_description, '')
+                   AS before_description,
+               COALESCE(partner_upgrade.after_description, '')
+                   AS after_description,
                partner_upgrade.skill_id, COALESCE(skill.name, '') AS skill_name,
                activation_item.id AS activation_item_id,
                COALESCE(activation_item.name, '') AS activation_item_name,
@@ -376,14 +347,7 @@ def _load_partner(session: Session, pet_id: int) -> PetPartnerSnapshot | None:
         LIMIT 1
         """
     )
-    try:
-        row = session.execute(
-            statement,
-            {"pet_id": pet_id, "normalized_source": _NORMALIZED_PARTNER_UPGRADE_SOURCE},
-        ).mappings().first()
-    except SQLAlchemyError:
-        logger.debug("pet partner data is unavailable", exc_info=True)
-        return None
+    row = session.execute(statement, {"pet_id": pet_id}).mappings().first()
     if row is None:
         return None
 

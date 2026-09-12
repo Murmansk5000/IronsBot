@@ -4,11 +4,9 @@
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.services.seer.pet_info_views import (
     PetDerivedDisplayData,
@@ -21,9 +19,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from sqlalchemy.orm import Session
-
-logger = logging.getLogger(__name__)
-
 
 def load_pet_derived_display_data(
     session: Session,
@@ -50,46 +45,38 @@ def load_pet_derived_display_data(
 
 
 def _load_effect_rows(session: Session, pet_id: int) -> list[dict[str, object]]:
-    try:
-        return [
-            dict(row)
-            for row in session.execute(
-                text(
-                    """
-                    SELECT effect_key, glossary_id, status_id, name, description
-                    FROM pet_special_effect
-                    WHERE pet_id = :pet_id
-                    ORDER BY sort_id IS NULL, sort_id, effect_key
-                    """
-                ),
-                {"pet_id": pet_id},
-            ).mappings()
-        ]
-    except SQLAlchemyError:
-        logger.debug("pet special-effect facts are unavailable", exc_info=True)
-        return []
+    return [
+        dict(row)
+        for row in session.execute(
+            text(
+                """
+                SELECT effect_key, glossary_id, status_id, name, description
+                FROM pet_special_effect
+                WHERE pet_id = :pet_id
+                ORDER BY sort_id IS NULL, sort_id, effect_key
+                """
+            ),
+            {"pet_id": pet_id},
+        ).mappings()
+    ]
 
 
 def _load_effect_source_rows(
     session: Session,
     pet_id: int,
 ) -> dict[str, list[dict[str, object]]]:
-    try:
-        rows = session.execute(
-            text(
-                """
-                SELECT effect_key, source_kind, source_id, resolution_rule,
-                       source_detail
-                FROM pet_special_effect_source
-                WHERE pet_id = :pet_id
-                ORDER BY effect_key, source_kind, source_id, resolution_rule
-                """
-            ),
-            {"pet_id": pet_id},
-        ).mappings()
-    except SQLAlchemyError:
-        logger.debug("pet special-effect sources are unavailable", exc_info=True)
-        return {}
+    rows = session.execute(
+        text(
+            """
+            SELECT effect_key, source_kind, source_id, resolution_rule,
+                   source_detail
+            FROM pet_special_effect_source
+            WHERE pet_id = :pet_id
+            ORDER BY effect_key, source_kind, source_id, resolution_rule
+            """
+        ),
+        {"pet_id": pet_id},
+    ).mappings()
 
     result: dict[str, list[dict[str, object]]] = {}
     for row in rows:
@@ -150,23 +137,19 @@ def _load_soulmark_display_data(
     session: Session,
     pet_id: int,
 ) -> tuple[dict[int, int], dict[int, str]]:
-    try:
-        rows = tuple(
-            session.execute(
-                text(
-                    """
-                    SELECT soulmark_id, display_order, display_kind
-                    FROM pet_soulmark_display
-                    WHERE pet_id = :pet_id
-                    ORDER BY display_order, soulmark_id
-                    """
-                ),
-                {"pet_id": pet_id},
-            )
+    rows = tuple(
+        session.execute(
+            text(
+                """
+                SELECT soulmark_id, display_order, display_kind
+                FROM pet_soulmark_display
+                WHERE pet_id = :pet_id
+                ORDER BY display_order, soulmark_id
+                """
+            ),
+            {"pet_id": pet_id},
         )
-    except SQLAlchemyError:
-        logger.debug("pet soulmark display facts are unavailable", exc_info=True)
-        return {}, {}
+    )
     return (
         {int(row[0]): int(row[1]) for row in rows},
         {int(row[0]): str(row[2]) for row in rows},
@@ -188,24 +171,20 @@ def _load_soulmark_icons(
     params.update(
         {f"soulmark_{index}": soulmark_id for index, soulmark_id in enumerate(ids)}
     )
-    try:
-        rows = session.execute(
-            text(
-                f"""
-                SELECT soulmark_id, icon_id, icon_png, icon_png_content_type
-                FROM soulmark_icon
-                WHERE pet_id = :pet_id
-                  AND soulmark_id IN ({placeholders})
-                  AND icon_png_available = 1
-                  AND icon_png IS NOT NULL
-                ORDER BY soulmark_id, icon_id
-                """
-            ),
-            params,
-        ).mappings()
-    except SQLAlchemyError:
-        logger.debug("pre-rendered soulmark icon facts are unavailable", exc_info=True)
-        return {}
+    rows = session.execute(
+        text(
+            f"""
+            SELECT soulmark_id, icon_id, icon_png, icon_png_content_type
+            FROM soulmark_icon
+            WHERE pet_id = :pet_id
+              AND soulmark_id IN ({placeholders})
+              AND icon_png_available = 1
+              AND icon_png IS NOT NULL
+            ORDER BY soulmark_id, icon_id
+            """
+        ),
+        params,
+    ).mappings()
 
     result: dict[int, SoulmarkIconAsset] = {}
     for row in rows:
@@ -224,23 +203,19 @@ def _load_soulmark_display_additions(
     pet_id: int,
 ) -> tuple[PetSoulmarkDisplayAddition, ...]:
     """Load explicit build-time corrections without renderer-side pet branches."""
-    try:
-        rows = session.execute(
-            text(
-                """
-                SELECT display_id, description, analyze_description,
-                       formatting_adjustment, intensified, intensified_to_id,
-                       is_adv, pve_effective, tags_json
-                FROM pet_soulmark_display_addition
-                WHERE pet_id = :pet_id
-                ORDER BY display_order, display_id
-                """
-            ),
-            {"pet_id": pet_id},
-        ).mappings()
-    except SQLAlchemyError:
-        logger.debug("soulmark display additions are unavailable", exc_info=True)
-        return ()
+    rows = session.execute(
+        text(
+            """
+            SELECT display_id, description, analyze_description,
+                   formatting_adjustment, intensified, intensified_to_id,
+                   is_adv, pve_effective, tags_json
+            FROM pet_soulmark_display_addition
+            WHERE pet_id = :pet_id
+            ORDER BY display_order, display_id
+            """
+        ),
+        {"pet_id": pet_id},
+    ).mappings()
     return tuple(
         PetSoulmarkDisplayAddition(
             id=int(row["display_id"]),

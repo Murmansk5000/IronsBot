@@ -8,6 +8,7 @@ import pytest
 
 from ironsbot.integrations.seer_data.skin_image_resolution import SkinImageResolution
 from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
+from ironsbot.services.seer.pet_info_views import PetInfoDataError
 from ironsbot.services.seer.pet_query import (
     PetImageSelection,
     PetQueryService,
@@ -194,6 +195,27 @@ async def test_pet_info_does_not_disguise_renderer_defects_as_missing_assets() -
     )
     with pytest.raises(ValueError, match="invalid render document"):
         await service.select_info(1)
+
+
+@pytest.mark.asyncio
+async def test_pet_info_reports_incomplete_published_data() -> None:
+    data = FakeData()
+    data.pets = (_pet(1, "精灵"),)
+
+    async def render(_pet_id: int) -> bytes:
+        raise PetInfoDataError(1)
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data), cast("SeerImageSource", FakeImages()), render,
+    )
+
+    reply = (await service.select_info(1)).reply
+
+    assert reply is not None
+    assert not reply.complete
+    assert reply.image is None
+    assert reply.leading_text == "【精灵】（1）"
+    assert reply.image_error == "精灵资料数据不完整，暂时无法生成资料图。"
 
 
 @pytest.mark.asyncio

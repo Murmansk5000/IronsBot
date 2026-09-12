@@ -45,6 +45,22 @@ def _create_published_fact_tables(session: Session) -> None:
     session.execute(
         text(
             """
+            CREATE TABLE pet_soulmark_display_addition (
+                pet_id INTEGER NOT NULL, display_id INTEGER NOT NULL,
+                description TEXT NOT NULL, analyze_description TEXT,
+                formatting_adjustment TEXT, intensified INTEGER NOT NULL,
+                intensified_to_id INTEGER, is_adv INTEGER NOT NULL,
+                pve_effective INTEGER, tags_json TEXT NOT NULL,
+                display_order INTEGER NOT NULL, source TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (pet_id, display_id)
+            )
+            """
+        )
+    )
+    session.execute(
+        text(
+            """
             CREATE TABLE pet_special_effect_source (
                 pet_id INTEGER NOT NULL, effect_key TEXT NOT NULL,
                 source_kind TEXT NOT NULL, source_id INTEGER NOT NULL,

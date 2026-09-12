@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: MIT
+import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, create_engine
 
 from ironsbot.integrations.seer_data.pet_info_repository import (
+    PetInfoRepository,
     _load_item_exchange_prices,
 )
+from ironsbot.services.seer.pet_info_views import PetInfoDataError
 
 ACTIVATION_ITEM_ID = 1728296
 CURRENCY_ITEM_ID = 1726710
@@ -142,12 +146,25 @@ def test_load_item_exchange_prices_ignores_expired_listings() -> None:
     assert prices[ACTIVATION_ITEM_ID][0].source_name == "战令商店"
 
 
-def test_load_item_exchange_prices_allows_an_older_database_without_table() -> None:
-    with Session(create_engine("sqlite://")) as session:
-        assert _load_item_exchange_prices(session, [ACTIVATION_ITEM_ID]) == {}
+def test_load_item_exchange_prices_rejects_database_without_published_table() -> None:
+    with (
+        Session(create_engine("sqlite://")) as session,
+        pytest.raises(OperationalError),
+    ):
+        _load_item_exchange_prices(session, [ACTIVATION_ITEM_ID])
 
 
-def test_load_item_exchange_prices_names_legacy_special_skill_currency() -> None:
+def test_pet_info_repository_translates_published_schema_failures() -> None:
+    with (
+        Session(create_engine("sqlite://")) as session,
+        pytest.raises(PetInfoDataError) as raised,
+    ):
+        PetInfoRepository().load(session, 1)
+
+    assert raised.value.pet_id == 1
+
+
+def test_load_item_exchange_prices_uses_published_source_and_currency_names() -> None:
     engine = create_engine("sqlite://")
     with engine.begin() as connection:
         connection.execute(
@@ -171,6 +188,7 @@ def test_load_item_exchange_prices_names_legacy_special_skill_currency() -> None
                     item_name TEXT NOT NULL,
                     item_quantity INTEGER NOT NULL,
                     currency_item_id INTEGER NOT NULL,
+                    currency_name TEXT NOT NULL,
                     amount INTEGER NOT NULL,
                     purchase_limit INTEGER,
                     start_time INTEGER NOT NULL,
@@ -185,9 +203,9 @@ def test_load_item_exchange_prices_names_legacy_special_skill_currency() -> None
             text(
                 """
                 INSERT INTO item_exchange_price VALUES (
-                    'special_skill_shop', '追加技能商店', 1,
+                    'special_skill_shop', '微光秘境', 1,
                     1727009, '魔灵密卷', 1, 1726992,
-                    400, 1, 0, 0, 0
+                    '共振晶体', 400, 1, 0, 0, 0
                 )
                 """
             )
