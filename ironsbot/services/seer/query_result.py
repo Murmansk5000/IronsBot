@@ -22,6 +22,7 @@ class QueryReply:
     query_work: QueryWorkResult | None = None
     # Partial replies are deliverable but cannot populate the complete-reply cache.
     complete: bool = True
+    fetched_at: float | None = None
 
     @property
     def rank_lookup_complete(self) -> bool:
