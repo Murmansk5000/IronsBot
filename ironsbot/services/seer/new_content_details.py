@@ -1,12 +1,79 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Platform-neutral text details for items in the weekly new-content index."""
+"""Platform-neutral detail selection and text for the weekly content index."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from .autocard import AutocardEntry, AutocardPromptValue
+from .new_content import NewContentSnapshotChangedError
+from .pet_query import PetImageSelection
+from .query_result import QueryReply
+
 if TYPE_CHECKING:
-    from .new_content import NewContentItem
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
+
+    from .autocard import AutocardService
+    from .equipment import EquipmentQueryService
+    from .mintmark import MintmarkQueryService
+    from .new_content import NewContentItem, NewContentSnapshot
+    from .pet_query import PetQueryService
+
+
+NewContentDetail = str | QueryReply | AutocardEntry | None
+
+
+@dataclass(frozen=True, slots=True)
+class NewContentDetailService:
+    """Reuse domain selectors; platform adapters only deliver the returned detail."""
+
+    pet: PetQueryService
+    mintmark: MintmarkQueryService
+    equipment: EquipmentQueryService
+    autocard: AutocardService
+    selection_scope: Callable[[NewContentSnapshot], AbstractContextManager[None]]
+
+    async def select(
+        self, snapshot: NewContentSnapshot, item: NewContentItem
+    ) -> NewContentDetail:
+        if item not in snapshot.items:
+            raise NewContentSnapshotChangedError
+        with self.selection_scope(snapshot):
+            return await self._select(item)
+
+    async def _select(self, item: NewContentItem) -> NewContentDetail:
+        if item.category == "autocard_sanctuary_effect":
+            return format_new_content_autocard_sanctuary_effect_detail(item)
+        if item.category == "achievement":
+            return format_new_content_achievement_detail(item)
+        if item.category == "skill":
+            return format_new_content_skill_detail(item)
+        if item.category in {"autocard_card", "autocard_role"}:
+            return self.autocard.select(
+                AutocardPromptValue(
+                    kind="role" if item.category == "autocard_role" else "card",
+                    item_id=item.entity_id,
+                )
+            )
+        if item.category in {"pet", "peak_pool"}:
+            result = await self.pet.select_info(item.entity_id)
+        elif item.category == "pet_skin":
+            result = await self.pet.select_image(
+                PetImageSelection(
+                    resource_id=int(item.payload.get("resource_id", item.entity_id)),
+                    name=item.name,
+                    skin_id=item.entity_id,
+                )
+            )
+        elif item.category == "mintmark":
+            result = await self.mintmark.select_mintmark(item.entity_id)
+        else:
+            result = await self.equipment.select(
+                "suit" if item.category == "suit" else "equip", item.entity_id
+            )
+        return result.message or result.reply
 
 
 def format_new_content_achievement_detail(item: NewContentItem) -> str:

@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: MIT
 import logging
-from collections.abc import Callable, Iterator
-from contextlib import ExitStack, contextmanager
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import ExitStack, closing, contextmanager
+from threading import RLock
+from types import MappingProxyType
 
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import create_engine
 
-from ironsbot.integrations.storage.sqlite import SqliteDatabase
+from ironsbot.integrations.storage.sqlite import open_sqlite_connection
 
 logger = logging.getLogger(__name__)
 DatabaseLoadListener = Callable[[], object]
@@ -26,6 +28,9 @@ class DatabaseManager:
         self._engines: dict[str, Engine] = {}
         self._load_listeners: dict[str, list[DatabaseLoadListener]] = {}
         self._load_validators: dict[str, list[DatabaseLoadValidator]] = {}
+        self._lock = RLock()
+        self._leases: dict[Engine, int] = {}
+        self._retired: set[Engine] = set()
 
     @staticmethod
     def _create_memory_engine() -> Engine:
@@ -37,15 +42,14 @@ class DatabaseManager:
         )
 
     def register(self, name: str) -> None:
-        """注册一个命名的内存数据库引擎。若同名引擎已存在，先释放旧引擎。"""
-        if name in self._engines:
-            self._engines[name].dispose()
-        self._engines[name] = self._create_memory_engine()
+        """Register a new engine; active snapshots retain the previous one."""
+        self._replace_engine(name, self._create_memory_engine())
         logger.debug(f"已注册内存数据库引擎 '{name}'")
 
     def get_engine(self, name: str) -> Engine | None:
         """获取指定名称的数据库引擎。"""
-        return self._engines.get(name)
+        with self._lock:
+            return self._engines.get(name)
 
     def add_load_listener(
         self,
@@ -67,49 +71,88 @@ class DatabaseManager:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
 
-        with SqliteDatabase(file_path, pragmas=False).connect() as source:
-            raw_conn = new_engine.raw_connection()
-            try:
-                source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
-            finally:
-                raw_conn.close()
-
         try:
+            with closing(open_sqlite_connection(file_path, read_only=True)) as source:
+                raw_conn = new_engine.raw_connection()
+                try:
+                    source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
+                finally:
+                    raw_conn.close()
             self._validate_loaded(name, new_engine)
-        except Exception:
+        except BaseException:
             new_engine.dispose()
             raise
 
-        old_engine = self._engines.get(name)
-        self._engines[name] = new_engine
-        if old_engine is not None:
-            old_engine.dispose()
+        self._replace_engine(name, new_engine)
         logger.debug(f"已从文件导入数据到内存数据库 '{name}'")
         self._notify_loaded(name)
 
     @contextmanager
     def session(self, name: str) -> Iterator[SQLModelSession | None]:
-        engine = self.get_engine(name)
-        if engine is None:
-            yield None
-            return
-        with SQLModelSession(engine) as session:
-            yield session
+        with self.snapshot((name,)) as engines:
+            engine = engines.get(name)
+            if engine is None:
+                yield None
+                return
+            with SQLModelSession(engine) as session:
+                yield session
 
     @contextmanager
     def all_sessions(self) -> Iterator[dict[str, SQLModelSession]]:
-        with ExitStack() as stack:
+        with self.snapshot() as engines, ExitStack() as stack:
             yield {
                 name: stack.enter_context(SQLModelSession(engine))
-                for name, engine in self._engines.items()
+                for name, engine in engines.items()
             }
 
     def close(self) -> None:
-        for engine in self._engines.values():
+        with self._lock:
+            for engine in self._engines.values():
+                self._retire_engine(engine)
+            self._engines.clear()
+            self._load_listeners.clear()
+            self._load_validators.clear()
+
+    @contextmanager
+    def snapshot(
+        self,
+        names: Iterable[str] | None = None,
+    ) -> Iterator[Mapping[str, Engine]]:
+        """Keep selected engine generations alive without opening SQL sessions."""
+        with self._lock:
+            selected = {
+                name: self._engines[name]
+                for name in (self._engines if names is None else names)
+                if name in self._engines
+            }
+            for engine in selected.values():
+                self._leases[engine] = self._leases.get(engine, 0) + 1
+        try:
+            yield MappingProxyType(selected)
+        finally:
+            with self._lock:
+                for engine in selected.values():
+                    remaining = self._leases[engine] - 1
+                    if remaining:
+                        self._leases[engine] = remaining
+                    else:
+                        del self._leases[engine]
+                        if engine in self._retired:
+                            self._retired.remove(engine)
+                            engine.dispose()
+
+    def _replace_engine(self, name: str, engine: Engine) -> None:
+        with self._lock:
+            previous = self._engines.get(name)
+            self._engines[name] = engine
+            if previous is not None:
+                self._retire_engine(previous)
+
+    def _retire_engine(self, engine: Engine) -> None:
+        if self._leases.get(engine, 0):
+            self._retired.add(engine)
+        else:
             engine.dispose()
-        self._engines.clear()
-        self._load_listeners.clear()
-        self._load_validators.clear()
 
     def _validate_loaded(self, name: str, engine: Engine) -> None:
         for validator in self._load_validators.get(name, ()):

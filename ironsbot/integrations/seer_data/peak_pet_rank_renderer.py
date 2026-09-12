@@ -30,7 +30,8 @@ async def render_peak_pet_rank(
 ) -> bytes:
     """Render one pet rank after cache lookup and shared asset retrieval."""
     request_key = render_request_cache_key(_CACHE_CATEGORY, input_)
-    if cached := cache.get(_CACHE_CATEGORY, request_key):
+    cache_entry = cache.entry(_CACHE_CATEGORY, request_key)
+    if cached := cache_entry.get():
         return cached
     assets = await load_pet_image_assets(
         images,
@@ -39,5 +40,5 @@ async def render_peak_pet_rank(
     )
     document = present_peak_pet_rank(input_, assets)
     rendered = await render_peak_pet_rank_document(render_html, document)
-    cache.put(_CACHE_CATEGORY, request_key, rendered)
+    cache_entry.put(rendered)
     return rendered
