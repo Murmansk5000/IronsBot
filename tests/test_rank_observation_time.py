@@ -680,6 +680,70 @@ async def test_persisted_linear_miss_keeps_oldest_page_time(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change", ["replacement", "empty", "duplicate", "score", "stable"]
+)
+async def test_rank_adjustment_requires_player_and_complete_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+) -> None:
+    rank = replace(
+        _service(tmp_path), exclusions=RankExclusionPolicy(frozenset({999_999}), {})
+    )
+    rank.cache.save(
+        key=240,
+        sub_key=1,
+        start=TARGET_INDEX,
+        end=TARGET_INDEX,
+        items=[RankEntry(PLAYER_ID, "cached", 100)],
+        fetched_at=time() - 10,
+    )
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        items = [
+            RankEntry(
+                PLAYER_ID if index == TARGET_INDEX else index, "player", LIMIT - index
+            )
+            for index in range(start, end + 1)
+        ]
+        if len(calls) > 1:
+            if change == "empty":
+                items = []
+            elif change == "replacement" and start == PAGE_SIZE:
+                items[-1] = RankEntry(999_998, "replacement", LIMIT - TARGET_INDEX)
+            elif change == "duplicate" and start == PAGE_SIZE:
+                items[0] = RankEntry(0, "duplicate", LIMIT - start)
+            elif change == "score" and start == PAGE_SIZE:
+                items[-1] = RankEntry(
+                    PLAYER_ID, "changed score", LIMIT - TARGET_INDEX - 1
+                )
+        return RankPageResult(items, SOURCE_TIME + len(calls))
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    result = await rank.find_rank(
+        cast("Any", None),
+        user_id=PLAYER_ID,
+        title="rank",
+        score_name="score",
+        key=240,
+        sub_key=1,
+    )
+    if change == "stable":
+        assert result.rank == TARGET_INDEX + 1
+        assert result.failure is None
+    else:
+        assert result.rank is None
+        assert result.failure is not None and "发生变化" in result.failure
+        assert result.score == LIMIT - TARGET_INDEX
+    assert calls == ([PAGE_SIZE, 0] if change == "empty" else [PAGE_SIZE, 0, PAGE_SIZE])
+
+
+@pytest.mark.asyncio
 async def test_visible_rank_includes_adjustment_page_time(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

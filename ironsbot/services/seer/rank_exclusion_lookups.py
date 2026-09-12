@@ -13,7 +13,10 @@ from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
-from ironsbot.services.seer.rank_pagination import RankPageSequence
+from ironsbot.services.seer.rank_pagination import (
+    RankPageConflictError,
+    RankPageSequence,
+)
 
 
 async def fetch_visible_rank_range(  # noqa: PLR0913
@@ -87,18 +90,24 @@ async def finalize_visible_lookup(  # noqa: PLR0913
     key: int,
     sub_key: int,
     result: RankLookupResult,
+    user_id: int,
 ) -> RankLookupResult:
     if result.rank is None:
         return result
-    result.rank = await visible_rank_for_raw_rank(
-        service,
-        game,
-        rank_key=rank_key,
-        key=key,
-        sub_key=sub_key,
-        raw_rank=result.rank,
-        result=result,
-    )
+    try:
+        result.rank = await visible_rank_for_raw_rank(
+            service,
+            game,
+            rank_key=rank_key,
+            key=key,
+            sub_key=sub_key,
+            raw_rank=result.rank,
+            result=result,
+            user_id=user_id,
+        )
+    except RankPageConflictError as error:
+        result.rank = None
+        result.failure = str(error)
     return result
 
 
@@ -111,12 +120,14 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
     sub_key: int,
     raw_rank: int,
     result: RankLookupResult,
+    user_id: int,
 ) -> int:
     excluded_ids = service.exclusion_policy.excluded_user_ids(rank_key)
     if not excluded_ids or raw_rank <= 0:
         return raw_rank
 
     raw_target_index = raw_rank - 1
+    sequence = RankPageSequence()
     remaining_ids = set(excluded_ids)
     visible_count = 0
     page_size = service.page_size()
@@ -132,6 +143,7 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
         )
         result.include_observation(page.fetched_at)
         page_items = page.items
+        sequence.include((int(item.id), int(item.score)) for item in page_items)
         for offset, item in enumerate(page_items):
             raw_index = raw_start + offset
             if raw_index > raw_target_index:
@@ -142,13 +154,15 @@ async def visible_rank_for_raw_rank(  # noqa: PLR0913
             else:
                 visible_count += 1
             if raw_index == raw_target_index:
+                if item_id != user_id or int(item.score) != result.score:
+                    raise RankPageConflictError
                 return visible_count
         if len(page_items) < page_size:
             break
         if not remaining_ids:
             return raw_rank - (raw_start + page_size - visible_count)
         raw_start += page_size
-    return visible_count
+    raise RankPageConflictError
 
 
 async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915

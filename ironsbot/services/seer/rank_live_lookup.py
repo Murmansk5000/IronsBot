@@ -63,6 +63,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
                 key=key,
                 sub_key=sub_key,
                 result=cached or result,
+                user_id=user_id,
             )
         if score_target is not None:
             result.cost.used_score_search = True
@@ -119,6 +120,7 @@ async def execute_rank_lookup(  # noqa: PLR0913
         key=key,
         sub_key=sub_key,
         result=result,
+        user_id=user_id,
     )
     if (
         score_target is None

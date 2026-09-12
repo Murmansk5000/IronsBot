@@ -162,3 +162,28 @@ Validation: full public suite 2886 passed, 319 existing dependency warnings,
 126.71 seconds; private native-enabled suite 43 passed. Full BasedPyright
 reported zero errors/warnings; Ruff, compileall and diff checks passed. No main
 merge, production data change or push. Overall verified phase count stays 4/8.
+
+## Visible Rank Identity Confirmation (2026-09-12)
+
+Contract: target. Visible-rank finalization now receives the requested player ID
+explicitly from both live-lookup paths. Before this change three regressions
+returned a fabricated rank: a replacement player at the old index (20), an empty
+prefix (0), and a duplicate player across prefix pages (20).
+
+Adjustment reuses RankPageSequence for ordered prefix validation. If it reaches
+the previously matched index, both player ID and score must agree with the
+positive observation. A truncated prefix cannot supply a confirmed rank. On a
+conflict finalization clears the rank, preserves the observed score, and returns
+the existing changing-leaderboard failure instead of an unranked claim.
+
+No extra network request, retry, persistent evidence field or new module was
+added. The existing early exit when every excluded account has been observed
+remains: this combines independently observed evidence and is not proof of one
+official snapshot. It does not guarantee detection of unobserved movement.
+
+Regression includes replacement, empty prefix, duplicate player, changed score
+and a stable positive result, with exact page-call assertions. 161 focused
+rank/player-cache/scheduler/size tests passed; targeted BasedPyright, Ruff,
+compileall and diff checks passed. The preceding 2886-test full checkpoint was
+not rerun for this narrower change. No production changes, main merge or push;
+Phase 6 and total verified phases remain in progress and 4/8 respectively.
