@@ -15,7 +15,7 @@ from ironsbot.services.seer.type_calc import TypeCombinationSnapshot, TypeMatchu
 def test_render_document_cache_key_includes_loaded_asset_content() -> None:
     target = TypeCombinationSnapshot(1, "草", 1, None)
     water = TypeCombinationSnapshot(2, "水", 2, None)
-    matchup = TypeMatchup(target, [(water, 2.0)], [], "grass")
+    matchup = TypeMatchup(target, [(water, 2.0)], [])
 
     original = present_type_matchup(
         matchup,
@@ -42,7 +42,7 @@ def test_render_document_cache_key_includes_loaded_asset_content() -> None:
 
 def test_render_document_cache_key_includes_renderer_fingerprint() -> None:
     target = TypeCombinationSnapshot(1, "草", 1, None)
-    matchup = TypeMatchup(target, [], [], "grass")
+    matchup = TypeMatchup(target, [], [])
     document = present_type_matchup(
         matchup,
         TypeMatchupAssets(
