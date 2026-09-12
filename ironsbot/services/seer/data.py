@@ -46,6 +46,10 @@ class DataUnavailableError(RuntimeError):
     pass
 
 
+class DataPublicationChangedError(DataUnavailableError):
+    """The loaded publication changed before an operation could deliver its result."""
+
+
 def load_data_generated_at(session: Session) -> datetime | None:
     metadata = session.exec(select(ApiMetadataORM)).first()
     return None if metadata is None else metadata.generate_time

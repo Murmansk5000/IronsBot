@@ -265,6 +265,14 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 offers,
             )
 
+    @contextmanager
+    def content_selection_scope(snapshot: NewContentSnapshot) -> Iterator[None]:
+        with seer_database.read_snapshot() as bound:
+            NewContentService(bound).require_snapshot(snapshot)
+            bound.require_current()
+            yield
+            bound.require_current()
+
     async def render_content_menu(  # noqa: PLR0913
         snapshot: NewContentSnapshot,
         display_categories: tuple[NewContentCategory, ...],
@@ -454,7 +462,9 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             rank_queries,
             rank_admin,
             render_content_menu,
-            NewContentDetailService(pet, mintmark, equipment, autocard),
+            NewContentDetailService(
+                pet, mintmark, equipment, autocard, content_selection_scope
+            ),
             external_references,
         ),
         lucky_skin_window=lucky_skin_window,

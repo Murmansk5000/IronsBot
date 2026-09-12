@@ -19,6 +19,7 @@ from sqlmodel import col, or_, select
 from ironsbot.services.seer.data import (
     SEERAPI_DB,
     DataGetter,
+    DataPublicationChangedError,
     DataQuery,
     DataResolver,
     DataUnavailableError,
@@ -44,7 +45,7 @@ from .mintmark_series_resolvers import resolve_custom_mintmark_series
 from .release_contract import validate_published_seerapi_release
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
     from datetime import datetime
 
     from seerapi_models import PetORM, PetSkinORM
@@ -88,9 +89,15 @@ class SeerSnapshotClosedError(DataUnavailableError):
 class SeerReadSnapshot:
     """One leased engine and its publication; SQL sessions stay short-lived."""
 
-    def __init__(self, engine: Engine, publication: SeerPublication) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        publication: SeerPublication,
+        current_engine: Callable[[], Engine | None],
+    ) -> None:
         self._engine: Engine | None = engine
         self._publication = publication
+        self._current_engine = current_engine
 
     @property
     def publication(self) -> SeerPublication:
@@ -105,6 +112,14 @@ class SeerReadSnapshot:
 
     def close(self) -> None:
         self._engine = None
+
+    def require_current(self) -> None:
+        """Verify that this leased generation is still the active publication."""
+
+        if self._engine is None:
+            raise SeerSnapshotClosedError
+        if self._current_engine() is not self._engine:
+            raise DataPublicationChangedError
 
 
 class SeerDatabase:
@@ -147,7 +162,11 @@ class SeerDatabase:
             engine = engines.get(SEERAPI_DB)
             if engine is None:
                 raise DataUnavailableError
-            snapshot = SeerReadSnapshot(engine, self._publication_for(engine))
+            snapshot = SeerReadSnapshot(
+                engine,
+                self._publication_for(engine),
+                lambda: self._databases.get_engine(SEERAPI_DB),
+            )
             try:
                 yield snapshot
             finally:

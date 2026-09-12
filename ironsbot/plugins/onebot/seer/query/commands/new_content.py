@@ -31,7 +31,10 @@ from ironsbot.integrations.onebot.prompts import (
 )
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.autocard import AutocardEntry
-from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data import (
+    DataPublicationChangedError,
+    DataUnavailableError,
+)
 from ironsbot.services.seer.data_query_commands import (
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,
@@ -354,11 +357,17 @@ async def _send_item_detail(
     event: Event,
 ) -> None:
     services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
-    if not isinstance(services, _NewContentServices):
+    snapshot = matcher.state.get(NEW_CONTENT_SNAPSHOT_KEY)
+    if not isinstance(services, _NewContentServices) or not isinstance(
+        snapshot, NewContentSnapshot
+    ):
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
     try:
-        detail = await services.details.select(item)
+        detail = await services.details.select(snapshot, item)
+    except (NewContentSnapshotChangedError, DataPublicationChangedError):
+        await matcher.finish("数据已更新，当前新增内容菜单已失效，重新发送指令查看。")
+        return
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return

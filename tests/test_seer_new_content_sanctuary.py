@@ -1,4 +1,6 @@
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager, nullcontext
 from typing import Literal
 from unittest.mock import AsyncMock, Mock
 
@@ -12,11 +14,18 @@ except ValueError:
     nonebot.init()
 
 from ironsbot.plugins.onebot.seer.query.commands.new_content import (
+    NEW_CONTENT_SERVICES_KEY,
+    NEW_CONTENT_SNAPSHOT_KEY,
     _content_prompt,
+    _NewContentServices,
     _render_content_prompt,
+    _send_item_detail,
 )
 from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
-from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data import (
+    DataPublicationChangedError,
+    DataUnavailableError,
+)
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
@@ -37,6 +46,19 @@ from ironsbot.services.seer.new_content_menu import (
 from ironsbot.services.seer.pet_query import PetImageSelection
 from ironsbot.services.seer.query_result import QueryReply, QueryResult
 from tests.helpers.onebot_events import group_message_event
+
+
+def _menu_snapshot(item: NewContentItem) -> NewContentSnapshot:
+    return NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260912",
+        weekly_cycle="2026-09-11",
+        items=(item,),
+    )
+
+
+def _selection_scope(_snapshot: NewContentSnapshot) -> nullcontext[None]:
+    return nullcontext()
 
 
 @pytest.mark.asyncio
@@ -71,10 +93,11 @@ async def test_content_detail_reuses_domain_selector(
         dependencies.mintmark,
         dependencies.equipment,
         dependencies.autocard,
+        _selection_scope,
     )
     item = NewContentItem(category, 9, "test", 9, {"resource_id": 123})
 
-    detail = await service.select(item)
+    detail = await service.select(_menu_snapshot(item), item)
 
     assert detail == (message or reply)
     assert len(dependencies.mock_calls) == 1
@@ -102,9 +125,11 @@ async def test_content_card_detail_preserves_entry_and_missing_result(
         dependencies.mintmark,
         dependencies.equipment,
         dependencies.autocard,
+        _selection_scope,
     )
 
-    detail = await service.select(NewContentItem(category, 9, "test", 9, {}))
+    item = NewContentItem(category, 9, "test", 9, {})
+    detail = await service.select(_menu_snapshot(item), item)
 
     assert detail is (entry if found else None)
     dependencies.autocard.select.assert_called_once_with(AutocardPromptValue(kind, 9))
@@ -124,9 +149,11 @@ async def test_content_embedded_detail_does_not_query_current_data(
         dependencies.mintmark,
         dependencies.equipment,
         dependencies.autocard,
+        _selection_scope,
     )
 
-    detail = await service.select(NewContentItem(category, 9, "old menu name", 9, {}))
+    item = NewContentItem(category, 9, "old menu name", 9, {})
+    detail = await service.select(_menu_snapshot(item), item)
 
     assert isinstance(detail, str) and "old menu name" in detail
     assert dependencies.mock_calls == []
@@ -144,13 +171,115 @@ async def test_content_detail_propagates_failure_and_cancellation(
         dependencies.mintmark,
         dependencies.equipment,
         dependencies.autocard,
+        _selection_scope,
     )
 
     with pytest.raises(error):
-        await service.select(NewContentItem("pet", 9, "test", 9, {}))
+        item = NewContentItem("pet", 9, "test", 9, {})
+        await service.select(_menu_snapshot(item), item)
 
     dependencies.pet.select_info.assert_awaited_once_with(9)
     assert len(dependencies.mock_calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["before", "after", "none"])
+async def test_detail_scope_validates_before_lookup_and_before_result(
+    change: str,
+) -> None:
+    active = False
+    item = NewContentItem("pet", 9, "test", 9, {})
+    snapshot = _menu_snapshot(item)
+
+    @contextmanager
+    def scope(expected: NewContentSnapshot) -> Iterator[None]:
+        nonlocal active
+        assert expected is snapshot
+        if change == "before":
+            raise NewContentSnapshotChangedError
+        active = True
+        try:
+            yield
+            if change == "after":
+                raise DataPublicationChangedError
+        finally:
+            active = False
+
+    async def select(_pet_id: int) -> QueryResult[object]:
+        assert active
+        await asyncio.sleep(0)
+        assert active
+        return QueryResult(reply=QueryReply(text="detail"))
+
+    dependencies = Mock()
+    dependencies.pet.select_info = AsyncMock(side_effect=select)
+    service = NewContentDetailService(
+        dependencies.pet,
+        dependencies.mintmark,
+        dependencies.equipment,
+        dependencies.autocard,
+        scope,
+    )
+    if change == "none":
+        assert await service.select(snapshot, item) == QueryReply(text="detail")
+    else:
+        error = (
+            NewContentSnapshotChangedError
+            if change == "before"
+            else DataPublicationChangedError
+        )
+        with pytest.raises(error):
+            await service.select(snapshot, item)
+    assert not active
+    assert dependencies.pet.select_info.await_count == (0 if change == "before" else 1)
+
+
+@pytest.mark.asyncio
+async def test_detail_rejects_item_from_another_menu_without_starting_scope() -> None:
+    item = NewContentItem("pet", 9, "test", 9, {})
+    other = NewContentItem("pet", 10, "other", 10, {})
+    dependencies = Mock()
+    service = NewContentDetailService(
+        dependencies.pet,
+        dependencies.mintmark,
+        dependencies.equipment,
+        dependencies.autocard,
+        dependencies.scope,
+    )
+    with pytest.raises(NewContentSnapshotChangedError):
+        await service.select(_menu_snapshot(item), other)
+    assert dependencies.mock_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error", [NewContentSnapshotChangedError, DataPublicationChangedError]
+)
+async def test_changed_detail_finishes_menu_without_sending_result(
+    error: type[Exception],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = NewContentItem("pet", 9, "test", 9, {})
+    details = Mock(select=AsyncMock(side_effect=error))
+    matcher = Mock(
+        state={
+            NEW_CONTENT_SERVICES_KEY: _NewContentServices(details, AsyncMock()),
+            NEW_CONTENT_SNAPSHOT_KEY: _menu_snapshot(item),
+        },
+        finish=AsyncMock(),
+    )
+    messages = Mock()
+    monkeypatch.setattr(
+        "ironsbot.plugins.onebot.seer.query.commands.new_content.MessageFactory",
+        messages,
+    )
+
+    await _send_item_detail(item, matcher, group_message_event("1"))
+
+    matcher.finish.assert_awaited_once_with(
+        "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
+    )
+    messages.assert_not_called()
 
 
 def _effect(*, change_kind: Literal["added", "modified"] = "added") -> NewContentItem:

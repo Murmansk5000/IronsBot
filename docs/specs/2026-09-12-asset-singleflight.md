@@ -318,3 +318,32 @@ This establishes the detail business boundary, not publication consistency:
 the domain selectors still use their current readers. Next bind or explicitly
 invalidate the selected publication at this service boundary, rather than
 adding per-category guards in the OneBot plugin. Phase 4 remains unaccepted.
+
+## Retained-Menu Detail Invalidation
+
+Target policy: explicitly invalidate, rather than retain an engine while the
+user considers a menu. Each detail selection validates membership in the
+retained index and opens a mandatory selection scope. Composition leases the
+current Seer engine, checks the complete index, and verifies that engine is
+still current before and after the awaited domain selection. OneBot sends
+nothing from a changed operation and ends the menu with an explicit reopen
+instruction. There is no automatic retry or per-category exception policy.
+
+SeerReadSnapshot.require_current compares actual engine identity through the
+manager's locked accessor. Identical version strings, same-version rebuilds and
+A-B-A reloads cannot masquerade as the same load generation. Closed snapshots
+remain unusable. Error/cancellation still unwind the existing context manager;
+the new check does not catch or convert cancellation into a successful result.
+
+Verified: 72 menu/detail/publication/catalog/architecture/size tests passed in
+21.78s (2 existing ORM warnings). Coverage includes before/after selection
+invalidation, rejected foreign menu items, no result delivery on invalidation,
+real SQLite identical-metadata reload and rollback, and closed-snapshot checks.
+Targeted BasedPyright reports 0 errors/warnings; Ruff, compileall and diff pass.
+No new file, dependency, TOML, background job or database schema was introduced.
+
+This validates database generation consistency by discarding interrupted
+selections. It is not a claim that every domain selector or remote card image
+has immutable bound inputs. Render preparation completeness, private-lineup
+binding and real published-material/pixel/platform acceptance remain Phase 4
+work; the phase count remains 4/8.

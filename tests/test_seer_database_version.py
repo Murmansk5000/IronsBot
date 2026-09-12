@@ -25,7 +25,10 @@ from ironsbot.integrations.storage.seer_assets import (
     SeerAssetStore,
     SeerAssetStoreLimits,
 )
-from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data import (
+    DataPublicationChangedError,
+    DataUnavailableError,
+)
 from ironsbot.services.seer.new_content import (
     NewContentService,
     NewContentSnapshotChangedError,
@@ -422,18 +425,34 @@ def test_retained_content_index_is_checked_against_bound_publication(
     try:
         databases.load_from_file("seerapi", str(source))
         with data.read_snapshot() as bound:
+            bound.require_current()
             service = NewContentService(bound)
             menu = service.snapshot()
             with engine.begin() as connection:
                 connection.exec_driver_sql("UPDATE new_content_item SET name = 'new'")
             databases.load_from_file("seerapi", str(source))
+            with pytest.raises(DataPublicationChangedError):
+                bound.require_current()
             service.require_snapshot(menu)
             assert service.snapshot().items[0].name == "old"
             with data.read_snapshot() as fresh:
+                fresh.require_current()
                 current = NewContentService(fresh)
                 with pytest.raises(NewContentSnapshotChangedError):
                     current.require_snapshot(menu)
                 assert current.snapshot().items[0].name == "new"
+                # Even reloading identical metadata is a different generation.
+                databases.load_from_file("seerapi", str(source))
+                with pytest.raises(DataPublicationChangedError):
+                    fresh.require_current()
+            with pytest.raises(DataUnavailableError, match="snapshot is closed"):
+                fresh.require_current()
+            with engine.begin() as connection:
+                connection.exec_driver_sql("UPDATE new_content_item SET name = 'old'")
+            databases.load_from_file("seerapi", str(source))
+            assert NewContentService(data).snapshot() == menu
+            with pytest.raises(DataPublicationChangedError):
+                bound.require_current()
     finally:
         databases.close()
         engine.dispose()

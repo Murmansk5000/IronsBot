@@ -7,14 +7,18 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from .autocard import AutocardEntry, AutocardPromptValue
+from .new_content import NewContentSnapshotChangedError
 from .pet_query import PetImageSelection
 from .query_result import QueryReply
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from contextlib import AbstractContextManager
+
     from .autocard import AutocardService
     from .equipment import EquipmentQueryService
     from .mintmark import MintmarkQueryService
-    from .new_content import NewContentItem
+    from .new_content import NewContentItem, NewContentSnapshot
     from .pet_query import PetQueryService
 
 
@@ -29,8 +33,17 @@ class NewContentDetailService:
     mintmark: MintmarkQueryService
     equipment: EquipmentQueryService
     autocard: AutocardService
+    selection_scope: Callable[[NewContentSnapshot], AbstractContextManager[None]]
 
-    async def select(self, item: NewContentItem) -> NewContentDetail:
+    async def select(
+        self, snapshot: NewContentSnapshot, item: NewContentItem
+    ) -> NewContentDetail:
+        if item not in snapshot.items:
+            raise NewContentSnapshotChangedError
+        with self.selection_scope(snapshot):
+            return await self._select(item)
+
+    async def _select(self, item: NewContentItem) -> NewContentDetail:
         if item.category == "autocard_sanctuary_effect":
             return format_new_content_autocard_sanctuary_effect_detail(item)
         if item.category == "achievement":
