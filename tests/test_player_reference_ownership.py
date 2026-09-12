@@ -2,18 +2,23 @@ from __future__ import annotations
 
 import asyncio
 from functools import partial
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
 
+import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from ironsbot.config.models.settings import MatcherPriorityConfig
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.features import FEATURE_KEYS
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.seer.query.commands import (
@@ -33,12 +38,113 @@ from ironsbot.services.seer.player_detail_extensions import (
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query import extract_player_query_arg
+from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 _ADMIN = ActorRef(Platform.ONEBOT, "100")
 _REGULAR = ActorRef(Platform.ONEBOT, "200")
 _GROUP = ConversationRef(Platform.ONEBOT, "group", "300")
 _PLAYER_ID = 123456
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prefix", ["米米号", "绑定米米号", "收集", "巅峰", "群星牌", "成就榜"]
+)
+@pytest.mark.parametrize("reference", ["123456", "示例玩家"])
+@pytest.mark.parametrize("enabled", [False, True])
+async def test_factory_registration_matches_catalog_and_runs_admission(
+    prefix: str,
+    reference: str,
+    *,
+    enabled: bool,
+) -> None:
+    try:
+        nonebot.get_driver()
+    except ValueError:
+        nonebot.init()
+    features = FeatureService(
+        {_GROUP: frozenset({"seer_player", "seer_rank"})} if enabled else {},
+        {},
+        frozenset(),
+    )
+    resolver = PlayerIdResolver(
+        lambda value, _conversation: (
+            _PLAYER_ID if value in {"123456", "示例玩家"} else None
+        ),
+        lambda _actor: None,
+    )
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="seer_query",
+                commands=tuple(
+                    command
+                    for command in seer_command_contracts(resolver)
+                    if command.id.startswith("seer.player.")
+                ),
+            ),
+            PluginContribution(
+                id="rank_help",
+                commands=tuple(
+                    command
+                    for command in rank_help_command_contracts(resolver)
+                    if command.id != "rank.help"
+                ),
+            ),
+        ),
+        known_features=FEATURE_KEYS,
+    )
+    cooldown = Mock()
+    cooldown.admit.return_value = SimpleNamespace(allowed=True, token=None)
+    factory = MatcherFactory(cooldown=cooldown, priorities=MatcherPriorityConfig())
+    resources = Mock()
+    resources.player_detail_extensions = PlayerDetailExtensionRegistry()
+    group = SeerMatcherGroup(
+        registry=factory,
+        resources=resources,
+        features=features,
+        commands=catalog,
+        player_id_resolver=resolver,
+        image_command_texts=frozenset(),
+    )
+    try:
+        player.install(group)
+        basic = factory.message_matchers[-1]
+        binding = factory.message_matchers[0]
+        player_shortcuts.install(group)
+        shortcut = factory.message_matchers[-1]
+        rank_offset = len(factory.message_matchers)
+        rank_list.install(group)
+        rank_player = factory.message_matchers[rank_offset + 1]
+        factory.validate_command_catalog(catalog)
+        matcher = {
+            "米米号": basic,
+            "绑定米米号": binding,
+            "收集": shortcut,
+            "巅峰": shortcut,
+            "群星牌": shortcut,
+            "成就榜": rank_player,
+        }[prefix]
+        text = prefix + reference
+        event = group_message_event(text, group_id=int(_GROUP.id))
+        state: dict[str, Any] = {}
+        claimed = catalog.claims_direct_input(command_context(event), features, text)
+        admitted = await matcher.rule(cast("Any", None), event, state)
+        assert claimed is enabled
+        assert admitted is claimed
+        if admitted:
+            await matcher.handlers[0].call(matcher(), event, state)
+            cooldown.admit.assert_called_once()
+            assert cooldown.admit.call_args.kwargs["actor"] == ActorRef(
+                Platform.ONEBOT, str(event.user_id)
+            )
+        else:
+            cooldown.admit.assert_not_called()
+    finally:
+        for registered in factory.message_matchers:
+            registered.destroy()
 
 
 @pytest.mark.parametrize(
@@ -148,7 +254,7 @@ def test_player_ownership_preserves_literal_command_prefix(
     "target",
     ["numeric", "alias", "member", "bot", "mixed", "multiple", "unbound", "reply"],
 )
-async def test_installed_player_rules_admit_member_targets_and_enforce_feature(
+async def test_installed_player_rules_admit_member_targets_and_enforce_feature(  # noqa: PLR0912 - input matrix
     prefix: str,
     index: int,
     target: str,
