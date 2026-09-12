@@ -499,3 +499,29 @@ artifacts and report are in `.tmp/lineup-v5-release-acceptance/`. No final-cache
 files were written under the unproven lineup scope. This closes the local real
 producer/load/lineup-render loop, not all-renderer, Flash-fidelity, Linux or live
 platform acceptance. No remote release, production file or main merge occurred.
+
+## Per-Icon Flash Failure Isolation
+
+Producer rendering now validates Java/FFDec only after a particular icon misses
+its validated PNG cache and is eligible for rendering. The batch-wide preflight
+and its duplicate cache scan were removed. Missing tools produce a failed record
+for that icon before downloading its SWF; cached successes and confirmed absent
+assets do not need tool checks. The existing source coordinator can therefore
+request Unity only for missing icons instead of discarding all Flash results.
+
+Combined-source resolution defers REQUIRE_CACHED validation until after fallback.
+Required unresolved icons still raise an explicit error; standalone PNG cache
+construction retains its strict precondition. Confirmed unavailable official
+assets remain recorded as unavailable, not silently counted as successes. The
+coordinator reuses Flash/Unity callback types instead of declaring weaker object
+return aliases. No additional module or runtime dependency was introduced.
+
+Verified: 88 builder/metadata tests passed in 14.93s. New cases use real PNG
+cache files and renderer logic with controlled HTTP/Unity adapters: missing Java
+or jar preserves the cached Flash icon, Unity receives only the uncached ID,
+successful fallback meets the strict contract, unsuccessful fallback raises.
+Existing SWF sprite/shape, alpha, cache invalidation, missing-resource and strict
+cache tests remain covered. Their stubbed subprocess fixtures now provide valid
+tool paths for the moved checks. Targeted BasedPyright reports 0 errors/warnings;
+Ruff, compileall and diff pass. A full real-network producer rerun after this fix
+has not yet been performed; previous artifact hashes describe the pre-fix run.
