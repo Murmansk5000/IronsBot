@@ -1,5 +1,5 @@
 # Docker only needs the dependency manifests, the application package and the
-# four runtime files copied explicitly by Dockerfile. Keep repository-only
+# runtime files and distribution notices copied by Dockerfile. Keep repository-only
 # material out of the build context as well as the final image.
 .git/
 .github/
@@ -43,8 +43,6 @@ tests/
 .gitignore
 .pre-commit-config.yaml
 ARCHITECTURE.md
-LICENSE*
-LICENSING.md
 README.md
 ca_profile.xml
 docker-compose.yml
