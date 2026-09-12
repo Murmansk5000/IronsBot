@@ -26,6 +26,10 @@ from ironsbot.integrations.storage.seer_assets import (
     SeerAssetStoreLimits,
 )
 from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.new_content import (
+    NewContentService,
+    NewContentSnapshotChangedError,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -386,6 +390,53 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
         finally:
             databases.close()
             engine.dispose()
+
+
+def test_retained_content_index_is_checked_against_bound_publication(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, _ = _create_release(source, ("new_content_standard",))
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_release (id INTEGER PRIMARY KEY, "
+            "current_config_version TEXT, weekly_cycle TEXT, "
+            "baseline_established INTEGER)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_item (category TEXT, entity_id INTEGER, "
+            "name TEXT, sort_value INTEGER, payload_json TEXT, change_kind TEXT)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE new_content_category_state "
+            "(category TEXT, comparison_ready INTEGER, reason TEXT)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO new_content_release VALUES (1, '20260912', '2026-09-11', 1)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO new_content_item VALUES ('skill', 1, 'old', 1, '{}', 'added')"
+        )
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    try:
+        databases.load_from_file("seerapi", str(source))
+        with data.read_snapshot() as bound:
+            service = NewContentService(bound)
+            menu = service.snapshot()
+            with engine.begin() as connection:
+                connection.exec_driver_sql("UPDATE new_content_item SET name = 'new'")
+            databases.load_from_file("seerapi", str(source))
+            service.require_snapshot(menu)
+            assert service.snapshot().items[0].name == "old"
+            with data.read_snapshot() as fresh:
+                current = NewContentService(fresh)
+                with pytest.raises(NewContentSnapshotChangedError):
+                    current.require_snapshot(menu)
+                assert current.snapshot().items[0].name == "new"
+    finally:
+        databases.close()
+        engine.dispose()
 
 
 async def _check_bound_render_inputs(

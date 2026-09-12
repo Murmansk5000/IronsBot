@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from seerapi_models import SkillORM
+from seerapi_models import PetORM, SkillORM, TypeCombinationORM
 
 from ironsbot.services.seer.rendering.analyze_description import (
     format_analyze_description,
@@ -15,7 +15,7 @@ from ironsbot.services.seer.rendering.analyze_description import (
 from ironsbot.services.seer.rendering.custom_pet_models import SkillDict
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.new_content import NewContentItem
 
 
@@ -52,14 +52,14 @@ _SKILL_CATEGORY_NAMES = {
 
 
 def load_new_content_peak_pool_details(
-    data: SeerDataAccess,
+    data: SeerDataReader,
     item: NewContentItem,
 ) -> NewContentItemDetails:
     """Describe one official competitive-pool limit change for a pet."""
 
     previous_limit = _peak_pool_limit_text(item.payload.get("previous_limit"))
     current_limit = _peak_pool_limit_text(item.payload.get("current_limit"))
-    with data.get(data.pet, item.entity_id) as pet:
+    with data.query(lambda session: session.get(PetORM, item.entity_id)) as pet:
         if pet is None:
             return NewContentItemDetails(
                 metadata=f"精灵 ID：{item.entity_id}",
@@ -87,14 +87,16 @@ def _peak_pool_limit_text(value: object) -> str:
 
 
 def load_new_content_skill_details(
-    data: SeerDataAccess,
+    data: SeerDataReader,
     item: NewContentItem,
 ) -> NewContentItemDetails:
     payload = item.payload
     type_id = _payload_int(payload, "type_id")
     type_name = ""
     if type_id > 0:
-        with data.get(data.type_combination, type_id) as skill_type:
+        with data.query(
+            lambda session: session.get(TypeCombinationORM, type_id)
+        ) as skill_type:
             if skill_type is not None:
                 type_name = str(skill_type.name)
     category_id = _payload_int(payload, "category_id")
@@ -150,7 +152,7 @@ def load_new_content_skill_details(
 
 
 def _load_skill_effect_details(
-    data: SeerDataAccess,
+    data: SeerDataReader,
     skill_id: int,
 ) -> _SkillEffectDetails:
     try:

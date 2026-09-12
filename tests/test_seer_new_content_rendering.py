@@ -5,6 +5,16 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from seerapi_models import (
+    EquipORM,
+    MintmarkORM,
+    PetORM,
+    PetSkinORM,
+    SkillORM,
+    SuitORM,
+    TitlePartORM,
+    TypeCombinationORM,
+)
 
 from ironsbot.integrations.seer_data import (
     new_content_renderer as new_content_rendering,
@@ -60,13 +70,13 @@ class _Data:
 
 
 class _RichData(_Data):
-    pet = object()
-    pet_skin = object()
-    mintmark = object()
-    suit = object()
-    equip = object()
-    title = object()
-    type_combination = object()
+    pet = PetORM
+    pet_skin = PetSkinORM
+    mintmark = MintmarkORM
+    suit = SuitORM
+    equip = EquipORM
+    title = TitlePartORM
+    type_combination = TypeCombinationORM
 
     def __init__(
         self,
@@ -78,13 +88,13 @@ class _RichData(_Data):
         self.skills = skills or {}
 
     @contextmanager
-    def get(self, getter: object, entity_id: int) -> Iterator[object | None]:
-        yield self.records.get((getter, entity_id))
-
-    @contextmanager
     def query(self, operation: object) -> Iterator[object]:
         session = SimpleNamespace(
-            get=lambda _model, skill_id: self.skills.get(skill_id),
+            get=lambda model, entity_id: (
+                self.skills.get(entity_id)
+                if model is SkillORM
+                else self.records.get((model, entity_id))
+            ),
         )
         yield operation(session)  # type: ignore[operator]
 
@@ -327,10 +337,10 @@ async def test_new_content_closes_data_context_before_fetching_assets() -> None:
         active_contexts = 0
 
         @contextmanager
-        def get(self, getter: object, entity_id: int) -> Iterator[object | None]:
+        def query(self, operation: object) -> Iterator[object]:
             self.active_contexts += 1
             try:
-                with super().get(getter, entity_id) as result:
+                with super().query(operation) as result:
                     yield result
             finally:
                 self.active_contexts -= 1

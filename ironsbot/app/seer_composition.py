@@ -110,6 +110,10 @@ if TYPE_CHECKING:
         LuckySkinWindowOffer,
         LuckySkinWindowResult,
     )
+    from ironsbot.services.seer.new_content import (
+        NewContentCategory,
+        NewContentSnapshot,
+    )
     from ironsbot.services.seer.render_coordinator import RenderCoordinator
     from ironsbot.services.seer.type_query import TypeMatchupRenderer
 
@@ -258,6 +262,30 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 render_coordinator.render,
                 result,
                 offers,
+            )
+
+    async def render_content_menu(  # noqa: PLR0913
+        snapshot: NewContentSnapshot,
+        display_categories: tuple[NewContentCategory, ...],
+        focused_category: NewContentCategory | None,
+        menu_title: str,
+        expanded_categories: frozenset[NewContentCategory],
+        auto_expand_max_items: int,
+    ) -> bytes:
+        with render_sessions.open() as inputs:
+            NewContentService(inputs.data).require_snapshot(snapshot)
+            return await render_new_content_menu(
+                inputs.cache,
+                inputs.data,
+                inputs.images,
+                AutocardService(inputs.data),
+                render_coordinator.render,
+                snapshot,
+                display_categories,
+                focused_category,
+                menu_title,
+                expanded_categories,
+                auto_expand_max_items,
             )
 
     weekly_preview_images = CachedWeeklyPreviewImageSource(
@@ -425,14 +453,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             player_detail_extensions,
             rank_queries,
             rank_admin,
-            partial(
-                render_new_content_menu,
-                render_cache,
-                seer_database,
-                images,
-                autocard,
-                render_coordinator.render,
-            ),
+            render_content_menu,
             external_references,
         ),
         lucky_skin_window=lucky_skin_window,

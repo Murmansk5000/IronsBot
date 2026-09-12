@@ -18,6 +18,7 @@ from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
     NewContentItem,
     NewContentSnapshot,
+    NewContentSnapshotChangedError,
     format_new_content_item_description,
 )
 from ironsbot.services.seer.new_content_details import (
@@ -285,9 +286,11 @@ def test_new_content_category_shortcut_uses_numeric_keys() -> None:
     assert "1. 深海之泪" in prompt.build_message()
 
 
-@pytest.mark.parametrize("render_fails", [True, False])
+@pytest.mark.parametrize(
+    "render_error", [RuntimeError, NewContentSnapshotChangedError, None]
+)
 def test_menu_image_and_text_fallback_share_layout_and_sender(
-    *, render_fails: bool
+    render_error: type[Exception] | None,
 ) -> None:
     snapshot = NewContentSnapshot(
         baseline_established=True,
@@ -305,9 +308,8 @@ def test_menu_image_and_text_fallback_share_layout_and_sender(
 
     async def renderer(*args: object) -> bytes:
         renderer_calls.append(args)
-        if render_fails:
-            msg = "injected renderer failure"
-            raise RuntimeError(msg)
+        if render_error is not None:
+            raise render_error
         return b"test image"
 
     message = asyncio.run(
@@ -324,7 +326,7 @@ def test_menu_image_and_text_fallback_share_layout_and_sender(
     )
     selection = prompt.get_item_by_input("1")
     assert selection is not None and selection.value.item == snapshot.items[0]
-    if render_fails:
+    if render_error is not None:
         assert "1. 潮涌" in message.extract_plain_text()
         assert "0.【退出】" in message.extract_plain_text()
     else:

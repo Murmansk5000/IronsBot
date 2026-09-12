@@ -266,3 +266,33 @@ an unavailable category. Existing request-key and missing-art recovery tests
 remain green. Ruff, targeted BasedPyright (0 errors/warnings), compileall and
 diff checks passed. Only composition and the adapter's minimal port types changed;
 no new dependencies, TOML, category enablement or private extension change.
+
+## New-Content Render Boundary
+
+Target: each menu image uses the shared SeerRenderSessions reader, immutable
+asset source and bound final cache. The preparation repository queries ORM
+identifiers through SeerDataReader, not unbound full search/getter access.
+Autocard and Flash mount readers need only that same query port. SQL sessions
+close before image awaits; the publication lease lasts through final rendering.
+
+Retained menu actions already carry entity IDs; they do not drift by numeric
+position. Their index can nevertheless be older than a later rendering session.
+Compare the complete index (including payloads and category state, not just its
+config version) against the bound reader before reading image cache/details.
+If it changed, preserve the existing text menu instead of rendering mixed facts.
+This expected condition is not logged as a renderer exception. No engine lease
+is held while waiting for human input.
+
+Verified: new-content renderer/service/OneBot menu and real SQLite publication
+tests 46 passed in 47.98s (2 existing ORM warnings). Same-version corrections
+are detected, an old leased reader remains stable after replacement, a new
+reader rejects the retained index, and text fallback keeps the same action IDs.
+Ruff, targeted BasedPyright (0 errors/warnings), compileall and diff checks pass.
+Additional Autocard, Flash mount, menu/presentation and architecture/size
+regressions: 35 passed in 11.51s.
+
+Still outstanding: multi-turn item-detail dispatch uses current domain services;
+it has not acquired a common version policy with the retained index. Missing
+detail fallback completeness and actual material/pixel acceptance also remain.
+This batch does not claim the entire new-content conversation is version-bound,
+enable another cache scope, or advance the 4/8 phase count.

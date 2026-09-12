@@ -56,6 +56,7 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentSnapshot,
+    NewContentSnapshotChangedError,
     new_content_unavailable_message,
 )
 from ironsbot.services.seer.new_content_details import (
@@ -339,6 +340,8 @@ async def _render_content_prompt(
             layout.expanded_categories,
             DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
         )
+    except NewContentSnapshotChangedError:
+        return prompt.build_event_message(event)
     except Exception:
         logger.exception("new content menu rendering failed; falling back to text")
         return prompt.build_event_message(event)

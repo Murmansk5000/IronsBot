@@ -39,14 +39,14 @@ from .new_content_snapshot import (
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.autocard import AutocardService
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
 
 async def render_new_content_menu(  # noqa: PLR0913
     cache: RenderCache,
-    data: SeerDataAccess,
+    data: SeerDataReader,
     images: SeerImageSource,
     autocard: AutocardService,
     render_html: HtmlTemplateRenderer,
@@ -147,7 +147,7 @@ async def render_new_content_menu(  # noqa: PLR0913
 
 
 def _with_mount_fallback(
-    data: SeerDataAccess,
+    data: SeerDataReader,
     prepared: NewContentPreparedItem,
 ) -> NewContentPreparedItem:
     asset = prepared.asset
