@@ -4,6 +4,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+from sqlmodel import Session, create_engine
+
+from ironsbot.integrations.seer_data.countermark_stat_rank_repository import (
+    load_mintmark_quality_session,
+)
 from ironsbot.services.seer import countermark_stat_rank as countermark_module
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
 from ironsbot.services.seer.countermark_stat_rank_messages import (
@@ -11,6 +17,7 @@ from ironsbot.services.seer.countermark_stat_rank_messages import (
 )
 from ironsbot.services.seer.countermark_stat_rank_models import (
     CountermarkStatRankCommand,
+    CountermarkStatRankDataError,
     CountermarkStatRankItem,
     StatSpec,
 )
@@ -48,6 +55,13 @@ class FakeRankData:
             yield ({}, [])
         finally:
             self.session_active = False
+
+
+class BrokenRankData:
+    @contextmanager
+    def query(self, _operation: object) -> Iterator[object]:
+        raise CountermarkStatRankDataError
+        yield  # pragma: no cover
 
 
 def _rank_item(
@@ -281,6 +295,24 @@ def test_countermark_service_owns_query_and_formatting() -> None:
     assert "刻印数值榜需要指定属性" in service.query(
         CountermarkStatRankCommand(stat=None, scope="all")
     )
+
+
+def test_countermark_service_reports_missing_published_quality_table() -> None:
+    service = CountermarkStatRankService(cast("SeerDataAccess", BrokenRankData()))
+
+    message = service.query(
+        CountermarkStatRankCommand(stat=StatSpec("atk", "物攻"), scope="all")
+    )
+
+    assert message == "❌ 刻印角数数据不完整，暂时无法查询刻印数值榜。"
+
+
+def test_countermark_repository_rejects_missing_published_quality_table() -> None:
+    with (
+        Session(create_engine("sqlite://")) as session,
+        pytest.raises(CountermarkStatRankDataError),
+    ):
+        load_mintmark_quality_session(session)
 
 
 def test_countermark_service_formats_snapshots_after_session_closes(

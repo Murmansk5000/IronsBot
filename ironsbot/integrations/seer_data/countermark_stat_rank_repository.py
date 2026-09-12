@@ -11,21 +11,19 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 from ironsbot.core.value_coercion import coerce_positive_int
+from ironsbot.services.seer.countermark_stat_rank_models import (
+    CountermarkStatRankDataError,
+)
 
 if TYPE_CHECKING:
     from sqlmodel import Session
 
 MINTMARK_QUALITY_QUERY = text("SELECT mintmark_id, quality FROM mintmark_quality")
-MISSING_MINTMARK_QUALITY_MESSAGE = (
-    "❌ 数据库缺少刻印角数表 mintmark_quality，请先更新 IronsBot 数据库。"
-)
-
-
 def load_mintmark_quality_session(session: Session) -> dict[int, int]:
     try:
         rows = session.execute(MINTMARK_QUALITY_QUERY).all()
-    except SQLAlchemyError:
-        return {}
+    except SQLAlchemyError as error:
+        raise CountermarkStatRankDataError from error
 
     quality_map: dict[int, int] = {}
     for row in rows:

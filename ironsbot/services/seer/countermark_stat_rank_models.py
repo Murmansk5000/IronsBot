@@ -7,6 +7,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from seerapi_models.common import SixAttributes
 
+
+class CountermarkStatRankDataError(RuntimeError):
+    """Published data cannot provide complete countermark rank facts."""
+
+
 @dataclass(frozen=True, slots=True)
 class StatSpec:
     key: str

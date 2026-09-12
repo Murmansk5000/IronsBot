@@ -1388,6 +1388,12 @@ OneBot 编码和受限平台模拟上传。Ruff、BasedPyright、compileall 和 
 版本与元数据表，按类别声明必需业务表的契约仍需在 Phase 4/6 后续统一设计，不能
 通过恢复运行时空结果来掩盖。Phase 6 保持 `in_progress`，总进度保持 5/8。
 
+**刻印角数事实错误语义（2026-09-12）：** `mintmark_quality` 查询失败不再返回空
+映射。仓库将 SQL 故障转换为 `CountermarkStatRankDataError`，服务记录完整异常并向
+用户明确回复“刻印角数数据不完整”；普通属性榜也不会再带着缺失角数继续生成结果。
+真正存在但没有匹配记录的空映射仍保留原有业务语义。专项 `18 passed`，Ruff、
+BasedPyright 和 diff 检查通过；无新配置、依赖、数据库或 QQ 身份改动。
+
 **赛季读取失败隔离（2026-09-12）：** target 错误语义。移除
 `SeerDatabase.peak_season_start()` 的全异常转 None：未加载数据库显式报不可用，
 SQLAlchemy 读取故障保留 cause 和日志；仅实际无赛季记录仍返回 None。巅峰详情将
