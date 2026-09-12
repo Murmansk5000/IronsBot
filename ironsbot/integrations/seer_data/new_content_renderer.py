@@ -109,7 +109,8 @@ async def render_new_content_menu(  # noqa: PLR0913
     # Arbitrary card URLs are not published by the immutable Seer asset
     # manifest, so a final image containing one must not outlive its source.
     cacheable = all(
-        prepared.asset is None or prepared.asset.url is None
+        prepared.details.complete
+        and (prepared.asset is None or prepared.asset.url is None)
         for prepared in prepared_items
     )
     prepared_by_key = {
@@ -133,11 +134,23 @@ async def render_new_content_menu(  # noqa: PLR0913
         )
         if prepared.asset is not None and prepared.asset.required and image is None:
             cacheable = False
+        if prepared.details.type_id is not None and type_icon is None:
+            cacheable = False
 
+    skill_icons = await _load_skill_type_icons(images, prepared_items, visuals)
+    if (
+        any(
+            prepared.details.skill is not None
+            and prepared.details.skill["category_id"] == SKILL_CATEGORY_ATTRIBUTE
+            for prepared in prepared_items
+        )
+        and not skill_icons["prop"]
+    ):
+        cacheable = False
     document = present_new_content_menu(
         snapshot.weekly_cycle,
         rows,
-        await _load_skill_type_icons(images, prepared_items, visuals),
+        skill_icons,
         menu_title,
     )
     result = await render_new_content_document(render_html, document)
@@ -173,8 +186,7 @@ def _cache_key(  # noqa: PLR0913
     return render_request_cache_key(
         "new_content",
         (
-            snapshot.config_version,
-            snapshot.weekly_cycle,
+            snapshot,
             display_categories,
             focused_category,
             menu_title,

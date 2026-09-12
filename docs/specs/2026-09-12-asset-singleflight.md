@@ -347,3 +347,30 @@ selections. It is not a claim that every domain selector or remote card image
 has immutable bound inputs. Render preparation completeness, private-lineup
 binding and real published-material/pixel/platform acceptance remain Phase 4
 work; the phase count remains 4/8.
+
+## New-Content Completeness and Cache Identity
+
+Target: prepared detail rows carry completeness into final-cache admission.
+Absent rows, caught read failures, missing referenced titles/types/skin pets and
+unavailable skill-effect data remain displayable but do not populate L3.
+Legitimately empty effect lists and index-only descriptions remain complete.
+Required images stay required even if their ID/URL could not be resolved;
+missing type and attribute-skill icons also suppress final-cache writes.
+A build-time Flash fallback is sufficient art, but cannot make absent detail
+facts complete. The existing shared request normalizer hashes the full retained
+index, including item names/payloads/change kinds, rather than its version only.
+
+Verified: 114 new-content/service/menu/presentation/architecture/size regressions
+passed in 7.73s. After adding a query-error recovery case, the 39 rendering
+tests passed in 1.85s. Real FileRenderCache recovery tests cover absent detail
+rows, query failure, type-icon failure and attribute-icon failure: partial image
+first, fresh complete image after recovery, then a cache hit without rerendering.
+Other tests distinguish empty and missing effects, index-only rows, unresolved
+required IDs, Flash art with/without complete details, and same-version content
+corrections with dictionary-order-invariant keys. Ruff, targeted BasedPyright
+(0 errors/warnings), compileall and diff pass. No new module, dependency, TOML
+or cache implementation; unused asset-helper fallback argument was removed.
+
+These are cache-contract tests, not native pixel or live publication acceptance.
+Private-lineup binding and the remaining real-material/platform gates still
+prevent Phase 4 completion; total verified phases remain 4/8.
