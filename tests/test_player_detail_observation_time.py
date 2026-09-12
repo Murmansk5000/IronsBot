@@ -261,7 +261,11 @@ async def test_lineup_dates_data_before_bookkeeping_and_persistent_cache(
         operations=SimpleNamespace(track=lambda *_args, **_kwargs: nullcontext()),
     )
 
-    async def fetch_packet(*_args: Any) -> bytes:
+    async def fetch_packet(
+        client: Any, player_id: int, *, timeout_seconds: float
+    ) -> bytes:
+        assert client is not None and player_id == PLAYER_ID
+        assert timeout_seconds == 1
         clock[0] += 10
         return b"packet"
 
