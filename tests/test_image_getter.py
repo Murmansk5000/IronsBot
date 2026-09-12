@@ -181,7 +181,9 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
             spawn=TaskOwner().create,
         )
         # An old permissive request may have cached a placeholder under its key.
-        assert await store.fetch("pet_head", "70") == b"placeholder"
+        placeholder = await store.fetch("pet_head", "70")
+        assert placeholder.startswith(b"\x89PNG\r\n\x1a\n")
+        assert all("dummyimage.com" not in url for url in urls)
         urls.clear()
         with pytest.raises(ImageSourceError):
             await load_pet_image_assets(store, resource_ids=(70,), type_ids=())

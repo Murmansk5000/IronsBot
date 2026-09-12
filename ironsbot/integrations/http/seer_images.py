@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-from functools import partial
+from functools import cache, partial
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 from httpx import AsyncClient, HTTPStatusError, RequestError
+from PIL import Image, ImageDraw
 
 from ironsbot.services.seer.images import (
     ImageSourceError,
@@ -51,6 +53,11 @@ _PINNED_ASSET_PATHS: dict[ImageKind, tuple[str, ...]] = {
     "title": ("newseer/assets/art/ui/assets/achieve/title/{}.png",),
 }
 _FALLBACK_KINDS = frozenset({"mintmark", "pet_body", "pet_head"})
+_FALLBACK_SIZES: dict[ImageKind, int] = {
+    "mintmark": 96,
+    "pet_body": 300,
+    "pet_head": 160,
+}
 
 
 class HttpSeerImageSource:
@@ -106,7 +113,7 @@ class HttpSeerImageSource:
                 last_error = _image_source_error(error)
         error = last_error or ImageSourceError("所有图片 URL 均请求失败")
         if fallback and kind in _FALLBACK_KINDS:
-            return await self._fallback(error)
+            return _local_fallback_image(kind)
         raise error
 
     def _urls_for(
@@ -141,10 +148,6 @@ class HttpSeerImageSource:
         response.raise_for_status()
         return response.content
 
-    async def _fallback(self, error: ImageSourceError) -> bytes:
-        return await self.fetch_url(f"https://dummyimage.com/300&text={error}")
-
-
 def _image_source_error(
     error: HTTPStatusError | RequestError,
 ) -> ImageSourceError:
@@ -155,3 +158,31 @@ def _image_source_error(
         )
     detail = str(error).strip() or type(error).__name__
     return ImageSourceError(f"{detail} ({error.request.url})")
+
+
+@cache
+def _local_fallback_image(kind: ImageKind) -> bytes:
+    """Return a local placeholder, never a replacement for official artwork."""
+    size = _FALLBACK_SIZES[kind]
+    image = Image.new("RGBA", (size, size), (26, 48, 78, 255))
+    draw = ImageDraw.Draw(image)
+    inset = max(3, size // 16)
+    width = max(2, size // 24)
+    draw.rectangle(
+        (inset, inset, size - inset - 1, size - inset - 1),
+        outline=(94, 150, 216, 255),
+        width=width,
+    )
+    draw.line(
+        (inset * 2, inset * 2, size - inset * 2, size - inset * 2),
+        fill=(94, 150, 216, 255),
+        width=width,
+    )
+    draw.line(
+        (size - inset * 2, inset * 2, inset * 2, size - inset * 2),
+        fill=(94, 150, 216, 255),
+        width=width,
+    )
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
