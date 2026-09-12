@@ -9,6 +9,7 @@ import pytest
 
 from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.core.time import now
 from ironsbot.services.seer.player_detail_service import PlayerDetailService
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service import PlayerService
@@ -275,7 +276,7 @@ def test_background_refresh_is_disabled_by_default(
         **_kwargs: Any,
     ) -> QueryReply:
         called.append(command.kind)
-        return QueryReply(text=command.kind)
+        return QueryReply(text=command.kind, fetched_at=now().timestamp())
 
     monkeypatch.setattr(
         "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
@@ -303,7 +304,7 @@ def test_enabled_background_refresh_warms_and_reuses_section_reply(
         **_kwargs: Any,
     ) -> QueryReply:
         called.append(command)
-        return QueryReply(text=f"{command.kind} reply")
+        return QueryReply(text=f"{command.kind} reply", fetched_at=now().timestamp())
 
     monkeypatch.setattr(
         "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
@@ -375,7 +376,7 @@ def test_background_refresh_reports_inflight_section(
         if command.kind == "collection":
             started.set()
             await release.wait()
-        return QueryReply(text=f"{command.kind} reply")
+        return QueryReply(text=f"{command.kind} reply", fetched_at=now().timestamp())
 
     monkeypatch.setattr(
         "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
@@ -421,7 +422,7 @@ def test_direct_shortcut_bypasses_and_releases_pending_background_refresh(
         **_kwargs: Any,
     ) -> QueryReply:
         called.append(command.kind)
-        return QueryReply(text="collection reply")
+        return QueryReply(text="collection reply", fetched_at=now().timestamp())
 
     monkeypatch.setattr(
         "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
@@ -457,7 +458,9 @@ def test_direct_shortcut_bypasses_and_releases_pending_background_refresh(
 
 def test_player_shortcut_live_prefers_live_data_while_quota_is_available() -> None:
     async def run() -> None:
-        reply = QueryReply(text="preheated autocard reply")
+        reply = QueryReply(
+            text="preheated autocard reply", fetched_at=now().timestamp()
+        )
         details = SimpleNamespace(shortcut=AsyncMock(return_value=reply))
         game = SimpleNamespace(
             user_id=123456,
@@ -519,7 +522,7 @@ def test_background_refresh_expiration_releases_inflight_section(
         if command.kind == "collection":
             started.set()
             await asyncio.Event().wait()
-        return QueryReply(text=f"{command.kind} reply")
+        return QueryReply(text=f"{command.kind} reply", fetched_at=now().timestamp())
 
     monkeypatch.setattr(
         "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
@@ -617,7 +620,7 @@ async def test_expired_background_producer_cannot_publish_to_replacement(
         except asyncio.CancelledError:
             cancelled.set()
             await release[current].wait()
-        return QueryReply(text=f"generation {current}")
+        return QueryReply(text=f"generation {current}", fetched_at=now().timestamp())
 
     monkeypatch.setattr(
         "ironsbot.services.seer.player_detail_service.fetch_player_shortcut_reply",
@@ -644,14 +647,13 @@ async def test_expired_background_producer_cannot_publish_to_replacement(
     finally:
         release[1].set()
         await new.task
-    assert service._cached_reply(PLAYER_ID, "collection") == QueryReply(
-        text="generation 1"
-    )
+    cached = service._cached_reply(PLAYER_ID, "collection")
+    assert cached is not None and cached.text == "generation 1"
 
 
 def test_partial_reply_does_not_replace_complete_cache() -> None:
     service = _service(enabled=True)
-    complete = QueryReply(text="complete")
+    complete = QueryReply(text="complete", fetched_at=now().timestamp())
     service._store_reply(PLAYER_ID, "collection", complete)
     service._store_reply(
         PLAYER_ID, "collection", QueryReply(text="partial", complete=False)

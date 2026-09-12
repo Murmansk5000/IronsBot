@@ -775,6 +775,11 @@ Future data work follows these rules:
   undated supporting evidence remains unknown. Failed reads do not date other
   successful fields, while reused cached facts retain their stored time.
   Query deadlines still use a monotonic clock, not observation wall time.
+  Complete player-detail replies retain this time as structured metadata.
+  Fresh-cache admission and reuse require known, finite, non-future evidence
+  within the configured TTL, as well as an unexpired monotonic cache deadline.
+  Writing an old reply cannot renew its source age; deliverable partial or
+  undated replies are not fresh complete-cache entries.
 - `seerapi` performs data extraction, normalization, schema validation, SWF to
   PNG conversion, and deterministic association building at build time.
 - IronsBot reads published facts through repositories; it does not repeat
