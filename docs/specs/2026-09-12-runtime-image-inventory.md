@@ -128,3 +128,29 @@ This is a verified CI contract, not evidence that the candidate has already run:
 the local Docker 29.5.2 client has no connected Linux daemon. A future release
 run must supply the actual container result and size artifacts before Phase 7
 can claim Linux runtime acceptance.
+
+## Frozen Runtime Footprint Audit
+
+The frozen `--no-dev` export contains 59 packages. Installing that exact export
+into an isolated Python 3.10 Windows environment occupies about 64.49 MiB in
+`site-packages`; this is diagnostic evidence rather than a Linux image-size
+measurement. The largest runtime packages are htmlkit's native rendering core
+(about 16.06 MiB), Pillow (about 13.96 MiB), SQLAlchemy (about 8.37 MiB),
+Pydantic Core (about 5.37 MiB), Pygments (about 4.27 MiB), and resvg-py (about
+1.89 MiB).
+
+Every direct runtime dependency has a current production owner: NoneBot and the
+OneBot adapter provide the active platform runtime; FastAPI/httpx provide the
+configured drivers; htmlkit, Pillow and resvg-py implement image rendering;
+Hishel implements the shared HTTP cache; APScheduler owns scheduled work; SAA
+encodes outgoing image messages; qrcode generates Bilibili login QR images;
+and seerapi-models/SQLAlchemy read the published database. Therefore this audit
+removes no direct dependency. Deleting any of these packages would remove an
+active feature or merely move the same dependency behind an implicit import.
+
+Development-only `nodejs_wheel`, BasedPyright, pytest, Ruff and audit tooling do
+not occur in the frozen production export. The Dockerfile already exports with
+`--no-dev`, installs only that wheel set, and removes pip/setuptools/wheel from
+the final stage. The five bundled sendpic PNGs remain explicit user-facing
+commands and total about 13.65 MiB; they are not SeerAPI publication assets and
+must not be silently deleted as part of producer-resource cleanup.
