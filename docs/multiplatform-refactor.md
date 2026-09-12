@@ -1281,6 +1281,12 @@ Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是�
 执行。审计工具不进入运行镜像；Linux 镜像、系统包和真实 OneBot smoke 尚未验证。
 详见 [运行镜像 Spec](specs/2026-09-12-runtime-image-inventory.md)，不提前关闭 Phase 7。
 
+2026-09-12：真实属性图查询已收录为可重复的原生 smoke test，用实际 SeerAPI
+产物、固定版本 HTTP 素材、统一渲染协调器及缓存完成 PNG 验收；再次查询零新增
+SQL/HTTP/渲染，OneBot 编码与受限平台测试传递同一图片字节。未提供发布库时明确
+skip，不用模拟素材替代。见 capability Spec 的 Native Published Type Query Smoke；
+其余素材范围、Linux 镜像和真实 QQ 发送仍待验收，不增加阶段完成数。
+
 ## 工作项登记模板
 
 每次开始一个小任务，先在任务说明或 PR 描述中填以下内容；完成时补充真实证据：

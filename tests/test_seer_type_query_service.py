@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from base64 import b64decode
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from io import BytesIO
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
@@ -364,3 +367,119 @@ async def test_type_query_result_crosses_restricted_platform_boundary(
             assert len(transport.uploads) == 1
             assert result.reply is not None
             assert transport.uploads[0].content == result.reply.image
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not os.environ.get("IRONSBOT_RENDER_RELEASE"),
+    reason="native release smoke requires IRONSBOT_RENDER_RELEASE and official assets",
+)
+async def test_native_published_type_query_cache_and_delivery(  # noqa: PLR0915
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import nonebot
+    from httpx import AsyncClient
+    from PIL import Image
+    from sqlalchemy import event
+
+    from ironsbot.app.lifecycle import TaskOwner
+    from ironsbot.app.rendering_composition import build_seer_rendering_components
+    from ironsbot.config.models.seer import RenderConfig
+    from ironsbot.integrations.db_registry import DatabaseManager
+    from ironsbot.integrations.http.clients import HttpClients
+    from ironsbot.integrations.onebot.message_rendering import (
+        render_onebot_outbound_message,
+    )
+    from ironsbot.integrations.seer_data.database import SeerDatabase
+    from ironsbot.integrations.seer_data.type_matchup_renderer import (
+        render_type_matchup,
+    )
+    from ironsbot.runtime.cache_paths import CachePaths
+
+    try:
+        driver = nonebot.get_driver()
+    except ValueError:
+        nonebot.init()
+        driver = nonebot.get_driver()
+    if fontconfig := os.environ.get("IRONSBOT_RENDER_FONTCONFIG"):
+        monkeypatch.setattr(driver.config, "fontconfig_file", fontconfig, raising=False)
+    from nonebot_plugin_htmlkit import init_fontconfig
+
+    init_fontconfig()
+    databases = DatabaseManager()
+    database = SeerDatabase(databases, merge_connected_mintmarks=True)
+    owner = TaskOwner()
+    queries: list[str] = []
+    requests: list[str] = []
+    native_calls = 0
+
+    def track_sql(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        queries.append(statement)
+
+    async def track_http(request: Any) -> None:
+        requests.append(str(request.url))
+
+    try:
+        databases.load_from_file("seerapi", os.environ["IRONSBOT_RENDER_RELEASE"])
+        assert database.render_category_available("type_matchup")
+        engine = databases.get_engine("seerapi")
+        assert engine is not None
+        event.listen(engine, "before_cursor_execute", track_sql)
+        async with AsyncClient(
+            timeout=30, follow_redirects=True, event_hooks={"request": [track_http]}
+        ) as client:
+            _, coordinator, sessions = build_seer_rendering_components(
+                HttpClients(cache=client, origin=client),
+                CachePaths(tmp_path / "cache"),
+                RenderConfig(),
+                database,
+                spawn=owner.create,
+            )
+
+            @contextmanager
+            def session() -> Iterator[TypeRenderSession]:
+                with sessions.open() as inputs:
+
+                    async def render(matchup: TypeMatchup) -> bytes:
+                        nonlocal native_calls
+                        native_calls += 1
+                        return await render_type_matchup(
+                            inputs.images, coordinator.render, matchup
+                        )
+
+                    yield TypeRenderSession(inputs.data, render, inputs.cache)
+
+            service = TypeQueryService(session)
+            first = await service.select(1)
+            assert first.reply is not None and first.reply.image is not None
+            image_bytes = first.reply.image
+            with Image.open(BytesIO(image_bytes)) as image:
+                assert image.format == "PNG"
+                minimum_side, minimum_colors = 300, 100
+                assert min(image.size) >= minimum_side
+                colors = image.convert("RGB").getcolors(image.width * image.height)
+                assert colors is not None and len(colors) > minimum_colors
+            (tmp_path / "type-matchup.png").write_bytes(image_bytes)
+            cold_counts = (len(queries), len(requests), native_calls)
+            assert all(cold_counts)
+            assert native_calls == 1
+            assert await service.select(1) == first
+            assert (len(queries), len(requests), native_calls) == cold_counts
+            now = datetime(2026, 9, 12, tzinfo=timezone.utc)
+            context = ReplyContext(
+                ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque:group"),
+                "opaque:event",
+                reply_deadline=now + timedelta(seconds=5),
+            )
+            transport = FakeOfficialPlatform(now)
+            message = first.reply.to_outbound()
+            assert (await transport.reply(context, message)).delivered
+            assert transport.uploads[0].content == image_bytes
+            onebot = render_onebot_outbound_message(message)
+            assert (
+                b64decode(onebot[0].data["file"].removeprefix("base64://"))
+                == image_bytes
+            )
+    finally:
+        await owner.cancel_all()
+        databases.close()

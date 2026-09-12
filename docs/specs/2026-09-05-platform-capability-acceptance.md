@@ -115,3 +115,44 @@ full run exposed an unchanged rank test fixture returning repeated players and
 non-descending scores for every page. Commit `1823e03c` fixes that fixture without
 changing the expected requests, final rank or production consistency checks;
 all 25 rank-limit tests and the subsequent full run passed.
+
+## Native Published Type Query Smoke (2026-09-12)
+
+The existing type-query test module now has an opt-in native smoke test. Set
+`IRONSBOT_RENDER_RELEASE` to a built SeerAPI SQLite file; optionally set
+`IRONSBOT_RENDER_FONTCONFIG` to the host's fontconfig file. These are test inputs,
+not runtime TOML fields. Without a release input it explicitly skips rather than
+substituting an invented database or marking native rendering verified.
+
+```sh
+uv run pytest -q tests/test_seer_type_query_service.py -k native_published \
+  --basetemp=.test-tmp/native-release-smoke
+```
+
+It uses DatabaseManager's read-only file import and real release validation,
+build_seer_rendering_components, the actual type repository/calculator,
+immutable published HTTP assets, RenderCoordinator and htmlkit. A temporary empty
+cache guarantees the first call performs SQL, HTTP and exactly one render; the
+second produces identical PNG bytes with no additional SQL, HTTP or renderer
+call. The PNG is decoded for dimensions and color diversity and retained under
+the pytest temporary directory. The same bytes pass through QueryReply, simulated
+official upload and the real OneBot message encoder without corruption. Task
+ownership and database cleanup run in finally, including failure paths.
+
+Executed against the existing local `v5-release-acceptance-fixed` producer
+artifact: 1 native test passed in 22.57 seconds (two existing ORM warnings).
+The output is an 848x3453 grass-type matchup PNG; visual inspection confirmed
+the title, attack/defense sections, icons and multiplier rows render without
+overlap. The ordinary focused suite passed 46 tests with one explicitly skipped
+native test when the release environment variable was absent.
+
+This replaces a one-off probe for this path with a reproducible gate. It is not
+an actual official platform upload, live player/game query, Linux image smoke,
+nor proof of completeness for pet, pool or lineup asset scopes. No production
+code, dependencies, database or configuration was changed; 4/8 remains unchanged.
+
+Final fresh-cache rerun with the native test enabled: all 26 type-query tests
+passed in 13.33 seconds. Full Ruff, targeted BasedPyright and diff check passed.
+Source release SHA-256 remains
+`1ef66a0039326f1f2a8d2ca523af02e6e44da7134f3edff5ce15e0d385119845`.
+No full-suite rerun is claimed for this test/documentation-only checkpoint.
