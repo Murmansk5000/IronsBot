@@ -54,8 +54,7 @@ class SeerAssetStore:
         self._network = asyncio.Semaphore(limits.max_network_concurrent)
         self._negative_ttl_seconds = limits.negative_ttl_seconds
         self._negative: dict[str, float] = {}
-        self._inflight: dict[str, asyncio.Future[bytes]] = {}
-        self._inflight_lock = asyncio.Lock()
+        self._inflight: dict[str, asyncio.Task[bytes]] = {}
         self._source_identity_getter = source_identity_getter or (lambda: "legacy")
 
     async def fetch(
@@ -90,9 +89,6 @@ class SeerAssetStore:
             return asset
         if self._is_negative(cache_key):
             raise ImageSourceStatusError(404, "cached missing image")
-        if (asset := await asyncio.to_thread(self._disk.get, cache_key)) is not None:
-            self._memory.put(cache_key, asset)
-            return asset
         return await self._await_shared_fetch(cache_key, fetch)
 
     async def _await_shared_fetch(
@@ -100,33 +96,28 @@ class SeerAssetStore:
         cache_key: str,
         fetch: Callable[[], Awaitable[bytes]],
     ) -> bytes:
-        async with self._inflight_lock:
-            future = self._inflight.get(cache_key)
-            if future is None:
-                future = asyncio.get_running_loop().create_future()
-                future.add_done_callback(_consume_future_exception)
-                self._inflight[cache_key] = future
-                is_owner = True
-            else:
-                is_owner = False
-        if not is_owner:
-            return await asyncio.shield(future)
+        task = self._inflight.get(cache_key)
+        if task is None:
+            task = asyncio.create_task(self._load_or_fetch(cache_key, fetch))
+            self._inflight[cache_key] = task
+            task.add_done_callback(lambda done: self._finish_fetch(cache_key, done))
+        return await asyncio.shield(task)
 
-        try:
-            asset = await self._fetch_and_store(cache_key, fetch)
-        except asyncio.CancelledError:
-            future.cancel()
-            raise
-        except BaseException as error:
-            future.set_exception(error)
-            raise
-        else:
-            future.set_result(asset)
+    def _finish_fetch(self, cache_key: str, task: asyncio.Task[bytes]) -> None:
+        if self._inflight.get(cache_key) is task:
+            self._inflight.pop(cache_key)
+        if not task.cancelled():
+            task.exception()
+
+    async def _load_or_fetch(
+        self,
+        cache_key: str,
+        fetch: Callable[[], Awaitable[bytes]],
+    ) -> bytes:
+        if (asset := await asyncio.to_thread(self._disk.get, cache_key)) is not None:
+            self._memory.put(cache_key, asset)
             return asset
-        finally:
-            async with self._inflight_lock:
-                if self._inflight.get(cache_key) is future:
-                    self._inflight.pop(cache_key, None)
+        return await self._fetch_and_store(cache_key, fetch)
 
     async def _fetch_and_store(
         self,
@@ -191,12 +182,6 @@ def _cache_key(*parts: str) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _consume_future_exception(future: asyncio.Future[bytes]) -> None:
-    if future.cancelled():
-        return
-    _ = future.exception()
-
-
 def build_seer_asset_store(
     source: SeerImageSource,
     cache_dir: Path,
@@ -212,9 +197,7 @@ def build_seer_asset_store(
             memory_max_size_bytes=(
                 render_config.asset_memory_max_size_mb * 1024 * 1024
             ),
-            disk_max_size_bytes=(
-                render_config.asset_cache_max_size_mb * 1024 * 1024
-            ),
+            disk_max_size_bytes=(render_config.asset_cache_max_size_mb * 1024 * 1024),
             max_network_concurrent=render_config.asset_fetch_max_concurrent,
             negative_ttl_seconds=render_config.asset_negative_ttl_seconds,
         ),

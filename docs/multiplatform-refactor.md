@@ -728,6 +728,13 @@ manifest 34 passed，Ruff、模块类型检查、compileall、diff 通过。消�
 失败恢复及缓存命中；26 项相关测试通过，新增必需素材失败测试后的精灵适配器
 4 passed，Ruff/定向类型检查通过。未做线上发布，整体仍为 4/8。
 
+素材缓存任务所有权完成定向收口：`SeerAssetStore` 持有共享下载任务，所有调用者
+只持有 shield 等待；首个调用者取消不再连带取消其他请求。磁盘读取也进入共享任务，
+删除手工 Future 转发与多余锁，生产代码净减少。见
+[共享素材 Spec](specs/2026-09-12-asset-singleflight.md)。素材/HTTP 联合 13 passed，
+增加无人等待后重新加入案例后的素材模块 9 passed，相关静态检查通过。
+未做完整阶段验收、未发布或修改生产 TOML，整体仍为 4/8。
+
 ### Phase 5 — 业务服务和通用解析
 
 **目标契约：** 领域服务、统一别名解析和 `PlayerIdResolver`。
