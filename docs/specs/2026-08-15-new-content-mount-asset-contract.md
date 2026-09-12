@@ -112,6 +112,7 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 | --- | --- | --- | --- |
 | 2026-08-15 | 当前路径审计 | `new_content_renderer`、`flash_mount_repository`、SeerAPI Flash render script 与 focused tests | 已确认 PNG 在构建期生成，但 IronsBot 仍从 SQLite blob 作隐式 fallback；尚未实施。 |
 | 2026-08-15 | 上游发布能力审计 | SeerAPI `render_flash_mount_images.py`、`render_asset_repository.py`、build workflow 与 asset manifest builder | Flash 脚本只写 release SQLite；现有 asset repository 仅提供 immutable snapshot 读取，尚无 PNG 写入/发布路径，因此不得开始消费者切换。 |
+| 2026-09-05 | 重新核对真实消费者和流水线 | `services/seer/equipment.py`、新增内容 renderer、SeerAPI build workflow | 普通座驾查询也调用 `load_flash_mount_image`，删除 repository 时必须一同迁入统一素材源；上游仍只向 SQLite 写 PNG，尚无 immutable asset repository 发布步骤。本次未删除消费者或改动生产发布。 |
 
 ## Progress
 
