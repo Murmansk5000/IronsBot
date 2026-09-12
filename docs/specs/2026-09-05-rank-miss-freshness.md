@@ -86,3 +86,26 @@ passed; targeted type checking, Ruff, compileall and diff checks passed. No full
 public-suite rerun in this batch, no production data change, main merge or push.
 Invalid/future timestamps and full dynamic multi-page consistency are not newly
 certified by this change. Overall verified phase count remains 4/8.
+
+## Invalid Observation Times (2026-09-12)
+
+Five SQLite regression cases initially failed: future/infinite incoming pages
+replaced valid observations, and future/infinite/negative persisted dates were
+accepted as historical evidence. The shared pure observation-age helper now
+requires a finite, nonnegative epoch not later than the supplied clock. Remaining
+player-cache lifetime reuses this validation instead of a separate date rule.
+
+Rank page and miss writes reject invalid observations before mutation. All rank
+read paths, including last-seen coordinates, score hints and page summaries,
+exclude invalid dates even when stale reads are explicitly allowed. A valid page
+header cannot make an invalid constituent fact count as valid coverage. Future
+positive evidence cannot suppress a valid miss or prevent subsequent valid
+refreshes; miss and global nickname upserts also recover from invalid dates.
+Ordinary stale observations and the existing exact TTL boundary remain unchanged.
+
+234 focused rank, scheduler, refresh, player-cache, core-time and size checks
+passed, plus 43 private native-enabled regression tests. Targeted BasedPyright,
+Ruff, compileall and diff checks passed. No schema/configuration change, new
+storage module, production mutation, main merge or push. Tests cover numeric
+invalid dates, not arbitrary corrupt SQLite values or atomic dynamic multi-page
+snapshots. Overall verified phases remain 4/8.

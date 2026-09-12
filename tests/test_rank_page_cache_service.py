@@ -6,6 +6,7 @@ from threading import Barrier
 
 import pytest
 
+from ironsbot.integrations.storage import rank_page_cache as storage
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
 
 MOVED_RANK_INDEX = 100
@@ -34,6 +35,157 @@ def build_cache(path: Path) -> SqliteRankPageCache:
         ttl_seconds=3600,
         allow_stale=True,
     )
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -1.0, FETCHED_AT + 60])
+def test_invalid_observation_cannot_replace_valid_page(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: float,
+) -> None:
+    monkeypatch.setattr(storage.time, "time", lambda: FETCHED_AT)
+    path = tmp_path / "rank.sqlite"
+    cache = build_cache(path)
+    cache.save(key=1, sub_key=2, start=0, end=0, items=[RankItem(100, "valid", 999)])
+    cache.save(
+        key=1,
+        sub_key=2,
+        start=0,
+        end=0,
+        items=[RankItem(200, "invalid", 998)],
+        fetched_at=invalid,
+    )
+    cached = build_cache(path).item(key=1, sub_key=2, user_id=100)
+    assert cached is not None
+    assert cached.fetched_at == FETCHED_AT
+
+
+@pytest.mark.parametrize("invalid", [float("inf"), -1.0, FETCHED_AT + 60])
+def test_invalid_persisted_times_are_not_historical_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: float,
+) -> None:
+    monkeypatch.setattr(storage.time, "time", lambda: FETCHED_AT)
+    path = tmp_path / "rank.sqlite"
+    cache = build_cache(path)
+    cache.save(key=1, sub_key=2, start=0, end=0, items=[RankItem(100, "valid", 999)])
+    cache.save_miss(key=1, sub_key=2, user_id=200, searched_limit=100)
+    with sqlite3.connect(path) as conn:
+        for table in (
+            "rank_pages",
+            "player_rank_facts",
+            "player_rank_last_seen",
+            "player_rank_misses",
+        ):
+            conn.execute(f"UPDATE {table} SET fetched_at=?", (invalid,))
+    cache = build_cache(path)
+    assert cache.page(key=1, sub_key=2, start=0, end=0, allow_stale=True) is None
+    assert cache.item(key=1, sub_key=2, user_id=100, allow_stale=True) is None
+    assert cache.item_by_index(key=1, sub_key=2, rank_index=0, allow_stale=True) is None
+    assert (
+        cache.last_seen_item(key=1, sub_key=2, user_id=100, max_age_seconds=3600)
+        is None
+    )
+    assert (
+        cache.miss(key=1, sub_key=2, user_id=200, minimum_limit=100, allow_stale=True)
+        is None
+    )
+    assert cache.summary(key=1, sub_key=2) == []
+    assert (
+        cache.score_indexes(key=1, sub_key=2, score=999, start_index=0, end_index=100)
+        == []
+    )
+    cache.save(
+        key=1, sub_key=2, start=0, end=0, items=[RankItem(100, "recovered", 998)]
+    )
+    recovered = build_cache(path).item(key=1, sub_key=2, user_id=100)
+    assert recovered is not None
+    assert recovered.nick == "recovered"
+
+
+@pytest.mark.parametrize("invalid", [float("inf"), -1.0, FETCHED_AT + 60])
+def test_invalid_positive_does_not_suppress_valid_miss(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: float,
+) -> None:
+    monkeypatch.setattr(storage.time, "time", lambda: FETCHED_AT)
+    path = tmp_path / "rank.sqlite"
+    cache = build_cache(path)
+    cache.save(key=1, sub_key=2, start=0, end=0, items=[RankItem(100, "valid", 999)])
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE player_rank_last_seen SET fetched_at=?", (invalid,))
+    cache.save_miss(key=1, sub_key=2, user_id=100, searched_limit=100)
+    assert (
+        build_cache(path).miss(key=1, sub_key=2, user_id=100, minimum_limit=100)
+        is not None
+    )
+
+
+@pytest.mark.parametrize("invalid", [float("inf"), -1.0, FETCHED_AT + 60])
+def test_invalid_fact_cannot_hide_behind_valid_page_time(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: float,
+) -> None:
+    monkeypatch.setattr(storage.time, "time", lambda: FETCHED_AT)
+    path = tmp_path / "rank.sqlite"
+    cache = build_cache(path)
+    cache.save(key=1, sub_key=2, start=0, end=0, items=[RankItem(100, "valid", 999)])
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE player_rank_facts SET fetched_at=?", (invalid,))
+    assert cache.page(key=1, sub_key=2, start=0, end=0, allow_stale=True) is None
+    summary = cache.summary(key=1, sub_key=2)
+    assert len(summary) == 1
+    assert summary[0].item_count == 0
+    assert summary[0].is_partial
+    assert summary[0].min_score is None
+
+
+@pytest.mark.parametrize("invalid", [float("inf"), -1.0, FETCHED_AT + 60])
+def test_valid_observation_repairs_invalid_miss_and_nickname(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: float,
+) -> None:
+    monkeypatch.setattr(storage.time, "time", lambda: FETCHED_AT)
+    path = tmp_path / "rank.sqlite"
+    cache = build_cache(path)
+    cache.save(key=1, sub_key=2, start=0, end=0, items=[RankItem(100, "old", 999)])
+    cache.save_miss(key=1, sub_key=2, user_id=200, searched_limit=100)
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE player_rank_misses SET fetched_at=?", (invalid,))
+        conn.execute("UPDATE rank_players SET updated_at=?", (invalid,))
+    cache.save_miss(key=1, sub_key=2, user_id=200, searched_limit=200)
+    cache.save(key=1, sub_key=2, start=0, end=0, items=[RankItem(100, "new", 999)])
+    miss = build_cache(path).miss(key=1, sub_key=2, user_id=200, minimum_limit=200)
+    assert miss is not None
+    assert miss.fetched_at == FETCHED_AT
+    with sqlite3.connect(path) as conn:
+        assert conn.execute(
+            "SELECT nick, updated_at FROM rank_players WHERE user_id=100"
+        ).fetchone() == ("new", FETCHED_AT)
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -1.0, FETCHED_AT + 60])
+def test_invalid_miss_write_preserves_valid_miss(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: float,
+) -> None:
+    monkeypatch.setattr(storage.time, "time", lambda: FETCHED_AT)
+    path = tmp_path / "rank.sqlite"
+    cache = build_cache(path)
+    searched_limit = 100
+    cache.save_miss(key=1, sub_key=2, user_id=100, searched_limit=searched_limit)
+    cache.save_miss(
+        key=1, sub_key=2, user_id=100, searched_limit=200, fetched_at=invalid
+    )
+    miss = build_cache(path).miss(key=1, sub_key=2, user_id=100, minimum_limit=100)
+    assert miss is not None
+    assert miss.searched_limit == searched_limit
+    assert miss.fetched_at == FETCHED_AT
 
 
 @pytest.mark.parametrize("old_start", [0, 100])

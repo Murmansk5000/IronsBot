@@ -6,6 +6,7 @@ import sqlite3
 import time
 from typing import TYPE_CHECKING
 
+from ironsbot.core.time import observation_age
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
 from ironsbot.services.seer.rank_models import RankEntry
 from ironsbot.services.seer.rank_page_cache_models import (
@@ -158,9 +159,10 @@ class SqliteRankPageCache:
                     LEFT JOIN rank_players p ON p.user_id = f.user_id
                     WHERE f.key = ? AND f.sub_key = ?
                       AND f.rank_index BETWEEN ? AND ?
+                      AND f.fetched_at BETWEEN 0 AND ?
                     ORDER BY f.rank_index
                     """,
-                    (key, sub_key, start, end),
+                    (key, sub_key, start, end, time.time()),
                 ).fetchall()
                 if len(rows) != int(expected_count):
                     return None
@@ -241,7 +243,8 @@ class SqliteRankPageCache:
                 return None
             nick, score, rank_index, fetched_at = row
             fetched_at = float(fetched_at)
-            if time.time() - fetched_at > max_age_seconds:
+            age = observation_age(fetched_at, at=time.time())
+            if age is None or age > max_age_seconds:
                 return None
             return CachedRankLookup(
                 user_id,
@@ -320,9 +323,10 @@ class SqliteRankPageCache:
                           AND f.user_id = m.user_id
                           AND f.rank_index < m.searched_limit
                           AND f.fetched_at >= m.fetched_at
+                          AND f.fetched_at BETWEEN 0 AND ?
                       )
                     """,
-                    (key, sub_key, user_id),
+                    (key, sub_key, user_id, time.time()),
                 ).fetchone()
             if row is None:
                 return None
@@ -356,12 +360,13 @@ class SqliteRankPageCache:
                     LEFT JOIN player_rank_facts f
                       ON f.key = p.key AND f.sub_key = p.sub_key
                      AND f.rank_index BETWEEN p.start_index AND p.end_index
+                     AND f.fetched_at BETWEEN 0 AND ?
                     WHERE p.key = ? AND p.sub_key = ?
                     GROUP BY p.start_index, p.end_index, p.fetched_at,
                              p.expected_count
                     ORDER BY p.start_index, p.end_index
                     """,
-                    (key, sub_key),
+                    (time.time(), key, sub_key),
                 ).fetchall()
         except sqlite3.Error as error:
             self._log_read_error(error)
@@ -379,6 +384,7 @@ class SqliteRankPageCache:
                 is_partial=int(actual) < int(expected),
             )
             for start, end, fetched_at, expected, actual, min_score, max_score in rows
+            if observation_age(float(fetched_at), at=time.time()) is not None
         ]
 
     def score_indexes(
@@ -400,9 +406,10 @@ class SqliteRankPageCache:
                     FROM player_rank_facts
                     WHERE key = ? AND sub_key = ? AND score = ?
                       AND rank_index >= ? AND rank_index < ?
+                      AND fetched_at BETWEEN 0 AND ?
                     ORDER BY rank_index
                     """,
-                    (key, sub_key, score, start_index, end_index),
+                    (key, sub_key, score, start_index, end_index, time.time()),
                 ).fetchall()
         except sqlite3.Error as error:
             self._log_read_error(error)
@@ -421,7 +428,13 @@ class SqliteRankPageCache:
     ) -> None:
         if not self.enabled:
             return
-        timestamp = time.time() if fetched_at is None else fetched_at
+        current_time = time.time()
+        timestamp = current_time if fetched_at is None else fetched_at
+        if observation_age(timestamp, at=current_time) is None:
+            _LOGGER.warning(
+                "ignoring rank page with invalid observation time: %s", timestamp
+            )
+            return
         normalized = [
             (
                 start + position,
@@ -441,11 +454,11 @@ class SqliteRankPageCache:
                 newer_page = conn.execute(
                     """
                     SELECT 1 FROM rank_pages
-                    WHERE key = ? AND sub_key = ? AND fetched_at > ?
+                    WHERE key = ? AND sub_key = ? AND fetched_at > ? AND fetched_at <= ?
                       AND NOT (end_index < ? OR start_index > ?)
                     LIMIT 1
                     """,
-                    (key, sub_key, timestamp, start, end),
+                    (key, sub_key, timestamp, current_time, start, end),
                 ).fetchone()
                 # A page is one observation; never splice old rows into newer evidence.
                 if newer_page or any(
@@ -453,11 +466,11 @@ class SqliteRankPageCache:
                         """
                         SELECT 1 FROM player_rank_last_seen
                         WHERE key = ? AND sub_key = ? AND user_id = ?
-                          AND fetched_at > ?
+                          AND fetched_at > ? AND fetched_at <= ?
                         UNION ALL
                         SELECT 1 FROM player_rank_misses
                         WHERE key = ? AND sub_key = ? AND user_id = ?
-                          AND fetched_at > ? AND searched_limit > ?
+                          AND fetched_at > ? AND fetched_at <= ? AND searched_limit > ?
                         LIMIT 1
                         """,
                         (
@@ -465,10 +478,12 @@ class SqliteRankPageCache:
                             sub_key,
                             user_id,
                             timestamp,
+                            current_time,
                             key,
                             sub_key,
                             user_id,
                             timestamp,
+                            current_time,
                             rank_index,
                         ),
                     ).fetchone()
@@ -524,8 +539,12 @@ class SqliteRankPageCache:
                         nick = excluded.nick,
                         updated_at = excluded.updated_at
                     WHERE excluded.updated_at >= rank_players.updated_at
+                       OR rank_players.updated_at > ? OR rank_players.updated_at < 0
                     """,
-                    [(user_id, nick, timestamp) for _, user_id, nick, _ in normalized],
+                    [
+                        (user_id, nick, timestamp, current_time)
+                        for _, user_id, nick, _ in normalized
+                    ],
                 )
                 conn.executemany(
                     """
@@ -588,7 +607,13 @@ class SqliteRankPageCache:
     ) -> None:
         if not self.enabled or searched_limit <= 0:
             return
-        timestamp = time.time() if fetched_at is None else fetched_at
+        current_time = time.time()
+        timestamp = current_time if fetched_at is None else fetched_at
+        if observation_age(timestamp, at=current_time) is None:
+            _LOGGER.warning(
+                "ignoring rank miss with invalid observation time: %s", timestamp
+            )
+            return
         try:
             with self._database.connect() as conn:
                 conn.execute(
@@ -601,8 +626,10 @@ class SqliteRankPageCache:
                         searched_limit = excluded.searched_limit,
                         fetched_at = excluded.fetched_at
                     WHERE excluded.fetched_at >= player_rank_misses.fetched_at
+                       OR player_rank_misses.fetched_at > ?
+                       OR player_rank_misses.fetched_at < 0
                     """,
-                    (key, sub_key, user_id, searched_limit, timestamp),
+                    (key, sub_key, user_id, searched_limit, timestamp, current_time),
                 )
                 conn.execute(
                     """
@@ -669,7 +696,8 @@ class SqliteRankPageCache:
             )
 
     def _is_stale(self, fetched_at: float) -> bool:
-        return self.ttl_seconds <= 0 or time.time() - fetched_at > self.ttl_seconds
+        age = observation_age(fetched_at, at=time.time())
+        return age is None or self.ttl_seconds <= 0 or age > self.ttl_seconds
 
     def _reject_stale(
         self,
@@ -678,6 +706,8 @@ class SqliteRankPageCache:
         allow_stale: bool | None,
     ) -> bool:
         allowed = self.allow_stale if allow_stale is None else allow_stale
+        if observation_age(fetched_at, at=time.time()) is None:
+            return True
         return self._is_stale(fetched_at) and not allowed
 
     @staticmethod
