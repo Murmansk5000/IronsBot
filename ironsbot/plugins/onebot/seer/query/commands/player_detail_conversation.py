@@ -4,9 +4,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, cast
 
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from nonebot.adapters import Event  # noqa: TC002
-from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
@@ -27,10 +26,14 @@ from ironsbot.integrations.onebot.matchers import (
     get_prompt_session_manager,
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.prompt_sessions import (
     QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
 )
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
@@ -189,7 +192,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
             matcher,
             event,
             state,
-            prompt=_query_reply_message(reply),
+            prompt=render_onebot_outbound_message(reply.to_outbound()),
         )
         return
 
@@ -218,7 +221,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
         conversation=message_input_context(event).message.conversation,
         send_status=send_status,
     )
-    message = _reply_text(reply.leading_text, reply.text, reply.image_error)
+    message = render_onebot_outbound_message(reply.to_outbound())
 
     await _continue_player_detail_conversation(
         service,
@@ -365,25 +368,6 @@ async def _continue_player_detail_conversation(  # noqa: PLR0913
             features,
         ),
     )
-
-
-def _reply_text(leading_text: str, text: str, image_error: str) -> str:
-    return f"{leading_text}{text or image_error}"
-
-
-def _query_reply_message(reply: QueryReply) -> str | Message:
-    if reply.image is None:
-        return _reply_text(reply.leading_text, reply.text, reply.image_error)
-
-    message = Message()
-    if reply.leading_text:
-        message += MessageSegment.text(reply.leading_text)
-    message += MessageSegment.image(reply.image)
-    if reply.text:
-        message += MessageSegment.text(reply.text)
-    elif reply.image_error:
-        message += MessageSegment.text(reply.image_error)
-    return message
 
 
 def _resolve_player_detail_extension_action(

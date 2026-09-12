@@ -1,11 +1,12 @@
 import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from ironsbot.config.models.seer import PlayerRankLookupConfig
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcut_contracts import (
@@ -42,6 +43,46 @@ from ironsbot.services.seer.sequ_extra import (
 PLAYER_ID = 813_824_069
 _TEST_STAGE_TIMEOUT_SECONDS = 0.01
 _CACHED_AT = 1234567890
+
+
+@pytest.mark.asyncio
+async def test_season_database_failure_preserves_peak_base_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_shortcut_queries.fetch_unity_peak_partial",
+        AsyncMock(
+            return_value=UnityPeakFetchResult(
+                UnityPeakInfo(current_z_score=1421, current_z_all=10),
+                frozenset(("standard", "wild", "expert")),
+                fetched_at=1_800_000_000,
+            )
+        ),
+    )
+    rank = SimpleNamespace(
+        current_peak_sub_key=Mock(
+            side_effect=DataUnavailableError("巅峰赛季数据读取失败")
+        ),
+        fetch_peak_summary=AsyncMock(),
+    )
+    local = SimpleNamespace(
+        config=SimpleNamespace(enabled=True), upsert_metrics=AsyncMock()
+    )
+    reply = await fetch_player_shortcut_reply(
+        _dependencies(rank, local),
+        SimpleNamespace(
+            get_user_info=AsyncMock(return_value=SimpleNamespace(nick="tester"))
+        ),
+        command=PlayerShortcutCommand(kind="peak", player_id=PLAYER_ID),
+        player_id=PLAYER_ID,
+    )
+    assert "1421" in reply.text
+    assert "巅峰赛季数据读取失败" in reply.text
+    assert "未上榜" not in reply.text
+    assert not reply.complete
+    assert all(result.failure for result in reply.rank_lookups)
+    rank.fetch_peak_summary.assert_not_awaited()
+    local.upsert_metrics.assert_not_awaited()
 
 
 @pytest.mark.asyncio

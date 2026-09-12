@@ -30,12 +30,12 @@ from ironsbot.config.models.operations import (
     DockerUpdateConfig,
 )
 from ironsbot.config.models.seer import (
-    LuckySkinWindowConfig,
     PlayerQueryLimitsConfig,
     PlayerRequestProtectionConfig,
     RankPageRefreshConfig,
     TeamResourceConfig,
 )
+from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
 from ironsbot.config.models.settings import MatcherPriorityConfig, Settings
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.rank_exclusions import (

@@ -18,7 +18,7 @@ from ironsbot.integrations.seer_data.skin_reference_repository import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.seer import LuckySkinWindowConfig
+    from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.identity.player_accounts import PlayerAccount

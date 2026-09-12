@@ -1047,7 +1047,8 @@ page_cache = true
 page_cache_ttl_seconds = 3600
 # Default: true; EN: Allow stale rank cache. ZH: 允许使用过期缓存。
 allow_stale_cache = true
-# Default: 32; EN: Max point probes for score-based binary rank lookup.
+# Default: 32; EN: Max new point probes per binary boundary (up to three boundaries).
+# ZH: 每个二分边界的探针上限，最多三个边界；同分段翻页另计。
 score_search_probe_limit = 32
 # Default: 5; EN: Max tied-score pages scanned after binary lookup.
 score_search_tie_page_limit = 5

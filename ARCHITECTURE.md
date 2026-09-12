@@ -757,9 +757,15 @@ asset materialization, and reject a release lacking an asset-manifest revision.
 Those paths, plus private lineup via `PlayerLineupRenderPort`, calculate their
 request key before data/asset preparation. The private lineup keeps its own
 presentation module, but its adapter alone owns asset loading, final-cache
-access, and the HTML render port. The remaining Phase 4 gate is complete,
-scope-aware SeerAPI asset-manifest validation and revision-bound asset retrieval,
-not another runtime cache order. A build-time manifest that records an immutable
+access, and the HTML render port. The remaining Phase 4 consumer gate is
+scope-aware SeerAPI asset-manifest validation, revision-bound asset retrieval,
+and tested behavior for complete, missing, and failed assets. It does not require
+every official asset to exist. Asset collection, conversion, and publication
+belong to the producer; missing upstream resources remain producer backlog,
+not a reason to add extraction or conversion to the bot. An incomplete scope
+must still be excluded from complete final-image caching. Phase closure requires
+consumer evidence across the declared render categories, not merely changing
+this gate or passing one renderer test. A build-time manifest that records an immutable
 asset-tree revision is insufficient while a consumer still fetches the mutable
 `main` branch: the resolved asset URL or asset source must be derived from the
 same published revision that participates in the final-image request key.
@@ -834,6 +840,13 @@ reconstructed inside IronsBot. A change that crosses `seerapi`,
    rows, assets, and integrity before a consumer is allowed to rely on it.
 4. IronsBot consumes the published view through `integrations.seer_data` and
    passes a render-ready view model to its renderer.
+
+The producer repository and the PyPI `seerapi` HTTP client are different
+dependencies. IronsBot's runtime uses `seerapi-models` and the validated local
+publication; it must not restore the unused HTTP client as a parallel data
+access path. Asset and release downloads continue through the application-owned
+HTTP integrations. Dependency removal must be tested with the package actually
+absent, not just removed from pyproject while remaining installed locally.
 
 The consuming repository must not add a second association resolver, raw SWF
 conversion fallback, best-effort text guesser, or legacy-table read merely to

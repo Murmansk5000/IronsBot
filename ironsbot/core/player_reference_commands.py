@@ -6,8 +6,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ironsbot.core.commands import normalize_command_text
-
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -47,7 +45,7 @@ def player_reference_input_matcher(
             {
                 normalized
                 for prefix in prefixes
-                if (normalized := normalize_command_text(prefix))
+                if (normalized := prefix.strip().casefold())
             },
             key=len,
             reverse=True,
@@ -55,7 +53,7 @@ def player_reference_input_matcher(
     )
 
     def matches(text: str, context: CommandContext) -> bool:
-        normalized_text = normalize_command_text(text)
+        normalized_text = text.strip().casefold()
         prefix = next(
             (
                 candidate
@@ -66,7 +64,7 @@ def player_reference_input_matcher(
         )
         if prefix is None:
             return False
-        reference = normalized_text[len(prefix) :]
+        reference = normalized_text[len(prefix) :].strip()
         if not reference:
             return accept_empty
         return is_player_reference_input(reference, context, reference_is_known)

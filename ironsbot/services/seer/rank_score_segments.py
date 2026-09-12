@@ -9,7 +9,11 @@ from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
-from ironsbot.services.seer.rank_score_helpers import score_segment_sample_indexes
+from ironsbot.services.seer.rank_pagination import RankPageSequence
+from ironsbot.services.seer.rank_score_helpers import (
+    score_segment_sample_indexes,
+    validate_score_sample,
+)
 from ironsbot.services.seer.rank_score_search import (
     DescendingScoreSearchLimits,
     locate_descending_score_range,
@@ -204,6 +208,7 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     max_pages = deps.score_search_tie_page_limit()
     fetched_pages = 0
+    sequence = RankPageSequence()
 
     for page_start in page_starts:
         if sample_indexes is None and fetched_pages >= max_pages:
@@ -220,6 +225,14 @@ async def fetch_rank_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
         observation.include(page_result.fetched_at)
         fetched_pages += 1
+        validate_score_sample(
+            page_result,
+            start=page_start,
+            end=page_start + page_size - 1,
+            target_score=target_score,
+            score_range=score_range,
+            sequence=sequence,
+        )
 
         for offset, item in enumerate(page_result.items):
             rank_index = page_start + offset

@@ -7,15 +7,19 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from sqlalchemy import event as sql_event
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.core import time
 from ironsbot.integrations.seer_data.peak_repository import (
     PeakPeriodTimes,
     load_peak_pet_snapshots,
+    load_peak_pool_snapshots,
+    load_peak_vote_snapshots,
 )
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
+from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.peak import (
     PeakItemData,
     PeakPetSnapshot,
@@ -24,6 +28,8 @@ from ironsbot.services.seer.peak import (
     PeakRenderSession,
     active_peak_pool_limits,
 )
+from ironsbot.services.seer.render_coordinator import RenderCoordinator
+from ironsbot.services.seer.render_paths import PEAK_POOL_VOTE_TEMPLATE_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -151,6 +157,12 @@ def test_active_peak_pool_limits_uses_only_current_pools_and_strictest_limit() -
 def test_peak_pet_repository_returns_only_requested_detached_fields() -> None:
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
+    statements: list[str] = []
+
+    def track_sql(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        statements.append(statement)
+
+    sql_event.listen(engine, "before_cursor_execute", track_sql)
     try:
         with Session(engine) as session:
             session.execute(
@@ -186,11 +198,96 @@ def test_peak_pet_repository_returns_only_requested_detached_fields() -> None:
                 ],
             )
             session.commit()
+            statements.clear()
             assert load_peak_pet_snapshots(session, set()) == {}
             pets = load_peak_pet_snapshots(session, {7, 99})
+            assert len(statements) == 1
     finally:
         engine.dispose()
     assert pets == {7: PeakPetSnapshot(7, "pet", 1007, 4)}
+
+
+@pytest.mark.parametrize("table", ["peak_pool", "peak_expert_pool", "peak_pool_vote"])
+def test_peak_repository_batches_pool_members_without_loading_types(table: str) -> None:
+    engine = create_engine("sqlite://")
+    SQLModel.metadata.create_all(engine)
+    statements: list[str] = []
+
+    def track_sql(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        statements.append(statement)
+
+    sql_event.listen(engine, "before_cursor_execute", track_sql)
+    pool_count = 5
+    start = datetime(2026, 7, 1, tzinfo=time.TZ_CN)
+    end = datetime(2026, 7, 31, tzinfo=time.TZ_CN)
+    try:
+        with Session(engine) as session:
+            session.execute(
+                SQLModel.metadata.tables[table].insert(),
+                [
+                    {
+                        "id": index,
+                        "count": 2,
+                        "start_time": start,
+                        "end_time": end,
+                        **({"subkey": index} if table == "peak_pool_vote" else {}),
+                    }
+                    for index in range(pool_count)
+                ],
+            )
+            session.execute(
+                SQLModel.metadata.tables["element_type_combination"].insert(),
+                [
+                    {
+                        "id": index,
+                        "name": "type",
+                        "name_en": "type",
+                        "primary_id": index,
+                    }
+                    for index in range(pool_count)
+                ],
+            )
+            session.execute(
+                SQLModel.metadata.tables["pet"].insert(),
+                [
+                    {
+                        "id": index,
+                        "name": "pet",
+                        "yielding_exp": 0,
+                        "catch_rate": 0,
+                        "releaseable": False,
+                        "fusion_master": False,
+                        "fusion_sub": False,
+                        "has_resistance": False,
+                        "resource_id": index + 1000,
+                        "type_id": index,
+                        "gender_id": 0,
+                        "base_stats_id": 0,
+                        "yielding_ev_id": 0,
+                        f"{table}_id": index,
+                    }
+                    for index in range(pool_count)
+                ],
+            )
+            session.commit()
+            statements.clear()
+            pools = (
+                load_peak_vote_snapshots(session)
+                if table == "peak_pool_vote"
+                else load_peak_pool_snapshots(
+                    session, expert=table == "peak_expert_pool"
+                )
+            )
+            expected_queries = 2
+            assert len(statements) == expected_queries
+            assert not any("element_type_combination" in sql for sql in statements)
+        assert len(pools) == pool_count
+        assert {pool.id: pool.pets for pool in pools} == {
+            index: (PeakPetSnapshot(index, "pet", index + 1000, index),)
+            for index in range(pool_count)
+        }
+    finally:
+        engine.dispose()
 
 
 def _render_session(
@@ -274,7 +371,11 @@ async def test_peak_pool_query_renders_with_progress() -> None:
 
 
 @pytest.mark.asyncio
-async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
+async def test_peak_pet_rank_snapshots_pets_before_rendering(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    current_time = datetime(2026, 9, 12, 14, 0, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
     data = FakeData()
     data.query_result = PeakPeriodTimes(
         start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
@@ -299,13 +400,15 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
             return [PeakItemData(id=7, count=10, win=6)], []
 
     async def report(_message: str) -> None:
-        return None
+        nonlocal current_time
+        current_time = datetime(2026, 9, 12, 14, 1, tzinfo=time.TZ_CN)
 
     data.query_results = [data.query_result, {7: PeakPetSnapshot(7, "雷伊", 1007, 4)}]
     service = _service(data, FakeHeadless(FakeGame()), rendered)
     result = await service.pet_rank("竞技精灵总榜", report)
 
     assert result.image == b"pet"
+    assert rendered["pet"].observed_at == "2026-09-12 14:00:00"
     assert data.get_many_open is False
     assert rendered["pet"].pets == (
         PeakPetSnapshot(
@@ -406,7 +509,6 @@ async def test_peak_vote_fetches_only_active_pools(
 async def test_peak_vote_reports_render_timeout(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(peak, "PEAK_VOTE_RENDER_TIMEOUT_SECONDS", 0.01)
     current_time = datetime(2026, 7, 20, 19, 0, tzinfo=time.TZ_CN)
     monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
 
@@ -424,9 +526,14 @@ async def test_peak_vote_reports_render_timeout(
         async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
             return []
 
-    async def render_vote(_pools: tuple[Any, ...], _generated_at: str) -> bytes:
+    async def render_html(*_args: Any, **_kwargs: Any) -> bytes:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
+
+    coordinator = RenderCoordinator(render_html, timeout_seconds=0.01)
+
+    async def render_vote(_pools: tuple[Any, ...], _generated_at: str) -> bytes:
+        return await coordinator.render(PEAK_POOL_VOTE_TEMPLATE_PATH, "unused", {})
 
     async def render_pool(_pools: Any, _title: str) -> bytes:
         return b"pool"
@@ -447,6 +554,86 @@ async def test_peak_vote_reports_render_timeout(
 
     assert result.message == "❌巅峰投票图片生成超时，请稍后再试。"
     assert not data.render_open
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["pool", "vote", "pet"])
+@pytest.mark.parametrize(
+    "failure", [ImageSourceError, TimeoutError, RuntimeError, asyncio.CancelledError]
+)
+async def test_peak_render_failure_and_recovery(
+    monkeypatch: MonkeyPatch, mode: str, failure: type[BaseException]
+) -> None:
+    now = datetime(2026, 7, 20, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: now.astimezone(tz))
+    data = FakeData()
+    pool = _pool_snapshot()
+    data.query_result = (
+        (_vote_snapshot(1, 99, pool.start_time, pool.end_time),)
+        if mode == "vote"
+        else (pool,)
+    )
+
+    class Game:
+        async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
+            return []
+
+        async def get_peak_pet_rank(
+            self, _sub_key: int, _peak_type: object
+        ) -> tuple[list[PeakItemData], list[RankEntry]]:
+            return [PeakItemData(7, 10, 6)], []
+
+    broken = True
+    calls = 0
+
+    async def render(*_args: Any) -> bytes:
+        nonlocal calls
+        calls += 1
+        assert data.render_open and not data.query_open
+        if broken:
+            raise failure
+        return b"recovered"
+
+    async def report(_message: str) -> None:
+        assert not data.query_open
+
+    service = PeakQueryService(
+        cast("SeerDataAccess", data),
+        cast("HeadlessService", FakeHeadless(Game())),
+        _render_session(data, render, render, render),
+    )
+
+    async def request() -> peak.PeakQueryResult:
+        if mode == "vote":
+            return await service.vote(report)
+        if mode == "pet":
+            data.query_results = [
+                PeakPeriodTimes(pool.start_time, pool.end_time),
+                {7: PeakPetSnapshot(7, "pet", 70, 1)},
+            ]
+            return await service.pet_rank("竞技精灵总榜", report)
+        return await service.pool(expert=False, progress=report)
+
+    if failure in {RuntimeError, asyncio.CancelledError}:
+        with pytest.raises(failure):
+            await request()
+    else:
+        failed = await request()
+        assert failed.image is None
+        assert (
+            "素材获取失败" if failure is ImageSourceError else "生成超时"
+        ) in failed.message
+        assert {"pool": "竞技池", "vote": "巅峰投票", "pet": "竞技精灵总榜"}[
+            mode
+        ] in failed.message
+    assert not data.render_open and not data.query_open
+    failed_calls = calls
+    broken = False
+    recovered = await request()
+    assert recovered.image == b"recovered"
+    assert recovered.message == ""
+    assert calls == failed_calls + 1
+    assert not data.render_open and not data.query_open
 
 
 @pytest.mark.asyncio

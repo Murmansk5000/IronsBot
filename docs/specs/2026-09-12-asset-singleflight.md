@@ -672,3 +672,94 @@ against every candidate description. Keep intentionally identical-description
 fallback distinct from differing-description ambiguity. Do not hide 223 in the
 renderer or add a 4525 exception. This defect is not fixed by the render probe;
 producer regression and corrected-fact rebuild are the next required work.
+
+## Duplicate-Name Resolution Follow-Up
+
+Producer resolution now retains every EffectDes candidate instead of taking the
+first name match. Text inference first consults the established official facts,
+then unambiguous full-description evidence; genuinely identical descriptions
+retain the deterministic lowest-ID fallback. Differing unresolved candidates are
+recorded as issues. Issue contexts from multiple soulmarks merge using the
+actual issue-table primary key, avoiding a duplicate-key build failure.
+
+The first offline rebuild exposed an additional defect: expanding the old
+skill-name substring rule added 127 facts, including glossary 224 to pet 1
+because its skill name is the ordinary verb "吸取". That intermediate artifact
+is not accepted. Skill-description references must explicitly quote the skill
+name or name it after the skill label, not merely contain that verb. A cheap
+substring prefilter precedes the reference syntax check. This changes producer
+facts only; no pet-specific renderer exception or database schema change is used.
+
+Regression evidence: 95 builder/metadata/effect tests passed before adding three
+description-edge cases; all 10 effect tests then passed. Targeted producer type
+checking, Ruff and compileall passed. Full publication, corrected native images
+and deployment acceptance remain separate gates; this is not Phase 4 completion.
+
+Offline corrected rebuild completed with integrity_check=ok: 962 effect facts,
+2666 sources, two issues, 2246 soulmark displays and one display addition.
+Against the original 6571 facts, 5609 rows were removed and three added. Removed
+source groups are predominantly bare skill-name inference (3113 without a status,
+2247 with a unique-name status); common triggering skills were 恢复, 免疫 and
+吸取. The three added rows select already-official later duplicate glossary IDs
+278 and 460 instead of introducing a new relationship. 4524 retains 223/57;
+4525 now has only 117 and 224/58. 3549 retains 533/534/535, 4911 retains 524/525,
+and 3407 retains 519/520. 4511 still has no effect facts and is not claimed fixed.
+
+The rebuilt file is the ignored diagnostic copy at producer
+`tmp/v5-effect-resolution/seerapi-data.sqlite`, not a release: metadata and asset
+manifest are inherited from the validated source copy. Raw skill-name mentions
+without explicit reference syntax are intentionally no longer evidence; real
+render acceptance must still check that stricter boundary for omissions.
+
+## Corrected Native Images and Build-Scoped Reference Reuse
+
+The corrected diagnostic SQLite was consumed through the unchanged public
+SeerRenderSessions and native Windows renderer. Six pet images completed in
+`.tmp/effect-resolution-acceptance`: 3549, 4511, 4911, 3407, 4524 and 4525.
+4524 is 1200x4175 (1083629 bytes); 4525 is 1200x4042 (1179469 bytes).
+Visual inspection of 4524/4525 confirms separate fatal-hit and HP-drain variants
+of 法天象地, each with its own icon. 4911 visually retains both knight cards.
+The other four outputs retain the previous dimensions and byte counts. This is
+not a claim of complete visual inspection for every pet or original SWF fidelity.
+
+4511's absence of an independent 不破诛罚 card was traced to the source: no
+matching glossary, EffectDes or status row exists in this dataset. Its soulmark
+1725 contains the complete description and the formatted yellow heading; that
+text is already rendered in the soulmark panel. Do not manufacture an effect
+fact or an icon simply to fill an expected standalone card.
+
+Producer skill-description lookup is now cached only within one fact build,
+keyed by skill name. Shared skills and multiple text fields reuse the same
+candidate scan; each new build starts with fresh evidence. Regression verifies
+two pets reuse one scan and a second build observes changed descriptions.
+99 related tests passed; targeted type checking, Ruff and diff checks passed.
+An in-memory full fact rebuild took 13.791 seconds, and all five effect/source/
+issue/soulmark tables exactly matched the prior corrected artifact excluding
+updated_at. This is a measured local rebuild duration, not a speedup ratio or a
+full release build time. No new dependency, persistent cache or runtime image
+component was introduced.
+
+## Peak Native Render Acceptance and Observation Time
+
+The same bound-session native probe now covers standard pool (1228x1022,
+740938 bytes), expert pool (1228x702, 646646 bytes), vote (460x884,
+113562 bytes), and pet ranking (640x1616, 220563 bytes). Pool definitions and
+pet assets come from the real diagnostic database. Vote scores and ranking
+counts are explicitly labelled offline fixtures, not fetched game results.
+Evidence: `.tmp/effect-resolution-acceptance/peak-report.json` and corresponding
+PNGs; standard pool, vote and final ranking were visually inspected.
+
+Native inspection exposed a missing model field: the ranking template printed
+"生成于" with no timestamp. PeakPetRankRenderInput now requires observed_at,
+captured immediately after the game response, before repository/render/progress
+work. The pure document carries the value into the template as "获取时间".
+Both request and document cache identities include it. No rendering-time clock
+or fallback timestamp is added. A service test advances the clock during the
+progress callback and verifies the captured response time remains unchanged.
+
+Native flex wrapping did not prevent a long title overlapping the timestamp;
+the header now uses separate block rows with time right-aligned below the title.
+The final actual 640px-wide PNG is non-overlapping. 39 focused peak/cache tests,
+targeted type checking, Ruff, compileall and diff checks passed. Global asset
+scope remains incomplete, and no game account, production data, remote release
+or platform deployment was touched. Phase 4 is still open.
