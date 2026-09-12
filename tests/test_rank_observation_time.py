@@ -450,6 +450,91 @@ def _service(tmp_path: Path) -> RankService:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "page_limit",
+        "rank_limit",
+        "duplicate",
+        "short",
+        "exact_limit",
+        "filtered",
+        "closed",
+    ],
+)
+async def test_excluded_score_query_respects_bounds_and_consistency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    rank = replace(
+        _service(tmp_path),
+        config=RankQueryConfig(
+            limit=LIMIT,
+            online_limit=LIMIT,
+            page_size=PAGE_SIZE,
+            score_search_tie_page_limit=1 if kind in {"page_limit", "closed"} else 5,
+        ),
+        exclusions=RankExclusionPolicy(
+            frozenset({0 if kind == "filtered" else 999_999}), {}
+        ),
+    )
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        items = [RankEntry(i, "player", 150) for i in range(start, end + 1)]
+        if kind == "duplicate" and start == PAGE_SIZE:
+            items[0] = RankEntry(0, "moved", 150)
+        if kind == "short":
+            items = items[:3]
+        if kind == "closed":
+            items[3:] = [RankEntry(item.id, item.nick, 100) for item in items[3:]]
+        return RankPageResult(items, SOURCE_TIME + start)
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+
+    async def query() -> RankScoreSearchResult:
+        return await rank.fetch_score_segment(
+            cast("Any", None),
+            rank_key="成就点数",
+            key=17,
+            sub_key=0,
+            title="rank",
+            score_name="score",
+            target_score=150,
+            search_limit=5
+            if kind in {"rank_limit", "filtered"}
+            else PAGE_SIZE
+            if kind == "exact_limit"
+            else LIMIT,
+        )
+
+    if kind == "duplicate":
+        with pytest.raises(RankPageConflictError):
+            await query()
+        assert calls == [0, PAGE_SIZE]
+    else:
+        result = await query()
+        expected = {
+            "page_limit": PAGE_SIZE,
+            "rank_limit": 5,
+            "short": 3,
+            "exact_limit": PAGE_SIZE,
+            "filtered": 5,
+            "closed": 3,
+        }[kind]
+        assert result.total_count == expected
+        assert len(result.items) == expected
+        assert result.truncated is (kind not in {"short", "closed"})
+        if kind == "filtered":
+            assert [item.id for item in result.items] == [1, 2, 3, 4, 5]
+        assert calls == [0]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["anchor", "linear", "score"])
 async def test_lookup_preserves_original_page_observation(
     tmp_path: Path,

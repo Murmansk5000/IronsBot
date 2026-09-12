@@ -235,3 +235,20 @@ BasedPyright, Ruff, compileall and diff checks passed. No full-suite rerun in th
 batch, production mutation, main merge or push. Independently timed pages still
 do not constitute a server snapshot, and unobserved movement cannot be ruled
 out. Overall verified phases remain 4/8.
+
+## Exclusion-Aware Score Limits (2026-09-12)
+
+Contract: target. The exclusion-aware score scan now uses RankPageSequence
+before filtering or renumbering. Three regressions first failed: a one-page tie
+limit fetched two pages, a five-place search returned ten matches, and repeated
+players were accepted. Match pages now stop at the configured count, and the
+visible-rank limit is enforced inside a page. Exhausted unresolved ties are
+marked truncated; a short terminal page or an observed lower score closes the
+tie normally. No new limit, retry or request was introduced.
+
+153 focused rank, score, cache, command and size tests passed. Tests include
+exact-page limits, mid-page limits, actually excluded players, duplicates, short
+pages and observed lower-score boundaries. Targeted BasedPyright, Ruff,
+compileall and diff checks passed. No full-suite rerun, production mutation,
+main merge or push. The broader phase gates remain open at 4/8; these tests
+verify bounded observed behavior, not atomic official snapshots.

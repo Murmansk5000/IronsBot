@@ -203,6 +203,7 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
     higher_score: int | None = None
     lower_score: int | None = None
     match_pages = 0
+    sequence = RankPageSequence()
 
     def make_gap(items: list[RankScoreSearchItem]) -> RankScoreGap | None:
         if not items:
@@ -227,7 +228,11 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
         observation.include(page.fetched_at)
         page_has_match = False
         stop_after_page = False
+        sequence.include((int(item.id), int(item.score)) for item in page.items)
         for item in page.items:
+            if visible_rank >= limit:
+                stop_after_page = True
+                break
             score = int(item.score)
             last_raw_score = score
             if int(item.id) in excluded_ids:
@@ -260,9 +265,13 @@ async def fetch_visible_score_segment(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
         if page_has_match:
             match_pages += 1
-            if match_pages > tie_page_limit:
-                result.truncated = True
-                break
+        if match_pages >= tie_page_limit or visible_rank >= limit:
+            result.truncated = bool(
+                matches
+                and lower_score is None
+                and (len(page.items) == page_size or stop_after_page)
+            )
+            break
         if stop_after_page or len(page.items) < page_size:
             break
         raw_start += page_size
