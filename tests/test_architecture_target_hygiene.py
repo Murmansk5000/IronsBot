@@ -91,6 +91,7 @@ RETIRED_RUNTIME_NAMES = (
     "PluginDefinition",
     "MatcherRegistry",
 )
+ADAPTER_NAMES_FORBIDDEN_IN_SERVICE_TEXT = ("OneBot", "QQ")
 
 
 class MissingArchitectureTargetMethodError(AssertionError):
@@ -138,6 +139,29 @@ def _imports(path: Path) -> set[str]:
 
 def _python_files(directory: Path) -> list[Path]:
     return sorted(directory.rglob("*.py"))
+
+
+def _non_docstring_text_constants(path: Path) -> list[tuple[int, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(
+            node,
+            (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef),
+        )
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    return [
+        (node.lineno, node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
 
 
 def _method_argument_names(
@@ -226,6 +250,16 @@ def test_core_and_services_do_not_import_adapter_transport_types() -> None:
         if module.startswith(FORBIDDEN_TRANSPORT_IMPORT_PREFIXES)
     ]
 
+    assert offenders == []
+
+
+def test_services_do_not_expose_adapter_names_in_shared_text() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()}:{line}"
+        for path in _python_files(SERVICES)
+        for line, value in _non_docstring_text_constants(path)
+        if any(name in value for name in ADAPTER_NAMES_FORBIDDEN_IN_SERVICE_TEXT)
+    ]
     assert offenders == []
 
 

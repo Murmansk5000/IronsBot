@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+from base64 import b64encode
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock
 
 import nonebot
+import pytest
 from nonebot.exception import FinishedException
 
 nonebot.init()
@@ -132,12 +134,10 @@ def test_choice_query_reserves_numeric_menu_before_search(
 
 
 def test_query_reply_only_mentions_sender_in_group(monkeypatch: Any) -> None:
-    class FakeMessage:
-        finish = AsyncMock(side_effect=FinishedException)
-        send = AsyncMock()
-
-    message = FakeMessage()
-    monkeypatch.setattr(query_conversation, "build_reply", lambda _: message)
+    finish = AsyncMock(side_effect=FinishedException)
+    send = AsyncMock()
+    monkeypatch.setattr(query_conversation.Matcher, "finish", finish)
+    monkeypatch.setattr(query_conversation.Matcher, "send", send)
 
     with suppress(FinishedException):
         asyncio.run(
@@ -148,7 +148,9 @@ def test_query_reply_only_mentions_sender_in_group(monkeypatch: Any) -> None:
             )
         )
 
-    message.finish.assert_awaited_once_with(at_sender=True)
+    assert finish.await_args is not None
+    assert str(finish.await_args.args[0]) == "结果"
+    assert finish.await_args.kwargs == {"at_sender": True}
     asyncio.run(
         query_conversation.send_query_reply(
             QueryReply(text="结果"),
@@ -156,4 +158,31 @@ def test_query_reply_only_mentions_sender_in_group(monkeypatch: Any) -> None:
             finish=False,
         )
     )
-    message.send.assert_awaited_once_with(at_sender=False)
+    assert send.await_args is not None
+    assert str(send.await_args.args[0]) == "结果"
+    assert send.await_args.kwargs == {"at_sender": False}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("image", [None, b"png-content"])
+async def test_query_reply_preserves_content_order_and_image_failure(
+    monkeypatch: Any, image: bytes | None
+) -> None:
+    send = AsyncMock()
+    monkeypatch.setattr(query_conversation.Matcher, "send", send)
+    await query_conversation.send_query_reply(
+        QueryReply(
+            leading_text="before", image=image, image_error="failed", text="after"
+        ),
+        private_message_event(),
+        finish=False,
+    )
+    assert send.await_args is not None
+    message = send.await_args.args[0]
+    if image is None:
+        assert message.extract_plain_text() == "beforefailedafter"
+    else:
+        assert [segment.type for segment in message] == ["text", "image", "text"]
+        assert message[0].data["text"] == "before"
+        assert message[1].data["file"] == "base64://" + b64encode(image).decode()
+        assert message[2].data["text"] == "after"

@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.core.outbound import ReplyContext, TextPart
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.storage.render_cache import FileRenderCache
+from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.render_cache import RenderCacheEntry
 from ironsbot.services.seer.type_calc import (
     ElementTypeSnapshot,
@@ -20,6 +25,10 @@ from ironsbot.services.seer.type_query import (
     NORMAL_TYPE_MESSAGE,
     TypeQueryService,
     TypeRenderSession,
+)
+from tests.helpers.fake_official_platform import (
+    RESTRICTED_CAPABILITIES,
+    FakeOfficialPlatform,
 )
 
 if TYPE_CHECKING:
@@ -309,3 +318,49 @@ def test_type_query_and_calculator_are_render_fingerprint_inputs() -> None:
     paths = {path.name for path in FINAL_RENDER_CACHE_INPUTS}
     assert {"type_query.py", "type_calc.py"} <= paths
     assert all(path.exists() for path in FINAL_RENDER_CACHE_INPUTS)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["image", "text", "denied", "expired"])
+async def test_type_query_result_crosses_restricted_platform_boundary(
+    mode: str,
+) -> None:
+    data = FakeData()
+    target = _type(8, "普通") if mode == "text" else _type(1, "草")
+    data.combinations = (target,)
+    data.dataset = _dataset(target)
+    rendered: list[TypeMatchup] = []
+    result = await _service(data, rendered).search(target.name)
+    message = (
+        result.reply.to_outbound()
+        if result.reply is not None
+        else QueryReply(text=result.message).to_outbound()
+    )
+    now = datetime(2026, 9, 12, tzinfo=timezone.utc)
+    context = ReplyContext(
+        ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque:group"),
+        "opaque:event",
+        sequence="opaque:sequence",
+        reply_deadline=now + timedelta(seconds=5),
+    )
+    transport = FakeOfficialPlatform(
+        now + timedelta(seconds=5) if mode == "expired" else now,
+        capabilities=replace(RESTRICTED_CAPABILITIES, supports_images=mode != "denied"),
+    )
+    delivered = await transport.reply(context, message)
+    assert not data.query_open
+    assert bool(rendered) == (mode != "text")
+    if mode in {"denied", "expired"}:
+        assert delivered.error_code == (
+            "fake_images_denied" if mode == "denied" else "fake_reply_expired"
+        )
+        assert transport.uploads == []
+    else:
+        assert delivered.delivered
+        if mode == "text":
+            assert message.parts == (TextPart(NORMAL_TYPE_MESSAGE),)
+            assert transport.uploads == []
+        else:
+            assert len(transport.uploads) == 1
+            assert result.reply is not None
+            assert transport.uploads[0].content == result.reply.image

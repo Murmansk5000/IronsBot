@@ -13,7 +13,7 @@ from ironsbot.core.commands import (
 )
 
 DEFAULT_CLASSIFIER_PROMPT = (
-    "You are a strict intent classifier for a QQ bot.\n"
+    "You are a strict intent classifier for a chat bot.\n"
     "Only output one word: yes or no.\n"
     "Intent definition: {intent}\n"
     "Message: {message}\n"

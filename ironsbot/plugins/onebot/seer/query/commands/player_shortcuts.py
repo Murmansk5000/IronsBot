@@ -4,12 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.services.operations.request_feedback import request_feedback_scope
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.adapters.onebot.v11 import (
-    Message,
     MessageEvent,
-    MessageSegment,
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.rule import Rule
@@ -22,8 +19,12 @@ from ironsbot.core.semantic_requests import (
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import member_target_command
+from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
 )
@@ -45,7 +46,6 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionAction,
     )
-    from ironsbot.services.seer.query_result import QueryReply
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
 _EXTENSION_SHORTCUT_COMMAND_KEY = "_player_extension_shortcut_command"
@@ -77,19 +77,6 @@ class _ResolvedShortcutCommand:
 class _ResolvedExtensionShortcutCommand:
     command: PlayerExtensionShortcutCommand | None
     error: str | None = None
-
-
-def _build_shortcut_reply_message(reply: QueryReply) -> str | Message:
-    if reply.image is None:
-        return f"{reply.leading_text}{reply.text}"
-
-    message = Message()
-    if reply.leading_text:
-        message += MessageSegment.text(reply.leading_text)
-    message += MessageSegment.image(reply.image)
-    if reply.text:
-        message += MessageSegment.text(reply.text)
-    return message
 
 
 async def _is_player_shortcut(
@@ -215,7 +202,7 @@ async def handle_player_shortcut(
     await finish_event_reply(
         matcher,
         event,
-        _build_shortcut_reply_message(reply),
+        render_onebot_outbound_message(reply.to_outbound()),
     )
 
 
@@ -251,7 +238,9 @@ async def handle_player_extension_shortcut(
                 conversation=message.conversation,
             )
         )
-    await finish_event_reply(matcher, event, _build_shortcut_reply_message(reply))
+    await finish_event_reply(
+        matcher, event, render_onebot_outbound_message(reply.to_outbound())
+    )
 
 
 def _shortcut_command_id(
