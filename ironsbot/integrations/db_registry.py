@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: MIT
 import logging
 from collections.abc import Callable, Iterator
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, closing, contextmanager
 
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import create_engine
 
-from ironsbot.integrations.storage.sqlite import SqliteDatabase
+from ironsbot.integrations.storage.sqlite import open_sqlite_connection
 
 logger = logging.getLogger(__name__)
 DatabaseLoadListener = Callable[[], object]
@@ -67,16 +67,15 @@ class DatabaseManager:
         """从 SQLite 文件导入全部数据到新的内存引擎，然后原子替换旧引擎。"""
         new_engine = self._create_memory_engine()
 
-        with SqliteDatabase(file_path, pragmas=False).connect() as source:
-            raw_conn = new_engine.raw_connection()
-            try:
-                source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
-            finally:
-                raw_conn.close()
-
         try:
+            with closing(open_sqlite_connection(file_path, read_only=True)) as source:
+                raw_conn = new_engine.raw_connection()
+                try:
+                    source.backup(raw_conn.dbapi_connection)  # pyright: ignore[reportArgumentType]
+                finally:
+                    raw_conn.close()
             self._validate_loaded(name, new_engine)
-        except Exception:
+        except BaseException:
             new_engine.dispose()
             raise
 

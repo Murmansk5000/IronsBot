@@ -86,3 +86,20 @@ changed files passed Ruff using the public environment executable, compileall
 and diff checks passed. No full public pytest rerun. Public and private must
 ship together because the old render-port methods were removed; no production
 deployment in this batch. The private untracked uv.lock was left untouched.
+
+## Database Publication Prerequisite
+
+The load path currently disposes staged engines only on validator failure;
+source-open/backup failures bypass cleanup. It also opens source files with a
+write-capable helper, allowing a missing source to become an empty database.
+Target: use the existing shared read-only connection helper, close the source
+and destination handles, and dispose the staged engine on every pre-publication
+failure. Preserve the active engine and do not notify listeners on rejection.
+Tests use real missing/corrupt SQLite files and a tracked engine dispose method.
+This is prerequisite lifecycle hardening, not completion of render snapshots.
+
+Verified: database-manager/version tests 14 passed in 6.75 seconds, with 2
+existing ORM relationship warnings. Ruff, targeted BasedPyright (0 errors and
+warnings), compileall and diff checks passed. Failure tests check candidate
+dispose exactly once, no listener call, unchanged engine identity and readable
+old data; missing-file case also proves no source directory was created.
