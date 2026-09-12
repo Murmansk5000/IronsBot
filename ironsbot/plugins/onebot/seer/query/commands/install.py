@@ -8,6 +8,7 @@ from . import (
     data_queries,
     equipment_queries,
     mintmark_queries,
+    new_content,
     peak_queries,
     pet_queries,
     player,
@@ -23,6 +24,7 @@ def install(group: SeerMatcherGroup) -> None:
     autocard_sanctuary.install(group)
     countermark_stat_rank.install(group)
     data_queries.install(group)
+    new_content.install(group)
     equipment_queries.install(group)
     mintmark_queries.install(group)
     peak_queries.install(group)
