@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import re
 
-from ironsbot.core.command_catalog import CommandContract
+from ironsbot.core.command_catalog import (
+    CommandContract,
+    normalized_command_input_matcher,
+)
 
 TENCENT_MEETING_NUMBER_DIGITS = 10
 
@@ -37,6 +40,7 @@ def meeting_command_contracts(
             plugin_id="meeting",
             section="查询",
             examples=commands,
+            routing_matcher=normalized_command_input_matcher(commands),
             description="获取配置的腾讯会议信息",
             features_any=("meeting",),
             show_in_poke=True,

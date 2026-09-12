@@ -204,6 +204,9 @@ def install(
     registry: MatcherFactory,
     service: TeamResourceService,
 ) -> None:
+    if not service.enabled:
+        return
+
     def is_manage(event: MessageEvent) -> bool:
         return _is_team_resource_manage(event, service=service)
 
@@ -241,6 +244,9 @@ def install(
         bind_async(handle_team_resource_prompt_choice, service=service)
     )
 
+    if not service.query_commands:
+        return
+
     query_matcher = registry.on_message(
         policy=CommandPolicy.command(
             "team_resource_query",
@@ -277,7 +283,9 @@ def plugin_contribution(
                 enabled=config.enabled,
             ),
         ),
-        commands=team_resource_command_contracts(enabled=config.enabled),
+        commands=team_resource_command_contracts(
+            enabled=config.enabled, query_commands=service.query_commands
+        ),
         install=partial(install, service=service),
         hooks=PluginHooks(
             startup=(

@@ -21,15 +21,15 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.params import parse_string_arg
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.rules import affix_command, explicit_command
 from ironsbot.services.seer.autocard_sanctuary import (
-    SANCTUARY_QUERY_PREFIXES,
     AutocardSanctuaryService,
     SanctuaryPromptValue,
     format_sanctuary_overview,
 )
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.query_commands import SANCTUARY_QUERY
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 
@@ -174,11 +174,10 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.autocard.sanctuary",),
         ),
         rule=seer_feature_rule(group.features, "seer_autocard")
-        & startswith_or_endswith(prefixes=SANCTUARY_QUERY_PREFIXES, suffixes=())
+        & affix_command(SANCTUARY_QUERY)
         & explicit_command(),
         priority=group.matcher_priority("seer_autocard"),
     )
     matcher.append_handler(
         bind_async(handle_autocard_sanctuary_query, group.resources.autocard_sanctuary)
     )
-
