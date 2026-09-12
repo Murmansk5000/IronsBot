@@ -7,11 +7,13 @@ existing render_asset_manifest_build; IronsBot remains a strict consumer.
 
 ## Scope
 
-- Collect resolved skin body_resource_id values from skin_image_resolution.
-  Resolve every positive ID against the same immutable repository snapshot as
-  other material kinds, using existing pet_body paths and source/blob metadata.
-- Add independent skin_body completeness scope. Unknown/zero resolutions,
-  absent inventory, absent snapshot or missing body blobs do not prove it.
+- Collect the effective body ID for every pet_skin row: positive resolved
+  body_resource_id first, otherwise the catalogue resource_id, exactly as in
+  the consumer. Include resolution-only rows and deduplicate resource IDs.
+  Resolve against the same immutable repository snapshot as other material kinds.
+- Add independent skin_body completeness scope. Invalid effective IDs, missing
+  catalogue/resolution schema, empty inventory, absent snapshot or missing body
+  blobs do not prove it. Zero resolution may use a valid catalogue fallback.
 - Deduplicate body entries already represented by the base-pet inventory.
   Skin-body incompleteness does not suppress type/peak/pet or standard scopes.
 - Preserve existing tables/version and use the current manifest writer/hash;
@@ -60,3 +62,18 @@ rendering/cache tests and static checks; no deployment or real browser claim.
 
 Consumer verification: 6 focused rendering/cache tests passed in 2.05 seconds;
 Ruff and targeted BasedPyright passed (0 errors/warnings). No full-suite rerun.
+
+## Full Catalogue Follow-Up
+
+The first proof covered only resolved entries. The target now includes all
+catalogue fallback requests, not just those 268 rows. An overridden catalogue
+resource must not be required; resolution-only rows remain represented.
+Tests cover override precedence, absent and zero-resolution fallbacks, duplicate
+body IDs, a missing fallback blob and a missing catalogue schema.
+
+Against the same SQLite hash and asset revision above: 868 effective body IDs,
+867 available, missing `1400840` (skin 840, pet 4911). The full `skin_body` scope
+correctly remains incomplete. This is an upstream material gap, not evidence
+that a partial inventory is enough. No consumer scope or runtime fallback was
+enabled. Builder module: 83 passed in 18.52 seconds; Ruff, targeted BasedPyright
+(0 errors/warnings), compileall and diff checks passed. No new tables/modules.
