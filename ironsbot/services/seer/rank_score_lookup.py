@@ -7,6 +7,7 @@ from ironsbot.services.seer.rank_pagination import (
     RankPageConflictError,
     RankPageSequence,
 )
+from ironsbot.services.seer.rank_score_helpers import validate_score_sample
 from ironsbot.services.seer.rank_score_search import (
     DescendingScoreSearchLimits,
     locate_descending_score_range,
@@ -71,6 +72,7 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
     tie_end = score_range.match_end
     start = score_range.match_start
     remaining_tie_pages = tie_page_limit
+    sequence = RankPageSequence()
     while start < tie_end and remaining_tie_pages > 0:
         end = min(start + page_size - 1, tie_end - 1)
         page = await fetch_rank_page(
@@ -82,6 +84,18 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
         )
         result.record_page(start, page)
         items = page.items
+        try:
+            validate_score_sample(
+                page,
+                start=start,
+                end=end,
+                target_score=target_score,
+                score_range=score_range,
+                sequence=sequence,
+            )
+        except RankPageConflictError as error:
+            result.failure = str(error)
+            return result
 
         for offset, item in enumerate(items):
             if item.id == user_id:
@@ -91,7 +105,7 @@ async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie sc
                 return result
 
         if len(items) < end - start + 1:
-            return result
+            break
 
         remaining_tie_pages -= 1
         start = end + 1

@@ -210,3 +210,28 @@ rerun, production data change, main merge or push. No new dependency, file,
 configuration field or persistent cache. Probe consistency is evidence checking,
 not proof that unobserved entries or later sampled pages share one snapshot.
 Full dynamic acceptance remains open, with verified phases at 4/8.
+
+## Post-Probe Sampling (2026-09-12)
+
+Contract: target. Player score lookup and score-population rendering now call a
+shared validator in the existing score helpers module. It validates sampled
+page order/uniqueness through RankPageSequence and checks the previously proved
+score bounds. A missing required row, changed score, expanded observed boundary
+or duplicate player cannot silently disappear from the sample while leaving an
+old confirmed population/rank in the response.
+
+An exhausted search's fallback end is speculative: only the confirmed first
+matching position and earlier nonmatching rows are enforced in that case.
+Encountering lower scores in the speculative tail remains valid. No additional
+requests, retries, dependencies, modules or persistent storage were introduced.
+Player conflicts produce the established unconfirmed failure; score commands
+propagate the existing typed conflict through the user-facing query boundary.
+
+Tests cover both callers with a predetermined completed search followed by a
+changed, empty or duplicate sample; exact single-sample call counts are checked.
+Separate tests distinguish proved and speculative upper bounds. 145 focused
+score, cache, observation, player, command and size tests passed; targeted
+BasedPyright, Ruff, compileall and diff checks passed. No full-suite rerun in this
+batch, production mutation, main merge or push. Independently timed pages still
+do not constitute a server snapshot, and unobserved movement cannot be ruled
+out. Overall verified phases remain 4/8.
