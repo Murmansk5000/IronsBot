@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.10 AS requirements_stage
+FROM python:3.10-bookworm AS requirements_stage
 
 WORKDIR /wheel
 
@@ -55,7 +55,7 @@ license_dir.mkdir(parents=True)
 PY
 
 
-FROM python:3.10-slim
+FROM python:3.10-slim-bookworm
 
 WORKDIR /app
 

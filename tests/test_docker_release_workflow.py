@@ -170,6 +170,18 @@ def test_runtime_uses_two_weight_cn_subset_fonts() -> None:
     assert "/usr/share/doc/source-han-sans/LICENSE.txt" in dockerfile
 
 
+def test_builder_and_runtime_pin_the_same_debian_release() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    from_lines = [
+        line.strip() for line in dockerfile.splitlines() if line.startswith("FROM ")
+    ]
+
+    assert from_lines == [
+        "FROM python:3.10-bookworm AS requirements_stage",
+        "FROM python:3.10-slim-bookworm",
+    ]
+
+
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
     steps = _steps()
     audit = next(s for s in steps if s["name"] == "Audit locked runtime dependencies")

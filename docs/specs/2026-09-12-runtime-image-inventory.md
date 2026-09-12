@@ -176,3 +176,13 @@ styles through fontconfig and requires distinct files. The upstream
 Together with externalized sendpic assets, the projected application-plus-font
 payload reduction is about 29.38 MiB. This remains a source/archive calculation;
 only the digest-pinned Linux CI inventory may report the actual image delta.
+
+The previously floating `python:3.10` and `python:3.10-slim` tags had moved to
+Debian Trixie without a repository change. Both stages now explicitly select
+Bookworm (`python:3.10-bookworm` and `python:3.10-slim-bookworm`), preventing a
+future Debian release switch from changing ABI and size implicitly. The tags
+remain patch-updatable for base security fixes; the release workflow records the
+resolved final digest and layer inventory for every publication. At the audited
+2026-09-13 manifests, the amd64 compressed slim base is about 45.05 MiB versus
+45.75 MiB for Trixie, but the 0.70 MiB difference is secondary to matching the
+builder and runtime ABI.
