@@ -1154,8 +1154,8 @@ Ruff、类型检查、编译与 diff 检查通过，见
 | --- | --- | --- |
 | AI 只按目录认领 | `test_player_reference_ownership`、各领域 ownership 测试实际调用目录/AI rule | 玩家完整安装入口与目录判断的交叉矩阵；不能只调用处理器 |
 | 数字、别名、直接 @ | `test_seer_player_targets`、`test_seer_rank_player_input`、`test_seer_player_shortcut_input`；entry conversation 已测试绑定别名与 @，断言绑定对象是发起人 | 实际安装 matcher 的基础/绑定/快捷/榜单玩家入口，覆盖合法输入、混用、多 @、未绑定和引用排除；私有阵容复用公开入口也需纳入 |
-| 多分区独立失败与回发 | scheduler 测试覆盖重试和单项耗尽不阻塞其他任务；detail conversation runtime 覆盖部分回复与取消 | 真实详情服务产生分项结果后交到会话发送的组合测试，验证失败项与成功项均送达且不重复，不用固定 partial reply 替代服务 |
-| 缓存来源时间 | observation time、detail freshness、fallback cache 测试覆盖源时间保留、过期与部分结果拒绝 | 纳入上述组合验证，确认实际发出的成功缓存/实时分项保留各自时间 |
+| 多分区独立失败与回发 | scheduler 测试覆盖重试和单项耗尽不阻塞其他任务；真实 PlayerDetailService 到会话发送的组合覆盖收集/巅峰成功、部分超时和取消 | 本组合门已通过；真实 QQ 发送留到平台验收 |
+| 缓存来源时间 | observation time、detail freshness、fallback cache 测试，以及上述组合测试验证实际发送正文保留最早来源时间、成功结果复用且部分结果拒绝入完整缓存 | 本组合门已通过；不将聚合获取时间误称为逐行独立时间 |
 
 这两组剩余验证（安装入口矩阵、详情服务到会话的组合）是当前具体收尾任务；新发现
 的问题必须附复现证据，不能仅用“其余领域”无限扩大范围。上游素材齐全和真实 QQ
@@ -1171,6 +1171,17 @@ Ruff、类型检查、编译与 diff 检查通过，见
 策略。改为复用 `member_target_command()`。16 种基础/绑定、数字/别名/成员/机器人
 及功能开关组合通过；连同已有处理器/目标测试共 87 passed，定向 Ruff/类型检查通过。
 这不是目标平台 API 联调，也不是所有 QQ 入口矩阵完成；后续按上述延期边界推进。
+
+**详情到会话组合验收（2026-09-12）：** target 验证，不新增生产接口。替换
+`test_seer_player_detail_conversation_runtime` 中固定的 partial reply：调用真实
+`PlayerDetailService`、分项进度恢复、格式化与缓存，再交到既有菜单会话发送边界。
+游戏查询和榜单获取使用可控替身；榜单先记录第 4 名，再抛出 TimeoutError，证明
+已完成结果不会丢失，未完成项不会伪报未上榜。收集/巅峰 × 成功/超时 × 保留/取消
+共 8 种组合覆盖一次发送、取消不发送、来源时间保留、成功缓存复用与部分缓存拒绝。
+这不是官方封包或真实 QQ 投递测试，调度器行为由原有专项测试独立覆盖。
+组合、时间、调度和缓存专项共 45 passed；全量 Ruff、basedpyright、compileall
+通过。本次未重复全量 pytest，无新增依赖、TOML 或运行镜像文件。只读确认本地
+main 仍为 `55a39fd1`，未 pull/merge；总阶段计数保持 4/8。
 
 **已有详情预算实现：** 已将 foreground/background 详情预算统一为一个单调时钟截止时间，基础、
 榜单和样本只使用剩余预算；巅峰三个基础模式共享阶段预算，不再各复制一份。
