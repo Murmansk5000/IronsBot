@@ -672,3 +672,41 @@ against every candidate description. Keep intentionally identical-description
 fallback distinct from differing-description ambiguity. Do not hide 223 in the
 renderer or add a 4525 exception. This defect is not fixed by the render probe;
 producer regression and corrected-fact rebuild are the next required work.
+
+## Duplicate-Name Resolution Follow-Up
+
+Producer resolution now retains every EffectDes candidate instead of taking the
+first name match. Text inference first consults the established official facts,
+then unambiguous full-description evidence; genuinely identical descriptions
+retain the deterministic lowest-ID fallback. Differing unresolved candidates are
+recorded as issues. Issue contexts from multiple soulmarks merge using the
+actual issue-table primary key, avoiding a duplicate-key build failure.
+
+The first offline rebuild exposed an additional defect: expanding the old
+skill-name substring rule added 127 facts, including glossary 224 to pet 1
+because its skill name is the ordinary verb "吸取". That intermediate artifact
+is not accepted. Skill-description references must explicitly quote the skill
+name or name it after the skill label, not merely contain that verb. A cheap
+substring prefilter precedes the reference syntax check. This changes producer
+facts only; no pet-specific renderer exception or database schema change is used.
+
+Regression evidence: 95 builder/metadata/effect tests passed before adding three
+description-edge cases; all 10 effect tests then passed. Targeted producer type
+checking, Ruff and compileall passed. Full publication, corrected native images
+and deployment acceptance remain separate gates; this is not Phase 4 completion.
+
+Offline corrected rebuild completed with integrity_check=ok: 962 effect facts,
+2666 sources, two issues, 2246 soulmark displays and one display addition.
+Against the original 6571 facts, 5609 rows were removed and three added. Removed
+source groups are predominantly bare skill-name inference (3113 without a status,
+2247 with a unique-name status); common triggering skills were 恢复, 免疫 and
+吸取. The three added rows select already-official later duplicate glossary IDs
+278 and 460 instead of introducing a new relationship. 4524 retains 223/57;
+4525 now has only 117 and 224/58. 3549 retains 533/534/535, 4911 retains 524/525,
+and 3407 retains 519/520. 4511 still has no effect facts and is not claimed fixed.
+
+The rebuilt file is the ignored diagnostic copy at producer
+`tmp/v5-effect-resolution/seerapi-data.sqlite`, not a release: metadata and asset
+manifest are inherited from the validated source copy. Raw skill-name mentions
+without explicit reference syntax are intentionally no longer evidence; real
+render acceptance must still check that stricter boundary for omissions.
