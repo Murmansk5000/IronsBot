@@ -38,6 +38,7 @@ from ironsbot.services.about_commands import about_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.fake_official_platform import (
     RESTRICTED_CAPABILITIES,
     FakeOfficialPlatform,
@@ -51,6 +52,37 @@ GROUP = ConversationRef(Platform.QQ_OFFICIAL, "group", "group:opaque/a")
 MEMBER = ActorRef(Platform.QQ_OFFICIAL, "member:opaque", "member", GROUP.id)
 TEXT = OutboundMessage((TextPart("result"),))
 IMAGE = BinaryImagePart(b"test-image-payload", "image/png", "result.png")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_image", [False, True])
+async def test_seer_reply_uses_shared_content_without_platform_identity(
+    *,
+    with_image: bool,
+) -> None:
+    reply = QueryReply(
+        leading_text="leading\n",
+        image=IMAGE.content if with_image else None,
+        image_error="image unavailable\n",
+        text="description",
+        complete=False,
+    )
+    message = reply.to_outbound()
+    expected_middle = (
+        BinaryImagePart(IMAGE.content, "image/png")
+        if with_image
+        else TextPart("image unavailable\n")
+    )
+    assert message.parts == (
+        TextPart("leading\n"),
+        expected_middle,
+        TextPart("description"),
+    )
+    transport = FakeOfficialPlatform(NOW)
+    result = await transport.reply(ReplyContext.from_message(_incoming()), message)
+    assert result.delivered
+    assert transport.attempts == [(GROUP, message)]
+    assert len(transport.uploads) == int(with_image)
 
 
 def _incoming() -> IncomingMessageRef:
