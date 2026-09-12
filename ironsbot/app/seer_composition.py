@@ -91,7 +91,7 @@ from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_queries import RankQueryPolicy, RankQueryService
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
-from ironsbot.services.seer.type_query import TypeQueryService
+from ironsbot.services.seer.type_query import TypeQueryService, TypeRenderSession
 from ironsbot.services.team.resource import TeamResourceService
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 
@@ -110,7 +110,6 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
-    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.lucky_skin_window import (
         LuckySkinWindowOffer,
         LuckySkinWindowResult,
@@ -119,7 +118,6 @@ if TYPE_CHECKING:
         NewContentCategory,
         NewContentSnapshot,
     )
-    from ironsbot.services.seer.type_query import TypeMatchupRenderer
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,16 +214,16 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             )
 
     @contextmanager
-    def type_render_session() -> Iterator[tuple[SeerDataReader, TypeMatchupRenderer]]:
+    def type_render_session() -> Iterator[TypeRenderSession]:
         with render_sessions.open() as inputs:
-            yield (
+            yield TypeRenderSession(
                 inputs.data,
                 partial(
                     render_type_matchup,
-                    inputs.cache,
                     inputs.images,
                     render_coordinator.render,
                 ),
+                inputs.cache,
             )
 
     @contextmanager
@@ -459,7 +457,6 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             ),
             equipment,
             TypeQueryService(
-                seer_database,
                 type_render_session,
             ),
             BattleEffectQueryService(seer_database, images),

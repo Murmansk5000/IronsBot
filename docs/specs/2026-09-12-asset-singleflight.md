@@ -578,3 +578,37 @@ pass (18 cases), including session closure before awaiting, cancellation, normal
 type exclusion and menu behavior. This is cache-identity acceptance only:
 TypeQueryService still resolves names and loads the matchup dataset before the
 adapter cache check. Zero-SQL hits remain open rather than being claimed here.
+
+## Type Query Cache Ownership (Supersedes Adapter-Level Cache)
+
+Target: TypeQueryService owns the single final-image cache entry before any
+repository query. Its TypeRenderSession contains a publication-bound reader,
+renderer and the existing shared RenderCache. Name resolution now delegates to
+the existing TypeCombinationDataGetter inside that same reader snapshot and
+returns detached values. There is no global-data lookup before opening the
+snapshot and no SQL session held across the native-render await.
+
+The adapter now only loads assets and renders prepared facts. Its old cache
+lookup/write and the calculator's unused cache_key field were removed. Request
+identity distinguishes selection IDs from exact search text, preserving order
+without guessing normalization rules for the name resolver. Different spellings
+may occupy separate entries; they no longer share the old calculated key. Only
+successful images are stored, not menus, messages or exceptions. Existing
+publication completeness and version gates remain authoritative. Query and
+calculator source paths are included in the shared rendering fingerprint.
+
+Service tests cover zero reader calls on hits for search/select/custom requests,
+version changes and rollback, disabled completeness scopes, failed-render retry,
+opposite DIY input order, and fingerprint inputs. Relevant query/render/key tests
+pass (27); database snapshot tests previously passed together with this migration
+(39 including the then-current query cases). Architecture/bootstrap tests pass
+(19). The prior adapter-cache tests were moved to the service boundary rather
+than retaining two caching implementations.
+
+Real post-fix producer SQLite plus SeerRenderSessions and Windows native rendering
+was exercised with search("1"): cold query 6 SQL statements, repeated query 0,
+one native render, identical 848x3453 image bytes. Search("草") produced a
+non-image response through the existing broad resolver, so the image probe uses
+an unambiguous ID; no search semantics were relaxed to make acceptance pass.
+Evidence remains in `.tmp/lineup-v5-fixed-acceptance/report.json`. This verifies
+the local type query path, not live platform deployment or completion of Phase 4.

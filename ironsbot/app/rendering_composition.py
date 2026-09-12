@@ -21,6 +21,8 @@ from ironsbot.services.seer.render_paths import SEER_RENDERING_PATH
 
 FINAL_RENDER_CACHE_INPUTS = (
     SEER_RENDERING_PATH,
+    SEER_RENDERING_PATH.parent / "type_calc.py",
+    SEER_RENDERING_PATH.parent / "type_query.py",
     SEER_DATA_RENDERERS_PATH,
     HTML_TEMPLATE_RENDERER_SOURCE_PATH,
 )
