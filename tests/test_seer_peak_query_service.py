@@ -7,9 +7,13 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.core import time
-from ironsbot.integrations.seer_data.peak_repository import PeakPeriodTimes
+from ironsbot.integrations.seer_data.peak_repository import (
+    PeakPeriodTimes,
+    load_peak_pet_snapshots,
+)
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
 from ironsbot.services.seer.peak import (
@@ -17,6 +21,7 @@ from ironsbot.services.seer.peak import (
     PeakPetSnapshot,
     PeakPoolSnapshot,
     PeakQueryService,
+    PeakRenderSession,
     active_peak_pool_limits,
 )
 
@@ -26,10 +31,11 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataAccess, SeerDataReader
     from ironsbot.services.seer.peak import (
         PeakPetRenderer,
         PeakPoolRenderer,
+        PeakRenderSessionFactory,
         PeakVoteRenderer,
     )
     from ironsbot.services.seer.rank_models import RankEntry
@@ -42,15 +48,17 @@ class FakeData:
 
     def __init__(self) -> None:
         self.query_result: Any = None
+        self.query_results: list[Any] = []
         self.models: dict[int, Any] = {}
         self.query_open = False
+        self.render_open = False
         self.get_many_open = False
 
     @contextmanager
     def query(self, _operation: object) -> Iterator[Any]:
         self.query_open = True
         try:
-            yield self.query_result
+            yield self.query_results.pop(0) if self.query_results else self.query_result
         finally:
             self.query_open = False
 
@@ -140,32 +148,98 @@ def test_active_peak_pool_limits_uses_only_current_pools_and_strictest_limit() -
     assert limits == {1: 2, 2: 3}
 
 
+def test_peak_pet_repository_returns_only_requested_detached_fields() -> None:
+    engine = create_engine("sqlite://")
+    SQLModel.metadata.create_all(engine)
+    try:
+        with Session(engine) as session:
+            session.execute(
+                SQLModel.metadata.tables["element_type_combination"].insert(),
+                [
+                    {
+                        "id": 4,
+                        "name": "type",
+                        "name_en": "type",
+                        "primary_id": 4,
+                    }
+                ],
+            )
+            session.execute(
+                SQLModel.metadata.tables["pet"].insert(),
+                [
+                    {
+                        "id": pet_id,
+                        "name": "pet",
+                        "yielding_exp": 0,
+                        "catch_rate": 0,
+                        "releaseable": False,
+                        "fusion_master": False,
+                        "fusion_sub": False,
+                        "has_resistance": False,
+                        "resource_id": 1007,
+                        "type_id": 4,
+                        "gender_id": 0,
+                        "base_stats_id": 0,
+                        "yielding_ev_id": 0,
+                    }
+                    for pet_id in (7, 9)
+                ],
+            )
+            session.commit()
+            assert load_peak_pet_snapshots(session, set()) == {}
+            pets = load_peak_pet_snapshots(session, {7, 99})
+    finally:
+        engine.dispose()
+    assert pets == {7: PeakPetSnapshot(7, "pet", 1007, 4)}
+
+
+def _render_session(
+    data: FakeData,
+    pool: PeakPoolRenderer,
+    vote: PeakVoteRenderer,
+    pet: PeakPetRenderer,
+) -> PeakRenderSessionFactory:
+    @contextmanager
+    def session() -> Iterator[PeakRenderSession]:
+        data.render_open = True
+        try:
+            yield PeakRenderSession(cast("SeerDataReader", data), pool, vote, pet)
+        finally:
+            data.render_open = False
+
+    return session
+
+
 def _service(
     data: FakeData,
     headless: FakeHeadless,
     rendered: dict[str, Any],
+    *,
+    global_data: FakeData | None = None,
 ) -> PeakQueryService:
     async def render_pool(pools: Any, title: str) -> bytes:
+        assert data.render_open
         rendered["pool"] = (pools, title)
         rendered["pool_session_open"] = data.query_open
         return b"pool"
 
     async def render_vote(pools: Any, generated_at: str) -> bytes:
+        assert data.render_open
         rendered["vote"] = pools
         rendered["vote_generated_at"] = generated_at
         rendered["vote_session_open"] = data.query_open
         return b"vote"
 
     async def render_pet(input_: Any) -> bytes:
+        assert data.render_open
+        assert not data.query_open
         rendered["pet"] = input_
         return b"pet"
 
     return PeakQueryService(
-        cast("SeerDataAccess", data),
+        cast("SeerDataAccess", global_data if global_data is not None else data),
         cast("HeadlessService", headless),
-        cast("PeakPoolRenderer", render_pool),
-        cast("PeakVoteRenderer", render_vote),
-        cast("PeakPetRenderer", render_pet),
+        _render_session(data, render_pool, render_vote, render_pet),
     )
 
 
@@ -227,6 +301,7 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
     async def report(_message: str) -> None:
         return None
 
+    data.query_results = [data.query_result, {7: PeakPetSnapshot(7, "雷伊", 1007, 4)}]
     service = _service(data, FakeHeadless(FakeGame()), rendered)
     result = await service.pet_rank("竞技精灵总榜", report)
 
@@ -365,14 +440,77 @@ async def test_peak_vote_reports_render_timeout(
     service = PeakQueryService(
         cast("SeerDataAccess", data),
         cast("HeadlessService", FakeHeadless(FakeGame())),
-        cast("PeakPoolRenderer", render_pool),
-        cast("PeakVoteRenderer", render_vote),
-        cast("PeakPetRenderer", render_pet),
+        _render_session(data, render_pool, render_vote, render_pet),
     )
 
     result = await service.vote(report)
 
     assert result.message == "❌巅峰投票图片生成超时，请稍后再试。"
+    assert not data.render_open
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["pool", "expert", "vote", "pet"])
+@pytest.mark.parametrize("failure", [None, RuntimeError, asyncio.CancelledError])
+async def test_peak_rendering_uses_bound_reader_until_completion(
+    monkeypatch: MonkeyPatch, mode: str, failure: type[BaseException] | None
+) -> None:
+    now = datetime(2026, 7, 20, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: now.astimezone(tz))
+    data = FakeData()
+    pool = _pool_snapshot()
+    data.query_result = {
+        "pool": (pool,),
+        "expert": (pool,),
+        "vote": (_vote_snapshot(1, 99, pool.start_time, pool.end_time),),
+        "pet": None,
+    }[mode]
+    data.query_results = (
+        [
+            PeakPeriodTimes(pool.start_time, pool.end_time),
+            {7: PeakPetSnapshot(7, "bound", 1007, 4)},
+        ]
+        if mode == "pet"
+        else []
+    )
+
+    class Game:
+        async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
+            assert data.render_open and not data.query_open
+            await asyncio.sleep(0)
+            return []
+
+        async def get_peak_pet_rank(
+            self, _sub_key: int, _peak_type: object
+        ) -> tuple[list[PeakItemData], list[RankEntry]]:
+            assert data.render_open and not data.query_open
+            await asyncio.sleep(0)
+            return [PeakItemData(7, 10, 6)], []
+
+    async def report(_message: str) -> None:
+        assert data.render_open and not data.query_open
+        await asyncio.sleep(0)
+        if failure is not None:
+            raise failure
+
+    rendered: dict[str, Any] = {}
+    service = _service(data, FakeHeadless(Game()), rendered, global_data=FakeData())
+    if mode == "vote":
+        request = service.vote(report)
+    elif mode == "pet":
+        request = service.pet_rank("竞技精灵总榜", report)
+    else:
+        request = service.pool(expert=mode == "expert", progress=report)
+    if failure is not None:
+        with pytest.raises(failure):
+            await request
+    else:
+        result = await request
+        assert result.image is not None
+        if mode == "pet":
+            assert rendered["pet"].pets == (PeakPetSnapshot(7, "bound", 1007, 4),)
+    assert not data.render_open
+    assert not data.query_open
 
 
 @pytest.mark.asyncio
@@ -385,9 +523,7 @@ async def test_peak_query_reports_disconnected_headless_client() -> None:
 
     result = await service.item_rank("竞技套装榜", kind="套装")
 
-    assert result.message == (
-        "❌ 无头客户端连接已断开，正在尝试重连，请稍后再试"
-    )
+    assert result.message == ("❌ 无头客户端连接已断开，正在尝试重连，请稍后再试")
 
 
 @pytest.mark.asyncio

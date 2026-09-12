@@ -66,7 +66,7 @@ from ironsbot.services.seer.lucky_skin_window_delivery import (
 )
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.new_content import NewContentService
-from ironsbot.services.seer.peak import PeakQueryService
+from ironsbot.services.seer.peak import PeakQueryService, PeakRenderSession
 from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -212,6 +212,31 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 inputs.data,
                 partial(
                     render_type_matchup,
+                    inputs.cache,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
+            )
+
+    @contextmanager
+    def peak_render_session() -> Iterator[PeakRenderSession]:
+        with render_sessions.open() as inputs:
+            yield PeakRenderSession(
+                inputs.data,
+                partial(
+                    render_peak_pool,
+                    inputs.cache,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
+                partial(
+                    render_peak_pool_vote,
+                    inputs.cache,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
+                partial(
+                    render_peak_pet_rank,
                     inputs.cache,
                     inputs.images,
                     render_coordinator.render,
@@ -378,24 +403,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             PeakQueryService(
                 seer_database,
                 headless,
-                partial(
-                    render_peak_pool,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
-                partial(
-                    render_peak_pool_vote,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
-                partial(
-                    render_peak_pet_rank,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
+                peak_render_session,
             ),
             MintmarkQueryService(
                 seer_database,

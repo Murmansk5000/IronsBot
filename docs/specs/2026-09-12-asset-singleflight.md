@@ -222,3 +222,26 @@ The service is 9 lines smaller; composition supplies the existing snapshot
 factory rather than a feature-specific snapshot implementation. Alias/name
 selection still produces only request IDs; render facts use the bound reader.
 No TOML, dependencies, private extension or production deployment changed.
+
+## Peak Preparation Boundary
+
+Target: pool/vote/pet-rank queries receive a single context-managed bound
+reader and three existing rendering callbacks from SeerRenderSessions. Hold
+the same read snapshot across online vote/rank requests, progress callbacks,
+and native rendering. Individual SQL sessions still end before network awaits.
+Pet-rank's post-network pet lookup moves to peak_repository and uses the same
+reader as its pre-network season lookup. Item rankings remain unchanged.
+Tests must verify bound-reader use and cleanup on success, timeout, error and
+cancellation. Online ranks remain live observations, not immutable release data.
+
+Verified: peak service/vote/pool/pet-rank plus architecture/size checks 54 passed
+in 10.27s (2 existing ORM relationship warnings). Twelve bound-reader cases
+cover standard/expert pools, votes and pet ranks with successful completion,
+progress failure and cancellation. Online callbacks assert the render lease
+is active and the SQL context closed. The existing vote-render timeout also
+asserts lease cleanup. A real SQLModel/SQLite repository test verifies requested
+IDs only, absent IDs, empty input and detached values after engine disposal.
+Ruff, targeted BasedPyright (0 errors/warnings), compileall and diff checks passed.
+No new module/dependency/config/private-contract changes. The old three standalone
+render callback constructor arguments and unbound pet-map helper were removed.
+New-content, lucky-window and private-lineup binding remain outstanding.
