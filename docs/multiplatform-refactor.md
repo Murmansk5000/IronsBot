@@ -620,6 +620,33 @@ TOML 清单、元数据和贡献机制接入。
 
 ### Phase 4 — 渲染、发布事实和素材管线
 
+**真实发布消费与批量读库（2026-09-12）：** 扩展已有 opt-in 发布测试为属性图、
+竞技池、专家池和萨尔蒙（3549）资料图，共享同一初始化/HTTP/缓存/出站验收流程，
+不另建测试模块或素材副本。使用未修改的 SeerAPI 本地产物
+`tmp/v5-release-acceptance-fixed/seerapi-data.sqlite`（seerapi 仓库，58413056 bytes），
+manifest `3bcee795c7d4e7ffb10f32d11478212b984bd705785e0fddced6c1c67bfae13a`、
+素材 revision `1b53a16cfe32d36d921a04fbd8423116c5b1e2e1`。四项真实 SQL、HTTP PNG、
+原生渲染及 OneBot 编码/fake official 上传验证通过（45.11 秒）；不是线上 QQ 投递。
+
+实测初次 SQL/HTTP/原生调用：属性 `(3,138,1)`，竞技池 `(37,71,1)`，专家池
+`(33,65,1)`，萨尔蒙 `(108,9,1)`。产物只授予 type_matchup 完整缓存资格，所以
+属性二次查询三个计数均不增长；其余三项二次查询复用素材但重新读库/渲染，未篡改
+完整性声明。不能将“该样例能出图”推导为全类别完整。萨尔蒙已出图并核对官方
+533/534/535 三条效果事实；运行时未补造关联。
+
+由上述 SQL 计数定位 peak repository 的关系逐项加载：三种池统一使用 selectinload
+批量取成员，精灵快照直接使用自身 type_id。真实竞技池从 37 次、专家池从 33 次降为
+各 2 次 SQL；下载与原生次数不变。5 池 fixture 先复现 11 次查询，修复后均为 2 次，
+按 ID 读取精灵从 2 次降为 1 次。未引入额外缓存、schema 或运行模块。
+优化前后竞技池 1228x1022、专家池 1228x702 的 RGB 像素差为零。
+
+最终公共相关回归 112 passed、4 skipped（四项 opt-in 已单独验证，优化后的两个池
+再次 2 passed），私有全量 43 passed；Ruff、BasedPyright、compileall/diff 通过。
+调用命令为 `pytest tests/test_seer_type_query_service.py -k native_published`，需设置
+`IRONSBOT_RENDER_RELEASE`；Windows 本轮还设置 `IRONSBOT_RENDER_FONTCONFIG`。
+本批没有全量 pytest、远程发布、Docker 构建或真实账号联调，不将它们标为已验证。
+剩余渲染类别与发布边界继续按本阶段原始条件验收，总进度保持 5/8。
+
 **巅峰图片消费与恢复（2026-09-12）：** 竞技池、投票、精灵榜统一使用
 `_render_peak_result` 处理预期素材失败/渲染超时；删除投票独有的 45 秒计时器和
 `except Exception`，原生时限复用现有 `RenderCoordinator`。代码错误和取消继续

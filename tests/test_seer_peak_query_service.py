@@ -7,12 +7,15 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from sqlalchemy import event as sql_event
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.core import time
 from ironsbot.integrations.seer_data.peak_repository import (
     PeakPeriodTimes,
     load_peak_pet_snapshots,
+    load_peak_pool_snapshots,
+    load_peak_vote_snapshots,
 )
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
@@ -154,6 +157,12 @@ def test_active_peak_pool_limits_uses_only_current_pools_and_strictest_limit() -
 def test_peak_pet_repository_returns_only_requested_detached_fields() -> None:
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
+    statements: list[str] = []
+
+    def track_sql(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        statements.append(statement)
+
+    sql_event.listen(engine, "before_cursor_execute", track_sql)
     try:
         with Session(engine) as session:
             session.execute(
@@ -189,11 +198,96 @@ def test_peak_pet_repository_returns_only_requested_detached_fields() -> None:
                 ],
             )
             session.commit()
+            statements.clear()
             assert load_peak_pet_snapshots(session, set()) == {}
             pets = load_peak_pet_snapshots(session, {7, 99})
+            assert len(statements) == 1
     finally:
         engine.dispose()
     assert pets == {7: PeakPetSnapshot(7, "pet", 1007, 4)}
+
+
+@pytest.mark.parametrize("table", ["peak_pool", "peak_expert_pool", "peak_pool_vote"])
+def test_peak_repository_batches_pool_members_without_loading_types(table: str) -> None:
+    engine = create_engine("sqlite://")
+    SQLModel.metadata.create_all(engine)
+    statements: list[str] = []
+
+    def track_sql(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        statements.append(statement)
+
+    sql_event.listen(engine, "before_cursor_execute", track_sql)
+    pool_count = 5
+    start = datetime(2026, 7, 1, tzinfo=time.TZ_CN)
+    end = datetime(2026, 7, 31, tzinfo=time.TZ_CN)
+    try:
+        with Session(engine) as session:
+            session.execute(
+                SQLModel.metadata.tables[table].insert(),
+                [
+                    {
+                        "id": index,
+                        "count": 2,
+                        "start_time": start,
+                        "end_time": end,
+                        **({"subkey": index} if table == "peak_pool_vote" else {}),
+                    }
+                    for index in range(pool_count)
+                ],
+            )
+            session.execute(
+                SQLModel.metadata.tables["element_type_combination"].insert(),
+                [
+                    {
+                        "id": index,
+                        "name": "type",
+                        "name_en": "type",
+                        "primary_id": index,
+                    }
+                    for index in range(pool_count)
+                ],
+            )
+            session.execute(
+                SQLModel.metadata.tables["pet"].insert(),
+                [
+                    {
+                        "id": index,
+                        "name": "pet",
+                        "yielding_exp": 0,
+                        "catch_rate": 0,
+                        "releaseable": False,
+                        "fusion_master": False,
+                        "fusion_sub": False,
+                        "has_resistance": False,
+                        "resource_id": index + 1000,
+                        "type_id": index,
+                        "gender_id": 0,
+                        "base_stats_id": 0,
+                        "yielding_ev_id": 0,
+                        f"{table}_id": index,
+                    }
+                    for index in range(pool_count)
+                ],
+            )
+            session.commit()
+            statements.clear()
+            pools = (
+                load_peak_vote_snapshots(session)
+                if table == "peak_pool_vote"
+                else load_peak_pool_snapshots(
+                    session, expert=table == "peak_expert_pool"
+                )
+            )
+            expected_queries = 2
+            assert len(statements) == expected_queries
+            assert not any("element_type_combination" in sql for sql in statements)
+        assert len(pools) == pool_count
+        assert {pool.id: pool.pets for pool in pools} == {
+            index: (PeakPetSnapshot(index, "pet", index + 1000, index),)
+            for index in range(pool_count)
+        }
+    finally:
+        engine.dispose()
 
 
 def _render_session(
