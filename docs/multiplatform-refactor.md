@@ -41,7 +41,7 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [████□□□□]  verified phases: 4/8; percentage awaits a weighted acceptance baseline
+Program  [█████□□□]  verified phases: 5/8; percentage awaits a weighted acceptance baseline
 Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
@@ -50,9 +50,9 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 本轮验证（2026-09-12）
 
-总任务 `[████□□□□]`：阶段 1 身份/状态迁移收口验收完成，账本从 3/8 更新为 4/8。
-下方早期记录保留当时的测试与状态；跨仓库发布、真实平台和素材完整性门槛仍未完成，
-暂无可靠总体 ETA。
+总任务 `[█████□□□]`：Phase 0、1、2、3、5 已验收，当前为 5/8；本次 Phase 5
+关闭依据见该阶段的整体审计记录。Phase 4、6、7 继续进行，不按阶段数推算整体百分比。
+下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
 
 - 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
   从 `ba08f749` 快进到 `55a39fd1`，未合并入 V5。新增 10 项提交涉及战队查询与
@@ -239,7 +239,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 各 renderer 验证完整/缺图/失败的消费行为及版本绑定，用有效 release 完成 consumer smoke；上游补图不作为消费者阶段门 | 渲染数据发布契约完成 |
-| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证；真实私有扩展公开契约已在 Phase 2 验收 | 剩余领域参数化输入覆盖、玩家查询缓存策略及完整发布链路验收 | 业务服务重构完成 |
+| Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
 | Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
 
@@ -945,6 +945,29 @@ pyproject.toml 并保留许可证，但本机 Docker daemon 未运行，未宣�
 压缩 wheel，不宣称镜像大幅缩小；真实 Docker 体积与部署验收仍未完成。总进度 4/8。
 
 ### Phase 5 — 业务服务和通用解析
+
+**整体关闭审计（2026-09-12）：** `completed`。逐项复核上述阶段原始范围，未以
+接口声明或单项测试代替组合验收；本次只关闭 Phase 5，不关闭整个重构。
+
+| 原始完成条件 | 当前实现与验证证据 |
+| --- | --- |
+| AI 目录认领，无第二份保护词 | AI `_capture_ai_prompt` 调用 `CommandCatalog.claims_direct_input`；player/rank/exact/affix/subscription/sendpic ownership 测试覆盖实际 AI rule 与目录/安装入口。旧 `RESERVED_PRIVATE_COMMANDS`、`DEFAULT_POKE_HINTS`、`_RANK_HINTS` 全生产目录检索无结果 |
+| 统一米米号参数 | `app/seer_composition.py` 是生产中唯一 `PlayerIdResolver` 构造位置；基础、绑定、快捷和榜单玩家入口复用 `resolve_player_target`。96 组实际 Rule 矩阵与 24 组真实工厂/目录准入、既有绑定处理器和引用隔离测试通过；私有 `8c9c8f2` 验证真实 manifest 注册的阵容动作进入同一公开入口 |
+| 多分区独立失败、渐进回发 | scheduler 验证一个榜耗尽不影响另一个榜、同页重试；真实 `PlayerDetailService` 到菜单发送覆盖收集/巅峰成功、部分超时和取消，完成项仍回发、取消不向旧菜单发送、失败不误报未上榜 |
+| 来源与缓存时间 | observation/freshness 测试覆盖旧源、未知时间、超时缓存；详情到发送组合保留原观测时间，成功复用不再请求，部分结果不进入完整缓存。源时间不是组装回复时的当前时间 |
+| 删除重复解析和出站规则 | 入口只做 OneBot 输入适配；玩家/榜单/私有动作共用 resolver 与命令契约，实体存储通过 `AliasIndex` 或 `DatabaseAliasLookup` 共享结果协议。玩家普通和扩展回复统一 `QueryReply.to_outbound()`，不恢复专用数字正则或消息包装器 |
+
+最终公共全量 **3077 passed、1 skipped**（127.03 秒），私有全量 **43 passed**；
+公共 Ruff、BasedPyright（0 errors）、compileall 和 diff 检查通过。首次全量发现
+私有详情旧测试仍断言字符串，已改为严格比较统一出站后的 `Message("private reply")`，
+没有放宽为任意文本或修改生产行为。3568 个警告来自 NoneBot ForwardRef 弃用和
+模型关系声明，不宣称无警告；跳过项是需显式发布物的原生渲染测试，属于 Phase 4。
+
+此前收尾表中的两个安装组合门已由公开工厂矩阵和私有 manifest 联合验收补齐。
+QQ API 不支持的身份操作按用户要求留到最终平台适配；真实 QQ 投递、素材消费验收、
+错误语义清理与发布分别仍在 Phase 7、4、6 及发布流程中，不因本阶段关闭而略过。
+本地 main 为 `55a39fd1`，producer 为 `8a38945`，本轮没有 pull/merge/push，未改
+生产配置、数据库、依赖或镜像资源；私有未跟踪 `uv.lock` 保留。
 
 **玩家图文出口复用（2026-09-12）：** target 收口。快捷查询、数字菜单及详情扩展
 统一调用现有 `QueryReply.to_outbound()` 和 OneBot message renderer；删除
