@@ -9,11 +9,14 @@ from seerapi_models import ElementTypeORM
 from seerapi_models.element_type import ElementTypeRelationORM, TypeCombinationORM
 from sqlmodel import col, select
 
+from ironsbot.services.seer.data import SEERAPI_DB
 from ironsbot.services.seer.type_calc import (
     ElementTypeSnapshot,
     TypeCombinationSnapshot,
     TypeMatchupDataset,
 )
+
+from .getters import TypeCombinationDataGetter
 
 if TYPE_CHECKING:
     from sqlmodel import Session
@@ -60,4 +63,13 @@ def _combination_snapshot(item: TypeCombinationORM) -> TypeCombinationSnapshot:
         name=str(item.name),
         primary_id=int(item.primary_id),
         secondary_id=None if item.secondary_id is None else int(item.secondary_id),
+    )
+
+
+def resolve_type_combinations(
+    session: Session, arg: str
+) -> tuple[TypeCombinationSnapshot, ...]:
+    return tuple(
+        _combination_snapshot(item)
+        for item in TypeCombinationDataGetter({SEERAPI_DB: session}, arg)
     )
