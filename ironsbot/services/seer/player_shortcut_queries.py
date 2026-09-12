@@ -138,8 +138,9 @@ def _detail_reply(
     rank_lookups: tuple[RankLookupResult, ...],
     *,
     base_complete: bool,
+    fetched_at: float | None,
 ) -> QueryReply:
-    reply = QueryReply(text=text, rank_lookups=rank_lookups)
+    reply = QueryReply(text=text, rank_lookups=rank_lookups, fetched_at=fetched_at)
     return replace(reply, complete=base_complete and reply.rank_lookup_complete)
 
 
@@ -248,6 +249,7 @@ async def _fetch_collection_message(  # noqa: PLR0913
         message,
         _player_rank_results(rank_summary),
         base_complete=not extra_errors and nick_error is None,
+        fetched_at=observation.fetched_at,
     )
 
 
@@ -366,6 +368,7 @@ async def _fetch_peak_message(  # noqa: PLR0913
         base_complete=not extra_errors
         and nick_error is None
         and not peak_result.mode_errors,
+        fetched_at=observation.fetched_at,
     )
 
 
@@ -452,6 +455,7 @@ async def _fetch_autocard_message(  # noqa: PLR0913
         message,
         (result,),
         base_complete=not extra_errors and nick_error is None,
+        fetched_at=observation.fetched_at,
     )
 
 

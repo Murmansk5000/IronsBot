@@ -8,10 +8,9 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from math import isfinite
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.time import ObservationTime
+from ironsbot.core.time import ObservationTime, remaining_observation_ttl
 from ironsbot.extensions.contracts import (
     PlayerLineupCachedReply,
     PlayerLineupImageAssets,
@@ -130,20 +129,6 @@ class PlayerLineupRenderServices:
         )
 
 
-def _remaining_lineup_ttl(
-    fetched_at: float | None, ttl_seconds: float, *, at: float
-) -> float:
-    if (
-        fetched_at is None
-        or not isfinite(fetched_at)
-        or not isfinite(at)
-        or fetched_at < 0
-        or fetched_at > at
-    ):
-        return 0.0
-    return max(0.0, ttl_seconds - (at - fetched_at))
-
-
 _LINEUP_CACHE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS player_lineup_cache (
     player_id INTEGER PRIMARY KEY,
@@ -179,7 +164,7 @@ class _SqlitePlayerLineupCache:
         if row is None:
             return None
         fetched_at = row[4] if isinstance(row[4], (int, float)) else None
-        if _remaining_lineup_ttl(fetched_at, self.ttl_seconds, at=self.now()) <= 0:
+        if remaining_observation_ttl(fetched_at, self.ttl_seconds, at=self.now()) <= 0:
             return None
         return PlayerLineupCachedReply(
             leading_text=str(row[0]),
@@ -194,7 +179,9 @@ class _SqlitePlayerLineupCache:
             not reply.image
             or reply.image_error
             or isinstance(reply.fetched_at, bool)
-            or _remaining_lineup_ttl(reply.fetched_at, self.ttl_seconds, at=self.now())
+            or remaining_observation_ttl(
+                reply.fetched_at, self.ttl_seconds, at=self.now()
+            )
             <= 0
         ):
             return

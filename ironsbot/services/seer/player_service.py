@@ -99,7 +99,9 @@ class PlayerService(PlayerAccountPolicyMixin):
         self._quotas = quotas
         self._requests = requests
         self._now = now or utc_now
-        self._query_cache = PlayerQueryCache.from_config(config)
+        self._query_cache = PlayerQueryCache(
+            config.player.background_refresh.cache_ttl_seconds
+        )
 
     def default_player_id(self, actor: ActorRef) -> int | None:
         return self._bindings.get(actor).player_id
@@ -114,18 +116,19 @@ class PlayerService(PlayerAccountPolicyMixin):
     ) -> PlayerQueryResult:
         if not is_valid_player_id(player_id):
             return PlayerQueryResult(message=PLAYER_ID_ERROR_MESSAGE)
-        binding = self._bindings.get(actor)
-        cached = self._query_cache.result(
-            player_id,
-            offer_binding=explicit and not binding.choice_completed,
-        )
+        def fallback() -> PlayerQueryResult | None:
+            binding = self._bindings.get(actor)
+            return self._query_cache.result(
+                player_id,
+                offer_binding=explicit and not binding.choice_completed,
+            )
         quota_message = self._check_quota(
             actor=actor,
             player_id=player_id,
             action_key="player",
         )
         if quota_message:
-            return cached or PlayerQueryResult(message=quota_message)
+            return fallback() or PlayerQueryResult(message=quota_message)
         try:
             result = await self._run_live_request(
                 lambda: self._query(
@@ -152,13 +155,13 @@ class PlayerService(PlayerAccountPolicyMixin):
                 priority=HeadlessRequestPriority.BASIC,
             )
         except PlayerQueryQuotaExceededError as error:
-            return cached or PlayerQueryResult(message=error.message)
+            return fallback() or PlayerQueryResult(message=error.message)
         except PLAYER_REQUEST_ERRORS as error:
-            return cached or PlayerQueryResult(
+            return fallback() or PlayerQueryResult(
                 message=player_request_protection_message(error)
             )
         if result.pending is None:
-            return cached or result
+            return fallback() or result
         self._query_cache.put(result.pending)
         binding = self._bindings.get(actor)
         return PlayerQueryResult(
