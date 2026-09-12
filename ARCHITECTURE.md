@@ -626,12 +626,12 @@ reusable contracts rather than adding feature-local regexes:
   keyword lists for help, poke hints, AI exclusions, and rank protection.
 - Configuration-generated commands, selection menus, and fixed commands must
   use the same contract. Passive notices and scheduled jobs are not commands.
-  `messaging.sendpic.configs` is the sole command declaration shape for both
-  packaged single images and configured indexed galleries. A single-image
-  command uses `mode = "single"` and `image_file`; an indexed gallery uses
-  `mode = "indexed"`, `image_dir`, and `image_filename_template`.
-  Packaged image commands are typed default configs and may be overridden or
-  disabled by `id`; there is no parallel fixed-image command map.
+  `messaging.sendpic.configs` is the sole command declaration shape for
+  configured single images and indexed galleries. A single-image command uses
+  `mode = "single"` and `image_file`; an indexed gallery uses `mode = "indexed"`,
+  `image_dir`, and `image_filename_template`. The default configs list is empty:
+  image commands must be explicitly configured. There are no packaged default
+  image commands or parallel built-in fixed-image command map.
   Command-conflict guards consume the active image command set from the
   service, never a second static list.
 
