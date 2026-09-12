@@ -36,6 +36,22 @@ jobs:
                   python -m pip install --user uv
                   python -m uv sync --frozen --no-install-project
 
+            - name: Audit locked runtime dependencies
+              shell: bash
+              run: |
+                  python -m uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
+                  python -m uv tool run --python 3.10 --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
+
+            - name: Upload dependency audit evidence
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: dependency-audit-${{ github.sha }}
+                  path: |
+                      ${{ runner.temp }}/ironsbot-runtime-requirements.txt
+                      ${{ runner.temp }}/ironsbot-dependency-audit.json
+                  if-no-files-found: warn
+
             - name: Login to GitHub Container Registry
               uses: docker/login-action@v2
               with:

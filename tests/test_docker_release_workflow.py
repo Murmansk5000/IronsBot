@@ -124,3 +124,61 @@ def test_release_connects_measurement_to_build_digest_and_artifact() -> None:
     assert "ironsbot-image-history.jsonl" in upload["with"]["path"]
     assert "ironsbot-runtime-size-kib.txt" in upload["with"]["path"]
     assert upload["with"]["if-no-files-found"] == "error"
+
+
+def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
+    steps = _steps()
+    audit = next(s for s in steps if s["name"] == "Audit locked runtime dependencies")
+    upload = next(s for s in steps if s["name"] == "Upload dependency audit evidence")
+    login = next(s for s in steps if s["name"] == "Login to GitHub Container Registry")
+    assert steps.index(audit) < steps.index(upload) < steps.index(login)
+    assert "--frozen --no-dev --no-emit-project" in audit["run"]
+    assert "--python 3.10 --from pip-audit==2.10.1" in audit["run"]
+    assert "--require-hashes --disable-pip --strict" in audit["run"]
+    assert "--fix" not in audit["run"]
+    assert "--ignore-vuln" not in audit["run"]
+    assert not audit.get("continue-on-error", False)
+    assert upload["if"] == "${{ always() }}"
+    assert "ironsbot-dependency-audit.json" in upload["with"]["path"]
+    assert "ironsbot-runtime-requirements.txt" in upload["with"]["path"]
+    assert "pip-audit" not in (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("failure", ["none", "export", "audit"])
+def test_runtime_audit_shell_propagates_failure(tmp_path: Path, failure: str) -> None:
+    step = next(s for s in _steps() if s["name"] == "Audit locked runtime dependencies")
+    script = tmp_path / "audit.sh"
+    script.write_text(
+        """python() {
+    printf '%s\\n' "$*" >> audit-calls.txt
+    case "$*" in
+        *'uv export '*)
+            if [ "$AUDIT_TEST_FAILURE" = export ]; then return 2; fi
+            printf 'h2==4.4.1\\n' > "$RUNNER_TEMP/ironsbot-runtime-requirements.txt"
+            ;;
+        *'uv tool run '*)
+            printf '{}\\n' > "$RUNNER_TEMP/ironsbot-dependency-audit.json"
+            if [ "$AUDIT_TEST_FAILURE" = audit ]; then return 1; fi
+            ;;
+        *) return 99 ;;
+    esac
+}
+"""
+        + step["run"],
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [_bash(), "--noprofile", "--norc", "-e", "-o", "pipefail", script.name],
+        cwd=tmp_path,
+        env={**os.environ, "RUNNER_TEMP": ".", "AUDIT_TEST_FAILURE": failure},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == {"none": 0, "export": 2, "audit": 1}[failure]
+    calls = (tmp_path / "audit-calls.txt").read_text().splitlines()
+    assert len(calls) == (1 if failure == "export" else 2)
+    assert (tmp_path / "ironsbot-dependency-audit.json").exists() == (
+        failure != "export"
+    )

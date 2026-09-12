@@ -73,3 +73,41 @@ The newly added AST guard was collected in the separate 19-test architecture
 run, not retroactively counted in that full run. Compileall and diff checks
 passed. Docker daemon/image execution is still unverified; this checkpoint does
 not complete Phase 4/7 or prove production rollout.
+
+## Locked Runtime Dependency Audit
+
+Target: the existing release workflow must audit the frozen production dependency
+set before registry login or image publication, without installing audit tooling
+in the runtime image. Export hashed requirements with no development dependencies
+or root project, then run pinned pip-audit 2.10.1 under Python 3.10. Collection
+errors, advisory failures and export failures stop release; no automatic fixes,
+ignored advisories or continue-on-error. Preserve requirements and JSON evidence
+even when auditing fails. This is a Python package advisory gate, not a scan of
+Debian packages, native libraries, secrets or exploitability.
+
+The first actual local scan found h2 4.3.0 affected by
+[GHSA-6hr6-w5qg-qmwg](https://github.com/python-hyper/h2/security/advisories/GHSA-6hr6-w5qg-qmwg).
+The advisory service returned the same ID twice; it is one distinct advisory,
+not two different defects. Upgrade h2 to 4.4.1; its metadata requires hpack>=4.2,
+so hpack moves from 4.1.0 to 4.2.0. No other locked version changes. This does not
+claim IronsBot exposes the advisory's HTTP/2-to-HTTP/1 request-smuggling scenario.
+
+Actual frozen sync installed both versions. The post-upgrade local scan of 58
+dependencies under the default Windows interpreter reported no known advisories
+and no skipped packages. Marker-dependent Linux dependencies are only covered
+when the release gate runs on Linux; a local scan is not proof that an image was
+built or audited. The Docker Desktop Linux engine pipe remains absent, verified
+again this turn; no daemon start, image measurement or remote release was done.
+
+Workflow shell tests exercise success, export failure and audit failure, preserving
+the nonzero status and report. They mock the command execution, unlike the local
+advisory scan above. Focused packaging/architecture tests: 39 passed. Private
+native-enabled regressions after sync: 43 passed. Stage count remains 4/8.
+
+The actual pinned tool was also run with Python 3.10 and the exact hashed-input
+flags used by CI: 59 applicable Windows dependencies, zero known advisories and
+zero skipped packages. Advisory HTTP-cache decode warnings caused network
+refetches, not ignored packages. Full public suite after the two dependency
+updates: 2924 passed, 319 existing warnings, 131.85 seconds. Full Ruff,
+BasedPyright, compileall and diff check passed. Local main remains 55a39fd1;
+no fetch, merge, production edit or push was performed.
