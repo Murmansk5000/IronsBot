@@ -144,6 +144,11 @@ When a contract provides an input matcher, its acceptance or rejection is
 authoritative even for a help example or routing alias. Exact examples and
 aliases are used for admission only by contracts without an input matcher;
 parser-backed contracts must include their accepted aliases in the real grammar.
+Exact examples and aliases are literal, not globally whitespace-normalized or
+case-folded. Intentionally normalized command domains explicitly use the shared
+`normalized_command_input_matcher`, backed by the same `command_text_matches`
+helper as their actual rule. Do not change a matcher to accommodate an overly
+broad catalog example, or introduce another AI-only normalization policy.
 
 The type rename does not make the migration complete. Completion still requires
 command parsing ownership, access metadata and documentation fields to move out

@@ -412,3 +412,15 @@ def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> Non
     assert command.matches_direct_input(_context(1), "accepted")
     assert not command.matches_direct_input(_context(1), "reserved")
     assert not command.matches_direct_input(_context(1), "also reserved")
+
+
+@pytest.mark.parametrize("text", ["hELP", "help", " Help", "Help ", "H elp", "/Help"])
+def test_exact_contract_does_not_infer_normalized_spellings(text: str) -> None:
+    command = CommandContract(
+        id="literal", plugin_id="example", section="query", examples=("Help",),
+        routing_aliases=("two words",), description="Literal commands",
+    )
+    assert command.matches_direct_input(_context(1), "Help")
+    assert command.matches_direct_input(_context(1), "two words")
+    assert not command.matches_direct_input(_context(1), "twowords")
+    assert not command.matches_direct_input(_context(1), text)
