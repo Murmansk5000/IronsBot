@@ -1228,6 +1228,14 @@ Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是�
 
 ### Phase 6 — 兜底、配置和错误语义
 
+**配置模型旧导入收口（2026-09-12）：** target 清理。幸运橱窗调用方直接从
+`config.models.seer_lucky` 引用配置模型，删除 `seer` 中标注 compatibility 的
+重导出；聚合配置以模块限定名引用实际模型。配置格式及默认值不变，无新包装器。
+私有仓库无旧入口调用，原有未跟踪 `uv.lock` 保留。公共全量 2966 passed、1 skipped、
+440 warnings（126.68 秒），私有 43 passed；Ruff、basedpyright、compileall、diff
+通过。原生发布素材 smoke 未在本次提供产物，因此仍为 skip；不宣称部署验收。
+本地 main 仍为 `55a39fd1`，未 pull/merge。总进度 4/8，无新增镜像依赖或配置。
+
 **镜像元数据来源（2026-09-12）：** target 收口。删除 Docker 检查/更新路径中
 写死的 `Murmansk5000/IronsBot` 源码仓库回退及 `fallback_repo` 参数。提交说明
 只读取镜像 OCI source/revision 标签；没有可识别来源时不发 HTTP 查询，保持说明

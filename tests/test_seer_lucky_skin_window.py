@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import pytest
 
-from ironsbot.config.models.seer import (
+from ironsbot.config.models.seer import PlayerAccountConfig
+from ironsbot.config.models.seer_lucky import (
     LuckySkinWindowAccountConfig,
     LuckySkinWindowConfig,
-    PlayerAccountConfig,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
