@@ -1196,6 +1196,16 @@ matcher，修正测试装配后 185 passed；Ruff、basedpyright 通过。该测
 数字/别名路径的工厂交叉证据，私有扩展联合装载与平台联调仍独立，不据此关闭
 整个 Phase 5 或新增生产兼容代码。总进度保持 4/8。
 
+**私有 manifest 与公共入口联合验收（2026-09-12）：** 私有仓库 `8c9c8f2`
+扩展既有独立进程 manifest 测试：实际 NoneBot 加载私有插件后，使用共享 resolver、
+CommandCatalog、MatcherFactory 与 SeerMatcherGroup 安装公共玩家/快捷入口。
+验证阵容数字/别名在功能启用与禁用时目录认领和规则一致；解析动作必须就是
+manifest 注册进 PlayerDetailExtensionRegistry 的同一个对象，不伪造另一个阵容
+入口。目录与 matcher 双向校验通过，注册 matcher 全部销毁。私有全量 43 passed，
+定向 Ruff/diff 通过；无真实游戏查询/QQ 投递声明。运行代码、依赖、配置未变，
+既有未跟踪 uv.lock 保留。至此上述公开数字/别名工厂和私有联合装载的具体证据
+已补齐；仍须按 Phase 5 原始完成条件整体核对，不能自动推导全项目完成。
+
 **已完成的绑定入口修复（2026-09-12）：** 通过 `player.install()` 收集真实 Rule
 组合（注册容器使用替身）复现：绑定处理器支持成员 @，注册时却使用禁止成员 @ 的
 策略。改为复用 `member_target_command()`。16 种基础/绑定、数字/别名/成员/机器人
