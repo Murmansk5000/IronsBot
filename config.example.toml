@@ -595,13 +595,17 @@ enabled = true
 # 每个键必须是已定义的 B 站账号别名。分类正则匹配完整动态文本；配置分类后，
 # 该账号不再套用全局抽奖屏蔽规则，请在此定义需要静音的内容。
 #
-# [bilibili.category_subscriptions.accounts.example_account]
-# label = "示例账号"
-# default_muted_categories = ["lottery"]
-#
-# [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
-# label = "抽奖与中奖"
-# patterns = ["恭喜", "中奖", "抽奖结果"]
+[bilibili.category_subscriptions.accounts.example_account]
+label = "示例账号"
+default_muted_categories = ["lottery", "winning"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.lottery]
+label = "抽奖"
+patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.winning]
+label = "中奖"
+patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 
 [messaging]
 # Default: []
@@ -1204,6 +1208,19 @@ rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "�
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
 refresh_stale_after_hours = 336
+
+[seer.new_content]
+# Default: []
+# EN: Root-menu categories that may preview newly added entries even when the
+# category has more entries than auto_expand_max_items. Focused category menus
+# still show every addition and correction.
+# ZH: 根菜单中允许预览新增项目的分类；即使该分类项目总数超过自动展开上限也可预览。
+# 分类详情仍显示全部新增和修改。技能预览会排除本周新增精灵自带的技能。
+expanded_categories = []
+# Default: 5
+# EN: Maximum additions shown for each root-menu preview; 0 disables previews.
+# ZH: 每个根菜单分类最多预览的新增项目数；设为 0 关闭预览。
+auto_expand_max_items = 5
 
 [seer.season]
 # Default: "群星牌赛季"

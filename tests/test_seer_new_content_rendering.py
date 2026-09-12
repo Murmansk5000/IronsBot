@@ -535,6 +535,14 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         items=(
             _item("autocard_sanctuary_effect", 1),
             _item("autocard_sanctuary_effect", 2),
+            NewContentItem(
+                "autocard_sanctuary_effect",
+                3,
+                "修正条目",
+                3,
+                {},
+                "modified",
+            ),
             *(_item("skill", 100 + index) for index in range(6)),
         ),
     )
@@ -557,7 +565,7 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         False,
     ]
     assert [row.description for row in captured["items"] if row.is_category] == [
-        "2 项新增",
+        "2 项新增｜1 项修改",
         "6 项新增",
     ]
 

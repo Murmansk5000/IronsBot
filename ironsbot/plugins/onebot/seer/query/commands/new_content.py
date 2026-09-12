@@ -53,7 +53,6 @@ from ironsbot.services.seer.data_query_commands import (
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
-    DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
     NEW_CONTENT_CATEGORIES,
     NewContentCategory,
     NewContentIndexUnavailableError,
@@ -185,7 +184,11 @@ async def _start_new_content(  # noqa: PLR0913
         return
 
     layout = plan_new_content_menu(
-        snapshot, _available_categories(group, event), categories
+        snapshot,
+        _available_categories(group, event),
+        categories,
+        expanded_categories=group.new_content_expanded_categories,
+        preview_max_items=group.new_content_preview_max_items,
     )
     if isinstance(layout, str):
         await matcher.finish(layout)
@@ -335,7 +338,7 @@ async def _render_content_prompt(
             layout.focused_category,
             "新增内容",
             layout.expanded_categories,
-            DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
+            layout.preview_max_items,
         )
     except NewContentSnapshotChangedError:
         return prompt.build_event_message(event)

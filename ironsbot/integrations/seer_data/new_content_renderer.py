@@ -22,6 +22,7 @@ from ironsbot.services.seer.new_content import (
     NewContentSnapshot,
     format_new_content_category_count,
     is_new_content_category_auto_expanded,
+    new_content_category_preview_items,
 )
 from ironsbot.services.seer.render_paths import PET_INFO_IMAGES_PATH
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
@@ -87,11 +88,23 @@ async def render_new_content_menu(  # noqa: PLR0913
         )
     )
     builder = NewContentSnapshotBuilder(data, autocard)
+    preview_items = {
+        category: new_content_category_preview_items(
+            snapshot,
+            category,
+            auto_expand_max_items,
+        )
+        for category in expanded
+    }
     prepared_items = tuple(
-        prepared
+        builder.prepare_item(item)
         for category in display_categories
         if focused_category is not None or category in expanded
-        for prepared in builder.prepare(snapshot, category)
+        for item in (
+            snapshot.items_for(category)
+            if focused_category is not None
+            else preview_items[category]
+        )
     )
     incomplete = next(
         (prepared for prepared in prepared_items if not prepared.details.complete),
