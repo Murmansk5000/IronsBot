@@ -101,6 +101,7 @@ jobs:
               run: python -m uv run --no-sync python scripts/generate_poke_command_introductions.py
 
             - name: Build and Publish
+              id: build
               uses: docker/build-push-action@v4
               with:
                   context: .
@@ -112,9 +113,18 @@ jobs:
 
             - name: Record published image size
               shell: bash
+              env:
+                  IMAGE_TAGS: ${{ steps.metadata.outputs.tags }}
+                  IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
               run: |
-                  image="$(printf '%s\n' "${{ steps.metadata.outputs.tags }}" | head -n1)"
+                  : "${IMAGE_TAGS:?missing published image tags}"
+                  : "${IMAGE_DIGEST:?missing published image digest}"
+                  IFS= read -r tag <<< "$IMAGE_TAGS"
+                  image="${tag%:*}@${IMAGE_DIGEST}"
                   docker pull "$image"
+                  docker image inspect "$image" > "$RUNNER_TEMP/ironsbot-image-inspect.json"
+                  docker image history --no-trunc --human=false --format '{{json .}}' "$image" > "$RUNNER_TEMP/ironsbot-image-history.jsonl"
+                  docker run --rm --network none --entrypoint sh "$image" -c 'du -k -d 1 /app /usr/local/lib/python*/site-packages /usr/share/fonts' > "$RUNNER_TEMP/ironsbot-runtime-size-kib.txt"
                   bytes="$(docker image inspect "$image" --format '{{.Size}}')"
                   mib="$(python -c 'import sys; print(f"{int(sys.argv[1]) / 1024 / 1024:.1f}")' "$bytes")"
                   {
@@ -122,4 +132,17 @@ jobs:
                     echo
                     echo "- Image: \`$image\`"
                     echo "- Local uncompressed size: **${mib} MiB** (${bytes} bytes)"
+                    echo
+                    echo 'Layer details are retained in the image-size artifact.'
+                    echo 'Runtime directory sizes (KiB) are also retained for code, dependencies and fonts.'
                   } >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Upload image size evidence
+              uses: actions/upload-artifact@v4
+              with:
+                  name: image-size-${{ github.sha }}
+                  path: |
+                      ${{ runner.temp }}/ironsbot-image-inspect.json
+                      ${{ runner.temp }}/ironsbot-image-history.jsonl
+                      ${{ runner.temp }}/ironsbot-runtime-size-kib.txt
+                  if-no-files-found: error
