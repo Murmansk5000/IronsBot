@@ -710,3 +710,31 @@ The rebuilt file is the ignored diagnostic copy at producer
 manifest are inherited from the validated source copy. Raw skill-name mentions
 without explicit reference syntax are intentionally no longer evidence; real
 render acceptance must still check that stricter boundary for omissions.
+
+## Corrected Native Images and Build-Scoped Reference Reuse
+
+The corrected diagnostic SQLite was consumed through the unchanged public
+SeerRenderSessions and native Windows renderer. Six pet images completed in
+`.tmp/effect-resolution-acceptance`: 3549, 4511, 4911, 3407, 4524 and 4525.
+4524 is 1200x4175 (1083629 bytes); 4525 is 1200x4042 (1179469 bytes).
+Visual inspection of 4524/4525 confirms separate fatal-hit and HP-drain variants
+of 法天象地, each with its own icon. 4911 visually retains both knight cards.
+The other four outputs retain the previous dimensions and byte counts. This is
+not a claim of complete visual inspection for every pet or original SWF fidelity.
+
+4511's absence of an independent 不破诛罚 card was traced to the source: no
+matching glossary, EffectDes or status row exists in this dataset. Its soulmark
+1725 contains the complete description and the formatted yellow heading; that
+text is already rendered in the soulmark panel. Do not manufacture an effect
+fact or an icon simply to fill an expected standalone card.
+
+Producer skill-description lookup is now cached only within one fact build,
+keyed by skill name. Shared skills and multiple text fields reuse the same
+candidate scan; each new build starts with fresh evidence. Regression verifies
+two pets reuse one scan and a second build observes changed descriptions.
+99 related tests passed; targeted type checking, Ruff and diff checks passed.
+An in-memory full fact rebuild took 13.791 seconds, and all five effect/source/
+issue/soulmark tables exactly matched the prior corrected artifact excluding
+updated_at. This is a measured local rebuild duration, not a speedup ratio or a
+full release build time. No new dependency, persistent cache or runtime image
+component was introduced.
