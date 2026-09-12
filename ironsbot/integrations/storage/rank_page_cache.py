@@ -437,6 +437,53 @@ class SqliteRankPageCache:
         actual_count = len(set(user_ids))
         try:
             with self._database.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                newer_page = conn.execute(
+                    """
+                    SELECT 1 FROM rank_pages
+                    WHERE key = ? AND sub_key = ? AND fetched_at > ?
+                      AND NOT (end_index < ? OR start_index > ?)
+                    LIMIT 1
+                    """,
+                    (key, sub_key, timestamp, start, end),
+                ).fetchone()
+                # A page is one observation; never splice old rows into newer evidence.
+                if newer_page or any(
+                    conn.execute(
+                        """
+                        SELECT 1 FROM player_rank_last_seen
+                        WHERE key = ? AND sub_key = ? AND user_id = ?
+                          AND fetched_at > ?
+                        UNION ALL
+                        SELECT 1 FROM player_rank_misses
+                        WHERE key = ? AND sub_key = ? AND user_id = ?
+                          AND fetched_at > ? AND searched_limit > ?
+                        LIMIT 1
+                        """,
+                        (
+                            key,
+                            sub_key,
+                            user_id,
+                            timestamp,
+                            key,
+                            sub_key,
+                            user_id,
+                            timestamp,
+                            rank_index,
+                        ),
+                    ).fetchone()
+                    for rank_index, user_id, _, _ in normalized
+                ):
+                    _LOGGER.debug(
+                        "discarding superseded rank page key=%s sub_key=%s "
+                        "range=%s-%s observed=%s",
+                        key,
+                        sub_key,
+                        start,
+                        end,
+                        timestamp,
+                    )
+                    return
                 self._remove_overlaps(
                     conn,
                     key=key,
@@ -476,6 +523,7 @@ class SqliteRankPageCache:
                     ON CONFLICT(user_id) DO UPDATE SET
                         nick = excluded.nick,
                         updated_at = excluded.updated_at
+                    WHERE excluded.updated_at >= rank_players.updated_at
                     """,
                     [(user_id, nick, timestamp) for _, user_id, nick, _ in normalized],
                 )

@@ -61,3 +61,28 @@ Rollback is a code revert; existing tables are unchanged.
   infer the timeout's cause; startup timing remains a Phase 7 acceptance risk.
 - Local main advanced independently to `963a83c3`; its master-pool changes
   were read and recorded in the ledger, not merged or claimed as migrated.
+
+## Positive Page Write Ordering (2026-09-12)
+
+Persistent positive observations had the inverse race: a late older save deleted
+overlapping newer pages, moved an already-observed player backwards, and could
+erase a newer page with an old empty response. Three real SQLite/reopen tests
+failed before the fix. Page save now takes BEGIN IMMEDIATE before checking
+overlapping page timestamps and each incoming player's last-seen/miss evidence.
+If newer contradictory evidence exists, reject the entire incoming page; do not
+splice its old rows into a newer observation. The guard and write share one
+transaction. Miss coverage is checked against each incoming rank index; another
+board/season is independent. Global nicknames only update with equal/newer time.
+
+Existing primary keys serve the player checks, avoiding a new index, table,
+cache or migration. Checks are per incoming row and use bound parameters, not a
+variable-size SQL IN list. Equal timestamps retain existing replacement behavior;
+this is a strict older-write guard, not proof of atomic official multi-page data.
+Repeated reopening, old empty pages, miss-range boundaries, independent boards,
+global nicknames and two real concurrent SQLite writers are covered.
+
+127 focused rank/cache/refresh/SQLite tests and 43 private native-enabled tests
+passed; targeted type checking, Ruff, compileall and diff checks passed. No full
+public-suite rerun in this batch, no production data change, main merge or push.
+Invalid/future timestamps and full dynamic multi-page consistency are not newly
+certified by this change. Overall verified phase count remains 4/8.
