@@ -28,7 +28,6 @@ from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
 from ironsbot.services.seer.player_id_resolver import (
-    PLAYER_ID_RESOLVER_REQUIRED_ERROR,
     PlayerIdResolution,
     PlayerIdResolver,
 )
@@ -52,6 +51,7 @@ from .player_detail_conversation import (
     begin_player_detail_conversation,
     send_player_info_with_detail_prompt,
 )
+from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -97,12 +97,18 @@ async def _is_player_id_query(
         return False
     player_reference = arg or None
 
-    target = _require_player_id_resolver(dependencies).resolve(
-        message_input_context(event),
-        player_reference,
+    target = resolve_player_target(
+        event,
+        player_reference=player_reference,
+        resolver=dependencies.player_id_resolver,
     )
     if arg and not arg.isdecimal() and target.player_id is None:
-        return False
+        context = message_input_context(event)
+        resolver = dependencies.player_id_resolver
+        if resolver is None or not resolver.has_known_reference(
+            arg, context.message.actor, context.message.conversation
+        ):
+            return False
     state[PLAYER_TARGET_RESOLUTION_KEY] = target
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = bool(arg)
     return True
@@ -173,9 +179,10 @@ async def handle_player_binding_command(
     state: T_State,
 ) -> None:
     player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    target = _require_player_id_resolver(dependencies).resolve(
-        message_input_context(event),
-        player_reference or None,
+    target = resolve_player_target(
+        event,
+        player_reference=player_reference or None,
+        resolver=dependencies.player_id_resolver,
         allow_default_binding=False,
     )
     if target.error is not None:
@@ -321,15 +328,6 @@ async def handle_player_unbind(
     )
 
 
-def _require_player_id_resolver(
-    dependencies: PlayerCommandDependencies,
-) -> PlayerIdResolver:
-    resolver = dependencies.player_id_resolver
-    if resolver is None:
-        raise RuntimeError(PLAYER_ID_RESOLVER_REQUIRED_ERROR)
-    return resolver
-
-
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.player
     dependencies = PlayerCommandDependencies(
@@ -345,7 +343,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
-        & explicit_command(),
+        & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )

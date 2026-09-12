@@ -107,7 +107,7 @@ def seer_command_contracts(
                 (
                     "seer.player.unbind",
                     ("解绑米米号",),
-                    "解除当前 QQ 绑定的默认米米号",
+                    "解除当前账号绑定的默认米米号",
                     {},
                 ),
             ),

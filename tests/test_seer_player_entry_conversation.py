@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
-from ironsbot.services.operations.request_feedback import send_request_feedback
+import pytest
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -18,6 +18,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -377,6 +378,36 @@ def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> Non
     assert target.error == "未找到该米米号或已开放的玩家别名。"
 
 
+def test_known_player_alias_with_member_at_reports_conflict(monkeypatch: Any) -> None:
+    service = SimpleNamespace(default_player_id=lambda _actor: None)
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            _ACCOUNT_PLAYER_ID if reference == "示例玩家" else None
+        ),
+        service.default_player_id,
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service), cast("Any", object()), player_id_resolver=resolver,
+    )
+    event = group_message_event(
+        message=Message(
+            [MessageSegment.text("米米号示例玩家"), MessageSegment.at(456789)]
+        )
+    )
+    state: dict[str, object] = {}
+    assert asyncio.run(player._is_player_id_query(dependencies, event, state))
+    target = state[player.PLAYER_TARGET_RESOLUTION_KEY]
+    assert isinstance(target, PlayerIdResolution)
+    assert target.player_id is None
+    assert target.error is not None
+    assert "不能同时使用" in target.error
+    send = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", send)
+    matcher = cast("Any", object())
+    asyncio.run(player.validate_player_id(dependencies, matcher, event, state))
+    send.assert_awaited_once_with(matcher, event, target.error)
+
+
 def test_player_shortcut_reports_an_unknown_account_suffix() -> None:
     service = SimpleNamespace(default_player_id=lambda _actor: None)
     dependencies = player.PlayerCommandDependencies(
@@ -580,12 +611,22 @@ def test_shortcut_without_default_shows_explicit_player_id_help(
     )
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        QueryReply(text="查询结果"),
+        QueryReply(leading_text="玩家", image_error="图片获取失败", complete=False),
+        QueryReply(text="已有数据", image_error="图片获取失败", complete=False),
+        QueryReply(leading_text="玩家", image=b"image-bytes", text="查询结果"),
+    ],
+)
 def test_shortcut_sends_loading_reply_before_query(
     monkeypatch: Any,
+    reply: QueryReply,
 ) -> None:
     async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
         await send_request_feedback(queued=False)
-        return QueryReply(text="查询结果")
+        return reply
 
     service = SimpleNamespace(
         default_player_id=lambda _user_id: 949105380,
@@ -627,6 +668,18 @@ def test_shortcut_sends_loading_reply_before_query(
         conversation=_conversation(event.group_id),
     )
     finish_reply.assert_awaited_once()
+    finished = finish_reply.await_args
+    assert finished is not None
+    message = finished.args[2]
+    assert isinstance(message, Message)
+    assert reply.leading_text in message.extract_plain_text()
+    assert reply.text in message.extract_plain_text()
+    if reply.image is None:
+        assert reply.image_error in message.extract_plain_text()
+        assert not message["image"]
+    else:
+        assert len(message["image"]) == 1
+        assert message["image"][0].data["file"] == "base64://aW1hZ2UtYnl0ZXM="
 
 
 def test_shortcut_reports_when_the_first_packet_is_queued(
