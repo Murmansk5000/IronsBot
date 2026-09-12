@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from seerapi_models.common import SixAttributes
 
+
 @dataclass(frozen=True, slots=True)
 class StatSpec:
     key: str

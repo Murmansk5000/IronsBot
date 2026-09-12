@@ -1,24 +1,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Read build-time Flash mount image fallbacks from SeerAPI data."""
+"""Read build-time Flash mount PNGs from SeerAPI data."""
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import SQLAlchemyError
+
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 
 if TYPE_CHECKING:
     from sqlmodel import Session
 
     from ironsbot.services.seer.data import SeerDataReader
 
-logger = logging.getLogger(__name__)
-_missing_table_warning_logged = False
-
-
 def load_flash_mount_image(data: SeerDataReader, mount_id: int) -> bytes | None:
-    """Return a rendered Flash PNG, or ``None`` for old incomplete data DBs."""
+    """Return a published PNG while preserving missing-row semantics."""
 
     if mount_id <= 0:
         return None
@@ -28,8 +25,9 @@ def load_flash_mount_image(data: SeerDataReader, mount_id: int) -> bytes | None:
         ) as image:
             return image
     except (AttributeError, RuntimeError, SQLAlchemyError) as error:
-        _log_load_failure(error)
-        return None
+        raise PublishedDataIncompleteError(
+            "flash_mount_image", entity_id=mount_id
+        ) from error
 
 
 def _load_flash_mount_image(session: Session, mount_id: int) -> bytes | None:
@@ -38,18 +36,3 @@ def _load_flash_mount_image(session: Session, mount_id: int) -> bytes | None:
         (mount_id,),
     ).first()
     return None if row is None else bytes(row[0])
-
-
-def _log_load_failure(error: Exception) -> None:
-    global _missing_table_warning_logged  # noqa: PLW0603 - process-wide warning
-
-    message = str(error).lower()
-    if "flash_mount_image" in message and "no such table" in message:
-        if not _missing_table_warning_logged:
-            logger.warning(
-                "Flash mount fallback table is absent; waiting for a newer "
-                "SeerAPI data database"
-            )
-            _missing_table_warning_logged = True
-        return
-    logger.exception("failed to load Flash mount fallback image", exc_info=error)

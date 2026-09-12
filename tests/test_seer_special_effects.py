@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from sqlalchemy import text
 from sqlmodel import Session, create_engine
 
@@ -38,6 +39,22 @@ def _create_published_fact_tables(session: Session) -> None:
                 glossary_id INTEGER, status_id INTEGER, sort_id INTEGER,
                 name TEXT NOT NULL, description TEXT,
                 PRIMARY KEY (pet_id, effect_key)
+            )
+            """
+        )
+    )
+    session.execute(
+        text(
+            """
+            CREATE TABLE pet_soulmark_display_addition (
+                pet_id INTEGER NOT NULL, display_id INTEGER NOT NULL,
+                description TEXT NOT NULL, analyze_description TEXT,
+                formatting_adjustment TEXT, intensified INTEGER NOT NULL,
+                intensified_to_id INTEGER, is_adv INTEGER NOT NULL,
+                pve_effective INTEGER, tags_json TEXT NOT NULL,
+                display_order INTEGER NOT NULL, source TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (pet_id, display_id)
             )
             """
         )
@@ -163,6 +180,29 @@ def test_effect_colors_reuse_official_highlights_with_default() -> None:
         "#52a5f2",
         "#f35555",
     ]
+
+
+def test_malformed_published_soulmark_tags_are_not_treated_as_empty() -> None:
+    engine = create_engine("sqlite://")
+    with Session(engine) as session:
+        _create_published_fact_tables(session)
+        session.execute(
+            text(
+                """
+                INSERT INTO pet_soulmark_display_addition VALUES
+                (3549, 1, '说明', NULL, NULL, 0, NULL, 0, NULL,
+                 '{invalid', 1, 'test', 0)
+                """
+            )
+        )
+        session.commit()
+
+        with pytest.raises(ValueError):
+            load_pet_derived_display_data(
+                session,
+                pet_id=SARMON_PET_ID,
+                soulmark_ids=(),
+            )
 
 
 def test_presentation_formats_plain_mentions_and_unity_soulmark_markup() -> None:

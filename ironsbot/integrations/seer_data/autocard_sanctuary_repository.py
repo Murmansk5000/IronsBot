@@ -9,11 +9,16 @@ from typing import TYPE_CHECKING
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from ironsbot.core.value_coercion import require_int
+
 if TYPE_CHECKING:
     from sqlmodel import Session
 
 _MISSING_TABLE_MESSAGE = "数据库缺少群星牌场地效果表，请先更新 IronsBot 数据库。"
 _EMPTY_DATA_MESSAGE = "数据库没有群星牌场地效果数据，请先更新 IronsBot 数据库。"
+_INVALID_DATA_MESSAGE = (
+    "数据库中的群星牌场地效果数据格式无效，请更新 IronsBot 数据库。"
+)
 _EFFECT_QUERY = text(
     """
     SELECT
@@ -60,7 +65,10 @@ def load_autocard_sanctuary_rows(
         raise RuntimeError(_MISSING_TABLE_MESSAGE) from error
     if not rows:
         raise RuntimeError(_EMPTY_DATA_MESSAGE)
-    return tuple(_row_to_record(row) for row in rows)
+    try:
+        return tuple(_row_to_record(row) for row in rows)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError(_INVALID_DATA_MESSAGE) from error
 
 
 def _row_to_record(row: object) -> AutocardSanctuaryRow:
@@ -83,10 +91,7 @@ def _value(row: object, name: str, index: int) -> object:
 
 
 def _as_int(value: object) -> int:
-    try:
-        return int(str(value))
-    except (TypeError, ValueError):
-        return 0
+    return require_int(value, field="autocard_sanctuary")
 
 
 def _as_text(value: object) -> str:
