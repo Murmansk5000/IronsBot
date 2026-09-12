@@ -473,11 +473,8 @@ def test_player_shortcut_live_prefers_live_data_while_quota_is_available() -> No
             mark_available=AsyncMock(),
         )
         service = PlayerService(
-            config=cast(
-                "Any",
-                SimpleNamespace(
-                    player=SimpleNamespace(detail_timeout_seconds=30.0),
-                ),
+            config=SeerConfig.model_validate(
+                {"player": {"detail_timeout_seconds": 30}}
             ),
             headless=cast("Any", headless),
             bindings=cast("Any", object()),

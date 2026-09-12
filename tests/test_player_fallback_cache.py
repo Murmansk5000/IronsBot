@@ -80,6 +80,20 @@ def test_reinsertion_retains_source_age_and_cached_quota(clocks: list[float]) ->
     assert cache.result(PLAYER, offer_binding=False) is None
 
 
+def test_service_passes_configured_cache_lifetime(clocks: list[float]) -> None:
+    config = SeerConfig.model_validate(
+        {"player": {"background_refresh": {"cache_ttl_seconds": 5}}}
+    )
+    service = PlayerService(
+        config, cast("Any", Mock()), Mock(), cast("Any", Mock()), cast("Any", Mock())
+    )
+    service._query_cache.put(pending())
+    assert service._query_cache.result(PLAYER, offer_binding=False) is not None
+    clocks[0] += 5
+    clocks[1] += 5
+    assert service._query_cache.result(PLAYER, offer_binding=False) is None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("elapsed,expired", [(10, False), (300, True)])
 async def test_live_failure_checks_cache_at_return_time(

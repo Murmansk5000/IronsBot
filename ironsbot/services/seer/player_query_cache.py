@@ -24,12 +24,6 @@ class PlayerQueryCache:
         self._ttl_seconds = ttl_seconds
         self._items: dict[int, _CachedPlayerQuery] = {}
 
-    @classmethod
-    def from_config(cls, config: object) -> PlayerQueryCache:
-        player_config = getattr(config, "player", None)
-        refresh_config = getattr(player_config, "background_refresh", None)
-        return cls(float(getattr(refresh_config, "cache_ttl_seconds", 300.0)))
-
     def result(
         self,
         player_id: int,

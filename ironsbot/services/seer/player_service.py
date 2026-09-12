@@ -99,7 +99,9 @@ class PlayerService(PlayerAccountPolicyMixin):
         self._quotas = quotas
         self._requests = requests
         self._now = now or utc_now
-        self._query_cache = PlayerQueryCache.from_config(config)
+        self._query_cache = PlayerQueryCache(
+            config.player.background_refresh.cache_ttl_seconds
+        )
 
     def default_player_id(self, actor: ActorRef) -> int | None:
         return self._bindings.get(actor).player_id

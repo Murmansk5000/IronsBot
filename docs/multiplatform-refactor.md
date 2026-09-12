@@ -1029,6 +1029,13 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
 
 ## 主线同步记录
 
+- **2026-09-12 / 玩家配置边界：** 删除 `PlayerQueryCache.from_config(object)` 的
+  反射/default 路径，服务直接传入已验证的 TTL；删除没有调用方的旧
+  `shortcut_timeout_seconds`，活动调度超时逻辑不变。相关 84 项、私有 26 项通过，
+  Ruff/类型/compileall/diff 通过。见
+  [配置 Spec](specs/2026-09-12-player-config-boundary.md)。无新运行模块或字段，
+  只删除旧路径；阶段仍为 4/8，未重复全量或部署验收。
+
 - **2026-09-12 / 镜像内容边界：** 保留已有多阶段构建、临时 wheel 挂载和 no-dev
   依赖安装；恢复被裁剪的根许可证/授权说明，内置图片与必需依赖未删除。既有发布
   digest 体积证据增加网络隔离容器的运行目录 KiB 清单，覆盖代码、依赖与字体。
