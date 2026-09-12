@@ -126,6 +126,36 @@ def test_release_connects_measurement_to_build_digest_and_artifact() -> None:
     assert upload["with"]["if-no-files-found"] == "error"
 
 
+def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None:
+    steps = _steps()
+    candidate = next(
+        step for step in steps if step["name"] == "Build runtime candidate"
+    )
+    smoke = next(
+        step for step in steps if step["name"] == "Smoke test runtime candidate"
+    )
+    ghcr_login = next(
+        step for step in steps if step["name"] == "Login to GitHub Container Registry"
+    )
+    dockerhub_login = next(
+        step for step in steps if step["name"] == "Login to Docker Hub"
+    )
+    publish = next(step for step in steps if step["name"] == "Build and Publish")
+
+    assert candidate["with"]["load"] is True
+    assert candidate["with"]["push"] is False
+    assert candidate["with"]["context"] == publish["with"]["context"] == "."
+    assert candidate["with"]["labels"] == publish["with"]["labels"]
+    assert steps.index(candidate) < steps.index(smoke)
+    assert steps.index(smoke) < steps.index(ghcr_login) < steps.index(publish)
+    assert steps.index(smoke) < steps.index(dockerhub_login) < steps.index(publish)
+    assert "check_on_startup = false" in smoke["run"]
+    assert "docker run --rm --network none" in smoke["run"]
+    assert "$smoke_config:/config/ironsbot.toml:ro" in smoke["run"]
+    assert "--entrypoint" not in smoke["run"]
+    assert "load_settings()" in smoke["run"]
+
+
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
     steps = _steps()
     audit = next(s for s in steps if s["name"] == "Audit locked runtime dependencies")

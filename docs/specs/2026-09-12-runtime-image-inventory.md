@@ -111,3 +111,20 @@ refetches, not ignored packages. Full public suite after the two dependency
 updates: 2924 passed, 319 existing warnings, 131.85 seconds. Full Ruff,
 BasedPyright, compileall and diff check passed. Local main remains 55a39fd1;
 no fetch, merge, production edit or push was performed.
+
+## Candidate Runtime Smoke Gate
+
+The release workflow now builds and loads a local candidate before either
+registry login or publication. In a network-isolated container it runs the real
+entrypoint with a read-only copy of `config.example.toml`, changing only
+`check_on_startup` to false so the check does not depend on a mounted Docker
+socket. The command imports NoneBot and `seerapi_models` and parses the complete
+configuration. Only after that succeeds does the workflow log in and publish
+from the same context, labels and BuildKit cache. The final runtime image gains
+no files or dependencies from this gate.
+
+Workflow and startup-preflight tests pass 21 cases; Ruff and diff checks pass.
+This is a verified CI contract, not evidence that the candidate has already run:
+the local Docker 29.5.2 client has no connected Linux daemon. A future release
+run must supply the actual container result and size artifacts before Phase 7
+can claim Linux runtime acceptance.
