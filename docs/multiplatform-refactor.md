@@ -1419,6 +1419,13 @@ BasedPyright、compileall 和 diff 检查通过；无 QQ 身份、配置、依�
 不再看起来像当前实时结论；旧名次作为在线定位坐标的行为保持不变。
 榜单玩家与缓存策略专项 `30 passed`，Ruff、BasedPyright 和 diff 检查通过。
 
+**新增内容详情完整性（2026-09-12）：** 同一不可变发布中，新增内容索引
+引用的精灵、技能、皮肤、刻印、套装、部件、座驾、称号或群星牌详情
+缺失时，不再生成带“暂无官方简介”的伪完整图片。数据异常统一转为
+`PublishedDataIncompleteError`，图片菜单停止并由现有上层返回可信的索引文本；
+仅素材文件缺失时仍显示“官方图片暂未上线”并且不写最终缓存。新内容、
+数据版本和发布生命周期相关专项 `119 passed`，Ruff、BasedPyright 和 diff 检查通过。
+
 **赛季读取失败隔离（2026-09-12）：** target 错误语义。移除
 `SeerDatabase.peak_season_start()` 的全异常转 None：未加载数据库显式报不可用，
 SQLAlchemy 读取故障保留 cause 和日志；仅实际无赛季记录仍返回 None。巅峰详情将

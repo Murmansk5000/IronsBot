@@ -19,6 +19,10 @@ from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
 from ironsbot.services.seer.autocard import AutocardPromptValue
+from ironsbot.services.seer.data import (
+    DataUnavailableError,
+    PublishedDataIncompleteError,
+)
 
 from .new_content_details import (
     NewContentItemDetails,
@@ -113,14 +117,22 @@ class NewContentSnapshotBuilder:
             "autocard_card": lambda: _autocard_details(item, autocard_entry),
             "autocard_role": lambda: _autocard_details(item, autocard_entry),
         }
-        try:
-            resolver = resolvers.get(item.category)
-            if resolver is not None:
+        resolver = resolvers.get(item.category)
+        if resolver is not None:
+            try:
                 return resolver()
-        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
-            # A content release can briefly arrive before every referenced table.
-            # Its index wording remains useful while the source catches up.
-            pass
+            except DataUnavailableError:
+                raise
+            except (
+                AttributeError,
+                KeyError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+            ) as error:
+                raise PublishedDataIncompleteError(
+                    f"new_content_{item.category}", entity_id=item.entity_id
+                ) from error
         return _fallback_details(item)
 
     def _pet_details(self, item: NewContentItem) -> NewContentItemDetails:

@@ -161,19 +161,16 @@ def _load_skill_effect_details(
     data: SeerDataReader,
     skill_id: int,
 ) -> _SkillEffectDetails:
-    try:
-        with data.query(lambda session: session.get(SkillORM, skill_id)) as skill:
-            if skill is None:
-                return _SkillEffectDetails([], [], None, complete=False)
-            return _SkillEffectDetails(
-                effects=_skill_effect_rows(skill.skill_effect),
-                friend_effects=_skill_effect_rows(skill.friend_skill_effect),
-                hide_effect_desc=_skill_hide_effect_text(skill),
-                complete=isinstance(skill.skill_effect, list)
-                and isinstance(skill.friend_skill_effect, list),
-            )
-    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
-        return _SkillEffectDetails([], [], None, complete=False)
+    with data.query(lambda session: session.get(SkillORM, skill_id)) as skill:
+        if skill is None:
+            return _SkillEffectDetails([], [], None, complete=False)
+        return _SkillEffectDetails(
+            effects=_skill_effect_rows(skill.skill_effect),
+            friend_effects=_skill_effect_rows(skill.friend_skill_effect),
+            hide_effect_desc=_skill_hide_effect_text(skill),
+            complete=isinstance(skill.skill_effect, list)
+            and isinstance(skill.friend_skill_effect, list),
+        )
 
 
 def _skill_effect_rows(effects: object) -> list[dict[str, Any]]:

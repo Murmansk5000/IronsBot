@@ -21,6 +21,7 @@ from ironsbot.integrations.seer_data import (
     new_content_renderer as new_content_rendering,
 )
 from ironsbot.integrations.seer_data import new_content_snapshot
+from ironsbot.integrations.seer_data.new_content_details import NewContentItemDetails
 from ironsbot.integrations.seer_data.new_content_renderer import (
     render_new_content_menu,
 )
@@ -30,6 +31,7 @@ from ironsbot.integrations.seer_data.new_content_snapshot import (
 )
 from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.new_content import (
     NewContentCategory,
     NewContentItem,
@@ -237,6 +239,11 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
         "load_flash_mount_image",
         lambda _data, _mount_id: None,
     )
+    monkeypatch.setattr(
+        NewContentSnapshotBuilder,
+        "_item_details",
+        lambda *_args: NewContentItemDetails(metadata="", description=""),
+    )
     snapshot = NewContentSnapshot(
         baseline_established=True,
         config_version="20260803",
@@ -293,7 +300,9 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
 
 
 @pytest.mark.asyncio
-async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> None:
+async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured: dict[str, Any] = {}
 
     async def render_html(
@@ -313,6 +322,11 @@ async def test_render_new_content_menu_keeps_rows_when_an_asset_is_missing() -> 
         config_version="20260803",
         weekly_cycle="2026-08-03",
         items=(_item("mintmark", 2),),
+    )
+    monkeypatch.setattr(
+        NewContentSnapshotBuilder,
+        "_item_details",
+        lambda *_args: NewContentItemDetails(metadata="", description=""),
     )
     await render_new_content_menu(
         _Cache(),  # type: ignore[arg-type]
@@ -412,6 +426,11 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
         "load_flash_mount_image",
         lambda _data, _mount_id: None,
     )
+    monkeypatch.setattr(
+        NewContentSnapshotBuilder,
+        "_item_details",
+        lambda *_args: NewContentItemDetails(metadata="", description=""),
+    )
     snapshot = NewContentSnapshot(
         baseline_established=True,
         config_version="20260806",
@@ -437,11 +456,8 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("has_details", [True, False])
 async def test_missing_unity_mount_image_uses_flash_fallback(
     monkeypatch: pytest.MonkeyPatch,
-    *,
-    has_details: bool,
 ) -> None:
     captured: dict[str, Any] = {}
 
@@ -477,9 +493,7 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
         suit=None,
         bonus=None,
     )
-    data = _RichData(
-        {(_RichData.equip, FLASH_TEST_MOUNT_ID): mount} if has_details else {}
-    )
+    data = _RichData({(_RichData.equip, FLASH_TEST_MOUNT_ID): mount})
 
     await render_new_content_menu(
         cache,  # type: ignore[arg-type]
@@ -495,7 +509,7 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
     item_row = next(row for row in captured["items"] if row.code == "1")
     assert item_row.image == "data:image/png;base64,Zmxhc2gtbW91bnQ="
     assert item_row.image_notice == ""
-    assert cache.saved == (b"menu-image" if has_details else None)
+    assert cache.saved == b"menu-image"
 
 
 @pytest.mark.asyncio
@@ -978,14 +992,19 @@ async def test_partial_menu_recovers_then_hits_complete_file_cache(
             "skill",
         )
 
-    first = await render()
+    if failure in {"row", "query"}:
+        with pytest.raises(PublishedDataIncompleteError):
+            await render()
+        first = None
+    else:
+        first = await render()
     data.unavailable = False
     data.skills[skill_id] = skill
     images.fail_keys.clear()
     recovered = await render()
     assert recovered != first
     assert await render() == recovered
-    assert renders == [first, recovered]
+    assert renders == ([first, recovered] if first is not None else [recovered])
 
 
 def test_menu_key_captures_same_version_content_corrections() -> None:
