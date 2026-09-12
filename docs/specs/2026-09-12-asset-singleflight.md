@@ -634,3 +634,41 @@ Final checkpoint: 2833 public tests passed, 319 warnings, 123.04 seconds;
 zero errors/warnings; Ruff, compileall and diff checks pass. Existing NoneBot
 ForwardRef deprecation and ORM relationship warnings remain. No phase-completion
 claim follows solely from this suite: real image/deployment acceptance is open.
+
+## Real Pet Rendering and Duplicate-Name Producer Defect
+
+Using the validated post-fix SQLite, shared asset store with TaskOwner, bound
+render sessions and native Windows HTML renderer, these images completed:
+
+| Pet ID | Dimensions | PNG bytes | RGB colors |
+| --- | --- | --- | --- |
+| 3549 | 1200x6676 | 1533629 | 41304 |
+| 4511 | 1200x4852 | 1301177 | 64981 |
+| 4911 | 1200x4266 | 1172158 | 61875 |
+| 3407 | 1200x5147 | 1464837 | 43807 |
+| 4525 | 1200x4042 | 1205803 | 35657 |
+
+Evidence: ignored `.tmp/lineup-v5-fixed-acceptance/pet-*.png` and pet-report.json.
+These counts prove nonblank output, not complete visual or semantic acceptance.
+3549's displayed facts contain glossary 533/534/535 in order. 4911 contains
+524/525 with statuses 182/183; 3407 contains 519/520 with statuses 174/175.
+Soulmark PNG records exist for all five. Global pet-info cache scope remains
+disabled by the incomplete publication; no cache completeness override was used.
+
+**Open producer defect:** 4525 has an extra glossary 223/status 57 describing
+Sun Wukong, alongside its correct glossary 224/status 58. Actual source rows:
+223 is introduced by soulmark 1739 and 1939 with text_exact_name, then gets
+status_description_similarity. Official petglossaryentrylink directly binds
+4524 to 223, and 4525 to 117/224. Neither status 57 nor 58 has show_monster_id.
+
+Root cause is `_effect_descriptions` in Solaris pet_special_effect_resolution:
+ORDER BY effect_id plus setdefault(name, ...) discards every later duplicate
+before text resolution can consult the stronger pet relation. Actual release
+has 12 duplicate-name groups, nine with differing descriptions. The fix belongs
+in generic producer candidate resolution: retain all candidates, use explicit
+pet/status/glossary evidence before text-only inference, record unresolved
+ambiguity instead of choosing the first ID, and evaluate skill-name references
+against every candidate description. Keep intentionally identical-description
+fallback distinct from differing-description ambiguity. Do not hide 223 in the
+renderer or add a 4525 exception. This defect is not fixed by the render probe;
+producer regression and corrected-fact rebuild are the next required work.
