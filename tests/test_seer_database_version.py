@@ -14,10 +14,14 @@ from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.app.rendering_composition import SeerRenderSessions
+from ironsbot.extensions.contracts import PlayerLineupSlot
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.seer_data.database import SeerDatabase
+from ironsbot.integrations.seer_data.player_lineup_entries import (
+    PublishedPlayerLineupEntryResolver,
+)
 from ironsbot.integrations.seer_data.release_contract import SeerApiReleaseContractError
 from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
@@ -352,12 +356,74 @@ def _update_asset_release(engine: Engine, revision: str, manifest: str) -> None:
         )
 
 
+def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, _ = _create_release(source, ("peak_pool",))
+    with engine.begin() as connection:
+        connection.execute(
+            SQLModel.metadata.tables["element_type_combination"].insert(),
+            [{"id": 4, "name": "type", "name_en": "type", "primary_id": 4}],
+        )
+        connection.execute(
+            SQLModel.metadata.tables["pet"].insert(),
+            [
+                {
+                    "id": 7,
+                    "name": "old",
+                    "yielding_exp": 0,
+                    "catch_rate": 0,
+                    "releaseable": False,
+                    "fusion_master": False,
+                    "fusion_sub": False,
+                    "has_resistance": False,
+                    "resource_id": 1007,
+                    "type_id": 4,
+                    "gender_id": 0,
+                    "base_stats_id": 0,
+                    "yielding_ev_id": 0,
+                }
+            ],
+        )
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    slots = (PlayerLineupSlot(pet_id=7, level=100, use_flag=1, skin_id=0),)
+    try:
+        databases.load_from_file("seerapi", str(source))
+        with data.read_snapshot() as bound:
+            resolver = PublishedPlayerLineupEntryResolver(bound)
+            original = resolver.resolve(slots)
+            assert original[0].name == "old"
+            assert (original[0].resource_id, original[0].type_id) == (1007, 4)
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "UPDATE pet SET name='new', resource_id=2007"
+                )
+            databases.load_from_file("seerapi", str(source))
+            assert resolver.resolve(slots) == original
+            with data.read_snapshot() as fresh:
+                updated = PublishedPlayerLineupEntryResolver(fresh).resolve(slots)
+                assert (updated[0].name, updated[0].resource_id) == ("new", 2007)
+        assert original[0].name == "old"
+        with pytest.raises(DataUnavailableError, match="snapshot is closed"):
+            resolver.resolve(slots)
+    finally:
+        databases.close()
+        engine.dispose()
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("category", "scope", "kind"),
+    [("pet_info", "pet_info", "pet_body"), ("player_lineup", "peak_pool", "pet_head")],
+)
 async def test_render_inputs_stay_bound_across_publication_and_rollback(
     tmp_path: Path,
+    category: str,
+    scope: str,
+    kind: str,
 ) -> None:
     source = tmp_path / "seerapi.sqlite"
-    engine, _ = _create_release(source, ("pet_info",))
+    engine, _ = _create_release(source, (scope,))
     databases = DatabaseManager()
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
     databases.load_from_file("seerapi", str(source))
@@ -380,14 +446,13 @@ async def test_render_inputs_stay_bound_across_publication_and_rollback(
         cache = FileRenderCache(tmp_path / "renders", 1024, version_getter=versions)
         sessions = SeerRenderSessions(data, clients, assets, cache, versions)
         try:
-            await _check_bound_render_inputs(sessions, engine, databases, source)
+            await _check_bound_render_inputs(
+                sessions, engine, databases, source, category=category, kind=kind
+            )
             before = len(requests)
             with sessions.open() as restored:
-                assert restored.cache.entry("pet_info", "1").get() == b"old-render"
-                assert (
-                    await restored.images.fetch("pet_body", "1", fallback=False)
-                    == b"old"
-                )
+                assert restored.cache.entry(category, "1").get() == b"old-render"
+                assert await restored.images.fetch(kind, "1", fallback=False) == b"old"
             assert len(requests) == before
             assert any("b" * 40 in url for url in requests)
         finally:
@@ -458,23 +523,26 @@ def test_retained_content_index_is_checked_against_bound_publication(
         engine.dispose()
 
 
-async def _check_bound_render_inputs(
+async def _check_bound_render_inputs(  # noqa: PLR0913 - publication test inputs
     sessions: SeerRenderSessions,
     engine: Engine,
     databases: DatabaseManager,
     source: Path,
+    *,
+    category: str,
+    kind: str,
 ) -> None:
     with sessions.open() as old:
-        old_entry = old.cache.entry("pet_info", "1")
+        old_entry = old.cache.entry(category, "1")
         assert old_entry.get() is None
-        assert await old.images.fetch("pet_body", "1", fallback=False) == b"old"
+        assert await old.images.fetch(kind, "1", fallback=False) == b"old"
         _update_asset_release(engine, "b" * 40, "assets-v2")
         await asyncio.to_thread(databases.load_from_file, "seerapi", str(source))
         with sessions.open() as fresh:
-            fresh_entry = fresh.cache.entry("pet_info", "1")
+            fresh_entry = fresh.cache.entry(category, "1")
             assert fresh_entry.get() is None
-            assert await fresh.images.fetch("pet_body", "1", fallback=False) == b"new"
-            assert await old.images.fetch("pet_body", "2", fallback=False) == b"old"
+            assert await fresh.images.fetch(kind, "1", fallback=False) == b"new"
+            assert await old.images.fetch(kind, "2", fallback=False) == b"old"
             fresh_entry.put(b"new-render")
             old_entry.put(b"old-render")
             assert fresh_entry.get() == b"new-render"

@@ -75,7 +75,7 @@ def build_seer_rendering_components(
     cache_paths: CachePaths,
     render_config: RenderConfig,
     seer_database: SeerDatabase,
-) -> tuple[SeerImageSource, FileRenderCache, RenderCoordinator, SeerRenderSessions]:
+) -> tuple[SeerImageSource, RenderCoordinator, SeerRenderSessions]:
     """Build the single image source, rendered-image cache, and native gate."""
     images = build_seer_asset_store(
         HttpSeerImageSource(
@@ -94,7 +94,6 @@ def build_seer_rendering_components(
     )
     return (
         images,
-        cache,
         RenderCoordinator(
             render_html_template,
             render_config.native_timeout_seconds,

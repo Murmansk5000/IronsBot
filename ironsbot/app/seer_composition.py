@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.extensions.contracts import PlayerLineupRenderSession
+from ironsbot.extensions.player_lineup import PlayerLineupRenderServices
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
@@ -34,6 +36,9 @@ from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
     render_peak_pool_vote,
 )
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
+from ironsbot.integrations.seer_data.player_lineup_entries import (
+    PublishedPlayerLineupEntryResolver,
+)
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.integrations.storage.lucky_skin_watch import (
@@ -96,17 +101,16 @@ if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.extensions.contracts import PlayerLineupRenderSessionFactory
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.seer_data.database import SeerDatabase
     from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-    from ironsbot.integrations.storage.render_cache import FileRenderCache
     from ironsbot.runtime.cache_paths import CachePaths
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataReader
-    from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.lucky_skin_window import (
         LuckySkinWindowOffer,
         LuckySkinWindowResult,
@@ -115,7 +119,6 @@ if TYPE_CHECKING:
         NewContentCategory,
         NewContentSnapshot,
     )
-    from ironsbot.services.seer.render_coordinator import RenderCoordinator
     from ironsbot.services.seer.type_query import TypeMatchupRenderer
 
 
@@ -133,12 +136,10 @@ class SeerComponents:
     player_query_quotas: PlayerQueryQuotaService
     player_requests: PlayerRequestProtectionService
     player_detail_extensions: PlayerDetailExtensionRegistry
-    images: SeerImageSource
-    render_cache: FileRenderCache
-    render_coordinator: RenderCoordinator
+    lineup_render_session: PlayerLineupRenderSessionFactory
 
 
-def build_seer_components(  # noqa: PLR0913 - composition boundary
+def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boundary
     settings: Settings,
     http_clients: HttpClients,
     cache_paths: CachePaths,
@@ -195,7 +196,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    images, render_cache, render_coordinator, render_sessions = (
+    images, render_coordinator, render_sessions = (
         build_seer_rendering_components(
             http_clients,
             cache_paths,
@@ -263,6 +264,18 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 render_coordinator.render,
                 result,
                 offers,
+            )
+
+    @contextmanager
+    def lineup_render_session() -> Iterator[PlayerLineupRenderSession]:
+        with render_sessions.open() as inputs:
+            yield PlayerLineupRenderSession(
+                PublishedPlayerLineupEntryResolver(inputs.data),
+                PlayerLineupRenderServices(
+                    images=inputs.images,
+                    cache=inputs.cache,
+                    render=render_coordinator.render,
+                ),
             )
 
     @contextmanager
@@ -476,7 +489,5 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         player_query_quotas=player_query_quotas,
         player_requests=player_requests,
         player_detail_extensions=player_detail_extensions,
-        images=images,
-        render_cache=render_cache,
-        render_coordinator=render_coordinator,
+        lineup_render_session=lineup_render_session,
     )

@@ -374,3 +374,33 @@ or cache implementation; unused asset-helper fallback argument was removed.
 These are cache-contract tests, not native pixel or live publication acceptance.
 Private-lineup binding and the remaining real-material/platform gates still
 prevent Phase 4 completion; total verified phases remain 4/8.
+
+## Private-Lineup Publication Session
+
+The extension now receives one PlayerLineupRenderSession factory instead of
+independent global entry and rendering capabilities. Composition binds its
+repository reader, material source and final cache through SeerRenderSessions.
+The private service opens that context after the online packet is obtained and
+keeps it through entry resolution and awaited rendering. Errors and cancellation
+release the database lease; SQL sessions remain short-lived. No ORM rows cross
+the extension boundary. Removed composition exports are no longer consumed.
+
+The packet fetch contract now explicitly declares keyword-only timeout_seconds,
+matching the private implementation. The public caller previously supplied it
+positionally; the observation-time regression uses a strict keyword-only stub.
+
+Verified: 35 publication/observation tests passed in 20.35s (2 existing ORM
+warnings), 41 extension/cache/architecture/size tests in 4.10s, and all 29 private
+tests against this public worktree in 1.96s. Real SQLite tests prove old lineup
+names/resources remain bound after replacement, new sessions see new facts and
+closed readers reject access. Parameterized material/final-cache tests cover
+lineup heads across publication, late writes and rollback. Private tests cover
+lease lifetime, resolution/render failure and cancellation. Both repositories
+pass Ruff, compileall and diff; changed production contracts pass BasedPyright
+with zero errors/warnings. No dependency, TOML, schema or compatibility adapter
+was added. Both repositories must be released together for the new contract.
+
+This does not validate real pixels or live deployment. Missing lineup facts and
+the separate persistent player reply cache still require completeness review;
+historical replies are not the same cache as bound final-render entries. Phase 4
+remains incomplete and the total remains 4/8.

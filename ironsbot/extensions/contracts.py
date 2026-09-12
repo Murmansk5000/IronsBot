@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -122,6 +123,19 @@ class PlayerLineupRenderPort(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class PlayerLineupRenderSession:
+    """Entry and image capabilities bound to one published data generation."""
+
+    entries: PlayerLineupEntryResolver
+    render: PlayerLineupRenderPort
+
+
+PlayerLineupRenderSessionFactory = Callable[
+    [], AbstractContextManager[PlayerLineupRenderSession]
+]
+
+
+@dataclass(frozen=True, slots=True)
 class PlayerLineupQueryResult:
     """Safe public result of one private lineup data request."""
 
@@ -146,10 +160,14 @@ class PlayerLineupPacketClient(Protocol):
     ) -> bytes: ...
 
 
-PlayerLineupPacketFetcher = Callable[
-    [PlayerLineupPacketClient, int, float],
-    Awaitable[bytes],
-]
+class PlayerLineupPacketFetcher(Protocol):
+    async def __call__(
+        self,
+        client: PlayerLineupPacketClient,
+        player_id: int,
+        *,
+        timeout_seconds: float,
+    ) -> bytes: ...
 
 
 class PlayerLineupQueryPort(Protocol):
@@ -199,8 +217,7 @@ class PlayerLineupExtensionContext(Protocol):
     implementation modules to acquire those dependencies.
     """
 
-    lineup_entries: PlayerLineupEntryResolver
-    lineup_render: PlayerLineupRenderPort
+    lineup_render_session: PlayerLineupRenderSessionFactory
     lineup_query: PlayerLineupQueryPort
     lineup_cache: PlayerLineupCacheFactory
     player_id_resolver: PlayerIdResolver
