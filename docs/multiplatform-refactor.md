@@ -41,17 +41,132 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [███░░░░░░░]  verified phases: 3/8; percentage awaits a weighted acceptance baseline
+Program  [████□□□□]  verified phases: 4/8; percentage awaits a weighted acceptance baseline
 Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 当前验证进度（2026-08-15）
+## 本轮验证（2026-09-12）
+
+总任务 `[████□□□□]`：阶段 1 身份/状态迁移收口验收完成，账本从 3/8 更新为 4/8。
+下方早期记录保留当时的测试与状态；跨仓库发布、真实平台和素材完整性门槛仍未完成，
+暂无可靠总体 ETA。
+
+- 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
+  从 `ba08f749` 快进到 `55a39fd1`，未合并入 V5。新增 10 项提交涉及战队查询与
+  玩家菜单、私聊战队概览、群星牌觉醒变体合并、推送队列加固、Docker 交接失败
+  恢复、B站抽奖/中奖订阅拆分、技能预览筛选和模块拆分。已检查日志、变更文件和
+  部分配置差异，尚未完成逐项行为审计或移植，不能视为 V5 已获得这些能力。
+- 前次只读观察的本地 `main` 为 `ba08f749`。从 `4b82881b` 起新增 11 个提交：
+  B站 Opus/专栏正文补全、图片合并与历史摘要持久化，巅峰池有效期/投票展示，
+  当前 fork 的页脚链接，自发指令超级管理员权限，以及橱窗别名候选昵称。
+  已读取提交、相关代码和 Docker 差异；本轮没有 fetch/pull/merge 或移植。
+  迁入时分别归属 HTTP integration、内容/投递 service、历史 repository、渲染
+  view model、平台身份权限边界和玩家引用服务，不能复制旧插件内部依赖。
+  `4b82881b` 的消息数组配置同样仍待独立迁入，不能误认为已在 V5 生效。
+  Docker 差异仅新增项目链接构建参数与环境变量；本机 Linux 引擎不可连接，
+  尚无实际镜像尺寸证据。
+- 先前只读观察的本地 `main` 为 `d8c5c7ee`（下列早期拉取记录保留其当时状态）。
+  `d15c02f8` 撤销背包徽标变更，与 `963a83c3` 的净差异为空；随后 `dbcfb241`
+  修正大师池测试注解，`d8c5c7ee` 增加固定口令分条回复。仅查看，未 fetch、pull、
+  合并或移植；分条回复需单独验证配置互斥、顺序和平台中立投递。
+  先前读取的大师池/每周竞技点变化仍待移植：`master_pool` 的 SQL 读取放到
+  repository，新增命令接入当前
+  catalog，并让大师池类别参与快照、素材范围和 L3 键验证；不能直接恢复 main 中
+  的 renderer 数据访问或旧分类推断。这是待移植产品变化，不是已验收功能。
+- 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
+  也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
+- 本次再次明确要求 pull 后，已在主检出目录执行 `git pull --ff-only origin main`，
+  返回 Already up to date；main 仍为 `f19c7089`，没有合入 V5。
+- 私有扩展安装去掉部分复制回退，增加有限权限重试；激活失败恢复旧包，恢复失败
+  保留有效备份并报告路径。见
+  [安装失败保护 Spec](specs/2026-09-05-extension-install-failure-safety.md)，
+  提交 `3d5590a6`，安装/启动测试 26 passed。
+- 新增内容菜单规划迁到 `services.seer.new_content_menu`；OneBot 只保留权限、会话、
+  渲染适配与详情服务调用。普通预告/版本/赛季查询适配器降到 95 行，未保留旧菜单
+  实现或重导出。见 [菜单边界 Spec](specs/2026-09-05-new-content-menu-boundary.md)。
+- 本轮完整回归 1541 passed；其后类型边界修正的相关测试 12 passed。全仓
+  BasedPyright 0 errors，Ruff、compileall 与 diff 检查通过。
+- 没有新增运行依赖。再次检查本机 Docker 时 Linux engine pipe 不存在，实际镜像
+  大小与层体积仍待可用构建环境测量。文件职责拆分不等同于镜像变小。
+- 镜像层审计发现，COPY wheelhouse 后再删除仍会保留其镜像层；V5 改为 BuildKit
+  只读挂载并冻结运行依赖导出。发布测量绑定本次构建 digest 并上传逐层记录；
+  Docker 静态与 Bash 模拟测量测试 16 passed。见
+  [镜像预算 Spec](specs/2026-08-15-runtime-image-budget.md)，实际构建减重尚未验收。
+- 查询提示统一到 `services.operations.request_feedback`：入口、玩家保护与封包
+  调度共享同一上下文及一次性发送状态，工作流可显式保存反馈对象。删除未使用的
+  整数 QQ 去重器及 OneBot 群身份辅助模块，现用 ActorRef 去重逻辑不变。生产代码
+  净减少 258 行，无配置或数据库迁移。见
+  [查询提示 Spec](specs/2026-09-05-request-feedback-consolidation.md)。全仓回归
+  1551 passed（87 条已有依赖告警）；BasedPyright、Ruff、compileall、diff 检查通过。
+- 两套离线迁移共用 `state_migration_files` 的安装/删除/补偿恢复计划。修复 sidecar
+  失败漏恢复、旧库清理中途失败丢失已删除源文件的问题；不引入运行时兼容。
+  [迁移安装 Spec](specs/2026-09-05-offline-state-installation.md) 的临时库故障测试
+  28 passed，全仓 1562 passed（87 条已有依赖告警），类型、Ruff、编译、diff 均通过。
+  未操作生产数据；只保证可捕获异常下的补偿恢复，不宣称断电时的跨库原子性。
+- `SqliteDatabase` 同版本连接改为只读检查；仅有待执行迁移时获取写锁，锁内重查
+  版本。两个真实 WAL 并发读用例由锁超时转为通过；初始化竞争、过新版本、替换文件
+  重查和失败回滚均有测试。见
+  [SQLite 读路径 Spec](specs/2026-09-05-sqlite-schema-read-path.md)。专项 23 passed，
+  全仓 1573 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
+  无新配置、schema 或运行依赖；不把此项误报为镜像体积或生产查询耗时测量。
+- Phase 7 首批模拟平台验收完成：出站上下文保留回复序号/截止时间，推送失败日志
+  保留 trace ID；真实命令权限、绑定和退订仓储通过字符串身份隔离及 capability 测试。
+  [验收 Spec](specs/2026-09-05-platform-capability-acceptance.md) 专项 33 passed，
+  全仓 1589 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 检查通过。
+  模拟器只在测试目录，无新增运行依赖；Phase 7 仅进入 `in_progress`，未接入真实官方
+  平台，未把完整 AI/Seer 流程或真实 OneBot smoke test 记为完成。
+- AI 平台测试复现两个合法群作用域身份因冒号拼接产生相同会话键、串用短期历史。
+  改为完整身份字段的结构化 JSON 编码；保留现有长期记忆策略和 typed SQLite 查询。
+  [AI 会话隔离 Spec](specs/2026-09-05-ai-platform-session-isolation.md) 专项
+  32 passed，全仓 1596 passed（87 条已有依赖告警），类型、Ruff、编译和 diff 通过。
+  验证了真实 AiService/记忆仓储、受限投递及管理员通知；未新增运行依赖或 schema。
+- 阶段 1 按原完成条件做关闭审计，见
+  [身份边界收尾 Spec](specs/2026-09-05-platform-identity-closure.md)。修复跨群作用域
+  权限误判、未声明 channel/guild 被当作私聊、以及 scoped 管理员阻断整批通知的问题；
+  戳一戳限流也在 OneBot 边界转换成 ConversationRef。身份状态库只读当前列，旧转换器
+  仅由离线 CLI 路径调用。空/正常/重复/损坏/中断迁移测试、实际私有扩展测试通过。
+  公共 1608 passed（87 条已有依赖告警），私有 24 passed，类型、Ruff、编译、diff 通过。
+  未修改生产状态或 TOML；阶段 4/5/6/7 的完成条件不变。
+- 阶段 5 修复玩家别名认领与执行的权限分歧：共用 actor + conversation 的引用
+  lookup，六种公开玩家命令和私有阵容都沿同一接口，不新增 AI 保留词。
+  [认领一致性 Spec](specs/2026-09-05-player-reference-ownership.md) 修复前 6 项失败，
+  修复后专项 58 passed、公开全量 1644 passed、私有 26 passed；类型、Ruff、编译和
+  diff 检查通过。还复现了参数化榜单目录认领缺失，见 Phase 5 未完成项；总进度
+  保持 4/8。历史进度展示和私有扩展旧迁移文字已明确更新，无生产或依赖变更。
+- 榜单 map 的别名、名次/页码/区间、全服分数和玩家引用均由领域 parser 认领；
+  管理常量不再放在插件里重复维护。公共目录保留 `/`，活动与 B站前缀语法也复用
+  各自 parser。[榜单认领 Spec](specs/2026-09-05-rank-command-ownership.md) 专项
+  640 passed，公开全量 2209 passed（87 条既有依赖告警），私有 26 passed；
+  BasedPyright、Ruff、compileall、diff 检查通过，无新增运行依赖或配置变更。
+  声明迁移不等同于全部参数化输入已验收；Phase 5 剩余项见后文，总进度仍为 4/8。
+- 订阅类命令复用领域 parser：B站推送参数、战队管理别名、橱窗关注均被目录
+  正确认领，橱窗帮助的组合示例拆为真实可输入命令。战队快捷口令与 TOML 同源，
+  空口令和关闭功能不会留下无效 matcher。见
+  [订阅命令 Spec](specs/2026-09-05-subscription-command-ownership.md)。公开全量
+  2261 passed，私有 26 passed；公开代码与测试类型检查、Ruff、编译、diff 通过。
+  无新依赖或配置，未进行生产部署或镜像体积测量；总进度仍为 4/8。
+- 推送管理、TD、恢复订阅及时间菜单入口改为 direct，各自登记 command/help ID，
+  不再与数字回复一起豁免；私聊时间权限与实际入口对齐。订阅命令文本与时间入口
+  常量由领域模块提供，未放宽 core conversation 认领。见
+  [推送菜单 Spec](specs/2026-09-05-push-menu-command-ownership.md)。公开全量
+  2286 passed，私有 26 passed，类型、Ruff、编译与 diff 通过；生产净增 9 行，
+  无新运行模块、依赖或配置。总进度仍为 4/8。
+- 配置文本与自动关键词各自安装一个 matcher，共用领域选择和回复发送；仅关键词
+  配置不再漏注册，精确优先且单一命中。自动入口保留 automatic 目录语义，不结束
+  旧菜单，冷却键与精确口令分离。见
+  [配置回复 Spec](specs/2026-09-05-configured-reply-registration.md)。公開全量
+  2302 passed，私有 26 passed，类型、Ruff、编译与 diff 通过；没有新模块或依赖。
+  本地 main 只读确认仍为 f19c7089；总进度保持 4/8。
+
+## 既有阶段验证基线（2026-08-15）
+
+本节仅记录当时的验收基线，不是当前进度；当前总进度见上方“本轮验证”。
 
 ```text
-总任务  [███░░░░░░░]  已完成阶段 3/8；其余阶段含已验证子项，但尚未完成阶段门
+历史基线（2026-08-15）：当时已完成阶段 3/8；不是当前状态
 Phase 2 [██████████] 100%  私有阵容已只依赖文档化的 `core` / `extensions` / install 契约；渲染、查询和持久化均通过公开端口收口
 当前任务[██████████] 100%  `d9215799` / `2b0442b0` 与本次公开查询/缓存端口、私有库 `65f09ec` / `64dba01` 已验证公开安装、动作注册、发布数据阵容快照、渲染、查询和缓存端口；公共 13 项、私有 20 项本轮针对性测试通过
 ```
@@ -119,13 +234,13 @@ IronsBot 正确读取 immutable repository revision，并为精灵头像生成�
 | 阶段 | 当前状态 | 已验证范围 | 下一个完成门 | 不得误报为 |
 | --- | --- | --- | --- | --- |
 | Phase 0 | `completed` | 目标/过渡术语、架构守卫、800 行限制和工作约定已建立 | 后续变更持续遵守并更新证据 | 所有架构迁移完成 |
-| Phase 1 | `in_progress` | 类型化平台身份、出站 port 和一次性状态迁移已落地 | 删除剩余旧整数身份与旧路径读取 | 已完成多平台投递 |
+| Phase 1 | `completed` | 身份/权限/冷却/订阅/限流/通知与状态 API 均使用类型化身份；旧身份转换仅在离线 CLI；迁移异常与私有扩展契约均已验收，见 2026-09-05 closure Spec | 后续身份调用必须沿用 core refs；不得恢复旧列读取或私聊身份猜测 | 真实 QQ Official 已接入 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
 | Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 对每一类 renderer 素材做范围完整性验证，并完成新 release consumer smoke | 渲染数据发布契约完成 |
-| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证 | 真实私有扩展迁到公开 core 命令契约；所有直接命令与米米号入口以覆盖测试证明使用同一契约 | 业务服务重构完成 |
+| Phase 5 | `in_progress` | 通用别名、玩家 ID 解析、命令认领与 AI 记忆异步化已验证；真实私有扩展公开契约已在 Phase 2 验收 | 剩余领域参数化输入覆盖、玩家查询缓存策略及完整发布链路验收 | 业务服务重构完成 |
 | Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
-| Phase 7 | `planned` | 无 | 建立 `FakeOfficialPlatform` capability 验收 | 真实 QQ Official 已接入 |
+| Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除
@@ -404,6 +519,12 @@ pytest、Ruff、编译、`git diff --check` 均通过。
 
 **删除条件：** 运行时没有旧整数身份列读取、懒迁移、双读或双写。
 
+**关闭证据（2026-09-05）：** 原完成门逐项清单和仓储/CLI/私有契约审计见
+[身份边界收尾 Spec](specs/2026-09-05-platform-identity-closure.md)。公共全仓
+1608 passed、私有全仓 24 passed，类型、Ruff、编译和 diff 检查通过。
+平台身份与赛尔领域数字已按所有权区分；不能为减少检索命中而把米米号改成 ActorRef。
+这是代码与临时数据的验收，不是生产迁移、真实官方平台或全部渲染发布的完成声明。
+
 ### Phase 2 — 标准 NoneBot 插件装载
 
 **目标契约：** 标准 `[tool.nonebot.plugins]` 清单、`PluginMetadata`、
@@ -562,6 +683,172 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   （旧模型抽象基类、旧解析器和构建脚本），必须作为独立清债工作处理，不能靠降低
   目标阶段的静态检查要求掩盖。
 
+**逐素材家族证明（2026-09-05，Phase 4 切片）：** SeerAPI `e383e83` 从既有
+manifest inventory 分别证明属性素材及头像/属性素材，不再让缺少无关立绘或刻印
+禁用属性图、巅峰池/投票/精灵榜缓存。私有阵容通过公开端口复用同一头像/属性
+加载器，消费者也共用该 scope；不新增清单或缓存。见
+[独立范围 Spec](specs/2026-09-05-renderer-scope-independence.md)：生产代码构建端
+净增 9 行，消费端只改一处映射。SeerAPI 全量 287 passed；公共渲染/缓存 64、
+HTTP 素材源 4、映射调整后的数据库/阵容 13、私有扩展 26 passed，相关静态检查
+通过。未发布 release、未改生产数据或 main。座驾发布、皮肤 body 完整范围和真实
+release 消费验收仍未完成，不将该项写成 Phase 4 已验收；总进度保持 4/8。
+
+**皮肤立绘发布范围（2026-09-12，Phase 4 切片）：** SeerAPI `ce42f5f` 在既有
+manifest 增加独立 `skin_body` 范围，读取已解析 body ID，使用同一不可变仓库树，
+复用 `pet_body` 素材类型并与已有精灵立绘去重。未解析/零 ID、空库存、缺列或缺图
+不声明完整，且不会影响属性/巅峰/精灵既有范围。见
+[立绘 Spec](specs/2026-09-12-skin-body-manifest.md)：构建模块 80 passed，专项
+manifest 34 passed，Ruff、模块类型检查、compileall、diff 通过。消费者未提前
+启用橱窗 L3；真实 release、动态 offer fallback 和完整请求键覆盖仍是完成门。
+无新增数据库表、素材仓库或下载步骤。总体 4/8，不将生产者单仓库验证算成阶段完成。
+
+同日只读真实产物核验：发布库 quick_check 通过，固定素材 revision
+`1b53a16cfe32d36d921a04fbd8423116c5b1e2e1` 的 42,196 个 blob 中，268 条已解析
+皮肤 body 全部存在；但完整皮肤表为 868 条，不能据此声明所有动态橱窗素材完整。
+发布库尚无新 manifest，未替换生产库。消费端删除橱窗手写哈希，复用通用请求键，
+纳入实际有序 offers 的名称、资源 ID、关注状态；来源缓存标志不改变图片键。
+6 项定向渲染/缓存测试及 Ruff、定向类型检查通过；未重跑全量测试，未启用橱窗 L3。
+动态 offer fallback、完整发布和消费者验收仍待完成，总体保持 4/8。
+
+随后补全生产者的全部皮肤回退清单：优先解析 body，否则使用目录 resource_id，
+与消费端一致，覆盖解析表之外的皮肤并去重。相同真实库和素材 revision 下，868 个
+有效请求中 867 个存在，缺资源 `1400840`（皮肤 840、精灵 4911）；因此完整范围
+正确保持未就绪。构建模块 83 passed，Ruff、定向类型检查、compileall、diff 通过。
+未为缺图造替代数据，未启用橱窗 L3、未发布或更改生产配置；阶段仍为 4/8。
+
+同日补齐缺图缓存策略：橱窗复用 `fetch_optional_image`，按立绘资源去重请求；
+精灵信息的可选道具/效果图标和橱窗图片加载不完整时，仍返回降级图片但不写最终缓存。
+恢复后重新加载并缓存，之后的早期命中跳过数据与渲染。15 项定向测试、Ruff、定向
+类型检查及 diff 检查通过；生产代码净减少，无新依赖/模块。其他强制素材的 fallback
+语义尚未在本批验收，不扩大完成范围，整体仍为 4/8。
+
+强制素材后续核验：精灵详情、共用巅峰图片加载器和属性克制加载器显式使用
+`fallback=False`，不再把远程占位图当成完整素材写入最终缓存；复用现有图片端口，
+无新包装器。真实 HTTP 适配器/素材缓存配合 MockTransport 验证旧占位缓存隔离、
+失败恢复及缓存命中；26 项相关测试通过，新增必需素材失败测试后的精灵适配器
+4 passed，Ruff/定向类型检查通过。未做线上发布，整体仍为 4/8。
+
+素材缓存任务所有权完成定向收口：`SeerAssetStore` 持有共享下载任务，所有调用者
+只持有 shield 等待；首个调用者取消不再连带取消其他请求。磁盘读取也进入共享任务，
+删除手工 Future 转发与多余锁，生产代码净减少。见
+[共享素材 Spec](specs/2026-09-12-asset-singleflight.md)。素材/HTTP 联合 13 passed，
+增加无人等待后重新加入案例后的素材模块 9 passed，相关静态检查通过。
+未做完整阶段验收、未发布或修改生产 TOML，整体仍为 4/8。
+
+素材请求的版本边界进一步收口：上游图片源同步准备 `PreparedImageRequest`，一次
+捕获缓存身份与不可变下载地址；缓存排队后只执行该请求，不再从两个 getter 各读
+一次版本。删除独立 source identity getter 和数据库旧身份方法，以新键命名空间
+隔离可能混用的旧记录。HTTP/素材测试 15 passed，数据库版本测试 7 passed（2 个
+已有 ORM 警告），定向静态检查通过。整张渲染图跨多个素材的一致快照仍待验收，
+不将单素材一致性视作整个阶段完成；整体 4/8，未发布或更改生产配置。
+
+最终图片缓存改为一次渲染持有一个 `RenderCacheEntry`，读写共享固定版本与范围。
+检测到换版或撤销范围时不写入晚到结果；未知范围的旧条目不会因后来启用而取得权限。
+七个公共渲染器与私有阵容全部迁移，删除分离 get/put 与 cached_image/cache_image
+旧入口。公共渲染/缓存 49、架构/扩展边界 20、私有全库 26 passed，公共全范围类型检查
+与 Ruff 通过。公共与私有须配套部署，未 push 或改生产。返回图像的完整一致快照
+和 ABA 版本切换仍是后续验收项，整体维持 4/8，不将缓存条目契约当作阶段完成。
+
+渲染快照前置生命周期检查发现数据库暂存引擎在源文件打开/复制失败时没有释放。
+已将读取、复制与校验纳入同一清理边界，并复用只读 SQLite 连接，缺失源不会变成
+空库。真实缺失/损坏文件与校验拒绝均验证旧库保持可读、临时引擎释放、不通知换版。
+数据库相关 14 passed（2 个既有 ORM 警告），定向静态检查通过。此项只完成更新失败
+资源所有权，不宣称渲染完整快照已完成，整体仍为 4/8。
+
+数据库引擎生命周期进一步统一到 `DatabaseManager.snapshot(names)`：换版、重新注册
+和关闭只退休仍被使用的引擎，最后一个快照释放后才 dispose；`session` 与
+`all_sessions` 共用该路径。锁只保护注册表和引用计数，不持有到查询结束。
+真实 SQLite 测试覆盖跨线程发布、旧/新查询分别读取对应版本、嵌套引用及异常退出；
+数据库/版本回归 19 passed（2 条已有 ORM 警告），Ruff、定向类型检查、compileall
+和 diff 检查通过。没有新增依赖、配置或数据库。整张图片的元数据/素材/缓存快照
+绑定及 ABA 换版检测尚未完成，不据此提升阶段数；整体仍为 4/8。
+
+发布元数据从独立回调字段改为按引擎缓存的不可变记录：版本、完整素材范围和素材
+revision 在候选引擎验证期间一起准备，读端选择实际活跃引擎的记录，不再依赖
+load listener 顺序。旧引擎记录使用弱引用键，不维护永久发布历史；重复元数据读取
+无 SQL。数据库/版本/刻印/精灵渲染/同步回归 42 passed（2 条已有 ORM 警告），
+Ruff、定向类型检查、compileall、diff 通过。生产代码净减少 9 行，无新增模块、
+依赖或配置。完整渲染事务与 ABA 验收仍未完成，总进度仍为 4/8。
+
+显式 `SeerReadSnapshot` 将查询入口和同引擎 `SeerPublication` 放在一起，通用
+`SeerDatabase.query()` 已复用该路径；单次 SQL 会话仍及时关闭，快照退出后拒绝
+再次查询并丢弃引擎引用。等待期间跨线程换版的回归确认新旧快照分别匹配对应
+数据/元数据；相关回归 43 passed，最终异常类型调整后定向测试 1 passed，Ruff、
+定向类型、compileall、diff 通过。没有 ContextVar 或全局渲染状态。素材/缓存装配
+仍待绑定此快照，本项不是完整渲染验收；总计仍为 4/8。
+
+精灵资料生产回调已使用 `SeerRenderSessions`：在缓存查找和 repository 查询之前
+打开快照，固定对应 HTTP 素材源与最终缓存版本。绑定视图共用原有素材缓存、
+singleflight、并发限制和最终缓存存储，不创建额外缓存实例。新缓存命名空间拒绝
+旧的未绑定渲染结果，已绑定的旧渲染可以安全写回原版本。SQLite/MockTransport
+验证跨 await 换版与回到旧版、不同版本隔离及相同来源请求合并；相关测试 37 passed，
+架构/大小/目录/素材回归 30 passed，全仓 Ruff 通过；全仓类型检查仅发现已修正的
+测试替身参数名问题，定向复查通过，compileall/diff 通过。无依赖、TOML 或私有契约
+变更。其他入口的数据可能早于渲染准备，仍需把快照边界前移；真实像素/平台与其余
+入口验收未完成，不提升阶段进度，总计仍为 4/8。
+
+属性克制表已将快照边界前移到数据集读取之前：服务收到绑定 reader/renderer
+会话，查询、纯计算、素材与缓存由同一发布记录驱动。直接查询、候选选择、自定义
+双属性以及成功/错误/取消的组合均验证 SQL 查询已关闭而渲染快照仍有效，退出后
+释放；全局空数据集与绑定有效数据集用于发现误读全局数据。相关回归 28 passed，
+Ruff、定向类型、compileall/diff 通过，属性服务净减少 9 行，无新增模块、依赖或
+配置。巅峰、新内容和私有阵容等入口仍待迁移；整体仍为 4/8。
+
+巅峰池、投票、精灵榜已复用 `SeerRenderSessions`：读取赛季/候选资料、联网、
+进度提示到渲染都持有同一快照，每次 SQL 查询仍独立结束。精灵榜联网后的资料
+读取改走同一个 reader 下的 repository，不再回到全局 `get_many`。删除原有三个
+独立 render 构造参数和无绑定的精灵映射辅助函数。相关功能与架构回归 54 passed
+（2 条已有 ORM 警告），包含成功/错误/取消、原投票渲染超时释放和真实 SQLite
+筛选/脱离会话读取验证；Ruff、定向类型、compileall/diff 通过。线上榜单数值仍为
+实时观测，不宣称它属于静态发布快照。无新增模块、依赖或 TOML；新内容、橱窗、
+私有阵容仍待迁移，总计仍为 4/8。
+
+橱窗渲染已复用同一发布快照装配，固定报价/名称/顺序/关注状态作为请求输入，
+图片映射与下载使用绑定 reader/source。适配器只接收 `SeerDataReader` 和通用
+HTML callable，不再要求完整查询接口与具体 coordinator 对象。相关回归
+42 passed（44 条已有 NoneBot 弃用警告、2 条 ORM 警告），Ruff、定向类型、
+compileall/diff 通过。完整皮肤素材范围仍未验收，未启用橱窗最终缓存；未改 TOML、
+依赖或私有扩展。新内容菜单多轮交互与私有阵容快照仍待处理，总计仍为 4/8。
+
+新增内容单次渲染已接入共享发布快照，资料准备、群星牌和座驾读取收窄为
+`SeerDataReader`，不再通过全局 getter 查询。渲染前比对保留菜单的完整索引，
+同版本号的条目修正也能被识别；不一致时保留文本菜单，不拼接新旧资料图片。
+菜单本身一直持有实体 ID，问题不是序号漂移。相关回归 46 passed（2 条已有 ORM
+警告），Ruff、定向类型、compileall/diff 通过。无新增模块、依赖或 TOML。
+多轮选择后的详情查询仍使用当前领域服务，缺失资料的最终缓存准入仍待完善；
+不宣称整段会话已完成快照化，整体仍为 4/8。
+
+新增内容详情分类分发移入平台无关 `NewContentDetailService`，复用直接命令的
+精灵/刻印/装备/群星牌服务实例；插件只处理选择和发送，移除五个 `Any` 字段。
+已验证十二类内容的参数/结果、缺失消息、取消与异常传播，相关回归 62 passed，
+Ruff、定向类型、compileall/diff 通过。插件净减 64 行、生产代码总计净减 7 行，
+未新增文件/依赖/TOML。详情版本绑定仍待下一步接入，不能将业务迁移当作快照验收；
+整体保持 4/8。
+
+新增内容详情已采用统一失效策略：先验证条目属于旧菜单，再核对完整索引；
+查询前后通过实际引擎身份判断是否换版。换版时丢弃本次详情并结束旧菜单，明确提示
+重新发送指令，不持有跨用户等待的数据库租约，也不按分类增加补丁。72 项菜单、
+数据库与架构回归通过（2 条已有 ORM 警告），包括同版本重载、回滚、关闭快照及
+失效后禁止发送结果；Ruff、定向类型、compileall/diff 通过。此为数据库代际失效
+策略，不宣称所有领域服务和远端卡牌图片均已不可变绑定。无新增文件/依赖/TOML。
+私有阵容、资料缺失缓存准入和真实素材/平台验收仍待完成，整体保持 4/8。
+
+新增内容缓存准入现已区分占位资料与完整资料，缺失数据库行、查询失败、未解析的
+必要资源或属性图标均不写最终缓存；合法空效果和索引自带说明仍可正常使用。
+菜单键改用完整索引的现有规范化哈希，同版本内容修正不再复用旧图。相关回归
+114 passed，补充读取失败恢复后渲染测试 39 passed，Ruff、定向类型、compileall/
+diff 通过；真实 FileRenderCache 验证临时图、恢复重绘、后续命中的过程。未增加
+模块/依赖/TOML，移除未使用的资源辅助参数。此项不替代真实素材和像素验收，
+私有阵容绑定与平台验收仍未完成，整体保持 4/8。
+
+**私有阵容发布会话（2026-09-12）：** 公共扩展改为提供单一渲染会话工厂，
+条目读取、素材和最终图片缓存绑定同一发布代次；私有服务在封包完成后打开会话，
+跨渲染等待持有租约，异常和取消均释放。删除旧全局条目/渲染字段及不再使用的
+composition 导出，不加兼容包装。另修复超时参数的位置调用与私有关键字签名不匹配。
+公共 35 项发布/时间测试、41 项扩展/架构测试、私有 29 项通过；两仓库 Ruff、
+compileall、diff 和目标类型检查通过。详见资产 singleflight Spec。
+两仓库需配套发布；缺失事实的缓存准入、真实图片及部署验收未完成，仍为 4/8。
+
 ### Phase 5 — 业务服务和通用解析
 
 **目标契约：** 领域服务、统一别名解析和 `PlayerIdResolver`。
@@ -592,12 +879,11 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   OneBot matcher 只能把事件转换为 `MessageInputContext`，不得临时拼接别名 lookup
   或 resolver。私有阵容扩展的目标也是只通过该 resolver 的
   `has_known_reference()` 进行命令目录认领，真正的消息级解析仍由公开的详情扩展
-  入口完成；但当前外部包仍引用已迁出的
-  `runtime.commands` / `runtime.player_reference_commands`。私有包现已改为导入
-  `core.command_catalog` / `core.player_reference_commands`，并在私有仓库通过其真实
-  `pyproject.toml` 的 `nonebot.load_from_toml()` 隔离 smoke test；不得恢复旧 runtime
-  路径。剩余的 OneBot 可见性和公共 service 依赖仍须投影到 `ironsbot.extensions` 的
-  窄 context，完成前不得把该扩展计入完整跨仓库边界的完成证据。
+  入口完成。私有包现已导入 `core.command_catalog` / `core.player_reference_commands`，
+  其渲染、查询、持久化及可见性经 `ironsbot.extensions` 的窄 context 提供；生产代码
+  不再导入公共 service/integration/plugin 内部实现。真实 manifest 和公开端口验收
+  证据归入 Phase 2；不得恢复旧 runtime 路径。2026-09-05 的进一步审计发现别名
+  认领遗漏 actor 权限，见 [认领一致性 Spec](specs/2026-09-05-player-reference-ownership.md)。
 - `CommandContract.routing_matcher` 已用于参数化玩家命令。AI 的私聊回退仅由
   `CommandCatalog` 判定命令归属；目录只认领实际可解析的参数，不能以宽泛关键字
   抢占普通聊天。
@@ -631,9 +917,14 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - 新增内容的成就、技能和群星牌圣域详情文本由
   `services.seer.new_content_details` 统一格式化；OneBot 菜单仅负责将该纯文本投递到
   当前会话，不得重新内联同一批领域展示规则。
+- 新增内容分类比较、自动展开、聚焦与选项规划由
+  `services.seer.new_content_menu` 持有；`commands.new_content` 把结果适配为既有
+  OneBot Prompt。领域规划不导入 NoneBot；原 `commands.data_queries` 不再参与菜单。
 
 **命令来源迁移台账：** 每次把命令迁出插件时，必须在同一提交更新这里；未列出的
 新命令不得在 matcher 内自建第二份示例、权限或帮助说明。
+下表“已迁移”指声明的语义 owner 已迁出插件，不代表该领域全部参数化输入已通过
+认领验收。参数化覆盖是 Phase 5 独立完成条件，不能用声明迁移替代。
 
 | 领域 | 当前唯一命令 contract 来源 | OneBot 插件允许保留的内容 | 状态 |
 | --- | --- | --- | --- |
@@ -651,7 +942,140 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 | 幸运橱窗 | `services.seer.lucky_skin_commands` | 事件转换、登录确认、回复和调度 | 已迁移 |
 | 关于 | `services.about_commands` | 事件转换、版本读取和回复 | 已迁移 |
 | 帮助 | `services.help_commands` | 事件转换、菜单会话和回复 | 已迁移 |
-| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 私有扩展的事件转换、阵容服务调用和回复 | 已迁出历史 `runtime.*` 命令模块并验证真实 manifest；待将剩余 OneBot/service 依赖投影为 extension context |
+| 私有阵容扩展 | `core.command_catalog`、`core.player_reference_commands` | 动作注册和公开 extension context 适配 | 已迁移，真实 manifest 和查询/渲染/缓存端口验收归入 Phase 2 |
+
+**参数化认领收口（2026-09-05）：** 原 `专家榜15名` 解析成功但目录不认领的问题，
+在 [榜单认领 Spec](specs/2026-09-05-rank-command-ownership.md) 中让四类榜单直接
+复用 list/score/player parser 修复。管理命令同时复用领域常量与 parser；目录不再
+全局去除 `/`，活动可选前缀和 B站必需前缀由各自领域规则确定。
+
+**订阅类认领收口（2026-09-05）：** B站推送参数和战队管理直接复用领域 parser；
+橱窗解析从 OneBot 移到领域服务。通用 parser 适配器也供榜单复用，None 才表示
+未识别，0 等合法结果不丢失。橱窗每条帮助示例与实际 rule 验证一致；战队 query
+commands 由配置提供，空/禁用配置同步控制目录和 matcher，详见订阅命令 Spec。
+
+**实体查询认领收口（2026-09-05）：** 全部现有前后缀查询入口共用 core
+`AffixCommand`，领域服务拥有语法，OneBot 只写入参数 state；精灵、图片、刻印、
+宝石、装备、属性、异常、战队、群星牌及精灵配置目录调用相同 parser。删除原
+OneBot 解析实现和插件 `query_rules`，固定图片/榜单排除也统一到领域判断。
+目录存在 parser 时以其结果为准，不再让帮助示例绕过拒绝；保留榜单总览的实际
+别名。见 [前后缀 Spec](specs/2026-09-05-affix-query-ownership.md)：16 项失败已复现，
+公开全量 2493 passed、私有 26 passed、类型检查 0 errors，Ruff/compileall/diff 通过。
+该批尚未覆盖的巅峰池/投票别名和刻印数值榜，已由下述独立工作项验证；不能把
+前后缀批次本身视为全领域验收。无新依赖或配置，未测量镜像，进度保持 4/8。
+
+**巅峰/刻印/数据认领收口（2026-09-05）：** 巅峰别名迁入现有领域模块，由实际
+fullmatch 入口和目录共用；刻印数值榜两端直接使用同一 parser，删除 service
+转发包装和六条重复排除词，改用真实榜单 parser 排除其他榜单。数据口令目录
+覆盖全部赛季别名，新增内容只由自身 contract 认领。见
+[命令认领 Spec](specs/2026-09-05-peak-stat-command-ownership.md)：专项 212 passed，
+最终公共全量 2645 passed（319 条依赖告警）、私有 26 passed；Ruff、BasedPyright
+0 errors/warnings、compileall、diff 检查通过。先前全量中的启动子进程 30 秒超时
+保留为未解释的间歇失败，未放宽超时，最终全量已通过该测试。生产代码净增 46 行，
+没有新生产模块、配置或依赖，不宣称镜像减重。该批尚未覆盖的图片编号命令见
+下一项独立验收，Phase 5 未完成，总进度仍为 4/8。
+
+**图片输入认领收口（2026-09-05）：** 图片 service 接收配置前缀，复用
+`AffixCommand` 解析全部图库中的最长别名，目录与实际 rule 共用结果。处理器
+消费已保存的类型化编号，不再重新解析文本；随机选择、越界提示保留。单图仍为
+精确匹配；空前缀列表只关闭编号图库，帮助与图片保留词使用真实前缀。无效数字
+在 I/O 前拒绝，不再走未捕获的整数转换错误。见
+[图片输入 Spec](specs/2026-09-05-image-command-ownership.md)：专项 95 passed，
+公共全量 2671 passed（319 条已有依赖告警）、私有 26 passed；Ruff、类型检查
+0 errors/warnings、compileall 与 diff 检查通过。生产代码净增 60 行，未增加
+生产模块、依赖或 TOML 字段，未测量镜像。只读复现了通用目录的剩余精确匹配
+差异：`帮 助` 被目录认领而真实 fullmatch 拒绝；需从共同契约处理，不能继续
+逐个插件复制空格/大小写特判。该差异已由下面的共同契约工作项解决；图片批次本身
+不代表全领域认领已完成，进度保持 4/8。
+
+**精确命令契约收口（2026-09-12）：** 目录默认按原始文本匹配精确示例/别名，
+显式参数解析器仍为语法权威。允许规范化的文本、订阅、会议、B站和战队入口统一
+显式复用 `command_text_matches`；删除单图的重复精确 parser 包装。私聊 AI 在
+判断目录认领前不再 strip，避免改变真实语法。见
+[精确命令 Spec](specs/2026-09-05-exact-command-contract.md)：公共全量 2697 passed
+（319 条依赖告警，203.24 秒），专项 37 passed，私有 26 passed；Ruff、类型检查
+0 errors/warnings、compileall、diff 检查通过。旧测试句柄已失效，本轮重新运行完整
+测试，没有把中断前的输出当作通过证据。生产代码净增 29 行，无新增运行模块、依赖、
+配置或数据库字段，未测量镜像。玩家详情缓存仍只按写入时刻计算 TTL，原始观察时间
+尚未成为缓存准入依据；此项和全领域/真实平台验收独立，Phase 5 未完成，总计 4/8。
+
+**详情缓存来源时间准入（2026-09-12）：** 上项指出的内存详情缓存问题已收口。
+`QueryReply` 保存与展示一致的最早获取时间；收集、巅峰、群星牌统一按来源年龄和
+单调时钟截止时间判断复用。未知、未来、非有限时间及部分失败不进入新鲜完整缓存，
+结果投递与额度实时优先策略保持。见
+[缓存 Spec](specs/2026-09-12-player-detail-cache-freshness.md)：相关 90 passed，私有
+26 passed，Ruff、类型检查、compileall 和 diff 检查通过。按用户要求减少重复检查，
+本项不再跑公共全量，留到阶段门验证。无新运行模块、依赖、TOML 或 schema 变更；
+持久化 fallback、动态榜单一致性及真实发布尚未完成，进度保持 4/8。
+
+**基础资料回退缓存（2026-09-12）：** 来源 TTL 计算提至现有 `core.time`，基础
+资料与详情共用。基础缓存要求匹配米米号的原始快照时间，缺失或过期不进入缓存；
+联网失败/额度回退在返回时重新读取缓存，不再保留请求前取出的过期结果。额度内
+实时优先和缓存不重复计费保持。相关测试 79 passed，私有 26 passed，类型检查
+0 errors/warnings，Ruff/compileall/diff 通过；未重复跑公共全量。见
+[回退缓存 Spec](specs/2026-09-12-player-fallback-cache.md)。无新运行模块、依赖或
+数据库变更，仍未覆盖持久化 fallback 与真实发布验收，总计 4/8。
+
+**推送菜单入口收口（2026-09-05）：** “推送管理 / TD / 恢复订阅 / 推送时间”
+已改为 direct 并登记真实 matcher command/help ID；共享领域命令文本。私聊时间
+管理与群管理权限均与实际 rule 对照验收，数字/时间回复继续由 PromptFlow 隔离，
+没有把所有 conversation 视为 direct，见推送菜单 Spec。
+
+**配置回复收口（2026-09-05）：** direct / automatic 各自依据已启用配置注册，
+仅关键词配置能独立响应。两类复用领域精确优先与 feature 检查，共用发送 handler；
+自动回复不结束旧会话且不参与 AI 直接认领。同名动作冷却键独立，未保留泛化 ID
+回退，见配置回复 Spec 的安装矩阵和回归证据。
+
+**多榜部分结果收口（2026-09-05）：** 收集、巅峰在汇总超时后改用逐项完成记录，
+不再丢弃已完成的名次、分数、缓存时间和查询成本。正常与部分返回共用模型构造；
+删除按最后一个中文榜名标错的 `mark_failure`。真实汇总/页调度器加受控协议页的
+回归先复现两项失败，修复后针对性 25 项、公共全量 2306 项、私有 26 项通过，
+Ruff、类型检查、编译与 diff 检查通过，见
+[部分结果 Spec](specs/2026-09-05-player-rank-partial-results.md)。
+
+**Phase 5 仍未完成：** 其余领域参数化输入与完整玩家多榜失败/渐进返回验收仍需
+完成。已将 foreground/background 详情预算统一为一个单调时钟截止时间，基础、
+榜单和样本只使用剩余预算；巅峰三个基础模式共享阶段预算，不再各复制一份。
+删除整份详情的同期限取消包装和反射配置回退；真实服务链路的六项旧失败已修复，
+加上取消/零预算边界共 58 项针对性测试、公共全量 2322 项、私有 26 项通过，静态
+检查通过。保留原后台清理宽限看门狗，不把它当作普通数据预算。
+
+**详情发布与缓存归属（2026-09-05）：** 已验收真实详情服务的独立分项回发、
+完整性标记、部分回复不复用，以及过期生产任务不能发布到新一轮等待者。公共
+OneBot 会话入口在修改版本之前检查取消，修复旧任务虽不发消息却使新菜单失效
+的问题；真实详情 handler/会话/Prompt 路径验证数字选择和用户/群隔离。见
+[详情发布 Spec](specs/2026-09-05-player-detail-publication.md)。专项 97 passed，
+公开全量 2348 passed、私有 26 passed，静态检查通过。无新运行模块、依赖或配置。
+这不是生产 QQ/官方服务联调；参数化输入覆盖、缓存数据新鲜度及发布消费者验收
+仍未全部完成。总进度仍为 4/8。
+
+**数据观察时间，第 1 步（2026-09-05）：** 玩家榜单查询统一读取带时间的
+`RankPageResult`，删除位置查询重新生成当前时间的包装。锚点、线性、二分、
+缓存命中、未上榜证明和超时回退保留最早必要证据时间；排除账号换算也纳入时间，
+不改轻量配额规则。删除两处缓存反射/转发函数，生产净减 38 行。见
+[观察时间 Spec](specs/2026-09-05-player-data-observation-time.md)：专项 90 passed、
+公开全量 2354 passed、私有 26 passed，静态检查通过。该步只完成榜单证据传递，
+详情与阵容标题在下述第 2 步完成；多页窗口/同分段仍需审计。
+
+**数据观察时间，第 2 步（2026-09-05）：** 收集、巅峰、群星牌和阵容标题接入
+显式来源时间，格式化函数不再读取当前时钟。基础快照保留原时间；组合结果复用
+`core.time.ObservationTime`，取必要证据最早时间，未知不补成当前时间。巅峰只纳入
+完整成功模式的封包时间，失败榜的目标分数不充当已获取数据。阵容缓存重新打开及
+详情结果重用均保留标题。见同一 [观察时间 Spec](specs/2026-09-05-player-data-observation-time.md)。
+专项 72 passed、公开全量 2378 passed、私有 26 passed；类型、Ruff、编译、diff 通过。
+生产净增 95 行，没有新运行模块、依赖、数据库或 TOML 字段，未测量镜像大小。
+本地 main 仍为 f19c7089，没有 fetch/pull/merge/push；总进度仍为 4/8。跨页范围和
+同分段时间合并已在下述第 3 步完成；实际发布消费者验收仍未完成。
+
+**数据观察时间，第 3 步（2026-09-05）：** 跨页窗口、同分段及排除账号的公开名次
+共用观察时间聚合，保留必要页中最早的时间。二分探针和未显示的边界页也提供时间
+依据；空请求没有时间，缓存定位只作提示，在线确认后采用确认页时间。删除丢弃
+元数据的 `fetch_item`，全服榜格式化必须接收显式时间，不再使用当前时钟兜底。
+见 [跨页时间 Spec](specs/2026-09-05-rank-window-observation-time.md)：专项 120 passed、
+公开全量 2395 passed（274 条依赖告警）、私有 26 passed；类型、Ruff、编译、diff
+检查通过。生产净减 3 行，无新运行模块、依赖、数据库或 TOML 字段，未测量镜像。
+未修改 main、私有未跟踪 uv.lock 或生产数据。总进度保持 4/8；探针耗尽语义在下述
+Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是未完成门。
 
 ### Phase 6 — 兜底、配置和错误语义
 
@@ -668,6 +1092,37 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
 - TOML 仅存行为配置，凭据仅来自环境变量，schema `extra=forbid`，无旧字段别名。
 
 **删除条件：** 正常运行路径不存在隐式兼容或会伪装成功的 fallback。
+
+**分数探针耗尽语义（2026-09-05）：** 算法已有的 `budget_exhausted` 现在传到领域
+结果与格式化，不再把未查完说成“没有这个分数的用户”。终点未确认时保留实际
+找到的用户，只展示已确认样本，不将安全扫描终点当成真实同分人数或连续范围。
+见 [探针耗尽 Spec](specs/2026-09-05-score-probe-exhaustion.md)：三类错误文案已复现，
+五个新增服务链路用例修复后通过；专项 114 passed、公开全量 2400 passed、私有
+26 passed，类型、Ruff、编译、diff 检查通过。生产净增 14 行，没有新运行模块、
+依赖或配置；不改阶段探针预算和重试策略。缓存候选的边界证明在下述切片完成，
+动态榜单一致性仍需独立验收，Phase 6 保持 in_progress；总进度保持 4/8。
+
+**缓存候选完整性（2026-09-05）：** 在线候选确认和纯缓存同分查询共用
+`score_segment_coverage`，只有连续匹配区间和两侧边界都有依据才返回完整人数。
+预算用尽不会跳过检查，离散候选必须补齐中间页；查询首尾和非整页范围不再误当缺页。
+重复玩家、分数倒序异常及矛盾的结束页不能证明完整区间。现有 SQLite 无法区分短页
+与缺失条目，继续明确拒绝不完整缓存，不为测试放宽数据契约。
+见 [缓存覆盖 Spec](specs/2026-09-05-score-cache-coverage.md)：专项 71 passed、公开
+全量 2415 passed、私有 26 passed；类型、Ruff、编译、diff 通过。另以 2205 组
+静态窗口/页面子集枚举校验完整性。删除重复边界循环，生产净增 5 行，无新运行模块、
+依赖、配置或 schema；未修改 main 或生产环境。新鲜度策略、动态快照与发布验收
+不在本次完成范围内，总进度仍为 4/8。
+
+**否定缓存新鲜度（2026-09-05，Phase 6 切片）：** 在线玩家榜单查询不再继承
+允许旧缓存的全局开关来复用过期“未上榜”；显式纯缓存查询仍保留历史时间。
+同榜同玩家在覆盖范围内已有相同或更新的正向观察时，旧否定证据不可使用；
+延迟完成的否定写入不覆盖更新的证据，也不删除更新的旧坐标。两处既有模块
+生产净增 10 行，无新增运行模块、配置或 schema。见
+[否定缓存 Spec](specs/2026-09-05-rank-miss-freshness.md)：修复前复现 7 项失败，
+专项 93 passed，私有 26 passed，Ruff/类型/编译/diff 通过。公共全量 2433 passed、
+1 failed：唯一失败是启动子进程超过既有 30 秒限制；未改代码或放宽超时的独立
+复跑 1 passed（19.20 秒）。这不是一次全绿的全量运行，启动时延仍留给 Phase 7
+验证。组合详情缓存准入、动态快照和真实发布验收未完成；总进度仍为 4/8。
 
 ### Phase 7 — 未来平台验收
 
@@ -686,6 +1141,21 @@ repository 准备快照，renderer 不读 SQL/HTTP/文件系统、不猜关联�
   OneBot smoke test 通过。
 
 **删除条件：** 无。本阶段只证明目标可接入真实官方适配器，不提前启用它。
+
+**首批验收范围（2026-09-05）：**
+
+- 测试模拟器只实现现有 `OutboundMessenger`，不进入生产包、不增加运行依赖。
+  回复序号/截止时间沿已有入站/出站值传递，失败日志保留 trace ID。
+- 复用真实 help/about contracts、FeatureService、PlayerIdResolver、绑定仓储、
+  退订仓储与 ProactiveMessageDelivery。图片测试验证二进制出站部件传递及模拟上传，
+  不代表精灵渲染已在真实官方平台验收。
+- 合成的 `fake_*` 错误码及可配置限制只用于验证错误传播，不声称复刻官方协议。
+  真实官方码值/规则、完整 AI/Seer 工作流与真实 OneBot smoke 仍需后续验证。
+- 具体证据见 [首批 capability Spec](specs/2026-09-05-platform-capability-acceptance.md)。
+  本阶段仍为 `in_progress`，不增加已完成阶段数。
+- AI 服务级验收已覆盖结构化会话身份、SQLite 重启记忆与隔离、回复过期以及受限
+  管理员通知，见 [AI 会话隔离 Spec](specs/2026-09-05-ai-platform-session-isolation.md)。
+  模型网络使用测试客户端；这不等于 AI 插件会话或所有意图动作已在另一平台完整验收。
 
 ## 工作项登记模板
 
@@ -714,6 +1184,20 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
 都应保留。
 
 ## 主线同步记录
+
+- **2026-09-12 / 玩家配置边界：** 删除 `PlayerQueryCache.from_config(object)` 的
+  反射/default 路径，服务直接传入已验证的 TTL；删除没有调用方的旧
+  `shortcut_timeout_seconds`，活动调度超时逻辑不变。相关 84 项、私有 26 项通过，
+  Ruff/类型/compileall/diff 通过。见
+  [配置 Spec](specs/2026-09-12-player-config-boundary.md)。无新运行模块或字段，
+  只删除旧路径；阶段仍为 4/8，未重复全量或部署验收。
+
+- **2026-09-12 / 镜像内容边界：** 保留已有多阶段构建、临时 wheel 挂载和 no-dev
+  依赖安装；恢复被裁剪的根许可证/授权说明，内置图片与必需依赖未删除。既有发布
+  digest 体积证据增加网络隔离容器的运行目录 KiB 清单，覆盖代码、依赖与字体。
+  见 [镜像 Spec](specs/2026-09-12-runtime-image-inventory.md)，相关 16 项通过，
+  Ruff/diff 通过。测试模拟 Docker，仅证明工作流命令和归档契约；实际镜像构建、
+  目录占用和体积对比仍未验证，不据此增加阶段计数或宣称减重。
 
 - **2026-08-15 / `origin/main` `af2e8810`：** 已抓取，尚未直接合并到 V5。该批次
   包含活动周快照、竞技池变动展示、幸运橱窗卡片、Docker 维护菜单、更新确认和绑定
