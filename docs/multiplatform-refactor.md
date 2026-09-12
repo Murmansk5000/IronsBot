@@ -1402,6 +1402,11 @@ PNG 统一使用 `PublishedDataIncompleteError(component, entity_id)`，删除�
 相关精灵、刻印、装备、新内容专项 `89 passed`；Ruff、BasedPyright、compileall 和
 diff 检查通过。该接口只表达发布事实完整性，不涉及平台或 QQ 身份。
 
+皮肤详情价格读取随后接入同一接口：`pet_skin` 确实不存在仍表示未找到皮肤，
+`skin_shop_price` / `skin_store_price` 或关联 schema 故障则返回保留已取得立绘的
+`complete=False` 回复，并明确标注价格数据不完整，不再静默显示成“没有售价”。
+皮肤仓库与查询专项 `19 passed`，Ruff、BasedPyright 和 diff 检查通过。
+
 **赛季读取失败隔离（2026-09-12）：** target 错误语义。移除
 `SeerDatabase.peak_season_start()` 的全异常转 None：未加载数据库显式报不可用，
 SQLAlchemy 读取故障保留 cause 和日志；仅实际无赛季记录仍返回 None。巅峰详情将

@@ -146,16 +146,31 @@ class PetQueryService:
         elif selection.skin_id is not None:
             image_error = "❌该经典皮肤的立绘资源未解析。"
         text = f"💎【{selection.name}】\n"
-        with self._data.query(
-            partial(load_skin_details, resource_id=selection.resource_id)
-        ) as details:
-            if details is not None:
-                text += (
-                    f"所属精灵：{details.pet_name}\n所属系列：{details.series_name}\n"
-                )
-                if details.card_price:
-                    text += f"礼卡价格：{details.card_price}\n"
-                text += details.price_lines
+        try:
+            with self._data.query(
+                partial(load_skin_details, resource_id=selection.resource_id)
+            ) as details:
+                if details is not None:
+                    text += (
+                        f"所属精灵：{details.pet_name}\n"
+                        f"所属系列：{details.series_name}\n"
+                    )
+                    if details.card_price:
+                        text += f"礼卡价格：{details.card_price}\n"
+                    text += details.price_lines
+        except PublishedDataIncompleteError as error:
+            logger.error(
+                "skin data is incomplete: resource_id=%s component=%s",
+                selection.resource_id,
+                error.component,
+                exc_info=True,
+            )
+            return QueryReply(
+                text=text,
+                image=image_data,
+                image_error="皮肤资料数据不完整，价格信息暂时无法展示。",
+                complete=False,
+            )
         return QueryReply(
             text=text,
             image=image_data,
