@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from math import isfinite
 from typing import TYPE_CHECKING, TypeVar
 
 from ironsbot.core.commands import csv_items, json_array
@@ -31,6 +32,16 @@ def now(tz: timezone | None = None) -> datetime:
     if tz is None:
         return datetime.now(timezone.utc).astimezone()
     return datetime.now(tz=tz)
+
+
+def remaining_observation_ttl(
+    fetched_at: float | None, ttl_seconds: float, *, at: float
+) -> float:
+    """Remaining source lifetime; undated or future evidence is not fresh."""
+    if fetched_at is None or not isfinite(fetched_at) or not isfinite(at):
+        return 0.0
+    age = at - fetched_at
+    return max(0.0, ttl_seconds - age) if age >= 0 else 0.0
 
 
 @dataclass(slots=True)

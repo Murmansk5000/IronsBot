@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
 )
+from ironsbot.core.time import now, remaining_observation_ttl
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -278,10 +279,17 @@ class PlayerDetailService:
         cached = self._cached_replies.get(cache_key)
         if cached is None:
             return None
-        if cached.expires_at > monotonic():
+        if cached.expires_at > monotonic() and self._cache_remaining(cached.reply) > 0:
             return cached.reply
         self._cached_replies.pop(cache_key, None)
         return None
+
+    def _cache_remaining(self, reply: QueryReply) -> float:
+        return remaining_observation_ttl(
+            reply.fetched_at,
+            self._config.player.background_refresh.cache_ttl_seconds,
+            at=now().timestamp(),
+        )
 
     def _store_reply(
         self,
@@ -296,10 +304,10 @@ class PlayerDetailService:
             and self._background_refreshes.get(player_id) is not refresh
         ):
             return
-        if reply.complete:
+        remaining = self._cache_remaining(reply)
+        if reply.complete and remaining > 0:
             self._cached_replies[(player_id, kind)] = _CachedDetailReply(
-                expires_at=monotonic()
-                + self._config.player.background_refresh.cache_ttl_seconds,
+                expires_at=monotonic() + remaining,
                 reply=reply,
             )
         future = None if refresh is None else refresh.replies.get(kind)

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.player_bindings import (
@@ -214,7 +215,7 @@ def test_direct_binding_returns_invalid_player_error_without_saving() -> None:
 
 def test_all_player_service_entries_reject_invalid_player_id_before_io() -> None:
     service = PlayerService(
-        config=cast("Any", None),
+        config=SeerConfig(),
         headless=cast("Any", None),
         bindings=cast("Any", None),
         error_message=cast("Any", None),
@@ -312,11 +313,7 @@ def test_binding_change_cooldown_uses_three_beijing_calendar_days(
         player_nick="测试玩家",
         changed_at=changed_at,
     )
-    config = SimpleNamespace(
-        player=SimpleNamespace(
-            binding=SimpleNamespace(change_cooldown_days=3),
-        )
-    )
+    config = SeerConfig()
     service = PlayerService(
         config=cast("Any", config),
         headless=cast("Any", None),
