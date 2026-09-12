@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
-from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.matcher import Matcher
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
@@ -19,6 +18,9 @@ from ironsbot.integrations.onebot.conversations import (
     begin_event_reply_conversation,
 )
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.params import parse_string_arg
 from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.services.seer.data import DataUnavailableError
@@ -39,19 +41,6 @@ def _raise_if_selection_cancelled(matcher: Matcher) -> None:
         raise FinishedException
 
 
-def build_reply(reply: QueryReply) -> MessageFactory:
-    message = MessageFactory()
-    if reply.leading_text:
-        message += reply.leading_text
-    if reply.image is not None:
-        message += Image(reply.image)
-    elif reply.image_error:
-        message += reply.image_error
-    if reply.text:
-        message += reply.text
-    return message
-
-
 async def send_query_reply(
     reply: QueryReply,
     event: Event,
@@ -60,12 +49,12 @@ async def send_query_reply(
 ) -> None:
     """Send direct and selected query results with consistent group mentions."""
 
-    message = build_reply(reply)
+    message = render_onebot_outbound_message(reply.to_outbound())
     kwargs = {"at_sender": isinstance(event, GroupMessageEvent)}
     if finish:
-        await message.finish(**kwargs)
+        await Matcher.finish(message, **kwargs)
     else:
-        await message.send(**kwargs)
+        await Matcher.send(message, **kwargs)
 
 
 def make_query_handler(  # noqa: C901
