@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.command_catalog import CommandCatalog
-from ironsbot.core.messaging import default_sendpic_configs
+from ironsbot.core.messaging import PicConfig
 from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.docker.client import DockerClient
@@ -213,8 +213,16 @@ def build_test_plugin_registry(
                 start=_noop_startup,
             ),
             sendpic=SimpleNamespace(
-                commands=default_sendpic_configs(),
-                exact_command_texts=frozenset(),
+                commands=(
+                    PicConfig(
+                        id="example-image",
+                        backend="local",
+                        command="示例图片",
+                        mode="single",
+                        image_file="example.png",
+                    ),
+                ),
+                exact_command_texts=frozenset({"示例图片"}),
             ),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
