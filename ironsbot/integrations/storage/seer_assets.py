@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.config.models.seer import RenderConfig
+    from ironsbot.core.tasks import TaskSpawner
     from ironsbot.services.seer.images import SeerImageRequestSource, SeerImageSource
 
 
@@ -45,8 +46,11 @@ class SeerAssetStore:
         source: SeerImageRequestSource,
         cache_dir: Path,
         limits: SeerAssetStoreLimits,
+        *,
+        spawn: TaskSpawner,
     ) -> None:
         self._source = source
+        self._spawn = spawn
         self._memory = _MemoryAssetCache(limits.memory_max_size_bytes)
         self._disk = VerifiedFileCache(cache_dir, limits.disk_max_size_bytes)
         self._network = asyncio.Semaphore(limits.max_network_concurrent)
@@ -110,7 +114,9 @@ class SeerAssetStore:
     ) -> bytes:
         task = self._inflight.get(cache_key)
         if task is None:
-            task = asyncio.create_task(self._load_or_fetch(cache_key, fetch))
+            task = self._spawn(
+                self._load_or_fetch(cache_key, fetch), name=f"seer-asset:{cache_key}"
+            )
             self._inflight[cache_key] = task
             task.add_done_callback(lambda done: self._finish_fetch(cache_key, done))
         return await asyncio.shield(task)
@@ -212,6 +218,8 @@ def build_seer_asset_store(
     source: SeerImageRequestSource,
     cache_dir: Path,
     render_config: RenderConfig,
+    *,
+    spawn: TaskSpawner,
 ) -> SeerAssetStore:
     """Build the shared Seer image asset port from application configuration."""
     return SeerAssetStore(
@@ -225,4 +233,5 @@ def build_seer_asset_store(
             max_network_concurrent=render_config.asset_fetch_max_concurrent,
             negative_ttl_seconds=render_config.asset_negative_ttl_seconds,
         ),
+        spawn=spawn,
     )
