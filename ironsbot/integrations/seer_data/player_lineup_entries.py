@@ -6,6 +6,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from seerapi_models import PetORM, PetSkinORM
+from sqlmodel import col, select
+
 from ironsbot.extensions.contracts import (
     PlayerLineupPetSnapshot,
     PlayerLineupSlot,
@@ -19,7 +22,7 @@ from ironsbot.integrations.seer_data.skin_image_resolution import (
 from ironsbot.services.seer.peak import active_peak_pool_limits
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ class PublishedPlayerLineupEntryResolver:
 
     def __init__(
         self,
-        data: SeerDataAccess,
+        data: SeerDataReader,
     ) -> None:
         self._data = data
 
@@ -47,8 +50,22 @@ class PublishedPlayerLineupEntryResolver:
             self._data.query(
                 lambda session: load_skin_image_resolutions(session, skin_ids)
             ) as resolved_skin_images,
-            self._data.get_many(self._data.pet, pet_ids) as pets_by_id,
-            self._data.get_many(self._data.pet_skin, skin_ids) as skins_by_id,
+            self._data.query(
+                lambda session: {
+                    pet.id: pet
+                    for pet in session.exec(
+                        select(PetORM).where(col(PetORM.id).in_(pet_ids))
+                    )
+                }
+            ) as pets_by_id,
+            self._data.query(
+                lambda session: {
+                    skin.id: skin
+                    for skin in session.exec(
+                        select(PetSkinORM).where(col(PetSkinORM.id).in_(skin_ids))
+                    )
+                }
+            ) as skins_by_id,
         ):
             return tuple(
                 PlayerLineupPetSnapshot(

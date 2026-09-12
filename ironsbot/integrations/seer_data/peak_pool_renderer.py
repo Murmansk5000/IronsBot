@@ -34,7 +34,8 @@ async def render_peak_pool(
     """Render one pool after cache lookup and shared asset retrieval."""
     pools = tuple(pools)
     request_key = render_request_cache_key(_CACHE_CATEGORY, (pool_type, pools))
-    if cached := cache.get(_CACHE_CATEGORY, request_key):
+    cache_entry = cache.entry(_CACHE_CATEGORY, request_key)
+    if cached := cache_entry.get():
         return cached
     assets = await load_pet_image_assets(
         images,
@@ -43,5 +44,5 @@ async def render_peak_pool(
     )
     document = present_peak_pool(pools, pool_type, assets)
     rendered = await render_peak_pool_document(render_html, document)
-    cache.put(_CACHE_CATEGORY, request_key, rendered)
+    cache_entry.put(rendered)
     return rendered

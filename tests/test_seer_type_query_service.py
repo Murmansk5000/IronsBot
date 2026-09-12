@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -20,7 +21,11 @@ from ironsbot.services.seer.type_query import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataAccess, SeerDataReader
+    from ironsbot.services.seer.type_query import (
+        TypeMatchupRenderer,
+        TypeRenderSessionFactory,
+    )
 
 
 class FakeData:
@@ -81,7 +86,17 @@ def _service(
         rendered.append(matchup)
         return b"rendered"
 
-    return TypeQueryService(cast("SeerDataAccess", data), render)
+    return TypeQueryService(cast("SeerDataAccess", data), _render_session(data, render))
+
+
+def _render_session(
+    data: FakeData, render: TypeMatchupRenderer
+) -> TypeRenderSessionFactory:
+    @contextmanager
+    def session() -> Iterator[tuple[SeerDataReader, TypeMatchupRenderer]]:
+        yield cast("SeerDataReader", data), render
+
+    return session
 
 
 @pytest.mark.asyncio
@@ -98,9 +113,9 @@ async def test_single_type_query_renders_matchup() -> None:
         rendered.append(matchup)
         return b"rendered"
 
-    result = await TypeQueryService(cast("SeerDataAccess", data), render).search(
-        "草"
-    )
+    result = await TypeQueryService(
+        cast("SeerDataAccess", data), _render_session(data, render)
+    ).search("草")
 
     assert result.reply is not None
     assert result.reply.image == b"rendered"
@@ -137,6 +152,59 @@ async def test_multiple_type_query_returns_choices() -> None:
 async def test_type_selection_reports_missing_matchup() -> None:
     result = await _service(FakeData()).select(99)
 
-    assert result.message == (
-        "❌未找到属性 99（这是一个bug，请反馈给开发者）"
+    assert result.message == ("❌未找到属性 99（这是一个bug，请反馈给开发者）")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["search", "select", "custom"])
+@pytest.mark.parametrize("failure", [None, RuntimeError, asyncio.CancelledError])
+async def test_matchup_preparation_and_render_share_one_session(
+    mode: str, failure: type[BaseException] | None
+) -> None:
+    global_data = FakeData()
+    target = _type(1, "草")
+    global_data.combinations = () if mode == "custom" else (target,)
+    bound = FakeData()
+    bound.dataset = TypeMatchupDataset(
+        combinations=(TypeCombinationSnapshot(1, "草", 1, None),),
+        elements=(ElementTypeSnapshot(1, "草"), ElementTypeSnapshot(2, "水")),
+        relations=(),
     )
+    active = False
+    rendered: list[TypeMatchup] = []
+
+    async def render(matchup: TypeMatchup) -> bytes:
+        await asyncio.sleep(0)
+        assert active
+        assert not bound.query_open
+        rendered.append(matchup)
+        if failure is not None:
+            raise failure
+        return b"bound"
+
+    @contextmanager
+    def session() -> Iterator[tuple[SeerDataReader, TypeMatchupRenderer]]:
+        nonlocal active
+        active = True
+        try:
+            yield cast("SeerDataReader", bound), render
+        finally:
+            active = False
+
+    service = TypeQueryService(cast("SeerDataAccess", global_data), session)
+    request = (
+        service.select(1)
+        if mode == "select"
+        else service.search("草+水" if mode == "custom" else "草")
+    )
+    if failure is None:
+        result = await request
+        assert result.reply is not None
+        assert result.reply.image == b"bound"
+    else:
+        with pytest.raises(failure):
+            await request
+    assert not active
+    assert not bound.query_open
+    assert len(rendered) == 1
+    assert rendered[0].target.primary_id == 1
