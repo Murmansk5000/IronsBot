@@ -343,7 +343,7 @@ def install(group: SeerMatcherGroup) -> None:
         ),
         rule=seer_feature_rule(group.features, "seer_player")
         & Rule(_is_binding_command)
-        & explicit_command(),
+        & member_target_command(),
         priority=group.matcher_priority("seer_player"),
         block=True,
     )

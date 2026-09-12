@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from functools import partial
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
@@ -14,12 +16,17 @@ from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
+from ironsbot.plugins.onebot.seer.query.commands import player
 from ironsbot.plugins.onebot.seer.query.commands.player import _is_binding_command
+from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
 from ironsbot.services.seer.command_contracts import seer_command_contracts
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query import extract_player_query_arg
 from tests.helpers.onebot_events import group_message_event, private_message_event
@@ -117,3 +124,38 @@ def test_player_ownership_preserves_literal_command_prefix(
     )
     assert not actual
     assert matcher(text, context) is actual
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prefix,index", [("绑定米米号", 0), ("米米号", 1)])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("target", ["numeric", "alias", "member", "bot"])
+async def test_installed_player_rules_admit_member_targets_and_enforce_feature(
+    prefix: str, index: int, target: str, *, enabled: bool,
+) -> None:
+    features = FeatureService(
+        {_GROUP: frozenset({"seer_player"})} if enabled else {}, {}, frozenset(),
+    )
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            _PLAYER_ID if reference in {str(_PLAYER_ID), "示例玩家"} else None
+        ),
+        lambda actor: _PLAYER_ID if actor.id == "456" else None,
+    )
+    group = Mock(spec=SeerMatcherGroup)
+    group.features = features
+    group.player_id_resolver = resolver
+    group.resources = Mock()
+    group.resources.player_detail_extensions = PlayerDetailExtensionRegistry()
+    player.install(group)
+    message = Message(prefix)
+    if target in {"numeric", "alias"}:
+        message += str(_PLAYER_ID) if target == "numeric" else "示例玩家"
+    else:
+        message += MessageSegment.at(1 if target == "bot" else 456)
+    event = group_message_event(message=message, group_id=int(_GROUP.id))
+    rule = group.on_message.call_args_list[index].kwargs["rule"]
+    state: dict[str, Any] = {}
+    assert await rule(cast("Any", None), event, state) is (enabled and target != "bot")
+    if enabled and target != "bot" and prefix == "米米号":
+        assert state[player.PLAYER_TARGET_RESOLUTION_KEY].player_id == _PLAYER_ID
