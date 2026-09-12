@@ -3,11 +3,15 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast
 
+import pytest
 from sqlmodel import Session, create_engine
 
 from ironsbot.integrations.seer_data.flash_mount_repository import (
     load_flash_mount_image,
 )
+from ironsbot.services.seer.data import PublishedDataIncompleteError
+
+FLASH_TEST_MOUNT_ID = 1301170
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -36,18 +40,24 @@ def test_load_flash_mount_image_reads_rendered_png(tmp_path: Path) -> None:
         )
         connection.exec_driver_sql(
             "INSERT INTO flash_mount_image (mount_id, png_data) VALUES (?, ?)",
-            (1301170, b"flash-mount"),
+            (FLASH_TEST_MOUNT_ID, b"flash-mount"),
         )
 
-    image = load_flash_mount_image(cast("SeerDataAccess", data), 1301170)
+    image = load_flash_mount_image(
+        cast("SeerDataAccess", data), FLASH_TEST_MOUNT_ID
+    )
 
     assert image == b"flash-mount"
 
 
-def test_load_flash_mount_image_allows_old_database(tmp_path: Path) -> None:
-    image = load_flash_mount_image(
-        cast("SeerDataAccess", _Data(tmp_path / "old.sqlite")),
-        1301170,
-    )
+def test_load_flash_mount_image_rejects_database_without_published_table(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(PublishedDataIncompleteError) as raised:
+        load_flash_mount_image(
+            cast("SeerDataAccess", _Data(tmp_path / "old.sqlite")),
+            FLASH_TEST_MOUNT_ID,
+        )
 
-    assert image is None
+    assert raised.value.component == "flash_mount_image"
+    assert raised.value.entity_id == FLASH_TEST_MOUNT_ID
