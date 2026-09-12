@@ -59,9 +59,52 @@ _T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
-class _Publication:
+class SeerPublication:
     version: str = UNKNOWN_VERSION
     assets: PublishedRenderAssetSnapshot | None = None
+
+    def category_available(self, category: str) -> bool:
+        scope = {
+            "pet_info": "pet_info",
+            "type_matchup": "type_matchup",
+            "peak_pool": "peak_pool",
+            "peak_pool_vote": "peak_pool",
+            "peak_pet_rank": "peak_pool",
+            "new_content": "new_content_standard",
+            "player_lineup": "peak_pool",
+        }.get(category)
+        return (
+            self.assets is not None
+            and scope is not None
+            and scope in self.assets.scopes
+        )
+
+
+class SeerSnapshotClosedError(DataUnavailableError):
+    def __init__(self) -> None:
+        super().__init__("Seer database snapshot is closed")
+
+
+class SeerReadSnapshot:
+    """One leased engine and its publication; SQL sessions stay short-lived."""
+
+    def __init__(self, engine: Engine, publication: SeerPublication) -> None:
+        self._engine: Engine | None = engine
+        self._publication = publication
+
+    @property
+    def publication(self) -> SeerPublication:
+        return self._publication
+
+    @contextmanager
+    def query(self, operation: DataQuery[_T]) -> Iterator[_T]:
+        if self._engine is None:
+            raise SeerSnapshotClosedError
+        with SQLModelSession(self._engine) as session:
+            yield operation(session)
+
+    def close(self) -> None:
+        self._engine = None
 
 
 class SeerDatabase:
@@ -83,7 +126,7 @@ class SeerDatabase:
         merge_connected_mintmarks: bool,
     ) -> None:
         self._databases = databases
-        self._publications: WeakKeyDictionary[Engine, _Publication] = (
+        self._publications: WeakKeyDictionary[Engine, SeerPublication] = (
             WeakKeyDictionary()
         )
         self._publication_lock = RLock()
@@ -95,10 +138,20 @@ class SeerDatabase:
 
     @contextmanager
     def query(self, operation: DataQuery[_T]) -> Iterator[_T]:
-        with self._databases.session(SEERAPI_DB) as session:
-            if session is None:
+        with self.read_snapshot() as snapshot, snapshot.query(operation) as result:
+            yield result
+
+    @contextmanager
+    def read_snapshot(self) -> Iterator[SeerReadSnapshot]:
+        with self._databases.snapshot((SEERAPI_DB,)) as engines:
+            engine = engines.get(SEERAPI_DB)
+            if engine is None:
                 raise DataUnavailableError
-            yield operation(session)
+            snapshot = SeerReadSnapshot(engine, self._publication_for(engine))
+            try:
+                yield snapshot
+            finally:
+                snapshot.close()
 
     @contextmanager
     def resolve(
@@ -199,17 +252,7 @@ class SeerDatabase:
     def render_category_available(self, category: str) -> bool:
         """Return whether the loaded release proves all assets for a renderer."""
 
-        scope = {
-            "pet_info": "pet_info",
-            "type_matchup": "type_matchup",
-            "peak_pool": "peak_pool",
-            "peak_pool_vote": "peak_pool",
-            "peak_pet_rank": "peak_pool",
-            "new_content": "new_content_standard",
-            "player_lineup": "peak_pool",
-        }.get(category)
-        assets = self._publication().assets
-        return assets is not None and scope is not None and scope in assets.scopes
+        return self._publication().category_available(category)
 
     def render_asset_snapshot(self) -> PublishedRenderAssetSnapshot | None:
         """Return the immutable image source for the currently loaded release."""
@@ -220,12 +263,14 @@ class SeerDatabase:
         validate_published_seerapi_release(engine)
         self._publication_for(engine)
 
-    def _publication(self) -> _Publication:
+    def _publication(self) -> SeerPublication:
         with self._databases.snapshot((SEERAPI_DB,)) as engines:
             engine = engines.get(SEERAPI_DB)
-            return _Publication() if engine is None else self._publication_for(engine)
+            return (
+                SeerPublication() if engine is None else self._publication_for(engine)
+            )
 
-    def _publication_for(self, engine: Engine) -> _Publication:
+    def _publication_for(self, engine: Engine) -> SeerPublication:
         with self._publication_lock:
             publication = self._publications.get(engine)
             if publication is None:
@@ -234,13 +279,13 @@ class SeerDatabase:
             return publication
 
 
-def _read_publication(engine: Engine) -> _Publication:
+def _read_publication(engine: Engine) -> SeerPublication:
     """Read once for each engine, before publishing a validated candidate."""
     try:
         with SQLModelSession(engine) as session:
             metadata = session.exec(select(ApiMetadataORM)).first()
             if metadata is None:
-                return _Publication()
+                return SeerPublication()
             rows = session.execute(
                 text(
                     "SELECT key, value FROM ironsbot_metadata WHERE key IN "
@@ -261,25 +306,25 @@ def _read_publication(engine: Engine) -> _Publication:
             if not isinstance(raw_scopes, list) or not all(
                 isinstance(scope, str) and scope for scope in raw_scopes
             ):
-                return _Publication()
+                return SeerPublication()
             snapshot = parse_published_render_asset_snapshot(
                 values, contract_version=_RENDER_MANIFEST_CONTRACT_VERSION
             )
             if snapshot is None:
-                return _Publication()
+                return SeerPublication()
             assets = PublishedRenderAssetSnapshot(
                 repository=snapshot.repository,
                 revision=snapshot.revision,
                 manifest_revision=snapshot.manifest_revision,
                 scopes=frozenset(raw_scopes),
             )
-            return _Publication(
+            return SeerPublication(
                 f"{metadata.generate_time.isoformat()}:{snapshot.manifest_revision}",
                 assets,
             )
     except Exception:  # noqa: BLE001
         logger.debug("failed to query Seer database version", exc_info=True)
-        return _Publication()
+        return SeerPublication()
 
 
 def _mintmark_class_member_ids(

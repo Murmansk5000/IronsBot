@@ -148,3 +148,23 @@ Close/re-register return unknown rather than stale publication information.
 Ruff, targeted BasedPyright (0 errors/warnings), compileall and diff checks passed.
 Removed the old listener-owned fields and refresh callback; production code is
 9 lines smaller. No new module, dependency, config field or publication run.
+
+## Explicit Read Snapshot
+
+Target: SeerDatabase.read_snapshot() exposes a query-only SeerReadSnapshot with
+the same immutable SeerPublication used for version/assets/scope selection.
+Keep the engine leased across preparation/download awaits, but open SQL sessions
+only for individual repository operations. Existing query() uses this same path.
+After context exit, discard the engine reference and reject further queries;
+publication value objects may safely outlive the lease. No ContextVar/global
+render state, SQL session held during network I/O, or duplicate category mapping.
+Test a suspended render read across replacement and close, and verify old/new
+query values agree with their respective publication records.
+
+Verified: registry/version/mintmark/pet-render/data-sync regression 43 passed
+in 10.80s; after making publication access read-only and naming the closed-snapshot
+error, the await/replacement test passed again (2.33s). Both runs report 2 existing
+ORM relationship warnings. Ruff, targeted BasedPyright (0 errors/warnings),
+compileall and diff checks passed. query() now consumes the snapshot directly;
+asset/cache binding at composition boundaries remains outstanding. No runtime
+dependencies, configuration changes or new database copies.

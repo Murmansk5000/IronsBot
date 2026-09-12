@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -14,6 +15,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.integrations.seer_data.release_contract import SeerApiReleaseContractError
+from ironsbot.services.seer.data import DataUnavailableError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -223,6 +225,64 @@ def test_late_publication_cached_reads_do_not_execute_sql(tmp_path: Path) -> Non
         executed.assert_not_called()
     finally:
         event.remove(active, "before_cursor_execute", executed)
+        databases.close()
+        engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_read_snapshot_keeps_publication_and_data_across_await(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, _ = _create_release(source, ("pet_info",))
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    databases.load_from_file("seerapi", str(source))
+
+    def read_manifest(session: Session) -> str:
+        return str(
+            session.execute(
+                text(
+                    "SELECT value FROM ironsbot_metadata "
+                    "WHERE key='render_asset_manifest_revision'"
+                )
+            ).scalar_one()
+        )
+
+    try:
+        with data.read_snapshot() as old:
+            publication = old.publication
+            assert publication.assets is not None
+            assert publication.assets.manifest_revision == "assets-v1"
+            assert publication.category_available("pet_info")
+            with engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE ironsbot_metadata SET value='assets-v2' "
+                        "WHERE key='render_asset_manifest_revision'"
+                    )
+                )
+            await asyncio.to_thread(databases.load_from_file, "seerapi", str(source))
+            with old.query(read_manifest) as value:
+                assert value == publication.assets.manifest_revision
+            with data.read_snapshot() as fresh, fresh.query(read_manifest) as value:
+                assert fresh.publication.assets is not None
+                assert (
+                    value == fresh.publication.assets.manifest_revision == "assets-v2"
+                )
+            with data.query(read_manifest) as value:
+                assert value == "assets-v2"
+            databases.close()
+            with old.query(read_manifest) as value:
+                assert value == "assets-v1"
+        with (
+            pytest.raises(DataUnavailableError, match="snapshot is closed"),
+            old.query(read_manifest),
+        ):
+            pytest.fail("closed snapshots must not reopen retired engines")
+        with pytest.raises(DataUnavailableError), data.read_snapshot():
+            pytest.fail("missing engines must not create a read snapshot")
+    finally:
         databases.close()
         engine.dispose()
 

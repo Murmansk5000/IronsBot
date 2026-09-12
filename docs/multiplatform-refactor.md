@@ -770,6 +770,13 @@ load listener 顺序。旧引擎记录使用弱引用键，不维护永久发布
 Ruff、定向类型检查、compileall、diff 通过。生产代码净减少 9 行，无新增模块、
 依赖或配置。完整渲染事务与 ABA 验收仍未完成，总进度仍为 4/8。
 
+显式 `SeerReadSnapshot` 将查询入口和同引擎 `SeerPublication` 放在一起，通用
+`SeerDatabase.query()` 已复用该路径；单次 SQL 会话仍及时关闭，快照退出后拒绝
+再次查询并丢弃引擎引用。等待期间跨线程换版的回归确认新旧快照分别匹配对应
+数据/元数据；相关回归 43 passed，最终异常类型调整后定向测试 1 passed，Ruff、
+定向类型、compileall、diff 通过。没有 ContextVar 或全局渲染状态。素材/缓存装配
+仍待绑定此快照，本项不是完整渲染验收；总计仍为 4/8。
+
 ### Phase 5 — 业务服务和通用解析
 
 **目标契约：** 领域服务、统一别名解析和 `PlayerIdResolver`。
