@@ -31,12 +31,13 @@ async def render_type_matchup(
 ) -> bytes:
     """Render one matchup after cache lookup and shared asset retrieval."""
     request_key = render_request_cache_key(_CACHE_CATEGORY, matchup.cache_key)
-    if cached := cache.get(_CACHE_CATEGORY, request_key):
+    cache_entry = cache.entry(_CACHE_CATEGORY, request_key)
+    if cached := cache_entry.get():
         return cached
     assets = await _load_assets(images, matchup)
     document = present_type_matchup(matchup, assets)
     rendered = await render_type_matchup_document(render_html, document)
-    cache.put(_CACHE_CATEGORY, request_key, rendered)
+    cache_entry.put(rendered)
     return rendered
 
 

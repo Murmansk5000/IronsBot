@@ -7,6 +7,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.services.seer.render_cache import (
+    RenderCacheEntry as RenderCacheEntry,  # noqa: PLC0414, TC001 - public extension export
+)
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
@@ -104,9 +108,7 @@ class PlayerLineupRenderPort(Protocol):
         renderer_fingerprint: str,
     ) -> str: ...
 
-    def cached_image(self, category: str, key: str) -> bytes | None: ...
-
-    def cache_image(self, category: str, key: str, image: bytes) -> None: ...
+    def cache_entry(self, category: str, key: str) -> RenderCacheEntry: ...
 
     async def render_html(
         self,

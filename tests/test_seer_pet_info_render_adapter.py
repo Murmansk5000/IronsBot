@@ -14,6 +14,7 @@ from ironsbot.services.seer.pet_info_views import (
     PetInfoSnapshot,
     PetStatsSnapshot,
 )
+from ironsbot.services.seer.render_cache import RenderCacheEntry
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -48,6 +49,12 @@ class FakeImages:
 
 
 class FakeCache:
+    def entry(self, category: str, key: str) -> RenderCacheEntry:
+        return RenderCacheEntry(
+            lambda: self.get(category, key),
+            lambda data: self.put(category, key, data),
+        )
+
     def __init__(self) -> None:
         self.values: dict[tuple[str, str], bytes] = {}
 

@@ -67,7 +67,8 @@ async def render_new_content_menu(  # noqa: PLR0913
         expanded_categories,
         auto_expand_max_items,
     )
-    if cached := cache.get("new_content", request_key):
+    cache_entry = cache.entry("new_content", request_key)
+    if cached := cache_entry.get():
         return cached
 
     # All ORM and domain-service reads complete before the first await below.
@@ -141,7 +142,7 @@ async def render_new_content_menu(  # noqa: PLR0913
     )
     result = await render_new_content_document(render_html, document)
     if cacheable:
-        cache.put("new_content", request_key, result)
+        cache_entry.put(result)
     return result
 
 

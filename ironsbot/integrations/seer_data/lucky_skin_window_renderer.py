@@ -39,7 +39,8 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
     content_key = render_request_cache_key(
         "lucky_skin_window_v1", (result.day, result.player_id, offers)
     )
-    if cached := cache.get("lucky_skin_window_v1", content_key):
+    cache_entry = cache.entry("lucky_skin_window_v1", content_key)
+    if cached := cache_entry.get():
         return cached
 
     with data.query(
@@ -73,5 +74,5 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
     document = present_lucky_skin_window(offers, images_by_skin_id)
     rendered = await render_lucky_skin_window_document(coordinator.render, document)
     if all(images_by_skin_id.values()):
-        cache.put("lucky_skin_window_v1", content_key, rendered)
+        cache_entry.put(rendered)
     return rendered

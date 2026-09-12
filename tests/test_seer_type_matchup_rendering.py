@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
+from ironsbot.services.seer.render_cache import RenderCacheEntry
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.type_matchup import (
     TypeMatchupAssets,
@@ -20,6 +21,12 @@ if TYPE_CHECKING:
 
 
 class _Cache:
+    def entry(self, category: str, key: str) -> RenderCacheEntry:
+        return RenderCacheEntry(
+            lambda: self.get(category, key),
+            lambda data: self.put(category, key, data),
+        )
+
     def __init__(self, value: bytes | None = None) -> None:
         self.value = value
         self.writes: list[tuple[str, str, bytes]] = []

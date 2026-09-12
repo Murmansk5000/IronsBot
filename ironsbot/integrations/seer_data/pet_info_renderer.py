@@ -53,7 +53,8 @@ async def render_published_pet_info(
 ) -> bytes:
     """Render one pet after completely detaching its data from SQLite."""
     request_key = render_request_cache_key(_PET_INFO_CACHE_CATEGORY, pet_id)
-    if cached := cache.get(_PET_INFO_CACHE_CATEGORY, request_key):
+    cache_entry = cache.entry(_PET_INFO_CACHE_CATEGORY, request_key)
+    if cached := cache_entry.get():
         return cached
     with data.query(
         lambda session: load_pet_info_snapshot(session, pet_id)
@@ -68,7 +69,7 @@ async def render_published_pet_info(
         document,
     )
     if complete:
-        cache.put(_PET_INFO_CACHE_CATEGORY, request_key, rendered)
+        cache_entry.put(rendered)
     return rendered
 
 

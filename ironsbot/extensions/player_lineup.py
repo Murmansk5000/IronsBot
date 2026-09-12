@@ -63,7 +63,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.render_cache import RenderCache
+    from ironsbot.services.seer.render_cache import RenderCache, RenderCacheEntry
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
 
@@ -104,11 +104,8 @@ class PlayerLineupRenderServices:
             renderer_fingerprint=renderer_fingerprint,
         )
 
-    def cached_image(self, category: str, key: str) -> bytes | None:
-        return self.cache.get(category, key)
-
-    def cache_image(self, category: str, key: str, image: bytes) -> None:
-        self.cache.put(category, key, image)
+    def cache_entry(self, category: str, key: str) -> RenderCacheEntry:
+        return self.cache.entry(category, key)
 
     async def render_html(
         self,

@@ -16,6 +16,7 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowOffer,
     LuckySkinWindowResult,
 )
+from ironsbot.services.seer.render_cache import RenderCacheEntry
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.lucky_skin_window import (
     present_lucky_skin_window,
@@ -90,6 +91,9 @@ def test_lucky_window_request_key_tracks_actual_ordered_offers() -> None:
     keys: list[str] = []
 
     class CacheHit:
+        def entry(self, category: str, key: str) -> RenderCacheEntry:
+            return RenderCacheEntry(lambda: self.get(category, key), lambda _data: None)
+
         def get(self, category: str, key: str) -> bytes:
             assert category == "lucky_skin_window_v1"
             keys.append(key)
@@ -138,6 +142,12 @@ def test_lucky_window_request_key_tracks_actual_ordered_offers() -> None:
 @pytest.mark.parametrize("resource_id", [0, 1400101])
 def test_lucky_window_does_not_cache_missing_art(resource_id: int) -> None:
     class Cache:
+        def entry(self, category: str, key: str) -> RenderCacheEntry:
+            return RenderCacheEntry(
+                lambda: self.get(category, key),
+                lambda data: self.put(category, key, data),
+            )
+
         value: bytes | None = None
 
         def get(self, *_: object) -> bytes | None:

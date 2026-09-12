@@ -23,6 +23,7 @@ from ironsbot.services.seer.new_content import (
     NewContentItem,
     NewContentSnapshot,
 )
+from ironsbot.services.seer.render_cache import RenderCacheEntry
 
 FLASH_TEST_MOUNT_ID = 1301170
 
@@ -34,6 +35,12 @@ if TYPE_CHECKING:
 
 
 class _Cache:
+    def entry(self, category: str, key: str) -> RenderCacheEntry:
+        return RenderCacheEntry(
+            lambda: self.get(category, key),
+            lambda data: self.put(category, key, data),
+        )
+
     def __init__(self) -> None:
         self.saved: bytes | None = None
 

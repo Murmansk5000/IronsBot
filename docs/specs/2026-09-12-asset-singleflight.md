@@ -57,3 +57,32 @@ revision and verifies the cached bytes without another HTTP request. Removed
 the now-unused database render_asset_cache_identity method. The consumer-facing
 SeerImageSource remains unchanged; only upstream storage input uses prepared
 requests. No old identity-getter compatibility path or new module/dependency.
+
+## Final Render Entry Ownership
+
+Target: RenderCache.entry(category, request_key) returns one RenderCacheEntry
+whose get/put operations share a captured version and scope decision. Unknown or
+unavailable entries cannot gain write permission later. A changed version or
+revoked scope prevents reads and writes through that entry. Change the physical
+key namespace to reject older potentially mixed-version images.
+
+Migrate all seven public cached renderers and the private lineup extension to
+retain one entry across their awaits. Delete separate cache get/put and private
+cached_image/cache_image methods; keep no compatibility wrappers. The public
+extension contract re-exports the same entry type rather than a duplicate type.
+Storage tests cover version changes during render, late old writes, unknown
+versions, scope grants/revocations, corruption and cleanup. Public/private
+renderer regressions retain early-hit and incomplete-material checks.
+
+This prevents persistence of work crossing a detected version change; it does
+not yet guarantee every returned multi-material image came from one repository
+snapshot, or detect an old-new-old ABA switch. Those remain explicit acceptance
+gaps rather than a reason to claim the whole render transaction is complete.
+
+Verified: public rendering/storage 49 passed (3.75s), architecture/extension
+boundaries 20 passed (2.41s), private repository 26 passed (2.32s). Public Ruff
+and BasedPyright over ironsbot/tests passed (0 type errors/warnings), private
+changed files passed Ruff using the public environment executable, compileall
+and diff checks passed. No full public pytest rerun. Public and private must
+ship together because the old render-port methods were removed; no production
+deployment in this batch. The private untracked uv.lock was left untouched.
