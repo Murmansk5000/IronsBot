@@ -7,6 +7,7 @@ PACKAGE = ROOT / "ironsbot"
 PLUGINS = PACKAGE / "plugins"
 SERVICES = PACKAGE / "services"
 SEER_RENDERING = SERVICES / "seer" / "rendering"
+SEER_DATA = PACKAGE / "integrations" / "seer_data"
 SERVICE_PACKAGES = frozenset(
     {
         "activity",
@@ -61,6 +62,9 @@ FORBIDDEN_RENDERER_CALLS = {
     "write_bytes",
     "write_text",
 }
+ALLOWED_SEER_DATA_BROAD_EXCEPTION_HANDLERS = (
+    ("ironsbot/integrations/seer_data/database.py", "error_message"),
+)
 
 
 def _files(root: Path = PACKAGE) -> list[Path]:
@@ -121,6 +125,42 @@ def _calls() -> list[tuple[Path, ast.Call]]:
         for node in ast.walk(_tree(path))
         if isinstance(node, ast.Call)
     ]
+
+
+def _is_broad_exception_handler(node: ast.ExceptHandler) -> bool:
+    names = (
+        [node.type]
+        if not isinstance(node.type, ast.Tuple)
+        else list(node.type.elts)
+    )
+    return node.type is None or any(
+        isinstance(name, ast.Name) and name.id in {"BaseException", "Exception"}
+        for name in names
+    )
+
+
+class _BroadExceptionVisitor(ast.NodeVisitor):
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.function_names: list[str] = []
+        self.handlers: list[tuple[str, str]] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self.function_names.append(node.name)
+        self.generic_visit(node)
+        self.function_names.pop()
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if _is_broad_exception_handler(node):
+            owner = self.function_names[-1] if self.function_names else "<module>"
+            self.handlers.append((_relative(self.path), owner))
+        self.generic_visit(node)
 
 
 def test_layers_follow_dependency_direction() -> None:
@@ -192,6 +232,15 @@ def test_pure_seer_renderers_do_not_access_data_transport_or_files() -> None:
         if isinstance(node, ast.Call) and _call_name(node) in FORBIDDEN_RENDERER_CALLS
     ]
     assert [*import_offenders, *call_offenders] == []
+
+
+def test_seer_data_does_not_hide_publication_failures_with_broad_catches() -> None:
+    handlers: list[tuple[str, str]] = []
+    for path in _files(SEER_DATA):
+        visitor = _BroadExceptionVisitor(path)
+        visitor.visit(_tree(path))
+        handlers.extend(visitor.handlers)
+    assert sorted(handlers) == list(ALLOWED_SEER_DATA_BROAD_EXCEPTION_HANDLERS)
 
 
 def test_core_does_not_import_the_nonebot_framework() -> None:
