@@ -33,7 +33,6 @@ from ironsbot.extensions.player_lineup import (
     PlayerLineupCacheServices,
     PlayerLineupExtensionServices,
     PlayerLineupQueryServices,
-    PlayerLineupRenderServices,
 )
 from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
@@ -50,9 +49,6 @@ from ironsbot.integrations.onebot.identity import (
 )
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
-from ironsbot.integrations.seer_data.player_lineup_entries import (
-    PublishedPlayerLineupEntryResolver,
-)
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
@@ -149,9 +145,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     sendpic = messaging_components.sendpic
     team_audit = messaging_components.team_audit
     team_resource = seer_components.team_resource
-    seer_images = seer_components.images
-    render_cache = seer_components.render_cache
-    render_coordinator = seer_components.render_coordinator
     player_query_quotas = seer_components.player_query_quotas
     player_requests = seer_components.player_requests
     pet_config = seer_components.pet_config
@@ -193,12 +186,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     extension_contexts = {
         "player_lineup": PlayerLineupExtensionServices(
-            lineup_entries=PublishedPlayerLineupEntryResolver(seer_database),
-            lineup_render=PlayerLineupRenderServices(
-                images=seer_images,
-                cache=render_cache,
-                render=render_coordinator.render,
-            ),
+            lineup_render_session=seer_components.lineup_render_session,
             lineup_query=PlayerLineupQueryServices(
                 headless=headless,
                 error_message=seer_database.error_message,

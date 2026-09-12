@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 SEERAPI_SCHEMA_CONTRACT_VERSION = "1"
 _SCHEMA_CONTRACT_KEY = "ironsbot_schema_contract_version"
-_REQUIRED_TABLES = frozenset(("api_metadata", "ironsbot_metadata"))
+_REQUIRED_TABLES: frozenset[str] = frozenset(("api_metadata", "ironsbot_metadata"))
 
 
 class SeerApiReleaseContractError(ValueError):
