@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from ironsbot.services.seer.local_rank_formatting import format_metric_display
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
 from ironsbot.services.seer.player_formatting_common import (
+    format_player_data_time,
     format_player_identity,
     join_metric_parts,
 )
@@ -243,6 +244,7 @@ def fetch_cached_rank_player_result(
         "\n".join(
             (
                 f"📊【{spec.title}玩家查询】",
+                format_player_data_time(result.fetched_at),
                 identity,
                 f"{spec.title.removesuffix('榜')}：{metric_text}",
             )

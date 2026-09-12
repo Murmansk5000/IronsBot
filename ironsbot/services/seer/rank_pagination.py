@@ -1,4 +1,28 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+
+
+class RankPageConflictError(ValueError):
+    def __init__(self) -> None:
+        super().__init__("榜单在查询期间发生变化，暂时无法确认排名。")
+
+
+@dataclass(slots=True)
+class RankPageSequence:
+    """Validate distinct players and descending scores across ordered pages."""
+
+    _players: set[int] = field(default_factory=set)
+    _last_score: int | None = None
+
+    def include(self, entries: Iterable[tuple[int, int]]) -> None:
+        for user_id, score in entries:
+            if user_id in self._players or (
+                self._last_score is not None and score > self._last_score
+            ):
+                raise RankPageConflictError
+            self._players.add(user_id)
+            self._last_score = score
 
 
 def rank_page_size(configured: int) -> int:

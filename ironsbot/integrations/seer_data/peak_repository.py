@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from seerapi_models import (
     PeakExpertPoolORM,
@@ -13,6 +13,7 @@ from seerapi_models import (
     PeakSeasonORM,
     PetORM,
 )
+from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
 
 if TYPE_CHECKING:
@@ -49,7 +50,9 @@ def load_peak_pool_snapshots(
             end_time=pool.end_time,
             pets=tuple(_peak_pet_snapshot(pet) for pet in pool.pet),
         )
-        for pool in session.exec(select(model))
+        for pool in session.exec(
+            select(model).options(selectinload(cast("Any", model.pet)))
+        )
     )
 
 
@@ -65,7 +68,11 @@ def load_peak_vote_snapshots(session: Session) -> tuple[PeakVoteSnapshot, ...]:
             end_time=vote.end_time,
             pets=tuple(_peak_pet_snapshot(pet) for pet in vote.pet),
         )
-        for vote in session.exec(select(PeakPoolVoteORM))
+        for vote in session.exec(
+            select(PeakPoolVoteORM).options(
+                selectinload(cast("Any", PeakPoolVoteORM.pet))
+            )
+        )
     )
 
 
@@ -95,12 +102,12 @@ def load_peak_pet_snapshots(
     }
 
 
-def _peak_pet_snapshot(pet: Any) -> PeakPetSnapshot:
+def _peak_pet_snapshot(pet: PetORM) -> PeakPetSnapshot:
     from ironsbot.services.seer.peak import PeakPetSnapshot
 
     return PeakPetSnapshot(
         id=int(pet.id),
         name=str(pet.name),
         resource_id=int(pet.resource_id),
-        type_id=int(pet.type.id),
+        type_id=int(pet.type_id),
     )
