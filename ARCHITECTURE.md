@@ -820,9 +820,16 @@ Future data work follows these rules:
   key, or the persistence contract of a core service. Adding a second schema,
   a lazy legacy import, or a dual-read branch is prohibited; use the offline
   migration instead.
-- A downloaded data release is validated for schema version and required tables
-  before atomic replacement. Incompatible data disables only the affected
-  feature and notifies administrators without removing the data-update path.
+- After every producer post-processing step, SeerAPI validates its complete
+  required-table set and SQLite integrity, then seals the ordered physical table
+  manifest and canonical table/index/trigger DDL fingerprint into release
+  metadata. Before atomic replacement, IronsBot verifies the supported contract
+  version, stable consumer minimum, every declared table, and the recomputed DDL
+  fingerprint. The complete producer table inventory has one authority in
+  SeerAPI; consumers must not duplicate all table names or accept a self-declared
+  manifest without physical verification. Incompatible data disables only the
+  affected feature and notifies administrators without removing the data-update
+  path.
 
 ### Cross-Repository Data Publication Contract
 
