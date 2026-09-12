@@ -229,7 +229,7 @@ class BilibiliDynamicOutboundSender:
             f"UID：{author_mid}\n"
             f"动态ID：{item.get('id_str', '未知')}\n"
             f"失败目标：{'；'.join(target_lines)}\n"
-            "请检查 QQ / OneBot 富媒体上传通道。",
+            "请检查当前平台的富媒体上传通道。",
             subscription_key=FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY,
             action_name=FULL_DYNAMIC_CONTENT_FAILURE_ACTION,
         )
