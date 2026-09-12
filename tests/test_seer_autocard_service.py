@@ -6,10 +6,14 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.integrations.seer_data.autocard_repository import load_autocard_dataset
+from ironsbot.integrations.seer_data.autocard_repository import (
+    AutocardDataset,
+    load_autocard_dataset,
+)
 from ironsbot.services.seer.autocard import (
     AutocardPromptValue,
     AutocardService,
+    _build_autocard_index,
 )
 
 if TYPE_CHECKING:
@@ -18,8 +22,12 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.data import SeerDataAccess
 
 CARD_ID = 101
+AWAKENED_CARD_ID = 10101
 SECOND_CARD_ID = 102
+THIRD_CARD_ID = 103
+AWAKENED_THIRD_CARD_ID = 10103
 ROLE_ID = 201
+VARIANT_IMAGE_COUNT = 2
 
 CARDS = (
     {
@@ -32,8 +40,24 @@ CARDS = (
         "attack": 3,
         "health": 5,
         "compose": 0,
+        "composeTo": AWAKENED_CARD_ID,
         "picID": 1,
         "cardTxt": "回合开始时回复1点生命",
+        "des": "经典草系精灵牌",
+    },
+    {
+        "id": AWAKENED_CARD_ID,
+        "name": "布布种子",
+        "type": 1,
+        "nature": 1,
+        "level": 2,
+        "cost": 3,
+        "attack": 6,
+        "health": 10,
+        "compose": 1,
+        "composeTo": 0,
+        "picID": 1,
+        "cardTxt": "回合开始时回复2点生命",
         "des": "经典草系精灵牌",
     },
     {
@@ -46,7 +70,38 @@ CARDS = (
         "attack": 0,
         "health": 0,
         "compose": 0,
+        "composeTo": 0,
         "picID": 2,
+    },
+    {
+        "id": THIRD_CARD_ID,
+        "name": "布布花",
+        "type": 1,
+        "nature": 1,
+        "level": 3,
+        "cost": 3,
+        "attack": 4,
+        "health": 5,
+        "compose": 0,
+        "composeTo": AWAKENED_THIRD_CARD_ID,
+        "picID": 2,
+        "cardTxt": "护盾",
+        "des": "",
+    },
+    {
+        "id": AWAKENED_THIRD_CARD_ID,
+        "name": "觉醒布布花",
+        "type": 1,
+        "nature": 1,
+        "level": 3,
+        "cost": 3,
+        "attack": 4,
+        "health": 5,
+        "compose": 1,
+        "composeTo": 0,
+        "picID": 3,
+        "cardTxt": "护盾",
+        "des": "",
     },
 )
 ROLES = (
@@ -120,25 +175,35 @@ def _service() -> AutocardService:
     return AutocardService(cast("SeerDataAccess", FakeData()))
 
 
-def test_autocard_search_returns_rendered_card_entry() -> None:
+def test_autocard_search_merges_normal_and_awakened_card() -> None:
     result = _service().search("群星牌布布种子")
 
     assert result.entry is not None
     assert result.entry.item_id == CARD_ID
     assert "🃏【群星牌】" in result.entry.text
-    assert "布布种子（ID：101，普通）" in result.entry.text
+    assert "布布种子（普通ID：101｜觉醒ID：10101）" in result.entry.text
     assert "类型：精灵牌 | 属性：草 | 等级：2 | 费用：3" in result.entry.text
-    assert "身材：3/5" in result.entry.text
-    assert "效果：回合开始时回复1点生命" in result.entry.text
-    assert result.entry.image_url.endswith(
+    assert "普通身材：3/5" in result.entry.text
+    assert "觉醒身材：6/10" in result.entry.text
+    assert "普通效果：回合开始时回复1点生命" in result.entry.text
+    assert "觉醒效果：回合开始时回复2点生命" in result.entry.text
+    assert result.entry.text.count("描述：经典草系精灵牌") == 1
+    assert result.entry.image_urls[0].endswith(
         "/newseer/assets/art/autocard/texture/cards/card_1.png"
     )
+    assert len(result.entry.image_urls) == 1
 
 
 def test_autocard_search_supports_card_id_and_rejects_plain_number() -> None:
     service = _service()
 
-    assert service.search(f"卡{CARD_ID}").entry is not None
+    normal = service.search(f"卡{CARD_ID}").entry
+    awakened = service.search(f"卡{AWAKENED_CARD_ID}").entry
+
+    assert normal is not None
+    assert awakened is not None
+    assert normal.text == awakened.text
+    assert normal.item_id == awakened.item_id == CARD_ID
     assert service.search(str(CARD_ID)).entry is None
     assert service.search("").entry is None
 
@@ -153,6 +218,69 @@ def test_autocard_search_returns_selection_prompt_for_multiple_matches() -> None
     assert "1. 破界法术（法术牌 102 普通 Lv1 火）" in result.prompt_text
     assert "2. 破界者（角色 201 火）" in result.prompt_text
     assert "0.【退出】" in result.prompt_text
+
+
+def test_autocard_partial_search_lists_each_card_pair_once() -> None:
+    result = _service().search("布布")
+
+    assert result.prompt_values == (
+        AutocardPromptValue(kind="card_group", item_id=CARD_ID),
+        AutocardPromptValue(kind="card_group", item_id=THIRD_CARD_ID),
+    )
+    assert "1. 布布种子（" in result.prompt_text
+    assert "2. 布布花 / 觉醒布布花（" in result.prompt_text
+    assert "3." not in result.prompt_text
+    assert "普通101/觉醒10101" in result.prompt_text
+
+
+def test_autocard_search_matches_awakened_variant_name() -> None:
+    entry = _service().search("群星牌觉醒布布花").entry
+
+    assert entry is not None
+    assert entry.item_id == THIRD_CARD_ID
+    assert "普通：布布花（ID：103）" in entry.text
+    assert "觉醒：觉醒布布花（ID：10103）" in entry.text
+
+
+def test_autocard_group_shows_identical_variant_fields_once() -> None:
+    entry = _service().search("群星牌布布花").entry
+
+    assert entry is not None
+    assert entry.text.count("身材：4/5") == 1
+    assert "普通身材" not in entry.text
+    assert "觉醒身材" not in entry.text
+    assert entry.text.count("效果：护盾") == 1
+    assert len(entry.image_urls) == VARIANT_IMAGE_COUNT
+
+
+def test_autocard_raw_selection_keeps_single_card_for_new_content() -> None:
+    entry = _service().select(AutocardPromptValue("card", CARD_ID))
+
+    assert entry is not None
+    assert "布布种子（ID：101，普通）" in entry.text
+    assert "觉醒ID" not in entry.text
+
+
+def test_autocard_without_awakened_variant_stays_single() -> None:
+    entry = _service().search("群星牌破界法术").entry
+
+    assert entry is not None
+    assert "破界法术（ID：102，普通）" in entry.text
+    assert "觉醒ID" not in entry.text
+
+
+def test_invalid_autocard_compose_relation_is_not_grouped(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    card = {"id": 1, "name": "测试卡牌", "compose": 0, "composeTo": 999}
+
+    index = _build_autocard_index(
+        AutocardDataset(cards=(card,), roles=(), natures={})
+    )
+
+    assert index.base_id_by_card_id == {}
+    assert index.awakened_id_by_base_id == {}
+    assert "invalid autocard compose relation: base_id=1 target_id=999" in caplog.text
 
 
 def test_autocard_select_returns_rendered_role_entry() -> None:
