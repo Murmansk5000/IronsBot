@@ -49,3 +49,27 @@ tests, including opt-in native lineup rendering, passed 42 cases before this
 packaging-only change. No daemon was started and no remote build was triggered.
 The final private suite including the added packaging case passed 43 tests in
 3.37 seconds, with native rendering enabled. Private commit: 4a3d007.
+
+## Retired HTTP Client Dependency
+
+The public runtime and private extension have no imports of the `seerapi` HTTP
+client. They consume `seerapi-models` and published SQLite through repositories.
+Remove only the client from pyproject and regenerate the lock offline: no other
+locked version changed. Frozen production export still retains the models,
+SQLModel, HTTP clients and render dependencies. The removed wheel is only 14388
+bytes compressed; this is boundary cleanup, not a large measured image saving.
+
+`uv sync --frozen --offline` actually removed the client, and find_spec confirms
+it is absent while seerapi_models remains importable. Exact sync also removed
+three pre-existing untracked environment extras (localstore, nonestorage and
+qrcode-terminal); those were not in the lock and are not claimed as savings from
+this change. Private native-enabled tests pass 43 cases in this exact environment.
+The existing AST architecture test now prevents runtime imports of the retired
+client; its 19 tests pass. Full type checking reports zero errors/warnings, and
+Ruff passes. Full public suite result is recorded after completion below.
+
+Public full suite: 2834 passed, 319 existing dependency warnings, 121.85 seconds.
+The newly added AST guard was collected in the separate 19-test architecture
+run, not retroactively counted in that full run. Compileall and diff checks
+passed. Docker daemon/image execution is still unverified; this checkpoint does
+not complete Phase 4/7 or prove production rollout.

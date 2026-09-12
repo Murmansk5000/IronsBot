@@ -572,7 +572,6 @@ dependencies = [
     { name = "pillow" },
     { name = "qrcode", extra = ["pil"] },
     { name = "resvg-py" },
-    { name = "seerapi" },
     { name = "seerapi-models" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
@@ -600,7 +599,6 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "qrcode", extras = ["pil"], specifier = ">=8.2" },
     { name = "resvg-py", specifier = ">=0.3.3" },
-    { name = "seerapi", specifier = ">=106.4.0" },
     { name = "seerapi-models", specifier = ">=106.4.0" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
 ]
@@ -1906,21 +1904,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/23/01/1c30526460f4d23222d0fabd5888868262fd0e2b71a00570ca26483cd993/ruff-0.15.2-py3-none-win32.whl", hash = "sha256:fd5ff9e5f519a7e1bd99cbe8daa324010a74f5e2ebc97c6242c08f26f3714f6f", size = 10507885, upload-time = "2026-02-19T22:32:15.635Z" },
     { url = "https://files.pythonhosted.org/packages/5c/10/3d18e3bbdf8fc50bbb4ac3cc45970aa5a9753c5cb51bf9ed9a3cd8b79fa3/ruff-0.15.2-py3-none-win_amd64.whl", hash = "sha256:d20014e3dfa400f3ff84830dfb5755ece2de45ab62ecea4af6b7262d0fb4f7c5", size = 11623725, upload-time = "2026-02-19T22:32:04.947Z" },
     { url = "https://files.pythonhosted.org/packages/6d/78/097c0798b1dab9f8affe73da9642bb4500e098cb27fd8dc9724816ac747b/ruff-0.15.2-py3-none-win_arm64.whl", hash = "sha256:cabddc5822acdc8f7b5527b36ceac55cc51eec7b1946e60181de8fe83ca8876e", size = 10941649, upload-time = "2026-02-19T22:32:18.108Z" },
-]
-
-[[package]]
-name = "seerapi"
-version = "106.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "hishel", extra = ["httpx"] },
-    { name = "httpx" },
-    { name = "seerapi-models" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/14/31/4308255563de7bb37c990a84bd175189062cf6dcfead753cf67d32c97780/seerapi-106.4.0.tar.gz", hash = "sha256:98bb0edb762d3ed679ddc8fe60fd62f4a90b1596158584692bf21ca42f038aa0", size = 12288, upload-time = "2026-06-09T12:11:49.951Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/34/8e91ff0f0d23c675f20ecfbb7c8c6f8706e31a6a145c21cc6d67f89d5aa6/seerapi-106.4.0-py3-none-any.whl", hash = "sha256:5fbb79596643f175aed485f5d0cf497d48dac5ed3f15b0f49ad766fc6b89ffa2", size = 14388, upload-time = "2026-06-09T12:11:50.802Z" },
 ]
 
 [[package]]

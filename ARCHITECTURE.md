@@ -835,6 +835,13 @@ reconstructed inside IronsBot. A change that crosses `seerapi`,
 4. IronsBot consumes the published view through `integrations.seer_data` and
    passes a render-ready view model to its renderer.
 
+The producer repository and the PyPI `seerapi` HTTP client are different
+dependencies. IronsBot's runtime uses `seerapi-models` and the validated local
+publication; it must not restore the unused HTTP client as a parallel data
+access path. Asset and release downloads continue through the application-owned
+HTTP integrations. Dependency removal must be tested with the package actually
+absent, not just removed from pyproject while remaining installed locally.
+
 The consuming repository must not add a second association resolver, raw SWF
 conversion fallback, best-effort text guesser, or legacy-table read merely to
 cover a missing data release. Missing required facts are a release/schema
