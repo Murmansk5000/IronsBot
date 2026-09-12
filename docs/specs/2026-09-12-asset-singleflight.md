@@ -461,3 +461,41 @@ The native probe required an explicit Windows fontconfig directory, so this is
 not proof that default Windows deployment font discovery works. Linux fonts,
 full renderer coverage, validated producer output and live deployment remain
 separate gates. No runtime dependency or new production module was added.
+
+## Real Producer-to-Consumer Build
+
+Ran `uv run python -m scripts.build_seerapi_data_db` in the V5 producer checkout,
+with SEERAPI_DATA_OUTPUT=tmp/v5-release-acceptance/seerapi-data.sqlite and
+IRONSBOT_DATA_EFFECT_ICON_PNG_REQUIRE_CACHED=1. All source loaders used real
+network inputs. The process completed normally and produced 55.71 MiB; SHA256:
+6e3e20c364e67d1ee75e17e05b65abe3441e9c069fb5e564b6df40e253398cb5.
+Quick-check is ok. The database declares schema contract 1 and asset contract 2,
+and loads through the unchanged public DatabaseManager/SeerDatabase validator.
+
+Important limitation: REQUIRE_CACHED alone does not disable conversion. A
+cache-only invocation must also set PNG_RENDER_ENABLED=0. This run had no FFDec
+jar; the Flash loader raised and the coordinator fell back to Unity for the
+whole batch. Output metadata reports 0 Flash PNGs, 2108 Unity PNGs and 4 missing
+icons. Thus this run verifies build/load mechanics, not original Flash icon
+fidelity. The all-batch exception path discards otherwise reusable cached Flash
+results when one uncached icon needs a missing renderer; review this path before
+declaring source-preference acceptance complete.
+
+Manifest revision:
+3bcee795c7d4e7ffb10f32d11478212b984bd705785e0fddced6c1c67bfae13a.
+Asset repository revision remains 1b53a16cfe32d36d921a04fbd8423116c5b1e2e1.
+Only type_matchup is a proven complete scope. Missing manifest rows by kind:
+equip 11, item 3577, mintmark 1, pet_body 13, pet_head 9, sign_buff 5,
+soulmark_icon_png 4, title 11. These counts include optional resources, so they
+are not all fatal. Required head IDs include 2690, 3011, 3083, 3687-3692;
+mintmark 20447 and skin body 1400840 are also missing. The existing consumer
+correctly leaves lineup/pet-info/new-content final caching disabled.
+
+The same six-pet native probe was rerun through SeerRenderSessions using this
+validated producer artifact, bound asset store and bound final cache. No offline
+reader, injected metadata or test-only asset pin was used for that run. Complete,
+partial and empty results remain 490x704 with the previous pixel color counts;
+artifacts and report are in `.tmp/lineup-v5-release-acceptance/`. No final-cache
+files were written under the unproven lineup scope. This closes the local real
+producer/load/lineup-render loop, not all-renderer, Flash-fidelity, Linux or live
+platform acceptance. No remote release, production file or main merge occurred.
