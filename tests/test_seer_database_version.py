@@ -371,6 +371,51 @@ def test_seer_database_rejects_release_without_schema_contract(
     assert data.render_asset_snapshot() is None
 
 
+@pytest.mark.parametrize(
+    ("metadata_key", "metadata_value", "error_field"),
+    [
+        (
+            "render_asset_manifest_complete_scopes",
+            "not-json",
+            "render_asset_manifest_complete_scopes",
+        ),
+        (
+            "render_asset_manifest_asset_repository_revision",
+            "not-a-commit",
+            "render asset manifest",
+        ),
+    ],
+)
+def test_seer_database_rejects_invalid_publication_metadata(
+    tmp_path: Path,
+    metadata_key: str,
+    metadata_value: str,
+    error_field: str,
+) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, generated_at = _create_release(source, ("pet_info",))
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    databases.load_from_file("seerapi", str(source))
+    expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
+    original_snapshot = data.render_asset_snapshot()
+    assert original_snapshot is not None
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE ironsbot_metadata SET value=:value WHERE key=:key"),
+            {"key": metadata_key, "value": metadata_value},
+        )
+
+    with pytest.raises(SeerApiReleaseContractError, match=error_field):
+        databases.load_from_file("seerapi", str(source))
+
+    assert data.version() == expected_version
+    assert data.render_asset_snapshot() is original_snapshot
+    databases.close()
+    engine.dispose()
+
+
 def _update_asset_release(engine: Engine, revision: str, manifest: str) -> None:
     with engine.begin() as connection:
         connection.execute(

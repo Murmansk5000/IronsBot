@@ -1407,6 +1407,18 @@ diff 检查通过。该接口只表达发布事实完整性，不涉及平台或
 `complete=False` 回复，并明确标注价格数据不完整，不再静默显示成“没有售价”。
 皮肤仓库与查询专项 `19 passed`，Ruff、BasedPyright 和 diff 检查通过。
 
+**发布元数据严格验证（2026-09-12）：** schema 版本通过后，`api_metadata`
+行、素材 manifest 范围 JSON、仓库、revision 或 manifest revision 损坏时，
+加载器不再静默返回“未知版本/无可用素材”，而是拒绝候选发布并保留
+上一份有效快照。`DatabaseManager.register()` 创建的全空内存占位库仍明确表示
+“尚未加载”，不与损坏发布混淆。数据库生命周期专项 `18 passed`，Ruff、
+BasedPyright、compileall 和 diff 检查通过；无 QQ 身份、配置、依赖或数据表变更。
+
+**纯缓存榜单时间语义（2026-09-12）：** 额度耗尽后的榜单玩家查询现在与
+其他玩家详情一样输出严格“获取时间”。过期名次与缓存的未上榜证明
+不再看起来像当前实时结论；旧名次作为在线定位坐标的行为保持不变。
+榜单玩家与缓存策略专项 `30 passed`，Ruff、BasedPyright 和 diff 检查通过。
+
 **赛季读取失败隔离（2026-09-12）：** target 错误语义。移除
 `SeerDatabase.peak_season_start()` 的全异常转 None：未加载数据库显式报不可用，
 SQLAlchemy 读取故障保留 cause 和日志；仅实际无赛季记录仍返回 None。巅峰详情将

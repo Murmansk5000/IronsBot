@@ -32,6 +32,18 @@ class SeerApiReleaseContractError(ValueError):
             f"期望 {SEERAPI_SCHEMA_CONTRACT_VERSION}，实际 {version!r}"
         )
 
+    @classmethod
+    def invalid_metadata(cls, field: str) -> SeerApiReleaseContractError:
+        return cls(f"SeerAPI 发布数据库元数据无效: {field}")
+
+    @classmethod
+    def missing_api_metadata(cls) -> SeerApiReleaseContractError:
+        return cls.invalid_metadata("api_metadata row")
+
+    @classmethod
+    def invalid_render_manifest(cls) -> SeerApiReleaseContractError:
+        return cls.invalid_metadata("render asset manifest")
+
 
 def validate_published_seerapi_release(engine: Engine) -> None:
     """Reject a staged database that does not meet the consumer contract."""
