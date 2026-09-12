@@ -12,6 +12,7 @@ from weakref import WeakKeyDictionary
 from seerapi_models import ApiMetadataORM, ErrorCodeORM, MintmarkORM, PeakSeasonORM
 from seerapi_models.mintmark import AbilityPartORM, UniversalPartORM
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import col, or_, select
@@ -257,11 +258,12 @@ class SeerDatabase:
         try:
             with self._databases.session(SEERAPI_DB) as session:
                 if session is None:
-                    return None
+                    raise DataUnavailableError("巅峰赛季数据未加载")
                 season = session.get(PeakSeasonORM, 1)
                 return None if season is None else season.start_time
-        except Exception:  # noqa: BLE001
-            return None
+        except SQLAlchemyError as error:
+            logger.warning("failed to read peak season", exc_info=True)
+            raise DataUnavailableError("巅峰赛季数据读取失败") from error
 
     def version(self) -> str:
         """Return the release version cached when the in-memory DB was loaded."""
