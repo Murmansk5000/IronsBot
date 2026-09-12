@@ -360,6 +360,11 @@ def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) 
     source = tmp_path / "seerapi.sqlite"
     engine, _ = _create_release(source, ("peak_pool",))
     with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE skin_image_resolution (skin_id INTEGER PRIMARY KEY, "
+            "head_resource_id INTEGER, body_resource_id INTEGER, "
+            "head_resolution TEXT, body_resolution TEXT, source_pet_id INTEGER)"
+        )
         connection.execute(
             SQLModel.metadata.tables["element_type_combination"].insert(),
             [{"id": 4, "name": "type", "name_en": "type", "primary_id": 4}],
@@ -386,7 +391,11 @@ def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) 
         )
     databases = DatabaseManager()
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
-    slots = (PlayerLineupSlot(pet_id=7, level=100, use_flag=1, skin_id=0),)
+    slots = (
+        PlayerLineupSlot(pet_id=7, level=100, use_flag=1, skin_id=0),
+        PlayerLineupSlot(pet_id=7, level=100, use_flag=1, skin_id=999),
+        PlayerLineupSlot(pet_id=999, level=100, use_flag=1, skin_id=0),
+    )
     try:
         databases.load_from_file("seerapi", str(source))
         with data.read_snapshot() as bound:
@@ -394,6 +403,9 @@ def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) 
             original = resolver.resolve(slots)
             assert original[0].name == "old"
             assert (original[0].resource_id, original[0].type_id) == (1007, 4)
+            assert original[0].complete
+            assert not original[1].complete and original[1].resource_id == 0
+            assert not original[2].complete and original[2].resource_id == 0
             with engine.begin() as connection:
                 connection.exec_driver_sql(
                     "UPDATE pet SET name='new', resource_id=2007"

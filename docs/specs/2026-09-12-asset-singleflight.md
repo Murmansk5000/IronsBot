@@ -404,3 +404,30 @@ This does not validate real pixels or live deployment. Missing lineup facts and
 the separate persistent player reply cache still require completeness review;
 historical replies are not the same cache as bound final-render entries. Phase 4
 remains incomplete and the total remains 4/8.
+
+## Lineup Completeness Admission
+
+Published lineup snapshots explicitly carry completeness. Missing pet rows no
+longer fabricate a portrait resource from the pet ID; missing names, base
+resources, type facts or unresolved skin portraits cannot be complete. The
+private entry preserves this flag. Its renderer returns an image plus a
+completeness result, verifying required head/type assets before writing L3.
+Incomplete facts bypass early cache reads as well. A legitimate empty lineup
+remains complete and cacheable.
+
+The service still sends partial images with an explicit missing-data notice,
+but only complete renders replace the persistent player reply. Existing complete
+historical replies are left untouched. Exceptions while downloading materials
+continue through the error path without writing either cache. Private renderer
+source fingerprint changes invalidate earlier final-render entries; existing
+persistent historical replies are not retroactively certified or migrated.
+
+Verified: 34 public publication/extension/architecture/size tests passed in
+13.70s (2 existing ORM warnings), and all 41 private tests in 1.50s. Tests cover
+missing pet/skin snapshots, flag propagation, absent facts/resources/types/head
+images/type images, recovery and subsequent cache hits, bypass of existing cache
+for incomplete facts, asset exceptions, valid empty lineups, and persistence
+admission with an existing historical reply. Both repositories pass Ruff and
+compileall; changed production paths pass BasedPyright (0 errors/warnings).
+No new module, dependency, schema or TOML field. Real pixel/material/deployment
+acceptance remains outstanding; total verified phases stay at 4/8.
