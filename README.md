@@ -301,7 +301,7 @@ feature/组合，未知引用、空组合和循环引用都会阻止启动。为
 
 TOML 对已识别字段严格加载：既非内置也未被消息动作声明的 feature、未知 B站账号引用、
 未知 Seer 展示区块和残缺 AI action 都会阻止启动，并在校验错误中给出准确路径。
-无法识别的多余字段会在加载时按完整路径告警并被忽略；已识别字段的校验错误仍会阻止启动。
+无法识别的多余字段会直接阻止启动，并在校验错误中列出完整路径；
 [config.example.toml](config.example.toml) 是当前唯一权威示例。
 
 在 `group_policy` 或 `user_policy` 的目标项中写入 `blacklist`，可永远静默忽略该
@@ -416,6 +416,12 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 `0` 将该榜的查找范围上限设为零，不是无限制。它不是功能开关；缓存及结果核验另有路径，不能据此保证零网络请求。
 例如，在现有 `[seer.rank]` 表内添加 `lookup_limits = { "群星牌" = 10000 }`，只为群星牌设置范围；不添加该行则保持默认空映射。
 此项不设置全服榜展示行数，不调整后台 `page_refresh` 预热范围，也不改变群开关或权限。全服榜展示行数仍由 `display_limit`、`display_limits`、`max_display_limit` 等展示配置控制。
+
+### 图片口令显式配置
+
+图片口令通过 `messaging.sendpic.configs` 显式声明，默认列表为空；程序不再附带默认图片口令或内置固定图片。
+单图使用 `mode = "single"` 与 `image_file`，图库使用 `mode = "indexed"`、`image_dir` 与
+`image_filename_template`。图片仍使用已配置的后端与路径，配置声明不绕过原有功能和群组/用户权限。
 
 ## 数据与缓存
 
