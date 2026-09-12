@@ -134,10 +134,77 @@ def is_new_content_category_auto_expanded(
     category: NewContentCategory,
     max_items: int,
 ) -> bool:
-    """Expand short root-menu categories; zero disables automatic expansion."""
+    """Expand root previews with a bounded number of relevant additions."""
 
-    item_count = len(snapshot.items_for(category))
-    return 0 < item_count <= max_items
+    additions = _new_content_category_preview_additions(snapshot, category)
+    return 0 < len(additions) <= max_items
+
+
+def new_content_category_preview_items(
+    snapshot: NewContentSnapshot,
+    category: NewContentCategory,
+    max_items: int,
+) -> tuple[NewContentItem, ...]:
+    """Return bounded additions suitable for the root menu."""
+
+    if max_items <= 0:
+        return ()
+    return _new_content_category_preview_additions(snapshot, category)[:max_items]
+
+
+def _new_content_category_preview_additions(
+    snapshot: NewContentSnapshot,
+    category: NewContentCategory,
+) -> tuple[NewContentItem, ...]:
+    additions = tuple(
+        item for item in snapshot.items_for(category) if item.change_kind == "added"
+    )
+    if category != "skill":
+        return additions
+    return _existing_pet_skill_additions(snapshot, additions)
+
+
+def _existing_pet_skill_additions(
+    snapshot: NewContentSnapshot,
+    skills: tuple[NewContentItem, ...],
+) -> tuple[NewContentItem, ...]:
+    new_pets = tuple(
+        item for item in snapshot.items_for("pet") if item.change_kind == "added"
+    )
+    new_pet_ids = {item.entity_id for item in new_pets}
+    new_pet_names = {item.name.strip() for item in new_pets if item.name.strip()}
+    return tuple(
+        skill
+        for skill in skills
+        if _skill_belongs_to_existing_pet(skill, new_pet_ids, new_pet_names)
+    )
+
+
+def _skill_belongs_to_existing_pet(
+    skill: NewContentItem,
+    new_pet_ids: set[int],
+    new_pet_names: set[str],
+) -> bool:
+    pets = skill.payload.get("pets")
+    if not isinstance(pets, list) or not pets:
+        return False
+    for pet in pets:
+        if not isinstance(pet, dict):
+            continue
+        raw_id = pet.get("id")
+        pet_id = (
+            raw_id
+            if isinstance(raw_id, int) and not isinstance(raw_id, bool)
+            else 0
+        )
+        pet_name = str(pet.get("name", "")).strip()
+        if pet_id:
+            if pet_id not in new_pet_ids:
+                return True
+            continue
+        if pet_name and pet_name not in new_pet_names:
+            return True
+    return False
 
 
 def format_new_content_category_count(

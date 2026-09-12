@@ -18,15 +18,15 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v3
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
 
             - name: Setup Docker
-              uses: docker/setup-buildx-action@v2
+              uses: docker/setup-buildx-action@v4
 
             - name: Setup Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v7
               with:
                   python-version: "3.10"
 
@@ -44,26 +44,13 @@ jobs:
 
             - name: Upload dependency audit evidence
               if: ${{ always() }}
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: dependency-audit-${{ github.sha }}
                   path: |
                       ${{ runner.temp }}/ironsbot-runtime-requirements.txt
                       ${{ runner.temp }}/ironsbot-dependency-audit.json
                   if-no-files-found: warn
-
-            - name: Login to GitHub Container Registry
-              uses: docker/login-action@v2
-              with:
-                  registry: ghcr.io
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Login to Docker Hub
-              uses: docker/login-action@v2
-              with:
-                  username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
 
             - name: Resolve Fork Version
               id: fork_version
@@ -94,7 +81,7 @@ jobs:
                   echo "fork_version=${base_version}.${custom_revision}" >> "$GITHUB_OUTPUT"
 
             - name: Generate Tags
-              uses: docker/metadata-action@v4
+              uses: docker/metadata-action@v6
               id: metadata
               with:
                   images: |
@@ -116,16 +103,86 @@ jobs:
                   APP_CONFIG_PATH: config.example.toml
               run: python -m uv run --no-sync python scripts/generate_poke_command_introductions.py
 
+            - name: Build runtime candidate
+              id: candidate
+              uses: docker/build-push-action@v7
+              with:
+                  context: .
+                  load: true
+                  push: false
+                  tags: ironsbot-ci:${{ github.sha }}
+                  labels: ${{ steps.metadata.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+
+            - name: Smoke test runtime candidate
+              shell: bash
+              run: |
+                  smoke_config="$RUNNER_TEMP/ironsbot-smoke.toml"
+                  sed 's/^check_on_startup = true$/check_on_startup = false/' \
+                    config.example.toml > "$smoke_config"
+                  docker run --rm --network none \
+                    -e APP_CONFIG_PATH=/config/ironsbot.toml \
+                    -v "$smoke_config:/config/ironsbot.toml:ro" \
+                    "ironsbot-ci:${GITHUB_SHA}" \
+                    sh -c '
+                      regular="$(fc-match -f "%{file}" "Source Han Sans CN:style=Regular")"
+                      bold="$(fc-match -f "%{file}" "Source Han Sans CN:style=Bold")"
+                      test -f "$regular"
+                      test -f "$bold"
+                      test "$regular" != "$bold"
+                      python -c "from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()"
+                    '
+
+            - name: Enforce runtime candidate size budgets
+              shell: bash
+              env:
+                  MAX_APP_KIB: "8192"
+                  MAX_SITE_PACKAGES_KIB: "131072"
+                  MAX_FONTS_KIB: "24576"
+              run: |
+                  inventory="$RUNNER_TEMP/ironsbot-candidate-runtime-size-kib.txt"
+                  docker run --rm --network none --entrypoint sh \
+                    "ironsbot-ci:${GITHUB_SHA}" \
+                    -c 'du -sk /app; du -sk /usr/local/lib/python*/site-packages; du -sk /usr/share/fonts' \
+                    | tee "$inventory"
+                  app_kib="$(awk '$2 == "/app" {sum += $1} END {print sum + 0}' "$inventory")"
+                  site_packages_kib="$(awk '$2 ~ /\/site-packages$/ {sum += $1} END {print sum + 0}' "$inventory")"
+                  fonts_kib="$(awk '$2 == "/usr/share/fonts" {sum += $1} END {print sum + 0}' "$inventory")"
+                  test "$app_kib" -le "$MAX_APP_KIB" || { echo "application payload exceeds ${MAX_APP_KIB} KiB: ${app_kib} KiB" >&2; exit 1; }
+                  test "$site_packages_kib" -le "$MAX_SITE_PACKAGES_KIB" || { echo "runtime dependencies exceed ${MAX_SITE_PACKAGES_KIB} KiB: ${site_packages_kib} KiB" >&2; exit 1; }
+                  test "$fonts_kib" -le "$MAX_FONTS_KIB" || { echo "font payload exceeds ${MAX_FONTS_KIB} KiB: ${fonts_kib} KiB" >&2; exit 1; }
+
+            - name: Upload candidate size evidence
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v7
+              with:
+                  name: candidate-size-${{ github.sha }}
+                  path: ${{ runner.temp }}/ironsbot-candidate-runtime-size-kib.txt
+                  if-no-files-found: warn
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v4
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Login to Docker Hub
+              uses: docker/login-action@v4
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
             - name: Build and Publish
               id: build
-              uses: docker/build-push-action@v4
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   push: true
                   tags: ${{ steps.metadata.outputs.tags }}
                   labels: ${{ steps.metadata.outputs.labels }}
                   cache-from: type=gha
-                  cache-to: type=gha,mode=max
 
             - name: Record published image size
               shell: bash
@@ -154,7 +211,7 @@ jobs:
                   } >> "$GITHUB_STEP_SUMMARY"
 
             - name: Upload image size evidence
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: image-size-${{ github.sha }}
                   path: |

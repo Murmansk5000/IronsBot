@@ -100,7 +100,7 @@ activity = 70
 db_sync = 80
 team_audit = 90
 # EN: Broad fuzzy Seer matchers are intentionally late.
-# ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢“技能石”等固定图片/文本指令。
+# ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢配置的图片/文本指令。
 seer_mintmark = 100
 pet_config = 109
 seer_pet = 110
@@ -595,13 +595,17 @@ enabled = true
 # 每个键必须是已定义的 B 站账号别名。分类正则匹配完整动态文本；配置分类后，
 # 该账号不再套用全局抽奖屏蔽规则，请在此定义需要静音的内容。
 #
-# [bilibili.category_subscriptions.accounts.example_account]
-# label = "示例账号"
-# default_muted_categories = ["lottery"]
-#
-# [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
-# label = "抽奖与中奖"
-# patterns = ["恭喜", "中奖", "抽奖结果"]
+[bilibili.category_subscriptions.accounts.example_account]
+label = "示例账号"
+default_muted_categories = ["lottery", "winning"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.lottery]
+label = "抽奖"
+patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.winning]
+label = "中奖"
+patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 
 [messaging]
 # Default: []
@@ -786,23 +790,21 @@ cnb_repo = ""
 # Example: "data/sendpic"
 local_root = "sendpic"
 
-# EN: Packaged single-image commands are enabled by default. Each item uses one
-# common schema: mode="single" requires image_file; mode="indexed" requires
-# image_dir and image_filename_template. Set an existing id to enabled=false
-# to disable it, or append custom commands below.
-# ZH: 内置单图命令默认启用。所有图片命令共用一套配置：mode="single"
-# 需要 image_file；mode="indexed" 需要 image_dir 和 image_filename_template。
-# 用同 ID 配置 enabled=false 可关闭内置命令，也可在下面添加自定义命令。
+# EN: Image commands are empty by default. Every command uses one schema:
+# mode="single" requires image_file; mode="indexed" requires image_dir and
+# image_filename_template. Local paths are relative to local_root.
+# ZH: 图片命令默认为空。所有图片命令共用一套配置：mode="single" 需要
+# image_file；mode="indexed" 需要 image_dir 和 image_filename_template。
+# 本地图片路径相对于 local_root。
 #
 # [[messaging.sendpic.configs]]
-# id = "example-gallery"
+# id = "example-image"
 # enabled = true
 # backend = "local"
-# command = "表情"
-# aliases = ["表情包"]
-# mode = "indexed"
-# image_dir = "memes"
-# image_filename_template = "{index}.png"
+# command = "示例图片"
+# aliases = ["图片示例"]
+# mode = "single"
+# image_file = "example.png"
 # message_template = "{image}"
 
 # EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
@@ -1017,8 +1019,8 @@ timeout_seconds = 15.0
 [seer.team]
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
-# Default: ["basic", "resource"]; EN: Enabled team sections. ZH: 战队展示区块。
-sections = ["basic", "resource"]
+# Default: ["basic", "resource", "text"]; EN: Enabled team sections. ZH: 战队展示区块。
+sections = ["basic", "resource", "text"]
 
 [seer.mintmark]
 # Default: true
@@ -1206,6 +1208,19 @@ rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "�
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
 refresh_stale_after_hours = 336
+
+[seer.new_content]
+# Default: []
+# EN: Root-menu categories that may preview newly added entries even when the
+# category has more entries than auto_expand_max_items. Focused category menus
+# still show every addition and correction.
+# ZH: 根菜单中允许预览新增项目的分类；即使该分类项目总数超过自动展开上限也可预览。
+# 分类详情仍显示全部新增和修改。技能预览会排除本周新增精灵自带的技能。
+expanded_categories = []
+# Default: 5
+# EN: Maximum additions shown for each root-menu preview; 0 disables previews.
+# ZH: 每个根菜单分类最多预览的新增项目数；设为 0 关闭预览。
+auto_expand_max_items = 5
 
 [seer.season]
 # Default: "群星牌赛季"
@@ -1462,6 +1477,14 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
+# Default: 90.0
+# EN: Maximum time to wait for a Watchtower handoff before starting the current image.
+# ZH: 等待 Watchtower 完成交接的最长秒数；超时后按下方策略处理。
+handoff_timeout_seconds = 90.0
+# Default: true
+# EN: Continue with the current image if handoff fails or times out.
+# ZH: 交接失败或超时时继续启动当前镜像；设为 false 则保持严格等待。
+fallback_to_current_image_on_handoff_failure = true
 
 [operations.private_extensions]
 # Optional private extension package. The main Unraid/Docker image remains

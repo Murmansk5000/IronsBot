@@ -12,8 +12,9 @@ Dockerfile/build context and the existing release measurement step.
 - Root LICENSE/LICENSING files are excluded and not copied. Retain them explicitly
   in the runtime, alongside existing third-party notices. Slimming must not strip
   distribution notices. This does not claim a complete licensing audit.
-- The five largest bundled PNGs total about 14 MB and remain used assets. Do not
-  delete them or required htmlkit/SAA dependencies without a replacement path.
+- The five deployer-specific sendpic PNGs total about 14 MB. Move their command
+  ownership to explicit TOML local/CNB configuration, then remove the packaged
+  files and the private `builtin` backend; retain required htmlkit/SAA dependencies.
 - Extend the existing digest-pinned image-size artifact with a runtime directory
   inventory (KiB). Run only du in a network-disabled disposable container;
   never start the bot or read deployment configuration. This distinguishes code,
@@ -111,3 +112,108 @@ refetches, not ignored packages. Full public suite after the two dependency
 updates: 2924 passed, 319 existing warnings, 131.85 seconds. Full Ruff,
 BasedPyright, compileall and diff check passed. Local main remains 55a39fd1;
 no fetch, merge, production edit or push was performed.
+
+## Candidate Runtime Smoke Gate
+
+The release workflow now builds and loads a local candidate before either
+registry login or publication. In a network-isolated container it runs the real
+entrypoint with a read-only copy of `config.example.toml`, changing only
+`check_on_startup` to false so the check does not depend on a mounted Docker
+socket. The command imports NoneBot and `seerapi_models` and parses the complete
+configuration. Only after that succeeds does the workflow log in and publish
+from the same context, labels and BuildKit cache. The final runtime image gains
+no files or dependencies from this gate.
+
+Workflow and startup-preflight tests pass 21 cases; Ruff and diff checks pass.
+This is a verified CI contract, not evidence that the candidate has already run:
+the local Docker 29.5.2 client has no connected Linux daemon. A future release
+run must supply the actual container result and size artifacts before Phase 7
+can claim Linux runtime acceptance.
+
+## Frozen Runtime Footprint Audit
+
+The frozen `--no-dev` export contains 59 packages. Installing that exact export
+into an isolated Python 3.10 Windows environment occupies about 64.49 MiB in
+`site-packages`; this is diagnostic evidence rather than a Linux image-size
+measurement. The largest runtime packages are htmlkit's native rendering core
+(about 16.06 MiB), Pillow (about 13.96 MiB), SQLAlchemy (about 8.37 MiB),
+Pydantic Core (about 5.37 MiB), Pygments (about 4.27 MiB), and resvg-py (about
+1.89 MiB).
+
+Every direct runtime dependency has a current production owner: NoneBot and the
+OneBot adapter provide the active platform runtime; FastAPI/httpx provide the
+configured drivers; htmlkit, Pillow and resvg-py implement image rendering;
+Hishel implements the shared HTTP cache; APScheduler owns scheduled work; SAA
+encodes outgoing image messages; qrcode generates Bilibili login QR images;
+and seerapi-models/SQLAlchemy read the published database. Therefore this audit
+removes no direct dependency. Deleting any of these packages would remove an
+active feature or merely move the same dependency behind an implicit import.
+
+Development-only `nodejs_wheel`, BasedPyright, pytest, Ruff and audit tooling do
+not occur in the frozen production export. The Dockerfile already exports with
+`--no-dev`, installs only that wheel set, and removes pip/setuptools/wheel from
+the final stage. The five deployer-specific sendpic PNGs and their hard-coded
+defaults have now been removed, reducing the application payload by about
+13.65 MiB. Fixed-image support remains available through explicit TOML `local`
+or `cnb` commands; the old private `builtin` backend is intentionally rejected.
+
+Pinned Seer render assets remain owned by the producer publication. The consumer
+derives both GitHub Raw and jsDelivr URLs from the exact repository and commit
+revision published by SeerAPI, trying the CDN only after Raw fails. It never
+embeds those official assets in the application image and never falls back to a
+mutable branch. The two native render cases previously blocked by Raw network
+failures pass with this route (`2 passed`, real release database and HTML render).
+
+The image previously retained Source Han Sans SC Regular and Bold, about
+31.94 MiB unpacked, from a 90.77 MiB archive. The same official 2.005R release
+provides the Simplified Chinese CN subset: Regular and Bold total about
+16.21 MiB. The Docker build now extracts exactly those two files, reducing the
+projected font layer payload by about 15.73 MiB while retaining both weights and
+the Chinese glyph family used by every template. Candidate smoke resolves both
+styles through fontconfig and requires distinct files. The upstream
+`LICENSE.txt` is copied to `/usr/share/doc/source-han-sans/LICENSE.txt`.
+
+Together with externalized sendpic assets, the projected application-plus-font
+payload reduction is about 29.38 MiB. This remains a source/archive calculation;
+only the digest-pinned Linux CI inventory may report the actual image delta.
+
+The previously floating `python:3.10` and `python:3.10-slim` tags had moved to
+Debian Trixie without a repository change. Both stages now explicitly select
+Bookworm (`python:3.10-bookworm` and `python:3.10-slim-bookworm`), preventing a
+future Debian release switch from changing ABI and size implicitly. The tags
+remain patch-updatable for base security fixes; the release workflow records the
+resolved final digest and layer inventory for every publication. At the audited
+2026-09-13 manifests, the amd64 compressed slim base is about 45.05 MiB versus
+45.75 MiB for Trixie, but the 0.70 MiB difference is secondary to matching the
+builder and runtime ABI.
+
+The candidate image now has a pre-publication directory budget gate. It records
+the same isolated `du` inventory used for diagnosis and rejects `/app` above
+8 MiB, Python `site-packages` above 128 MiB, or `/usr/share/fonts` above 24 MiB.
+These are intentionally separate budgets: deployer content cannot hide inside
+the application layer, a dependency increase cannot be mistaken for font growth,
+and font changes must preserve the explicit two-weight contract. Evidence is
+uploaded even when the gate fails, and registry login remains after the gate.
+Shell tests cover each exact boundary and each independent overflow; actual Linux
+values still require the first candidate CI run.
+
+## Release Action Runtime Refresh
+
+The publication workflows now use one current first-party action contract per
+owner: checkout, setup-python, upload-artifact and build-push use v7;
+setup-buildx and login use v4; metadata uses v6. This removes the Docker release
+workflow's older Node action runtimes without adding anything to the application
+image. A repository-wide workflow test rejects a future downgrade or mixed major
+for these action owners. Third-party release and Docker Hub description actions
+remain independently versioned and are not inferred from this matrix.
+
+This is a workflow compatibility update, not candidate execution evidence. The
+same Linux candidate smoke, frozen dependency audit, three directory budgets and
+digest-pinned publication inventory remain the acceptance gates.
+
+Verification on 2026-09-13: all workflow YAML files parsed successfully; the
+Docker release workflow suite passed 17 tests; Ruff and `git diff --check`
+passed. The exact frozen Python 3.10 audit covered 59 runtime distributions and
+reported zero known vulnerabilities and zero skipped distributions. Repeated
+advisory-cache decode warnings caused network refetches and did not suppress
+audit input or findings. No workflow was dispatched and no image was published.

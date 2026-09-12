@@ -100,7 +100,7 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             routing_matcher=lambda text, _context: is_lucky_skin_watch_exact(
                 text, commands=LUCKY_SKIN_WATCH_LIST_COMMANDS
             ),
-            description="查看当前 QQ 的幸运橱窗关注列表",
+            description="查看当前账号的幸运橱窗关注列表",
             features_any=("lucky_skin_window",),
             show_in_poke=True,
         ),
@@ -140,7 +140,7 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             routing_matcher=lambda text, _context: is_lucky_skin_watch_exact(
                 text, commands=LUCKY_SKIN_WATCH_CLEAR_COMMANDS
             ),
-            description="清空当前 QQ 的幸运橱窗关注列表",
+            description="清空当前账号的幸运橱窗关注列表",
             features_any=("lucky_skin_window",),
         ),
         CommandContract(

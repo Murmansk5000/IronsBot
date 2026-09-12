@@ -14,7 +14,6 @@ from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import (
     PicConfig,
     SendpicBehaviorConfig,
-    default_sendpic_configs,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
@@ -51,6 +50,17 @@ def _gallery(id_: str, name: str, aliases: set[str] | None = None) -> PicConfig:
     )
 
 
+def _single(id_: str, name: str, aliases: set[str] | None = None) -> PicConfig:
+    return PicConfig(
+        id=id_,
+        backend="local",
+        command=name,
+        aliases=aliases or set(),
+        mode="single",
+        image_file=f"{id_}.png",
+    )
+
+
 def _service(starts: tuple[str, ...] = ("/", "")) -> tuple[SendpicService, Mock]:
     backend = Mock(
         count=AsyncMock(return_value=3), get_file=AsyncMock(return_value=b"png")
@@ -58,7 +68,7 @@ def _service(starts: tuple[str, ...] = ("/", "")) -> tuple[SendpicService, Mock]
     return SendpicService(
         SendpicBehaviorConfig(
             configs=[
-                *default_sendpic_configs(),
+                _single("study-table", "学习力", {"学习力表", "学习力表格"}),
                 _gallery("memes", "表情", {"表情包", "Gallery"}),
                 _gallery("long", "表情包1"),
             ]

@@ -59,6 +59,7 @@ DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
 DEFAULT_ASSET_NEGATIVE_TTL_SECONDS = 300
 EXAMPLE_BILI_ACCOUNT_UID = 912345678
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
+DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS = 90.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
 _REFRESH_TTL_SECONDS = 120.0
@@ -74,6 +75,7 @@ DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 240
 DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 8.0
 DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 12.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
+DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
@@ -126,6 +128,11 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.watchtower_image == "containrrr/watchtower:latest"
     assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
+    assert (
+        docker_update.handoff_timeout_seconds
+        == DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS
+    )
+    assert docker_update.fallback_to_current_image_on_handoff_failure
     assert docker_update.registry_username == ""
     assert docker_update.registry_token == ""
 
@@ -251,6 +258,21 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert config.times == []
 
 
+def _assert_example_bili_category_subscriptions(config: Settings) -> None:
+    account = config.bilibili.category_subscriptions.accounts["example_account"]
+    assert account.default_muted_categories == ["lottery", "winning"]
+    assert account.categories["lottery"].label == "抽奖"
+    assert account.categories["winning"].label == "中奖"
+
+
+def _assert_example_new_content(config: Settings) -> None:
+    assert config.seer.new_content.expanded_categories == []
+    assert (
+        config.seer.new_content.auto_expand_max_items
+        == DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS
+    )
+
+
 def test_example_config_parses() -> None:
     config = load_settings(ROOT / "config.example.toml")
 
@@ -273,6 +295,7 @@ def test_example_config_parses() -> None:
     assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == ["example_account"]
     assert config.bilibili.push.modes == {}
+    _assert_example_bili_category_subscriptions(config)
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
@@ -295,6 +318,7 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
+    _assert_example_new_content(config)
     assert config.operations.data_sync.on_startup
     _assert_example_bot_routing(config)
     assert not config.operations.data_sync.startup_trigger_remote_build

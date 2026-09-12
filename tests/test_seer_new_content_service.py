@@ -11,9 +11,11 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentService,
+    NewContentSnapshot,
     NewContentSnapshotChangedError,
     format_new_content_category_count,
     format_new_content_item_description,
+    new_content_category_preview_items,
 )
 
 if TYPE_CHECKING:
@@ -155,6 +157,68 @@ def test_category_count_separates_additions_and_modifications() -> None:
     assert format_new_content_category_count(items) == "1 项新增｜2 项修改"
     assert format_new_content_category_count(items[:1]) == "1 项新增"
     assert format_new_content_category_count(items[1:]) == "2 项修改"
+
+
+def test_root_preview_keeps_additions_and_skips_new_pet_skills() -> None:
+    new_pet = NewContentItem("pet", 100, "本周精灵", 100, {}, "added")
+    new_pet_skill = NewContentItem(
+        "skill",
+        1,
+        "本周精灵自带技能",
+        1,
+        {"pets": [{"id": 100, "name": "本周精灵"}]},
+        "added",
+    )
+    existing_pet_skill = NewContentItem(
+        "skill",
+        2,
+        "旧精灵新增技能",
+        2,
+        {"pets": [{"id": 200, "name": "旧精灵"}]},
+        "added",
+    )
+    shared_skill = NewContentItem(
+        "skill",
+        3,
+        "新旧精灵共用技能",
+        3,
+        {
+            "pets": [
+                {"id": 100, "name": "本周精灵"},
+                {"id": 200, "name": "旧精灵"},
+            ]
+        },
+        "added",
+    )
+    modified_skill = NewContentItem(
+        "skill",
+        4,
+        "技能修正",
+        4,
+        {"pets": [{"id": 200, "name": "旧精灵"}]},
+        "modified",
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260911",
+        weekly_cycle="2026-09-11",
+        items=(
+            new_pet,
+            new_pet_skill,
+            existing_pet_skill,
+            shared_skill,
+            modified_skill,
+        ),
+    )
+
+    assert new_content_category_preview_items(snapshot, "skill", 5) == (
+        existing_pet_skill,
+        shared_skill,
+    )
+    assert new_content_category_preview_items(snapshot, "skill", 1) == (
+        existing_pet_skill,
+    )
+    assert new_content_category_preview_items(snapshot, "skill", 0) == ()
 
 
 def test_current_content_version_uses_shanghai_date_not_baseline() -> None:

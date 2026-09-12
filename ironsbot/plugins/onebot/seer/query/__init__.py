@@ -41,7 +41,6 @@ def _install(
     settings: Settings,
     resources: ApplicationResources,
 ) -> None:
-    _ = settings
     from .commands.install import install
     from .group import SeerMatcherGroup
 
@@ -53,6 +52,8 @@ def _install(
             resources.commands,
             resources.player_id_resolver,
             resources.sendpic.exact_command_texts,
+            frozenset(settings.seer.new_content.expanded_categories),
+            settings.seer.new_content.auto_expand_max_items,
         )
     )
 

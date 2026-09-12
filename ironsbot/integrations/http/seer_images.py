@@ -52,6 +52,10 @@ _PINNED_ASSET_PATHS: dict[ImageKind, tuple[str, ...]] = {
     "suit": ("newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png",),
     "title": ("newseer/assets/art/ui/assets/achieve/title/{}.png",),
 }
+_PINNED_ASSET_ROOTS = (
+    "https://raw.githubusercontent.com/{repository}/{revision}/",
+    "https://cdn.jsdelivr.net/gh/{repository}@{revision}/",
+)
 _FALLBACK_KINDS = frozenset({"mintmark", "pet_body", "pet_head"})
 _FALLBACK_SIZES: dict[ImageKind, int] = {
     "mintmark": 96,
@@ -134,11 +138,18 @@ class HttpSeerImageSource:
             return tuple(template.format(key) for template in _URLS[kind])
         if snapshot is None:
             raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
-        root = (
-            "https://raw.githubusercontent.com/"
-            f"{snapshot.repository}/{snapshot.revision}/"
+        roots = tuple(
+            template.format(
+                repository=snapshot.repository,
+                revision=snapshot.revision,
+            )
+            for template in _PINNED_ASSET_ROOTS
         )
-        return tuple(f"{root}{path.format(key)}" for path in paths)
+        return tuple(
+            f"{root}{path.format(key)}"
+            for path in paths
+            for root in roots
+        )
 
     async def fetch_url(self, url: str) -> bytes:
         try:

@@ -1650,6 +1650,54 @@ SQL/HTTP/渲染，OneBot 编码与受限平台测试传递同一图片字节。�
 skip，不用模拟素材替代。见 capability Spec 的 Native Published Type Query Smoke；
 其余素材范围、Linux 镜像和真实 QQ 发送仍待验收，不增加阶段完成数。
 
+2026-09-13：使用完成最终 schema 封口的真实 SeerAPI 产物执行七类原生查询矩阵。
+属性、竞技池、专家池、精灵资料和私有阵容 5 类通过；巅峰投票与竞技精灵榜仅因
+GitHub Raw 官方素材连接失败而明确失败，未生成图片或缓存伪成功。整套耗时 14 分钟，
+不因外部站点波动重复全矩阵。Docker 29.5.2 客户端可用，但本机 Linux daemon 未运行，
+因此仍不声明真实镜像启动验收。
+
+同日后续将不可变素材下载扩展为 GitHub Raw 与 jsDelivr 双入口；两者都由同一个
+SeerAPI 发布的仓库名和 commit revision 生成，不复制素材，也不回退到可变 main。
+此前失败的巅峰投票与竞技精灵榜真实原生用例定向复测 `2 passed`，至此七类真实发布
+渲染均已有通过证据。相关素材、数据库和渲染专项 `57 passed`，最终公共全量回归
+`3141 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过；Linux
+镜像与真实平台发送仍未验收。
+
+共享 service 的命令说明、AI 分类提示和 B站失败通知不再写死 QQ/OneBot 名称，改用
+当前账号/平台语义；AST 守卫禁止 service 用户文案重新出现适配器名称。OneBot 插件
+自身的 QQ 文案保留。需要 QQ 号、直接 @ 或绑定且目标平台 API 无法表达的操作继续按
+平台能力延期规则留到最后，不以虚构映射阻塞其他 Phase 7 验收。
+
+2026-09-13：Docker 发布增加候选镜像门。工作流先本地构建并加载候选镜像，在无网络、
+只读示例配置下通过真实 entrypoint 执行配置解析和核心依赖导入；成功后才登录仓库并
+从同一上下文、标签和 BuildKit 缓存发布。该门不向最终镜像增加文件或依赖。工作流与
+启动预检专项 `21 passed`；本机仍无 Linux daemon，因此只证明 CI 契约，不能提前把
+真实镜像运行标为完成。
+
+2026-09-13：冻结生产依赖复核为 59 个包；隔离 Python 3.10 Windows 环境展开约
+64.49 MiB。逐项导入与所有权审计未发现可安全删除的直接运行依赖，开发用 Node、
+BasedPyright、pytest、Ruff 和审计工具均未进入生产导出。五张约 13.65 MiB 的固定图片
+属于部署者内容而非 SeerAPI 官方发布素材，已连同硬编码默认命令和专用 `builtin`
+后端移出程序包；通用图片命令只接受 TOML 显式配置的 `local/cnb` 后端。Linux 层大小
+仍以候选镜像 CI 产物为准，本地源码差额不冒充镜像测量结果。收口后公共全量回归
+`3142 passed, 7 skipped`，Ruff、BasedPyright、compileall 与差异检查通过。
+
+同轮将 Docker 字体从 Source Han Sans SC 泛 CJK Regular/Bold 改为官方同版本 CN 子集
+Regular/Bold，未压缩载荷由约 31.94 MiB 降至 16.21 MiB；候选 smoke 新增 fontconfig
+双字重及不同文件校验，并把上游 `LICENSE.txt` 保留到镜像文档目录。连同固定图片收口，
+预计应用与字体载荷共减少约 29.38 MiB；实际 Linux 镜像差额仍等待 CI 产物，不提前
+记为 Phase 7 完成。
+
+基础镜像审计确认浮动 `python:3.10-slim` 已从历史发行版迁到 Debian Trixie。构建与
+运行阶段现显式统一为 Bookworm，避免无代码提交时发生发行版、ABI 和体积漂移；标签
+继续接收补丁更新，每次发布仍以解析后的最终 digest 和层清单留证。审计时 amd64
+Bookworm/Trixie 压缩基础层约为 45.05/45.75 MiB，差异约 0.70 MiB。
+
+候选镜像现于仓库登录和发布前执行分目录硬预算：`/app` 8 MiB、Python 运行依赖
+128 MiB、字体 24 MiB。任一项超限即失败，并通过 `always()` 上传候选清单；四组 shell
+测试覆盖边界值及三个独立超限分支。该门防止后续把部署者素材、依赖增长或字体增长
+混成一个总数，也不把未运行的 CI 契约冒充实际镜像证据。
+
 ## 工作项登记模板
 
 每次开始一个小任务，先在任务说明或 PR 描述中填以下内容；完成时补充真实证据：

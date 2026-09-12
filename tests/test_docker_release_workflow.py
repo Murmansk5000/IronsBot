@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,16 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
+
+CURRENT_ACTION_MAJORS = {
+    "actions/checkout": 7,
+    "actions/setup-python": 7,
+    "actions/upload-artifact": 7,
+    "docker/build-push-action": 7,
+    "docker/login-action": 4,
+    "docker/metadata-action": 6,
+    "docker/setup-buildx-action": 4,
+}
 
 
 def _bash() -> str:
@@ -27,6 +38,27 @@ def _steps() -> list[dict]:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["docker"][
         "steps"
     ]
+
+
+def test_workflows_use_current_first_party_action_contracts() -> None:
+    uses_pattern = re.compile(r"uses:\s+([^\s@]+)@v(\d+)\s*$")
+    observed: set[str] = set()
+
+    for workflow in (ROOT / ".github" / "workflows").glob("*.yml"):
+        for line in workflow.read_text(encoding="utf-8").splitlines():
+            match = uses_pattern.search(line)
+            if match is None:
+                continue
+            action, raw_major = match.groups()
+            expected = CURRENT_ACTION_MAJORS.get(action)
+            if expected is None:
+                continue
+            observed.add(action)
+            assert int(raw_major) == expected, (
+                f"{workflow.name}: {action}@v{raw_major} must use v{expected}"
+            )
+
+    assert observed == set(CURRENT_ACTION_MAJORS)
 
 
 def _run_measurement(
@@ -61,6 +93,53 @@ python() { "$WORKFLOW_TEST_PYTHON" "$@"; }
             "RUNNER_TEMP": ".",
             "GITHUB_STEP_SUMMARY": "summary.md",
             "WORKFLOW_TEST_PYTHON": sys.executable,
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=20,
+    )
+
+
+def _run_candidate_budget(
+    tmp_path: Path,
+    *,
+    app_kib: int,
+    site_packages_kib: int,
+    fonts_kib: int,
+) -> subprocess.CompletedProcess:
+    step = next(
+        step
+        for step in _steps()
+        if step["name"] == "Enforce runtime candidate size budgets"
+    )
+    script = tmp_path / "candidate-budget.sh"
+    script.write_text(
+        """docker() {
+    printf '%s\t/app\n' "$BUDGET_TEST_APP_KIB"
+    printf '%s\t/usr/local/lib/python3.10/site-packages\n' \
+        "$BUDGET_TEST_SITE_PACKAGES_KIB"
+    printf '%s\t/usr/share/fonts\n' "$BUDGET_TEST_FONTS_KIB"
+}
+"""
+        + step["run"],
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        [_bash(), "--noprofile", "--norc", "-e", "-o", "pipefail", script.name],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": ".",
+            "GITHUB_SHA": "a" * 40,
+            "MAX_APP_KIB": str(step["env"]["MAX_APP_KIB"]),
+            "MAX_SITE_PACKAGES_KIB": str(step["env"]["MAX_SITE_PACKAGES_KIB"]),
+            "MAX_FONTS_KIB": str(step["env"]["MAX_FONTS_KIB"]),
+            "BUDGET_TEST_APP_KIB": str(app_kib),
+            "BUDGET_TEST_SITE_PACKAGES_KIB": str(site_packages_kib),
+            "BUDGET_TEST_FONTS_KIB": str(fonts_kib),
         },
         capture_output=True,
         text=True,
@@ -124,6 +203,122 @@ def test_release_connects_measurement_to_build_digest_and_artifact() -> None:
     assert "ironsbot-image-history.jsonl" in upload["with"]["path"]
     assert "ironsbot-runtime-size-kib.txt" in upload["with"]["path"]
     assert upload["with"]["if-no-files-found"] == "error"
+
+
+def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None:
+    steps = _steps()
+    candidate = next(
+        step for step in steps if step["name"] == "Build runtime candidate"
+    )
+    smoke = next(
+        step for step in steps if step["name"] == "Smoke test runtime candidate"
+    )
+    ghcr_login = next(
+        step for step in steps if step["name"] == "Login to GitHub Container Registry"
+    )
+    dockerhub_login = next(
+        step for step in steps if step["name"] == "Login to Docker Hub"
+    )
+    publish = next(step for step in steps if step["name"] == "Build and Publish")
+
+    assert candidate["with"]["load"] is True
+    assert candidate["with"]["push"] is False
+    assert candidate["with"]["context"] == publish["with"]["context"] == "."
+    assert candidate["with"]["labels"] == publish["with"]["labels"]
+    assert steps.index(candidate) < steps.index(smoke)
+    assert steps.index(smoke) < steps.index(ghcr_login) < steps.index(publish)
+    assert steps.index(smoke) < steps.index(dockerhub_login) < steps.index(publish)
+    assert "check_on_startup = false" in smoke["run"]
+    assert "docker run --rm --network none" in smoke["run"]
+    assert "$smoke_config:/config/ironsbot.toml:ro" in smoke["run"]
+    assert "--entrypoint" not in smoke["run"]
+    assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Regular"' in smoke["run"]
+    assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Bold"' in smoke["run"]
+    assert 'test "$regular" != "$bold"' in smoke["run"]
+    assert "load_settings()" in smoke["run"]
+
+
+def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> None:
+    steps = _steps()
+    smoke = next(
+        step for step in steps if step["name"] == "Smoke test runtime candidate"
+    )
+    budget = next(
+        step
+        for step in steps
+        if step["name"] == "Enforce runtime candidate size budgets"
+    )
+    upload = next(
+        step
+        for step in steps
+        if step["name"] == "Upload candidate size evidence"
+    )
+    login = next(
+        step for step in steps if step["name"] == "Login to GitHub Container Registry"
+    )
+
+    assert (
+        steps.index(smoke)
+        < steps.index(budget)
+        < steps.index(upload)
+        < steps.index(login)
+    )
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["if-no-files-found"] == "warn"
+    assert "--network none --entrypoint sh" in budget["run"]
+    assert "ironsbot-candidate-runtime-size-kib.txt" in budget["run"]
+
+
+@pytest.mark.parametrize(
+    ("app_kib", "site_packages_kib", "fonts_kib", "expected_ok"),
+    [
+        (8192, 131072, 24576, True),
+        (8193, 1, 1, False),
+        (1, 131073, 1, False),
+        (1, 1, 24577, False),
+    ],
+)
+def test_candidate_size_budget_shell(
+    tmp_path: Path,
+    app_kib: int,
+    site_packages_kib: int,
+    fonts_kib: int,
+    *,
+    expected_ok: bool,
+) -> None:
+    result = _run_candidate_budget(
+        tmp_path,
+        app_kib=app_kib,
+        site_packages_kib=site_packages_kib,
+        fonts_kib=fonts_kib,
+    )
+
+    assert (result.returncode == 0) is expected_ok, result.stdout + result.stderr
+    inventory = tmp_path / "ironsbot-candidate-runtime-size-kib.txt"
+    assert inventory.is_file()
+
+
+def test_runtime_uses_two_weight_cn_subset_fonts() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "19_SourceHanSansCN.zip" in dockerfile
+    assert "09_SourceHanSansSC.zip" not in dockerfile
+    assert '"SourceHanSansCN-Regular.otf"' in dockerfile
+    assert '"SourceHanSansCN-Bold.otf"' in dockerfile
+    assert 'Path(name).name == "LICENSE.txt"' in dockerfile
+    assert "/usr/share/doc/source-han-sans/LICENSE.txt" in dockerfile
+
+
+def test_builder_and_runtime_pin_the_same_debian_release() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    from_lines = [
+        line.strip() for line in dockerfile.splitlines() if line.startswith("FROM ")
+    ]
+
+    assert from_lines == [
+        "FROM python:3.10-bookworm AS requirements_stage",
+        "FROM python:3.10-slim-bookworm",
+    ]
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
