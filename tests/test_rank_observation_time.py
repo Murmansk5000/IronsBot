@@ -22,6 +22,7 @@ from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
+from ironsbot.services.seer.rank_pagination import RankPageConflictError
 
 PLAYER_ID = 712345678
 SOURCE_TIME = 1_781_234_567.0
@@ -32,6 +33,132 @@ CACHE_TTL_SECONDS = 3600
 CONFIRMED_SCORE = 101
 TIE_START = 20
 TIE_END = 40
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("excluded", [False, True])
+@pytest.mark.parametrize("conflict", ["duplicate", "inversion"])
+async def test_range_rejects_moving_pages_before_numbering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    excluded: bool,
+    conflict: str,
+) -> None:
+    rank = replace(
+        _service(tmp_path),
+        exclusions=RankExclusionPolicy(
+            frozenset((999_999,)) if excluded else frozenset(), {}
+        ),
+    )
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        items = _score_entries(start, end)
+        if start == PAGE_SIZE:
+            items[0] = RankEntry(
+                100_000 if conflict == "duplicate" else 999_998,
+                "moved",
+                201 if conflict == "inversion" else 200,
+            )
+        return RankPageResult(items, SOURCE_TIME + start)
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    with pytest.raises(RankPageConflictError):
+        await rank.fetch_visible_range_result(
+            cast("Any", None),
+            rank_key="成就点数",
+            key=17,
+            sub_key=0,
+            start_rank=1,
+            count=PAGE_SIZE + 1,
+        )
+    assert calls == [0, PAGE_SIZE]
+
+
+@pytest.mark.asyncio
+async def test_conflicting_linear_scan_does_not_save_missing_player(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rank = _service(tmp_path)
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        items = _score_entries(start, end)
+        if start == PAGE_SIZE:
+            items[0] = RankEntry(100_000, "moved", 200)
+        return RankPageResult(items, SOURCE_TIME + start)
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    result = await rank.find_rank(
+        cast("Any", None),
+        user_id=PLAYER_ID,
+        key=17,
+        sub_key=0,
+        title="rank",
+        score_name="score",
+    )
+    assert result.rank is None
+    assert result.failure is not None and "发生变化" in result.failure
+    assert calls == [0, PAGE_SIZE]
+    assert (
+        rank.cache.miss(key=17, sub_key=0, user_id=PLAYER_ID, minimum_limit=1) is None
+    )
+
+
+@pytest.mark.parametrize("excluded", [False, True])
+def test_cache_only_window_rejects_player_moving_between_page_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    excluded: bool,
+) -> None:
+    rank = replace(
+        _service(tmp_path),
+        exclusions=RankExclusionPolicy(
+            frozenset((999_999,)) if excluded else frozenset(), {}
+        ),
+    )
+    for start in (0, PAGE_SIZE):
+        rank.cache.save(
+            key=17,
+            sub_key=0,
+            start=start,
+            end=start + PAGE_SIZE - 1,
+            items=_score_entries(start, start + PAGE_SIZE - 1),
+            fetched_at=SOURCE_TIME,
+        )
+    read_page = SqliteRankPageCache.page
+
+    def page(cache: SqliteRankPageCache, **kwargs: Any) -> Any:
+        result = read_page(cache, **kwargs)
+        if kwargs["start"] == 0:
+            moved = _score_entries(PAGE_SIZE, PAGE_SIZE * 2 - 1)
+            moved[0] = RankEntry(100_000, "moved", 200)
+            cache.save(
+                key=17,
+                sub_key=0,
+                start=PAGE_SIZE,
+                end=PAGE_SIZE * 2 - 1,
+                items=moved,
+                fetched_at=SOURCE_TIME + 60,
+            )
+        return result
+
+    monkeypatch.setattr(SqliteRankPageCache, "page", page)
+    assert (
+        rank.cached_visible_range_result(
+            rank_key="成就点数", key=17, sub_key=0, start_rank=1, count=PAGE_SIZE + 1
+        )
+        is None
+    )
 
 
 def _score_entries(start: int, end: int) -> list[RankEntry]:
@@ -323,6 +450,91 @@ def _service(tmp_path: Path) -> RankService:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "page_limit",
+        "rank_limit",
+        "duplicate",
+        "short",
+        "exact_limit",
+        "filtered",
+        "closed",
+    ],
+)
+async def test_excluded_score_query_respects_bounds_and_consistency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    rank = replace(
+        _service(tmp_path),
+        config=RankQueryConfig(
+            limit=LIMIT,
+            online_limit=LIMIT,
+            page_size=PAGE_SIZE,
+            score_search_tie_page_limit=1 if kind in {"page_limit", "closed"} else 5,
+        ),
+        exclusions=RankExclusionPolicy(
+            frozenset({0 if kind == "filtered" else 999_999}), {}
+        ),
+    )
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        items = [RankEntry(i, "player", 150) for i in range(start, end + 1)]
+        if kind == "duplicate" and start == PAGE_SIZE:
+            items[0] = RankEntry(0, "moved", 150)
+        if kind == "short":
+            items = items[:3]
+        if kind == "closed":
+            items[3:] = [RankEntry(item.id, item.nick, 100) for item in items[3:]]
+        return RankPageResult(items, SOURCE_TIME + start)
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+
+    async def query() -> RankScoreSearchResult:
+        return await rank.fetch_score_segment(
+            cast("Any", None),
+            rank_key="成就点数",
+            key=17,
+            sub_key=0,
+            title="rank",
+            score_name="score",
+            target_score=150,
+            search_limit=5
+            if kind in {"rank_limit", "filtered"}
+            else PAGE_SIZE
+            if kind == "exact_limit"
+            else LIMIT,
+        )
+
+    if kind == "duplicate":
+        with pytest.raises(RankPageConflictError):
+            await query()
+        assert calls == [0, PAGE_SIZE]
+    else:
+        result = await query()
+        expected = {
+            "page_limit": PAGE_SIZE,
+            "rank_limit": 5,
+            "short": 3,
+            "exact_limit": PAGE_SIZE,
+            "filtered": 5,
+            "closed": 3,
+        }[kind]
+        assert result.total_count == expected
+        assert len(result.items) == expected
+        assert result.truncated is (kind not in {"short", "closed"})
+        if kind == "filtered":
+            assert [item.id for item in result.items] == [1, 2, 3, 4, 5]
+        assert calls == [0]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["anchor", "linear", "score"])
 async def test_lookup_preserves_original_page_observation(
     tmp_path: Path,
@@ -550,6 +762,70 @@ async def test_persisted_linear_miss_keeps_oldest_page_time(
     stored = rank.cache.miss(key=240, sub_key=1, user_id=PLAYER_ID, minimum_limit=LIMIT)
     assert stored is not None
     assert stored.fetched_at == stamp
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "change", ["replacement", "empty", "duplicate", "score", "stable"]
+)
+async def test_rank_adjustment_requires_player_and_complete_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+) -> None:
+    rank = replace(
+        _service(tmp_path), exclusions=RankExclusionPolicy(frozenset({999_999}), {})
+    )
+    rank.cache.save(
+        key=240,
+        sub_key=1,
+        start=TARGET_INDEX,
+        end=TARGET_INDEX,
+        items=[RankEntry(PLAYER_ID, "cached", 100)],
+        fetched_at=time() - 10,
+    )
+    calls: list[int] = []
+
+    async def page(
+        _self: Any, _game: Any, *, start: int, end: int, **_: Any
+    ) -> RankPageResult:
+        calls.append(start)
+        items = [
+            RankEntry(
+                PLAYER_ID if index == TARGET_INDEX else index, "player", LIMIT - index
+            )
+            for index in range(start, end + 1)
+        ]
+        if len(calls) > 1:
+            if change == "empty":
+                items = []
+            elif change == "replacement" and start == PAGE_SIZE:
+                items[-1] = RankEntry(999_998, "replacement", LIMIT - TARGET_INDEX)
+            elif change == "duplicate" and start == PAGE_SIZE:
+                items[0] = RankEntry(0, "duplicate", LIMIT - start)
+            elif change == "score" and start == PAGE_SIZE:
+                items[-1] = RankEntry(
+                    PLAYER_ID, "changed score", LIMIT - TARGET_INDEX - 1
+                )
+        return RankPageResult(items, SOURCE_TIME + len(calls))
+
+    monkeypatch.setattr(RankService, "fetch_page_result", page)
+    result = await rank.find_rank(
+        cast("Any", None),
+        user_id=PLAYER_ID,
+        title="rank",
+        score_name="score",
+        key=240,
+        sub_key=1,
+    )
+    if change == "stable":
+        assert result.rank == TARGET_INDEX + 1
+        assert result.failure is None
+    else:
+        assert result.rank is None
+        assert result.failure is not None and "发生变化" in result.failure
+        assert result.score == LIMIT - TARGET_INDEX
+    assert calls == ([PAGE_SIZE, 0] if change == "empty" else [PAGE_SIZE, 0, PAGE_SIZE])
 
 
 @pytest.mark.asyncio

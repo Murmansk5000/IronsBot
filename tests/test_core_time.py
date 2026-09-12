@@ -13,8 +13,31 @@ from ironsbot.core.time import (
     daily_time_parts_with_seconds,
     normalize_daily_time,
     normalize_daily_time_with_seconds,
+    observation_age,
+    remaining_observation_ttl,
     second_of_day,
 )
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf"), -1.0, 101.0])
+def test_invalid_observation_has_no_age_or_remaining_lifetime(
+    value: float | None,
+) -> None:
+    assert observation_age(value, at=100.0) is None
+    assert remaining_observation_ttl(value, 60.0, at=100.0) == 0
+
+
+@pytest.mark.parametrize("at", [float("nan"), float("inf"), -1.0])
+def test_invalid_clock_cannot_validate_an_observation(at: float) -> None:
+    assert observation_age(0.0, at=at) is None
+
+
+def test_observation_age_preserves_valid_epoch_and_ttl_boundary() -> None:
+    current_time = 100.0
+    assert observation_age(0.0, at=current_time) == current_time
+    assert observation_age(100.0, at=100.0) == 0.0
+    assert remaining_observation_ttl(40.0, 60.0, at=100.0) == 0.0
+    assert remaining_observation_ttl(41.0, 60.0, at=100.0) == 1.0
 
 
 def test_observation_keeps_oldest_and_cannot_repair_unknown_evidence() -> None:
