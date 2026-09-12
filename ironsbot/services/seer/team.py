@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.operations.headless_errors import (
@@ -26,6 +27,14 @@ if TYPE_CHECKING:
     from ironsbot.services.team.resource import TeamResourceService
 
 MAX_TEAM_QUERY_IDS = 3
+TEAM_BOSS_MAX_ENERGY = 200
+
+
+class TeamBossActivityStatus(str, Enum):
+    OPEN = "开启"
+    CLOSED = "关闭"
+    UNKNOWN = "暂无法确认"
+
 
 @dataclass(frozen=True, slots=True)
 class TeamQueryActor:
@@ -122,7 +131,11 @@ class SeerTeamQueryService:
             user_id=int(game.user_id),
         )
         return (
-            format_team_info(team_info, set(self._config.sections)),
+            format_team_info(
+                team_info,
+                set(self._config.sections),
+                include_boss=True,
+            ),
             team_info,
         )
 
@@ -166,15 +179,35 @@ def _append_section(
     enabled_sections: set[str],
     section: str,
     section_lines: list[str],
+    *,
+    separated: bool = True,
 ) -> None:
     if section not in enabled_sections:
         return
-    if lines and lines[-1] != "":
+    if separated and lines and lines[-1] != "":
         lines.append("")
     lines.extend(section_lines)
 
 
-def format_team_info(info: Any, enabled_sections: set[str]) -> str:
+def _format_team_boss(
+    total_damage: int,
+    activity_status: TeamBossActivityStatus,
+) -> str:
+    if not 0 <= total_damage <= TEAM_BOSS_MAX_ENERGY:
+        energy = f"能量数据异常（已削减能量：{total_damage}）"
+    else:
+        remaining = TEAM_BOSS_MAX_ENERGY - total_damage
+        energy = f"剩余能量 {remaining}/{TEAM_BOSS_MAX_ENERGY}"
+    return f"战队 Boss：{energy}｜活动状态：{activity_status.value}"
+
+
+def format_team_info(
+    info: Any,
+    enabled_sections: set[str],
+    *,
+    include_boss: bool = False,
+    boss_activity_status: TeamBossActivityStatus = TeamBossActivityStatus.UNKNOWN,
+) -> str:
     slogan = info.slogan or "（无）"
     notice = info.notice or "（无）"
     lines = [f"🏰【战队信息：{info.name}】"]
@@ -188,14 +221,19 @@ def format_team_info(info: Any, enabled_sections: set[str]) -> str:
             f"战队等级：{info.new_team_level}",
         ],
     )
+    resource_lines = [
+        f"成员数：{info.member_count}",
+        f"战队资源：{info.score}",
+    ]
+    if include_boss:
+        resource_lines.append(
+            _format_team_boss(info.total_boss_dmg, boss_activity_status)
+        )
     _append_section(
         lines,
         enabled_sections,
         "resource",
-        [
-            f"成员数：{info.member_count}",
-            f"战队资源：{info.score}",
-        ],
+        resource_lines,
     )
     _append_section(
         lines,
@@ -206,7 +244,6 @@ def format_team_info(info: Any, enabled_sections: set[str]) -> str:
             f"科技中心：{info.tech_center_level}",
             f"奖励中心：{info.bonus_center_level}",
             f"资源中心：{info.res_center_level}",
-            f"战队Boss总伤害：{info.total_boss_dmg}",
         ],
     )
     _append_section(
@@ -240,9 +277,9 @@ def format_team_info(info: Any, enabled_sections: set[str]) -> str:
         enabled_sections,
         "text",
         [
-            "【文本】",
             f"标语：{slogan}",
             f"公告：{notice}",
         ],
+        separated=False,
     )
     return "\n".join(lines)
