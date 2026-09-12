@@ -160,6 +160,27 @@ PEAK_TYPE_NAME_MAP = {
     PeakType.EXPERT: "专家",
 }
 
+PEAK_POOL_COMMANDS = ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池")
+PEAK_EXPERT_POOL_COMMANDS = ("专家池", "巅峰专家池", "专家禁用池")
+PEAK_VOTE_COMMANDS = (
+    "巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"
+)
+PEAK_SUIT_RANK_COMMANDS = tuple(f"{name}套装榜" for name in PEAK_TYPE_NAME_MAP.values())
+PEAK_TITLE_RANK_COMMANDS = tuple(
+    f"{name}称号榜" for name in PEAK_TYPE_NAME_MAP.values()
+)
+PEAK_PET_RANK_COMMANDS = tuple(
+    f"{name}精灵{period}榜"
+    for period in ("月", "总")
+    for name in PEAK_TYPE_NAME_MAP.values()
+)
+PEAK_QUERY_COMMANDS = (
+    *PEAK_POOL_COMMANDS, *PEAK_EXPERT_POOL_COMMANDS, *PEAK_VOTE_COMMANDS
+)
+PEAK_RANK_COMMANDS = (
+    *PEAK_SUIT_RANK_COMMANDS, *PEAK_TITLE_RANK_COMMANDS, *PEAK_PET_RANK_COMMANDS
+)
+
 PEAK_PET_KEY_MAP = {
     PeakType.STANDARD: (177, 93, 94),
     PeakType.WILD: (185, 184, 183),

@@ -21,6 +21,11 @@ from ironsbot.integrations.onebot.permissions import can_manage_group_event
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command, member_target_command
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
+from ironsbot.services.seer.rank_list_models import (
+    RANK_PAGE_OVERVIEW_COMMANDS,
+    RANK_SAMPLE_REFRESH_COMMANDS,
+    RANK_SAMPLE_STATUS_COMMANDS,
+)
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_cache_batch_command,
     parse_rank_list_command,
@@ -28,7 +33,6 @@ from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_page_cache_status_command,
     parse_rank_player_target_command,
     parse_rank_score_command,
-    with_admin_prefix,
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
@@ -322,7 +326,7 @@ def install(group: SeerMatcherGroup) -> None:
     score_matcher.append_handler(bind_async(_handle_score, query))
 
     cache_status = group.on_fullmatch(
-        with_admin_prefix(("样本情况", "样本状态")),
+        RANK_SAMPLE_STATUS_COMMANDS,
         policy=CommandPolicy.command(
             "seer_rank_cache_status",
             help_ids=("rank.sample_status",),
@@ -334,7 +338,7 @@ def install(group: SeerMatcherGroup) -> None:
     cache_status.append_handler(bind_async(_handle_cache_status, admin))
 
     cache_refresh = group.on_fullmatch(
-        with_admin_prefix(("刷新样本",)),
+        RANK_SAMPLE_REFRESH_COMMANDS,
         policy=CommandPolicy.command(
             "seer_rank_cache_refresh",
             help_ids=("rank.sample_refresh",),
@@ -369,7 +373,7 @@ def install(group: SeerMatcherGroup) -> None:
     cache_batch.append_handler(bind_async(_handle_cache_batch, admin))
 
     page_overview = group.on_fullmatch(
-        with_admin_prefix(("榜单情况", "榜单状态")),
+        RANK_PAGE_OVERVIEW_COMMANDS,
         policy=CommandPolicy.command(
             "seer_rank_page_cache_status",
             help_ids=("rank.page_status",),

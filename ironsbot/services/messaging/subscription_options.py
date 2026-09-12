@@ -24,6 +24,12 @@ if TYPE_CHECKING:
 READONLY_SELECTION_FOOTER = "✅ 已订阅 · ❌ 已退订，普通群员仅可查看 · 输入 0 退出"
 
 
+def push_subscription_command_texts(
+    commands: Sequence[str], restore_commands: Sequence[str]
+) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(("推送管理", *commands, *restore_commands)))
+
+
 class ScheduledPushKeyError(ValueError):
     @classmethod
     def missing_id(cls, index: int) -> ScheduledPushKeyError:

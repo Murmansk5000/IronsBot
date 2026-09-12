@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from ironsbot.core.commands import normalize_command_text
-
 from .countermark_stat_rank_models import (
     CountermarkStatRankCommand,
     StatSpec,
 )
 from .rank_command_text import normalize_rank_command_text
+from .rank_list_parsing import parse_rank_list_command
 
 MIN_COMBINATION_PARTS = 2
 ANGLE_MARKERS = {
@@ -86,18 +85,6 @@ COMBINABLE_STAT_ALIASES: tuple[tuple[str, StatSpec], ...] = tuple(
 )
 
 
-_NON_STAT_COUNTERMARK_RANK_COMMANDS = {
-    normalize_command_text(command)
-    for command in (
-        "刻印榜",
-        "刻印图鉴榜",
-        "样本刻印榜",
-        "样本刻印图鉴榜",
-        "机器人刻印榜",
-        "机器人刻印图鉴榜",
-    )
-}
-
 def parse_countermark_stat_rank_command(
     text: str,
 ) -> CountermarkStatRankCommand | None:
@@ -108,7 +95,7 @@ def parse_countermark_stat_rank_command(
         not has_countermark_marker and not has_angle_marker
     ):
         return None
-    if normalized in _NON_STAT_COUNTERMARK_RANK_COMMANDS:
+    if parse_rank_list_command(text) is not None:
         return None
 
     scope = "all"

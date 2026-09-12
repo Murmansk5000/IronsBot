@@ -3,11 +3,11 @@
 
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import CommandPolicy
-from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
+from ironsbot.integrations.onebot.rules import affix_command, explicit_command
+from ironsbot.services.seer.query_commands import GEM_QUERY, MINTMARK_QUERY
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import make_query_handler
-from .query_rules import not_rank_query
 
 
 def install(group: SeerMatcherGroup) -> None:
@@ -18,8 +18,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.mintmark.query",),
         ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
-        & startswith_or_endswith("刻印")
-        & not_rank_query
+        & affix_command(MINTMARK_QUERY)
         & explicit_command(),
         priority=group.matcher_priority("seer_mintmark"),
     )
@@ -38,7 +37,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.mintmark.query",),
         ),
         rule=seer_feature_rule(group.features, "seer_mintmark")
-        & startswith_or_endswith("宝石")
+        & affix_command(GEM_QUERY)
         & explicit_command(),
         priority=group.matcher_priority("seer_mintmark"),
     )

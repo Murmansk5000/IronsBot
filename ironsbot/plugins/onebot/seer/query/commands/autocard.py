@@ -21,22 +21,21 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.params import parse_string_arg
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
-from ironsbot.services.seer.autocard import (
-    AUTOCARD_QUERY_PREFIXES,
-    AUTOCARD_QUERY_SUFFIXES,
-    AutocardEntry,
-    AutocardPromptValue,
-    AutocardService,
-)
+from ironsbot.integrations.onebot.rules import affix_command, explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.query_commands import AUTOCARD_QUERY
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .query_rules import not_rank_query
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from ironsbot.services.seer.autocard import (
+        AutocardEntry,
+        AutocardPromptValue,
+        AutocardService,
+    )
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
@@ -199,11 +198,7 @@ def install(group: SeerMatcherGroup) -> None:
             help_ids=("seer.autocard.query",),
         ),
         rule=seer_feature_rule(group.features, "seer_autocard")
-        & startswith_or_endswith(
-            prefixes=AUTOCARD_QUERY_PREFIXES,
-            suffixes=AUTOCARD_QUERY_SUFFIXES,
-        )
-        & not_rank_query
+        & affix_command(AUTOCARD_QUERY)
         & explicit_command(),
         priority=group.matcher_priority("seer_autocard"),
     )
