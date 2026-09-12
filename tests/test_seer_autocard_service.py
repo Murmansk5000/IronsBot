@@ -4,6 +4,9 @@ import json
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+
+from ironsbot.integrations.seer_data.autocard_repository import load_autocard_dataset
 from ironsbot.services.seer.autocard import (
     AutocardPromptValue,
     AutocardService,
@@ -40,6 +43,9 @@ CARDS = (
         "nature": 2,
         "level": 1,
         "cost": 2,
+        "attack": 0,
+        "health": 0,
+        "compose": 0,
         "picID": 2,
     },
 )
@@ -161,3 +167,16 @@ def test_autocard_select_returns_rendered_role_entry() -> None:
     assert entry.image_url.endswith(
         "/newseer/assets/art/autocard/texture/roles/card/role_7.png"
     )
+
+
+def test_autocard_repository_rejects_malformed_published_integer() -> None:
+    malformed = dict(CARDS[0], cost="unknown")
+
+    class MalformedSession(FakeSession):
+        def execute(self, query: object) -> FakeResult:
+            if "autocard_card" in str(query):
+                return FakeResult(((json.dumps(malformed, ensure_ascii=False),),))
+            return super().execute(query)
+
+    with pytest.raises(RuntimeError, match="群星牌数据格式无效"):
+        load_autocard_dataset(cast("Any", MalformedSession()))
