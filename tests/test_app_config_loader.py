@@ -518,10 +518,7 @@ def test_config_path_is_selected_by_single_environment_variable() -> None:
     assert config.ai.model == "deepseek-v4-pro"
 
 
-def test_unknown_app_config_fields_are_ignored_and_reported(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_unknown_app_config_fields_are_rejected(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -540,14 +537,18 @@ unknown_command_field = true
         encoding="utf-8",
     )
 
-    config = load_settings(config_path)
-    output = capsys.readouterr().err
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
 
-    assert config.messaging.commands[0].id == "hello"
-    assert "IronsBot 配置含无法识别的字段，已忽略并继续启动" in output
-    assert "unknown_top_level" in output
-    assert "seer.player.old_player_setting" in output
-    assert "messaging.commands[0].unknown_command_field" in output
+    assert {
+        error["loc"]
+        for error in exc_info.value.errors()
+        if error["type"] == "extra_forbidden"
+    } == {
+        ("unknown_top_level",),
+        ("seer", "player", "old_player_setting"),
+        ("messaging", "commands", 0, "unknown_command_field"),
+    }
 
 
 def test_unknown_fields_do_not_hide_invalid_known_fields(tmp_path: Path) -> None:
@@ -974,10 +975,7 @@ cache_root = "{absolute_root.as_posix()}"
     assert load_settings(config_path).paths.cache_root == absolute_root
 
 
-def test_removed_player_binding_field_is_ignored(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_removed_player_binding_field_is_rejected(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -987,14 +985,15 @@ change_cooldown_hours = 72.0
         encoding="utf-8",
     )
 
-    config = load_settings(config_path)
-    output = capsys.readouterr().err
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
 
-    assert (
-        config.seer.player.binding.change_cooldown_days
-        == DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS
+    assert exc_info.value.errors()[0]["loc"] == (
+        "seer",
+        "player",
+        "binding",
+        "change_cooldown_hours",
     )
-    assert "seer.player.binding.change_cooldown_hours" in output
 
 
 def test_player_background_refresh_loads(tmp_path: Path) -> None:
@@ -1539,10 +1538,7 @@ accounts = ["missing_worker"]
         load_settings(config_path, env={})
 
 
-def test_legacy_query_worker_is_ignored_with_warning(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_legacy_query_worker_is_rejected(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -1554,10 +1550,15 @@ query_worker = true
         encoding="utf-8",
     )
 
-    settings = load_settings(config_path, env={})
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path, env={})
 
-    assert settings.headless_accounts == ()
-    assert "seer.player_accounts[0].query_worker" in capsys.readouterr().err
+    assert exc_info.value.errors()[0]["loc"] == (
+        "seer",
+        "player_accounts",
+        0,
+        "query_worker",
+    )
 
 
 def test_player_query_limits_reject_legacy_limit_field() -> None:
