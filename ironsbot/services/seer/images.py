@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Callable, Mapping
 
 ImageKind = Literal[
     "battle_effect",
@@ -92,6 +92,26 @@ class SeerImageSource(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedImageRequest:
+    """One immutable source identity paired with its exact download operation."""
+
+    identity: str
+    fetch: Callable[[], Awaitable[bytes]]
+
+
+class SeerImageRequestSource(Protocol):
+    def prepare(
+        self,
+        kind: ImageKind,
+        key: str,
+        *,
+        fallback: bool,
+    ) -> PreparedImageRequest: ...
+
+    async def fetch_url(self, url: str) -> bytes: ...
+
+
+@dataclass(frozen=True, slots=True)
 class ImageFetchResult:
     data: bytes | None = None
     error: str = ""
@@ -103,9 +123,7 @@ async def fetch_optional_image(
     key: str,
 ) -> ImageFetchResult:
     try:
-        return ImageFetchResult(
-            data=await images.fetch(kind, key, fallback=False)
-        )
+        return ImageFetchResult(data=await images.fetch(kind, key, fallback=False))
     except ImageSourceError as error:
         return ImageFetchResult(error=f"❌获取图片失败！原因：{error}")
 

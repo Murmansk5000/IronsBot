@@ -22,10 +22,7 @@ def test_cache_paths_supports_each_disposable_category(tmp_path: Path) -> None:
 
     assert paths.downloads_dir() == tmp_path / "custom-cache" / "downloads"
     assert paths.http_dir() == tmp_path / "custom-cache" / "http"
-    assert (
-        paths.assets_dir()
-        == tmp_path / "custom-cache" / "rendering" / "assets"
-    )
+    assert paths.assets_dir() == tmp_path / "custom-cache" / "rendering" / "assets"
 
 
 def test_render_cache_recreates_deleted_cache_root(tmp_path: Path) -> None:
@@ -36,10 +33,10 @@ def test_render_cache_recreates_deleted_cache_root(tmp_path: Path) -> None:
         version_getter=lambda: "version",
     )
 
-    cache.put("pet_info", "25", b"first")
+    cache.entry("pet_info", "25").put(b"first")
     assert paths.render_dir().exists()
 
     rmtree(paths.root)
-    cache.put("pet_info", "25", b"second")
+    cache.entry("pet_info", "25").put(b"second")
 
-    assert cache.get("pet_info", "25") == b"second"
+    assert cache.entry("pet_info", "25").get() == b"second"

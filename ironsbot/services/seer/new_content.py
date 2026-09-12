@@ -15,7 +15,7 @@ from ironsbot.integrations.seer_data.new_content_repository import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
 
 
 NewContentCategory = Literal[
@@ -78,6 +78,10 @@ DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 
 class NewContentIndexUnavailableError(RuntimeError):
     """The downloaded SeerAPI release predates the embedded index."""
+
+
+class NewContentSnapshotChangedError(RuntimeError):
+    """A retained menu does not describe the selected publication's index."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +157,7 @@ def format_new_content_category_count(
 class NewContentService:
     """Read-only access to the publication index; no local baseline is kept."""
 
-    def __init__(self, data: SeerDataAccess) -> None:
+    def __init__(self, data: SeerDataReader) -> None:
         self._data = data
 
     def snapshot(self) -> NewContentSnapshot:
@@ -162,6 +166,12 @@ class NewContentService:
                 return _snapshot_from_index(index)
         except NewContentIndexRepositoryError as error:
             raise NewContentIndexUnavailableError from error
+
+    def require_snapshot(self, expected: NewContentSnapshot) -> None:
+        """Validate retained menu facts against an already-bound data reader."""
+
+        if self.snapshot() != expected:
+            raise NewContentSnapshotChangedError
 
 
 def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: PLR0911

@@ -15,6 +15,7 @@ from ironsbot.services.seer.peak import (
     PeakPetRankRenderInput,
     PeakPetSnapshot,
 )
+from ironsbot.services.seer.render_cache import RenderCacheEntry
 from ironsbot.services.seer.rendering.cache_key import (
     render_document_cache_key,
     render_request_cache_key,
@@ -34,6 +35,12 @@ _EXPECTED_WIN_RATE = 60.0
 
 
 class _Cache:
+    def entry(self, category: str, key: str) -> RenderCacheEntry:
+        return RenderCacheEntry(
+            lambda: self.get(category, key),
+            lambda data: self.put(category, key, data),
+        )
+
     def __init__(self, value: bytes | None = None) -> None:
         self.value = value
         self.writes: list[tuple[str, str, bytes]] = []
@@ -50,6 +57,7 @@ class _Images:
         self.requests: list[tuple[str, str]] = []
 
     async def fetch(self, kind: str, key: str, **_kwargs: object) -> bytes:
+        assert _kwargs.get("fallback") is False
         self.requests.append((kind, key))
         return f"{kind}:{key}".encode()
 

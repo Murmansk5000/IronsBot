@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from seerapi_models import (
+    EquipORM,
+    MintmarkORM,
+    PetORM,
+    PetSkinORM,
+    SkillORM,
+    SuitORM,
+    TitlePartORM,
+    TypeCombinationORM,
+)
 
 from ironsbot.integrations.seer_data import (
     new_content_renderer as new_content_rendering,
@@ -17,23 +28,32 @@ from ironsbot.integrations.seer_data.new_content_snapshot import (
     NewContentPreparedItem,
     NewContentSnapshotBuilder,
 )
+from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
 from ironsbot.services.seer.new_content import (
     NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
 )
+from ironsbot.services.seer.render_cache import RenderCacheEntry
 
 FLASH_TEST_MOUNT_ID = 1301170
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
+    from pathlib import Path
 
     from ironsbot.services.seer.autocard import AutocardService
     from ironsbot.services.seer.data import SeerDataAccess
 
 
 class _Cache:
+    def entry(self, category: str, key: str) -> RenderCacheEntry:
+        return RenderCacheEntry(
+            lambda: self.get(category, key),
+            lambda data: self.put(category, key, data),
+        )
+
     def __init__(self) -> None:
         self.saved: bytes | None = None
 
@@ -53,13 +73,13 @@ class _Data:
 
 
 class _RichData(_Data):
-    pet = object()
-    pet_skin = object()
-    mintmark = object()
-    suit = object()
-    equip = object()
-    title = object()
-    type_combination = object()
+    pet = PetORM
+    pet_skin = PetSkinORM
+    mintmark = MintmarkORM
+    suit = SuitORM
+    equip = EquipORM
+    title = TitlePartORM
+    type_combination = TypeCombinationORM
 
     def __init__(
         self,
@@ -71,13 +91,13 @@ class _RichData(_Data):
         self.skills = skills or {}
 
     @contextmanager
-    def get(self, getter: object, entity_id: int) -> Iterator[object | None]:
-        yield self.records.get((getter, entity_id))
-
-    @contextmanager
     def query(self, operation: object) -> Iterator[object]:
         session = SimpleNamespace(
-            get=lambda _model, skill_id: self.skills.get(skill_id),
+            get=lambda model, entity_id: (
+                self.skills.get(entity_id)
+                if model is SkillORM
+                else self.records.get((model, entity_id))
+            ),
         )
         yield operation(session)  # type: ignore[operator]
 
@@ -320,10 +340,10 @@ async def test_new_content_closes_data_context_before_fetching_assets() -> None:
         active_contexts = 0
 
         @contextmanager
-        def get(self, getter: object, entity_id: int) -> Iterator[object | None]:
+        def query(self, operation: object) -> Iterator[object]:
             self.active_contexts += 1
             try:
-                with super().get(getter, entity_id) as result:
+                with super().query(operation) as result:
                     yield result
             finally:
                 self.active_contexts -= 1
@@ -405,8 +425,11 @@ async def test_missing_mount_image_uses_pending_notice_without_cache() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("has_details", [True, False])
 async def test_missing_unity_mount_image_uses_flash_fallback(
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    has_details: bool,
 ) -> None:
     captured: dict[str, Any] = {}
 
@@ -436,10 +459,19 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
         weekly_cycle="2026-08-07",
         items=(_item("mount", 1301170),),
     )
+    mount = SimpleNamespace(
+        id=FLASH_TEST_MOUNT_ID,
+        part_type=SimpleNamespace(id=6, name="mount"),
+        suit=None,
+        bonus=None,
+    )
+    data = _RichData(
+        {(_RichData.equip, FLASH_TEST_MOUNT_ID): mount} if has_details else {}
+    )
 
     await render_new_content_menu(
         cache,  # type: ignore[arg-type]
-        _Data(),  # type: ignore[arg-type]
+        data,  # type: ignore[arg-type]
         _Images(fail_keys={("equip", "1301170")}),  # type: ignore[arg-type]
         _Autocard(),  # type: ignore[arg-type]
         render_html,
@@ -451,7 +483,7 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
     item_row = next(row for row in captured["items"] if row.code == "1")
     assert item_row.image == "data:image/png;base64,Zmxhc2gtbW91bnQ="
     assert item_row.image_notice == ""
-    assert cache.saved == b"menu-image"
+    assert cache.saved == (b"menu-image" if has_details else None)
 
 
 @pytest.mark.asyncio
@@ -816,3 +848,153 @@ async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
     assert card_image is not None
     assert ("pet_head", "70") in images.requests
     assert ("url", "https://assets.example/card-98.png") in images.requests
+
+
+@pytest.mark.parametrize(
+    "category",
+    [
+        "pet",
+        "peak_pool",
+        "pet_skin",
+        "mintmark",
+        "suit",
+        "equip",
+        "mount",
+        "skill",
+        "achievement",
+        "autocard_card",
+        "autocard_role",
+    ],
+)
+def test_missing_detail_rows_are_not_complete(
+    category: NewContentCategory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        new_content_snapshot, "load_skin_image_resolutions", lambda *_: {}
+    )
+    item = _item(category, 9, titles=[{"id": 7, "name": "title"}])
+    prepared = _prepared(
+        _RichData({}),
+        item,
+        SimpleNamespace(select=lambda _: None),
+    )
+    assert not prepared.details.complete
+
+
+@pytest.mark.parametrize("category", ["achievement", "autocard_sanctuary_effect"])
+def test_index_only_rows_do_not_require_unrelated_database_details(
+    category: NewContentCategory,
+) -> None:
+    assert _prepared(_RichData({}), _item(category, 9)).details.complete
+
+
+@pytest.mark.parametrize("effects", [[], None])
+def test_skill_empty_effects_are_distinct_from_missing_effect_data(
+    effects: object,
+) -> None:
+    skill = SimpleNamespace(
+        skill_effect=effects, friend_skill_effect=[], hide_effect=None
+    )
+    data = _RichData({}, skills={9: skill})
+    assert _prepared(data, _item("skill", 9)).details.complete == (effects == [])
+
+
+@pytest.mark.parametrize("resource_id", [0, -1])
+def test_missing_required_resource_id_stays_required(resource_id: int) -> None:
+    asset = _prepared(_RichData({}), _item("pet", 9, resource_id=resource_id)).asset
+    assert asset is not None and asset.required
+    assert asset.key is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["row", "query", "type", "prop"])
+async def test_partial_menu_recovers_then_hits_complete_file_cache(
+    failure: str,
+    tmp_path: Path,
+) -> None:
+    skill_id = 10001
+    skill = SimpleNamespace(skill_effect=[], friend_skill_effect=[], hide_effect=None)
+
+    class RecoveringData(_RichData):
+        unavailable = failure == "query"
+
+        @contextmanager
+        def query(self, operation: object) -> Iterator[object]:
+            if self.unavailable:
+                raise RuntimeError
+            with super().query(operation) as value:
+                yield value
+
+    data = RecoveringData(
+        {(_RichData.type_combination, 1): SimpleNamespace(name="normal")},
+        skills={} if failure == "row" else {skill_id: skill},
+    )
+    images = _Images(
+        fail_keys={("element_type", "1" if failure == "type" else "prop")}
+        if failure in {"type", "prop"}
+        else set(),
+    )
+    cache = FileRenderCache(
+        tmp_path / "renders",
+        1024 * 1024,
+        version_getter=lambda: "release",
+    ).bind("release", lambda _: True)
+    renders: list[bytes] = []
+
+    async def render_html(*_args: object, **_kwargs: object) -> bytes:
+        rendered = f"render-{len(renders)}".encode()
+        renders.append(rendered)
+        return rendered
+
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260912",
+        weekly_cycle="2026-09-11",
+        items=(_item("skill", skill_id, type_id=1, category_id=4),),
+    )
+
+    async def render() -> bytes:
+        return await render_new_content_menu(
+            cache,
+            cast("SeerDataAccess", data),
+            images,
+            cast("AutocardService", _Autocard()),
+            render_html,
+            snapshot,
+            ("skill",),
+            "skill",
+        )
+
+    first = await render()
+    data.unavailable = False
+    data.skills[skill_id] = skill
+    images.fail_keys.clear()
+    recovered = await render()
+    assert recovered != first
+    assert await render() == recovered
+    assert renders == [first, recovered]
+
+
+def test_menu_key_captures_same_version_content_corrections() -> None:
+    item = _item("skill", 9, power=100, info="original")
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260912",
+        weekly_cycle="2026-09-11",
+        items=(item,),
+    )
+
+    def key(value: NewContentSnapshot) -> str:
+        return new_content_rendering._cache_key(
+            value, ("skill",), "skill", "menu", frozenset(), 5
+        )
+
+    reordered = replace(item, payload={"info": "original", "power": 100})
+    assert key(snapshot) == key(replace(snapshot, items=(reordered,)))
+    for updated in (
+        replace(item, name="renamed"),
+        replace(item, payload={"power": 120, "info": "original"}),
+        replace(item, change_kind="modified"),
+    ):
+        assert key(snapshot) != key(replace(snapshot, items=(updated,)))
