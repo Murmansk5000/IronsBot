@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from seerapi_models import MintmarkClassCategoryORM, MintmarkORM
 from seerapi_models.mintmark import MintmarkMaxAttrORM, UniversalPartORM
+from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.config.models.seer import MintmarkQueryConfig
@@ -315,6 +316,8 @@ async def test_mintmark_series_query_preloads_connected_relationships() -> None:
                 ),
             )
         )
+        session.commit()
+        session.execute(text("DROP TABLE api_metadata"))
         session.commit()
 
     data = SeerDatabase(databases, merge_connected_mintmarks=True)

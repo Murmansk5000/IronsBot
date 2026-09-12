@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from ironsbot.integrations.seer_data.flash_mount_repository import (
     load_flash_mount_image,
 )
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import (
     ImageSourceError,
     SeerImageSource,
@@ -92,6 +93,15 @@ async def render_new_content_menu(  # noqa: PLR0913
         if focused_category is not None or category in expanded
         for prepared in builder.prepare(snapshot, category)
     )
+    incomplete = next(
+        (prepared for prepared in prepared_items if not prepared.details.complete),
+        None,
+    )
+    if incomplete is not None:
+        raise PublishedDataIncompleteError(
+            f"new_content_{incomplete.item.category}",
+            entity_id=incomplete.item.entity_id,
+        )
     prepared_items = tuple(
         _with_mount_fallback(data, prepared) for prepared in prepared_items
     )
