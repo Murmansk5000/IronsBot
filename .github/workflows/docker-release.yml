@@ -125,7 +125,14 @@ jobs:
                     -e APP_CONFIG_PATH=/config/ironsbot.toml \
                     -v "$smoke_config:/config/ironsbot.toml:ro" \
                     "ironsbot-ci:${GITHUB_SHA}" \
-                    python -c 'from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()'
+                    sh -c '
+                      regular="$(fc-match -f "%{file}" "Source Han Sans CN:style=Regular")"
+                      bold="$(fc-match -f "%{file}" "Source Han Sans CN:style=Bold")"
+                      test -f "$regular"
+                      test -f "$bold"
+                      test "$regular" != "$bold"
+                      python -c "from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()"
+                    '
 
             - name: Login to GitHub Container Registry
               uses: docker/login-action@v2

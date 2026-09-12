@@ -163,3 +163,16 @@ revision published by SeerAPI, trying the CDN only after Raw fails. It never
 embeds those official assets in the application image and never falls back to a
 mutable branch. The two native render cases previously blocked by Raw network
 failures pass with this route (`2 passed`, real release database and HTML render).
+
+The image previously retained Source Han Sans SC Regular and Bold, about
+31.94 MiB unpacked, from a 90.77 MiB archive. The same official 2.005R release
+provides the Simplified Chinese CN subset: Regular and Bold total about
+16.21 MiB. The Docker build now extracts exactly those two files, reducing the
+projected font layer payload by about 15.73 MiB while retaining both weights and
+the Chinese glyph family used by every template. Candidate smoke resolves both
+styles through fontconfig and requires distinct files. The upstream
+`LICENSE.txt` is copied to `/usr/share/doc/source-han-sans/LICENSE.txt`.
+
+Together with externalized sendpic assets, the projected application-plus-font
+payload reduction is about 29.38 MiB. This remains a source/archive calculation;
+only the digest-pinned Linux CI inventory may report the actual image delta.

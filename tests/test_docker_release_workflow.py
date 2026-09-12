@@ -153,7 +153,21 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert "docker run --rm --network none" in smoke["run"]
     assert "$smoke_config:/config/ironsbot.toml:ro" in smoke["run"]
     assert "--entrypoint" not in smoke["run"]
+    assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Regular"' in smoke["run"]
+    assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Bold"' in smoke["run"]
+    assert 'test "$regular" != "$bold"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
+
+
+def test_runtime_uses_two_weight_cn_subset_fonts() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "19_SourceHanSansCN.zip" in dockerfile
+    assert "09_SourceHanSansSC.zip" not in dockerfile
+    assert '"SourceHanSansCN-Regular.otf"' in dockerfile
+    assert '"SourceHanSansCN-Bold.otf"' in dockerfile
+    assert 'Path(name).name == "LICENSE.txt"' in dockerfile
+    assert "/usr/share/doc/source-han-sans/LICENSE.txt" in dockerfile
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:

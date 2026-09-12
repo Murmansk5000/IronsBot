@@ -1682,6 +1682,12 @@ BasedPyright、pytest、Ruff 和审计工具均未进入生产导出。五张约
 仍以候选镜像 CI 产物为准，本地源码差额不冒充镜像测量结果。收口后公共全量回归
 `3142 passed, 7 skipped`，Ruff、BasedPyright、compileall 与差异检查通过。
 
+同轮将 Docker 字体从 Source Han Sans SC 泛 CJK Regular/Bold 改为官方同版本 CN 子集
+Regular/Bold，未压缩载荷由约 31.94 MiB 降至 16.21 MiB；候选 smoke 新增 fontconfig
+双字重及不同文件校验，并把上游 `LICENSE.txt` 保留到镜像文档目录。连同固定图片收口，
+预计应用与字体载荷共减少约 29.38 MiB；实际 Linux 镜像差额仍等待 CI 产物，不提前
+记为 Phase 7 完成。
+
 ## 工作项登记模板
 
 每次开始一个小任务，先在任务说明或 PR 描述中填以下内容；完成时补充真实证据：
