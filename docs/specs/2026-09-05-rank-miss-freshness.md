@@ -187,3 +187,26 @@ rank/player-cache/scheduler/size tests passed; targeted BasedPyright, Ruff,
 compileall and diff checks passed. The preceding 2886-test full checkpoint was
 not rerun for this narrower change. No production changes, main merge or push;
 Phase 6 and total verified phases remain in progress and 4/8 respectively.
+
+## Binary Probe Consistency And Completion (2026-09-12)
+
+Contract: target. The shared descending-score engine now checks its bounded
+query-local probe map in rank order. A lower rank cannot have a larger score,
+and a missing earlier position cannot precede an already-observed existing
+position. Two regression cases failed before this check. Contradictions use the
+same RankPageConflictError as ordered page validation; live score commands and
+player queries report the conflict instead of inferring an insertion or absence.
+
+Player score lookup now preserves incomplete-search outcomes: exhausted point
+probes and tied-page budgets produce an explicit unconfirmed-rank failure. A
+later positive match within the permitted tie scan clears the provisional
+failure. It does not add requests or a linear-scan fallback. Probe caching and
+the existing separate budget for each of the three binary boundaries remain
+unchanged; the example configuration now describes that policy explicitly.
+
+143 focused score, observation, player, list, exclusion and size tests passed;
+targeted BasedPyright, Ruff, compileall and diff checks passed. No full-suite
+rerun, production data change, main merge or push. No new dependency, file,
+configuration field or persistent cache. Probe consistency is evidence checking,
+not proof that unobserved entries or later sampled pages share one snapshot.
+Full dynamic acceptance remains open, with verified phases at 4/8.

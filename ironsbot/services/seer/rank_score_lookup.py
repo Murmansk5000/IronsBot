@@ -13,7 +13,7 @@ from ironsbot.services.seer.rank_score_search import (
 )
 
 
-async def find_rank_by_score(  # noqa: PLR0913
+async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie scan outcomes
     game: Any,
     *,
     user_id: int,
@@ -44,16 +44,22 @@ async def find_rank_by_score(  # noqa: PLR0913
         return None if item is None else int(item.score)
 
     tie_page_limit = score_search_tie_page_limit()
-    score_range = await locate_descending_score_range(
-        0,
-        limit,
-        target_score,
-        fetch_score,
-        limits=DescendingScoreSearchLimits(
-            probe_count=score_search_probe_limit(limit),
-            tie_fallback_size=page_size * tie_page_limit,
-        ),
-    )
+    try:
+        score_range = await locate_descending_score_range(
+            0,
+            limit,
+            target_score,
+            fetch_score,
+            limits=DescendingScoreSearchLimits(
+                probe_count=score_search_probe_limit(limit),
+                tie_fallback_size=page_size * tie_page_limit,
+            ),
+        )
+    except RankPageConflictError as error:
+        result.failure = str(error)
+        return result
+    if score_range.budget_exhausted:
+        result.failure = "已达二分探针上限，排名尚未确认"
     if score_range.last_index is None:
         return result
 
@@ -81,6 +87,7 @@ async def find_rank_by_score(  # noqa: PLR0913
             if item.id == user_id:
                 result.rank = start + offset + 1
                 result.score = item.score
+                result.failure = None
                 return result
 
         if len(items) < end - start + 1:
@@ -89,6 +96,8 @@ async def find_rank_by_score(  # noqa: PLR0913
         remaining_tie_pages -= 1
         start = end + 1
 
+    if start < tie_end or score_range.truncated:
+        result.failure = "已达同分段查找上限，排名尚未确认"
     return result
 
 

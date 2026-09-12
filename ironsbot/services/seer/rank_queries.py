@@ -151,6 +151,8 @@ class RankQueryService:
             )
         except _PLAYER_REQUEST_ERRORS as error:
             return player_request_protection_message(error)
+        except RankPageConflictError as error:
+            return str(error)
 
     async def player(  # noqa: C901, PLR0911 - distinct query failure replies
         self,
