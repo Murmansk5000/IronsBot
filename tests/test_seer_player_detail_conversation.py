@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
+from nonebot.adapters.onebot.v11 import Message
 from nonebot.exception import FinishedException
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -474,7 +475,7 @@ def test_player_detail_delegates_a_registered_private_action(
     )
     call = continue_conversation.await_args
     assert call is not None
-    assert call.kwargs["prompt"] == "private reply"
+    assert call.kwargs["prompt"] == Message("private reply")
     send_status.assert_awaited_once()
     status_call = send_status.await_args
     assert status_call is not None

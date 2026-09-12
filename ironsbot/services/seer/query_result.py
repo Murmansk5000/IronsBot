@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+
 if TYPE_CHECKING:
     from ironsbot.core.semantic_requests import SemanticTarget
     from ironsbot.services.seer.query_work import QueryWorkResult
@@ -23,6 +25,18 @@ class QueryReply:
     # Partial replies are deliverable but cannot populate the complete-reply cache.
     complete: bool = True
     fetched_at: float | None = None
+
+    def to_outbound(self) -> OutboundMessage:
+        parts: list[TextPart | BinaryImagePart] = []
+        if self.leading_text:
+            parts.append(TextPart(self.leading_text))
+        if self.image is not None:
+            parts.append(BinaryImagePart(self.image, "image/png"))
+        elif self.image_error:
+            parts.append(TextPart(self.image_error))
+        if self.text:
+            parts.append(TextPart(self.text))
+        return OutboundMessage(tuple(parts))
 
     @property
     def rank_lookup_complete(self) -> bool:
