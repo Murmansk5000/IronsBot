@@ -431,3 +431,33 @@ admission with an existing historical reply. Both repositories pass Ruff and
 compileall; changed production paths pass BasedPyright (0 errors/warnings).
 No new module, dependency, schema or TOML field. Real pixel/material/deployment
 acceptance remains outstanding; total verified phases stay at 4/8.
+
+## Native Lineup Evidence and Release Gate
+
+Native Windows htmlkit rendering was exercised with the retained real release
+database and six real pet records (70, 3549, 4511, 4911, 3407, 4525), using
+official asset-tree revision 1b53a16cfe32d36d921a04fbd8423116c5b1e2e1.
+The release at `.tmp/skin-body-publication/seerapi-data.sqlite` is rejected by
+the production loader because ironsbot_schema_contract_version is absent.
+No version marker was injected and no production validator was relaxed.
+The subsequent visual probe therefore used an explicitly offline, read-only
+repository reader and a test-only asset pin with final caching disabled. This
+is native material/presentation evidence, not release or deployment acceptance.
+
+Artifacts: `.tmp/lineup-visual-acceptance/{complete,partial,empty}.png` and
+`report.json`. The full image visibly contains six correct named portraits,
+their type badges, level labels and a pool-limit marker. The initial native
+outputs had heights 714, 723 and 710 respectively despite identical slot counts.
+The inline-block grid now has zero line height and an explicit two-row height;
+all three outputs are 490x704. Pixel color counts are 48197, 1115 and 323.
+Full and partial images were visually inspected; no title/card overlap was seen.
+
+An opt-in subprocess regression in the existing private rendering test module
+uses native htmlkit on empty, one-card and twelve-card/long-name documents and
+asserts stable dimensions and nonblank pixels. It isolates NoneBot/fontconfig
+initialization from other tests and makes no network requests. With
+IRONSBOT_NATIVE_RENDER_TESTS=1, all 42 private tests passed in 3.42s; Ruff passes.
+The native probe required an explicit Windows fontconfig directory, so this is
+not proof that default Windows deployment font discovery works. Linux fonts,
+full renderer coverage, validated producer output and live deployment remain
+separate gates. No runtime dependency or new production module was added.
