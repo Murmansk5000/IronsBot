@@ -77,6 +77,7 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 | 2026-08-15 | 运行依赖复核 | `uv export --no-dev`、`uv tree --no-dev --show-sizes`、Docker 静态测试（12 passed） | 约 109 MiB Node、52 MiB BasedPyright、pytest 与 virtualenv 均只在开发依赖组，不会导出到运行镜像；HTML 渲染、Pillow 和 SVG 光栅化均有运行调用。工作站 Docker daemon 不可用，仍待发布环境记录实际镜像尺寸。 |
 | 2026-09-05 | 删除运行层 wheelhouse COPY，改为 BuildKit 只读挂载；冻结运行依赖导出 | Docker preflight 与发布 workflow 测试 16 passed；Ruff、测试模块 BasedPyright 与 diff 检查通过 | 实际执行 Bash 测量脚本，Docker 使用模拟函数；覆盖多标签、带端口仓库、缺失 digest 和附件生成。不是实际容器构建验收。 |
 | 2026-09-05 | 本地 main 和构建环境复核 | `git show main:Dockerfile`、冻结依赖导出、`docker version` | main `f19c7089` 仍 COPY wheelhouse、COPY 全仓库，且导出未显式排除 dev。V5 已按白名单复制应用并排除 dev，本轮补齐 wheelhouse 层问题。本机 Docker engine pipe 仍不存在，不报告 MiB 减少值，实际构建与 digest 测量仍待完成。 |
+| 2026-09-12 | 只读审计 Docker Hub `latest` 的 linux/amd64 manifest 与 config history | Registry digest `sha256:9aee18d5...`，10 层合计 405.51 MiB（压缩传输大小） | 当前远端仍由 main 旧 Dockerfile 构建：wheelhouse COPY 134.36 MiB、安装后删除 wheel 的层 153.02 MiB、全仓 `COPY .` 41.38 MiB。V5 已删除独立 wheelhouse 层并改为运行文件白名单，但尚未发布，因此不能声称新镜像的实际大小或节省比例。 |
 
 ## Progress
 

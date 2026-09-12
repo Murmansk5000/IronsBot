@@ -25,6 +25,7 @@ from ironsbot.services.seer.type_calc import (
     TypeMatchupDataset,
 )
 from ironsbot.services.seer.type_query import (
+    INCOMPLETE_TYPE_DATA_MESSAGE,
     NORMAL_TYPE_MESSAGE,
     TypeQueryService,
     TypeRenderSession,
@@ -81,8 +82,12 @@ def _dataset(target: Any) -> TypeMatchupDataset:
     return TypeMatchupDataset(
         combinations=(snapshot,),
         elements=(ElementTypeSnapshot(snapshot.primary_id, snapshot.name),),
-        relations=(),
+        relations=((snapshot.primary_id, snapshot.primary_id, 1.0),),
     )
+
+
+def _neutral_relations(*type_ids: int) -> tuple[tuple[int, int, float], ...]:
+    return tuple((source, target, 1.0) for source in type_ids for target in type_ids)
 
 
 def _service(
@@ -181,7 +186,7 @@ async def test_matchup_preparation_and_render_share_one_session(
     bound.dataset = TypeMatchupDataset(
         combinations=(TypeCombinationSnapshot(1, "草", 1, None),),
         elements=(ElementTypeSnapshot(1, "草"), ElementTypeSnapshot(2, "水")),
-        relations=(),
+        relations=_neutral_relations(1, 2),
     )
     active = False
     rendered: list[TypeMatchup] = []
@@ -234,7 +239,7 @@ async def test_query_cache_skips_all_reads_and_is_publication_bound(
     data.dataset = TypeMatchupDataset(
         combinations=(TypeCombinationSnapshot(1, "草", 1, None),),
         elements=(ElementTypeSnapshot(1, "草"), ElementTypeSnapshot(2, "水")),
-        relations=(),
+        relations=_neutral_relations(1, 2),
     )
     cache = FileRenderCache(tmp_path, 1024 * 1024, version_getter=lambda: "unused")
     version = "first"
@@ -313,6 +318,42 @@ async def test_custom_query_order_and_failed_render_do_not_poison_cache(
         assert await service.search(arg) == result
         assert data.queries == queries
     assert calls == ["草水（DIY 属性）", "草水（DIY 属性）", "水草（DIY 属性）"]
+
+
+@pytest.mark.asyncio
+async def test_incomplete_type_relations_fail_without_render_or_cache(
+    tmp_path: Path,
+) -> None:
+    data = FakeData()
+    target = _type(1, "草")
+    data.combinations = (target,)
+    data.dataset = TypeMatchupDataset(
+        combinations=(TypeCombinationSnapshot(1, "草", 1, None),),
+        elements=(ElementTypeSnapshot(1, "草"),),
+        relations=(),
+    )
+    cache = FileRenderCache(tmp_path, 1024 * 1024, version_getter=lambda: "release")
+    render_calls = 0
+
+    async def render(_matchup: TypeMatchup) -> bytes:
+        nonlocal render_calls
+        render_calls += 1
+        return b"must not render"
+
+    @contextmanager
+    def session() -> Iterator[TypeRenderSession]:
+        yield TypeRenderSession(cast("SeerDataReader", data), render, cache)
+
+    service = TypeQueryService(session)
+    result = await service.search("草")
+
+    assert result.message == INCOMPLETE_TYPE_DATA_MESSAGE
+    assert result.reply is None
+    assert render_calls == 0
+    first_query_count = data.queries
+    assert (await service.search("草")).message == INCOMPLETE_TYPE_DATA_MESSAGE
+    assert data.queries > first_query_count
+    assert render_calls == 0
 
 
 def test_type_query_and_calculator_are_render_fingerprint_inputs() -> None:
