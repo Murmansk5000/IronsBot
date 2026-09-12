@@ -72,7 +72,7 @@ from ironsbot.services.seer.new_content_menu import (
 from ironsbot.services.seer.query_result import QueryReply
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from ..query_conversation import build_reply
+from ..query_conversation import send_query_reply
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data_queries import SeerDataQueryService
@@ -374,8 +374,9 @@ async def _send_item_detail(
     if detail is None:
         return
     if isinstance(detail, QueryReply):
-        message = build_reply(detail)
-    elif isinstance(detail, AutocardEntry):
+        await send_query_reply(detail, event, finish=False)
+        return
+    if isinstance(detail, AutocardEntry):
         message = MessageFactory(detail.text)
         if detail.image_url:
             message = MessageFactory(Image(detail.image_url)) + message

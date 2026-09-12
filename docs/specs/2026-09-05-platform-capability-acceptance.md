@@ -82,3 +82,36 @@ new reply factory is not a claim that every existing OneBot reply workflow has
 been migrated to the outbound port.
 Phase 7 remains incomplete until full Seer/AI workflows, security/dependency
 audit and real OneBot smoke testing satisfy the ledger gates.
+
+## Seer Query Content Contract (2026-09-12)
+
+Contract: `target`; OneBot group mentions and direct/selected query behavior are
+`baseline` invariants. `QueryReply.to_outbound()` now owns the shared ordered
+content: leading text, image (or the explicit image error), then description.
+Incomplete but deliverable replies keep their available content. Empty payloads
+are rejected by the existing outbound value validation, not sent as success.
+
+The query plugin no longer constructs this content with SAA. It uses the existing
+OneBot outbound renderer and matcher send/finish context; the new-content menu
+reuses this same query delivery entry. No compatibility wrapper, production
+adapter, dependency, schema, or configuration is added. This does not migrate
+all other direct matcher replies to `OutboundMessenger`.
+
+Tests exercise the actual TypeQueryService and calculator, converting its normal
+type text and image result through the same production content method. Restricted
+capabilities reject unsupported images and expired replies before upload. The
+repository and image renderer remain controlled test doubles: this is service
+flow and content-boundary acceptance, not a native PNG rendering, live database,
+game protocol, or QQ Official API acceptance claim.
+
+OneBot regression tests retain group-only mentions, direct finish/selected send,
+image base64 transport, part ordering and explicit image failure text. Existing
+menu reservation tests continue to run. Stage count remains 4/8.
+
+Verification: 59 focused tests; private extension 43 passed; full public suite
+2920 passed with 319 existing dependency warnings (118.14 seconds). Full Ruff,
+BasedPyright (0 errors/warnings), compileall and diff check passed. The initial
+full run exposed an unchanged rank test fixture returning repeated players and
+non-descending scores for every page. Commit `1823e03c` fixes that fixture without
+changing the expected requests, final rank or production consistency checks;
+all 25 rank-limit tests and the subsequent full run passed.
