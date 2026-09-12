@@ -11,7 +11,7 @@ from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
 from ironsbot.integrations.seer_data.skin_price_repository import load_skin_details
-from ironsbot.services.seer.images import fetch_optional_image
+from ironsbot.services.seer.images import ImageSourceError, fetch_optional_image
 from ironsbot.services.seer.query_result import (
     QueryChoice,
     QueryReply,
@@ -167,13 +167,23 @@ class PetQueryService:
             pet_id,
             pet_name,
         )
-        with render_crash_marker(
-            operation="pet_info_render",
-            pet_id=pet_id,
-            pet_name=pet_name,
-            resource_id=pet_id,
-        ):
-            image = await self._render_info(pet_id)
+        try:
+            with render_crash_marker(
+                operation="pet_info_render",
+                pet_id=pet_id,
+                pet_name=pet_name,
+                resource_id=pet_id,
+            ):
+                image = await self._render_info(pet_id)
+        except ImageSourceError as error:
+            logger.warning(
+                "pet info asset fetch failed: pet_id=%s error=%s", pet_id, error
+            )
+            return QueryReply(
+                leading_text=f"【{pet_name}】（{pet_id}）",
+                image_error="精灵图片素材获取失败，暂时无法生成资料图。",
+                complete=False,
+            )
         logger.info(
             "rendered pet info image: pet_id=%s pet_name=%s bytes=%s",
             pet_id,
