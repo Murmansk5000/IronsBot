@@ -73,14 +73,23 @@ class PublishedPlayerLineupEntryResolver:
                     level=slot.level,
                     use_flag=slot.use_flag,
                     name=_pet_name(pets_by_id.get(slot.pet_id)),
-                    resource_id=_resource_id(
-                        slot,
-                        pets_by_id.get(slot.pet_id),
-                        skins_by_id.get(slot.skin_id),
-                        resolved_skin_images.get(slot.skin_id),
+                    resource_id=(
+                        resource_id := _resource_id(
+                            slot,
+                            pets_by_id.get(slot.pet_id),
+                            skins_by_id.get(slot.skin_id),
+                            resolved_skin_images.get(slot.skin_id),
+                        )
                     ),
                     type_id=_type_id(pets_by_id.get(slot.pet_id)),
                     peak_pool_limit=peak_pool_limits.get(slot.pet_id),
+                    complete=(
+                        (pet := pets_by_id.get(slot.pet_id)) is not None
+                        and bool(pet.name.strip())
+                        and pet.resource_id > 0
+                        and resource_id > 0
+                        and _type_id(pet) > 0
+                    ),
                 )
                 for slot in slots
             )
@@ -96,7 +105,7 @@ def _resource_id(
     skin: object | None,
     resolution: object | None,
 ) -> int:
-    base_resource_id = int(getattr(pet, "resource_id", 0) or slot.pet_id)
+    base_resource_id = int(getattr(pet, "resource_id", 0) or 0)
     if slot.skin_id <= 0:
         return base_resource_id
     if skin is None:
