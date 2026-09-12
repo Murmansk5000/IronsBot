@@ -1304,10 +1304,9 @@ The authoritative TOML top-level schema is:
 ```
 
 Nested models may live in separate files, but they are reachable only through
-`Settings`. Every model uses `extra="forbid"`. The TOML loader reports and
-ignores unknown fields; invalid known values, unknown features, unknown account
-references, incomplete actions, and invalid section names fail startup with
-their exact configuration path.
+`Settings`. Every model uses `extra="forbid"`. Unknown fields, invalid known
+values, unknown features, unknown account references, incomplete actions, and
+invalid section names fail startup with their exact configuration path.
 
 The loader has no cache, cleanup pass, fallback schema, or automatic mutation.
 Missing TOML is a deployment concern: the
