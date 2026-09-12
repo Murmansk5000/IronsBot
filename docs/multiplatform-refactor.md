@@ -620,6 +620,26 @@ TOML 清单、元数据和贡献机制接入。
 
 ### Phase 4 — 渲染、发布事实和素材管线
 
+**巅峰图片消费与恢复（2026-09-12）：** 竞技池、投票、精灵榜统一使用
+`_render_peak_result` 处理预期素材失败/渲染超时；删除投票独有的 45 秒计时器和
+`except Exception`，原生时限复用现有 `RenderCoordinator`。代码错误和取消继续
+向上传播；无数据库会话跨越渲染 await。Python 3.10 的 asyncio 超时类型也覆盖，
+未改变网络请求时限。先复现 6 个错误分支，再验证三入口失败后可重新查询。
+
+同一测试矩阵覆盖 pool/vote/rank、HTTP 404/503/ReadTimeout、发布类别完整/不完整，
+共 18 组；真实 `HttpSeerImageSource`、`SeerAssetStore`、`FileRenderCache` 与协调器
+组合验证失败不写最终缓存、恢复重新获取、完整结果第二次不再 HTTP/原生渲染，
+不完整类别只复用素材、不写完整图缓存。负缓存 TTL 在测试中置零以验证恢复。
+HTTP 用固定 revision URL 和合成 PNG，默认 HTML 为替身；显式设置
+`IRONSBOT_NATIVE_RENDER_TESTS=1` 后本轮已通过真实 HTML/PIL 像素检查，并目视确认
+三种模板的标题、精灵名称、票数/场次与时间布局。不是实际官方图标或真实 release
+全链路验收。首次原生测试的 NoneBot 初始化顺序错误已修正测试装配。
+
+原生矩阵及相关测试 87 passed；最终相关回归含导入检查 90 passed，隔离 Python 3.10
+环境 60 passed。全量 Ruff、BasedPyright、compileall/diff 通过；本批未重复全量 pytest。
+生产文件净减 4 行，不新增模块、依赖、配置或素材文件。真实发布物消费和其他渲染
+类别的整体验收继续开放，总进度仍为 5/8；未 pull/merge/push 或改生产环境。
+
 **目标契约：** `repository -> immutable snapshot -> presenter -> RenderDocument -> renderer`
 以及统一 `AssetStore` / `RenderCoordinator`。
 

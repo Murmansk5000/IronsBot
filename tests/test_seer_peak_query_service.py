@@ -16,6 +16,7 @@ from ironsbot.integrations.seer_data.peak_repository import (
 )
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
+from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.peak import (
     PeakItemData,
     PeakPetSnapshot,
@@ -24,6 +25,8 @@ from ironsbot.services.seer.peak import (
     PeakRenderSession,
     active_peak_pool_limits,
 )
+from ironsbot.services.seer.render_coordinator import RenderCoordinator
+from ironsbot.services.seer.render_paths import PEAK_POOL_VOTE_TEMPLATE_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -412,7 +415,6 @@ async def test_peak_vote_fetches_only_active_pools(
 async def test_peak_vote_reports_render_timeout(
     monkeypatch: MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(peak, "PEAK_VOTE_RENDER_TIMEOUT_SECONDS", 0.01)
     current_time = datetime(2026, 7, 20, 19, 0, tzinfo=time.TZ_CN)
     monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
 
@@ -430,9 +432,14 @@ async def test_peak_vote_reports_render_timeout(
         async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
             return []
 
-    async def render_vote(_pools: tuple[Any, ...], _generated_at: str) -> bytes:
+    async def render_html(*_args: Any, **_kwargs: Any) -> bytes:
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
+
+    coordinator = RenderCoordinator(render_html, timeout_seconds=0.01)
+
+    async def render_vote(_pools: tuple[Any, ...], _generated_at: str) -> bytes:
+        return await coordinator.render(PEAK_POOL_VOTE_TEMPLATE_PATH, "unused", {})
 
     async def render_pool(_pools: Any, _title: str) -> bytes:
         return b"pool"
@@ -453,6 +460,86 @@ async def test_peak_vote_reports_render_timeout(
 
     assert result.message == "❌巅峰投票图片生成超时，请稍后再试。"
     assert not data.render_open
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["pool", "vote", "pet"])
+@pytest.mark.parametrize(
+    "failure", [ImageSourceError, TimeoutError, RuntimeError, asyncio.CancelledError]
+)
+async def test_peak_render_failure_and_recovery(
+    monkeypatch: MonkeyPatch, mode: str, failure: type[BaseException]
+) -> None:
+    now = datetime(2026, 7, 20, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: now.astimezone(tz))
+    data = FakeData()
+    pool = _pool_snapshot()
+    data.query_result = (
+        (_vote_snapshot(1, 99, pool.start_time, pool.end_time),)
+        if mode == "vote"
+        else (pool,)
+    )
+
+    class Game:
+        async def get_limit_pool_vote(self, _sub_key: int) -> list[RankEntry]:
+            return []
+
+        async def get_peak_pet_rank(
+            self, _sub_key: int, _peak_type: object
+        ) -> tuple[list[PeakItemData], list[RankEntry]]:
+            return [PeakItemData(7, 10, 6)], []
+
+    broken = True
+    calls = 0
+
+    async def render(*_args: Any) -> bytes:
+        nonlocal calls
+        calls += 1
+        assert data.render_open and not data.query_open
+        if broken:
+            raise failure
+        return b"recovered"
+
+    async def report(_message: str) -> None:
+        assert not data.query_open
+
+    service = PeakQueryService(
+        cast("SeerDataAccess", data),
+        cast("HeadlessService", FakeHeadless(Game())),
+        _render_session(data, render, render, render),
+    )
+
+    async def request() -> peak.PeakQueryResult:
+        if mode == "vote":
+            return await service.vote(report)
+        if mode == "pet":
+            data.query_results = [
+                PeakPeriodTimes(pool.start_time, pool.end_time),
+                {7: PeakPetSnapshot(7, "pet", 70, 1)},
+            ]
+            return await service.pet_rank("竞技精灵总榜", report)
+        return await service.pool(expert=False, progress=report)
+
+    if failure in {RuntimeError, asyncio.CancelledError}:
+        with pytest.raises(failure):
+            await request()
+    else:
+        failed = await request()
+        assert failed.image is None
+        assert (
+            "素材获取失败" if failure is ImageSourceError else "生成超时"
+        ) in failed.message
+        assert {"pool": "竞技池", "vote": "巅峰投票", "pet": "竞技精灵总榜"}[
+            mode
+        ] in failed.message
+    assert not data.render_open and not data.query_open
+    failed_calls = calls
+    broken = False
+    recovered = await request()
+    assert recovered.image == b"recovered"
+    assert recovered.message == ""
+    assert calls == failed_calls + 1
+    assert not data.render_open and not data.query_open
 
 
 @pytest.mark.asyncio

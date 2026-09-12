@@ -22,6 +22,7 @@ from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 
 if TYPE_CHECKING:
@@ -202,7 +203,6 @@ PEAK_TITLE_KEY_MAP = {
 
 LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3
-PEAK_VOTE_RENDER_TIMEOUT_SECONDS = 45.0
 ProgressReporter = Callable[[str], Awaitable[None]]
 PeakPoolRenderer = Callable[
     [tuple[PeakPoolSnapshot, ...], str],
@@ -282,6 +282,18 @@ class PeakQueryResult:
     message: str = ""
 
 
+async def _render_peak_result(image: Awaitable[bytes], title: str) -> PeakQueryResult:
+    """Report expected render failures; deadlines belong to the shared ports."""
+    try:
+        return PeakQueryResult(image=await image)
+    except ImageSourceError:
+        logger.exception("peak image assets unavailable: title=%s", title)
+        return PeakQueryResult(message=f"❌{title}图片素材获取失败，请稍后再试。")
+    except (TimeoutError, asyncio.TimeoutError):
+        logger.warning("peak image render timed out: title=%s", title, exc_info=True)
+        return PeakQueryResult(message=f"❌{title}图片生成超时，请稍后再试。")
+
+
 def normalize_peak_vote_time(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         return value.replace(tzinfo=time.TZ_CN)
@@ -346,11 +358,10 @@ class PeakQueryService:
             await progress("正在生成图片...")
             start_time = pools[0].start_time.strftime("%Y-%m-%d")
             end_time = pools[0].end_time.strftime("%Y-%m-%d")
-            image = await rendering.pool(
-                pools,
-                f"{label} / {start_time} ~ {end_time}",
+            return await _render_peak_result(
+                rendering.pool(pools, f"{label} / {start_time} ~ {end_time}"),
+                label,
             )
-            return PeakQueryResult(image=image)
 
     async def vote(
         self,
@@ -397,27 +408,13 @@ class PeakQueryService:
             if not pools:
                 return PeakQueryResult(message="❌当前没有进行中的巅峰投票。")
             await progress("正在生成图片...")
-            try:
-                image = await asyncio.wait_for(
-                    rendering.vote(
-                        tuple(pools),
-                        time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M"),
-                    ),
-                    timeout=PEAK_VOTE_RENDER_TIMEOUT_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "peak vote render timed out: pools=%s timeout_seconds=%s",
-                    len(pools),
-                    PEAK_VOTE_RENDER_TIMEOUT_SECONDS,
-                )
-                return PeakQueryResult(
-                    message="❌巅峰投票图片生成超时，请稍后再试。"
-                )
-            except Exception:
-                logger.exception("peak vote render failed: pools=%s", len(pools))
-                return PeakQueryResult(message="❌巅峰投票图片生成失败，请稍后再试。")
-            return PeakQueryResult(image=image)
+            return await _render_peak_result(
+                rendering.vote(
+                    tuple(pools),
+                    time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M"),
+                ),
+                "巅峰投票",
+            )
 
     async def item_rank(
         self,
@@ -535,8 +532,7 @@ class PeakQueryService:
                 ),
                 pets=pets,
             )
-            image = await rendering.pet(render_input)
-            return PeakQueryResult(image=image)
+            return await _render_peak_result(rendering.pet(render_input), command)
 
     def _game(self) -> tuple[PeakGame | None, str]:
         try:

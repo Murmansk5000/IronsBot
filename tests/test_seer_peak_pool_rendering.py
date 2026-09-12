@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -31,6 +33,8 @@ from ironsbot.services.seer.rendering.peak_pool_vote import (
 from ironsbot.services.seer.rendering.pet_image_assets import PetImageAssets
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
@@ -264,3 +268,157 @@ async def test_peak_vote_adapter_deduplicates_assets_and_writes_final_cache() ->
             b"rendered-vote",
         )
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["pool", "vote", "rank"])
+@pytest.mark.parametrize("failure", [404, 503, "timeout"])
+@pytest.mark.parametrize("complete", [True, False])
+async def test_peak_adapters_recover_without_caching_failed_images(  # noqa: C901, PLR0915 - shared adapter/backend matrix
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    failure: int | str,
+    *,
+    complete: bool,
+) -> None:
+    """Use synthetic HTTP PNGs; opt in to native HTML via the render-test env."""
+    from httpx import AsyncClient, MockTransport, ReadTimeout, Request, Response
+    from PIL import Image
+
+    from ironsbot.app.lifecycle import TaskOwner
+    from ironsbot.integrations.htmlkit import render_html_template
+    from ironsbot.integrations.http.clients import HttpClients
+    from ironsbot.integrations.http.seer_images import HttpSeerImageSource
+    from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
+        render_peak_pet_rank,
+    )
+    from ironsbot.integrations.storage.render_cache import FileRenderCache
+    from ironsbot.integrations.storage.seer_assets import (
+        SeerAssetStore,
+        SeerAssetStoreLimits,
+    )
+    from ironsbot.services.seer.images import (
+        ImageSourceError,
+        PublishedRenderAssetSnapshot,
+    )
+    from ironsbot.services.seer.peak import PeakPetPickSnapshot, PeakPetRankRenderInput
+    from ironsbot.services.seer.render_coordinator import RenderCoordinator
+
+    native = os.environ.get("IRONSBOT_NATIVE_RENDER_TESTS") == "1"
+    if native:
+        import nonebot
+
+        try:
+            driver = nonebot.get_driver()
+        except ValueError:
+            nonebot.init()
+            driver = nonebot.get_driver()
+        if fontconfig := os.environ.get("IRONSBOT_RENDER_FONTCONFIG"):
+            monkeypatch.setattr(
+                driver.config, "fontconfig_file", fontconfig, raising=False
+            )
+        from nonebot_plugin_htmlkit import init_fontconfig
+
+        init_fontconfig()
+
+    output = BytesIO()
+    Image.new("RGB", (96, 96), "#159ca8").save(output, format="PNG")
+    asset = output.getvalue()
+    requests: list[str] = []
+    broken = True
+    renders = 0
+    revision = "1" * 40
+    publication = PublishedRenderAssetSnapshot(
+        "example/assets", revision, "manifest", frozenset()
+    )
+
+    def transport(request: Request) -> Response:
+        requests.append(str(request.url))
+        assert f"/example/assets/{revision}/" in request.url.path
+        if broken:
+            if failure == "timeout":
+                raise ReadTimeout(str(request.url), request=request)
+            return Response(int(failure))
+        return Response(200, content=asset, headers={"content-type": "image/png"})
+
+    async def render_html(*args: Any, **kwargs: Any) -> bytes:
+        nonlocal renders
+        renders += 1
+        if native:
+            return await render_html_template(*args, **kwargs)
+        return asset
+
+    owner = TaskOwner()
+    cache_dir = tmp_path / "renders"
+    cache = FileRenderCache(
+        cache_dir,
+        8 * 1024 * 1024,
+        version_getter=lambda: "release-1",
+        category_available=lambda _category: complete,
+    )
+    coordinator = RenderCoordinator(render_html, timeout_seconds=20)
+    try:
+        async with AsyncClient(transport=MockTransport(transport)) as client:
+            images = SeerAssetStore(
+                HttpSeerImageSource(
+                    HttpClients(cache=client, origin=client),
+                    asset_snapshot_getter=lambda: publication,
+                ),
+                tmp_path / "assets",
+                SeerAssetStoreLimits(1024 * 1024, 8 * 1024 * 1024, 1, 0),
+                spawn=owner.create,
+            )
+
+            async def request_image() -> bytes:
+                if mode == "pool":
+                    return await render_peak_pool(
+                        cache, images, coordinator.render, _pools(), "竞技池"
+                    )
+                if mode == "vote":
+                    return await render_peak_pool_vote(
+                        cache,
+                        images,
+                        coordinator.render,
+                        _vote_pools(),
+                        "2026-09-12 14:00",
+                    )
+                return await render_peak_pet_rank(
+                    cache,
+                    images,
+                    coordinator.render,
+                    PeakPetRankRenderInput(
+                        "竞技精灵总榜",
+                        "2026-09-12 14:00",
+                        (PeakPetPickSnapshot(100, 10, 6),),
+                        (),
+                        _pools()[0].pets,
+                    ),
+                )
+
+            with pytest.raises(ImageSourceError):
+                await request_image()
+            assert renders == 0
+            assert not list(cache_dir.rglob("*.bin"))
+            failed_requests = len(requests)
+            broken = False
+            rendered = await request_image()
+            assert renders == 1
+            assert len(requests) > failed_requests
+            cold_requests = list(requests)
+            cold_renders = renders
+            assert bool(list(cache_dir.rglob("*.bin"))) is complete
+            assert await request_image() == rendered
+            assert requests == cold_requests
+            assert renders == cold_renders + (not complete)
+            with Image.open(BytesIO(rendered)) as image:
+                assert image.format == "PNG"
+                if native:
+                    minimum_side, minimum_colors = 200, 100
+                    assert min(image.size) >= minimum_side
+                    colors = image.convert("RGB").getcolors(image.width * image.height)
+                    assert colors is not None and len(colors) > minimum_colors
+            if native:
+                (tmp_path / f"{mode}.png").write_bytes(rendered)
+    finally:
+        await owner.cancel_all()
