@@ -66,6 +66,7 @@ from ironsbot.services.seer.lucky_skin_window_delivery import (
 )
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.new_content import NewContentService
+from ironsbot.services.seer.new_content_details import NewContentDetailService
 from ironsbot.services.seer.peak import PeakQueryService, PeakRenderSession
 from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
@@ -410,6 +411,13 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
     )
     autocard = AutocardService(seer_database)
     autocard_sanctuary = AutocardSanctuaryService(seer_database)
+    equipment = EquipmentQueryService(seer_database, images)
+    pet = PetQueryService(seer_database, images, render_pet)
+    mintmark = MintmarkQueryService(
+        seer_database,
+        images,
+        merge_connected=settings.seer.mintmark.merge_connected,
+    )
     external_references = SeerInfoReferences(settings.seer.external_references)
     return SeerComponents(
         seer=SeerQueryResources(
@@ -428,32 +436,25 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 seer_database.error_message,
                 team_resource,
             ),
-            EquipmentQueryService(seer_database, images),
+            equipment,
             TypeQueryService(
                 seer_database,
                 type_render_session,
             ),
             BattleEffectQueryService(seer_database, images),
-            PetQueryService(
-                seer_database,
-                images,
-                render_pet,
-            ),
+            pet,
             PeakQueryService(
                 seer_database,
                 headless,
                 peak_render_session,
             ),
-            MintmarkQueryService(
-                seer_database,
-                images,
-                merge_connected=settings.seer.mintmark.merge_connected,
-            ),
+            mintmark,
             player,
             player_detail_extensions,
             rank_queries,
             rank_admin,
             render_content_menu,
+            NewContentDetailService(pet, mintmark, equipment, autocard),
             external_references,
         ),
         lucky_skin_window=lucky_skin_window,

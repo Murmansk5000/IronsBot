@@ -1,5 +1,6 @@
 import asyncio
 from typing import Literal
+from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
@@ -14,14 +15,18 @@ from ironsbot.plugins.onebot.seer.query.commands.new_content import (
     _content_prompt,
     _render_content_prompt,
 )
+from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
+    NewContentCategory,
     NewContentItem,
     NewContentSnapshot,
     NewContentSnapshotChangedError,
     format_new_content_item_description,
 )
 from ironsbot.services.seer.new_content_details import (
+    NewContentDetailService,
     format_new_content_autocard_sanctuary_effect_detail,
     format_new_content_skill_detail,
 )
@@ -29,7 +34,123 @@ from ironsbot.services.seer.new_content_menu import (
     NewContentMenuLayout,
     focus_new_content_category,
 )
+from ironsbot.services.seer.pet_query import PetImageSelection
+from ironsbot.services.seer.query_result import QueryReply, QueryResult
 from tests.helpers.onebot_events import group_message_event
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("category", "selector", "args"),
+    [
+        ("pet", "pet.select_info", (9,)),
+        ("peak_pool", "pet.select_info", (9,)),
+        ("pet_skin", "pet.select_image", (PetImageSelection(123, "test", 9),)),
+        ("mintmark", "mintmark.select_mintmark", (9,)),
+        ("suit", "equipment.select", ("suit", 9)),
+        ("equip", "equipment.select", ("equip", 9)),
+        ("mount", "equipment.select", ("equip", 9)),
+    ],
+)
+@pytest.mark.parametrize("message", ["", "missing"])
+async def test_content_detail_reuses_domain_selector(
+    category: NewContentCategory,
+    selector: str,
+    args: tuple[object, ...],
+    message: str,
+) -> None:
+    reply = QueryReply(text="detail", image=b"image", complete=False)
+    result = QueryResult[object](reply=reply, message=message)
+    dependencies = Mock()
+    dependencies.pet.select_info = AsyncMock(return_value=result)
+    dependencies.pet.select_image = AsyncMock(return_value=result)
+    dependencies.mintmark.select_mintmark = AsyncMock(return_value=result)
+    dependencies.equipment.select = AsyncMock(return_value=result)
+    service = NewContentDetailService(
+        dependencies.pet,
+        dependencies.mintmark,
+        dependencies.equipment,
+        dependencies.autocard,
+    )
+    item = NewContentItem(category, 9, "test", 9, {"resource_id": 123})
+
+    detail = await service.select(item)
+
+    assert detail == (message or reply)
+    assert len(dependencies.mock_calls) == 1
+    call = dependencies.mock_calls[0]
+    assert call[0] == selector
+    assert call.args == args
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("category", ["autocard_card", "autocard_role"])
+@pytest.mark.parametrize("found", [True, False])
+async def test_content_card_detail_preserves_entry_and_missing_result(
+    category: NewContentCategory,
+    *,
+    found: bool,
+) -> None:
+    kind = "role" if category == "autocard_role" else "card"
+    entry = AutocardEntry(
+        kind=kind, item_id=9, name="test", text="detail", image_url="url"
+    )
+    dependencies = Mock()
+    dependencies.autocard.select.return_value = entry if found else None
+    service = NewContentDetailService(
+        dependencies.pet,
+        dependencies.mintmark,
+        dependencies.equipment,
+        dependencies.autocard,
+    )
+
+    detail = await service.select(NewContentItem(category, 9, "test", 9, {}))
+
+    assert detail is (entry if found else None)
+    dependencies.autocard.select.assert_called_once_with(AutocardPromptValue(kind, 9))
+    assert len(dependencies.mock_calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "category", ["skill", "achievement", "autocard_sanctuary_effect"]
+)
+async def test_content_embedded_detail_does_not_query_current_data(
+    category: NewContentCategory,
+) -> None:
+    dependencies = Mock()
+    service = NewContentDetailService(
+        dependencies.pet,
+        dependencies.mintmark,
+        dependencies.equipment,
+        dependencies.autocard,
+    )
+
+    detail = await service.select(NewContentItem(category, 9, "old menu name", 9, {}))
+
+    assert isinstance(detail, str) and "old menu name" in detail
+    assert dependencies.mock_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [DataUnavailableError, asyncio.CancelledError])
+async def test_content_detail_propagates_failure_and_cancellation(
+    error: type[BaseException],
+) -> None:
+    dependencies = Mock()
+    dependencies.pet.select_info = AsyncMock(side_effect=error)
+    service = NewContentDetailService(
+        dependencies.pet,
+        dependencies.mintmark,
+        dependencies.equipment,
+        dependencies.autocard,
+    )
+
+    with pytest.raises(error):
+        await service.select(NewContentItem("pet", 9, "test", 9, {}))
+
+    dependencies.pet.select_info.assert_awaited_once_with(9)
+    assert len(dependencies.mock_calls) == 1
 
 
 def _effect(*, change_kind: Literal["added", "modified"] = "added") -> NewContentItem:
@@ -306,7 +427,8 @@ def test_menu_image_and_text_fallback_share_layout_and_sender(
     prompt = _content_prompt(snapshot, layout)
     renderer_calls: list[tuple[object, ...]] = []
 
-    async def renderer(*args: object) -> bytes:
+    async def renderer(*args: object, **kwargs: object) -> bytes:
+        assert not kwargs
         renderer_calls.append(args)
         if render_error is not None:
             raise render_error

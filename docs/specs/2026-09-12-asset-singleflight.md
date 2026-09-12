@@ -296,3 +296,25 @@ it has not acquired a common version policy with the retained index. Missing
 detail fallback completeness and actual material/pixel acceptance also remain.
 This batch does not claim the entire new-content conversation is version-bound,
 enable another cache scope, or advance the 4/8 phase count.
+
+## New-Content Detail Ownership
+
+Target: one platform-neutral detail selector owns category dispatch. Reuse the
+existing pet, mintmark, equipment and Autocard services; return their reply/text
+or card entry without introducing a second lookup or delivery model. Embedded
+skill, achievement and sanctuary descriptions continue using retained index
+facts without reading current data. Composition shares the same service
+instances with direct commands. OneBot only selects and delivers, with typed
+detail/menu dependencies instead of five Any fields.
+
+Verified: 62 detail/menu/catalog/architecture/size tests passed in 14.77s;
+all twelve categories, selector arguments, returned partial reply identity,
+missing/error messages, absent cards, data failure and cancellation are covered.
+Ruff, targeted BasedPyright (0 errors/warnings), compileall and diff passed.
+Production Python is 7 lines smaller overall; the OneBot adapter is 64 lines
+smaller. No new file, dependency, TOML or compatibility facade was added.
+
+This establishes the detail business boundary, not publication consistency:
+the domain selectors still use their current readers. Next bind or explicitly
+invalidate the selected publication at this service boundary, rather than
+adding per-category guards in the OneBot plugin. Phase 4 remains unaccepted.
