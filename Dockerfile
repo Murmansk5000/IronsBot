@@ -60,6 +60,7 @@ RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel \
 # but are never imported by the container process.
 COPY ironsbot /app/ironsbot
 COPY docker-entrypoint.sh __version__ config.example.toml /app/
+COPY LICENSE LICENSE.GPL-3.0 LICENSING.md /app/
 
 ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["python", "-m", "ironsbot"]

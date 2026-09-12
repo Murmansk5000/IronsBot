@@ -43,6 +43,7 @@ def _run_measurement(
         *--format*Size*) printf '1048576\\n' ;;
         'image inspect '*) printf '[]\\n' ;;
         'image history '*) printf '{}\\n' ;;
+        'run --rm --network none --entrypoint sh '*) printf '1024\\t/app\\n' ;;
     esac
 }
 python() { "$WORKFLOW_TEST_PYTHON" "$@"; }
@@ -87,6 +88,15 @@ def test_size_measurement_uses_digest_and_keeps_layer_evidence(
     assert all(":latest" not in call and ":test" not in call for call in calls)
     assert (tmp_path / "ironsbot-image-inspect.json").is_file()
     assert (tmp_path / "ironsbot-image-history.jsonl").is_file()
+    assert (
+        tmp_path / "ironsbot-runtime-size-kib.txt"
+    ).read_text().strip() == "1024\t/app"
+    inventory = next(call for call in calls if call.startswith("run "))
+    assert "--network none --entrypoint sh" in inventory
+    assert (
+        "du -k -d 1 /app /usr/local/lib/python*/site-packages /usr/share/fonts"
+        in inventory
+    )
     summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
     assert f"{repository}@{digest}" in summary
     assert "1.0 MiB" in summary
@@ -112,4 +122,5 @@ def test_release_connects_measurement_to_build_digest_and_artifact() -> None:
     assert measure["env"]["IMAGE_DIGEST"] == "${{ steps.build.outputs.digest }}"
     assert "ironsbot-image-inspect.json" in upload["with"]["path"]
     assert "ironsbot-image-history.jsonl" in upload["with"]["path"]
+    assert "ironsbot-runtime-size-kib.txt" in upload["with"]["path"]
     assert upload["with"]["if-no-files-found"] == "error"

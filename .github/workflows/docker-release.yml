@@ -124,6 +124,7 @@ jobs:
                   docker pull "$image"
                   docker image inspect "$image" > "$RUNNER_TEMP/ironsbot-image-inspect.json"
                   docker image history --no-trunc --human=false --format '{{json .}}' "$image" > "$RUNNER_TEMP/ironsbot-image-history.jsonl"
+                  docker run --rm --network none --entrypoint sh "$image" -c 'du -k -d 1 /app /usr/local/lib/python*/site-packages /usr/share/fonts' > "$RUNNER_TEMP/ironsbot-runtime-size-kib.txt"
                   bytes="$(docker image inspect "$image" --format '{{.Size}}')"
                   mib="$(python -c 'import sys; print(f"{int(sys.argv[1]) / 1024 / 1024:.1f}")' "$bytes")"
                   {
@@ -133,6 +134,7 @@ jobs:
                     echo "- Local uncompressed size: **${mib} MiB** (${bytes} bytes)"
                     echo
                     echo 'Layer details are retained in the image-size artifact.'
+                    echo 'Runtime directory sizes (KiB) are also retained for code, dependencies and fonts.'
                   } >> "$GITHUB_STEP_SUMMARY"
 
             - name: Upload image size evidence
@@ -142,4 +144,5 @@ jobs:
                   path: |
                       ${{ runner.temp }}/ironsbot-image-inspect.json
                       ${{ runner.temp }}/ironsbot-image-history.jsonl
+                      ${{ runner.temp }}/ironsbot-runtime-size-kib.txt
                   if-no-files-found: error
