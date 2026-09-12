@@ -1021,6 +1021,13 @@ pyproject.toml 并保留许可证，但本机 Docker daemon 未运行，未宣�
 下表“已迁移”指声明的语义 owner 已迁出插件，不代表该领域全部参数化输入已通过
 认领验收。参数化覆盖是 Phase 5 独立完成条件，不能用声明迁移替代。
 
+**玩家事件适配复用（2026-09-12）：** 基础米米号与绑定入口改用已有
+`resolve_player_target()`，与快捷查询、榜单玩家查询共用事件转换和缺少 resolver
+时的错误处理，删除基础入口独有的 `_require_player_id_resolver`。普通查询仍允许
+默认绑定，绑定命令仍要求显式目标；不改变领域 `PlayerIdResolver`、权限或存储。
+目标解析、绑定和命令认领相关 84 passed，定向 Ruff/类型检查通过；没有新模块、
+依赖或 TOML，不据此声明整个 Phase 5 完成。
+
 | 领域 | 当前唯一命令 contract 来源 | OneBot 插件允许保留的内容 | 状态 |
 | --- | --- | --- | --- |
 | 赛尔查询 | `services.seer.command_contracts` | 事件转换、参数交给 service、回复 | 已迁移 |
