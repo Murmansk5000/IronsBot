@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from nonebot.adapters import (
     Event,  # noqa: TC002 - NoneBot resolves callback annotations
@@ -30,8 +30,11 @@ from ironsbot.integrations.onebot.prompts import (
     enter_prompt,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.services.seer.autocard import AutocardPromptValue
-from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.autocard import AutocardEntry
+from ironsbot.services.seer.data import (
+    DataPublicationChangedError,
+    DataUnavailableError,
+)
 from ironsbot.services.seer.data_query_commands import (
     NEW_ACHIEVEMENTS_COMMANDS,
     NEW_AUTOCARD_CARDS_COMMANDS,
@@ -56,12 +59,8 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentSnapshot,
+    NewContentSnapshotChangedError,
     new_content_unavailable_message,
-)
-from ironsbot.services.seer.new_content_details import (
-    format_new_content_achievement_detail,
-    format_new_content_autocard_sanctuary_effect_detail,
-    format_new_content_skill_detail,
 )
 from ironsbot.services.seer.new_content_menu import (
     NewContentAction,
@@ -70,13 +69,15 @@ from ironsbot.services.seer.new_content_menu import (
     focus_new_content_category,
     plan_new_content_menu,
 )
-from ironsbot.services.seer.pet_query import PetImageSelection
+from ironsbot.services.seer.query_result import QueryReply
 
 from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import build_reply
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.data_queries import SeerDataQueryService
+    from ironsbot.services.seer.new_content_details import NewContentDetailService
+    from ironsbot.services.seer.resources import NewContentMenuRenderer
 
 
 NEW_CONTENT_SNAPSHOT_KEY = "new_content_snapshot"
@@ -192,10 +193,7 @@ async def _start_new_content(  # noqa: PLR0913
     prompt = _content_prompt(snapshot, layout)
     state[NEW_CONTENT_SNAPSHOT_KEY] = snapshot
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(
-        pet=group.resources.pet_query,
-        mintmark=group.resources.mintmark,
-        equipment=group.resources.equipment,
-        autocard=group.resources.autocard,
+        details=group.resources.new_content_details,
         menu_renderer=group.resources.new_content_menu,
     )
     state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
@@ -325,7 +323,7 @@ async def _render_content_prompt(
     prompt: Prompt[NewContentAction],
     snapshot: NewContentSnapshot,
     layout: NewContentMenuLayout,
-    renderer: Any,
+    renderer: NewContentMenuRenderer,
     event: Event,
 ) -> str | Message:
     """Render only this menu as an image; preserve text as a resilient fallback."""
@@ -339,6 +337,8 @@ async def _render_content_prompt(
             layout.expanded_categories,
             DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
         )
+    except NewContentSnapshotChangedError:
+        return prompt.build_event_message(event)
     except Exception:
         logger.exception("new content menu rendering failed; falling back to text")
         return prompt.build_event_message(event)
@@ -356,87 +356,35 @@ async def _send_item_detail(
     matcher: Matcher,
     event: Event,
 ) -> None:
-    if item.category == "autocard_sanctuary_effect":
-        await MessageFactory(
-            format_new_content_autocard_sanctuary_effect_detail(item)
-        ).send(at_sender=isinstance(event, GroupMessageEvent))
-        return
     services = matcher.state.get(NEW_CONTENT_SERVICES_KEY)
-    if not isinstance(services, _NewContentServices):
+    snapshot = matcher.state.get(NEW_CONTENT_SNAPSHOT_KEY)
+    if not isinstance(services, _NewContentServices) or not isinstance(
+        snapshot, NewContentSnapshot
+    ):
         await matcher.finish("新增内容会话已失效，请重新发送指令。")
         return
-    if item.category == "achievement":
-        await MessageFactory(format_new_content_achievement_detail(item)).send(
-            at_sender=isinstance(event, GroupMessageEvent)
-        )
-        return
-    if item.category == "skill":
-        await MessageFactory(format_new_content_skill_detail(item)).send(
-            at_sender=isinstance(event, GroupMessageEvent)
-        )
-        return
     try:
-        if item.category in {"autocard_card", "autocard_role"}:
-            await _send_autocard_detail(item, services.autocard, event)
-            return
-        result = await _select_standard_item(item, services)
+        detail = await services.details.select(snapshot, item)
+    except (NewContentSnapshotChangedError, DataPublicationChangedError):
+        await matcher.finish("数据已更新，当前新增内容菜单已失效，重新发送指令查看。")
+        return
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    if result.message:
-        await MessageFactory(result.message).send(
-            at_sender=isinstance(event, GroupMessageEvent)
-        )
-    elif result.reply is not None:
-        await build_reply(result.reply).send(
-            at_sender=isinstance(event, GroupMessageEvent)
-        )
-
-
-async def _select_standard_item(
-    item: NewContentItem,
-    services: _NewContentServices,
-) -> Any:
-    if item.category in {"pet", "peak_pool"}:
-        return await services.pet.select_info(item.entity_id)
-    if item.category == "pet_skin":
-        return await services.pet.select_image(
-            PetImageSelection(
-                resource_id=int(item.payload.get("resource_id", item.entity_id)),
-                name=item.name,
-                skin_id=item.entity_id,
-            )
-        )
-    if item.category == "mintmark":
-        return await services.mintmark.select_mintmark(item.entity_id)
-    if item.category == "suit":
-        return await services.equipment.select("suit", item.entity_id)
-    return await services.equipment.select("equip", item.entity_id)
-
-
-async def _send_autocard_detail(
-    item: NewContentItem,
-    service: Any,
-    event: Event,
-) -> None:
-    entry = service.select(
-        AutocardPromptValue(
-            kind="role" if item.category == "autocard_role" else "card",
-            item_id=item.entity_id,
-        )
-    )
-    if entry is None:
+    if detail is None:
         return
-    message = MessageFactory(entry.text)
-    if entry.image_url:
-        message = MessageFactory(Image(entry.image_url)) + message
+    if isinstance(detail, QueryReply):
+        message = build_reply(detail)
+    elif isinstance(detail, AutocardEntry):
+        message = MessageFactory(detail.text)
+        if detail.image_url:
+            message = MessageFactory(Image(detail.image_url)) + message
+    else:
+        message = MessageFactory(detail)
     await message.send(at_sender=isinstance(event, GroupMessageEvent))
 
 
 @dataclass(frozen=True, slots=True)
 class _NewContentServices:
-    pet: Any
-    mintmark: Any
-    equipment: Any
-    autocard: Any
-    menu_renderer: Any
+    details: NewContentDetailService
+    menu_renderer: NewContentMenuRenderer

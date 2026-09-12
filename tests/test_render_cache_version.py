@@ -3,7 +3,10 @@ from pathlib import Path
 
 from ironsbot.app.rendering_composition import FINAL_RENDER_CACHE_INPUTS
 from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
-from ironsbot.integrations.storage.render_cache import UNKNOWN_RENDER_CACHE_VERSION
+from ironsbot.integrations.storage.render_cache import (
+    UNKNOWN_RENDER_CACHE_VERSION,
+    FileRenderCache,
+)
 from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
 from ironsbot.services.seer.render_paths import SEER_RENDERING_PATH
 
@@ -54,3 +57,27 @@ def test_render_cache_version_ignores_generated_python_bytecode(
     second = RenderCacheVersion(lambda: "data", (source.parent,))()
 
     assert first == second
+
+
+def test_changed_layout_cannot_reuse_a_persisted_pet_render(tmp_path: Path) -> None:
+    template = tmp_path / "template.html.j2"
+    template.write_text("old layout", encoding="utf-8")
+    cache_dir = tmp_path / "cache"
+    previous = FileRenderCache(
+        cache_dir,
+        1024,
+        version_getter=RenderCacheVersion(lambda: "same-data", (template,)),
+    )
+    previous.entry("pet_info", "4354").put(b"old-render")
+    assert previous.entry("pet_info", "4354").get() == b"old-render"
+
+    template.write_text("encyclopedia layout", encoding="utf-8")
+    updated = FileRenderCache(
+        cache_dir,
+        1024,
+        version_getter=RenderCacheVersion(lambda: "same-data", (template,)),
+    )
+    assert updated.entry("pet_info", "4354").get() is None
+    updated.entry("pet_info", "4354").put(b"new-render")
+    assert updated.entry("pet_info", "4354").get() == b"new-render"
+    assert previous.entry("pet_info", "4354").get() == b"old-render"

@@ -49,9 +49,8 @@ if TYPE_CHECKING:
     from ironsbot.extensions.contracts import (
         PlayerDetailActionRegistration,
         PlayerLineupCacheFactory,
-        PlayerLineupEntryResolver,
         PlayerLineupQueryPort,
-        PlayerLineupRenderPort,
+        PlayerLineupRenderSessionFactory,
     )
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.errors import ErrorMessageLookup
@@ -64,7 +63,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_request_protection import (
         PlayerRequestProtectionService,
     )
-    from ironsbot.services.seer.render_cache import RenderCache
+    from ironsbot.services.seer.render_cache import RenderCache, RenderCacheEntry
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
 
@@ -105,11 +104,8 @@ class PlayerLineupRenderServices:
             renderer_fingerprint=renderer_fingerprint,
         )
 
-    def cached_image(self, category: str, key: str) -> bytes | None:
-        return self.cache.get(category, key)
-
-    def cache_image(self, category: str, key: str, image: bytes) -> None:
-        self.cache.put(category, key, image)
+    def cache_entry(self, category: str, key: str) -> RenderCacheEntry:
+        return self.cache.entry(category, key)
 
     async def render_html(
         self,
@@ -381,8 +377,7 @@ class PlayerLineupQueryServices:
 class PlayerLineupExtensionServices:
     """Dependencies intentionally available to the player-lineup extension."""
 
-    lineup_entries: PlayerLineupEntryResolver
-    lineup_render: PlayerLineupRenderPort
+    lineup_render_session: PlayerLineupRenderSessionFactory
     lineup_query: PlayerLineupQueryPort
     lineup_cache: PlayerLineupCacheFactory
     feature_visible: Callable[[object, str], bool]

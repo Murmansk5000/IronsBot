@@ -26,10 +26,13 @@ async def load_pet_image_assets(
     distinct_type_ids = tuple(sorted({id_ for id_ in type_ids if id_ > 0}))
     values = await asyncio.gather(
         *(
-            images.fetch("pet_head", str(resource_id))
+            images.fetch("pet_head", str(resource_id), fallback=False)
             for resource_id in distinct_resource_ids
         ),
-        *(images.fetch("element_type", str(type_id)) for type_id in distinct_type_ids),
+        *(
+            images.fetch("element_type", str(type_id), fallback=False)
+            for type_id in distinct_type_ids
+        ),
     )
     head_values = values[: len(distinct_resource_ids)]
     type_values = values[len(distinct_resource_ids) :]
