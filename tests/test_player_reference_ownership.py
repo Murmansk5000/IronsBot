@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from functools import partial
 from unittest.mock import Mock
 
@@ -8,16 +9,19 @@ import pytest
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
+from ironsbot.plugins.onebot.seer.query.commands.player import _is_binding_command
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+from ironsbot.services.seer.player_query import extract_player_query_arg
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 _ADMIN = ActorRef(Platform.ONEBOT, "100")
@@ -95,3 +99,21 @@ def test_player_command_ownership_matches_resolution(
         # Exercise the actual AI routing rule, without invoking a completion API.
         assert _capture_ai_prompt(event, {}, features, catalog) is not expected
     binding.assert_not_called()
+
+
+@pytest.mark.parametrize("prefix", ["米米号", "绑定米米号"])
+@pytest.mark.parametrize("split_at", [1, 2])
+def test_player_ownership_preserves_literal_command_prefix(
+    prefix: str, split_at: int,
+) -> None:
+    text = prefix[:split_at] + " " + prefix[split_at:] + "123456"
+    event = private_message_event(text)
+    context = command_context(event)
+    matcher = player_reference_input_matcher((prefix,), lambda *_: False)
+    actual = (
+        asyncio.run(_is_binding_command(event, {}))
+        if prefix == "绑定米米号"
+        else extract_player_query_arg(text) is not None
+    )
+    assert not actual
+    assert matcher(text, context) is actual
