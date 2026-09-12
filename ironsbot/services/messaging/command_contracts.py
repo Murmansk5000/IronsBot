@@ -9,6 +9,11 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
+    normalized_command_input_matcher,
+)
+from ironsbot.services.messaging.push_time import PUSH_TIME_COMMANDS
+from ironsbot.services.messaging.subscription_options import (
+    push_subscription_command_texts,
 )
 from ironsbot.services.messaging.topic_commands import topic_command_contracts
 
@@ -23,12 +28,17 @@ def messaging_command_contracts(
 ) -> tuple[CommandContract, ...]:
     """Describe configured messaging commands for the shared command catalog."""
 
+    subscription_commands = push_subscription_command_texts(
+        config.push_unsubscribe.commands,
+        config.push_unsubscribe.restore_commands,
+    )
     configured = tuple(
         CommandContract(
             id=f"messaging.{action.id}",
             plugin_id="messaging",
             section="配置口令",
             examples=tuple(action.commands),
+            routing_matcher=normalized_command_input_matcher(action.commands),
             description=action.name or "发送配置的文本或链接",
             features_any=(action.feature,),
             show_in_poke=True,
@@ -68,15 +78,6 @@ def messaging_command_contracts(
         for action in config.schedules
         if action.enabled
     )
-    subscription_commands = tuple(
-        dict.fromkeys(
-            (
-                "推送管理",
-                *config.push_unsubscribe.commands,
-                *config.push_unsubscribe.restore_commands,
-            )
-        )
-    )
     return (
         *topic_command_contracts(topics),
         *configured,
@@ -91,23 +92,33 @@ def messaging_command_contracts(
                     "messaging.push_subscription",
                     subscription_commands,
                     "查看当前会话的推送订阅；群主和管理员可切换本群订阅",
-                    {"show_in_poke": True, "interaction": "conversation"},
+                    {
+                        "show_in_poke": True,
+                        "routing_matcher": normalized_command_input_matcher(
+                            subscription_commands
+                        ),
+                    },
                 ),
             ),
         ),
         *commands_from_rows(
             "messaging",
-            "本群管理",
+            "推送时间",
             None,
             (
                 (
                     "messaging.push_time",
-                    ("推送时间", "提醒时间"),
-                    "管理本群定时推送和活动提醒时间",
+                    PUSH_TIME_COMMANDS,
+                    "管理当前会话的定时推送和活动提醒时间",
                     {
-                        "access": (CommandAccess("group", "group_manager"),),
+                        "access": (
+                            CommandAccess("group", "group_manager"),
+                            CommandAccess("private"),
+                        ),
                         "show_in_poke": True,
-                        "interaction": "conversation",
+                        "routing_matcher": normalized_command_input_matcher(
+                            PUSH_TIME_COMMANDS
+                        ),
                     },
                 ),
             ),

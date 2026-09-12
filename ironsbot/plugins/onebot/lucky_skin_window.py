@@ -50,7 +50,6 @@ from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_com
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_QUERY_ACTION,
-    LUCKY_SKIN_QUERY_COMMANDS,
     LUCKY_SKIN_WATCH_ADD_ACTION,
     LUCKY_SKIN_WATCH_CLEAR_ACTION,
     LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
@@ -60,7 +59,10 @@ from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
     LUCKY_SKIN_WATCH_RESET_ACTION,
     LUCKY_SKIN_WATCH_RESET_COMMANDS,
+    is_lucky_skin_query,
+    is_lucky_skin_watch_exact,
     lucky_skin_window_command_contracts,
+    parse_lucky_skin_watch_target,
 )
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWatchItem,
@@ -141,7 +143,7 @@ async def _matches_query(
     features: FeatureService,
 ) -> bool:
     _ = state
-    if "".join(event.get_plaintext().split()) not in LUCKY_SKIN_QUERY_COMMANDS:
+    if not is_lucky_skin_query(event.get_plaintext()):
         return False
     return _watch_feature_allowed(event, features=features)
 
@@ -168,9 +170,9 @@ async def _matches_watch_exact(
     features: FeatureService,
 ) -> bool:
     _ = state
-    return event.get_plaintext().strip() in commands and _watch_feature_allowed(
-        event, features=features
-    )
+    return is_lucky_skin_watch_exact(
+        event.get_plaintext(), commands=commands
+    ) and _watch_feature_allowed(event, features=features)
 
 
 async def _matches_watch_change(
@@ -180,18 +182,11 @@ async def _matches_watch_change(
     commands: tuple[str, ...],
     features: FeatureService,
 ) -> bool:
-    text = event.get_plaintext().strip()
-    for command in sorted(commands, key=len, reverse=True):
-        if not text.startswith(command):
-            continue
-        arg = text[len(command) :].strip()
-        if not arg:
-            return False
-        if _watch_feature_allowed(event, features=features):
-            state[BOT_COMMAND_ARG_KEY] = arg
-            return True
+    arg = parse_lucky_skin_watch_target(event.get_plaintext(), commands=commands)
+    if arg is None or not _watch_feature_allowed(event, features=features):
         return False
-    return False
+    state[BOT_COMMAND_ARG_KEY] = arg
+    return True
 
 
 def _semantic_request(

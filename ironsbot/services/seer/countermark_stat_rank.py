@@ -10,9 +10,6 @@ from ironsbot.integrations.seer_data.countermark_stat_rank_repository import (
 from ironsbot.services.seer.countermark_stat_rank_messages import (
     build_countermark_stat_rank_message,
 )
-from ironsbot.services.seer.countermark_stat_rank_parsing import (
-    parse_countermark_stat_rank_command,
-)
 from ironsbot.services.seer.countermark_stat_rank_ranking import (
     collect_countermark_rank_items,
 )
@@ -27,10 +24,6 @@ if TYPE_CHECKING:
 class CountermarkStatRankService:
     def __init__(self, data: SeerDataAccess) -> None:
         self._data = data
-
-    @staticmethod
-    def parse_command(text: str) -> CountermarkStatRankCommand | None:
-        return parse_countermark_stat_rank_command(text)
 
     def query(self, command: CountermarkStatRankCommand) -> str:
         with self._data.query(load_countermark_rank_data) as rank_data:

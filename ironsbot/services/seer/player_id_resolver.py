@@ -58,14 +58,9 @@ class PlayerIdResolver:
         if context.has_member_mentions:
             return self._resolve_member_mentions(context, normalized_reference)
         if normalized_reference:
-            lookup = (
-                self._privileged_reference_lookup
-                if self._privileged_reference_lookup is not None
-                and self._is_privileged_actor(context.message.actor)
-                else self._reference_lookup
-            )
-            player_id = lookup(
+            player_id = self._lookup_reference(
                 normalized_reference,
+                context.message.actor,
                 context.message.conversation,
             )
             return PlayerIdResolution(
@@ -91,6 +86,7 @@ class PlayerIdResolver:
     def has_known_reference(
         self,
         reference: str,
+        actor: ActorRef,
         conversation: ConversationRef,
     ) -> bool:
         """Return whether an explicit non-numeric player reference is visible.
@@ -100,7 +96,21 @@ class PlayerIdResolver:
         direct member mentions, which are message-level concerns.
         """
 
-        return self._reference_lookup(reference, conversation) is not None
+        return self._lookup_reference(reference, actor, conversation) is not None
+
+    def _lookup_reference(
+        self,
+        reference: str,
+        actor: ActorRef,
+        conversation: ConversationRef,
+    ) -> int | None:
+        lookup = (
+            self._privileged_reference_lookup
+            if self._privileged_reference_lookup is not None
+            and self._is_privileged_actor(actor)
+            else self._reference_lookup
+        )
+        return lookup(reference.strip(), conversation)
 
     def _resolve_member_mentions(
         self,

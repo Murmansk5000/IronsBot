@@ -33,6 +33,7 @@ from ironsbot.services.seer.rank_help import format_rank_help
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 __plugin_meta__ = PluginMetadata(
     name="榜单",
@@ -89,6 +90,7 @@ def plugin_contribution(
     *,
     features: FeatureService,
     commands: CommandCatalog,
+    player_id_resolver: PlayerIdResolver,
 ) -> PluginContribution:
     """Declare rank help metadata, command contracts, and matcher installer."""
 
@@ -101,7 +103,7 @@ def plugin_contribution(
             group="seer",
             order=20,
         ),
-        commands=rank_help_command_contracts(),
+        commands=rank_help_command_contracts(player_id_resolver),
         install=partial(install, features=features, commands=commands),
     )
 
@@ -112,5 +114,6 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             features=context.resources.features,
             commands=context.resources.commands,
+            player_id_resolver=context.resources.player_id_resolver,
         ),
     )

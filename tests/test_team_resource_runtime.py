@@ -12,7 +12,9 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.operations import HeadlessConfig, HeadlessNoticeConfig
 from ironsbot.config.models.seer import TeamResourceConfig
+from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.headless_seer.client import ClientManager
 from ironsbot.integrations.storage.team_resources import TeamResourceSubscriptionStore
 from ironsbot.services.operations.headless import HeadlessService
@@ -20,6 +22,7 @@ from ironsbot.services.team.resource import (
     TeamResourceResult,
     TeamResourceService,
 )
+from ironsbot.services.team.resource_commands import team_resource_command_contracts
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourcePrivateSubscriptionUpdate,
     TeamResourceSubscriptionTarget,
@@ -175,6 +178,43 @@ def test_register_team_resource_jobs_skips_when_disabled() -> None:
     )
 
     assert scheduler.jobs == []
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+@pytest.mark.parametrize("commands", [[], ["资源查询", "本群资源"]])
+def test_team_config_keeps_catalog_and_matcher_registration_in_sync(
+    tmp_path: Path, *, enabled: bool, commands: list[str]
+) -> None:
+    config = TeamResourceConfig(enabled=enabled, commands=commands)
+    service = _service(config, state_path=tmp_path / "qq.sqlite")
+    registry = TEST_RUNTIME.matcher_factory()
+    resource.install(registry, service)
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="team_resource",
+                commands=team_resource_command_contracts(
+                    enabled=service.enabled, query_commands=service.query_commands
+                ),
+            ),
+        ),
+        known_features={"team_resource_subscription"},
+    )
+    registry.validate_command_catalog(catalog)
+    assert len(registry.message_matchers) == (2 + bool(commands) if enabled else 0)
+    context = CommandContext(_actor(OWNER_ID), _group())
+    target = TeamResourceSubscriptionTarget(_group())
+    for text in ("资源查询", "本群资源", "战队"):
+        expected = enabled and text in commands
+        assert (
+            catalog.claims_direct_input(context, TEST_RUNTIME.features, text)
+            is expected
+        )
+        assert (
+            service.matches_target_query(text, actor=context.actor, target=target)
+            is expected
+        )
 
 
 def test_parse_team_resource_manage_commands() -> None:
