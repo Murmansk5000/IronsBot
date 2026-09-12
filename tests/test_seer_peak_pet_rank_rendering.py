@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -65,6 +66,7 @@ class _Images:
 def _input() -> PeakPetRankRenderInput:
     return PeakPetRankRenderInput(
         title="竞技精灵总榜",
+        observed_at="2026-09-12 14:00:00",
         pick_items=(PeakPetPickSnapshot(id=7, count=10, win=6),),
         ban_items=(
             PeakPetBanSnapshot(id=8, name="盖亚", score=100),
@@ -91,6 +93,7 @@ def test_peak_pet_rank_presentation_uses_prepared_assets() -> None:
     )
 
     assert document.pick_ranks[0].name == "雷伊"
+    assert document.templates["observed_at"] == "2026-09-12 14:00:00"
     assert document.pick_ranks[0].win_rate == _EXPECTED_WIN_RATE
     assert document.ban_ranks[0].head_img == "gaiya"
     assert document.ban_ranks[1].name == "未收录"
@@ -101,6 +104,7 @@ def test_peak_pet_rank_document_key_changes_with_rendered_data() -> None:
     original = _input()
     changed = PeakPetRankRenderInput(
         title=original.title,
+        observed_at=original.observed_at,
         pick_items=(PeakPetPickSnapshot(id=7, count=11, win=6),),
         ban_items=original.ban_items,
         pets=original.pets,
@@ -129,6 +133,21 @@ async def test_peak_pet_rank_adapter_checks_final_cache_before_loading_assets() 
     assert images.requests == []
 
 
+def test_peak_pet_rank_time_is_part_of_request_and_document_identity() -> None:
+    original = _input()
+    changed = replace(original, observed_at="2026-09-12 14:01:00")
+    assets = PetImageAssets(
+        pet_heads=((70, "rei"), (71, "gaiya")),
+        type_icons=((1, "electric"), (2, "fight")),
+    )
+    assert render_request_cache_key("peak_pet_rank", original) != (
+        render_request_cache_key("peak_pet_rank", changed)
+    )
+    assert render_document_cache_key(present_peak_pet_rank(original, assets)) != (
+        render_document_cache_key(present_peak_pet_rank(changed, assets))
+    )
+
+
 @pytest.mark.asyncio
 async def test_peak_pet_rank_adapter_deduplicates_assets_and_writes_cache() -> None:
     cache = _Cache()
@@ -154,6 +173,7 @@ async def test_peak_pet_rank_adapter_deduplicates_assets_and_writes_cache() -> N
         ("element_type", "2"),
     ]
     assert captured["templates"]["title"] == "竞技精灵总榜"
+    assert captured["templates"]["observed_at"] == "2026-09-12 14:00:00"
     assert cache.writes == [
         (
             "peak_pet_rank",
