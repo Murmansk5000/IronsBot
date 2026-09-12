@@ -245,3 +245,24 @@ Ruff, targeted BasedPyright (0 errors/warnings), compileall and diff checks pass
 No new module/dependency/config/private-contract changes. The old three standalone
 render callback constructor arguments and unbound pet-map helper were removed.
 New-content, lucky-window and private-lineup binding remain outstanding.
+
+## Lucky-Window Render Boundary
+
+Target: treat the ordered offers and watch flags as immutable request inputs,
+not new release facts. Open the shared render session before reading skin-image
+resolution, then use its source and final-cache view throughout rendering.
+Keep scope gating disabled for the lucky-window category until its full published
+skin-body manifest is verified; do not enable L3 merely because binding exists.
+The adapter needs only SeerDataReader and the shared HtmlTemplateRenderer callable,
+not full search access or the concrete RenderCoordinator. Preserve four offers,
+ordering, names and watch flags; unavailable art keeps the existing partial-image
+and text fallback behaviour.
+
+Verified: lucky-window service/rendering and publication regression 42 passed
+in 19.75s (44 existing NoneBot deprecation warnings and 2 ORM warnings). New
+adapter test checks four unchanged offers, ordering/names/watch flags, resolved
+body-ID precedence, SQL scope closed before downloads and no cache creation for
+an unavailable category. Existing request-key and missing-art recovery tests
+remain green. Ruff, targeted BasedPyright (0 errors/warnings), compileall and
+diff checks passed. Only composition and the adapter's minimal port types changed;
+no new dependencies, TOML, category enablement or private extension change.

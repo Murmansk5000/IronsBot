@@ -106,6 +106,10 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
     from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.services.seer.lucky_skin_window import (
+        LuckySkinWindowOffer,
+        LuckySkinWindowResult,
+    )
     from ironsbot.services.seer.render_coordinator import RenderCoordinator
     from ironsbot.services.seer.type_query import TypeMatchupRenderer
 
@@ -243,6 +247,19 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 ),
             )
 
+    async def render_window(
+        result: LuckySkinWindowResult, offers: tuple[LuckySkinWindowOffer, ...]
+    ) -> bytes:
+        with render_sessions.open() as inputs:
+            return await render_lucky_skin_window(
+                inputs.cache,
+                inputs.data,
+                inputs.images,
+                render_coordinator.render,
+                result,
+                offers,
+            )
+
     weekly_preview_images = CachedWeeklyPreviewImageSource(
         http_clients.origin,
         cache_paths.http_dir() / "weekly_preview",
@@ -262,13 +279,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
-        renderer=partial(
-            render_lucky_skin_window,
-            render_cache,
-            seer_database,
-            images,
-            render_coordinator,
-        ),
+        renderer=render_window,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,

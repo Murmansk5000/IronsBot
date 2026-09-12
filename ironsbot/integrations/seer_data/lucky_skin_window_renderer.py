@@ -17,21 +17,21 @@ from ironsbot.services.seer.rendering.lucky_skin_window import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.lucky_skin_window import (
         LuckySkinWindowOffer,
         LuckySkinWindowResult,
     )
     from ironsbot.services.seer.render_cache import RenderCache
-    from ironsbot.services.seer.render_coordinator import RenderCoordinator
+    from ironsbot.services.seer.rendering import HtmlTemplateRenderer
 
 
 async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
     cache: RenderCache,
-    data: SeerDataAccess,
+    data: SeerDataReader,
     images: SeerImageSource,
-    coordinator: RenderCoordinator,
+    render_html: HtmlTemplateRenderer,
     result: LuckySkinWindowResult,
     offers: tuple[LuckySkinWindowOffer, ...],
 ) -> bytes:
@@ -72,7 +72,7 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
         for skin_id, resource_id in requested_ids.items()
     }
     document = present_lucky_skin_window(offers, images_by_skin_id)
-    rendered = await render_lucky_skin_window_document(coordinator.render, document)
+    rendered = await render_lucky_skin_window_document(render_html, document)
     if all(images_by_skin_id.values()):
         cache_entry.put(rendered)
     return rendered
