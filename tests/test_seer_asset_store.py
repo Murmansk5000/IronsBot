@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.integrations.storage.seer_assets import (
     SeerAssetStore,
     SeerAssetStoreLimits,
@@ -24,6 +25,38 @@ if TYPE_CHECKING:
 
 
 SECOND_FETCH_COUNT = 2
+
+
+@pytest.mark.asyncio
+async def test_application_owner_cancels_shared_fetch_after_waiter_leaves(
+    tmp_path: Path,
+) -> None:
+    owner = TaskOwner()
+    source = FakeImageSource()
+    source.release = asyncio.Event()
+    store = SeerAssetStore(
+        source,
+        tmp_path,
+        SeerAssetStoreLimits(1024, 1024 * 1024, 1, 30),
+        spawn=owner.create,
+    )
+    waiter = asyncio.create_task(store.fetch("pet_body", "70"))
+    await source.started.wait()
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+    assert len(owner.tasks) == 1
+    task = next(iter(owner.tasks))
+    assert task.get_name().startswith("seer-asset:")
+    assert not task.cancelled()
+    await owner.cancel_all()
+    assert task.cancelled()
+    assert not owner.tasks
+    # The cancelled flight is removed, so a later request can start again.
+    source.release.set()
+    assert await store.fetch("pet_body", "70") == b"asset"
+    assert source.calls == SECOND_FETCH_COUNT
+    await owner.cancel_all()
 
 
 class FakeImageSource:
@@ -81,6 +114,7 @@ def _store(
             max_network_concurrent=4,
             negative_ttl_seconds=300,
         ),
+        spawn=TaskOwner().create,
     )
 
 
