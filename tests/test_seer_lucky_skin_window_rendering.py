@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
+
+import pytest
 
 from ironsbot.integrations.seer_data.lucky_skin_window_renderer import (
     render_lucky_skin_window,
 )
+from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowOffer,
     LuckySkinWindowResult,
@@ -96,16 +100,19 @@ def test_lucky_window_request_key_tracks_actual_ordered_offers() -> None:
         offers: tuple[LuckySkinWindowOffer, ...],
     ) -> None:
         # A cache hit must not touch any of these deliberately unusable adapters.
-        assert asyncio.run(
-            render_lucky_skin_window(
-                cast("RenderCache", CacheHit()),
-                cast("SeerDataAccess", object()),
-                cast("SeerImageSource", object()),
-                cast("RenderCoordinator", object()),
-                current,
-                offers,
+        assert (
+            asyncio.run(
+                render_lucky_skin_window(
+                    cast("RenderCache", CacheHit()),
+                    cast("SeerDataAccess", object()),
+                    cast("SeerImageSource", object()),
+                    cast("RenderCoordinator", object()),
+                    current,
+                    offers,
+                )
             )
-        ) == b"cached"
+            == b"cached"
+        )
 
     original = (first, second)
     run(result, original)
@@ -126,3 +133,63 @@ def test_lucky_window_request_key_tracks_actual_ordered_offers() -> None:
     ):
         run(result, (changed, second))
     assert len(keys) == len(set(keys))
+
+
+@pytest.mark.parametrize("resource_id", [0, 1400101])
+def test_lucky_window_does_not_cache_missing_art(resource_id: int) -> None:
+    class Cache:
+        value: bytes | None = None
+
+        def get(self, *_: object) -> bytes | None:
+            return self.value
+
+        def put(self, _category: str, _key: str, value: bytes) -> None:
+            self.value = value
+
+    class Data:
+        def query(self, _operation: object) -> nullcontext[dict[int, object]]:
+            return nullcontext({})
+
+    class Images:
+        failing = True
+        calls = 0
+
+        async def fetch(self, _kind: str, _key: str, *, fallback: bool) -> bytes:
+            assert fallback is False
+            self.calls += 1
+            if self.failing:
+                raise ImageSourceError
+            return b"image"
+
+    class Renderer:
+        async def render(self, **_kwargs: object) -> bytes:
+            return b"rendered"
+
+    cache, images = Cache(), Images()
+    offers = (
+        LuckySkinWindowOffer(101, resource_id, "First", watched=False),
+        LuckySkinWindowOffer(102, resource_id, "Second", watched=True),
+    )
+    result = LuckySkinWindowResult("2026-09-12", 123456, offers, from_cache=False)
+
+    def run() -> bytes:
+        return asyncio.run(
+            render_lucky_skin_window(
+                cast("RenderCache", cache),
+                cast("SeerDataAccess", Data()),
+                cast("SeerImageSource", images),
+                cast("RenderCoordinator", Renderer()),
+                result,
+                offers,
+            )
+        )
+
+    assert run() == b"rendered"
+    assert cache.value is None
+    assert images.calls == int(resource_id > 0)
+    images.failing = False
+    assert run() == b"rendered"
+    assert (cache.value is not None) == (resource_id > 0)
+    calls = images.calls
+    assert run() == b"rendered"
+    assert images.calls == calls

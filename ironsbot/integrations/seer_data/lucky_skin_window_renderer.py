@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.seer_data.skin_image_resolution import (
     load_skin_image_resolutions,
 )
-from ironsbot.services.seer.images import ImageSourceError, to_data_uri
+from ironsbot.services.seer.images import fetch_optional_image, to_data_uri
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.lucky_skin_window import (
     present_lucky_skin_window,
@@ -54,33 +53,25 @@ async def render_lucky_skin_window(  # noqa: PLR0913 - composition dependencies
             for skin_id, resolution in resolutions.items()
             if resolution.body_resource_id > 0
         }
-    images_by_skin_id = dict(
-        await asyncio.gather(
-            *(
-                _load_skin_image(
-                    offer.skin_id,
-                    resource_ids.get(offer.skin_id, offer.resource_id),
-                    images,
-                )
-                for offer in offers
-            )
-        )
+    requested_ids = {
+        offer.skin_id: resource_ids.get(offer.skin_id, offer.resource_id)
+        for offer in offers
+    }
+    distinct_ids = sorted({id_ for id_ in requested_ids.values() if id_ > 0})
+    results = await asyncio.gather(
+        *(fetch_optional_image(images, "pet_body", str(id_)) for id_ in distinct_ids)
     )
+    images_by_resource = {
+        id_: to_data_uri(result.data)
+        for id_, result in zip(distinct_ids, results, strict=True)
+        if result.data
+    }
+    images_by_skin_id = {
+        skin_id: images_by_resource.get(resource_id, "")
+        for skin_id, resource_id in requested_ids.items()
+    }
     document = present_lucky_skin_window(offers, images_by_skin_id)
     rendered = await render_lucky_skin_window_document(coordinator.render, document)
-    cache.put("lucky_skin_window_v1", content_key, rendered)
+    if all(images_by_skin_id.values()):
+        cache.put("lucky_skin_window_v1", content_key, rendered)
     return rendered
-
-
-async def _load_skin_image(
-    skin_id: int,
-    resource_id: int,
-    images: SeerImageSource,
-) -> tuple[int, str]:
-    if resource_id <= 0:
-        return skin_id, ""
-    with suppress(ImageSourceError):
-        return skin_id, to_data_uri(
-            await images.fetch("pet_body", str(resource_id), fallback=False)
-        )
-    return skin_id, ""

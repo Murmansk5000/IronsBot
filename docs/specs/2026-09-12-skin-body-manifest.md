@@ -77,3 +77,24 @@ correctly remains incomplete. This is an upstream material gap, not evidence
 that a partial inventory is enough. No consumer scope or runtime fallback was
 enabled. Builder module: 83 passed in 18.52 seconds; Ruff, targeted BasedPyright
 (0 errors/warnings), compileall and diff checks passed. No new tables/modules.
+
+## Incomplete Material Cache Policy
+
+Target contract: optional image failures may produce a degraded reply, never a
+durable final-cache hit. Reuse fetch_optional_image for lucky-window materials;
+delete its private exception wrapper. Preserve missing/invalid-resource cards,
+but cache only when all requested cards have images. Pet-info optional item and
+status images follow the same policy: material loading reports completeness to
+its integration, not the pure presenter. A subsequent request retries failures;
+after recovery, an early cache hit skips repository, image and rendering work.
+No new service, TOML flag or cache scope. Verify degradation/recovery/early-hit
+paths in the two adapter tests alongside the existing request-key regressions.
+
+Verified: 15 targeted adapter/presentation/key tests passed in 2.16 seconds;
+targeted BasedPyright reports 0 errors/warnings; Ruff and diff checks passed.
+The lucky-window adapter also deduplicates equal positive body resource IDs
+before optional loading. Invalid IDs retain blank cards and suppress cache
+writes. Pet-info completeness stays in the integration, not the presentation
+model. These tests use fake image/render ports; no browser or deployment claim.
+Other adapters' mandatory image fallback behaviour is outside this batch's
+verified scope and still requires review before complete Phase 4 acceptance.

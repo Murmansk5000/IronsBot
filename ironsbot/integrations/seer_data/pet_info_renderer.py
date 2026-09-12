@@ -60,21 +60,22 @@ async def render_published_pet_info(
     ) as snapshot:
         if snapshot is None:
             raise PetInfoNotFoundError(pet_id)
-    assets = await _load_assets(images, snapshot)
+    assets, complete = await _load_assets(images, snapshot)
     document = present_pet_info(snapshot, assets)
     rendered = await render_pet_info_document(
         render_html,
         [CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         document,
     )
-    cache.put(_PET_INFO_CACHE_CATEGORY, request_key, rendered)
+    if complete:
+        cache.put(_PET_INFO_CACHE_CATEGORY, request_key, rendered)
     return rendered
 
 
 async def _load_assets(
     images: SeerImageSource,
     snapshot: PetInfoSnapshot,
-) -> PetInfoAssets:
+) -> tuple[PetInfoAssets, bool]:
     type_ids = tuple(
         sorted({snapshot.pet.type_id, *(skill.type_id for skill in snapshot.skills)})
     )
@@ -108,7 +109,7 @@ async def _load_assets(
     mintmark_offset = prop_offset + 1
     item_results = optional[: len(item_ids)]
     effect_results = optional[len(item_ids) :]
-    return PetInfoAssets(
+    assets = PetInfoAssets(
         gender_icon=_load_gender_icon(snapshot.pet.gender_id),
         pet_head=mandatory[0],
         pet_body=mandatory[1],
@@ -134,6 +135,7 @@ async def _load_assets(
             if result.data is not None
         ),
     )
+    return assets, all(result.data for result in optional)
 
 
 def _item_ids(snapshot: PetInfoSnapshot) -> tuple[int, ...]:
