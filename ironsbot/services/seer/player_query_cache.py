@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from time import monotonic
 
+from ironsbot.core.time import now, remaining_observation_ttl
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -38,7 +39,7 @@ class PlayerQueryCache:
         cached = self._items.get(player_id)
         if cached is None:
             return None
-        if cached.expires_at <= monotonic():
+        if cached.expires_at <= monotonic() or self._remaining(cached.pending) <= 0:
             self._items.pop(player_id, None)
             return None
         return PlayerQueryResult(
@@ -47,7 +48,18 @@ class PlayerQueryCache:
         )
 
     def put(self, pending: PendingPlayerQuery) -> None:
+        remaining = self._remaining(pending)
+        if remaining <= 0:
+            return
         self._items[pending.player_id] = _CachedPlayerQuery(
-            expires_at=monotonic() + self._ttl_seconds,
+            expires_at=monotonic() + remaining,
             pending=replace(pending, quota_recorded=False),
+        )
+
+    def _remaining(self, pending: PendingPlayerQuery) -> float:
+        snapshot = pending.base_snapshot
+        if snapshot is None or snapshot.player_id != pending.player_id:
+            return 0.0
+        return remaining_observation_ttl(
+            snapshot.fetched_at, self._ttl_seconds, at=now().timestamp()
         )

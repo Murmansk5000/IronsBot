@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from math import isfinite
 from time import monotonic
 from typing import TYPE_CHECKING
 
 from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
 )
-from ironsbot.core.time import now
+from ironsbot.core.time import now, remaining_observation_ttl
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -286,13 +285,11 @@ class PlayerDetailService:
         return None
 
     def _cache_remaining(self, reply: QueryReply) -> float:
-        fetched_at = reply.fetched_at
-        if fetched_at is None or not isfinite(fetched_at):
-            return 0.0
-        age = now().timestamp() - fetched_at
-        if age < 0:
-            return 0.0
-        return self._config.player.background_refresh.cache_ttl_seconds - age
+        return remaining_observation_ttl(
+            reply.fetched_at,
+            self._config.player.background_refresh.cache_ttl_seconds,
+            at=now().timestamp(),
+        )
 
     def _store_reply(
         self,

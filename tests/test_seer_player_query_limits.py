@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.core.time import TZ_CN
+from ironsbot.core.time import TZ_CN, now
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.player_query_limits import (
     SqlitePlayerQueryLimitStore,
@@ -17,6 +17,7 @@ from ironsbot.services.seer.player_service import (
     PlayerQueryResult,
     PlayerService,
 )
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.rank_models import RankLookupCost, RankLookupResult
@@ -349,6 +350,14 @@ def test_player_query_prefers_live_until_quota_then_uses_cache(
                     more_info=object(),
                     player_message=f"live-{live_calls}",
                     section_plan=cast("Any", object()),
+                    base_snapshot=PlayerBaseSnapshot(
+                        DEFAULT_PLAYER_ID,
+                        SimpleNamespace(nick="tester"),
+                        object(),
+                        None,
+                        "",
+                        now().timestamp(),
+                    ),
                 )
             )
 
