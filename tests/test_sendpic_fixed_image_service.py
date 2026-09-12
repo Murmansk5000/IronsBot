@@ -18,6 +18,7 @@ def _service(root: Path) -> SendpicService:
     return SendpicService(
         SendpicBehaviorConfig(),
         lambda _kind: backend,
+        command_starts=("/", ""),
     )
 
 
@@ -93,6 +94,7 @@ def test_custom_gallery_extends_packaged_commands_and_command_index() -> None:
             ]
         ),
         lambda _kind: LocalBackend(Path()),
+        command_starts=("/", ""),
     )
 
     assert {command.id for command in service.commands} >= {
@@ -118,6 +120,7 @@ def test_sendpic_command_contracts_follow_enabled_configurations() -> None:
             ]
         ),
         lambda _kind: LocalBackend(Path()),
+        command_starts=("/", ""),
     )
 
     descriptors = {item.id: item for item in sendpic_command_contracts(service)}

@@ -91,6 +91,10 @@ class TeamResourceService:
         return self._config.enabled
 
     @property
+    def query_commands(self) -> tuple[str, ...]:
+        return tuple(self._config.commands)
+
+    @property
     def default_mention_actors(self) -> tuple[ActorRef, ...]:
         return self._default_mention_actors
 
@@ -121,7 +125,7 @@ class TeamResourceService:
     ) -> bool:
         return self.allows_target(actor, target) and command_text_matches(
             text,
-            self._config.commands,
+            self.query_commands,
         )
 
     def parse_manage(self, text: str) -> TeamResourceManageCommand | None:
