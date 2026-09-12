@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
-from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.commands import command_text_matches
 from ironsbot.core.platform import is_supported_message_actor
 
 if TYPE_CHECKING:
@@ -144,6 +144,27 @@ class CommandContext:
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]
+_Parsed = TypeVar("_Parsed")
+
+
+def normalized_command_input_matcher(commands: Iterable[str]) -> CommandInputMatcher:
+    """Opt into the same whitespace/case grammar used by a domain command rule."""
+    names = tuple(commands)
+    return lambda text, _context: command_text_matches(text, names)
+
+
+def parsed_command_input_matcher(
+    parser: Callable[[str], _Parsed | None],
+    *,
+    accepts: Callable[[_Parsed], bool] | None = None,
+) -> CommandInputMatcher:
+    """Adapt a pure domain parser without executing its command or guessing syntax."""
+
+    def matches(text: str, _context: CommandContext) -> bool:
+        parsed = parser(text)
+        return parsed is not None and (accepts is None or accepts(parsed))
+
+    return matches
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,21 +290,14 @@ class CommandContract:
 
         if self.interaction != "direct":
             return False
-        normalized_text = normalize_command_text(text).lstrip("/")
-        if not normalized_text:
+        if not text.strip():
             return False
-        exact_inputs = {
-            normalized
+        if self.routing_matcher is not None:
+            return self.routing_matcher(text, context)
+        return any(
+            text == value
             for value in (*self.examples, *self.routing_aliases)
             if "<" not in value and ">" not in value
-            if (normalized := normalize_command_text(value).lstrip("/"))
-        }
-        if normalized_text in exact_inputs:
-            return True
-        return (
-            self.routing_matcher(text, context)
-            if self.routing_matcher is not None
-            else False
         )
 
 
@@ -503,9 +517,9 @@ class CommandCatalog:
     ) -> bool:
         """Whether an available direct command owns this exact input spelling.
 
-        This intentionally answers only literal command ownership. Parameterized
-        parser grammar stays with its domain parser until every matcher is
-        migrated to the target command-contract parser interface.
+        Literal aliases preserve their required prefix. Parameterized grammar
+        is delegated to registered domain parsers; the catalog never invents
+        implicit prefixes or resolves message targets on its own.
         """
 
         return any(

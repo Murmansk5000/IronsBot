@@ -8,6 +8,7 @@ from ironsbot.core.command_catalog import (
     CommandCatalogError,
     CommandContext,
     CommandContract,
+    parsed_command_input_matcher,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
@@ -254,6 +255,25 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
     assert catalog.claims_direct_input(context, features, "米米号123456")
     assert not catalog.claims_direct_input(context, features, "米米号示例玩家")
     assert not catalog.claims_direct_input(context, features, "活动")
+    assert not catalog.claims_direct_input(context, features, "动态刷新")
+    assert not catalog.claims_direct_input(context, features, "//动态刷新")
+    assert not catalog.claims_direct_input(context, features, "/帮助")
+
+
+def test_parser_adapter_accepts_falsy_values_but_not_none() -> None:
+    def parser(text: str) -> int | None:
+        return int(text) if text.isdecimal() else None
+
+    accepts_zero = parsed_command_input_matcher(parser)
+    positive_only = parsed_command_input_matcher(
+        parser, accepts=lambda value: value > 0
+    )
+    context = _context(1)
+    assert accepts_zero("0", context)
+    assert accepts_zero("1", context)
+    assert not accepts_zero("unknown", context)
+    assert not positive_only("0", context)
+    assert positive_only("1", context)
 
 
 def test_catalog_binds_feature_conditions_to_the_matching_access_rule() -> None:
@@ -380,3 +400,27 @@ def test_catalog_rejects_unknown_and_unregistered_direct_command_ids() -> None:
         )
 
     catalog.validate_matcher_registrations(help_ids=("documented",))
+
+
+def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> None:
+    command = CommandContract(
+        id="parsed", plugin_id="example", section="query",
+        examples=("reserved",), routing_aliases=("also reserved",),
+        description="A parser owns admission, not its illustrative examples",
+        routing_matcher=lambda text, _context: text == "accepted",
+    )
+    assert command.matches_direct_input(_context(1), "accepted")
+    assert not command.matches_direct_input(_context(1), "reserved")
+    assert not command.matches_direct_input(_context(1), "also reserved")
+
+
+@pytest.mark.parametrize("text", ["hELP", "help", " Help", "Help ", "H elp", "/Help"])
+def test_exact_contract_does_not_infer_normalized_spellings(text: str) -> None:
+    command = CommandContract(
+        id="literal", plugin_id="example", section="query", examples=("Help",),
+        routing_aliases=("two words",), description="Literal commands",
+    )
+    assert command.matches_direct_input(_context(1), "Help")
+    assert command.matches_direct_input(_context(1), "two words")
+    assert not command.matches_direct_input(_context(1), "twowords")
+    assert not command.matches_direct_input(_context(1), text)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -32,8 +32,9 @@ from .push_subscription_handlers import handle_push_subscription_menu
 from .push_time_handlers import build_push_time_menu_handler
 
 if TYPE_CHECKING:
+    from ironsbot.config.models.messaging import MessageReplyAction
     from ironsbot.config.onebot_references import OneBotReferenceResolver
-    from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.messaging.service import MessagingService, ReplyInteraction
 
     from .push_time_handlers import RefreshPushTimeJobs
 
@@ -70,31 +71,41 @@ async def handle_message_command(
 
 
 def _action_command_id(
-    state_key: str,
     prefix: str,
 ):
     def resolve(_event: object, state: T_State) -> str:
-        action = state.get(state_key)
-        action_id = str(getattr(action, "id", "")).strip()
-        return f"{prefix}.{action_id}" if action_id else prefix
+        action = cast("MessageReplyAction", state[MESSAGE_ACTION_KEY])
+        return f"{prefix}.{action.id}"
 
     return resolve
 
 
-def install(
+def install(  # noqa: PLR0913 - wiring receives both configured reply families
     registry: MatcherFactory,
     refresh_push_time_jobs: RefreshPushTimeJobs,
     messaging: MessagingService,
     references: OneBotReferenceResolver,
     command_help_ids: tuple[str, ...],
+    keyword_help_ids: tuple[str, ...],
 ) -> None:
-    if command_help_ids:
+    routes: tuple[tuple[ReplyInteraction, str, tuple[str, ...]], ...] = (
+        ("direct", "message", command_help_ids),
+        ("automatic", "message.keyword", keyword_help_ids),
+    )
+    for interaction, prefix, help_ids in routes:
+        if not help_ids:
+            continue
         command_matcher = registry.on_message(
             policy=CommandPolicy.command(
-                _action_command_id(MESSAGE_ACTION_KEY, "message"),
-                help_ids=command_help_ids,
+                _action_command_id(prefix),
+                help_ids=help_ids,
+                closes_active_conversation=interaction == "direct",
             ),
-            rule=Rule(bind(match_message_command, messaging=messaging))
+            rule=Rule(
+                bind(
+                    match_message_command, messaging=messaging, interaction=interaction
+                )
+            )
             & explicit_command(),
             priority=registry.priority("message_commands"),
             block=True,
@@ -107,14 +118,18 @@ def install(
         )
 
     subscription_matcher = registry.on_message(
-        policy=CommandPolicy.exempt("second-level subscription toggle conversation"),
+        policy=CommandPolicy.command(
+            "messaging.push_subscription", help_ids=("messaging.push_subscription",)
+        ),
         rule=Rule(bind(match_push_subscription_command, messaging=messaging))
         & explicit_command(),
         priority=_message_subscription_priority(registry),
         block=True,
     )
     push_time_matcher = registry.on_message(
-        policy=CommandPolicy.exempt("second-level push time conversation"),
+        policy=CommandPolicy.command(
+            "messaging.push_time", help_ids=("messaging.push_time",)
+        ),
         rule=(
             Rule(bind(match_push_time_command, messaging=messaging))
             & explicit_command()

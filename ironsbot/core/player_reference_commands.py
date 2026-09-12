@@ -10,10 +10,21 @@ from ironsbot.core.commands import normalize_command_text
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 PlayerReferenceInputMatcher = Callable[[str, "CommandContext"], bool]
-PlayerReferenceRecognizer = Callable[[str, "ConversationRef"], bool]
+PlayerReferenceRecognizer = Callable[[str, "ActorRef", "ConversationRef"], bool]
+
+
+def is_player_reference_input(
+    reference: str,
+    context: CommandContext,
+    reference_is_known: PlayerReferenceRecognizer,
+) -> bool:
+    """Claim numeric validation or an alias visible to the current caller."""
+    return reference.isdecimal() or reference_is_known(
+        reference, context.actor, context.conversation
+    )
 
 
 def player_reference_input_matcher(
@@ -27,8 +38,8 @@ def player_reference_input_matcher(
     A catalog needs to keep recognized player commands out of private AI
     fallback without treating ordinary prose such as ``米米号是什么`` as a
     failed player command. Numeric references are claimed so the command can
-    return its own validation error; aliases are claimed only when visible in
-    the current conversation.
+    return its own validation error; aliases are claimed only when visible to
+    the current actor in the current conversation.
     """
 
     normalized_prefixes = tuple(
@@ -58,8 +69,6 @@ def player_reference_input_matcher(
         reference = normalized_text[len(prefix) :]
         if not reference:
             return accept_empty
-        return reference.isdecimal() or (
-            reference_is_known(reference, context.conversation)
-        )
+        return is_player_reference_input(reference, context, reference_is_known)
 
     return matches
