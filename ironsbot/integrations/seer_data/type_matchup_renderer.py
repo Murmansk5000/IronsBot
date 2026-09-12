@@ -7,7 +7,6 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.images import to_data_uri
-from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.type_matchup import (
     TypeMatchupAssets,
     present_type_matchup,
@@ -16,29 +15,19 @@ from ironsbot.services.seer.rendering.type_matchup import (
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.images import SeerImageSource
-    from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
     from ironsbot.services.seer.type_calc import TypeMatchup
 
-_CACHE_CATEGORY = "type_matchup"
-
 
 async def render_type_matchup(
-    cache: RenderCache,
     images: SeerImageSource,
     render_html: HtmlTemplateRenderer,
     matchup: TypeMatchup,
 ) -> bytes:
-    """Render one matchup after cache lookup and shared asset retrieval."""
-    request_key = render_request_cache_key(_CACHE_CATEGORY, matchup.cache_key)
-    cache_entry = cache.entry(_CACHE_CATEGORY, request_key)
-    if cached := cache_entry.get():
-        return cached
+    """Render prepared facts using shared assets; the query owns final caching."""
     assets = await _load_assets(images, matchup)
     document = present_type_matchup(matchup, assets)
-    rendered = await render_type_matchup_document(render_html, document)
-    cache_entry.put(rendered)
-    return rendered
+    return await render_type_matchup_document(render_html, document)
 
 
 async def _load_assets(

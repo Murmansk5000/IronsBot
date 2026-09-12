@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.seer_data.pet_image_assets import load_pet_image_assets
@@ -84,6 +85,7 @@ async def _fetch_many_images(cache_dir: Path) -> int:
             max_network_concurrent=MAX_ASSET_FETCH_CONCURRENCY,
             negative_ttl_seconds=300,
         ),
+        spawn=TaskOwner().create,
     )
     try:
         requests = asyncio.gather(
@@ -176,6 +178,7 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
             HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot),
             tmp_path,
             SeerAssetStoreLimits(1024, 1024 * 1024, 4, 300),
+            spawn=TaskOwner().create,
         )
         # An old permissive request may have cached a placeholder under its key.
         assert await store.fetch("pet_head", "70") == b"placeholder"
@@ -216,6 +219,7 @@ async def test_queued_asset_request_keeps_its_captured_revision(tmp_path: Path) 
             ),
             tmp_path,
             SeerAssetStoreLimits(1024, 1024 * 1024, 1, 300),
+            spawn=TaskOwner().create,
         )
         first = asyncio.create_task(store.fetch("pet_body", "70", fallback=False))
         await captured.wait()
