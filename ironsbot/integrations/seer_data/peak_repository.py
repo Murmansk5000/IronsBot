@@ -11,11 +11,11 @@ from seerapi_models import (
     PeakPoolORM,
     PeakPoolVoteORM,
     PeakSeasonORM,
+    PetORM,
 )
-from sqlmodel import select
+from sqlmodel import col, select
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from datetime import datetime
 
     from sqlmodel import Session
@@ -83,10 +83,16 @@ def load_peak_period_times(
     return PeakPeriodTimes(season.start_time, season.end_time)
 
 
-def snapshot_peak_pet_map(pets: Mapping[int, object]) -> dict[int, PeakPetSnapshot]:
-    """Detach pet ORM rows that were fetched by a shared resolver."""
-
-    return {int(pet_id): _peak_pet_snapshot(pet) for pet_id, pet in pets.items()}
+def load_peak_pet_snapshots(
+    session: Session, pet_ids: set[int]
+) -> dict[int, PeakPetSnapshot]:
+    """Read and detach only the pets requested by the online ranking."""
+    if not pet_ids:
+        return {}
+    return {
+        int(pet.id): _peak_pet_snapshot(pet)
+        for pet in session.exec(select(PetORM).where(col(PetORM.id).in_(pet_ids)))
+    }
 
 
 def _peak_pet_snapshot(pet: Any) -> PeakPetSnapshot:

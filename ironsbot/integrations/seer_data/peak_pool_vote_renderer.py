@@ -37,7 +37,8 @@ async def render_peak_pool_vote(
         _CACHE_CATEGORY,
         (generated_at, pools),
     )
-    if cached := cache.get(_CACHE_CATEGORY, request_key):
+    cache_entry = cache.entry(_CACHE_CATEGORY, request_key)
+    if cached := cache_entry.get():
         return cached
     assets = await load_pet_image_assets(
         images,
@@ -46,5 +47,5 @@ async def render_peak_pool_vote(
     )
     document = present_peak_pool_vote(pools, generated_at, assets)
     rendered = await render_peak_pool_vote_document(render_html, document)
-    cache.put(_CACHE_CATEGORY, request_key, rendered)
+    cache_entry.put(rendered)
     return rendered
