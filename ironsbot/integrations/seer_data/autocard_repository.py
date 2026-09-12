@@ -27,6 +27,7 @@ _CARD_INTEGER_FIELDS = (
     "attack",
     "health",
     "compose",
+    "composeTo",
     "picID",
 )
 _JSON_TABLE_QUERIES = {
@@ -100,7 +101,7 @@ def _load_json_rows(
         if table_name == "autocard_card":
             for field in _CARD_INTEGER_FIELDS:
                 item[field] = require_int(
-                    item.get(field),
+                    item.get(field, 0),
                     field=f"autocard_card.{field}",
                 )
         values.append(item)
@@ -136,9 +137,7 @@ def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
                 "id": require_int(columns["id"], field="autocard_role.id"),
                 "name": str(columns["name"]),
                 "desc": str(columns["description"]),
-                "health": require_int(
-                    columns["health"], field="autocard_role.health"
-                ),
+                "health": require_int(columns["health"], field="autocard_role.health"),
                 "skillTxt": str(columns["skill_desc"]),
                 "nature": require_int(
                     columns["element_type_id"], field="autocard_role.element_type_id"
