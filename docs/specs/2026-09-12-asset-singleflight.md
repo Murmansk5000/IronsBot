@@ -738,3 +738,28 @@ issue/soulmark tables exactly matched the prior corrected artifact excluding
 updated_at. This is a measured local rebuild duration, not a speedup ratio or a
 full release build time. No new dependency, persistent cache or runtime image
 component was introduced.
+
+## Peak Native Render Acceptance and Observation Time
+
+The same bound-session native probe now covers standard pool (1228x1022,
+740938 bytes), expert pool (1228x702, 646646 bytes), vote (460x884,
+113562 bytes), and pet ranking (640x1616, 220563 bytes). Pool definitions and
+pet assets come from the real diagnostic database. Vote scores and ranking
+counts are explicitly labelled offline fixtures, not fetched game results.
+Evidence: `.tmp/effect-resolution-acceptance/peak-report.json` and corresponding
+PNGs; standard pool, vote and final ranking were visually inspected.
+
+Native inspection exposed a missing model field: the ranking template printed
+"生成于" with no timestamp. PeakPetRankRenderInput now requires observed_at,
+captured immediately after the game response, before repository/render/progress
+work. The pure document carries the value into the template as "获取时间".
+Both request and document cache identities include it. No rendering-time clock
+or fallback timestamp is added. A service test advances the clock during the
+progress callback and verifies the captured response time remains unchanged.
+
+Native flex wrapping did not prevent a long title overlapping the timestamp;
+the header now uses separate block rows with time right-aligned below the title.
+The final actual 640px-wide PNG is non-overlapping. 39 focused peak/cache tests,
+targeted type checking, Ruff, compileall and diff checks passed. Global asset
+scope remains incomplete, and no game account, production data, remote release
+or platform deployment was touched. Phase 4 is still open.

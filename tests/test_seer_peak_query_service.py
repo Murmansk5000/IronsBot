@@ -274,7 +274,11 @@ async def test_peak_pool_query_renders_with_progress() -> None:
 
 
 @pytest.mark.asyncio
-async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
+async def test_peak_pet_rank_snapshots_pets_before_rendering(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    current_time = datetime(2026, 9, 12, 14, 0, tzinfo=time.TZ_CN)
+    monkeypatch.setattr(peak.time, "now", lambda *, tz: current_time.astimezone(tz))
     data = FakeData()
     data.query_result = PeakPeriodTimes(
         start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
@@ -299,13 +303,15 @@ async def test_peak_pet_rank_snapshots_pets_before_rendering() -> None:
             return [PeakItemData(id=7, count=10, win=6)], []
 
     async def report(_message: str) -> None:
-        return None
+        nonlocal current_time
+        current_time = datetime(2026, 9, 12, 14, 1, tzinfo=time.TZ_CN)
 
     data.query_results = [data.query_result, {7: PeakPetSnapshot(7, "雷伊", 1007, 4)}]
     service = _service(data, FakeHeadless(FakeGame()), rendered)
     result = await service.pet_rank("竞技精灵总榜", report)
 
     assert result.image == b"pet"
+    assert rendered["pet"].observed_at == "2026-09-12 14:00:00"
     assert data.get_many_open is False
     assert rendered["pet"].pets == (
         PeakPetSnapshot(

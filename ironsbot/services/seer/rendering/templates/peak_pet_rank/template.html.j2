@@ -24,9 +24,6 @@
         }
 
         .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
             padding-bottom: 12px;
             border-bottom: 2px solid #4a8ada;
             margin-bottom: 20px;
@@ -36,11 +33,13 @@
             font-size: 28px;
             font-weight: bold;
             color: #ffffff;
-            letter-spacing: 2px;
+            letter-spacing: 0;
             text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
         }
 
         .page-time {
+            margin-top: 8px;
+            text-align: right;
             font-size: 13px;
             color: #8ab4e8;
             white-space: nowrap;
@@ -214,7 +213,7 @@
     <div class="container">
         <div class="page-header">
             <div class="page-title">{{ title }}</div>
-            <div class="page-time">生成于 {{ generated_at }}</div>
+            <div class="page-time">获取时间：{{ observed_at }}</div>
         </div>
 
         <div class="section">

@@ -252,6 +252,7 @@ class PeakPetBanSnapshot:
 @dataclass(frozen=True, slots=True)
 class PeakPetRankRenderInput:
     title: str
+    observed_at: str
     pick_items: tuple[PeakPetPickSnapshot, ...]
     ban_items: tuple[PeakPetBanSnapshot, ...]
     pets: tuple[PeakPetSnapshot, ...]
@@ -497,6 +498,7 @@ class PeakQueryService:
                 period.sub_key,
                 peak_type,
             )
+            observed_at = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
             pick_rank = pick_rank[:20]
             ban_rank = ban_rank[:20]
             if not pick_rank:
@@ -509,6 +511,7 @@ class PeakQueryService:
                 pets = tuple(sorted(pet_map.values(), key=lambda pet: pet.id))
             await progress("正在生成图片...")
             render_input = PeakPetRankRenderInput(
+                observed_at=observed_at,
                 title=(
                     f"{name}精灵{period.category}榜<br>"
                     f"{period.start_time:%Y-%m-%d} ~ "
