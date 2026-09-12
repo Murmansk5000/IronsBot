@@ -87,6 +87,32 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
     return engine, generated_at
 
 
+def test_peak_season_unloaded_database_is_not_an_absent_season() -> None:
+    data = SeerDatabase(DatabaseManager(), merge_connected_mintmarks=True)
+    with pytest.raises(DataUnavailableError, match="巅峰赛季数据未加载"):
+        data.peak_season_start()
+
+
+def test_peak_season_read_failure_is_not_an_absent_season(tmp_path: Path) -> None:
+    source = tmp_path / "season.sqlite"
+    engine, _ = _create_release(source, ())
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    try:
+        databases.load_from_file("seerapi", str(source))
+        assert data.peak_season_start() is None
+        with databases.session("seerapi") as session:
+            assert session is not None
+            session.execute(text("DROP TABLE peak_season"))
+            session.commit()
+        with pytest.raises(DataUnavailableError, match="巅峰赛季数据读取失败") as error:
+            data.peak_season_start()
+        assert error.value.__cause__ is not None
+    finally:
+        databases.close()
+        engine.dispose()
+
+
 @pytest.mark.parametrize(
     ("scopes", "expected_categories"),
     [

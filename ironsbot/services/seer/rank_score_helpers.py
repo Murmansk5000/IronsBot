@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-from collections.abc import Mapping
+from __future__ import annotations
+
 from dataclasses import dataclass
-from itertools import pairwise
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ironsbot.services.seer.rank_models import (
     RankPageResult,
@@ -10,6 +10,42 @@ from ironsbot.services.seer.rank_models import (
     RankScoreMissProof,
     RankScoreSearchItem,
 )
+from ironsbot.services.seer.rank_pagination import (
+    RankPageConflictError,
+    RankPageSequence,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from ironsbot.services.seer.rank_score_search import DescendingScoreRange
+
+
+def validate_score_sample(  # noqa: PLR0913
+    page: RankPageResult,
+    *,
+    start: int,
+    end: int,
+    target_score: int,
+    score_range: DescendingScoreRange,
+    sequence: RankPageSequence,
+) -> None:
+    """Check sampled rows against proved bounds, not a speculative fallback end."""
+    sequence.include((int(item.id), int(item.score)) for item in page.items)
+    left, right = score_range.match_start, score_range.match_end
+    if left is None or right is None:
+        raise RankPageConflictError
+    required_end = min(end + 1, left + 1 if score_range.truncated else right)
+    if required_end > max(start, left) and start + len(page.items) < required_end:
+        raise RankPageConflictError
+    for offset, item in enumerate(page.items):
+        index, score = start + offset, int(item.score)
+        if (
+            (index < left and score <= target_score)
+            or (left <= index < required_end and score != target_score)
+            or (not score_range.truncated and index >= right and score >= target_score)
+        ):
+            raise RankPageConflictError
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,7 +54,7 @@ class ScoreSegmentCoverage:
     missing_pages: tuple[int, ...]
 
 
-def score_segment_coverage(  # noqa: PLR0911
+def score_segment_coverage(
     pages: Mapping[int, RankPageResult],
     *,
     start_index: int,
@@ -52,9 +88,9 @@ def score_segment_coverage(  # noqa: PLR0911
     )
     if any(index >= observed_end for index, _, _ in entries):
         return None
-    if len({user_id for _, user_id, _ in entries}) != len(entries):
-        return None
-    if any(left[2] < right[2] for left, right in pairwise(entries)):
+    try:
+        RankPageSequence().include((user_id, score) for _, user_id, score in entries)
+    except RankPageConflictError:
         return None
     matches = tuple(index for index, _, score in entries if score == target_score)
     if not matches:

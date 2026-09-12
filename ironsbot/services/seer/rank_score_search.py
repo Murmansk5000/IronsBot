@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from itertools import pairwise
 from typing import TYPE_CHECKING
+
+from ironsbot.services.seer.rank_pagination import RankPageConflictError
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -54,6 +57,12 @@ class _ScoreProbe:
         self._remaining -= 1
         score = await self._fetch_score(index)
         self._cache[index] = score
+        ordered = [self._cache[position] for position in sorted(self._cache)]
+        if any(
+            right is not None and (left is None or left < right)
+            for left, right in pairwise(ordered)
+        ):
+            raise RankPageConflictError
         return score
 
 
