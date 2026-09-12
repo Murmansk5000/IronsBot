@@ -693,6 +693,15 @@ HTTP 素材源 4、映射调整后的数据库/阵容 13、私有扩展 26 passe
 通过。未发布 release、未改生产数据或 main。座驾发布、皮肤 body 完整范围和真实
 release 消费验收仍未完成，不将该项写成 Phase 4 已验收；总进度保持 4/8。
 
+**皮肤立绘发布范围（2026-09-12，Phase 4 切片）：** SeerAPI `ce42f5f` 在既有
+manifest 增加独立 `skin_body` 范围，读取已解析 body ID，使用同一不可变仓库树，
+复用 `pet_body` 素材类型并与已有精灵立绘去重。未解析/零 ID、空库存、缺列或缺图
+不声明完整，且不会影响属性/巅峰/精灵既有范围。见
+[立绘 Spec](specs/2026-09-12-skin-body-manifest.md)：构建模块 80 passed，专项
+manifest 34 passed，Ruff、模块类型检查、compileall、diff 通过。消费者未提前
+启用橱窗 L3；真实 release、动态 offer fallback 和完整请求键覆盖仍是完成门。
+无新增数据库表、素材仓库或下载步骤。总体 4/8，不将生产者单仓库验证算成阶段完成。
+
 ### Phase 5 — 业务服务和通用解析
 
 **目标契约：** 领域服务、统一别名解析和 `PlayerIdResolver`。
