@@ -51,7 +51,11 @@ def load_data_generated_at(session: Session) -> datetime | None:
     return None if metadata is None else metadata.generate_time
 
 
-class SeerDataAccess(Protocol):
+class SeerDataReader(Protocol):
+    def query(self, operation: DataQuery[_T]) -> AbstractContextManager[_T]: ...
+
+
+class SeerDataAccess(SeerDataReader, Protocol):
     @property
     def battle_effect(self) -> DataGetter["BattleEffectORM"]: ...
 
@@ -84,8 +88,6 @@ class SeerDataAccess(Protocol):
 
     @property
     def type_combination(self) -> DataGetter["TypeCombinationORM"]: ...
-
-    def query(self, operation: DataQuery[_T]) -> AbstractContextManager[_T]: ...
 
     def resolve(
         self,

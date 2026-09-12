@@ -31,6 +31,30 @@ def test_render_cache_get_and_put_are_scoped_by_db_version(tmp_path: Path) -> No
     assert len(list(tmp_path.glob("*.json"))) == 1
 
 
+def test_bound_render_cache_keeps_late_writes_in_original_release(
+    tmp_path: Path,
+) -> None:
+    cache = _test_cache(tmp_path, version="old")
+    cache.entry("pet_info", "1").put(b"unbound-render")
+    old = cache.bind("old", lambda _: True).entry("pet_info", "1")
+    fresh = cache.bind("new", lambda _: True).entry("pet_info", "1")
+    assert old.get() is None
+    fresh.put(b"new-render")
+    old.put(b"late-old-render")
+    assert fresh.get() == b"new-render"
+    assert old.get() == b"late-old-render"
+    assert (
+        cache.bind("old", lambda _: True).entry("pet_info", "1").get()
+        == b"late-old-render"
+    )
+    unavailable = cache.bind("old", lambda _: False).entry("pet_info", "1")
+    unavailable.put(b"unavailable")
+    assert unavailable.get() is None
+    unknown = cache.bind("unknown", lambda _: True).entry("pet_info", "1")
+    unknown.put(b"unknown")
+    assert unknown.get() is None
+
+
 def test_render_cache_skips_unknown_db_version(tmp_path: Path) -> None:
     cache_dir = tmp_path / "render-cache"
     cache = _test_cache(cache_dir, version=UNKNOWN_RENDER_CACHE_VERSION)

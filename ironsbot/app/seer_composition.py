@@ -181,12 +181,25 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    images, render_cache, render_coordinator = build_seer_rendering_components(
-        http_clients,
-        cache_paths,
-        settings.seer.render,
-        seer_database,
+    images, render_cache, render_coordinator, render_sessions = (
+        build_seer_rendering_components(
+            http_clients,
+            cache_paths,
+            settings.seer.render,
+            seer_database,
+        )
     )
+
+    async def render_pet(pet_id: int) -> bytes:
+        with render_sessions.open() as inputs:
+            return await render_published_pet_info(
+                inputs.cache,
+                inputs.data,
+                inputs.images,
+                render_coordinator.render,
+                pet_id,
+            )
+
     weekly_preview_images = CachedWeeklyPreviewImageSource(
         http_clients.origin,
         cache_paths.http_dir() / "weekly_preview",
@@ -347,13 +360,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             PetQueryService(
                 seer_database,
                 images,
-                partial(
-                    render_published_pet_info,
-                    render_cache,
-                    seer_database,
-                    images,
-                    render_coordinator.render,
-                ),
+                render_pet,
             ),
             PeakQueryService(
                 seer_database,

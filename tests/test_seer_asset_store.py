@@ -57,8 +57,8 @@ class FakeImageSource:
             raise self.error
         return self.result
 
-    async def fetch_url(self, _url: str) -> bytes:
-        return await self.fetch("url", _url)
+    async def fetch_url(self, url: str) -> bytes:
+        return await self.fetch("url", url)
 
     def prepare(
         self, kind: ImageKind, key: str, *, fallback: bool
@@ -82,6 +82,29 @@ def _store(
             negative_ttl_seconds=300,
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_bound_sources_share_singleflight_and_cache(tmp_path: Path) -> None:
+    default = FakeImageSource(identity="default")
+    old = FakeImageSource(identity="old", result=b"old")
+    old.release = asyncio.Event()
+    store = _store(default, tmp_path)
+    first = store.bind(old)
+    second = store.bind(old)
+    task = asyncio.create_task(first.fetch("pet_body", "1", fallback=False))
+    await old.started.wait()
+    follower = asyncio.create_task(second.fetch("pet_body", "1", fallback=False))
+    await asyncio.sleep(0)
+    old.release.set()
+    assert await asyncio.gather(task, follower) == [b"old", b"old"]
+    assert old.calls == 1
+    assert await second.fetch("pet_body", "1", fallback=False) == b"old"
+    assert old.calls == 1
+    fresh = FakeImageSource(identity="new", result=b"new")
+    assert await store.bind(fresh).fetch("pet_body", "1", fallback=False) == b"new"
+    assert fresh.calls == 1
+    assert default.calls == 0
 
 
 @pytest.mark.asyncio

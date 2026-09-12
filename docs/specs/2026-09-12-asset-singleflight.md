@@ -168,3 +168,34 @@ ORM relationship warnings. Ruff, targeted BasedPyright (0 errors/warnings),
 compileall and diff checks passed. query() now consumes the snapshot directly;
 asset/cache binding at composition boundaries remains outstanding. No runtime
 dependencies, configuration changes or new database copies.
+
+## Bound Render Inputs
+
+Target: SeerRenderSessions.open() composes one read snapshot, an HTTP image
+source pinned to its publication, and a final-cache view with the same release
+and renderer fingerprint. Bound asset sources share the existing cache,
+singleflight map and network semaphore, rather than constructing new stores.
+Fully bound final-cache entries use a fresh namespace and may finish writing
+their original version after an update, without contaminating the new release.
+Unknown/unproven scopes remain non-cacheable. Pet-info composition is the first
+consumer; other public renderers and the private extension remain to migrate.
+Test interleaved old/new sessions with real SQLite and MockTransport, including
+late old writes, cache hits without repository SQL, and shared asset fetches.
+
+Verified: assets/final-cache/publication/version/pet-adapter regression 37 passed
+in 18.19s (2 existing ORM relationship warnings); architecture, size, application
+catalog and final asset-source regressions 30 passed in 3.43s. Ruff over
+ironsbot/tests passed. Whole-tree BasedPyright found only three fake-source
+keyword-name mismatches; correcting that fixture passed the targeted type check.
+Compileall and diff checks passed. No runtime dependency, extra store instance,
+TOML or private-contract changes. Added the minimal SeerDataReader protocol so
+the pet adapter accepts a snapshot without requiring unrelated search methods.
+
+The production pet-info callback now opens SeerRenderSessions before cache
+lookup or repository access. The SQLite/MockTransport test switches manifests
+and asset revisions between awaits, confirms old-source requests after the
+switch, and restores the original release with matching cached bytes. This
+is not a real-platform/pixel acceptance test. Other renderer callbacks may
+receive data prepared earlier by their service, so migrating them requires
+moving the snapshot boundary before that preparation, not merely wrapping an
+already-built view model at render time.

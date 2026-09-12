@@ -8,13 +8,23 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
+from httpx import AsyncClient, MockTransport, Request, Response
 from seerapi_models import ApiMetadataORM
 from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine
 
+from ironsbot.app.rendering_composition import SeerRenderSessions
 from ironsbot.integrations.db_registry import DatabaseManager
+from ironsbot.integrations.http.clients import HttpClients
+from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.seer_data.database import SeerDatabase
 from ironsbot.integrations.seer_data.release_contract import SeerApiReleaseContractError
+from ironsbot.integrations.storage.render_cache import FileRenderCache
+from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
+from ironsbot.integrations.storage.seer_assets import (
+    SeerAssetStore,
+    SeerAssetStoreLimits,
+)
 from ironsbot.services.seer.data import DataUnavailableError
 
 if TYPE_CHECKING:
@@ -319,3 +329,85 @@ def test_seer_database_rejects_release_without_schema_contract(
 
     assert data.version() == "unknown"
     assert data.render_asset_snapshot() is None
+
+
+def _update_asset_release(engine: Engine, revision: str, manifest: str) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE ironsbot_metadata SET value=:value WHERE key=:key"),
+            [
+                {
+                    "key": "render_asset_manifest_asset_repository_revision",
+                    "value": revision,
+                },
+                {"key": "render_asset_manifest_revision", "value": manifest},
+            ],
+        )
+
+
+@pytest.mark.asyncio
+async def test_render_inputs_stay_bound_across_publication_and_rollback(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, _ = _create_release(source, ("pet_info",))
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    databases.load_from_file("seerapi", str(source))
+    requests: list[str] = []
+
+    def respond(request: Request) -> Response:
+        requests.append(str(request.url))
+        return Response(200, content=b"old" if "a" * 40 in request.url.path else b"new")
+
+    async with AsyncClient(transport=MockTransport(respond)) as client:
+        clients = HttpClients(cache=client, origin=client)
+        assets = SeerAssetStore(
+            HttpSeerImageSource(
+                clients, asset_snapshot_getter=data.render_asset_snapshot
+            ),
+            tmp_path / "assets",
+            SeerAssetStoreLimits(1024, 1024 * 1024, 1, 30),
+        )
+        versions = RenderCacheVersion(data.version, ())
+        cache = FileRenderCache(tmp_path / "renders", 1024, version_getter=versions)
+        sessions = SeerRenderSessions(data, clients, assets, cache, versions)
+        try:
+            await _check_bound_render_inputs(sessions, engine, databases, source)
+            before = len(requests)
+            with sessions.open() as restored:
+                assert restored.cache.entry("pet_info", "1").get() == b"old-render"
+                assert (
+                    await restored.images.fetch("pet_body", "1", fallback=False)
+                    == b"old"
+                )
+            assert len(requests) == before
+            assert any("b" * 40 in url for url in requests)
+        finally:
+            databases.close()
+            engine.dispose()
+
+
+async def _check_bound_render_inputs(
+    sessions: SeerRenderSessions,
+    engine: Engine,
+    databases: DatabaseManager,
+    source: Path,
+) -> None:
+    with sessions.open() as old:
+        old_entry = old.cache.entry("pet_info", "1")
+        assert old_entry.get() is None
+        assert await old.images.fetch("pet_body", "1", fallback=False) == b"old"
+        _update_asset_release(engine, "b" * 40, "assets-v2")
+        await asyncio.to_thread(databases.load_from_file, "seerapi", str(source))
+        with sessions.open() as fresh:
+            fresh_entry = fresh.cache.entry("pet_info", "1")
+            assert fresh_entry.get() is None
+            assert await fresh.images.fetch("pet_body", "1", fallback=False) == b"new"
+            assert await old.images.fetch("pet_body", "2", fallback=False) == b"old"
+            fresh_entry.put(b"new-render")
+            old_entry.put(b"old-render")
+            assert fresh_entry.get() == b"new-render"
+        assert old_entry.get() == b"old-render"
+    _update_asset_release(engine, "a" * 40, "assets-v1")
+    await asyncio.to_thread(databases.load_from_file, "seerapi", str(source))

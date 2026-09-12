@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.render_cache import RenderCacheEntry
@@ -11,6 +12,8 @@ from .verified_file_cache import VerifiedFileCache
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from ironsbot.services.seer.render_cache import RenderCache
 
 UNKNOWN_RENDER_CACHE_VERSION = "unknown"
 
@@ -57,3 +60,36 @@ class FileRenderCache:
 
     def cleanup(self) -> None:
         self._cache.cleanup()
+
+    def bind(
+        self, version: str, category_available: Callable[[str], bool]
+    ) -> RenderCache:
+        """Keep fully bound renders in their captured release after an update."""
+        return _SnapshotRenderCache(self._cache, version, category_available)
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotRenderCache:
+    cache: VerifiedFileCache
+    version: str
+    category_available: Callable[[str], bool]
+
+    def entry(self, category: str, content_key: str) -> RenderCacheEntry:
+        allowed = (
+            self.version != UNKNOWN_RENDER_CACHE_VERSION
+            and self.category_available(category)
+        )
+        key = hashlib.sha256(
+            "\0".join(
+                ("render-snapshot-v1", category, content_key, self.version)
+            ).encode("utf-8")
+        ).hexdigest()
+
+        def get() -> bytes | None:
+            return self.cache.get(key) if allowed else None
+
+        def put(data: bytes) -> None:
+            if allowed:
+                self.cache.put(key, data)
+
+        return RenderCacheEntry(get, put)

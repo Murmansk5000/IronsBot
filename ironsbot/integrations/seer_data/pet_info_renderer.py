@@ -21,7 +21,7 @@ from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_d
 from .pet_info_repository import load_pet_info_snapshot
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.pet_info_views import (
         PetInfoSnapshot,
@@ -46,7 +46,7 @@ class PetInfoNotFoundError(LookupError):
 
 async def render_published_pet_info(
     cache: RenderCache,
-    data: SeerDataAccess,
+    data: SeerDataReader,
     images: SeerImageSource,
     render_html: HtmlTemplateRenderer,
     pet_id: int,

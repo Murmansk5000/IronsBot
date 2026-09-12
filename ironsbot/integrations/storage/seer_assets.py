@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.config.models.seer import RenderConfig
-    from ironsbot.services.seer.images import SeerImageRequestSource
+    from ironsbot.services.seer.images import SeerImageRequestSource, SeerImageSource
 
 
 _NEGATIVE_STATUS_CODES = frozenset({404, 410})
@@ -61,7 +61,21 @@ class SeerAssetStore:
         *,
         fallback: bool = True,
     ) -> bytes:
-        request = self._source.prepare(kind, key, fallback=fallback)
+        return await self._fetch_from(self._source, kind, key, fallback=fallback)
+
+    def bind(self, source: SeerImageRequestSource) -> SeerImageSource:
+        """Reuse storage and concurrency limits with an immutable request source."""
+        return _BoundAssetSource(self, source)
+
+    async def _fetch_from(
+        self,
+        source: SeerImageRequestSource,
+        kind: ImageKind,
+        key: str,
+        *,
+        fallback: bool,
+    ) -> bytes:
+        request = source.prepare(kind, key, fallback=fallback)
         cache_key = _cache_key(
             "prepared-image-v1",
             request.identity,
@@ -148,6 +162,20 @@ class SeerAssetStore:
             return True
         self._negative.pop(cache_key, None)
         return False
+
+
+@dataclass(frozen=True, slots=True)
+class _BoundAssetSource:
+    store: SeerAssetStore
+    source: SeerImageRequestSource
+
+    async def fetch(self, kind: ImageKind, key: str, *, fallback: bool = True) -> bytes:
+        return await self.store._fetch_from(self.source, kind, key, fallback=fallback)
+
+    async def fetch_url(self, url: str) -> bytes:
+        return await self.store._get_or_fetch(
+            _cache_key("url", url), lambda: self.source.fetch_url(url)
+        )
 
 
 class _MemoryAssetCache:
