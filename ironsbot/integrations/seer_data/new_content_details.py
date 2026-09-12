@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from seerapi_models import PetORM, SkillORM, TypeCombinationORM
 
+from ironsbot.core.value_coercion import require_bool_flag, require_int
 from ironsbot.services.seer.rendering.analyze_description import (
     format_analyze_description,
     format_plain_analyze_description,
@@ -81,12 +82,7 @@ def load_new_content_peak_pool_details(
 def _peak_pool_limit_text(value: object) -> str:
     if value is None:
         return "不限"
-    if not isinstance(value, int | float | str):
-        return "未知"
-    try:
-        return f"限{int(value)}"
-    except (TypeError, ValueError):
-        return "未知"
+    return f"限{require_int(value, field='peak_pool.limit')}"
 
 
 def load_new_content_skill_details(
@@ -105,7 +101,7 @@ def load_new_content_skill_details(
                 type_name = str(skill_type.name)
                 type_available = True
     category_id = _payload_int(payload, "category_id")
-    must_hit = bool(payload.get("must_hit", False))
+    must_hit = require_bool_flag(payload.get("must_hit", False), field="skill.must_hit")
     raw_crit_rate = payload.get("crit_rate")
     crit_rate = (
         _payload_int(payload, "crit_rate")
@@ -161,19 +157,16 @@ def _load_skill_effect_details(
     data: SeerDataReader,
     skill_id: int,
 ) -> _SkillEffectDetails:
-    try:
-        with data.query(lambda session: session.get(SkillORM, skill_id)) as skill:
-            if skill is None:
-                return _SkillEffectDetails([], [], None, complete=False)
-            return _SkillEffectDetails(
-                effects=_skill_effect_rows(skill.skill_effect),
-                friend_effects=_skill_effect_rows(skill.friend_skill_effect),
-                hide_effect_desc=_skill_hide_effect_text(skill),
-                complete=isinstance(skill.skill_effect, list)
-                and isinstance(skill.friend_skill_effect, list),
-            )
-    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
-        return _SkillEffectDetails([], [], None, complete=False)
+    with data.query(lambda session: session.get(SkillORM, skill_id)) as skill:
+        if skill is None:
+            return _SkillEffectDetails([], [], None, complete=False)
+        return _SkillEffectDetails(
+            effects=_skill_effect_rows(skill.skill_effect),
+            friend_effects=_skill_effect_rows(skill.friend_skill_effect),
+            hide_effect_desc=_skill_hide_effect_text(skill),
+            complete=isinstance(skill.skill_effect, list)
+            and isinstance(skill.friend_skill_effect, list),
+        )
 
 
 def _skill_effect_rows(effects: object) -> list[dict[str, Any]]:
@@ -202,13 +195,7 @@ def _skill_effect_text(effect: object) -> str:
 
 
 def _payload_int(payload: dict[str, object], key: str) -> int:
-    value = payload.get(key, 0)
-    if not isinstance(value, int | float | str):
-        return 0
-    try:
-        return int(value)
-    except ValueError:
-        return 0
+    return require_int(payload.get(key, 0), field=f"skill.{key}")
 
 
 def _skill_related_pets(value: object) -> str:

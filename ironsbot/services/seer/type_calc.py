@@ -17,6 +17,15 @@ _CUSTOM_TYPE_SPLIT_PATTERN = re.compile(r"[+,/|\s]+")
 RelationMap = dict[tuple[int, int], float]
 
 
+class MissingTypeRelationError(LookupError):
+    def __init__(self, attacker_id: int, defender_id: int) -> None:
+        self.attacker_id = attacker_id
+        self.defender_id = defender_id
+        super().__init__(
+            f"missing official element relation {attacker_id} -> {defender_id}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class ElementTypeSnapshot:
     id: int
@@ -96,7 +105,10 @@ def build_type_matchup(
 
 
 def _lookup(table: RelationMap, atk_id: int, def_id: int) -> float:
-    return table.get((atk_id, def_id), 1.0)
+    try:
+        return table[(atk_id, def_id)]
+    except KeyError:
+        raise MissingTypeRelationError(atk_id, def_id) from None
 
 
 def _calc_mixed(c1: float, c2: float) -> float:

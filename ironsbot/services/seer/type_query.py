@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from ironsbot.integrations.seer_data.type_matchup_repository import (
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.type_calc import (
+    MissingTypeRelationError,
     TypeCombinationSnapshot,
     TypeMatchup,
     custom_type_matchup,
@@ -38,6 +40,8 @@ TypeRenderSessionFactory = Callable[[], AbstractContextManager[TypeRenderSession
 PROMPT_MAX_ITEMS = 20
 NORMAL_TYPE_ID = 8
 NORMAL_TYPE_MESSAGE = "普通系不支持属性克制表查询，李在赣神魔"
+INCOMPLETE_TYPE_DATA_MESSAGE = "❌ 属性克制数据不完整，暂时无法生成结果。"
+logger = logging.getLogger(__name__)
 
 
 class TypeQueryService:
@@ -91,11 +95,20 @@ class TypeQueryService:
                         return QueryResult(message=NORMAL_TYPE_MESSAGE)
                     type_id = target.id
         with inputs.data.query(load_type_matchup_dataset) as dataset:
-            matchup = (
-                custom_type_matchup(dataset, arg=arg)
-                if type_id is None
-                else type_matchup_by_id(dataset, type_id=type_id)
-            )
+            try:
+                matchup = (
+                    custom_type_matchup(dataset, arg=arg)
+                    if type_id is None
+                    else type_matchup_by_id(dataset, type_id=type_id)
+                )
+            except MissingTypeRelationError as error:
+                logger.exception(
+                    "type matchup data is incomplete: attacker_id=%s defender_id=%s",
+                    error.attacker_id,
+                    error.defender_id,
+                )
+                matchup = None
+                missing_message = INCOMPLETE_TYPE_DATA_MESSAGE
         if matchup is None:
             return QueryResult(message=missing_message)
         if _contains_normal_type(matchup.target):

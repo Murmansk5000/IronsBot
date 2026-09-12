@@ -150,6 +150,11 @@ def test_unknown_sanctuary_returns_a_clear_message() -> None:
     (
         ((), False, "数据库没有群星牌场地效果数据"),
         (_SANCTUARY_ROWS, True, "数据库缺少群星牌场地效果表"),
+        (
+            (("invalid", *_SANCTUARY_ROWS[0][1:]),),
+            False,
+            "群星牌场地效果数据格式无效",
+        ),
     ),
 )
 def test_sanctuary_data_errors_are_explicit(
@@ -160,4 +165,3 @@ def test_sanctuary_data_errors_are_explicit(
     assert isinstance(fails, bool)
     with pytest.raises(RuntimeError, match=expected):
         _service(rows, fails=fails).search("场地")
-

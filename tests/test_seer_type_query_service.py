@@ -4,7 +4,7 @@ import asyncio
 import os
 from base64 import b64decode
 from contextlib import contextmanager
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from io import BytesIO
@@ -25,6 +25,7 @@ from ironsbot.services.seer.type_calc import (
     TypeMatchupDataset,
 )
 from ironsbot.services.seer.type_query import (
+    INCOMPLETE_TYPE_DATA_MESSAGE,
     NORMAL_TYPE_MESSAGE,
     TypeQueryService,
     TypeRenderSession,
@@ -81,8 +82,12 @@ def _dataset(target: Any) -> TypeMatchupDataset:
     return TypeMatchupDataset(
         combinations=(snapshot,),
         elements=(ElementTypeSnapshot(snapshot.primary_id, snapshot.name),),
-        relations=(),
+        relations=((snapshot.primary_id, snapshot.primary_id, 1.0),),
     )
+
+
+def _neutral_relations(*type_ids: int) -> tuple[tuple[int, int, float], ...]:
+    return tuple((source, target, 1.0) for source in type_ids for target in type_ids)
 
 
 def _service(
@@ -181,7 +186,7 @@ async def test_matchup_preparation_and_render_share_one_session(
     bound.dataset = TypeMatchupDataset(
         combinations=(TypeCombinationSnapshot(1, "草", 1, None),),
         elements=(ElementTypeSnapshot(1, "草"), ElementTypeSnapshot(2, "水")),
-        relations=(),
+        relations=_neutral_relations(1, 2),
     )
     active = False
     rendered: list[TypeMatchup] = []
@@ -234,7 +239,7 @@ async def test_query_cache_skips_all_reads_and_is_publication_bound(
     data.dataset = TypeMatchupDataset(
         combinations=(TypeCombinationSnapshot(1, "草", 1, None),),
         elements=(ElementTypeSnapshot(1, "草"), ElementTypeSnapshot(2, "水")),
-        relations=(),
+        relations=_neutral_relations(1, 2),
     )
     cache = FileRenderCache(tmp_path, 1024 * 1024, version_getter=lambda: "unused")
     version = "first"
@@ -315,6 +320,42 @@ async def test_custom_query_order_and_failed_render_do_not_poison_cache(
     assert calls == ["草水（DIY 属性）", "草水（DIY 属性）", "水草（DIY 属性）"]
 
 
+@pytest.mark.asyncio
+async def test_incomplete_type_relations_fail_without_render_or_cache(
+    tmp_path: Path,
+) -> None:
+    data = FakeData()
+    target = _type(1, "草")
+    data.combinations = (target,)
+    data.dataset = TypeMatchupDataset(
+        combinations=(TypeCombinationSnapshot(1, "草", 1, None),),
+        elements=(ElementTypeSnapshot(1, "草"),),
+        relations=(),
+    )
+    cache = FileRenderCache(tmp_path, 1024 * 1024, version_getter=lambda: "release")
+    render_calls = 0
+
+    async def render(_matchup: TypeMatchup) -> bytes:
+        nonlocal render_calls
+        render_calls += 1
+        return b"must not render"
+
+    @contextmanager
+    def session() -> Iterator[TypeRenderSession]:
+        yield TypeRenderSession(cast("SeerDataReader", data), render, cache)
+
+    service = TypeQueryService(session)
+    result = await service.search("草")
+
+    assert result.message == INCOMPLETE_TYPE_DATA_MESSAGE
+    assert result.reply is None
+    assert render_calls == 0
+    first_query_count = data.queries
+    assert (await service.search("草")).message == INCOMPLETE_TYPE_DATA_MESSAGE
+    assert data.queries > first_query_count
+    assert render_calls == 0
+
+
 def test_type_query_and_calculator_are_render_fingerprint_inputs() -> None:
     from ironsbot.app.rendering_composition import FINAL_RENDER_CACHE_INPUTS
 
@@ -371,7 +412,16 @@ async def test_type_query_result_crosses_restricted_platform_boundary(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "kind", ["type_matchup", "peak_pool", "expert_pool", "pet_info"]
+    "kind",
+    [
+        "type_matchup",
+        "peak_pool",
+        "expert_pool",
+        "pet_info",
+        "peak_pool_vote",
+        "peak_pet_rank",
+        "player_lineup",
+    ],
 )
 @pytest.mark.skipif(
     not os.environ.get("IRONSBOT_RENDER_RELEASE"),
@@ -388,13 +438,21 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.app.rendering_composition import build_seer_rendering_components
     from ironsbot.config.models.seer import RenderConfig
+    from ironsbot.core import time
     from ironsbot.integrations.db_registry import DatabaseManager
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.onebot.message_rendering import (
         render_onebot_outbound_message,
     )
     from ironsbot.integrations.seer_data.database import SeerDatabase
+    from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
+        render_peak_pet_rank,
+    )
     from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
+    from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
+        render_peak_pool_vote,
+    )
+    from ironsbot.integrations.seer_data.peak_repository import load_peak_vote_snapshots
     from ironsbot.integrations.seer_data.pet_info_renderer import (
         render_published_pet_info,
     )
@@ -402,7 +460,19 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
         render_type_matchup,
     )
     from ironsbot.runtime.cache_paths import CachePaths
-    from ironsbot.services.seer.peak import PeakQueryService, PeakRenderSession
+    from ironsbot.services.seer.peak import (
+        LIMIT_POOL_VOTE_COUNT,
+        PeakItemData,
+        PeakQueryService,
+        PeakRenderSession,
+        normalize_peak_vote_time,
+    )
+    from ironsbot.services.seer.rank_models import RankEntry
+
+    if kind == "player_lineup":
+        if not (private_root := os.environ.get("IRONSBOT_PRIVATE_ROOT")):
+            pytest.skip("lineup release acceptance requires IRONSBOT_PRIVATE_ROOT")
+        monkeypatch.syspath_prepend(private_root)
 
     try:
         driver = nonebot.get_driver()
@@ -431,6 +501,24 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
         databases.load_from_file("seerapi", os.environ["IRONSBOT_RENDER_RELEASE"])
         category = "peak_pool" if kind == "expert_pool" else kind
         cache_allowed = database.render_category_available(category)
+        vote_ids: dict[int, tuple[int, ...]] = {}
+        if kind == "peak_pool_vote":
+            with database.query(load_peak_vote_snapshots) as votes:
+                active_vote = next(
+                    vote
+                    for vote in votes
+                    if vote.count == LIMIT_POOL_VOTE_COUNT and vote.pets
+                )
+                fixture_time = normalize_peak_vote_time(
+                    active_vote.start_time
+                ) + timedelta(minutes=1)
+                vote_ids = {
+                    vote.count: tuple(pet.id for pet in vote.pets[:3]) for vote in votes
+                }
+            monkeypatch.setattr(time, "now", lambda *, tz: fixture_time.astimezone(tz))
+        elif kind == "peak_pet_rank":
+            fixture_time = datetime(2026, 9, 12, 14, 0, tzinfo=time.TZ_CN)
+            monkeypatch.setattr(time, "now", lambda *, tz: fixture_time.astimezone(tz))
         engine = databases.get_engine("seerapi")
         assert engine is not None
         event.listen(engine, "before_cursor_execute", track_sql)
@@ -456,31 +544,46 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
             @contextmanager
             def session() -> Iterator[TypeRenderSession]:
                 with sessions.open() as inputs:
-
-                    async def render(matchup: TypeMatchup) -> bytes:
-                        return await render_type_matchup(
-                            inputs.images, coordinator.render, matchup
-                        )
-
-                    yield TypeRenderSession(inputs.data, render, inputs.cache)
+                    yield TypeRenderSession(
+                        inputs.data,
+                        partial(render_type_matchup, inputs.images, coordinator.render),
+                        inputs.cache,
+                    )
 
             @contextmanager
             def peak_session() -> Iterator[PeakRenderSession]:
                 with sessions.open() as inputs:
-
-                    async def pool(pools: Any, title: str) -> bytes:
-                        return await render_peak_pool(
+                    yield PeakRenderSession(
+                        inputs.data,
+                        partial(
+                            render_peak_pool,
                             inputs.cache,
                             inputs.images,
                             coordinator.render,
-                            pools,
-                            title,
-                        )
+                        ),
+                        partial(
+                            render_peak_pool_vote,
+                            inputs.cache,
+                            inputs.images,
+                            coordinator.render,
+                        ),
+                        partial(
+                            render_peak_pet_rank,
+                            inputs.cache,
+                            inputs.images,
+                            coordinator.render,
+                        ),
+                    )
 
-                    async def unused(*_args: Any) -> bytes:
-                        raise AssertionError
+            class FixtureGame:
+                async def get_limit_pool_vote(self, _key: int) -> list[RankEntry]:
+                    return [RankEntry(id_, "fixture", 100) for id_ in vote_ids[2]]
 
-                    yield PeakRenderSession(inputs.data, pool, unused, unused)
+                async def get_semi_limit_pool_vote(self, _key: int) -> list[RankEntry]:
+                    return [RankEntry(id_, "fixture", 50) for id_ in vote_ids[3]]
+
+                async def get_peak_pet_rank(self, *_args: Any) -> Any:
+                    return [PeakItemData(3549, 10, 6)], [RankEntry(3407, "fixture", 4)]
 
             async def progress(_message: str) -> None:
                 return None
@@ -500,6 +603,51 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
                             3549,
                         )
                     return QueryReply(image=image)
+                if kind == "player_lineup":
+                    from importlib import import_module
+
+                    from ironsbot.extensions.contracts import PlayerLineupSlot
+                    from ironsbot.extensions.player_lineup import (
+                        PlayerLineupRenderServices,
+                    )
+                    from ironsbot.integrations.seer_data.player_lineup_entries import (
+                        PublishedPlayerLineupEntryResolver,
+                    )
+
+                    models = import_module("ironsbot_private_lineup.models")
+                    adapter = import_module("ironsbot_private_lineup.renderer_adapter")
+                    with sessions.open() as inputs:
+                        slots = tuple(
+                            PlayerLineupSlot(id_, 100, 1)
+                            for id_ in (3549, 3407, 70, 4554, 5000, 4903)
+                        )
+                        entries = tuple(
+                            models.PlayerLineupEntry(**asdict(entry))
+                            for entry in PublishedPlayerLineupEntryResolver(
+                                inputs.data
+                            ).resolve(slots)
+                        )
+                        result = await adapter.render_player_lineup(
+                            PlayerLineupRenderServices(
+                                inputs.images, inputs.cache, coordinator.render
+                            ),
+                            entries,
+                        )
+                        assert result.complete
+                    return QueryReply(image=result.image)
+                if kind in {"peak_pool_vote", "peak_pet_rank"}:
+                    service = PeakQueryService(
+                        database,
+                        cast("Any", SimpleNamespace(get_game=FixtureGame)),
+                        peak_session,
+                    )
+                    result = (
+                        await service.vote(progress)
+                        if kind == "peak_pool_vote"
+                        else await service.pet_rank("竞技精灵总榜", progress)
+                    )
+                    assert result.image is not None, result.message
+                    return QueryReply(image=result.image)
                 # Pool queries use release data without an account/game API.
                 result = await PeakQueryService(
                     database, cast("Any", None), peak_session
