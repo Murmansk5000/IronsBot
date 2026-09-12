@@ -196,3 +196,24 @@ and font changes must preserve the explicit two-weight contract. Evidence is
 uploaded even when the gate fails, and registry login remains after the gate.
 Shell tests cover each exact boundary and each independent overflow; actual Linux
 values still require the first candidate CI run.
+
+## Release Action Runtime Refresh
+
+The publication workflows now use one current first-party action contract per
+owner: checkout, setup-python, upload-artifact and build-push use v7;
+setup-buildx and login use v4; metadata uses v6. This removes the Docker release
+workflow's older Node action runtimes without adding anything to the application
+image. A repository-wide workflow test rejects a future downgrade or mixed major
+for these action owners. Third-party release and Docker Hub description actions
+remain independently versioned and are not inferred from this matrix.
+
+This is a workflow compatibility update, not candidate execution evidence. The
+same Linux candidate smoke, frozen dependency audit, three directory budgets and
+digest-pinned publication inventory remain the acceptance gates.
+
+Verification on 2026-09-13: all workflow YAML files parsed successfully; the
+Docker release workflow suite passed 17 tests; Ruff and `git diff --check`
+passed. The exact frozen Python 3.10 audit covered 59 runtime distributions and
+reported zero known vulnerabilities and zero skipped distributions. Repeated
+advisory-cache decode warnings caused network refetches and did not suppress
+audit input or findings. No workflow was dispatched and no image was published.

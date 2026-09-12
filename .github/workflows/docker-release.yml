@@ -18,15 +18,15 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v3
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
 
             - name: Setup Docker
-              uses: docker/setup-buildx-action@v2
+              uses: docker/setup-buildx-action@v4
 
             - name: Setup Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v7
               with:
                   python-version: "3.10"
 
@@ -44,7 +44,7 @@ jobs:
 
             - name: Upload dependency audit evidence
               if: ${{ always() }}
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: dependency-audit-${{ github.sha }}
                   path: |
@@ -81,7 +81,7 @@ jobs:
                   echo "fork_version=${base_version}.${custom_revision}" >> "$GITHUB_OUTPUT"
 
             - name: Generate Tags
-              uses: docker/metadata-action@v4
+              uses: docker/metadata-action@v6
               id: metadata
               with:
                   images: |
@@ -105,7 +105,7 @@ jobs:
 
             - name: Build runtime candidate
               id: candidate
-              uses: docker/build-push-action@v4
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   load: true
@@ -155,28 +155,28 @@ jobs:
 
             - name: Upload candidate size evidence
               if: ${{ always() }}
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: candidate-size-${{ github.sha }}
                   path: ${{ runner.temp }}/ironsbot-candidate-runtime-size-kib.txt
                   if-no-files-found: warn
 
             - name: Login to GitHub Container Registry
-              uses: docker/login-action@v2
+              uses: docker/login-action@v4
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Login to Docker Hub
-              uses: docker/login-action@v2
+              uses: docker/login-action@v4
               with:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
                   password: ${{ secrets.DOCKERHUB_TOKEN }}
 
             - name: Build and Publish
               id: build
-              uses: docker/build-push-action@v4
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   push: true
@@ -211,7 +211,7 @@ jobs:
                   } >> "$GITHUB_STEP_SUMMARY"
 
             - name: Upload image size evidence
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: image-size-${{ github.sha }}
                   path: |

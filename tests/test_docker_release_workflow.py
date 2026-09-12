@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,16 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
+
+CURRENT_ACTION_MAJORS = {
+    "actions/checkout": 7,
+    "actions/setup-python": 7,
+    "actions/upload-artifact": 7,
+    "docker/build-push-action": 7,
+    "docker/login-action": 4,
+    "docker/metadata-action": 6,
+    "docker/setup-buildx-action": 4,
+}
 
 
 def _bash() -> str:
@@ -27,6 +38,27 @@ def _steps() -> list[dict]:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["docker"][
         "steps"
     ]
+
+
+def test_workflows_use_current_first_party_action_contracts() -> None:
+    uses_pattern = re.compile(r"uses:\s+([^\s@]+)@v(\d+)\s*$")
+    observed: set[str] = set()
+
+    for workflow in (ROOT / ".github" / "workflows").glob("*.yml"):
+        for line in workflow.read_text(encoding="utf-8").splitlines():
+            match = uses_pattern.search(line)
+            if match is None:
+                continue
+            action, raw_major = match.groups()
+            expected = CURRENT_ACTION_MAJORS.get(action)
+            if expected is None:
+                continue
+            observed.add(action)
+            assert int(raw_major) == expected, (
+                f"{workflow.name}: {action}@v{raw_major} must use v{expected}"
+            )
+
+    assert observed == set(CURRENT_ACTION_MAJORS)
 
 
 def _run_measurement(
