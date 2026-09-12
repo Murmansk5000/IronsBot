@@ -59,6 +59,7 @@ DEFAULT_ASSET_FETCH_MAX_CONCURRENT = 4
 DEFAULT_ASSET_NEGATIVE_TTL_SECONDS = 300
 EXAMPLE_BILI_ACCOUNT_UID = 912345678
 DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS = 300.0
+DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS = 90.0
 CUSTOM_PLAYER_BINDING_COOLDOWN_DAYS = 5
 DEFAULT_PLAYER_BINDING_COOLDOWN_DAYS = 3
 _REFRESH_TTL_SECONDS = 120.0
@@ -127,6 +128,11 @@ def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.watchtower_image == "containrrr/watchtower:latest"
     assert docker_update.watchtower_docker_api_version == "1.40"
     assert docker_update.timeout_seconds == DEFAULT_DOCKER_UPDATE_TIMEOUT_SECONDS
+    assert (
+        docker_update.handoff_timeout_seconds
+        == DEFAULT_DOCKER_HANDOFF_TIMEOUT_SECONDS
+    )
+    assert docker_update.fallback_to_current_image_on_handoff_failure
     assert docker_update.registry_username == ""
     assert docker_update.registry_token == ""
 

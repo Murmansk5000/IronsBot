@@ -1477,6 +1477,14 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
+# Default: 90.0
+# EN: Maximum time to wait for a Watchtower handoff before starting the current image.
+# ZH: 等待 Watchtower 完成交接的最长秒数；超时后按下方策略处理。
+handoff_timeout_seconds = 90.0
+# Default: true
+# EN: Continue with the current image if handoff fails or times out.
+# ZH: 交接失败或超时时继续启动当前镜像；设为 false 则保持严格等待。
+fallback_to_current_image_on_handoff_failure = true
 
 [operations.private_extensions]
 # Optional private extension package. The main Unraid/Docker image remains

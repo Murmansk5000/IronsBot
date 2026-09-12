@@ -170,6 +170,25 @@ class DockerUpdateService:
                 )
             return True
 
+    async def abandon_update_handoff(
+        self,
+        *,
+        updater_container_id: str,
+    ) -> None:
+        """Remove a failed one-shot updater before the current image boots."""
+
+        if not updater_container_id:
+            return
+        socket_path = str(self._config.docker_socket_path)
+        if not socket_path or not await self._docker.socket_exists(socket_path):
+            return
+        async with self._lock:
+            await self._docker.remove_container(
+                container_id=updater_container_id,
+                socket_path=socket_path,
+                timeout_seconds=float(self._config.timeout_seconds),
+            )
+
     def _request(self, container_name: str) -> DockerUpdateRequest:
         return DockerUpdateRequest(
             container_name=container_name,

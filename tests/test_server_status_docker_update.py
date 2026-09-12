@@ -495,6 +495,40 @@ def test_docker_update_service_keeps_watchtower_when_target_image_differs() -> N
     assert docker.removed is False
 
 
+def test_docker_update_service_abandons_failed_watchtower_handoff() -> None:
+    class FakeDocker:
+        removed: tuple[str, str, float] | None = None
+
+        async def socket_exists(self, socket_path: str) -> bool:
+            return socket_path == "/var/run/docker.sock"
+
+        async def remove_container(
+            self,
+            *,
+            container_id: str,
+            socket_path: str,
+            timeout_seconds: float,
+        ) -> None:
+            self.removed = (container_id, socket_path, timeout_seconds)
+
+    docker = FakeDocker()
+    service = DockerUpdateService(
+        DockerUpdateConfig(timeout_seconds=42.0),
+        docker,  # type: ignore[arg-type]
+        noop_restart_process,
+    )
+
+    asyncio.run(
+        service.abandon_update_handoff(updater_container_id="watchtower-id")
+    )
+
+    assert docker.removed == (
+        "watchtower-id",
+        "/var/run/docker.sock",
+        42.0,
+    )
+
+
 def test_docker_update_service_checks_without_starting_an_update() -> None:
     class FakeDocker:
         check_request: DockerUpdateRequest | None = None
