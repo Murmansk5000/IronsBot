@@ -130,3 +130,35 @@ tests passed; targeted Ruff, BasedPyright and compileall passed. No full suite o
 production deployment was performed for this narrow repository change. This
 does not establish a shared snapshot across independent official page requests
 or certify the full dynamic multi-page gate. Verified phases remain 4/8.
+
+## Ordered Page Conflicts (2026-09-12)
+
+Contract: target. Ordered leaderboard consumers share RankPageSequence in the
+existing rank_pagination domain module. It checks player uniqueness and
+non-increasing scores, including ties and empty terminal pages. The previous
+score-segment-only checks now delegate to this same rule. This adds no platform
+adapter, persisted cache, dependency, configuration or alternate storage path.
+
+Raw and exclusion-filtered list assembly validate the raw pages before filtering
+or assigning visible ranks. Cache-only windows return no usable result on a
+conflict; live lists report a specific changing-leaderboard error. Linear player
+search records its page cost, stops at a conflict, and returns a failure instead
+of storing a negative lookup. Nothing silently deduplicates players and shifts
+the subsequent ranks. No automatic re-fetch loop or extra network request is
+introduced. Validation is linear in observed rows with a query-local ID set.
+
+Tests cover duplicate players, ascending score boundaries, stable ties, visible
+exclusions, a real SQLite player movement between two cache reads, list error
+presentation, and absence of a negative-cache write after a conflicting scan.
+
+Limitations: absence of a detected conflict is not proof that independently
+requested official pages share a server snapshot. Movement can skip a player
+without producing duplicate IDs or score inversions. Nonsequential score probes,
+public-rank adjustment after a positive match, and all excluded score-query
+paths still require further dynamic consistency acceptance. The full Phase 6
+gate remains open; this change must not be described as atomic live pagination.
+
+Validation: full public suite 2886 passed, 319 existing dependency warnings,
+126.71 seconds; private native-enabled suite 43 passed. Full BasedPyright
+reported zero errors/warnings; Ruff, compileall and diff checks passed. No main
+merge, production data change or push. Overall verified phase count stays 4/8.

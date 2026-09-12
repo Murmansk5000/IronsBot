@@ -13,6 +13,7 @@ from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
+from ironsbot.services.seer.rank_pagination import RankPageSequence
 
 
 async def fetch_visible_rank_range(  # noqa: PLR0913
@@ -45,6 +46,7 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
     visible_items: list[Any] = []
     observation = ObservationTime()
     from_cache = True
+    sequence = RankPageSequence()
     page_size = service.page_size()
     raw_start = 0
     while len(visible_items) < visible_until:
@@ -56,6 +58,7 @@ async def fetch_visible_rank_range(  # noqa: PLR0913
             end=raw_start + page_size - 1,
             use_cache=False,
         )
+        sequence.include((int(item.id), int(item.score)) for item in page.items)
         observation.include(page.fetched_at)
         from_cache = from_cache and page.from_cache
         visible_items.extend(

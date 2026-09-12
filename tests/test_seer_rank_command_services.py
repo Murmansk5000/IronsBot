@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -12,6 +13,7 @@ from ironsbot.services.seer.rank_admin import (
     RankAdminService,
 )
 from ironsbot.services.seer.rank_list_models import RankListCommand, RankPlayerCommand
+from ironsbot.services.seer.rank_pagination import RankPageConflictError
 from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
@@ -88,6 +90,18 @@ def _query_service(
             player_timeout_seconds=5,
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_rank_page_conflict_is_reported_without_false_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _query_service(FakeLocalRank(), FakeDisplay())
+    monkeypatch.setattr(
+        service, "_run_headless_request", AsyncMock(side_effect=RankPageConflictError())
+    )
+    message = await service.list(RankListCommand(kind="global", rank_key="图鉴积分"))
+    assert message == str(RankPageConflictError())
 
 
 @pytest.mark.asyncio

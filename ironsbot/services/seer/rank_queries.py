@@ -42,6 +42,7 @@ from ironsbot.services.seer.rank_list_models import (
 from ironsbot.services.seer.rank_list_score_messages import (
     format_global_rank_score_message,
 )
+from ironsbot.services.seer.rank_pagination import RankPageConflictError
 from ironsbot.services.seer.rank_player_query import (
     RankPlayerQueryResult,
     fetch_cached_rank_player_result,
@@ -127,6 +128,8 @@ class RankQueryService:
             )
         except _PLAYER_REQUEST_ERRORS as error:
             return player_request_protection_message(error)
+        except RankPageConflictError as error:
+            return str(error)
 
     async def score(
         self,

@@ -3,6 +3,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
+from ironsbot.services.seer.rank_pagination import (
+    RankPageConflictError,
+    RankPageSequence,
+)
 from ironsbot.services.seer.rank_score_search import (
     DescendingScoreSearchLimits,
     locate_descending_score_range,
@@ -100,6 +104,7 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
     fetch_rank_page: Callable[..., Awaitable[RankPageResult]],
 ) -> RankLookupResult:
     start = 0
+    sequence = RankPageSequence()
     while start < limit:
         end = min(start + page_size - 1, limit - 1)
         page = await fetch_rank_page(
@@ -111,6 +116,12 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
         )
         result.record_page(start, page)
         items = page.items
+
+        try:
+            sequence.include((int(item.id), int(item.score)) for item in items)
+        except RankPageConflictError as error:
+            result.failure = str(error)
+            return result
 
         for offset, item in enumerate(items):
             if item.id == user_id:

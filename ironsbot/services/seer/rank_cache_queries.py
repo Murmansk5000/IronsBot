@@ -14,6 +14,10 @@ from ironsbot.services.seer.rank_models import (
     RankScoreSearchItem,
     RankScoreSearchResult,
 )
+from ironsbot.services.seer.rank_pagination import (
+    RankPageConflictError,
+    RankPageSequence,
+)
 from ironsbot.services.seer.rank_score_cache import (
     cached_score_candidate_page_starts,
 )
@@ -56,6 +60,7 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
         )
 
     visible_items: list[Any] = []
+    sequence = RankPageSequence()
     observation = ObservationTime()
     raw_start = 0
     while len(visible_items) < requested_end:
@@ -67,6 +72,10 @@ def fetch_cached_visible_rank_range(  # noqa: PLR0913
             page_size=page_size,
         )
         if page is None:
+            return None
+        try:
+            sequence.include((int(item.id), int(item.score)) for item in page.items)
+        except RankPageConflictError:
             return None
         observation.include(page.fetched_at)
         visible_items.extend(
@@ -303,6 +312,7 @@ def _fetch_cached_raw_range(  # noqa: PLR0913
     last_page_start = request_end // page_size * page_size
     items: list[Any] = []
     observation = ObservationTime()
+    sequence = RankPageSequence()
     for page_start in range(first_page_start, last_page_start + 1, page_size):
         page = _cached_page(
             cache,
@@ -312,6 +322,10 @@ def _fetch_cached_raw_range(  # noqa: PLR0913
             page_size=page_size,
         )
         if page is None:
+            return None
+        try:
+            sequence.include((int(item.id), int(item.score)) for item in page.items)
+        except RankPageConflictError:
             return None
         observation.include(page.fetched_at)
         for offset, item in enumerate(page.items):
