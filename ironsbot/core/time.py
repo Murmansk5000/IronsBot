@@ -34,14 +34,25 @@ def now(tz: timezone | None = None) -> datetime:
     return datetime.now(tz=tz)
 
 
+def observation_age(fetched_at: float | None, *, at: float) -> float | None:
+    """Age of a finite, non-negative observation epoch that is not in the future."""
+    if (
+        fetched_at is None
+        or not isfinite(fetched_at)
+        or not isfinite(at)
+        or fetched_at < 0
+        or fetched_at > at
+    ):
+        return None
+    return at - fetched_at
+
+
 def remaining_observation_ttl(
     fetched_at: float | None, ttl_seconds: float, *, at: float
 ) -> float:
     """Remaining source lifetime; undated or future evidence is not fresh."""
-    if fetched_at is None or not isfinite(fetched_at) or not isfinite(at):
-        return 0.0
-    age = at - fetched_at
-    return max(0.0, ttl_seconds - age) if age >= 0 else 0.0
+    age = observation_age(fetched_at, at=at)
+    return 0.0 if age is None else max(0.0, ttl_seconds - age)
 
 
 @dataclass(slots=True)

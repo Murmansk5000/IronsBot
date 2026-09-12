@@ -370,12 +370,15 @@ async def test_type_query_result_crosses_restricted_platform_boundary(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind", ["type_matchup", "peak_pool", "expert_pool", "pet_info"]
+)
 @pytest.mark.skipif(
     not os.environ.get("IRONSBOT_RENDER_RELEASE"),
     reason="native release smoke requires IRONSBOT_RENDER_RELEASE and official assets",
 )
-async def test_native_published_type_query_cache_and_delivery(  # noqa: PLR0915
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR0915 - shared release acceptance
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
     import nonebot
     from httpx import AsyncClient
@@ -391,10 +394,15 @@ async def test_native_published_type_query_cache_and_delivery(  # noqa: PLR0915
         render_onebot_outbound_message,
     )
     from ironsbot.integrations.seer_data.database import SeerDatabase
+    from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
+    from ironsbot.integrations.seer_data.pet_info_renderer import (
+        render_published_pet_info,
+    )
     from ironsbot.integrations.seer_data.type_matchup_renderer import (
         render_type_matchup,
     )
     from ironsbot.runtime.cache_paths import CachePaths
+    from ironsbot.services.seer.peak import PeakQueryService, PeakRenderSession
 
     try:
         driver = nonebot.get_driver()
@@ -421,7 +429,8 @@ async def test_native_published_type_query_cache_and_delivery(  # noqa: PLR0915
 
     try:
         databases.load_from_file("seerapi", os.environ["IRONSBOT_RENDER_RELEASE"])
-        assert database.render_category_available("type_matchup")
+        category = "peak_pool" if kind == "expert_pool" else kind
+        cache_allowed = database.render_category_available(category)
         engine = databases.get_engine("seerapi")
         assert engine is not None
         event.listen(engine, "before_cursor_execute", track_sql)
@@ -435,36 +444,95 @@ async def test_native_published_type_query_cache_and_delivery(  # noqa: PLR0915
                 database,
                 spawn=owner.create,
             )
+            native_renderer = coordinator.renderer
+
+            async def count_render(*args: Any, **kwargs: Any) -> bytes:
+                nonlocal native_calls
+                native_calls += 1
+                return await native_renderer(*args, **kwargs)
+
+            coordinator.renderer = count_render
 
             @contextmanager
             def session() -> Iterator[TypeRenderSession]:
                 with sessions.open() as inputs:
 
                     async def render(matchup: TypeMatchup) -> bytes:
-                        nonlocal native_calls
-                        native_calls += 1
                         return await render_type_matchup(
                             inputs.images, coordinator.render, matchup
                         )
 
                     yield TypeRenderSession(inputs.data, render, inputs.cache)
 
-            service = TypeQueryService(session)
-            first = await service.select(1)
-            assert first.reply is not None and first.reply.image is not None
-            image_bytes = first.reply.image
+            @contextmanager
+            def peak_session() -> Iterator[PeakRenderSession]:
+                with sessions.open() as inputs:
+
+                    async def pool(pools: Any, title: str) -> bytes:
+                        return await render_peak_pool(
+                            inputs.cache,
+                            inputs.images,
+                            coordinator.render,
+                            pools,
+                            title,
+                        )
+
+                    async def unused(*_args: Any) -> bytes:
+                        raise AssertionError
+
+                    yield PeakRenderSession(inputs.data, pool, unused, unused)
+
+            async def progress(_message: str) -> None:
+                return None
+
+            async def request_reply() -> QueryReply:
+                if kind == "type_matchup":
+                    result = await TypeQueryService(session).select(1)
+                    assert result.reply is not None
+                    return result.reply
+                if kind == "pet_info":
+                    with sessions.open() as inputs:
+                        image = await render_published_pet_info(
+                            inputs.cache,
+                            inputs.data,
+                            inputs.images,
+                            coordinator.render,
+                            3549,
+                        )
+                    return QueryReply(image=image)
+                # Pool queries use release data without an account/game API.
+                result = await PeakQueryService(
+                    database, cast("Any", None), peak_session
+                ).pool(expert=kind == "expert_pool", progress=progress)
+                assert result.image is not None, result.message
+                return QueryReply(image=result.image)
+
+            first = await request_reply()
+            assert first.image is not None
+            image_bytes = first.image
             with Image.open(BytesIO(image_bytes)) as image:
                 assert image.format == "PNG"
                 minimum_side, minimum_colors = 300, 100
                 assert min(image.size) >= minimum_side
                 colors = image.convert("RGB").getcolors(image.width * image.height)
                 assert colors is not None and len(colors) > minimum_colors
-            (tmp_path / "type-matchup.png").write_bytes(image_bytes)
+            (tmp_path / f"{kind}.png").write_bytes(image_bytes)
             cold_counts = (len(queries), len(requests), native_calls)
             assert all(cold_counts)
             assert native_calls == 1
-            assert await service.select(1) == first
-            assert (len(queries), len(requests), native_calls) == cold_counts
+            second = await request_reply()
+            assert second.image == first.image
+            assert len(requests) == cold_counts[1]
+            if cache_allowed:
+                assert native_calls == cold_counts[2]
+                if kind in {"type_matchup", "pet_info"}:
+                    assert len(queries) == cold_counts[0]
+            else:
+                assert native_calls == cold_counts[2] + 1
+            print(  # noqa: T201 - opt-in native acceptance diagnostics
+                f"{kind}: cache_allowed={cache_allowed}, SQL/HTTP/native="
+                f"{cold_counts} -> {(len(queries), len(requests), native_calls)}"
+            )
             now = datetime(2026, 9, 12, tzinfo=timezone.utc)
             context = ReplyContext(
                 ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque:group"),
@@ -472,7 +540,7 @@ async def test_native_published_type_query_cache_and_delivery(  # noqa: PLR0915
                 reply_deadline=now + timedelta(seconds=5),
             )
             transport = FakeOfficialPlatform(now)
-            message = first.reply.to_outbound()
+            message = first.to_outbound()
             assert (await transport.reply(context, message)).delivered
             assert transport.uploads[0].content == image_bytes
             onebot = render_onebot_outbound_message(message)

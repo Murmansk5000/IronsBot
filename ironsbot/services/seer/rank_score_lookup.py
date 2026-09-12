@@ -3,13 +3,18 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from ironsbot.services.seer.rank_models import RankLookupResult, RankPageResult
+from ironsbot.services.seer.rank_pagination import (
+    RankPageConflictError,
+    RankPageSequence,
+)
+from ironsbot.services.seer.rank_score_helpers import validate_score_sample
 from ironsbot.services.seer.rank_score_search import (
     DescendingScoreSearchLimits,
     locate_descending_score_range,
 )
 
 
-async def find_rank_by_score(  # noqa: PLR0913
+async def find_rank_by_score(  # noqa: C901, PLR0913 - bounded probes and tie scan outcomes
     game: Any,
     *,
     user_id: int,
@@ -40,16 +45,22 @@ async def find_rank_by_score(  # noqa: PLR0913
         return None if item is None else int(item.score)
 
     tie_page_limit = score_search_tie_page_limit()
-    score_range = await locate_descending_score_range(
-        0,
-        limit,
-        target_score,
-        fetch_score,
-        limits=DescendingScoreSearchLimits(
-            probe_count=score_search_probe_limit(limit),
-            tie_fallback_size=page_size * tie_page_limit,
-        ),
-    )
+    try:
+        score_range = await locate_descending_score_range(
+            0,
+            limit,
+            target_score,
+            fetch_score,
+            limits=DescendingScoreSearchLimits(
+                probe_count=score_search_probe_limit(limit),
+                tie_fallback_size=page_size * tie_page_limit,
+            ),
+        )
+    except RankPageConflictError as error:
+        result.failure = str(error)
+        return result
+    if score_range.budget_exhausted:
+        result.failure = "已达二分探针上限，排名尚未确认"
     if score_range.last_index is None:
         return result
 
@@ -61,6 +72,7 @@ async def find_rank_by_score(  # noqa: PLR0913
     tie_end = score_range.match_end
     start = score_range.match_start
     remaining_tie_pages = tie_page_limit
+    sequence = RankPageSequence()
     while start < tie_end and remaining_tie_pages > 0:
         end = min(start + page_size - 1, tie_end - 1)
         page = await fetch_rank_page(
@@ -72,19 +84,34 @@ async def find_rank_by_score(  # noqa: PLR0913
         )
         result.record_page(start, page)
         items = page.items
+        try:
+            validate_score_sample(
+                page,
+                start=start,
+                end=end,
+                target_score=target_score,
+                score_range=score_range,
+                sequence=sequence,
+            )
+        except RankPageConflictError as error:
+            result.failure = str(error)
+            return result
 
         for offset, item in enumerate(items):
             if item.id == user_id:
                 result.rank = start + offset + 1
                 result.score = item.score
+                result.failure = None
                 return result
 
         if len(items) < end - start + 1:
-            return result
+            break
 
         remaining_tie_pages -= 1
         start = end + 1
 
+    if start < tie_end or score_range.truncated:
+        result.failure = "已达同分段查找上限，排名尚未确认"
     return result
 
 
@@ -100,6 +127,7 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
     fetch_rank_page: Callable[..., Awaitable[RankPageResult]],
 ) -> RankLookupResult:
     start = 0
+    sequence = RankPageSequence()
     while start < limit:
         end = min(start + page_size - 1, limit - 1)
         page = await fetch_rank_page(
@@ -111,6 +139,12 @@ async def find_rank_by_linear_scan(  # noqa: PLR0913
         )
         result.record_page(start, page)
         items = page.items
+
+        try:
+            sequence.include((int(item.id), int(item.score)) for item in items)
+        except RankPageConflictError as error:
+            result.failure = str(error)
+            return result
 
         for offset, item in enumerate(items):
             if item.id == user_id:

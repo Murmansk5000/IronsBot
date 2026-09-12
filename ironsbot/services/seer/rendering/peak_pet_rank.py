@@ -54,6 +54,7 @@ class PeakPetBanDocument:
 @dataclass(frozen=True, slots=True)
 class PeakPetRankRenderDocument:
     title: str
+    observed_at: str
     pick_ranks: tuple[PeakPetPickDocument, ...]
     ban_ranks: tuple[PeakPetBanDocument, ...]
 
@@ -62,6 +63,7 @@ class PeakPetRankRenderDocument:
         return MappingProxyType(
             {
                 "title": self.title,
+                "observed_at": self.observed_at,
                 "pick_ranks": self.pick_ranks,
                 "ban_ranks": self.ban_ranks,
             },
@@ -78,6 +80,7 @@ def present_peak_pet_rank(
     type_icons = assets.type_icon_by_id
     return PeakPetRankRenderDocument(
         title=input_.title,
+        observed_at=input_.observed_at,
         pick_ranks=tuple(
             _present_pick_rank(
                 rank=index,
