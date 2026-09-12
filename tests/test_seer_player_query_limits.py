@@ -5,8 +5,9 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+from ironsbot.config.models.seer import SeerConfig
 from ironsbot.core.platform import ActorRef, Platform
-from ironsbot.core.time import TZ_CN
+from ironsbot.core.time import TZ_CN, now
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.player_query_limits import (
     SqlitePlayerQueryLimitStore,
@@ -17,6 +18,7 @@ from ironsbot.services.seer.player_service import (
     PlayerQueryResult,
     PlayerService,
 )
+from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
 from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutCommand
 from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.rank_models import RankLookupCost, RankLookupResult
@@ -243,11 +245,7 @@ def test_player_query_consumes_quota_only_after_its_reply_is_returned(
 ) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
     quota = _quota(tmp_path, bindings)
-    config = SimpleNamespace(
-        player=SimpleNamespace(
-            binding=SimpleNamespace(change_cooldown_days=3),
-        )
-    )
+    config = SeerConfig()
     service = PlayerService(
         cast("Any", config),
         cast("Any", object()),
@@ -321,12 +319,7 @@ def test_player_query_prefers_live_until_quota_then_uses_cache(
         unbound_daily_limit=2,
         bound_default_daily_limit=10,
     )
-    config = SimpleNamespace(
-        player=SimpleNamespace(
-            binding=SimpleNamespace(change_cooldown_days=3),
-            background_refresh=SimpleNamespace(cache_ttl_seconds=300.0),
-        )
-    )
+    config = SeerConfig()
     service = PlayerService(
         cast("Any", config),
         cast("Any", object()),
@@ -349,6 +342,14 @@ def test_player_query_prefers_live_until_quota_then_uses_cache(
                     more_info=object(),
                     player_message=f"live-{live_calls}",
                     section_plan=cast("Any", object()),
+                    base_snapshot=PlayerBaseSnapshot(
+                        DEFAULT_PLAYER_ID,
+                        SimpleNamespace(nick="tester"),
+                        object(),
+                        None,
+                        "",
+                        now().timestamp(),
+                    ),
                 )
             )
 
@@ -400,14 +401,7 @@ def test_player_detail_uses_valid_cache_without_quota_or_live_request(
             return latest
 
     service = PlayerService(
-        cast(
-            "Any",
-            SimpleNamespace(
-                player=SimpleNamespace(
-                    binding=SimpleNamespace(change_cooldown_days=3)
-                )
-            ),
-        ),
+        SeerConfig(),
         cast("Any", object()),
         bindings,
         cast("Any", object()),
@@ -470,14 +464,7 @@ def test_exhausted_shortcut_returns_valid_detail_cache_without_live_lookup(
             return latest
 
     service = PlayerService(
-        cast(
-            "Any",
-            SimpleNamespace(
-                player=SimpleNamespace(
-                    binding=SimpleNamespace(change_cooldown_days=3)
-                )
-            ),
-        ),
+        SeerConfig(),
         cast("Any", object()),
         bindings,
         cast("Any", object()),
@@ -541,11 +528,7 @@ def test_initial_binding_choice_uses_the_default_player_quota(
         player_id=OTHER_PLAYER_ID,
         action_key="player",
     ).allowed
-    config = SimpleNamespace(
-        player=SimpleNamespace(
-            binding=SimpleNamespace(change_cooldown_days=3),
-        )
-    )
+    config = SeerConfig()
     service = PlayerService(
         cast("Any", config),
         cast("Any", object()),
@@ -593,11 +576,7 @@ def test_player_query_rechecks_budget_when_it_leaves_the_queue(
 ) -> None:
     bindings = SqlitePlayerBindingStore(tmp_path / "bindings.sqlite")
     quota = _quota(tmp_path, bindings)
-    config = SimpleNamespace(
-        player=SimpleNamespace(
-            binding=SimpleNamespace(change_cooldown_days=3),
-        )
-    )
+    config = SeerConfig()
     queried = False
 
     class _Queue:

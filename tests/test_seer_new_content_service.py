@@ -11,6 +11,7 @@ from ironsbot.services.seer.new_content import (
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentService,
+    NewContentSnapshotChangedError,
     format_new_content_category_count,
     format_new_content_item_description,
 )
@@ -107,6 +108,17 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
         snapshot.category_state("autocard_sanctuary_effect").reason
         == "first_observation"
     )
+    service.require_snapshot(snapshot)
+
+    # Rebuilt releases may retain the config version but correct index payloads.
+    with Session(create_engine(f"sqlite:///{path}")) as session:
+        session.connection().exec_driver_sql(
+            "UPDATE new_content_item SET name = 'corrected' WHERE category = 'skill'"
+        )
+        session.commit()
+    with pytest.raises(NewContentSnapshotChangedError):
+        service.require_snapshot(snapshot)
+    service.require_snapshot(service.snapshot())
 
 
 def test_new_content_order_places_competitive_pool_before_skins() -> None:

@@ -23,7 +23,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.config.models.seer import RenderConfig
-    from ironsbot.services.seer.images import SeerImageSource
+    from ironsbot.core.tasks import TaskSpawner
+    from ironsbot.services.seer.images import SeerImageRequestSource, SeerImageSource
 
 
 _NEGATIVE_STATUS_CODES = frozenset({404, 410})
@@ -42,21 +43,20 @@ class SeerAssetStore:
 
     def __init__(
         self,
-        source: SeerImageSource,
+        source: SeerImageRequestSource,
         cache_dir: Path,
         limits: SeerAssetStoreLimits,
         *,
-        source_identity_getter: Callable[[], str] | None = None,
+        spawn: TaskSpawner,
     ) -> None:
         self._source = source
+        self._spawn = spawn
         self._memory = _MemoryAssetCache(limits.memory_max_size_bytes)
         self._disk = VerifiedFileCache(cache_dir, limits.disk_max_size_bytes)
         self._network = asyncio.Semaphore(limits.max_network_concurrent)
         self._negative_ttl_seconds = limits.negative_ttl_seconds
         self._negative: dict[str, float] = {}
-        self._inflight: dict[str, asyncio.Future[bytes]] = {}
-        self._inflight_lock = asyncio.Lock()
-        self._source_identity_getter = source_identity_getter or (lambda: "legacy")
+        self._inflight: dict[str, asyncio.Task[bytes]] = {}
 
     async def fetch(
         self,
@@ -65,16 +65,31 @@ class SeerAssetStore:
         *,
         fallback: bool = True,
     ) -> bytes:
+        return await self._fetch_from(self._source, kind, key, fallback=fallback)
+
+    def bind(self, source: SeerImageRequestSource) -> SeerImageSource:
+        """Reuse storage and concurrency limits with an immutable request source."""
+        return _BoundAssetSource(self, source)
+
+    async def _fetch_from(
+        self,
+        source: SeerImageRequestSource,
+        kind: ImageKind,
+        key: str,
+        *,
+        fallback: bool,
+    ) -> bytes:
+        request = source.prepare(kind, key, fallback=fallback)
         cache_key = _cache_key(
-            "image",
-            self._source_identity_getter(),
+            "prepared-image-v1",
+            request.identity,
             kind,
             key,
             str(fallback),
         )
         return await self._get_or_fetch(
             cache_key,
-            lambda: self._source.fetch(kind, key, fallback=fallback),
+            request.fetch,
         )
 
     async def fetch_url(self, url: str) -> bytes:
@@ -90,9 +105,6 @@ class SeerAssetStore:
             return asset
         if self._is_negative(cache_key):
             raise ImageSourceStatusError(404, "cached missing image")
-        if (asset := await asyncio.to_thread(self._disk.get, cache_key)) is not None:
-            self._memory.put(cache_key, asset)
-            return asset
         return await self._await_shared_fetch(cache_key, fetch)
 
     async def _await_shared_fetch(
@@ -100,33 +112,30 @@ class SeerAssetStore:
         cache_key: str,
         fetch: Callable[[], Awaitable[bytes]],
     ) -> bytes:
-        async with self._inflight_lock:
-            future = self._inflight.get(cache_key)
-            if future is None:
-                future = asyncio.get_running_loop().create_future()
-                future.add_done_callback(_consume_future_exception)
-                self._inflight[cache_key] = future
-                is_owner = True
-            else:
-                is_owner = False
-        if not is_owner:
-            return await asyncio.shield(future)
+        task = self._inflight.get(cache_key)
+        if task is None:
+            task = self._spawn(
+                self._load_or_fetch(cache_key, fetch), name=f"seer-asset:{cache_key}"
+            )
+            self._inflight[cache_key] = task
+            task.add_done_callback(lambda done: self._finish_fetch(cache_key, done))
+        return await asyncio.shield(task)
 
-        try:
-            asset = await self._fetch_and_store(cache_key, fetch)
-        except asyncio.CancelledError:
-            future.cancel()
-            raise
-        except BaseException as error:
-            future.set_exception(error)
-            raise
-        else:
-            future.set_result(asset)
+    def _finish_fetch(self, cache_key: str, task: asyncio.Task[bytes]) -> None:
+        if self._inflight.get(cache_key) is task:
+            self._inflight.pop(cache_key)
+        if not task.cancelled():
+            task.exception()
+
+    async def _load_or_fetch(
+        self,
+        cache_key: str,
+        fetch: Callable[[], Awaitable[bytes]],
+    ) -> bytes:
+        if (asset := await asyncio.to_thread(self._disk.get, cache_key)) is not None:
+            self._memory.put(cache_key, asset)
             return asset
-        finally:
-            async with self._inflight_lock:
-                if self._inflight.get(cache_key) is future:
-                    self._inflight.pop(cache_key, None)
+        return await self._fetch_and_store(cache_key, fetch)
 
     async def _fetch_and_store(
         self,
@@ -161,6 +170,20 @@ class SeerAssetStore:
         return False
 
 
+@dataclass(frozen=True, slots=True)
+class _BoundAssetSource:
+    store: SeerAssetStore
+    source: SeerImageRequestSource
+
+    async def fetch(self, kind: ImageKind, key: str, *, fallback: bool = True) -> bytes:
+        return await self.store._fetch_from(self.source, kind, key, fallback=fallback)
+
+    async def fetch_url(self, url: str) -> bytes:
+        return await self.store._get_or_fetch(
+            _cache_key("url", url), lambda: self.source.fetch_url(url)
+        )
+
+
 class _MemoryAssetCache:
     def __init__(self, max_size_bytes: int) -> None:
         self._max_size_bytes = max_size_bytes
@@ -191,18 +214,12 @@ def _cache_key(*parts: str) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _consume_future_exception(future: asyncio.Future[bytes]) -> None:
-    if future.cancelled():
-        return
-    _ = future.exception()
-
-
 def build_seer_asset_store(
-    source: SeerImageSource,
+    source: SeerImageRequestSource,
     cache_dir: Path,
     render_config: RenderConfig,
     *,
-    source_identity_getter: Callable[[], str],
+    spawn: TaskSpawner,
 ) -> SeerAssetStore:
     """Build the shared Seer image asset port from application configuration."""
     return SeerAssetStore(
@@ -212,11 +229,9 @@ def build_seer_asset_store(
             memory_max_size_bytes=(
                 render_config.asset_memory_max_size_mb * 1024 * 1024
             ),
-            disk_max_size_bytes=(
-                render_config.asset_cache_max_size_mb * 1024 * 1024
-            ),
+            disk_max_size_bytes=(render_config.asset_cache_max_size_mb * 1024 * 1024),
             max_network_concurrent=render_config.asset_fetch_max_concurrent,
             negative_ttl_seconds=render_config.asset_negative_ttl_seconds,
         ),
-        source_identity_getter=source_identity_getter,
+        spawn=spawn,
     )

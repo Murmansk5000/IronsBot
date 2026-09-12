@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: MIT
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
+from ironsbot.app.lifecycle import TaskOwner
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
+from ironsbot.integrations.seer_data.pet_image_assets import load_pet_image_assets
 from ironsbot.integrations.storage.seer_assets import (
     SeerAssetStore,
     SeerAssetStoreLimits,
@@ -82,6 +85,7 @@ async def _fetch_many_images(cache_dir: Path) -> int:
             max_network_concurrent=MAX_ASSET_FETCH_CONCURRENCY,
             negative_ttl_seconds=300,
         ),
+        spawn=TaskOwner().create,
     )
     try:
         requests = asyncio.gather(
@@ -153,3 +157,79 @@ def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
 
 def test_manifest_backed_images_do_not_fall_back_to_mutable_main() -> None:
     assert asyncio.run(_fetch_without_asset_snapshot()) == []
+
+
+@pytest.mark.asyncio
+async def test_strict_render_assets_retry_failure_without_caching_placeholder(
+    tmp_path: Path,
+) -> None:
+    urls: list[str] = []
+    failing = True
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        if request.url.host == "dummyimage.com":
+            return httpx.Response(200, content=b"placeholder")
+        return httpx.Response(503 if failing else 200, content=b"real-art")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        clients = HttpClients(cache=client, origin=client)
+        store = SeerAssetStore(
+            HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot),
+            tmp_path,
+            SeerAssetStoreLimits(1024, 1024 * 1024, 4, 300),
+            spawn=TaskOwner().create,
+        )
+        # An old permissive request may have cached a placeholder under its key.
+        assert await store.fetch("pet_head", "70") == b"placeholder"
+        urls.clear()
+        with pytest.raises(ImageSourceError):
+            await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
+        assert all("dummyimage.com" not in url for url in urls)
+        failing = False
+        recovered = await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
+        assert recovered.pet_heads == ((70, "data:image/png;base64,cmVhbC1hcnQ="),)
+        request_count = len(urls)
+        assert (
+            await load_pet_image_assets(store, resource_ids=(70,), type_ids=())
+            == recovered
+        )
+        assert len(urls) == request_count
+
+
+@pytest.mark.asyncio
+async def test_queued_asset_request_keeps_its_captured_revision(tmp_path: Path) -> None:
+    current = _asset_snapshot()
+    captured = asyncio.Event()
+    urls: list[str] = []
+
+    def snapshot() -> PublishedRenderAssetSnapshot:
+        captured.set()
+        return current
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(200, content=request.url.path.encode())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        store = SeerAssetStore(
+            HttpSeerImageSource(
+                HttpClients(cache=client, origin=client),
+                asset_snapshot_getter=snapshot,
+            ),
+            tmp_path,
+            SeerAssetStoreLimits(1024, 1024 * 1024, 1, 300),
+            spawn=TaskOwner().create,
+        )
+        first = asyncio.create_task(store.fetch("pet_body", "70", fallback=False))
+        await captured.wait()
+        current = replace(current, revision="b" * 40, manifest_revision="assets-v3")
+        old = await first
+        assert ("a" * 40).encode() in old
+        new = await store.fetch("pet_body", "70", fallback=False)
+        assert ("b" * 40).encode() in new
+        assert old != new
+        before_hit = len(urls)
+        current = _asset_snapshot()
+        assert await store.fetch("pet_body", "70", fallback=False) == old
+        assert len(urls) == before_hit

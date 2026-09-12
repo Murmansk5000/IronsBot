@@ -283,6 +283,11 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert 'ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]' in dockerfile
     assert 'CMD ["python", "-m", "ironsbot"]' in dockerfile
     assert "COPY ironsbot /app/ironsbot" in dockerfile
+    assert "COPY LICENSE LICENSE.GPL-3.0 LICENSING.md /app/" in dockerfile
+    for notice in ("LICENSE", "LICENSE.GPL-3.0", "LICENSING.md"):
+        assert (root / notice).is_file()
+        assert notice not in dockerignore.splitlines()
+    assert "LICENSE*" not in dockerignore.splitlines()
     assert "COPY . /app/" not in dockerfile
     assert "ENV PYTHONDONTWRITEBYTECODE=1" in dockerfile
     assert "pip install --no-cache-dir --no-compile" in dockerfile

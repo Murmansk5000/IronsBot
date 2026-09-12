@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
 from ironsbot.app.rendering_composition import build_seer_rendering_components
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.extensions.contracts import PlayerLineupRenderSession
+from ironsbot.extensions.player_lineup import PlayerLineupRenderServices
 from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
@@ -33,6 +36,9 @@ from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
     render_peak_pool_vote,
 )
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
+from ironsbot.integrations.seer_data.player_lineup_entries import (
+    PublishedPlayerLineupEntryResolver,
+)
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.integrations.storage.lucky_skin_watch import (
@@ -65,7 +71,8 @@ from ironsbot.services.seer.lucky_skin_window_delivery import (
 )
 from ironsbot.services.seer.mintmark import MintmarkQueryService
 from ironsbot.services.seer.new_content import NewContentService
-from ironsbot.services.seer.peak import PeakQueryService
+from ironsbot.services.seer.new_content_details import NewContentDetailService
+from ironsbot.services.seer.peak import PeakQueryService, PeakRenderSession
 from ironsbot.services.seer.pet_query import PetQueryService
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -84,25 +91,33 @@ from ironsbot.services.seer.rank_page_refresh import RankPageRefreshService
 from ironsbot.services.seer.rank_queries import RankQueryPolicy, RankQueryService
 from ironsbot.services.seer.resources import SeerQueryResources
 from ironsbot.services.seer.team import SeerTeamQueryService
-from ironsbot.services.seer.type_query import TypeQueryService
+from ironsbot.services.seer.type_query import TypeQueryService, TypeRenderSession
 from ironsbot.services.team.resource import TeamResourceService
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.extensions.contracts import PlayerLineupRenderSessionFactory
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.seer_data.database import SeerDatabase
     from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-    from ironsbot.integrations.storage.render_cache import FileRenderCache
     from ironsbot.runtime.cache_paths import CachePaths
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
-    from ironsbot.services.seer.images import SeerImageSource
-    from ironsbot.services.seer.render_coordinator import RenderCoordinator
+    from ironsbot.services.seer.lucky_skin_window import (
+        LuckySkinWindowOffer,
+        LuckySkinWindowResult,
+    )
+    from ironsbot.services.seer.new_content import (
+        NewContentCategory,
+        NewContentSnapshot,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,12 +134,10 @@ class SeerComponents:
     player_query_quotas: PlayerQueryQuotaService
     player_requests: PlayerRequestProtectionService
     player_detail_extensions: PlayerDetailExtensionRegistry
-    images: SeerImageSource
-    render_cache: FileRenderCache
-    render_coordinator: RenderCoordinator
+    lineup_render_session: PlayerLineupRenderSessionFactory
 
 
-def build_seer_components(  # noqa: PLR0913 - composition boundary
+def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boundary
     settings: Settings,
     http_clients: HttpClients,
     cache_paths: CachePaths,
@@ -181,12 +194,121 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         seer_database.peak_season_start,
         fetch_rank_page,
     )
-    images, render_cache, render_coordinator = build_seer_rendering_components(
-        http_clients,
-        cache_paths,
-        settings.seer.render,
-        seer_database,
+    images, render_coordinator, render_sessions = (
+        build_seer_rendering_components(
+            http_clients,
+            cache_paths,
+            settings.seer.render,
+            seer_database,
+            spawn=task_owner.create,
+        )
     )
+
+    async def render_pet(pet_id: int) -> bytes:
+        with render_sessions.open() as inputs:
+            return await render_published_pet_info(
+                inputs.cache,
+                inputs.data,
+                inputs.images,
+                render_coordinator.render,
+                pet_id,
+            )
+
+    @contextmanager
+    def type_render_session() -> Iterator[TypeRenderSession]:
+        with render_sessions.open() as inputs:
+            yield TypeRenderSession(
+                inputs.data,
+                partial(
+                    render_type_matchup,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
+                inputs.cache,
+            )
+
+    @contextmanager
+    def peak_render_session() -> Iterator[PeakRenderSession]:
+        with render_sessions.open() as inputs:
+            yield PeakRenderSession(
+                inputs.data,
+                partial(
+                    render_peak_pool,
+                    inputs.cache,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
+                partial(
+                    render_peak_pool_vote,
+                    inputs.cache,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
+                partial(
+                    render_peak_pet_rank,
+                    inputs.cache,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
+            )
+
+    async def render_window(
+        result: LuckySkinWindowResult, offers: tuple[LuckySkinWindowOffer, ...]
+    ) -> bytes:
+        with render_sessions.open() as inputs:
+            return await render_lucky_skin_window(
+                inputs.cache,
+                inputs.data,
+                inputs.images,
+                render_coordinator.render,
+                result,
+                offers,
+            )
+
+    @contextmanager
+    def lineup_render_session() -> Iterator[PlayerLineupRenderSession]:
+        with render_sessions.open() as inputs:
+            yield PlayerLineupRenderSession(
+                PublishedPlayerLineupEntryResolver(inputs.data),
+                PlayerLineupRenderServices(
+                    images=inputs.images,
+                    cache=inputs.cache,
+                    render=render_coordinator.render,
+                ),
+            )
+
+    @contextmanager
+    def content_selection_scope(snapshot: NewContentSnapshot) -> Iterator[None]:
+        with seer_database.read_snapshot() as bound:
+            NewContentService(bound).require_snapshot(snapshot)
+            bound.require_current()
+            yield
+            bound.require_current()
+
+    async def render_content_menu(  # noqa: PLR0913
+        snapshot: NewContentSnapshot,
+        display_categories: tuple[NewContentCategory, ...],
+        focused_category: NewContentCategory | None,
+        menu_title: str,
+        expanded_categories: frozenset[NewContentCategory],
+        auto_expand_max_items: int,
+    ) -> bytes:
+        with render_sessions.open() as inputs:
+            NewContentService(inputs.data).require_snapshot(snapshot)
+            return await render_new_content_menu(
+                inputs.cache,
+                inputs.data,
+                inputs.images,
+                AutocardService(inputs.data),
+                render_coordinator.render,
+                snapshot,
+                display_categories,
+                focused_category,
+                menu_title,
+                expanded_categories,
+                auto_expand_max_items,
+            )
+
     weekly_preview_images = CachedWeeklyPreviewImageSource(
         http_clients.origin,
         cache_paths.http_dir() / "weekly_preview",
@@ -206,13 +328,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         SqliteLuckySkinWatchPreferenceStore(settings.paths.qq_state),
         SqliteLuckySkinWindowCache(settings.paths.runtime_state),
         LuckySkinWindowOutboundSender(proactive_delivery, subscriptions),
-        renderer=partial(
-            render_lucky_skin_window,
-            render_cache,
-            seer_database,
-            images,
-            render_coordinator,
-        ),
+        renderer=render_window,
     )
     player_query_quotas = PlayerQueryQuotaService(
         settings.seer.player.query_limits,
@@ -315,6 +431,13 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
     )
     autocard = AutocardService(seer_database)
     autocard_sanctuary = AutocardSanctuaryService(seer_database)
+    equipment = EquipmentQueryService(seer_database, images)
+    pet = PetQueryService(seer_database, images, render_pet)
+    mintmark = MintmarkQueryService(
+        seer_database,
+        images,
+        merge_connected=settings.seer.mintmark.merge_connected,
+    )
     external_references = SeerInfoReferences(settings.seer.external_references)
     return SeerComponents(
         seer=SeerQueryResources(
@@ -333,66 +456,25 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 seer_database.error_message,
                 team_resource,
             ),
-            EquipmentQueryService(seer_database, images),
+            equipment,
             TypeQueryService(
-                seer_database,
-                partial(
-                    render_type_matchup,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
+                type_render_session,
             ),
             BattleEffectQueryService(seer_database, images),
-            PetQueryService(
-                seer_database,
-                images,
-                partial(
-                    render_published_pet_info,
-                    render_cache,
-                    seer_database,
-                    images,
-                    render_coordinator.render,
-                ),
-            ),
+            pet,
             PeakQueryService(
                 seer_database,
                 headless,
-                partial(
-                    render_peak_pool,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
-                partial(
-                    render_peak_pool_vote,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
-                partial(
-                    render_peak_pet_rank,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
+                peak_render_session,
             ),
-            MintmarkQueryService(
-                seer_database,
-                images,
-                merge_connected=settings.seer.mintmark.merge_connected,
-            ),
+            mintmark,
             player,
             player_detail_extensions,
             rank_queries,
             rank_admin,
-            partial(
-                render_new_content_menu,
-                render_cache,
-                seer_database,
-                images,
-                autocard,
-                render_coordinator.render,
+            render_content_menu,
+            NewContentDetailService(
+                pet, mintmark, equipment, autocard, content_selection_scope
             ),
             external_references,
         ),
@@ -405,7 +487,5 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
         player_query_quotas=player_query_quotas,
         player_requests=player_requests,
         player_detail_extensions=player_detail_extensions,
-        images=images,
-        render_cache=render_cache,
-        render_coordinator=render_coordinator,
+        lineup_render_session=lineup_render_session,
     )

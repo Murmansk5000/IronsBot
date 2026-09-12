@@ -65,6 +65,10 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         "ironsbot.core.time.now",
         lambda: datetime.fromtimestamp(clock[0], tz=timezone.utc),
     )
+    monkeypatch.setattr(
+        "ironsbot.services.seer.player_detail_service.now",
+        lambda: datetime.fromtimestamp(clock[0], tz=timezone.utc),
+    )
     config = SeerConfig()
     result = RankLookupResult(
         title="rank",
@@ -137,12 +141,16 @@ async def test_detail_observation_survives_composition_and_reply_reuse(
         "timeout_fallback": RANK_AT,
     }
     assert reply.text.splitlines()[1] == format_player_data_time(expected[evidence])
+    assert reply.fetched_at == expected[evidence]
     if evidence == "timeout_fallback":
         assert not reply.complete
         assert await service.cached_or_inflight_reply(PLAYER_ID, kind) is None
         return
     assert reply.complete
-    clock[0] += 3600
+    if expected[evidence] is None:
+        assert await service.cached_or_inflight_reply(PLAYER_ID, kind) is None
+        return
+    clock[0] += 30
     assert await service.shortcut(cast("Any", game), command, PLAYER_ID) is reply
     assert (
         sum(
@@ -253,7 +261,11 @@ async def test_lineup_dates_data_before_bookkeeping_and_persistent_cache(
         operations=SimpleNamespace(track=lambda *_args, **_kwargs: nullcontext()),
     )
 
-    async def fetch_packet(*_args: Any) -> bytes:
+    async def fetch_packet(
+        client: Any, player_id: int, *, timeout_seconds: float
+    ) -> bytes:
+        assert client is not None and player_id == PLAYER_ID
+        assert timeout_seconds == 1
         clock[0] += 10
         return b"packet"
 

@@ -21,7 +21,7 @@ from ironsbot.services.seer.rendering.pet_info_renderer import render_pet_info_d
 from .pet_info_repository import load_pet_info_snapshot
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.pet_info_views import (
         PetInfoSnapshot,
@@ -46,35 +46,37 @@ class PetInfoNotFoundError(LookupError):
 
 async def render_published_pet_info(
     cache: RenderCache,
-    data: SeerDataAccess,
+    data: SeerDataReader,
     images: SeerImageSource,
     render_html: HtmlTemplateRenderer,
     pet_id: int,
 ) -> bytes:
     """Render one pet after completely detaching its data from SQLite."""
     request_key = render_request_cache_key(_PET_INFO_CACHE_CATEGORY, pet_id)
-    if cached := cache.get(_PET_INFO_CACHE_CATEGORY, request_key):
+    cache_entry = cache.entry(_PET_INFO_CACHE_CATEGORY, request_key)
+    if cached := cache_entry.get():
         return cached
     with data.query(
         lambda session: load_pet_info_snapshot(session, pet_id)
     ) as snapshot:
         if snapshot is None:
             raise PetInfoNotFoundError(pet_id)
-    assets = await _load_assets(images, snapshot)
+    assets, complete = await _load_assets(images, snapshot)
     document = present_pet_info(snapshot, assets)
     rendered = await render_pet_info_document(
         render_html,
         [CUSTOM_PET_INFO_TEMPLATE_PATH, SHARED_TEMPLATE_PATH],
         document,
     )
-    cache.put(_PET_INFO_CACHE_CATEGORY, request_key, rendered)
+    if complete:
+        cache_entry.put(rendered)
     return rendered
 
 
 async def _load_assets(
     images: SeerImageSource,
     snapshot: PetInfoSnapshot,
-) -> PetInfoAssets:
+) -> tuple[PetInfoAssets, bool]:
     type_ids = tuple(
         sorted({snapshot.pet.type_id, *(skill.type_id for skill in snapshot.skills)})
     )
@@ -90,11 +92,17 @@ async def _load_assets(
         )
     )
     mandatory = await asyncio.gather(
-        images.fetch("pet_head", str(snapshot.pet.resource_id)),
-        images.fetch("pet_body", str(snapshot.pet.resource_id)),
-        *(images.fetch("element_type", str(type_id)) for type_id in type_ids),
-        images.fetch("element_type", "prop"),
-        *(images.fetch("mintmark", str(mintmark_id)) for mintmark_id in mintmark_ids),
+        images.fetch("pet_head", str(snapshot.pet.resource_id), fallback=False),
+        images.fetch("pet_body", str(snapshot.pet.resource_id), fallback=False),
+        *(
+            images.fetch("element_type", str(type_id), fallback=False)
+            for type_id in type_ids
+        ),
+        images.fetch("element_type", "prop", fallback=False),
+        *(
+            images.fetch("mintmark", str(mintmark_id), fallback=False)
+            for mintmark_id in mintmark_ids
+        ),
     )
     optional = await asyncio.gather(
         *(fetch_optional_image(images, "item", str(item_id)) for item_id in item_ids),
@@ -108,7 +116,7 @@ async def _load_assets(
     mintmark_offset = prop_offset + 1
     item_results = optional[: len(item_ids)]
     effect_results = optional[len(item_ids) :]
-    return PetInfoAssets(
+    assets = PetInfoAssets(
         gender_icon=_load_gender_icon(snapshot.pet.gender_id),
         pet_head=mandatory[0],
         pet_body=mandatory[1],
@@ -134,6 +142,7 @@ async def _load_assets(
             if result.data is not None
         ),
     )
+    return assets, all(result.data for result in optional)
 
 
 def _item_ids(snapshot: PetInfoSnapshot) -> tuple[int, ...]:

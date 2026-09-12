@@ -9,6 +9,7 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
+    normalized_command_input_matcher,
 )
 from ironsbot.services.messaging.push_time import PUSH_TIME_COMMANDS
 from ironsbot.services.messaging.subscription_options import (
@@ -24,12 +25,17 @@ def messaging_command_contracts(
 ) -> tuple[CommandContract, ...]:
     """Describe configured messaging commands for the shared command catalog."""
 
+    subscription_commands = push_subscription_command_texts(
+        config.push_unsubscribe.commands,
+        config.push_unsubscribe.restore_commands,
+    )
     configured = tuple(
         CommandContract(
             id=f"messaging.{action.id}",
             plugin_id="messaging",
             section="配置口令",
             examples=tuple(action.commands),
+            routing_matcher=normalized_command_input_matcher(action.commands),
             description=action.name or "发送配置的文本或链接",
             features_any=(action.feature,),
             show_in_poke=True,
@@ -80,12 +86,14 @@ def messaging_command_contracts(
             (
                 (
                     "messaging.push_subscription",
-                    push_subscription_command_texts(
-                        config.push_unsubscribe.commands,
-                        config.push_unsubscribe.restore_commands,
-                    ),
+                    subscription_commands,
                     "查看当前会话的推送订阅；群主和管理员可切换本群订阅",
-                    {"show_in_poke": True},
+                    {
+                        "show_in_poke": True,
+                        "routing_matcher": normalized_command_input_matcher(
+                            subscription_commands
+                        ),
+                    },
                 ),
             ),
         ),
@@ -104,6 +112,9 @@ def messaging_command_contracts(
                             CommandAccess("private"),
                         ),
                         "show_in_poke": True,
+                        "routing_matcher": normalized_command_input_matcher(
+                            PUSH_TIME_COMMANDS
+                        ),
                     },
                 ),
             ),

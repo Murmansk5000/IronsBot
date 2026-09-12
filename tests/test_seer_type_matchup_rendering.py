@@ -6,29 +6,21 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
-from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.rendering.type_matchup import (
     TypeMatchupAssets,
     present_type_matchup,
 )
-from ironsbot.services.seer.type_calc import TypeCombinationSnapshot, TypeMatchup
+from ironsbot.services.seer.type_calc import (
+    ElementTypeSnapshot,
+    TypeCombinationSnapshot,
+    TypeMatchup,
+    TypeMatchupDataset,
+    custom_type_matchup,
+)
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.images import SeerImageSource
-    from ironsbot.services.seer.render_cache import RenderCache
     from ironsbot.services.seer.rendering import HtmlTemplateRenderer
-
-
-class _Cache:
-    def __init__(self, value: bytes | None = None) -> None:
-        self.value = value
-        self.writes: list[tuple[str, str, bytes]] = []
-
-    def get(self, _category: str, _key: str) -> bytes | None:
-        return self.value
-
-    def put(self, category: str, key: str, data: bytes) -> None:
-        self.writes.append((category, key, data))
 
 
 class _Images:
@@ -36,6 +28,7 @@ class _Images:
         self.requests: list[tuple[str, str]] = []
 
     async def fetch(self, kind: str, key: str, **_kwargs: object) -> bytes:
+        assert _kwargs.get("fallback") is False
         self.requests.append((kind, key))
         return f"{kind}:{key}".encode()
 
@@ -57,7 +50,6 @@ def _matchup(*, custom: bool = False) -> TypeMatchup:
         target=target,
         attack_table=[(_combination(3, "火"), 2.0), (_combination(2, "水"), 0.5)],
         defense_table=[(_combination(4, "飞行"), 1.0)],
-        cache_key="grass-water" if custom else "grass",
     )
 
 
@@ -79,24 +71,7 @@ def test_type_matchup_presentation_is_pure_and_orders_multipliers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_type_matchup_adapter_checks_final_cache_before_loading_assets() -> None:
-    cache = _Cache(b"cached")
-    images = _Images()
-
-    result = await render_type_matchup(
-        cast("RenderCache", cache),
-        cast("SeerImageSource", images),
-        cast("HtmlTemplateRenderer", _unexpected_render),
-        _matchup(),
-    )
-
-    assert result == b"cached"
-    assert images.requests == []
-
-
-@pytest.mark.asyncio
 async def test_type_matchup_render_adapter_loads_custom_target_assets() -> None:
-    cache = _Cache()
     images = _Images()
     captured: dict[str, Any] = {}
 
@@ -105,7 +80,6 @@ async def test_type_matchup_render_adapter_loads_custom_target_assets() -> None:
         return b"rendered"
 
     result = await render_type_matchup(
-        cast("RenderCache", cache),
         cast("SeerImageSource", images),
         cast("HtmlTemplateRenderer", render_html),
         _matchup(custom=True),
@@ -119,14 +93,37 @@ async def test_type_matchup_render_adapter_loads_custom_target_assets() -> None:
         ("element_type", "4"),
     ]
     assert captured["templates"]["type_icon_secondary"] is not None
-    assert cache.writes == [
-        (
-            "type_matchup",
-            render_request_cache_key("type_matchup", "grass-water"),
-            b"rendered",
+
+
+@pytest.mark.asyncio
+async def test_custom_type_presentation_preserves_order_and_separator_variants() -> (
+    None
+):
+    dataset = TypeMatchupDataset(
+        combinations=(_combination(1, "草"), _combination(2, "水")),
+        elements=(ElementTypeSnapshot(1, "草"), ElementTypeSnapshot(2, "水")),
+        relations=(),
+    )
+    images = _Images()
+    calls: list[str] = []
+
+    async def render_html(**kwargs: Any) -> bytes:
+        title = str(kwargs["templates"]["type_name"])
+        calls.append(title)
+        return title.encode()
+
+    for arg, title in (
+        ("草+水", "草水（DIY 属性）"),
+        ("水+草", "水草（DIY 属性）"),
+        ("草／水", "草水（DIY 属性）"),
+        ("水，草", "水草（DIY 属性）"),
+    ):
+        matchup = custom_type_matchup(dataset, arg=arg)
+        assert matchup is not None
+        result = await render_type_matchup(
+            cast("SeerImageSource", images),
+            cast("HtmlTemplateRenderer", render_html),
+            matchup,
         )
-    ]
-
-
-async def _unexpected_render(**_kwargs: object) -> bytes:
-    raise AssertionError
+        assert result == title.encode()
+    assert calls == ["草水（DIY 属性）", "水草（DIY 属性）"] * 2

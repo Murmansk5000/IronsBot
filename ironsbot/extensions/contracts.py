@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
+
+from ironsbot.services.seer.render_cache import (
+    RenderCacheEntry as RenderCacheEntry,  # noqa: PLC0414, TC001 - public extension export
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -59,6 +64,7 @@ class PlayerLineupPetSnapshot:
     resource_id: int
     type_id: int
     peak_pool_limit: int | None
+    complete: bool
 
 
 class PlayerLineupEntryResolver(Protocol):
@@ -104,9 +110,7 @@ class PlayerLineupRenderPort(Protocol):
         renderer_fingerprint: str,
     ) -> str: ...
 
-    def cached_image(self, category: str, key: str) -> bytes | None: ...
-
-    def cache_image(self, category: str, key: str, image: bytes) -> None: ...
+    def cache_entry(self, category: str, key: str) -> RenderCacheEntry: ...
 
     async def render_html(
         self,
@@ -117,6 +121,19 @@ class PlayerLineupRenderPort(Protocol):
         max_width: int,
         allow_refit: bool,
     ) -> bytes: ...
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerLineupRenderSession:
+    """Entry and image capabilities bound to one published data generation."""
+
+    entries: PlayerLineupEntryResolver
+    render: PlayerLineupRenderPort
+
+
+PlayerLineupRenderSessionFactory = Callable[
+    [], AbstractContextManager[PlayerLineupRenderSession]
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,10 +161,14 @@ class PlayerLineupPacketClient(Protocol):
     ) -> bytes: ...
 
 
-PlayerLineupPacketFetcher = Callable[
-    [PlayerLineupPacketClient, int, float],
-    Awaitable[bytes],
-]
+class PlayerLineupPacketFetcher(Protocol):
+    async def __call__(
+        self,
+        client: PlayerLineupPacketClient,
+        player_id: int,
+        *,
+        timeout_seconds: float,
+    ) -> bytes: ...
 
 
 class PlayerLineupQueryPort(Protocol):
@@ -197,8 +218,7 @@ class PlayerLineupExtensionContext(Protocol):
     implementation modules to acquire those dependencies.
     """
 
-    lineup_entries: PlayerLineupEntryResolver
-    lineup_render: PlayerLineupRenderPort
+    lineup_render_session: PlayerLineupRenderSessionFactory
     lineup_query: PlayerLineupQueryPort
     lineup_cache: PlayerLineupCacheFactory
     player_id_resolver: PlayerIdResolver

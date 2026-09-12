@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from seerapi_models import SkillORM
+from seerapi_models import PetORM, SkillORM, TypeCombinationORM
 
 from ironsbot.services.seer.rendering.analyze_description import (
     format_analyze_description,
@@ -15,7 +15,7 @@ from ironsbot.services.seer.rendering.analyze_description import (
 from ironsbot.services.seer.rendering.custom_pet_models import SkillDict
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.new_content import NewContentItem
 
 
@@ -34,6 +34,7 @@ class NewContentItemDetails:
     gender_name: str = ""
     skill: SkillDict | None = None
     friend_skill: SkillDict | None = None
+    complete: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,7 @@ class _SkillEffectDetails:
     effects: list[dict[str, Any]]
     friend_effects: list[dict[str, Any]]
     hide_effect_desc: str | None
+    complete: bool = True
 
 
 SKILL_CATEGORY_ATTRIBUTE = 4
@@ -52,18 +54,19 @@ _SKILL_CATEGORY_NAMES = {
 
 
 def load_new_content_peak_pool_details(
-    data: SeerDataAccess,
+    data: SeerDataReader,
     item: NewContentItem,
 ) -> NewContentItemDetails:
     """Describe one official competitive-pool limit change for a pet."""
 
     previous_limit = _peak_pool_limit_text(item.payload.get("previous_limit"))
     current_limit = _peak_pool_limit_text(item.payload.get("current_limit"))
-    with data.get(data.pet, item.entity_id) as pet:
+    with data.query(lambda session: session.get(PetORM, item.entity_id)) as pet:
         if pet is None:
             return NewContentItemDetails(
                 metadata=f"精灵 ID：{item.entity_id}",
                 description=f"{previous_limit} → {current_limit}",
+                complete=False,
             )
         return NewContentItemDetails(
             metadata=f"精灵 ID：{pet.id}",
@@ -87,16 +90,20 @@ def _peak_pool_limit_text(value: object) -> str:
 
 
 def load_new_content_skill_details(
-    data: SeerDataAccess,
+    data: SeerDataReader,
     item: NewContentItem,
 ) -> NewContentItemDetails:
     payload = item.payload
     type_id = _payload_int(payload, "type_id")
     type_name = ""
+    type_available = type_id <= 0
     if type_id > 0:
-        with data.get(data.type_combination, type_id) as skill_type:
+        with data.query(
+            lambda session: session.get(TypeCombinationORM, type_id)
+        ) as skill_type:
             if skill_type is not None:
                 type_name = str(skill_type.name)
+                type_available = True
     category_id = _payload_int(payload, "category_id")
     must_hit = bool(payload.get("must_hit", False))
     raw_crit_rate = payload.get("crit_rate")
@@ -146,24 +153,27 @@ def load_new_content_skill_details(
         type_name=type_name,
         skill=skill,
         friend_skill=friend_skill,
+        complete=type_available and effect_details.complete,
     )
 
 
 def _load_skill_effect_details(
-    data: SeerDataAccess,
+    data: SeerDataReader,
     skill_id: int,
 ) -> _SkillEffectDetails:
     try:
         with data.query(lambda session: session.get(SkillORM, skill_id)) as skill:
             if skill is None:
-                return _SkillEffectDetails([], [], None)
+                return _SkillEffectDetails([], [], None, complete=False)
             return _SkillEffectDetails(
                 effects=_skill_effect_rows(skill.skill_effect),
                 friend_effects=_skill_effect_rows(skill.friend_skill_effect),
                 hide_effect_desc=_skill_hide_effect_text(skill),
+                complete=isinstance(skill.skill_effect, list)
+                and isinstance(skill.friend_skill_effect, list),
             )
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
-        return _SkillEffectDetails([], [], None)
+        return _SkillEffectDetails([], [], None, complete=False)
 
 
 def _skill_effect_rows(effects: object) -> list[dict[str, Any]]:

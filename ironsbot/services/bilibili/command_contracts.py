@@ -7,6 +7,7 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
+    normalized_command_input_matcher,
     parsed_command_input_matcher,
 )
 from ironsbot.services.bilibili.commands import (
@@ -32,7 +33,12 @@ def bilibili_command_contracts() -> tuple[CommandContract, ...]:
                     "bilibili.dynamic",
                     DYNAMIC_MENU_COMMANDS[:1],
                     "查看订阅账号的最新动态",
-                    {"show_in_poke": True},
+                    {
+                        "show_in_poke": True,
+                        "routing_matcher": normalized_command_input_matcher(
+                            DYNAMIC_MENU_COMMANDS
+                        ),
+                    },
                 ),
                 (
                     "bilibili.accounts",
@@ -40,7 +46,9 @@ def bilibili_command_contracts() -> tuple[CommandContract, ...]:
                     "查看当前会话订阅的账号",
                     {
                         "features_any": (),
-                        "routing_aliases": BILI_ACCOUNT_COMMANDS,
+                        "routing_matcher": normalized_command_input_matcher(
+                            BILI_ACCOUNT_COMMANDS
+                        ),
                         "access": (
                             CommandAccess(features_any=("bili_query",)),
                             CommandAccess(

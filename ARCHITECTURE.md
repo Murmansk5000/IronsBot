@@ -144,6 +144,11 @@ When a contract provides an input matcher, its acceptance or rejection is
 authoritative even for a help example or routing alias. Exact examples and
 aliases are used for admission only by contracts without an input matcher;
 parser-backed contracts must include their accepted aliases in the real grammar.
+Exact examples and aliases are literal, not globally whitespace-normalized or
+case-folded. Intentionally normalized command domains explicitly use the shared
+`normalized_command_input_matcher`, backed by the same `command_text_matches`
+helper as their actual rule. Do not change a matcher to accommodate an overly
+broad catalog example, or introduce another AI-only normalization policy.
 
 The type rename does not make the migration complete. Completion still requires
 command parsing ownership, access metadata and documentation fields to move out
@@ -770,6 +775,11 @@ Future data work follows these rules:
   undated supporting evidence remains unknown. Failed reads do not date other
   successful fields, while reused cached facts retain their stored time.
   Query deadlines still use a monotonic clock, not observation wall time.
+  Complete player-detail replies retain this time as structured metadata.
+  Fresh-cache admission and reuse require known, finite, non-future evidence
+  within the configured TTL, as well as an unexpired monotonic cache deadline.
+  Writing an old reply cannot renew its source age; deliverable partial or
+  undated replies are not fresh complete-cache entries.
 - `seerapi` performs data extraction, normalization, schema validation, SWF to
   PNG conversion, and deterministic association building at build time.
 - IronsBot reads published facts through repositories; it does not repeat

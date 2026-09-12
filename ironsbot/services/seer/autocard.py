@@ -15,7 +15,7 @@ from ironsbot.integrations.seer_data.autocard_repository import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
 AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
@@ -61,7 +61,7 @@ class AutocardSearchResult:
 
 
 class AutocardService:
-    def __init__(self, data: SeerDataAccess) -> None:
+    def __init__(self, data: SeerDataReader) -> None:
         self._data = data
 
     def search(self, arg: str) -> AutocardSearchResult:

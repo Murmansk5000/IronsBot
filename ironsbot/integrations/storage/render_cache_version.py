@@ -25,7 +25,10 @@ class RenderCacheVersion:
         self._rendering_fingerprint = _fingerprint_paths(rendering_inputs)
 
     def __call__(self) -> str:
-        data_version = self._data_version_getter()
+        return self.for_version(self._data_version_getter())
+
+    def for_version(self, data_version: str) -> str:
+        """Apply the same renderer fingerprint to a captured release version."""
         if data_version == UNKNOWN_RENDER_CACHE_VERSION:
             return UNKNOWN_RENDER_CACHE_VERSION
         return f"{data_version}:{self._rendering_fingerprint}"

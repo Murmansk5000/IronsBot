@@ -149,6 +149,7 @@ def sendpic_command_contracts(
     contracts = []
     for config in service.commands:
         names = (config.command, *sorted(config.aliases))
+        matches = None
         if config.mode == "indexed":
             prefix = "" if "" in service.command_starts else service.command_starts[0]
             examples = tuple(prefix + name for name in names)
@@ -160,9 +161,6 @@ def sendpic_command_contracts(
             )
         else:
             examples = names
-            matches = parsed_command_input_matcher(
-                lambda text, names=names: text if text in names else None
-            )
         contracts.append(
             CommandContract(
                 id=f"sendpic.{config.id}",

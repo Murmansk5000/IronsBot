@@ -43,7 +43,6 @@ class TypeMatchup:
     target: TypeCombinationSnapshot
     attack_table: list[tuple[TypeCombinationSnapshot, float]]
     defense_table: list[tuple[TypeCombinationSnapshot, float]]
-    cache_key: str
 
 
 def type_matchup_by_id(
@@ -71,21 +70,13 @@ def custom_type_matchup(
         primary_id=elements[0].id,
         secondary_id=(elements[1].id if len(elements) == _MAX_CUSTOM_TYPES else None),
     )
-    return build_type_matchup(
-        dataset,
-        target=target,
-        cache_key=(
-            "custom_type_matchup_"
-            + "_".join(map(str, sorted(item.id for item in elements)))
-        ),
-    )
+    return build_type_matchup(dataset, target=target)
 
 
 def build_type_matchup(
     dataset: TypeMatchupDataset,
     *,
     target: TypeCombinationSnapshot,
-    cache_key: str | None = None,
 ) -> TypeMatchup:
     table = {
         (source_id, target_id): value
@@ -101,7 +92,6 @@ def build_type_matchup(
             (item, _calc_multiplier(table, item, target))
             for item in dataset.combinations
         ],
-        cache_key=cache_key or str(target.id),
     )
 
 

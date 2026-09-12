@@ -6,6 +6,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from seerapi_models import PetORM, PetSkinORM
+from sqlmodel import col, select
+
 from ironsbot.extensions.contracts import (
     PlayerLineupPetSnapshot,
     PlayerLineupSlot,
@@ -19,7 +22,7 @@ from ironsbot.integrations.seer_data.skin_image_resolution import (
 from ironsbot.services.seer.peak import active_peak_pool_limits
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ class PublishedPlayerLineupEntryResolver:
 
     def __init__(
         self,
-        data: SeerDataAccess,
+        data: SeerDataReader,
     ) -> None:
         self._data = data
 
@@ -47,8 +50,22 @@ class PublishedPlayerLineupEntryResolver:
             self._data.query(
                 lambda session: load_skin_image_resolutions(session, skin_ids)
             ) as resolved_skin_images,
-            self._data.get_many(self._data.pet, pet_ids) as pets_by_id,
-            self._data.get_many(self._data.pet_skin, skin_ids) as skins_by_id,
+            self._data.query(
+                lambda session: {
+                    pet.id: pet
+                    for pet in session.exec(
+                        select(PetORM).where(col(PetORM.id).in_(pet_ids))
+                    )
+                }
+            ) as pets_by_id,
+            self._data.query(
+                lambda session: {
+                    skin.id: skin
+                    for skin in session.exec(
+                        select(PetSkinORM).where(col(PetSkinORM.id).in_(skin_ids))
+                    )
+                }
+            ) as skins_by_id,
         ):
             return tuple(
                 PlayerLineupPetSnapshot(
@@ -56,14 +73,23 @@ class PublishedPlayerLineupEntryResolver:
                     level=slot.level,
                     use_flag=slot.use_flag,
                     name=_pet_name(pets_by_id.get(slot.pet_id)),
-                    resource_id=_resource_id(
-                        slot,
-                        pets_by_id.get(slot.pet_id),
-                        skins_by_id.get(slot.skin_id),
-                        resolved_skin_images.get(slot.skin_id),
+                    resource_id=(
+                        resource_id := _resource_id(
+                            slot,
+                            pets_by_id.get(slot.pet_id),
+                            skins_by_id.get(slot.skin_id),
+                            resolved_skin_images.get(slot.skin_id),
+                        )
                     ),
                     type_id=_type_id(pets_by_id.get(slot.pet_id)),
                     peak_pool_limit=peak_pool_limits.get(slot.pet_id),
+                    complete=(
+                        (pet := pets_by_id.get(slot.pet_id)) is not None
+                        and bool(pet.name.strip())
+                        and pet.resource_id > 0
+                        and resource_id > 0
+                        and _type_id(pet) > 0
+                    ),
                 )
                 for slot in slots
             )
@@ -79,7 +105,7 @@ def _resource_id(
     skin: object | None,
     resolution: object | None,
 ) -> int:
-    base_resource_id = int(getattr(pet, "resource_id", 0) or slot.pet_id)
+    base_resource_id = int(getattr(pet, "resource_id", 0) or 0)
     if slot.skin_id <= 0:
         return base_resource_id
     if skin is None:

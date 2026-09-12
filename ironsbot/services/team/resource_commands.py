@@ -7,6 +7,7 @@ from ironsbot.core.command_catalog import (
     CommandAccess,
     CommandContract,
     commands_from_rows,
+    normalized_command_input_matcher,
     parsed_command_input_matcher,
 )
 from ironsbot.services.team.resource_subscriptions import (
@@ -33,7 +34,12 @@ def team_resource_command_contracts(
                     "team_resource.query",
                     query_commands,
                     "查看当前会话订阅战队的信息和资源",
-                    {"show_in_poke": True},
+                    {
+                        "show_in_poke": True,
+                        "routing_matcher": normalized_command_input_matcher(
+                            query_commands
+                        ),
+                    },
                 ),
             )
             if query_commands

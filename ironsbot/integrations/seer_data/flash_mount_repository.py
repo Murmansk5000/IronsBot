@@ -11,13 +11,13 @@ from sqlalchemy.exc import SQLAlchemyError
 if TYPE_CHECKING:
     from sqlmodel import Session
 
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data import SeerDataReader
 
 logger = logging.getLogger(__name__)
 _missing_table_warning_logged = False
 
 
-def load_flash_mount_image(data: SeerDataAccess, mount_id: int) -> bytes | None:
+def load_flash_mount_image(data: SeerDataReader, mount_id: int) -> bytes | None:
     """Return a rendered Flash PNG, or ``None`` for old incomplete data DBs."""
 
     if mount_id <= 0:
