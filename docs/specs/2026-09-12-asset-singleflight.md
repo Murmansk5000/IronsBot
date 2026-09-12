@@ -126,3 +126,25 @@ exit also releases the engine. Ruff, targeted BasedPyright (0 errors/warnings),
 compileall and diff checks passed. No dependency, configuration or schema change.
 This does not claim thread-safe listener publication or full renderer snapshot
 binding; the lock protects registry and reference lifetime bookkeeping only.
+
+## Engine-Owned Publication Metadata
+
+Target: replace the SeerDatabase listener-owned version/scopes/assets fields
+with one immutable publication record per engine. Prepare it during validation
+before engine replacement; constructor attachment to an already loaded engine
+uses the same reader. Read the record for the actual leased engine, not the last
+listener to finish. Weak engine keys permit retirement without a growing
+publication history. Repeated version/scope/image lookups must not run SQL.
+Tests inspect metadata inside an earlier load listener, after close/register,
+and after rejected loads; late construction and cache-hit SQL counts are covered.
+This is a render-transaction prerequisite, not yet a binding of all render inputs.
+
+Verified: registry, publication, mintmark query, pet rendering and data-sync
+tests 42 passed in 10.55 seconds (2 existing ORM relationship warnings).
+Earlier-listener observations see the candidate manifest, rejected schema loads
+retain the active record, late attachment reads an already published database,
+and an SQL execution spy proves repeated metadata reads execute no SQL.
+Close/re-register return unknown rather than stale publication information.
+Ruff, targeted BasedPyright (0 errors/warnings), compileall and diff checks passed.
+Removed the old listener-owned fields and refresh callback; production code is
+9 lines smaller. No new module, dependency, config field or publication run.

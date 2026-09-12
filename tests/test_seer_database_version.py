@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
 from seerapi_models import ApiMetadataORM
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.integrations.db_registry import DatabaseManager
@@ -17,36 +18,10 @@ from ironsbot.integrations.seer_data.release_contract import SeerApiReleaseContr
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sqlalchemy.engine import Engine
 
-@pytest.mark.parametrize(
-    ("scopes", "expected_categories"),
-    [
-        (("pet_info",), {"pet_info"}),
-        (("type_matchup",), {"type_matchup"}),
-        (
-            ("peak_pool",),
-            {"peak_pool", "peak_pool_vote", "peak_pet_rank", "player_lineup"},
-        ),
-        (
-            ("type_matchup", "peak_pool"),
-            {
-                "type_matchup",
-                "peak_pool",
-                "peak_pool_vote",
-                "peak_pet_rank",
-                "player_lineup",
-            },
-        ),
-        (("new_content_standard",), {"new_content"}),
-        ((), set()),
-    ],
-)
-def test_seer_database_version_updates_only_when_database_is_loaded(
-    tmp_path: Path,
-    scopes: tuple[str, ...],
-    expected_categories: set[str],
-) -> None:
-    source = tmp_path / "seerapi.sqlite"
+
+def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, datetime]:
     engine = create_engine(f"sqlite:///{source}")
     SQLModel.metadata.create_all(engine)
     generated_at = datetime(2026, 8, 13, 12, 0, tzinfo=timezone.utc)
@@ -83,7 +58,52 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
         )
         session.commit()
 
+    return engine, generated_at
+
+
+@pytest.mark.parametrize(
+    ("scopes", "expected_categories"),
+    [
+        (("pet_info",), {"pet_info"}),
+        (("type_matchup",), {"type_matchup"}),
+        (
+            ("peak_pool",),
+            {"peak_pool", "peak_pool_vote", "peak_pet_rank", "player_lineup"},
+        ),
+        (
+            ("type_matchup", "peak_pool"),
+            {
+                "type_matchup",
+                "peak_pool",
+                "peak_pool_vote",
+                "peak_pet_rank",
+                "player_lineup",
+            },
+        ),
+        (("new_content_standard",), {"new_content"}),
+        ((), set()),
+    ],
+)
+def test_seer_database_version_updates_only_when_database_is_loaded(
+    tmp_path: Path,
+    scopes: tuple[str, ...],
+    expected_categories: set[str],
+) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, generated_at = _create_release(source, scopes)
+
     databases = DatabaseManager()
+    observations: list[tuple[str, str | None]] = []
+
+    def observe_publication() -> None:
+        assets = data.render_asset_snapshot()
+        observations.append(
+            (data.version(), assets.manifest_revision if assets else None)
+        )
+
+    # Register before the data adapter: no listener ordering may expose an old
+    # manifest after the new engine becomes visible.
+    databases.add_load_listener("seerapi", observe_publication)
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
 
     assert data.version() == "unknown"
@@ -92,6 +112,7 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
 
     expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
     assert data.version() == expected_version
+    assert observations == [(expected_version, "assets-v1")]
     categories = {
         "pet_info",
         "player_lineup",
@@ -113,6 +134,97 @@ def test_seer_database_version_updates_only_when_database_is_loaded(
         "Murmansk-Seer/seer-unity-assets@"
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:assets-v1"
     )
+
+    databases.close()
+    engine.dispose()
+
+
+def test_publication_lifetime_and_cached_reads(tmp_path: Path) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    scopes = ("pet_info",)
+    engine, generated_at = _create_release(source, scopes)
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    observations: list[tuple[str, str | None]] = []
+
+    def observe_publication() -> None:
+        assets = data.render_asset_snapshot()
+        observations.append(
+            (data.version(), assets.manifest_revision if assets else None)
+        )
+
+    databases.add_load_listener("seerapi", observe_publication)
+    databases.load_from_file("seerapi", str(source))
+    expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
+    snapshot = data.render_asset_snapshot()
+    assert snapshot is not None
+
+    late = SeerDatabase(databases, merge_connected_mintmarks=True)
+    assert late.version() == expected_version
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ironsbot_metadata SET value='invalid' "
+                "WHERE key='ironsbot_schema_contract_version'"
+            )
+        )
+    with pytest.raises(SeerApiReleaseContractError):
+        databases.load_from_file("seerapi", str(source))
+    assert data.version() == expected_version
+    assert data.render_asset_snapshot() is snapshot
+    assert observations == [(expected_version, "assets-v1")]
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ironsbot_metadata SET value='1' "
+                "WHERE key='ironsbot_schema_contract_version'"
+            )
+        )
+        connection.execute(
+            text(
+                "UPDATE ironsbot_metadata SET value='assets-v2' "
+                "WHERE key='render_asset_manifest_revision'"
+            )
+        )
+    databases.load_from_file("seerapi", str(source))
+    updated_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v2"
+    assert observations[-1] == (updated_version, "assets-v2")
+    assert data.version() == late.version() == updated_version
+    assert snapshot.manifest_revision == "assets-v1"
+
+    databases.register("seerapi")
+    assert data.version() == "unknown"
+    assert data.render_asset_snapshot() is None
+    assert not data.render_category_available("pet_info")
+    databases.close()
+    assert data.version() == late.version() == "unknown"
+    assert data.render_asset_snapshot() is None
+    engine.dispose()
+
+
+def test_late_publication_cached_reads_do_not_execute_sql(tmp_path: Path) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, generated_at = _create_release(source, ("pet_info",))
+    databases = DatabaseManager()
+    databases.load_from_file("seerapi", str(source))
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    active = databases.get_engine("seerapi")
+    assert active is not None
+    executed = Mock()
+    event.listen(active, "before_cursor_execute", executed)
+    try:
+        assert data.version() == (
+            f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
+        )
+        assert data.render_asset_snapshot() is not None
+        assert data.render_category_available("pet_info")
+        assert not data.render_category_available("type_matchup")
+        executed.assert_not_called()
+    finally:
+        event.remove(active, "before_cursor_execute", executed)
+        databases.close()
+        engine.dispose()
 
 
 def test_seer_database_rejects_release_without_schema_contract(
