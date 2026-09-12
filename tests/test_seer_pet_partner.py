@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
+import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, create_engine
 
 from ironsbot.integrations.seer_data.pet_info_repository import _load_partner
@@ -16,6 +18,28 @@ def _session_with_pet_partner() -> Session:
                 CREATE TABLE item (
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE TABLE item_exchange_price (
+                    source_key TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    source_entry_id INTEGER NOT NULL,
+                    item_id INTEGER NOT NULL,
+                    item_name TEXT NOT NULL,
+                    item_quantity INTEGER NOT NULL,
+                    currency_item_id INTEGER NOT NULL,
+                    currency_name TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    purchase_limit INTEGER,
+                    start_time INTEGER NOT NULL,
+                    end_time INTEGER NOT NULL,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (source_key, source_entry_id)
                 )
                 """
             )
@@ -212,28 +236,9 @@ def test_load_pet_partner_reads_cost_and_skill_item() -> None:
     assert partner.skill.activation_item.name == "梦夜之源"
 
 
-def test_load_pet_partner_keeps_legacy_releases_in_display_order() -> None:
-    with _session_with_pet_partner() as session:
-        session.execute(
-            text(
-                """
-                UPDATE pet_partner_upgrade
-                SET
-                    before_description = '强化后魂印',
-                    after_description = '强化前魂印',
-                    source = 'ConfigPackage/partnerEffectUpgrade.bytes'
-                WHERE pet_id = 4329
-                """
-            )
-        )
-        session.commit()
-        partner = _load_partner(session, 4329)
-
-    assert partner is not None
-    assert partner.before_description == "强化前魂印"
-    assert partner.after_description == "强化后魂印"
-
-
-def test_load_pet_partner_allows_an_older_database_without_tables() -> None:
-    with Session(create_engine("sqlite://")) as session:
-        assert _load_partner(session, 4329) is None
+def test_load_pet_partner_rejects_database_without_published_tables() -> None:
+    with (
+        Session(create_engine("sqlite://")) as session,
+        pytest.raises(OperationalError),
+    ):
+        _load_partner(session, 4329)

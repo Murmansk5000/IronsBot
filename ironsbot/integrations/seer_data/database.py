@@ -43,7 +43,10 @@ from .getters import (
     build_mintmark_data_getter,
 )
 from .mintmark_series_resolvers import resolve_custom_mintmark_series
-from .release_contract import validate_published_seerapi_release
+from .release_contract import (
+    SeerApiReleaseContractError,
+    validate_published_seerapi_release,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
@@ -302,50 +305,64 @@ class SeerDatabase:
 
 def _read_publication(engine: Engine) -> SeerPublication:
     """Read once for each engine, before publishing a validated candidate."""
-    try:
-        with SQLModelSession(engine) as session:
-            metadata = session.exec(select(ApiMetadataORM)).first()
-            if metadata is None:
-                return SeerPublication()
-            rows = session.execute(
+    with SQLModelSession(engine) as session:
+        publication_tables = set(
+            session.execute(
                 text(
-                    "SELECT key, value FROM ironsbot_metadata WHERE key IN "
-                    "(:revision, :contract, :scopes, :repository, :asset_revision)"
-                ),
-                {
-                    "revision": "render_asset_manifest_revision",
-                    "contract": "render_asset_manifest_contract_version",
-                    "scopes": "render_asset_manifest_complete_scopes",
-                    "repository": "render_asset_manifest_asset_repository",
-                    "asset_revision": "render_asset_manifest_asset_repository_revision",
-                },
-            ).all()
-            values = {str(key): str(value) for key, value in rows}
-            raw_scopes = json.loads(
-                values.get("render_asset_manifest_complete_scopes", "[]")
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type = 'table' AND name IN "
+                    "('api_metadata', 'ironsbot_metadata')"
+                )
+            ).scalars()
+        )
+        if not publication_tables:
+            # DatabaseManager.register() deliberately installs an empty in-memory
+            # placeholder before any release has been loaded.
+            return SeerPublication()
+        metadata = session.exec(select(ApiMetadataORM)).first()
+        if metadata is None:
+            raise SeerApiReleaseContractError.missing_api_metadata()
+        rows = session.execute(
+            text(
+                "SELECT key, value FROM ironsbot_metadata WHERE key IN "
+                "(:revision, :contract, :scopes, :repository, :asset_revision)"
+            ),
+            {
+                "revision": "render_asset_manifest_revision",
+                "contract": "render_asset_manifest_contract_version",
+                "scopes": "render_asset_manifest_complete_scopes",
+                "repository": "render_asset_manifest_asset_repository",
+                "asset_revision": "render_asset_manifest_asset_repository_revision",
+            },
+        ).all()
+        values = {str(key): str(value) for key, value in rows}
+        try:
+            raw_scopes = json.loads(values["render_asset_manifest_complete_scopes"])
+        except (KeyError, json.JSONDecodeError) as error:
+            raise SeerApiReleaseContractError.invalid_metadata(
+                "render_asset_manifest_complete_scopes"
+            ) from error
+        if not isinstance(raw_scopes, list) or not all(
+            isinstance(scope, str) and scope for scope in raw_scopes
+        ):
+            raise SeerApiReleaseContractError.invalid_metadata(
+                "render_asset_manifest_complete_scopes"
             )
-            if not isinstance(raw_scopes, list) or not all(
-                isinstance(scope, str) and scope for scope in raw_scopes
-            ):
-                return SeerPublication()
-            snapshot = parse_published_render_asset_snapshot(
-                values, contract_version=_RENDER_MANIFEST_CONTRACT_VERSION
-            )
-            if snapshot is None:
-                return SeerPublication()
-            assets = PublishedRenderAssetSnapshot(
-                repository=snapshot.repository,
-                revision=snapshot.revision,
-                manifest_revision=snapshot.manifest_revision,
-                scopes=frozenset(raw_scopes),
-            )
-            return SeerPublication(
-                f"{metadata.generate_time.isoformat()}:{snapshot.manifest_revision}",
-                assets,
-            )
-    except Exception:  # noqa: BLE001
-        logger.debug("failed to query Seer database version", exc_info=True)
-        return SeerPublication()
+        snapshot = parse_published_render_asset_snapshot(
+            values, contract_version=_RENDER_MANIFEST_CONTRACT_VERSION
+        )
+        if snapshot is None:
+            raise SeerApiReleaseContractError.invalid_render_manifest()
+        assets = PublishedRenderAssetSnapshot(
+            repository=snapshot.repository,
+            revision=snapshot.revision,
+            manifest_revision=snapshot.manifest_revision,
+            scopes=frozenset(raw_scopes),
+        )
+        return SeerPublication(
+            f"{metadata.generate_time.isoformat()}:{snapshot.manifest_revision}",
+            assets,
+        )
 
 
 def _mintmark_class_member_ids(

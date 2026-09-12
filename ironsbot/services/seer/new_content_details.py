@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.value_coercion import require_bool_flag
+
 from .autocard import AutocardEntry, AutocardPromptValue
 from .new_content import NewContentSnapshotChangedError
 from .pet_query import PetImageSelection
@@ -147,7 +149,7 @@ def _skill_stat_lines(payload: dict[str, Any]) -> list[str]:
     max_pp = int(payload.get("max_pp", 0))
     if power or max_pp:
         lines.append(f"威力：{power}｜PP：{max_pp}")
-    if bool(payload.get("must_hit", False)):
+    if require_bool_flag(payload.get("must_hit", False), field="skill.must_hit"):
         lines.append("命中：必中")
     elif (accuracy := int(payload.get("accuracy", 0))) > 0:
         lines.append(f"命中：{accuracy}%")

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.services.seer import equipment as equipment_service
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.equipment import EquipmentQueryService
 
 NOT_FOUND_IMAGE_ERROR = "404 Not Found"
@@ -276,6 +277,34 @@ async def test_mount_without_unity_image_uses_flash_fallback(
     assert result.reply.image == b"flash-mount"
     assert result.reply.image_error == ""
     assert "暂未上线" not in result.reply.text
+
+
+@pytest.mark.asyncio
+async def test_mount_reports_incomplete_published_flash_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = FakeData()
+    data.values[data.equip] = (
+        SimpleNamespace(
+            id=1301170,
+            name="帝皇驹",
+            part_type=SimpleNamespace(id=6),
+            suit=None,
+            bonus=None,
+        ),
+    )
+
+    def fail(_data: object, mount_id: int) -> None:
+        raise PublishedDataIncompleteError("flash_mount_image", entity_id=mount_id)
+
+    monkeypatch.setattr(equipment_service, "load_flash_mount_image", fail)
+
+    result = await _service(data, MissingImages()).select("equip", 1301170)
+
+    assert result.reply is not None
+    assert not result.reply.complete
+    assert result.reply.image is None
+    assert result.reply.image_error == "星际座驾图片数据不完整，暂时无法展示。"
 
 
 @pytest.mark.asyncio
