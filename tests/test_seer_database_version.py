@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
+from hashlib import sha256
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
@@ -58,10 +59,32 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
         )
+        schema_rows = tuple(
+            tuple(row)
+            for row in session.execute(
+                text(
+                    "SELECT type, name, tbl_name, COALESCE(sql, '') "
+                    "FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' "
+                    "AND type IN ('table', 'index', 'trigger') "
+                    "ORDER BY type, name"
+                )
+            )
+        )
+        schema_tables = tuple(
+            str(name)
+            for name in session.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                )
+            ).scalars()
+        )
         session.execute(
             text(
                 "INSERT INTO ironsbot_metadata (key, value) VALUES "
                 "('ironsbot_schema_contract_version', '1'), "
+                "('ironsbot_schema_tables', :schema_tables), "
+                "('ironsbot_schema_fingerprint', :schema_fingerprint), "
                 "('render_asset_manifest_revision', 'assets-v1'), "
                 "('render_asset_manifest_contract_version', '2'), "
                 "('render_asset_manifest_complete_scopes', :scopes), "
@@ -70,7 +93,17 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
                 "('render_asset_manifest_asset_repository_revision', "
                 "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
             ),
-            {"scopes": json.dumps(scopes)},
+            {
+                "scopes": json.dumps(scopes),
+                "schema_tables": json.dumps(schema_tables, separators=(",", ":")),
+                "schema_fingerprint": sha256(
+                    json.dumps(
+                        schema_rows,
+                        separators=(",", ":"),
+                        ensure_ascii=False,
+                    ).encode()
+                ).hexdigest(),
+            },
         )
         session.add(
             ApiMetadataORM(
@@ -369,6 +402,80 @@ def test_seer_database_rejects_release_without_schema_contract(
 
     assert data.version() == "unknown"
     assert data.render_asset_snapshot() is None
+
+
+@pytest.mark.parametrize(
+    ("metadata_key", "metadata_value", "error_field"),
+    [
+        (
+            "render_asset_manifest_complete_scopes",
+            "not-json",
+            "render_asset_manifest_complete_scopes",
+        ),
+        (
+            "render_asset_manifest_asset_repository_revision",
+            "not-a-commit",
+            "render asset manifest",
+        ),
+        (
+            "ironsbot_schema_tables",
+            "not-json",
+            "schema table manifest",
+        ),
+        (
+            "ironsbot_schema_fingerprint",
+            "0" * 64,
+            "schema table manifest",
+        ),
+    ],
+)
+def test_seer_database_rejects_invalid_publication_metadata(
+    tmp_path: Path,
+    metadata_key: str,
+    metadata_value: str,
+    error_field: str,
+) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, generated_at = _create_release(source, ("pet_info",))
+    databases = DatabaseManager()
+    data = SeerDatabase(databases, merge_connected_mintmarks=True)
+    databases.load_from_file("seerapi", str(source))
+    expected_version = f"{generated_at.replace(tzinfo=None).isoformat()}:assets-v1"
+    original_snapshot = data.render_asset_snapshot()
+    assert original_snapshot is not None
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE ironsbot_metadata SET value=:value WHERE key=:key"),
+            {"key": metadata_key, "value": metadata_value},
+        )
+
+    with pytest.raises(SeerApiReleaseContractError, match=error_field):
+        databases.load_from_file("seerapi", str(source))
+
+    assert data.version() == expected_version
+    assert data.render_asset_snapshot() is original_snapshot
+    databases.close()
+    engine.dispose()
+
+
+def test_seer_database_rejects_a_declared_table_removed_from_release(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "seerapi.sqlite"
+    engine, _ = _create_release(source, ())
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE activity"))
+
+    databases = DatabaseManager()
+    SeerDatabase(databases, merge_connected_mintmarks=True)
+    try:
+        with pytest.raises(SeerApiReleaseContractError, match="activity"):
+            databases.load_from_file("seerapi", str(source))
+        assert databases.get_engine("seerapi") is None
+    finally:
+        databases.close()
+        engine.dispose()
 
 
 def _update_asset_release(engine: Engine, revision: str, manifest: str) -> None:

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from ironsbot.integrations.seer_data.skin_image_resolution import SkinImageResolution
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import ImageSourceError, ImageSourceStatusError
 from ironsbot.services.seer.pet_query import (
     PetImageSelection,
@@ -29,6 +30,7 @@ class FakeData:
         self.skins: tuple[Any, ...] = ()
         self.skin_details: Any | None = None
         self.skin_image_resolutions: dict[int, SkinImageResolution] = {}
+        self.query_error: Exception | None = None
         self.session_active = False
 
     @contextmanager
@@ -68,6 +70,8 @@ class FakeData:
 
     @contextmanager
     def query(self, operation: object) -> Iterator[Any | None]:
+        if self.query_error is not None:
+            raise self.query_error
         operation_function = getattr(operation, "func", None)
         if getattr(operation_function, "__name__", "") == "load_skin_image_resolutions":
             yield self.skin_image_resolutions
@@ -197,6 +201,27 @@ async def test_pet_info_does_not_disguise_renderer_defects_as_missing_assets() -
 
 
 @pytest.mark.asyncio
+async def test_pet_info_reports_incomplete_published_data() -> None:
+    data = FakeData()
+    data.pets = (_pet(1, "精灵"),)
+
+    async def render(_pet_id: int) -> bytes:
+        raise PublishedDataIncompleteError("pet_info", entity_id=1)
+
+    service = PetQueryService(
+        cast("SeerDataAccess", data), cast("SeerImageSource", FakeImages()), render,
+    )
+
+    reply = (await service.select_info(1)).reply
+
+    assert reply is not None
+    assert not reply.complete
+    assert reply.image is None
+    assert reply.leading_text == "【精灵】（1）"
+    assert reply.image_error == "精灵资料数据不完整，暂时无法生成资料图。"
+
+
+@pytest.mark.asyncio
 async def test_pet_image_query_returns_deduplicated_choices() -> None:
     data = FakeData()
     pet = _pet(1, "精灵")
@@ -259,6 +284,20 @@ async def test_pet_image_selection_includes_skin_details() -> None:
         "礼卡价格：20\n"
         "售价：100"
     )
+
+
+@pytest.mark.asyncio
+async def test_pet_image_selection_reports_incomplete_skin_price_data() -> None:
+    data = FakeData()
+    data.query_error = PublishedDataIncompleteError("skin_price", entity_id=101)
+
+    result = await _service(data).select_image(PetImageSelection(101, "皮肤"))
+
+    assert result.reply is not None
+    assert not result.reply.complete
+    assert result.reply.image == b"image:101"
+    assert result.reply.text == "💎【皮肤】\n"
+    assert result.reply.image_error == "皮肤资料数据不完整，价格信息暂时无法展示。"
 
 
 @pytest.mark.asyncio

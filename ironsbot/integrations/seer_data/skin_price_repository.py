@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -12,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
+from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.skin_price import (
     MAX_PRICE_ROWS,
     SkinDetails,
@@ -25,36 +25,35 @@ if TYPE_CHECKING:
 
     from sqlmodel import Session
 
-logger = logging.getLogger(__name__)
-
 
 def load_skin_details(session: Session, *, resource_id: int) -> SkinDetails | None:
-    model = session.exec(
-        select(PetSkinORM).where(PetSkinORM.resource_id == resource_id)
-    ).first()
-    if model is None:
-        return None
-    series_name = "无"
-    if model.series:
-        series_name = model.series.name
-        if model.sub_type:
-            series_name += f" - {model.sub_type.name}"
     try:
+        model = session.exec(
+            select(PetSkinORM).where(PetSkinORM.resource_id == resource_id)
+        ).first()
+        if model is None:
+            return None
+        series_name = "无"
+        if model.series:
+            series_name = model.series.name
+            if model.sub_type:
+                series_name += f" - {model.sub_type.name}"
         shop_price = _load_shop_price(session, int(model.id))
         store_prices = _load_store_prices(session, int(model.id))
-    except SQLAlchemyError:
-        logger.exception("failed to load skin price rows from Seer data SQLite")
-        shop_price, store_prices = None, []
-    return SkinDetails(
-        pet_name=str(model.pet.name),
-        series_name=str(series_name),
-        card_price=model.card_price,
-        price_lines=format_skin_price_lines(
-            shop_price=shop_price,
-            store_prices=store_prices,
-            existing_card_price=model.card_price or 0,
-        ),
-    )
+        return SkinDetails(
+            pet_name=str(model.pet.name),
+            series_name=str(series_name),
+            card_price=model.card_price,
+            price_lines=format_skin_price_lines(
+                shop_price=shop_price,
+                store_prices=store_prices,
+                existing_card_price=model.card_price or 0,
+            ),
+        )
+    except SQLAlchemyError as error:
+        raise PublishedDataIncompleteError(
+            "skin_price", entity_id=resource_id
+        ) from error
 
 
 def _load_shop_price(session: Session, skin_id: int) -> SkinShopPrice | None:

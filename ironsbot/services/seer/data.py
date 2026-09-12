@@ -46,6 +46,16 @@ class DataUnavailableError(RuntimeError):
     pass
 
 
+class PublishedDataIncompleteError(DataUnavailableError):
+    """A validated publication lacks facts required by one consumer."""
+
+    def __init__(self, component: str, *, entity_id: int | None = None) -> None:
+        self.component = component
+        self.entity_id = entity_id
+        suffix = "" if entity_id is None else f" for entity {entity_id}"
+        super().__init__(f"published data is incomplete: {component}{suffix}")
+
+
 class DataPublicationChangedError(DataUnavailableError):
     """The loaded publication changed before an operation could deliver its result."""
 

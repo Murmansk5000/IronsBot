@@ -41,7 +41,7 @@
 范围或依赖变化时必须同步说明原因。
 
 ```text
-Program  [█████□□□]  verified phases: 5/8; percentage awaits a weighted acceptance baseline
+Program  [███████□]  verified phases: 7/8; percentage awaits a weighted acceptance baseline
 Phase    [█████░░░░░]  verified work is counted only after its stated acceptance criteria pass
 Task     [██████████] completed only after code, tests, and evidence are committed
 ```
@@ -50,8 +50,8 @@ Task     [██████████] completed only after code, tests, and 
 
 ## 本轮验证（2026-09-12）
 
-总任务 `[█████□□□]`：Phase 0、1、2、3、5 已验收，当前为 5/8；本次 Phase 5
-关闭依据见该阶段的整体审计记录。Phase 4、6、7 继续进行，不按阶段数推算整体百分比。
+总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
+对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
 下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
 
 - 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
@@ -238,9 +238,9 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 1 | `completed` | 身份/权限/冷却/订阅/限流/通知与状态 API 均使用类型化身份；旧身份转换仅在离线 CLI；迁移异常与私有扩展契约均已验收，见 2026-09-05 closure Spec | 后续身份调用必须沿用 core refs；不得恢复旧列读取或私聊身份猜测 | 真实 QQ Official 已接入 |
 | Phase 2 | `completed` | 内置插件已采用标准 NoneBot TOML 清单、`PluginMetadata`、`PluginContribution`、安装上下文和唯一 `CommandCatalog`；`d9215799` 将安装 API 从 `runtime` 收进 `core.plugin_install`，并以公开 `PlayerLineupExtensionContext` 注册私有动作、解析发布数据阵容快照；`2b0442b0` 与私有库 `64dba01` 已将阵容资源、最终图片缓存和 HTML 渲染迁到 `PlayerLineupRenderPort`；本次 `PlayerLineupQueryPort` 已收口无头请求、配额、错误语义与公共玩家格式化，`PlayerLineupCacheFactory` 已收口缓存迁移、读写和 SQLite 实现。私有运行包对公共 `services` / `integrations` 的导入审计为零。公共 13 项、私有 20 项本轮针对性测试通过 | 后续新扩展复用同一 install/context/command 契约；不得重建第二套插件发现或装配入口 | 所有外部扩展均已随当前公开契约验证 |
 | Phase 3 | `completed` | OneBot 出站统一由 `OneBotOutboundMessenger` 实现核心 `OutboundMessenger` 端口；旧 `OneBotDelivery`、数值 target 模型和测试夹具均已删除。管理通知、活动提醒、定时消息、幸运橱窗、战队资源和 B 站动态均统一走 `ProactiveMessageDelivery` | 后续只允许在 `integrations/onebot` 增加真实平台转换；新业务不得重新引入数值 target 或批量投递对象 | QQ Official 已接入 |
-| Phase 4 | `in_progress` | 资源准备、确定性文档内容键、部分 SeerAPI 效果事实，以及全部现有最终图渲染入口的请求级 L3 早期命中已验证；已发布素材使用 v2 immutable repository revision | 各 renderer 验证完整/缺图/失败的消费行为及版本绑定，用有效 release 完成 consumer smoke；上游补图不作为消费者阶段门 | 渲染数据发布契约完成 |
+| Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
-| Phase 6 | `in_progress` | 新内容分类状态已不再猜测旧索引 | 逐项审计并删除剩余隐式 fallback、配置兼容和伪成功结果，且以错误语义测试证明 | 错误语义收口完成 |
+| Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
 | Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
@@ -705,6 +705,23 @@ SeerAPI。机器人通过发布事实取得 PNG 对应关系，复用素材下�
 不能把缺图伪报为完整。Phase 5 已并行进行，4/8 表示四个已验收阶段，不是它尚未开始。
 
 **删除条件：** 运行时 SWF 转换、renderer 数据库读取和文本关联猜测全部删除。
+
+**Phase 4 关闭审计（2026-09-12）：** SeerAPI `95cd80b` 在新内容索引和 Flash 坐骑
+后处理完成后运行最终发布验收：当前 SQLModel 表与构建期生成表共同定义唯一生产端
+必需集合，先执行 `PRAGMA integrity_check`，再写入有序物理表清单以及表、索引、触发器
+DDL 指纹。IronsBot 在内存原子换版前验证契约版本、稳定最小表、全部声明表和复算指纹；
+清单损坏、指纹损坏、声明表被删除或列定义变化均不会替换当前有效快照。消费端不复制
+完整 151 表名单，避免生产 schema 演进形成第二权威。
+
+完整后处理候选库验收为 151 表、`integrity_check=ok`，schema 指纹
+`f0bbb8302368b62c6dbac946bec2d0c0f3e9a49d086b33ad612b59ad03b2444b`；此前同一候选库
+七类真实消费 `7 passed`，覆盖属性、竞技池、专家池、精灵资料、投票、精灵榜和私有
+阵容。本次最终契约专项生产端 `3 passed`、消费端 `21 passed`；SeerAPI 全量首轮
+`310 passed`，唯一 GitHub 下载连接中断项单独重跑通过。更新指纹后的真实属性消费已
+通过数据库装载并进入素材下载，随后因 GitHub 连接断开停止；这不属于 schema 契约失败，
+正常 PNG 和恢复行为由此前七类矩阵覆盖。Ruff、BasedPyright、compileall 和 diff 检查
+通过。36 个官方 Flash 坐骑 URL 返回 404 继续保留为生产端 pending，不伪报完整，也不
+作为消费阶段门。Phase 4 据此标为 `completed`；没有 push、线上 release 或真实 QQ 投递。
 
 **消费端素材失败回复（2026-09-12）：** 精灵资料查询将 `ImageSourceError` 转为
 明确的素材获取失败回复，保留精灵名称/ID 并标记 `complete=False`。头像/立绘缺失
@@ -1353,6 +1370,19 @@ Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是�
 
 ### Phase 6 — 兜底、配置和错误语义
 
+**群星牌发布字段严格读取（2026-09-12）：** 群星牌卡牌、角色、属性和赛季场地
+repository 不再把损坏的 JSON 对象或数字字段静默改成空记录/`0`。缺表、空发布和字段
+格式损坏分别返回明确错误；合法的官方 `0` 保持原值。真实候选库的 580 张卡牌和
+10 条属性记录已核对所需数字字段均为整数。群星牌、场地和新内容组合回归
+`93 passed`，Ruff、BasedPyright 通过；无命令、TOML、schema、QQ 身份或展示变化。
+
+**发布数字与载荷通用契约（2026-09-12）：** 将群星牌局部整数校验收口为
+`core.value_coercion.require_int`，并复用于群星牌、圣域和新增内容快照。布尔值、
+非整数浮点数、损坏字符串及错误结构不再被转换成 `0`、`未知` 或完整预览；合法的
+整数、整数字符串和整数浮点表示保持原值。新增内容在准备不可变渲染输入时统一转换为
+`PublishedDataIncompleteError`，不会进入 renderer 或写入完整图片缓存。该边界只校验
+发布事实，不涉及 QQ 号、@、绑定或平台身份能力；相关平台项按最终平台阶段延期。
+
 **属性关系缺失语义（2026-09-12）：** 删除属性克制计算中缺少官方关系时静默采用
 `1.0` 的默认值。发布数据关系表不完整时现在抛出带攻击/防御属性 ID 的领域错误，
 查询服务记录诊断并返回“属性克制数据不完整”；不调用 renderer，也不写最终图片
@@ -1371,6 +1401,60 @@ Phase 6 切片完成，缓存准入/新鲜度策略和真实发布验收仍是�
 跳过项均需显式真实发布素材。Ruff、BasedPyright、compileall 和 diff 检查通过。
 生产代码净删除 39 行，无新模块、依赖、配置或镜像内容。仍需整体审计其他隐式
 成功 fallback，Phase 6 保持 `in_progress`，总进度保持 5/8。
+
+**精灵发布事实严格读取（2026-09-12）：** 删除精灵资料仓库对专属效果、来源、
+魂印顺序、魂印 PNG、展示校正、道具价格和伙伴表读取失败时返回空集合的兼容路径；
+也删除旧价格列探测、旧伙伴字段倒置及机器人侧“微光秘境/共振晶体”名称修正。
+SeerAPI 候选产物已经直接发布规范名称和强化前后描述，消费者只接受当前 schema。
+发布表 SQL 失败统一转换为带精灵 ID 的 `PublishedDataIncompleteError`，查询明确回复“精灵资料
+数据不完整”，标记 `complete=False`，不调用 renderer、不写完整图片缓存；真正的
+空查询结果仍保持为空。
+
+精灵、魂印、专属效果和价格相关回归 `47 passed`；公共全量
+`3112 passed, 7 skipped`，私有扩展 `42 passed, 1 skipped`。使用本地候选发布库的
+萨尔蒙（3549）真实消费链路 `1 passed`，覆盖 SQL、官方 PNG、原生渲染、缓存复用、
+OneBot 编码和受限平台模拟上传。Ruff、BasedPyright、compileall 和 diff 检查通过；
+生产代码净减少，无新模块、依赖、配置或素材。发布加载器目前仍只前置验证 schema
+版本与元数据表，按类别声明必需业务表的契约仍需在 Phase 4/6 后续统一设计，不能
+通过恢复运行时空结果来掩盖。Phase 6 保持 `in_progress`，总进度保持 5/8。
+
+**刻印角数事实错误语义（2026-09-12）：** `mintmark_quality` 查询失败不再返回空
+映射。仓库将 SQL 故障转换为 `PublishedDataIncompleteError`，服务记录完整异常并向
+用户明确回复“刻印角数数据不完整”；普通属性榜也不会再带着缺失角数继续生成结果。
+真正存在但没有匹配记录的空映射仍保留原有业务语义。专项 `18 passed`，Ruff、
+BasedPyright 和 diff 检查通过；无新配置、依赖、数据库或 QQ 身份改动。
+
+**发布数据错误接口收口（2026-09-12）：** 精灵资料、刻印角数和构建期 Flash 座驾
+PNG 统一使用 `PublishedDataIncompleteError(component, entity_id)`，删除两个领域专用
+异常及 Flash 旧数据库缺表时只记录一次 warning、随后返回 `None` 的进程级兼容状态。
+座驾 PNG 表缺失现在与“表存在但该座驾没有 PNG”严格区分：前者记录异常并返回不完整
+结果，后者仍可显示“官方图片暂未上线”。新内容渲染也不再把缺表伪装成无图片。
+相关精灵、刻印、装备、新内容专项 `89 passed`；Ruff、BasedPyright、compileall 和
+diff 检查通过。该接口只表达发布事实完整性，不涉及平台或 QQ 身份。
+
+皮肤详情价格读取随后接入同一接口：`pet_skin` 确实不存在仍表示未找到皮肤，
+`skin_shop_price` / `skin_store_price` 或关联 schema 故障则返回保留已取得立绘的
+`complete=False` 回复，并明确标注价格数据不完整，不再静默显示成“没有售价”。
+皮肤仓库与查询专项 `19 passed`，Ruff、BasedPyright 和 diff 检查通过。
+
+**发布元数据严格验证（2026-09-12）：** schema 版本通过后，`api_metadata`
+行、素材 manifest 范围 JSON、仓库、revision 或 manifest revision 损坏时，
+加载器不再静默返回“未知版本/无可用素材”，而是拒绝候选发布并保留
+上一份有效快照。`DatabaseManager.register()` 创建的全空内存占位库仍明确表示
+“尚未加载”，不与损坏发布混淆。数据库生命周期专项 `18 passed`，Ruff、
+BasedPyright、compileall 和 diff 检查通过；无 QQ 身份、配置、依赖或数据表变更。
+
+**纯缓存榜单时间语义（2026-09-12）：** 额度耗尽后的榜单玩家查询现在与
+其他玩家详情一样输出严格“获取时间”。过期名次与缓存的未上榜证明
+不再看起来像当前实时结论；旧名次作为在线定位坐标的行为保持不变。
+榜单玩家与缓存策略专项 `30 passed`，Ruff、BasedPyright 和 diff 检查通过。
+
+**新增内容详情完整性（2026-09-12）：** 同一不可变发布中，新增内容索引
+引用的精灵、技能、皮肤、刻印、套装、部件、座驾、称号或群星牌详情
+缺失时，不再生成带“暂无官方简介”的伪完整图片。数据异常统一转为
+`PublishedDataIncompleteError`，图片菜单停止并由现有上层返回可信的索引文本；
+仅素材文件缺失时仍显示“官方图片暂未上线”并且不写最终缓存。新内容、
+数据版本和发布生命周期相关专项 `119 passed`，Ruff、BasedPyright 和 diff 检查通过。
 
 **赛季读取失败隔离（2026-09-12）：** target 错误语义。移除
 `SeerDatabase.peak_season_start()` 的全异常转 None：未加载数据库显式报不可用，
@@ -1500,6 +1584,21 @@ SQLAlchemy 读取故障保留 cause 和日志；仅实际无赛季记录仍返�
 双重停止，明确区分未完同分段与已观察到的短页/低分边界。
 153 项相关测试及定向类型、Ruff、编译、diff 通过；未重复全量回归。
 未增加模块、库、配置或请求。局部证据不替代整体阶段验收，进度保持 4/8。
+
+**Phase 6 整体验收（2026-09-12）：** 逐项复核配置模型、Seer 发布集成、缓存降级、
+后台任务边界和用户可见部分结果。配置只接受目标字段；发布数据库由 SeerAPI 在最终
+后处理后写入完整表清单和 DDL 指纹，机器人在原子替换前重算验证。发布字段统一使用
+无损整数和严格布尔标志，损坏 JSON、错误结构、未知新增内容分类/变更类型、缺表及
+查询故障均明确失败，不再转换成 `0`、空集合、`未知` 或完整图片缓存。
+
+Seer 发布集成层的宽异常捕获只保留协议错误码的人类说明查询；该辅助查询失败会记录
+日志并保留调用方已有的原始错误码。AST 架构测试固定这一个许可点，防止 repository
+重新加入“异常即空数据”。外部图片缺失、官方预告链接、网络发送失败、后台任务隔离和
+已标注获取时间的缓存结果属于明确的可观察降级，不是发布事实 fallback。QQ 号、直接
+@、绑定等目标平台可能无法表达的能力按平台延期规则留到 Phase 7 末尾，不阻塞本阶段。
+
+最终公共全量回归 `3138 passed, 7 skipped`；跳过项均要求显式真实发布素材。Ruff、
+BasedPyright、compileall、差异检查及发布数据架构守卫通过。Phase 6 关闭，总进度 7/8。
 
 ### Phase 7 — 未来平台验收
 

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
+from ironsbot.core.value_coercion import require_int
 from ironsbot.integrations.seer_data.new_content_repository import (
     NewContentIndex,
     NewContentIndexRepositoryError,
@@ -164,7 +165,7 @@ class NewContentService:
         try:
             with self._data.query(load_new_content_index) as index:
                 return _snapshot_from_index(index)
-        except NewContentIndexRepositoryError as error:
+        except (NewContentIndexRepositoryError, TypeError, ValueError) as error:
             raise NewContentIndexUnavailableError from error
 
     def require_snapshot(self, expected: NewContentSnapshot) -> None:
@@ -179,7 +180,7 @@ def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: P
 
     change = "修改" if item.change_kind == "modified" else "新增"
     if item.category == "achievement":
-        point = int(item.payload.get("point", 0))
+        point = require_int(item.payload.get("point", 0), field="achievement.point")
         titles = item.payload.get("titles", [])
         title_text = f"｜称号：{titles[0].get('name', '')}" if titles else ""
         return f"{change}｜{item.entity_id}｜{point} 点{title_text}"
@@ -207,10 +208,15 @@ def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: P
         return f"{change}｜{item.entity_id}｜{kind}"
     if item.category == "autocard_sanctuary_effect":
         sanctuary = str(item.payload.get("sanctuary_name", "")).strip()
-        sanctuary = sanctuary or f"圣域 {int(item.payload.get('sanctuary_id', 0))}"
+        sanctuary_id = require_int(
+            item.payload.get("sanctuary_id", 0), field="sanctuary.id"
+        )
+        sanctuary = sanctuary or f"圣域 {sanctuary_id}"
         pet_name = str(item.payload.get("sanctuary_pet_name", "")).strip()
         pet = f"｜精灵王：{pet_name}" if pet_name else ""
-        unlock_round = int(item.payload.get("unlock_round", 0))
+        unlock_round = require_int(
+            item.payload.get("unlock_round", 0), field="sanctuary.unlock_round"
+        )
         phase = "基础圣域" if unlock_round == 0 else f"第 {unlock_round} 回合祝印"
         return f"{change}｜{sanctuary}{pet}｜{phase}"
     return f"{change}｜{item.entity_id}"
@@ -219,12 +225,7 @@ def format_new_content_item_description(item: NewContentItem) -> str:  # noqa: P
 def _format_peak_pool_limit(value: object) -> str:
     if value is None:
         return "不限"
-    if not isinstance(value, int | float | str):
-        return "未知"
-    try:
-        return f"限{int(value)}"
-    except (TypeError, ValueError):
-        return "未知"
+    return f"限{require_int(value, field='peak_pool.limit')}"
 
 
 def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
@@ -232,7 +233,9 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
     for row in index.items:
         category = row.category
         if category not in NEW_CONTENT_CATEGORIES:
-            continue
+            raise ValueError(category)
+        if row.change_kind not in {"added", "modified"}:
+            raise ValueError(row.change_kind)
         items.append(
             NewContentItem(
                 category=category,  # type: ignore[arg-type]
@@ -240,14 +243,14 @@ def _snapshot_from_index(index: NewContentIndex) -> NewContentSnapshot:
                 name=row.name,
                 sort_value=row.sort_value,
                 payload=row.payload,
-                change_kind="modified" if row.change_kind == "modified" else "added",
+                change_kind=row.change_kind,  # type: ignore[arg-type]
             )
         )
     category_states: list[NewContentCategoryState] = []
     for row in index.category_states:
         category = row.category
         if category not in NEW_CONTENT_CATEGORIES:
-            continue
+            raise ValueError(category)
         category_states.append(
             NewContentCategoryState(
                 category=category,  # type: ignore[arg-type]

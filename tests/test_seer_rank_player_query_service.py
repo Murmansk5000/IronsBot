@@ -1,9 +1,11 @@
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.core.time import TZ_CN
 from ironsbot.services.seer import rank_player_query
 from ironsbot.services.seer.local_rank import LocalRankService
 from ironsbot.services.seer.local_rank_models import LocalRankSummary
@@ -20,6 +22,7 @@ PLAYER_ID = 123456
 ACHIEVEMENT_SCORE = 5000
 CURRENT_PEAK_SCORE = 300033
 RANK_POSITION = 42
+CACHED_AT = 1_700_000_000.0
 
 
 class FakeGame:
@@ -74,13 +77,14 @@ def test_rank_player_query_uses_cached_fact_without_live_game() -> None:
                 nick="缓存玩家",
                 score=ACHIEVEMENT_SCORE,
                 rank_index=41,
-                fetched_at=0.0,
+                fetched_at=CACHED_AT,
             ),
             RankLookupResult(
                 title="成就点数",
                 score_name="点",
                 rank=RANK_POSITION,
                 score=ACHIEVEMENT_SCORE,
+                fetched_at=CACHED_AT,
                 searched_limit=RANK_POSITION,
                 queried=False,
             ),
@@ -98,8 +102,12 @@ def test_rank_player_query_uses_cached_fact_without_live_game() -> None:
 
     assert result is not None
     assert result.lookup.rank == RANK_POSITION
+    cached_time = datetime.fromtimestamp(CACHED_AT, tz=TZ_CN).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     assert result.message == (
         "📊【成就点数榜玩家查询】\n"
+        f"获取时间：{cached_time}\n"
         "米米号：123456（缓存玩家）\n"
         "成就点数：5000点｜全服第42"
     )
