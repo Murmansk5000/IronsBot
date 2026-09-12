@@ -15,9 +15,6 @@ if TYPE_CHECKING:
 
 API_BASE = "https://api.cnb.cool"
 CNB_CONFIG_REQUIRED_ERROR = "启用 CNB 图床时必须配置 token 和 cnb_repo"
-FIXED_IMAGE_ROOT = Path(__file__).resolve().parent / "assets" / "sendpic"
-
-
 class SendpicBackendProvider:
     def __init__(
         self,
@@ -31,11 +28,8 @@ class SendpicBackendProvider:
         self._token = cnb_token
         self._repo = cnb_repo
         self._local = LocalBackend(local_root)
-        self._builtin = LocalBackend(FIXED_IMAGE_ROOT)
 
     def __call__(self, kind: str) -> ImageBackend:
-        if kind == "builtin":
-            return self._builtin
         if kind == "local":
             return self._local
         if kind == "cnb" and self._token and self._repo:
