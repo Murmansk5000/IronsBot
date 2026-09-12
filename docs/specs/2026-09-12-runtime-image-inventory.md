@@ -186,3 +186,13 @@ resolved final digest and layer inventory for every publication. At the audited
 2026-09-13 manifests, the amd64 compressed slim base is about 45.05 MiB versus
 45.75 MiB for Trixie, but the 0.70 MiB difference is secondary to matching the
 builder and runtime ABI.
+
+The candidate image now has a pre-publication directory budget gate. It records
+the same isolated `du` inventory used for diagnosis and rejects `/app` above
+8 MiB, Python `site-packages` above 128 MiB, or `/usr/share/fonts` above 24 MiB.
+These are intentionally separate budgets: deployer content cannot hide inside
+the application layer, a dependency increase cannot be mistaken for font growth,
+and font changes must preserve the explicit two-weight contract. Evidence is
+uploaded even when the gate fails, and registry login remains after the gate.
+Shell tests cover each exact boundary and each independent overflow; actual Linux
+values still require the first candidate CI run.

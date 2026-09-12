@@ -71,6 +71,53 @@ python() { "$WORKFLOW_TEST_PYTHON" "$@"; }
     )
 
 
+def _run_candidate_budget(
+    tmp_path: Path,
+    *,
+    app_kib: int,
+    site_packages_kib: int,
+    fonts_kib: int,
+) -> subprocess.CompletedProcess:
+    step = next(
+        step
+        for step in _steps()
+        if step["name"] == "Enforce runtime candidate size budgets"
+    )
+    script = tmp_path / "candidate-budget.sh"
+    script.write_text(
+        """docker() {
+    printf '%s\t/app\n' "$BUDGET_TEST_APP_KIB"
+    printf '%s\t/usr/local/lib/python3.10/site-packages\n' \
+        "$BUDGET_TEST_SITE_PACKAGES_KIB"
+    printf '%s\t/usr/share/fonts\n' "$BUDGET_TEST_FONTS_KIB"
+}
+"""
+        + step["run"],
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        [_bash(), "--noprofile", "--norc", "-e", "-o", "pipefail", script.name],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": ".",
+            "GITHUB_SHA": "a" * 40,
+            "MAX_APP_KIB": str(step["env"]["MAX_APP_KIB"]),
+            "MAX_SITE_PACKAGES_KIB": str(step["env"]["MAX_SITE_PACKAGES_KIB"]),
+            "MAX_FONTS_KIB": str(step["env"]["MAX_FONTS_KIB"]),
+            "BUDGET_TEST_APP_KIB": str(app_kib),
+            "BUDGET_TEST_SITE_PACKAGES_KIB": str(site_packages_kib),
+            "BUDGET_TEST_FONTS_KIB": str(fonts_kib),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=20,
+    )
+
+
 @pytest.mark.parametrize(
     "repository", ["ghcr.io/example/bot", "localhost:5000/example/bot"]
 )
@@ -157,6 +204,66 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Bold"' in smoke["run"]
     assert 'test "$regular" != "$bold"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
+
+
+def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> None:
+    steps = _steps()
+    smoke = next(
+        step for step in steps if step["name"] == "Smoke test runtime candidate"
+    )
+    budget = next(
+        step
+        for step in steps
+        if step["name"] == "Enforce runtime candidate size budgets"
+    )
+    upload = next(
+        step
+        for step in steps
+        if step["name"] == "Upload candidate size evidence"
+    )
+    login = next(
+        step for step in steps if step["name"] == "Login to GitHub Container Registry"
+    )
+
+    assert (
+        steps.index(smoke)
+        < steps.index(budget)
+        < steps.index(upload)
+        < steps.index(login)
+    )
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["if-no-files-found"] == "warn"
+    assert "--network none --entrypoint sh" in budget["run"]
+    assert "ironsbot-candidate-runtime-size-kib.txt" in budget["run"]
+
+
+@pytest.mark.parametrize(
+    ("app_kib", "site_packages_kib", "fonts_kib", "expected_ok"),
+    [
+        (8192, 131072, 24576, True),
+        (8193, 1, 1, False),
+        (1, 131073, 1, False),
+        (1, 1, 24577, False),
+    ],
+)
+def test_candidate_size_budget_shell(
+    tmp_path: Path,
+    app_kib: int,
+    site_packages_kib: int,
+    fonts_kib: int,
+    *,
+    expected_ok: bool,
+) -> None:
+    result = _run_candidate_budget(
+        tmp_path,
+        app_kib=app_kib,
+        site_packages_kib=site_packages_kib,
+        fonts_kib=fonts_kib,
+    )
+
+    assert (result.returncode == 0) is expected_ok, result.stdout + result.stderr
+    inventory = tmp_path / "ironsbot-candidate-runtime-size-kib.txt"
+    assert inventory.is_file()
 
 
 def test_runtime_uses_two_weight_cn_subset_fonts() -> None:

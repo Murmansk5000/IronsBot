@@ -134,6 +134,33 @@ jobs:
                       python -c "from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()"
                     '
 
+            - name: Enforce runtime candidate size budgets
+              shell: bash
+              env:
+                  MAX_APP_KIB: "8192"
+                  MAX_SITE_PACKAGES_KIB: "131072"
+                  MAX_FONTS_KIB: "24576"
+              run: |
+                  inventory="$RUNNER_TEMP/ironsbot-candidate-runtime-size-kib.txt"
+                  docker run --rm --network none --entrypoint sh \
+                    "ironsbot-ci:${GITHUB_SHA}" \
+                    -c 'du -sk /app; du -sk /usr/local/lib/python*/site-packages; du -sk /usr/share/fonts' \
+                    | tee "$inventory"
+                  app_kib="$(awk '$2 == "/app" {sum += $1} END {print sum + 0}' "$inventory")"
+                  site_packages_kib="$(awk '$2 ~ /\/site-packages$/ {sum += $1} END {print sum + 0}' "$inventory")"
+                  fonts_kib="$(awk '$2 == "/usr/share/fonts" {sum += $1} END {print sum + 0}' "$inventory")"
+                  test "$app_kib" -le "$MAX_APP_KIB" || { echo "application payload exceeds ${MAX_APP_KIB} KiB: ${app_kib} KiB" >&2; exit 1; }
+                  test "$site_packages_kib" -le "$MAX_SITE_PACKAGES_KIB" || { echo "runtime dependencies exceed ${MAX_SITE_PACKAGES_KIB} KiB: ${site_packages_kib} KiB" >&2; exit 1; }
+                  test "$fonts_kib" -le "$MAX_FONTS_KIB" || { echo "font payload exceeds ${MAX_FONTS_KIB} KiB: ${fonts_kib} KiB" >&2; exit 1; }
+
+            - name: Upload candidate size evidence
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: candidate-size-${{ github.sha }}
+                  path: ${{ runner.temp }}/ironsbot-candidate-runtime-size-kib.txt
+                  if-no-files-found: warn
+
             - name: Login to GitHub Container Registry
               uses: docker/login-action@v2
               with:
