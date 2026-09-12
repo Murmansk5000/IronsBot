@@ -50,6 +50,7 @@ class _Images:
         self.requests: list[tuple[str, str]] = []
 
     async def fetch(self, kind: str, key: str, **_kwargs: object) -> bytes:
+        assert _kwargs.get("fallback") is False
         self.requests.append((kind, key))
         return f"{kind}:{key}".encode()
 

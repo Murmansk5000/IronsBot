@@ -55,7 +55,10 @@ async def _load_assets(
         target_icon_ids = (target.id,)
     icon_ids = tuple(sorted(table_icon_ids | {id_ for id_ in target_icon_ids if id_}))
     values = await asyncio.gather(
-        *(images.fetch("element_type", str(icon_id)) for icon_id in icon_ids)
+        *(
+            images.fetch("element_type", str(icon_id), fallback=False)
+            for icon_id in icon_ids
+        )
     )
     icon_by_id = {
         icon_id: to_data_uri(value)

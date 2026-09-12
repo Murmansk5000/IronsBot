@@ -42,6 +42,7 @@ class FakeImages:
         self._data = data
 
     async def fetch(self, *_args: object, **_kwargs: object) -> bytes:
+        assert _kwargs.get("fallback") is False
         assert self._data.session_active is False
         return b"image"
 
@@ -154,3 +155,35 @@ async def test_optional_failure_is_retried_before_final_cache(
     assert await run() == b"rendered"
     assert images.calls == calls
     assert rendered_count == completed_renders
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_kind", ["pet_head", "pet_body"])
+async def test_mandatory_failure_never_renders_or_caches(
+    monkeypatch: pytest.MonkeyPatch,
+    missing_kind: str,
+) -> None:
+    data, cache = FakeData(), FakeCache()
+    monkeypatch.setattr(
+        pet_info_renderer, "load_pet_info_snapshot", lambda *_: _snapshot()
+    )
+
+    class Images:
+        async def fetch(self, kind: str, _key: str, *, fallback: bool) -> bytes:
+            assert fallback is False
+            if kind == missing_kind:
+                raise ImageSourceError
+            return b"image"
+
+    async def unexpected_render(**_kwargs: Any) -> bytes:
+        pytest.fail("mandatory asset failure must stop before rendering")
+
+    with pytest.raises(ImageSourceError):
+        await pet_info_renderer.render_published_pet_info(
+            cast("RenderCache", cache),
+            cast("SeerDataAccess", data),
+            cast("SeerImageSource", Images()),
+            cast("HtmlTemplateRenderer", unexpected_render),
+            1,
+        )
+    assert not cache.values

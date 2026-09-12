@@ -91,11 +91,17 @@ async def _load_assets(
         )
     )
     mandatory = await asyncio.gather(
-        images.fetch("pet_head", str(snapshot.pet.resource_id)),
-        images.fetch("pet_body", str(snapshot.pet.resource_id)),
-        *(images.fetch("element_type", str(type_id)) for type_id in type_ids),
-        images.fetch("element_type", "prop"),
-        *(images.fetch("mintmark", str(mintmark_id)) for mintmark_id in mintmark_ids),
+        images.fetch("pet_head", str(snapshot.pet.resource_id), fallback=False),
+        images.fetch("pet_body", str(snapshot.pet.resource_id), fallback=False),
+        *(
+            images.fetch("element_type", str(type_id), fallback=False)
+            for type_id in type_ids
+        ),
+        images.fetch("element_type", "prop", fallback=False),
+        *(
+            images.fetch("mintmark", str(mintmark_id), fallback=False)
+            for mintmark_id in mintmark_ids
+        ),
     )
     optional = await asyncio.gather(
         *(fetch_optional_image(images, "item", str(item_id)) for item_id in item_ids),

@@ -98,3 +98,26 @@ writes. Pet-info completeness stays in the integration, not the presentation
 model. These tests use fake image/render ports; no browser or deployment claim.
 Other adapters' mandatory image fallback behaviour is outside this batch's
 verified scope and still requires review before complete Phase 4 acceptance.
+
+## Mandatory Material Policy
+
+The HTTP source can return dummyimage bytes when fallback=True, and the asset
+store cannot distinguish those bytes from real art. Target: immutable final
+renderers request mandatory materials with fallback=False, using the existing
+port policy rather than adding placeholder recognition or a second wrapper.
+Apply to pet-info, the shared peak pet-image loader and type matchup; new-content
+already requests strict materials. Missing mandatory art aborts before rendering
+or final-cache writes; optional degradation policy above remains unchanged.
+Existing asset cache keys distinguish fallback modes, so strict requests cannot
+reuse placeholder entries written by the old mode. Verify with the actual HTTP
+adapter and asset store against a controlled failing/recovering HTTP transport.
+
+Verified: 26 HTTP/store/renderer cases passed in 13.23 seconds; the final pet
+adapter module passed 4 cases including two added mandatory-failure cases in
+2.05 seconds. Ruff and targeted BasedPyright passed (0 errors/warnings).
+Tests use actual HttpSeerImageSource and SeerAssetStore with MockTransport:
+permissive placeholder bytes are seeded, strict loading rejects the failure,
+then recovery loads real bytes and the next request hits the asset cache.
+Pet-head/body failure stops before HTML rendering or final-cache writes.
+Shared peak pool/vote/rank and matchup fakes require fallback=False explicitly.
+No network deployment, full-suite or complete Phase 4 claim.
