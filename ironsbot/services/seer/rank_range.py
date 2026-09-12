@@ -4,6 +4,7 @@ from typing import Any
 
 from ironsbot.core.time import ObservationTime
 from ironsbot.services.seer.rank_models import RankPageResult, RankRangeResult
+from ironsbot.services.seer.rank_pagination import RankPageSequence
 from ironsbot.services.seer.rank_ranges import MAX_RANK_INDEX, validate_rank_offsets
 
 
@@ -30,6 +31,7 @@ async def fetch_rank_range_result(  # noqa: PLR0913
     items: list[Any] = []
     observation = ObservationTime()
     from_cache = True
+    sequence = RankPageSequence()
 
     for page_start in range(first_page_start, last_page_start + 1, page_size):
         page_result = await fetch_rank_page_result(
@@ -40,6 +42,7 @@ async def fetch_rank_range_result(  # noqa: PLR0913
             end=min(page_start + page_size - 1, MAX_RANK_INDEX),
             use_cache=use_cache,
         )
+        sequence.include((int(item.id), int(item.score)) for item in page_result.items)
         observation.include(page_result.fetched_at)
         from_cache = from_cache and page_result.from_cache
         for offset, item in enumerate(page_result.items):

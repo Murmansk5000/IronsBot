@@ -1,4 +1,8 @@
+import pytest
+
 from ironsbot.services.seer.rank_pagination import (
+    RankPageConflictError,
+    RankPageSequence,
     rank_page_size,
     rank_page_start,
     rank_window_page_starts,
@@ -7,6 +11,23 @@ from ironsbot.services.seer.rank_pagination import (
 MIN_PAGE_SIZE = 1
 MID_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
+
+
+@pytest.mark.parametrize("following", [[(1, 8)], [(3, 11)], [(3, 8), (3, 7)]])
+def test_sequence_rejects_duplicates_and_score_inversions(
+    following: list[tuple[int, int]],
+) -> None:
+    sequence = RankPageSequence()
+    sequence.include([(1, 10), (2, 9)])
+    with pytest.raises(RankPageConflictError):
+        sequence.include(following)
+
+
+def test_sequence_accepts_ties_and_empty_terminal_page() -> None:
+    sequence = RankPageSequence()
+    sequence.include([(1, 10), (2, 9)])
+    sequence.include([(3, 9), (4, 0)])
+    sequence.include([])
 
 
 def test_rank_page_size_clamps_protocol_limit() -> None:

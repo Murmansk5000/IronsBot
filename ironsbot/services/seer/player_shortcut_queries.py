@@ -286,14 +286,17 @@ async def _fetch_peak_message(  # noqa: PLR0913
         observation.include(peak_result.fetched_at)
     for mode, error in peak_result.mode_errors:
         logger.warning("米米号详情字段获取失败：巅峰%s基础数据：%s", mode, error)
-    peak_sub_key = rank.current_peak_sub_key()
+    peak_sub_key = None
     scores = calculate_player_peak_scores(
         unity_peak,
         available_modes=peak_result.available_modes,
     )
     peak_progress = RankSummaryProgress()
-    rank_summary = await fetch_partial_rank_summary(
-        rank.fetch_peak_summary(
+
+    async def fetch_season_ranks() -> PeakSeasonRankSummary:
+        nonlocal peak_sub_key
+        peak_sub_key = rank.current_peak_sub_key()
+        return await rank.fetch_peak_summary(
             game,
             player_id,
             standard_score=scores.standard,
@@ -301,7 +304,10 @@ async def _fetch_peak_message(  # noqa: PLR0913
             expert_score=scores.expert,
             progress=peak_progress,
             anchor_only=anchor_only,
-        ),
+        )
+
+    rank_summary = await fetch_partial_rank_summary(
+        fetch_season_ranks(),
         progress=peak_progress,
         build_partial=lambda results, failure: PeakSeasonRankSummary.from_results(
             results,
