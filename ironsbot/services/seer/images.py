@@ -97,6 +97,8 @@ class PreparedImageRequest:
 
     identity: str
     fetch: Callable[[], Awaitable[bytes]]
+    # Presentation-only fallback; its bytes must never enter the asset cache.
+    fallback: Callable[[], bytes] | None = None
 
 
 class SeerImageRequestSource(Protocol):
