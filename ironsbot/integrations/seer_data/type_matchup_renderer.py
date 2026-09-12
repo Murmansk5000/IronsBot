@@ -31,12 +31,13 @@ async def render_type_matchup(
 ) -> bytes:
     """Render one matchup after cache lookup and shared asset retrieval."""
     request_key = render_request_cache_key(_CACHE_CATEGORY, matchup.cache_key)
-    if cached := cache.get(_CACHE_CATEGORY, request_key):
+    cache_entry = cache.entry(_CACHE_CATEGORY, request_key)
+    if cached := cache_entry.get():
         return cached
     assets = await _load_assets(images, matchup)
     document = present_type_matchup(matchup, assets)
     rendered = await render_type_matchup_document(render_html, document)
-    cache.put(_CACHE_CATEGORY, request_key, rendered)
+    cache_entry.put(rendered)
     return rendered
 
 
@@ -55,7 +56,10 @@ async def _load_assets(
         target_icon_ids = (target.id,)
     icon_ids = tuple(sorted(table_icon_ids | {id_ for id_ in target_icon_ids if id_}))
     values = await asyncio.gather(
-        *(images.fetch("element_type", str(icon_id)) for icon_id in icon_ids)
+        *(
+            images.fetch("element_type", str(icon_id), fallback=False)
+            for icon_id in icon_ids
+        )
     )
     icon_by_id = {
         icon_id: to_data_uri(value)
