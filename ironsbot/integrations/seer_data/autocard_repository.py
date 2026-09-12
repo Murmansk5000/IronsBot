@@ -15,6 +15,18 @@ if TYPE_CHECKING:
 
 _MISSING_TABLE_MESSAGE = "数据库缺少群星牌表，请先更新 IronsBot 数据库。"
 _EMPTY_DATA_MESSAGE = "数据库没有群星牌数据，请先更新 IronsBot 数据库。"
+_INVALID_DATA_MESSAGE = "数据库中的群星牌数据格式无效，请更新 IronsBot 数据库。"
+_CARD_INTEGER_FIELDS = (
+    "id",
+    "type",
+    "nature",
+    "level",
+    "cost",
+    "attack",
+    "health",
+    "compose",
+    "picID",
+)
 _JSON_TABLE_QUERIES = {
     "autocard_card": text("SELECT raw_json FROM autocard_card ORDER BY id"),
     "autocard_nature": text("SELECT raw_json FROM autocard_nature ORDER BY id"),
@@ -54,15 +66,19 @@ def load_autocard_dataset(session: Session) -> AutocardDataset:
         cards = _load_json_rows(session, "autocard_card")
         roles = _load_role_rows(session)
         nature_rows = _load_json_rows(session, "autocard_nature")
-    except (SQLAlchemyError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except SQLAlchemyError as error:
         raise RuntimeError(_MISSING_TABLE_MESSAGE) from error
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError(_INVALID_DATA_MESSAGE) from error
     if not cards and not roles:
         raise RuntimeError(_EMPTY_DATA_MESSAGE)
     return AutocardDataset(
         cards=cards,
         roles=roles,
         natures={
-            _as_int(row.get("id")): str(row.get("name") or "")
+            _required_int(row.get("id"), field="autocard_nature.id"): str(
+                row.get("name") or ""
+            )
             for row in nature_rows
         },
     )
@@ -77,8 +93,15 @@ def _load_json_rows(
     for row in rows:
         mapping = row._mapping if hasattr(row, "_mapping") else None
         item = json.loads(str(mapping["raw_json"] if mapping is not None else row[0]))
-        if isinstance(item, dict):
-            values.append(item)
+        if not isinstance(item, dict):
+            raise TypeError(table_name)
+        if table_name == "autocard_card":
+            for field in _CARD_INTEGER_FIELDS:
+                item[field] = _required_int(
+                    item.get(field),
+                    field=f"autocard_card.{field}",
+                )
+        values.append(item)
     return tuple(values)
 
 
@@ -105,17 +128,25 @@ def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
         )
         item = json.loads(str(columns["raw_json"]))
         if not isinstance(item, dict):
-            continue
+            raise TypeError("autocard_role_raw")
         item.update(
             {
-                "id": _as_int(columns["id"]),
+                "id": _required_int(columns["id"], field="autocard_role.id"),
                 "name": str(columns["name"]),
                 "desc": str(columns["description"]),
-                "health": _as_int(columns["health"]),
+                "health": _required_int(
+                    columns["health"], field="autocard_role.health"
+                ),
                 "skillTxt": str(columns["skill_desc"]),
-                "nature": _as_int(columns["element_type_id"]),
-                "picID": _as_int(columns["pic_id"]),
-                "skillID": _as_int(columns["skill_id"]),
+                "nature": _required_int(
+                    columns["element_type_id"], field="autocard_role.element_type_id"
+                ),
+                "picID": _required_int(
+                    columns["pic_id"], field="autocard_role_raw.pic_id"
+                ),
+                "skillID": _required_int(
+                    columns["skill_id"], field="autocard_role_raw.skill_id"
+                ),
                 "skillName": str(columns["skill_name"]),
                 "skillUpgrade": str(columns["skill_upgrade"]),
             }
@@ -124,10 +155,10 @@ def _load_role_rows(session: Session) -> tuple[dict[str, Any], ...]:
     return tuple(values)
 
 
-def _as_int(value: object) -> int:
-    if not isinstance(value, int | float | str):
-        return 0
+def _required_int(value: object, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
+        raise TypeError(field)
     try:
         return int(value)
-    except (TypeError, ValueError):
-        return 0
+    except (TypeError, ValueError) as error:
+        raise ValueError(field) from error
