@@ -103,7 +103,12 @@ async def _is_player_id_query(
         resolver=dependencies.player_id_resolver,
     )
     if arg and not arg.isdecimal() and target.player_id is None:
-        return False
+        context = message_input_context(event)
+        resolver = dependencies.player_id_resolver
+        if resolver is None or not resolver.has_known_reference(
+            arg, context.message.actor, context.message.conversation
+        ):
+            return False
     state[PLAYER_TARGET_RESOLUTION_KEY] = target
     state[PLAYER_QUERY_IS_EXPLICIT_KEY] = bool(arg)
     return True

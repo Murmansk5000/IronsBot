@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
-from ironsbot.services.operations.request_feedback import send_request_feedback
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
@@ -18,6 +17,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
@@ -375,6 +375,36 @@ def test_player_query_keeps_out_of_range_numeric_targets_for_validation() -> Non
     assert isinstance(target, PlayerIdResolution)
     assert target.player_id is None
     assert target.error == "未找到该米米号或已开放的玩家别名。"
+
+
+def test_known_player_alias_with_member_at_reports_conflict(monkeypatch: Any) -> None:
+    service = SimpleNamespace(default_player_id=lambda _actor: None)
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            _ACCOUNT_PLAYER_ID if reference == "示例玩家" else None
+        ),
+        service.default_player_id,
+    )
+    dependencies = player.PlayerCommandDependencies(
+        cast("Any", service), cast("Any", object()), player_id_resolver=resolver,
+    )
+    event = group_message_event(
+        message=Message(
+            [MessageSegment.text("米米号示例玩家"), MessageSegment.at(456789)]
+        )
+    )
+    state: dict[str, object] = {}
+    assert asyncio.run(player._is_player_id_query(dependencies, event, state))
+    target = state[player.PLAYER_TARGET_RESOLUTION_KEY]
+    assert isinstance(target, PlayerIdResolution)
+    assert target.player_id is None
+    assert target.error is not None
+    assert "不能同时使用" in target.error
+    send = AsyncMock()
+    monkeypatch.setattr(player, "finish_event_reply", send)
+    matcher = cast("Any", object())
+    asyncio.run(player.validate_player_id(dependencies, matcher, event, state))
+    send.assert_awaited_once_with(matcher, event, target.error)
 
 
 def test_player_shortcut_reports_an_unknown_account_suffix() -> None:
