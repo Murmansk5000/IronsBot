@@ -199,3 +199,26 @@ is not a real-platform/pixel acceptance test. Other renderer callbacks may
 receive data prepared earlier by their service, so migrating them requires
 moving the snapshot boundary before that preparation, not merely wrapping an
 already-built view model at render time.
+
+## Type-Matchup Preparation Boundary
+
+Target: the type-query service accepts a context-managed reader/renderer pair.
+Its dataset load, pure matchup calculation and rendering use the same bound
+session from composition. Close the repository SQL session before awaiting
+rendering, but retain the engine lease until rendering completes or fails.
+Name/alias selection still yields request IDs; no ORM-selected row is used to
+build the image. Reuse SeerRenderSessions and the existing renderer, with no
+new global/context-local state or per-feature snapshot implementation.
+Test search/custom/select paths and failure/cancellation cleanup, with a
+different global dataset to catch accidental use of the unbound query source.
+
+Verified: type service/rendering, publication and application-catalog tests
+28 passed in 16.40s (2 existing ORM warnings). The 3-by-3 search/select/custom
+and success/error/cancellation matrix uses an empty global dataset and a valid
+bound dataset, asserts the render scope remains open after an await while its
+SQL query context is closed, and checks scope cleanup on every outcome. Ruff,
+targeted BasedPyright (0 errors/warnings), compileall and diff checks passed.
+The service is 9 lines smaller; composition supplies the existing snapshot
+factory rather than a feature-specific snapshot implementation. Alias/name
+selection still produces only request IDs; render facts use the bound reader.
+No TOML, dependencies, private extension or production deployment changed.

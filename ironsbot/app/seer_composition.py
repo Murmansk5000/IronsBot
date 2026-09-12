@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
@@ -89,6 +90,8 @@ from ironsbot.services.team.resource import TeamResourceService
 from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
@@ -101,8 +104,10 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.operations.headless_session import HeadlessSessionFactory
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.images import SeerImageSource
     from ironsbot.services.seer.render_coordinator import RenderCoordinator
+    from ironsbot.services.seer.type_query import TypeMatchupRenderer
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +203,19 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
                 inputs.images,
                 render_coordinator.render,
                 pet_id,
+            )
+
+    @contextmanager
+    def type_render_session() -> Iterator[tuple[SeerDataReader, TypeMatchupRenderer]]:
+        with render_sessions.open() as inputs:
+            yield (
+                inputs.data,
+                partial(
+                    render_type_matchup,
+                    inputs.cache,
+                    inputs.images,
+                    render_coordinator.render,
+                ),
             )
 
     weekly_preview_images = CachedWeeklyPreviewImageSource(
@@ -349,12 +367,7 @@ def build_seer_components(  # noqa: PLR0913 - composition boundary
             EquipmentQueryService(seer_database, images),
             TypeQueryService(
                 seer_database,
-                partial(
-                    render_type_matchup,
-                    render_cache,
-                    images,
-                    render_coordinator.render,
-                ),
+                type_render_session,
             ),
             BattleEffectQueryService(seer_database, images),
             PetQueryService(
