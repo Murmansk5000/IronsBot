@@ -109,3 +109,24 @@ Ruff, compileall and diff checks passed. No schema/configuration change, new
 storage module, production mutation, main merge or push. Tests cover numeric
 invalid dates, not arbitrary corrupt SQLite values or atomic dynamic multi-page
 snapshots. Overall verified phases remain 4/8.
+
+## Page Read Snapshot (2026-09-12)
+
+A deterministic real-WAL interleaving reproduced a torn cache read: the first
+SELECT returned the old page timestamp; another connection committed a refresh;
+the second SELECT returned the new player. The resulting response mislabeled a
+new observation with an old timestamp. The regression failed before the change.
+
+Page reads now start one deferred read transaction before the metadata SELECT.
+Both SELECTs share a committed SQLite snapshot, while the WAL writer can finish
+its update. The existing connection context commits/closes the read transaction
+on return and rolls back on exceptions. Production changes are two lines in the
+existing repository, with no new module, schema, cache or configuration.
+
+Interleaving tests cover replacement, empty-to-full and full-to-empty refreshes.
+Short/empty pages retain their existing incomplete-cache behavior; the next
+connection sees the newly committed data. 166 focused rank/cache/refresh/size
+tests passed; targeted Ruff, BasedPyright and compileall passed. No full suite or
+production deployment was performed for this narrow repository change. This
+does not establish a shared snapshot across independent official page requests
+or certify the full dynamic multi-page gate. Verified phases remain 4/8.

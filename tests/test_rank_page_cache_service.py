@@ -1,5 +1,7 @@
 import sqlite3
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Barrier
@@ -8,6 +10,7 @@ import pytest
 
 from ironsbot.integrations.storage import rank_page_cache as storage
 from ironsbot.integrations.storage.rank_page_cache import SqliteRankPageCache
+from ironsbot.integrations.storage.sqlite import SqliteDatabase
 
 MOVED_RANK_INDEX = 100
 MOVED_SCORE = 1001
@@ -35,6 +38,70 @@ def build_cache(path: Path) -> SqliteRankPageCache:
         ttl_seconds=3600,
         allow_stale=True,
     )
+
+
+@pytest.mark.parametrize("old_ids,new_ids", [([100], [200]), ([], [200]), ([100], [])])
+def test_page_metadata_and_items_share_snapshot_during_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    old_ids: list[int],
+    new_ids: list[int],
+) -> None:
+    path = tmp_path / "rank.sqlite"
+    reader = build_cache(path)
+    writer = build_cache(path)
+    writer.save(
+        key=1,
+        sub_key=2,
+        start=0,
+        end=0,
+        items=[RankItem(user_id, "old", 999) for user_id in old_ids],
+        fetched_at=FETCHED_AT,
+    )
+    connect = SqliteDatabase.connect
+    refreshed: list[bool] = []
+    failures: list[Exception] = []
+
+    def refresh_between_reads(statement: str) -> None:
+        if "SELECT f.user_id," not in statement or refreshed:
+            return
+        refreshed.append(True)
+        try:
+            writer.save(
+                key=1,
+                sub_key=2,
+                start=0,
+                end=0,
+                items=[RankItem(user_id, "new", 1001) for user_id in new_ids],
+                fetched_at=FETCHED_AT + 60,
+            )
+        except Exception as error:  # noqa: BLE001 - SQLite swallows trace callback exceptions
+            failures.append(error)
+
+    @contextmanager
+    def concurrent_connect(database: SqliteDatabase) -> Iterator[sqlite3.Connection]:
+        with connect(database) as connection:
+            if database is reader._database:
+                connection.set_trace_callback(refresh_between_reads)
+            yield connection
+
+    monkeypatch.setattr(SqliteDatabase, "connect", concurrent_connect)
+    page = reader.page(key=1, sub_key=2, start=0, end=0)
+    assert refreshed == [True]
+    assert failures == []
+    if old_ids:
+        assert page is not None
+        assert page.fetched_at == FETCHED_AT
+        assert [item.id for item in page.items] == old_ids
+    else:
+        assert page is None
+    updated = build_cache(path).page(key=1, sub_key=2, start=0, end=0)
+    if new_ids:
+        assert updated is not None
+        assert updated.fetched_at == FETCHED_AT + 60
+        assert [item.id for item in updated.items] == new_ids
+    else:
+        assert updated is None
 
 
 @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -1.0, FETCHED_AT + 60])

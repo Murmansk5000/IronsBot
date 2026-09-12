@@ -135,6 +135,8 @@ class SqliteRankPageCache:
             return None
         try:
             with self._database.connect() as conn:
+                # The timestamp and rows must describe the same committed snapshot.
+                conn.execute("BEGIN")
                 row = conn.execute(
                     """
                     SELECT fetched_at, expected_count
