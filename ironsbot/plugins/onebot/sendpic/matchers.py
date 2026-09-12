@@ -1,25 +1,38 @@
-from nonebot.adapters import Bot, Message, MessageTemplate
+from nonebot.adapters import Bot, MessageTemplate
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
-from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
-from nonebot.params import CommandArg
 from nonebot.rule import Rule
+from nonebot.typing import T_State
 from nonebot_plugin_saa import Image
 
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import PicConfig
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
+from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
     ImageNotFoundError,
-    InvalidImageArgumentError,
+    IndexedImageRequest,
     SendpicService,
 )
 
 IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录。"
+INDEXED_IMAGE_REQUEST_KEY = "_indexed_image_request"
+
+
+def _match_indexed(
+    service: SendpicService,
+    command_id: str,
+    event: MessageEvent,
+    state: T_State,
+) -> bool:
+    parsed = service.parse_indexed(event.get_plaintext())
+    if parsed is None or parsed.command_id != command_id:
+        return False
+    state[INDEXED_IMAGE_REQUEST_KEY] = parsed
+    return True
 
 
 def create_single_image_command(
@@ -77,6 +90,7 @@ def create_image_command(
         ),
         aliases=set(config.aliases),
         rule=Rule(lambda event: event_is_feature_allowed(features, event, "image"))
+        & Rule(bind(_match_indexed, service, config.id))
         & explicit_command(),
     )
     template = config.message_template
@@ -84,13 +98,11 @@ def create_image_command(
     async def _handler(
         m: Matcher,
         bot: Bot,
-        arg: Message = CommandArg(),
+        state: T_State,
     ) -> None:
-        arg_str = arg.extract_plain_text()
+        request: IndexedImageRequest = state[INDEXED_IMAGE_REQUEST_KEY]
         try:
-            result = await service.fetch_indexed(config, arg_str)
-        except InvalidImageArgumentError:
-            raise FinishedException from None
+            result = await service.fetch_indexed(config, request.index)
         except ImageIndexOutOfRangeError as e:
             await m.finish(str(e))
 

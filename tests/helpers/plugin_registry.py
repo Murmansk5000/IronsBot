@@ -220,6 +220,8 @@ def build_test_plugin_registry(
             ),
             team_audit=SimpleNamespace(start=_noop_bot_connect),
             team_resource=SimpleNamespace(
+                enabled=config.seer.team_resource.enabled,
+                query_commands=tuple(config.seer.team_resource.commands),
                 register_jobs=lambda _scheduler: None,
             ),
             local_rank=object(),
@@ -240,7 +242,6 @@ def build_test_plugin_registry(
                     season_countdown=_noop_query,
                 ),
                 countermark_rank=SimpleNamespace(
-                    parse_command=lambda _text: None,
                     query=lambda _command: "",
                 ),
                 autocard=SimpleNamespace(
@@ -409,6 +410,7 @@ def build_test_plugin_registry(
         rank_help_plugin_contribution(
             features=runtime.features,
             commands=resources.commands,
+            player_id_resolver=resources.player_id_resolver,
         ),
         pet_config_plugin_contribution(
             service=resources.pet_config,

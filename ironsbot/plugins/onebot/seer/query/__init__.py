@@ -108,7 +108,10 @@ def plugin_contribution(
             group="seer",
             order=10,
         ),
-        commands=seer_command_contracts(resources.player_id_resolver),
+        commands=seer_command_contracts(
+            resources.player_id_resolver,
+            image_commands=resources.sendpic.exact_command_texts,
+        ),
         install=partial(_install, settings=settings, resources=resources),
         hooks=PluginHooks(
             startup=(

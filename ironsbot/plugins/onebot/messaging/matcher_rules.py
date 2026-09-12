@@ -13,7 +13,7 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.permissions import can_manage_group_event
 
 if TYPE_CHECKING:
-    from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.messaging.service import MessagingService, ReplyInteraction
 
 MESSAGE_ACTION_KEY = "_message_action"
 
@@ -23,6 +23,7 @@ def match_message_command(
     state: T_State,
     *,
     messaging: MessagingService,
+    interaction: ReplyInteraction,
 ) -> bool:
     if not isinstance(event, (PrivateMessageEvent, GroupMessageEvent)):
         return False
@@ -31,6 +32,7 @@ def match_message_command(
         message.text,
         actor=message.actor,
         conversation=message.conversation,
+        interaction=interaction,
     )
 
     if action is not None:

@@ -18,12 +18,11 @@ from ironsbot.integrations.onebot.feature_policy import (
     feature_rule,
 )
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.rules import explicit_command, startswith_or_endswith
-from ironsbot.plugins.onebot.seer.query.commands.query_rules import (
-    not_exact_command,
-    not_rank_query,
+from ironsbot.integrations.onebot.rules import affix_command, explicit_command
+from ironsbot.services.pet_config_commands import (
+    pet_config_command_contracts,
+    pet_config_input,
 )
-from ironsbot.services.pet_config_commands import pet_config_command_contracts
 
 __plugin_meta__ = PluginMetadata(
     name="精灵配置",
@@ -63,7 +62,9 @@ def plugin_contribution(
                 enabled=config.enabled,
             ),
         ),
-        commands=pet_config_command_contracts(enabled=config.enabled),
+        commands=pet_config_command_contracts(
+            enabled=config.enabled, image_commands=image_command_texts
+        ),
         install=partial(
             install,
             service=service,
@@ -105,12 +106,7 @@ def install(
     matcher = registry.on_message(
         policy=CommandPolicy.command("pet_config", help_ids=("pet_config.query",)),
         rule=feature_rule(features, Feature.PET_CONFIG.value)
-        & startswith_or_endswith(
-            prefixes=("精灵配置", "配置"),
-            suffixes=("配置",),
-        )
-        & not_rank_query
-        & not_exact_command(image_command_texts)
+        & affix_command(pet_config_input(image_command_texts))
         & explicit_command(),
         priority=registry.priority("pet_config"),
         block=True,

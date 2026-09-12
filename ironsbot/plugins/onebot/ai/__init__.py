@@ -104,10 +104,10 @@ def _capture_ai_prompt(
     ):
         return False
 
-    prompt = event.get_plaintext().strip()
+    prompt = event.get_plaintext()
     if _is_claimed_private_command(commands, features, event, prompt):
         return False
-    state[AI_CHAT_PROMPT_KEY] = prompt
+    state[AI_CHAT_PROMPT_KEY] = prompt.strip()
     return True
 
 
