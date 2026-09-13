@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
+    from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.data_sync import DataSyncService
@@ -51,10 +52,10 @@ class ApplicationResources:
     headless: HeadlessService
     server_status: ServerStatusService
     subscriptions: PushUnsubscribeStore
+    outbound_messenger: PlatformOutboundMessenger
     bilibili: BilibiliService
     bilibili_login: BilibiliLoginService
     bilibili_monitor: BilibiliMonitorService
-    bilibili_content_renderer: Callable[[dict[str, Any], str | None], Any | None]
     lucky_skin_window: LuckySkinWindowService
     messaging: MessagingService
     sendpic: SendpicService

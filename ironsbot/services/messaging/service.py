@@ -95,6 +95,16 @@ class MessagingService:
 
         return self._features
 
+    @property
+    def portable_command_actions(self) -> tuple[MessageReplyAction, ...]:
+        """Return enabled commands without OneBot-only mention targets."""
+
+        return tuple(
+            action
+            for action in self._config.commands
+            if action.enabled and not action.at_user_ids
+        )
+
     def schedule_mentions(
         self,
         index: int,

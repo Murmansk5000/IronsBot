@@ -2,6 +2,8 @@
 ARG PYTHON_VERSION=3.11
 FROM python:${PYTHON_VERSION}-bookworm AS requirements_stage
 
+ARG IRONSBOT_RUNTIME_EXTRA=""
+
 WORKDIR /wheel
 
 RUN python -m pip install --user uv
@@ -10,7 +12,13 @@ COPY ./pyproject.toml \
   ./uv.lock \
   /wheel/
 
-RUN python -m uv export --frozen --no-dev --format requirements.txt --output-file requirements.txt --no-hashes
+RUN set -eu; \
+    extra_args=""; \
+    if [ -n "$IRONSBOT_RUNTIME_EXTRA" ]; then \
+        extra_args="--extra $IRONSBOT_RUNTIME_EXTRA"; \
+    fi; \
+    python -m uv export --frozen --no-dev $extra_args \
+        --format requirements.txt --output-file requirements.txt --no-hashes
 
 # uv.lock, including any declared override, is the dependency authority. The
 # export is complete, so pip must build exactly those artifacts without solving
