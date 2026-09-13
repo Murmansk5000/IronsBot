@@ -295,3 +295,60 @@ async def test_lineup_dates_data_before_bookkeeping_and_persistent_cache(
     PlayerLineupCacheServices().open(path).put(PLAYER_ID, cached)
     clock[0] += 3600
     assert PlayerLineupCacheServices().open(path).get(PLAYER_ID) == cached
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failures", "expected_error_fragment", "expected_calls"),
+    [(1, "", 2), (2, "查询超时", 2)],
+)
+async def test_lineup_packet_retry_is_bounded_and_preserves_result(
+    caplog: pytest.LogCaptureFixture,
+    failures: int,
+    expected_error_fragment: str,
+    expected_calls: int,
+) -> None:
+    caplog.set_level("WARNING")
+    game = SimpleNamespace(
+        user_id=PLAYER_ID,
+        get_user_info=AsyncMock(return_value=SimpleNamespace(nick="tester")),
+        operations=SimpleNamespace(track=lambda *_args, **_kwargs: nullcontext()),
+    )
+    calls = 0
+
+    async def fetch_packet(
+        client: Any, player_id: int, *, timeout_seconds: float
+    ) -> bytes:
+        nonlocal calls
+        assert client is not None and player_id == PLAYER_ID
+        assert timeout_seconds == 1
+        calls += 1
+        if calls <= failures:
+            raise TimeoutError
+        return b"packet"
+
+    query = PlayerLineupQueryServices(
+        headless=cast(
+            "Any",
+            SimpleNamespace(
+                get_game=lambda: game,
+                mark_available=AsyncMock(),
+            ),
+        ),
+        error_message=cast("Any", object()),
+    )
+    result = await query.query(
+        player_id=PLAYER_ID,
+        actor=ActorRef(Platform.ONEBOT, "100"),
+        conversation=ConversationRef(Platform.ONEBOT, "private", "100"),
+        timeout_seconds=1,
+        fetch_packet=fetch_packet,
+    )
+
+    assert calls == expected_calls
+    if expected_error_fragment:
+        assert expected_error_fragment in result.error
+    else:
+        assert not result.error
+        assert result.payload == b"packet"
+    assert "attempt=1/2 error_type=TimeoutError" in caplog.text
