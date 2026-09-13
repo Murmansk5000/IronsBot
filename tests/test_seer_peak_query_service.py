@@ -8,11 +8,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from sqlalchemy import event as sql_event
+from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.core import time
 from ironsbot.integrations.seer_data.peak_repository import (
     PeakPeriodTimes,
+    load_peak_master_pool_snapshots,
     load_peak_pet_snapshots,
     load_peak_pool_snapshots,
     load_peak_vote_snapshots,
@@ -207,6 +209,39 @@ def test_peak_pet_repository_returns_only_requested_detached_fields() -> None:
     assert pets == {7: PeakPetSnapshot(7, "pet", 1007, 4)}
 
 
+def test_master_pool_repository_uses_existing_cost_relation() -> None:
+    engine = create_engine("sqlite://")
+    with Session(engine) as session:
+        session.execute(
+            text(
+                "CREATE TABLE peak_cost_pool (id INTEGER PRIMARY KEY, cost INTEGER, "
+                "start_time TEXT, end_time TEXT)"
+            )
+        )
+        session.execute(
+            text(
+                "CREATE TABLE pet (id INTEGER PRIMARY KEY, name TEXT, "
+                "resource_id INTEGER, type_id INTEGER, peak_cost_pool_id INTEGER)"
+            )
+        )
+        session.execute(
+            text(
+                "INSERT INTO peak_cost_pool VALUES "
+                "(35, 35, '2026-09-04 10:00:00', '2026-11-27 10:00:00'), "
+                "(20, 20, '2026-09-04 10:00:00', '2026-11-27 10:00:00')"
+            )
+        )
+        session.execute(text("INSERT INTO pet VALUES (5000, '圣灵谱尼', 45000, 2, 35)"))
+
+        pools = load_peak_master_pool_snapshots(session)
+
+    engine.dispose()
+    assert [pool.count for pool in pools] == [35, 20]
+    assert pools[0].pets == (PeakPetSnapshot(5000, "圣灵谱尼", 45000, 2),)
+    assert pools[1].pets == ()
+    assert pools[0].end_time.isoformat() == "2026-11-27T10:00:00"
+
+
 @pytest.mark.parametrize("table", ["peak_pool", "peak_expert_pool", "peak_pool_vote"])
 def test_peak_repository_batches_pool_members_without_loading_types(table: str) -> None:
     engine = create_engine("sqlite://")
@@ -341,7 +376,15 @@ def _service(
 
 
 @pytest.mark.asyncio
-async def test_peak_pool_query_renders_with_progress() -> None:
+@pytest.mark.parametrize(
+    ("expert", "label"),
+    ((False, "竞技池"), (True, "专家禁用池")),
+)
+async def test_peak_pool_query_renders_with_progress(
+    *,
+    expert: bool,
+    label: str,
+) -> None:
     data = FakeData()
     data.query_result = (_pool_snapshot(),)
     rendered: dict[str, Any] = {}
@@ -351,14 +394,14 @@ async def test_peak_pool_query_renders_with_progress() -> None:
         progress.append(message)
 
     result = await _service(data, FakeHeadless(), rendered).pool(
-        expert=False,
+        expert=expert,
         progress=report,
     )
 
     assert result.image == b"pool"
     assert progress == ["正在生成图片..."]
     assert rendered["pool_session_open"] is False
-    assert rendered["pool"][1] == "竞技池 / 2026-07-01 ~ 2026-07-31"
+    assert rendered["pool"][1] == f"{label} / 有效期：2026-07-01 ~ 2026-07-31"
     assert rendered["pool"][0] == (
         PeakPoolSnapshot(
             id=1,
@@ -367,6 +410,26 @@ async def test_peak_pool_query_renders_with_progress() -> None:
             end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
             pets=(),
         ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_master_pool_query_reuses_pool_renderer() -> None:
+    data = FakeData()
+    data.query_result = (_pool_snapshot(),)
+    rendered: dict[str, Any] = {}
+    progress: list[str] = []
+
+    async def report(message: str) -> None:
+        progress.append(message)
+
+    result = await _service(data, FakeHeadless(), rendered).master_pool(report)
+
+    assert result.image == b"pool"
+    assert progress == ["正在生成图片..."]
+    assert rendered["pool_session_open"] is False
+    assert rendered["pool"][1] == (
+        "大师池 / 精灵竞技点 / 有效期：2026-07-01 ~ 2026-07-31 00:00"
     )
 
 
@@ -503,6 +566,8 @@ async def test_peak_vote_fetches_only_active_pools(
     assert result.image == b"vote"
     assert called_subkeys == [202]
     assert len(rendered["vote"]) == 1
+    assert rendered["vote"][0].title == "限制级"
+    assert rendered["vote"][0].period == "7月20日18点 - 7月20日20点"
 
 
 @pytest.mark.asyncio
