@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ironsbot.core.outbound import RemoteImagePart, TextPart
 from ironsbot.integrations.seer_data.autocard_repository import (
     AutocardDataset,
     load_autocard_dataset,
@@ -253,6 +254,22 @@ def test_autocard_group_shows_identical_variant_fields_once() -> None:
     assert len(entry.image_urls) == VARIANT_IMAGE_COUNT
 
 
+def test_autocard_outbound_controls_images_without_rebuilding_text() -> None:
+    entry = _service().search("群星牌布布花").entry
+
+    assert entry is not None
+    complete = entry.to_outbound()
+    primary = entry.to_outbound(include_additional_images=False)
+    text_only = entry.to_outbound(include_images=False)
+
+    assert (
+        sum(isinstance(part, RemoteImagePart) for part in complete.parts)
+        == VARIANT_IMAGE_COUNT
+    )
+    assert sum(isinstance(part, RemoteImagePart) for part in primary.parts) == 1
+    assert text_only.parts == (TextPart(entry.text),)
+
+
 def test_autocard_raw_selection_keeps_single_card_for_new_content() -> None:
     entry = _service().select(AutocardPromptValue("card", CARD_ID))
 
@@ -274,9 +291,7 @@ def test_invalid_autocard_compose_relation_is_not_grouped(
 ) -> None:
     card = {"id": 1, "name": "测试卡牌", "compose": 0, "composeTo": 999}
 
-    index = _build_autocard_index(
-        AutocardDataset(cards=(card,), roles=(), natures={})
-    )
+    index = _build_autocard_index(AutocardDataset(cards=(card,), roles=(), natures={}))
 
     assert index.base_id_by_card_id == {}
     assert index.awakened_id_by_base_id == {}
