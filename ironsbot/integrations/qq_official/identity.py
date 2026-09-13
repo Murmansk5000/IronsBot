@@ -18,19 +18,25 @@ from ironsbot.core.platform import (
 )
 
 
-def qq_official_incoming_message(event: QQMessageEvent) -> IncomingMessageRef:
+def qq_official_incoming_message(
+    event: QQMessageEvent,
+    *,
+    account_id: str,
+) -> IncomingMessageRef:
     if isinstance(event, GroupMessageCreateEvent):
         conversation_id = event.group_openid or event.group_id
         conversation = ConversationRef(
             Platform.QQ_OFFICIAL,
             "group",
             conversation_id,
+            account_id=account_id,
         )
         actor = ActorRef(
             Platform.QQ_OFFICIAL,
             event.author.member_openid,
             "member",
             conversation_id,
+            account_id=account_id,
         )
         group_role = event.author.member_role
         direct_mentions = tuple(
@@ -39,6 +45,7 @@ def qq_official_incoming_message(event: QQMessageEvent) -> IncomingMessageRef:
                 mention.member_openid,
                 "member",
                 conversation_id,
+                account_id=account_id,
             )
             for mention in event.mentions or ()
             if isinstance(mention, GroupMentionUser)
@@ -46,8 +53,17 @@ def qq_official_incoming_message(event: QQMessageEvent) -> IncomingMessageRef:
             and not mention.bot
         )
     elif isinstance(event, C2CMessageCreateEvent):
-        actor = ActorRef(Platform.QQ_OFFICIAL, event.author.user_openid)
-        conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+        actor = ActorRef(
+            Platform.QQ_OFFICIAL,
+            event.author.user_openid,
+            account_id=account_id,
+        )
+        conversation = ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            actor.id,
+            account_id=account_id,
+        )
         group_role = None
         direct_mentions = ()
     else:
