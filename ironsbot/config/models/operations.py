@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from typing_extensions import Self
 
 from ironsbot.core.time import (
-    normalized_daily_time_csv,
-    normalized_daily_times,
+    normalized_daily_time_csv_with_seconds,
+    normalized_daily_times_with_seconds,
 )
 
 INVALID_RESTART_TIME_ERROR = (
@@ -202,7 +202,7 @@ class RestartConfig(BaseModel):
     @field_validator("times", mode="before")
     @classmethod
     def normalize_restart_times(cls, value: object) -> str:
-        return normalized_daily_time_csv(
+        return normalized_daily_time_csv_with_seconds(
             value,
             error_message=INVALID_RESTART_TIME_ERROR,
         )
@@ -215,7 +215,7 @@ class RestartConfig(BaseModel):
 
     @property
     def parsed_restart_times(self) -> list[str]:
-        return normalized_daily_times(
+        return normalized_daily_times_with_seconds(
             self.times,
             error_message=INVALID_RESTART_TIME_ERROR,
         )
@@ -249,14 +249,14 @@ class HeadlessNoticeConfig(BaseModel):
     @field_validator("reconnect_check_times", mode="before")
     @classmethod
     def normalize_reconnect_times(cls, value: object) -> str:
-        return normalized_daily_time_csv(
+        return normalized_daily_time_csv_with_seconds(
             value,
             error_message=INVALID_RECONNECT_TIME_ERROR,
         )
 
     @property
     def parsed_reconnect_check_times(self) -> list[str]:
-        return normalized_daily_times(
+        return normalized_daily_times_with_seconds(
             self.reconnect_check_times,
             error_message=INVALID_RECONNECT_TIME_ERROR,
         )

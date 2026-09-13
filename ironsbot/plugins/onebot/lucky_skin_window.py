@@ -30,7 +30,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import scheduled_clock_time
 from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
 from ironsbot.integrations.onebot.feature_policy import (
     event_is_feature_allowed,
@@ -563,7 +563,10 @@ def _register_schedule(
     if not service.enabled:
         return
     config = service.config
-    daily_hour, daily_minute = daily_time_parts(config.time)
+    daily_time = scheduled_clock_time(
+        config.time,
+        error_message="invalid lucky skin window time",
+    )
     JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
         service.clear_previous_days,
         "cron",
@@ -573,13 +576,10 @@ def _register_schedule(
         second=0,
         timezone=config.timezone,
     )
-    JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
+    JobRegistry(scheduler, prefix=_JOB_PREFIX).add_daily(
         service.send_daily_notifications,
-        "cron",
+        clock_time=daily_time,
         job_id="daily",
-        hour=daily_hour,
-        minute=daily_minute,
-        second=0,
         timezone=config.timezone,
     )
 

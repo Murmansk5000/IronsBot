@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from ironsbot.core.commands import command_text_matches
+from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
@@ -350,13 +351,14 @@ class TeamResourceService:
             return
         jobs = JobRegistry(scheduler, prefix=TEAM_RESOURCE_JOB_PREFIX)
         for time_text in self._config.times:
-            hour_text, minute_text = time_text.split(":", maxsplit=1)
-            jobs.add(
+            clock_time = scheduled_clock_time(
+                time_text,
+                error_message="invalid team resource scan time",
+            )
+            jobs.add_daily(
                 self.scan,
-                "cron",
-                hour=int(hour_text),
-                minute=int(minute_text),
-                job_id=time_text.replace(":", ""),
+                clock_time=clock_time,
+                job_id=str(clock_time).replace(":", ""),
             )
 
     async def _fetch(

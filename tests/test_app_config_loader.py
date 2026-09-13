@@ -253,8 +253,8 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
         config.request_interval_seconds == DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS
     )
     assert config.request_jitter_seconds == DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS
-    assert config.active_start == "07:30"
-    assert config.active_end == "01:30"
+    assert config.active_start == "07:30:00"
+    assert config.active_end == "01:30:00"
     assert config.times == []
 
 
@@ -1350,7 +1350,7 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
         default_at_users="owner,1234567890",  # type: ignore[arg-type]
     )
 
-    assert config.times == ["08:30", "23:00"]
+    assert config.times == ["08:30:00", "23:00:00"]
     assert config.default_threshold == TEAM_RESOURCE_THRESHOLD
     assert config.default_at_users == ["owner", "1234567890"]
 

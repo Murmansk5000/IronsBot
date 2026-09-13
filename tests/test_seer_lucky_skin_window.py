@@ -83,6 +83,34 @@ EXPECTED_REQUEST = (
     351005,
     351004,
 )
+
+
+def test_lucky_skin_schedule_preserves_configured_seconds() -> None:
+    jobs: list[dict[str, object]] = []
+
+    class Scheduler:
+        def add_job(
+            self,
+            func: object,
+            trigger: str,
+            **kwargs: object,
+        ) -> None:
+            jobs.append({"func": func, "trigger": trigger, **kwargs})
+
+    service = SimpleNamespace(
+        enabled=True,
+        config=LuckySkinWindowConfig(enabled=True, time="00:02:19"),
+        clear_previous_days=lambda: None,
+        send_daily_notifications=lambda: None,
+    )
+
+    lucky_skin_window_plugin._register_schedule(
+        cast("Any", service),
+        cast("Any", Scheduler()),
+    )
+
+    assert jobs[1]["id"] == "lucky_skin_window:daily"
+    assert (jobs[1]["hour"], jobs[1]["minute"], jobs[1]["second"]) == (0, 2, 19)
 WATCH_SKIN_ID = 103
 
 

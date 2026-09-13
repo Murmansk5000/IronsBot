@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import scheduled_clock_time, second_of_day
 from ironsbot.services.operations.scheduler import JobRegistry
 
 if TYPE_CHECKING:
@@ -19,19 +19,19 @@ SEER_QUERY_JOB_PREFIX = "seer_"
 logger = logging.getLogger(__name__)
 
 
-def _minute_of_day(value: str) -> int:
-    hour_text, minute_text = value.split(":", maxsplit=1)
-    return int(hour_text) * 60 + int(minute_text)
-
-
 def _is_rank_page_refresh_active(rank_config: Any, now: datetime | None = None) -> bool:
     if not rank_config.active_start or not rank_config.active_end:
         return True
 
     current_time = now or datetime.now(timezone.utc).astimezone()
-    current = current_time.hour * 60 + current_time.minute
-    start = _minute_of_day(rank_config.active_start)
-    end = _minute_of_day(rank_config.active_end)
+    current = (
+        (current_time.hour * 60 + current_time.minute) * 60 + current_time.second
+    )
+    start = second_of_day(
+        rank_config.active_start,
+        error_message="invalid active start",
+    )
+    end = second_of_day(rank_config.active_end, error_message="invalid active end")
     if start <= end:
         return start <= current <= end
     return current >= start or current <= end
@@ -61,13 +61,11 @@ def register_local_rank_refresh_job(
     service: LocalRankService,
 ) -> None:
     config = service.config
-    hour, minute = daily_time_parts(config.time)
-    JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add(
+    clock_time = scheduled_clock_time(config.time, error_message="invalid refresh time")
+    JobRegistry(scheduler, prefix=SEER_QUERY_JOB_PREFIX).add_daily(
         _scheduled_local_rank_refresh,
-        "cron",
+        clock_time=clock_time,
         args=[headless, service],
-        hour=hour,
-        minute=minute,
         job_id="local_rank_refresh",
     )
 
@@ -126,13 +124,17 @@ def register_rank_page_refresh_jobs(
         )
 
     for refresh_time in config.times:
-        hour_text, minute_text = refresh_time.split(":", maxsplit=1)
-        registry.add(
+        clock_time = scheduled_clock_time(
+            refresh_time,
+            error_message="invalid rank page refresh time",
+        )
+        registry.add_daily(
             _scheduled_rank_page_refresh,
-            "cron",
+            clock_time=clock_time,
             args=[headless, service],
-            hour=int(hour_text),
-            minute=int(minute_text),
             jitter=config.schedule_jitter_seconds,
-            job_id=f"rank_page_refresh_{hour_text}{minute_text}",
+            job_id=(
+                "rank_page_refresh_"
+                f"{clock_time.hour:02d}{clock_time.minute:02d}{clock_time.second:02d}"
+            ),
         )
