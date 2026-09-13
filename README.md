@@ -117,10 +117,11 @@ services:
 
 ### QQ 官方机器人调试版
 
-QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。首版支持群聊
-`@机器人` 与 C2C 被动消息，开放 `帮助`、`关于`、`数据版本`、`赛季倒计时`
-和 `下周预告`；其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
-规则忽略，主动推送、QQ 号绑定和依赖数字 QQ 号的功能暂未开放。
+QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
+`@机器人` 与 C2C 被动消息，开放基础说明、赛尔数据、精灵/立绘、刻印/宝石、
+套装/部件/称号、属性/异常状态查询。查询出现多个候选项时直接发送数字选择，
+发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
+规则忽略，主动推送、跨平台账号绑定和依赖数字 QQ 号的功能暂未开放。
 
 在 `ironsbot.toml` 中启用：
 
@@ -129,7 +130,7 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。首版�
 enabled = true
 app_id = "你的 QQ 机器人 AppID"
 sandbox = false
-features = ["help", "about", "seer_data"]
+features = ["help", "about", "seer_data", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type"]
 superusers = []
 ```
 
@@ -141,7 +142,9 @@ QQ_OFFICIAL_SECRET=你的 AppSecret
 ```
 
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
-不是普通 QQ 号；日志中的 OpenID 可用于后续配置官方平台超级管理员。
+不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID
+与群成员 OpenID 不会被擅自视为同一身份。日志中的 OpenID 可用于配置官方平台
+超级管理员，跨平台身份关联必须由用户显式完成。
 
 QQ 官方适配器是可选运行组件。直接运行源码时使用：
 

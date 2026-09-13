@@ -193,7 +193,15 @@ class QQOfficialConfig(BaseModel):
     secret: str = Field(default="", exclude=True, repr=False)
     sandbox: bool = False
     features: list[str] = Field(
-        default_factory=lambda: ["help", "about", "seer_data"]
+        default_factory=lambda: [
+            "help",
+            "about",
+            "seer_data",
+            "seer_pet",
+            "seer_mintmark",
+            "seer_equipment",
+            "seer_type",
+        ]
     )
     superusers: list[str] = Field(default_factory=list)
 

@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -31,10 +32,16 @@ from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.portable_commands import build_portable_command_router
 from ironsbot.services.seer.command_contracts import seer_command_contracts
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.resources import SeerQueryResources
 
 
 class _FakeDataQueries:
@@ -53,22 +60,88 @@ class _FakePlayerIdResolver:
         return False
 
 
+class _UnusedQueryService:
+    def __getattr__(
+        self,
+        _name: str,
+    ) -> Callable[..., Awaitable[QueryResult[object]]]:
+        async def query(*_args: object, **_kwargs: object) -> QueryResult[object]:
+            return QueryResult()
+
+        return query
+
+
+class _FakePetQuery:
+    def __init__(self, *, fail_selection: bool = False) -> None:
+        self._fail_selection = fail_selection
+
+    async def search_info(self, _argument: str) -> QueryResult[int]:
+        return QueryResult(
+            choices=(
+                QueryChoice("雷伊", "70", 70),
+                QueryChoice("雷神雷伊", "2394", 2394),
+            )
+        )
+
+    async def select_info(self, pet_id: int) -> QueryResult[object]:
+        if self._fail_selection:
+            raise DataUnavailableError
+        return QueryResult(reply=QueryReply(text=f"精灵:{pet_id}"))
+
+    async def search_image(self, _argument: str) -> QueryResult[int]:
+        return QueryResult()
+
+    async def select_image(self, _pet_id: int) -> QueryResult[object]:
+        return QueryResult()
+
+
+def _fake_seer(*, pet_query: object | None = None) -> SeerQueryResources:
+    unused = _UnusedQueryService()
+    return cast(
+        "SeerQueryResources",
+        SimpleNamespace(
+            data_queries=_FakeDataQueries(),
+            pet_query=pet_query or unused,
+            mintmark=unused,
+            equipment=unused,
+            type_query=unused,
+            battle_effect=unused,
+        ),
+    )
+
+
 def _portable_catalog() -> CommandCatalog:
-    data_contract = next(
+    command_ids = {
+        "seer.data.query",
+        "seer.pet.query",
+        "seer.pet.image",
+        "seer.mintmark.query",
+        "seer.equipment.query",
+        "seer.type.query",
+    }
+    seer_contracts = tuple(
         contract
         for contract in seer_command_contracts(
             cast("PlayerIdResolver", _FakePlayerIdResolver())
         )
-        if contract.id == "seer.data.query"
+        if contract.id in command_ids
     )
     catalog = CommandCatalog()
     catalog.load(
         (
             PluginContribution(id="help", commands=help_command_contracts()),
             PluginContribution(id="about", commands=about_command_contracts()),
-            PluginContribution(id="seer_query", commands=(data_contract,)),
+            PluginContribution(id="seer_query", commands=seer_contracts),
         ),
-        known_features=("help", "about", "seer_data"),
+        known_features=(
+            "help",
+            "about",
+            "seer_data",
+            "seer_pet",
+            "seer_mintmark",
+            "seer_equipment",
+            "seer_type",
+        ),
     )
     return catalog
 
@@ -168,7 +241,7 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     router = build_portable_command_router(
         catalog=_portable_catalog(),
         about=AboutService("test"),
-        data_queries=_FakeDataQueries(),
+        seer=_fake_seer(),
         features=features,
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
@@ -190,6 +263,43 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
             conversation=conversation,
         )
         is None
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_selection", [False, True])
+async def test_portable_router_runs_scoped_query_selection(
+    *,
+    fail_selection: bool,
+) -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=QQOfficialConfig(features=["seer_pet"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(pet_query=_FakePetQuery(fail_selection=fail_selection)),
+        features=features,
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
+
+    choices = await router.dispatch(
+        "精灵雷伊",
+        actor=actor,
+        conversation=conversation,
+    )
+    assert choices is not None
+    assert "1. 雷伊" in cast("TextPart", choices.parts[0]).text
+    assert router.recognizes("2", actor=actor, conversation=conversation)
+
+    selected = await router.dispatch("2", actor=actor, conversation=conversation)
+    assert selected is not None
+    selected_text = cast("TextPart", selected.parts[0]).text
+    assert selected_text == (
+        DATABASE_UNAVAILABLE_MESSAGE if fail_selection else "精灵:2394"
     )
 
 
@@ -306,7 +416,7 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
     router = build_portable_command_router(
         catalog=_portable_catalog(),
         about=AboutService("test"),
-        data_queries=_FakeDataQueries(),
+        seer=_fake_seer(),
         features=features,
     )
 

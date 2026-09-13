@@ -73,7 +73,7 @@ def bootstrap() -> Application:
             build_portable_command_router(
                 catalog=application.resources.commands,
                 about=application.resources.about,
-                data_queries=application.resources.seer.data_queries,
+                seer=application.resources.seer,
                 features=application.resources.features,
             )
         )
