@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import sys
@@ -53,13 +54,19 @@ from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.meeting import meeting_command_contracts
+from ironsbot.services.operations.data_sync import (
+    ManualDataSyncAction,
+    ManualDataSyncOption,
+)
+from ironsbot.services.operations.data_sync_commands import data_sync_command_contracts
+from ironsbot.services.operations.docker_commands import docker_command_contracts
 from ironsbot.services.operations.server_status import ServerStatusResult
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
 from ironsbot.services.portable_commands import build_portable_command_router
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
@@ -76,6 +83,8 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.operations.data_sync import DataSyncService
+    from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -140,6 +149,52 @@ class _FakeRankAdminService:
 
     def page_status(self, command: RankPageCacheStatusCommand) -> str:
         return f"page status:{command.rank_key}"
+
+    async def cache_refresh(self, *, actor: ActorRef, progress: object) -> str:
+        del actor
+        await cast("Callable[[str], Awaitable[None]]", progress)(
+            "sample refresh start"
+        )
+        return "sample refresh done"
+
+
+class _FakeDataSyncService:
+    async def prepare_manual(
+        self,
+        *,
+        force: bool,
+        progress: object,
+    ) -> tuple[str, bool]:
+        await cast("Callable[[str], Awaitable[None]]", progress)("data check start")
+        return ("force data menu" if force else "data menu"), True
+
+    @staticmethod
+    def manual_options(*, force: bool) -> tuple[ManualDataSyncOption, ...]:
+        del force
+        return (
+            ManualDataSyncOption(
+                "1",
+                ManualDataSyncAction.SYNC_PUBLISHED,
+                "sync published",
+            ),
+        )
+
+    async def run_manual(
+        self,
+        *,
+        action: ManualDataSyncAction,
+        force: bool,
+        progress: object,
+    ) -> str:
+        del action, force
+        await cast("Callable[[str], Awaitable[None]]", progress)("data sync start")
+        return "data sync done"
+
+
+class _FakeDockerUpdateService:
+    async def check_image_update(self, *, progress: object) -> str:
+        await cast("Callable[[str], Awaitable[None]]", progress)("image check start")
+        return "image check done"
 
 
 class _FakePlayerIdResolver:
@@ -345,6 +400,7 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
     activity: bool = False,
     bilibili: bool = False,
     operations: bool = False,
+    maintenance: bool = False,
     pet_config: bool = False,
     rank_display: bool = False,
     rank_status: bool = False,
@@ -370,7 +426,15 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
         "rank.sample_peak",
     }
     if rank_status:
-        command_ids.update(("rank.sample_status", "rank.page_status"))
+        command_ids.update(
+            (
+                "rank.sample_status",
+                "rank.sample_refresh",
+                "rank.page_status",
+                "rank.page_refresh",
+                "rank.page_batch",
+            )
+        )
     if rank_display:
         command_ids.add("rank.display_limit")
     seer_contracts = tuple(
@@ -422,6 +486,19 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
                 PluginContribution(
                     id="meeting",
                     commands=meeting_command_contracts(("会议",)),
+                ),
+            )
+        )
+    if maintenance:
+        contributions.extend(
+            (
+                PluginContribution(
+                    id="db_sync",
+                    commands=data_sync_command_contracts(),
+                ),
+                PluginContribution(
+                    id="docker_update",
+                    commands=docker_command_contracts(),
                 ),
             )
         )
@@ -949,6 +1026,79 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
 
 
 @pytest.mark.asyncio
+async def test_qq_official_delivery_sends_deferred_result_after_ack() -> None:
+    event = C2CMessageCreateEvent.model_validate(
+        {
+            "id": "message-id",
+            "content": "/刷新样本",
+            "timestamp": "2026-09-14T00:00:00+08:00",
+            "author": {"id": "native-author-id", "user_openid": "opaque-user"},
+            "to_me": True,
+        }
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    lifecycle: list[str] = []
+
+    async def operation(progress: Callable[[str], Awaitable[None]]) -> str:
+        lifecycle.append("prepared")
+        await progress("started")
+        lifecycle.append("executed")
+        return "finished"
+
+    reply = await progress_operation_reply(operation)
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    assert lifecycle == ["prepared"]
+    await deliver_qq_official_reply(messenger, incoming, reply)
+
+    assert lifecycle == ["prepared", "executed"]
+    expected_calls = [
+        ("message-id", 1),
+        ("message-id", 2),
+    ]
+    assert bot.sent == len(expected_calls)
+    assert [call[3:] for call in bot.calls] == expected_calls
+
+
+@pytest.mark.asyncio
+async def test_failed_initial_delivery_cancels_deferred_operation() -> None:
+    event = C2CMessageCreateEvent.model_validate(
+        {
+            "id": "message-id",
+            "content": "/刷新样本",
+            "timestamp": "2026-09-14T00:00:00+08:00",
+            "author": {"id": "native-author-id", "user_openid": "opaque-user"},
+            "to_me": True,
+        }
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    cancelled = asyncio.Event()
+
+    async def operation(progress: Callable[[str], Awaitable[None]]) -> str:
+        try:
+            await progress("started")
+            return "must not run"
+        finally:
+            cancelled.set()
+
+    reply = await progress_operation_reply(operation)
+    bot = _FakeOfficialBot(fail=True)
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(messenger, incoming, reply)
+    await asyncio.wait_for(cancelled.wait(), timeout=1)
+
+    assert bot.sent == 1
+
+
+@pytest.mark.asyncio
 async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
@@ -1110,6 +1260,75 @@ async def test_portable_router_enforces_operational_query_access() -> None:
     assert await dispatch("/无头状态", member) is None
     assert await dispatch("/开服查询", admin) == "admin status"
     assert await dispatch("/无头状态", admin) == "instance status"
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=[], superusers=["opaque-admin"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(maintenance=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+        data_sync=cast("DataSyncService", _FakeDataSyncService()),
+        docker_update=cast("DockerUpdateService", _FakeDockerUpdateService()),
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        account_id="example-app",
+    )
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        account_id="example-app",
+    )
+
+    def context(text: str, actor: ActorRef) -> MessageInputContext:
+        return _portable_input(
+            text,
+            actor,
+            ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "private",
+                actor.id,
+                account_id="example-app",
+            ),
+        )
+
+    assert await router.dispatch(context("/更新数据", member)) is None
+    assert await router.dispatch(context("/检查更新镜像", member)) is None
+
+    check = await router.dispatch(context("/更新数据", admin))
+    assert check is not None
+    assert cast("TextPart", check.message.parts[0]).text == "data check start"
+    check.delivered()
+    assert check.follow_up is not None
+    menu = await check.follow_up()
+    assert cast("TextPart", menu.parts[0]).text == "data menu"
+
+    sync = await router.dispatch(context("1", admin))
+    assert sync is not None
+    assert cast("TextPart", sync.message.parts[0]).text == "data sync start"
+    sync.delivered()
+    assert sync.follow_up is not None
+    result = await sync.follow_up()
+    assert cast("TextPart", result.parts[0]).text == "data sync done"
+
+    image = await router.dispatch(context("/检查更新镜像", admin))
+    assert image is not None
+    assert cast("TextPart", image.message.parts[0]).text == "image check start"
+    image.delivered()
+    assert image.follow_up is not None
+    image_result = await image.follow_up()
+    assert cast("TextPart", image_result.parts[0]).text == "image check done"
 
 
 @pytest.mark.asyncio
@@ -1319,10 +1538,26 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
         return cast("TextPart", reply.message.parts[0]).text
 
     assert await dispatch("/样本情况", member) is None
+    assert await dispatch("/刷新样本", member) is None
     assert await dispatch("/榜单情况", member) is None
     assert await dispatch("/样本情况", admin) == "sample status"
     assert await dispatch("/榜单情况", admin) == "page overview"
     assert await dispatch("/榜单情况 图鉴榜", admin) == "page status:图鉴积分"
+
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        admin.id,
+        account_id="example-app",
+    )
+    refresh = await router.dispatch(
+        _portable_input("/刷新样本", admin, conversation)
+    )
+
+    assert refresh is not None
+    assert cast("TextPart", refresh.message.parts[0]).text == "sample refresh start"
+    refresh.delivery_failed()
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio

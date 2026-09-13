@@ -925,11 +925,11 @@ def test_build_rank_batch_admin_messages() -> None:
     assert build_rank_batch_start_message(
         spec,
         command,
-        item_count=20,
+        request_count=20,
         requested_count=50,
     ) == (
         "🔄 正在缓存测试榜第 1-50 名。\n"
-        "实际拿到 20 条榜单数据。\n"
+        "本次最多请求 20 条榜单数据。\n"
         "只写入全服榜单页缓存，不计入样本。\n"
         "本次按 seer.local_rank.batch_limit 只处理前 20 个。"
     )

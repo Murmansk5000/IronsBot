@@ -13,11 +13,14 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.services.portable_query_sessions import (
+    PortableMenuSpec,
+    PortableQuerySessionError,
     PortableQuerySessions,
     PortableTextInputSpec,
     QueryOperationSpec,
     build_query_operation,
 )
+from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 
 
@@ -184,3 +187,24 @@ async def test_text_input_session_claims_next_response_and_supports_exit() -> No
         ),
     )
     assert _text(await sessions.select("0", context)) == "已退出查询。"
+
+
+@pytest.mark.asyncio
+async def test_deferred_menu_result_requires_explicit_caller_support() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("member")
+
+    async def select(_value: str) -> PortableReply:
+        return PortableReply(OutboundMessage.from_text("deferred"))
+
+    sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=("value",),
+            select=select,
+            prompt=OutboundMessage.from_text("menu"),
+        ),
+    )
+
+    with pytest.raises(PortableQuerySessionError, match="was not enabled"):
+        await sessions.select("1", context)

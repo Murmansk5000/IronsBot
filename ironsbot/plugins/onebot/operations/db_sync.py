@@ -27,7 +27,7 @@ from ironsbot.integrations.onebot.matchers import (
     MatcherFactory,
     bind_async,
 )
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.operations.data_sync_commands import (
     data_sync_command_contracts,
@@ -89,7 +89,10 @@ def _is_force_manual_sync_event(event: Event) -> bool:
 def _install(registry: MatcherFactory, service: DataSyncService) -> None:
     async def handle_sync(matcher: Matcher, event: MessageEvent) -> None:
         force = _is_force_manual_sync_event(event)
-        message, should_run = await service.prepare_manual(force=force)
+        message, should_run = await service.prepare_manual(
+            force=force,
+            progress=partial(send_event_reply, matcher, event),
+        )
         if not should_run:
             await finish_event_reply(
                 matcher,
@@ -128,7 +131,11 @@ def _install(registry: MatcherFactory, service: DataSyncService) -> None:
         await finish_event_reply(
             matcher,
             event,
-            await service.run_manual(action=action, force=force),
+            await service.run_manual(
+                action=action,
+                force=force,
+                progress=partial(send_event_reply, matcher, event),
+            ),
         )
 
     matcher = registry.on_message(
