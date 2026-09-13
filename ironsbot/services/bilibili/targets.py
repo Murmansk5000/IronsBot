@@ -122,7 +122,7 @@ class BiliTargetService:
         rule = self.configured_user_rules().get(private_conversation_for_actor(actor))
         if rule is not None:
             return sorted(rule.uids)
-        return self.monitored_uids() if self.features.is_actor_superuser(actor) else []
+        return self.monitored_uids()
 
     def can_conversation_query_history(self, conversation: ConversationRef) -> bool:
         """Whether recipients of a push can use the ``动态`` history command."""

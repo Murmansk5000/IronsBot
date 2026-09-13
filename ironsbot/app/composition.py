@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     driver.register_adapter(OneBotV11Adapter)
-    if settings.bot.qq_official.enabled:
+    if settings.bot.qq_official.enabled_accounts:
         try:
             from nonebot.adapters.qq import Adapter as QQOfficialAdapter
         except ModuleNotFoundError as error:
@@ -240,6 +240,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless=headless,
         server_status=operations.server_status,
         subscriptions=subscriptions,
+        outbound_messenger=common.outbound_messenger,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
         bilibili_monitor=bilibili_monitor,

@@ -27,6 +27,10 @@ ActorKind = Literal["user", "member"]
 
 class PlatformReferenceError(ValueError):
     @classmethod
+    def empty_account_id(cls) -> PlatformReferenceError:
+        return cls("account id must not be empty")
+
+    @classmethod
     def empty_actor_id(cls) -> PlatformReferenceError:
         return cls("actor id must not be empty")
 
@@ -67,8 +71,16 @@ class PlatformReferenceError(ValueError):
         return cls("actor and conversation platforms must match")
 
     @classmethod
+    def actor_conversation_account_mismatch(cls) -> PlatformReferenceError:
+        return cls("actor and conversation accounts must match")
+
+    @classmethod
     def mention_conversation_platform_mismatch(cls) -> PlatformReferenceError:
         return cls("direct mention and conversation platforms must match")
+
+    @classmethod
+    def mention_conversation_account_mismatch(cls) -> PlatformReferenceError:
+        return cls("direct mention and conversation accounts must match")
 
     @classmethod
     def private_conversation_requires_user_actor(cls) -> PlatformReferenceError:
@@ -92,6 +104,7 @@ class ActorRef:
     id: str
     kind: ActorKind = "user"
     scope_id: str | None = None
+    account_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in {"user", "member"}:
@@ -101,6 +114,15 @@ class ActorRef:
             "id",
             _required_id(self.id, error=PlatformReferenceError.empty_actor_id),
         )
+        if self.account_id is not None:
+            object.__setattr__(
+                self,
+                "account_id",
+                _required_id(
+                    self.account_id,
+                    error=PlatformReferenceError.empty_account_id,
+                ),
+            )
         if self.scope_id is not None:
             object.__setattr__(
                 self,
@@ -121,6 +143,7 @@ class ConversationRef:
     platform: Platform
     kind: ConversationKind
     id: str
+    account_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in {"private", "group", "channel", "guild"}:
@@ -133,6 +156,15 @@ class ConversationRef:
                 error=PlatformReferenceError.empty_conversation_id,
             ),
         )
+        if self.account_id is not None:
+            object.__setattr__(
+                self,
+                "account_id",
+                _required_id(
+                    self.account_id,
+                    error=PlatformReferenceError.empty_account_id,
+                ),
+            )
 
 
 def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
@@ -140,7 +172,12 @@ def private_conversation_for_actor(actor: ActorRef) -> ConversationRef:
 
     if actor.kind != "user" or actor.scope_id is not None:
         raise PlatformReferenceError.private_conversation_requires_user_actor()
-    return ConversationRef(actor.platform, "private", actor.id)
+    return ConversationRef(
+        actor.platform,
+        "private",
+        actor.id,
+        account_id=actor.account_id,
+    )
 
 
 def is_supported_message_actor(
@@ -149,6 +186,8 @@ def is_supported_message_actor(
     """Validate group/private identity shape, not actual platform membership."""
 
     if actor.platform is not conversation.platform:
+        return False
+    if actor.account_id != conversation.account_id:
         return False
     if conversation.kind == "group":
         return actor.kind == "user" or actor.scope_id == conversation.id
@@ -200,11 +239,17 @@ class IncomingMessageRef:
             or self.platform is not self.conversation.platform
         ):
             raise PlatformReferenceError.actor_conversation_platform_mismatch()
+        if self.actor.account_id != self.conversation.account_id:
+            raise PlatformReferenceError.actor_conversation_account_mismatch()
         if any(
-            mention.platform is not self.platform
-            for mention in self.direct_mentions
+            mention.platform is not self.platform for mention in self.direct_mentions
         ):
             raise PlatformReferenceError.mention_conversation_platform_mismatch()
+        if any(
+            mention.account_id != self.conversation.account_id
+            for mention in self.direct_mentions
+        ):
+            raise PlatformReferenceError.mention_conversation_account_mismatch()
         if self.group_role is not None:
             object.__setattr__(self, "group_role", self.group_role.strip() or None)
         if self.reply_to_id is not None:

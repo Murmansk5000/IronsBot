@@ -7,8 +7,8 @@
 
 本轮生产基线保持 NoneBot2、OneBot v11、NapCat 和 Docker/Unraid；Python 运行基线现已
 统一为 3.11+。QQ Official 已进入真实 MVP：同一 NoneBot 进程按配置注册
-`nonebot-adapter-qq`，首批只开放被动群/C2C 的帮助、关于、数据版本、赛季时间和
-下周预告。平台不能可靠表达的数字 QQ、绑定和主动推送继续按能力延期，不做伪映射。
+`nonebot-adapter-qq`，被动群/C2C 查询按共享命令目录逐步开放。平台不能可靠表达的
+数字 QQ 继续按能力延期，不做伪映射；主动推送只使用明确配置的 OpenID 目标。
 
 ## 总体约束
 
@@ -49,11 +49,49 @@ Task     [██████████] completed only after code, tests, and 
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 本轮验证（2026-09-13）
+## 本轮验证（2026-09-14）
 
 总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
 下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
+
+- QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
+  AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
+  feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID
+  隔离。出站目标缺少或携带未知 AppID 时明确拒绝，不保留默认账号回退。审计安装的
+  `nonebot-adapter-qq 1.7.2` 后确认 AccessToken、过期时间、会话和事件序号均为 Bot
+  实例状态。公共全量 `3340 passed, 7 skipped`，Ruff、BasedPyright、compileall 和
+  diff 检查通过；私有预览 workflow `34777514033` 完成构建、smoke、体积门禁和发布。
+  见 [多账号隔离 Spec](specs/2026-09-14-qq-official-multi-account.md)。真实 AppID
+  登录与平台主动消息权限仍是 Phase 7 外部验收门，整体保持 7/8。
+
+- QQ Official 的低风险运维查询由提交 `fce42217` 接入公共 portable router：
+  `server_status.query`、`server_status.admin_query`、
+  `server_status.headless_instances` 和配置型 `meeting` 直接复用既有领域服务。
+  命令目录继续负责按账号 feature、会话范围和 superuser 身份筛选；OneBot 处理器
+  没有复制进官方适配器。数据同步、Docker 生命周期和榜单缓存维护仍未开放，因为
+  它们还需要平台中立的进度投递及更强的运维授权。专项 12 passed，公共全量
+  `3346 passed, 7 skipped`，Ruff、BasedPyright、compileall 和 diff 检查通过；无
+  新运行依赖，portable 主路由为 712 行。见
+  [运维查询 Spec](specs/2026-09-14-portable-operational-queries.md)。真实平台验收门
+  未变化，整体保持 7/8。
+
+- QQ Official 的精灵配置图查询由提交 `dedb2799` 接入：目录、精灵/别名解析、
+  重名数字菜单、缺图提示和二进制图片发送分别复用现有 command contract、
+  `PetConfigQueryService`、portable query session 与 outbound message，不复制 OneBot
+  会话实现；固定图片口令仍由同一保留词集合消歧。专项 9 passed，公共全量
+  `3350 passed, 7 skipped`，Ruff、BasedPyright、compileall 和 diff 检查通过；无
+  新运行依赖，portable 主路由为 730 行。见
+  [精灵配置查询 Spec](specs/2026-09-14-portable-pet-config.md)。B站账户与推送模式
+  尚依赖 OneBot 配置目标，未向 OpenID 平台暴露不完整入口；整体保持 7/8。
+
+- QQ Official 的只读榜单诊断由提交 `c5dae5d0` 接入：`/样本情况`、
+  `/榜单情况` 和 `/榜单情况 <榜名>` 复用 `RankAdminService` 与既有榜名 parser，
+  catalog 按 AppID 隔离的 superuser 权限拦截普通成员。刷新、批量缓存和群显示条数
+  未混入该只读切片。专项 13 passed，公共全量 `3352 passed, 7 skipped`，Ruff、
+  BasedPyright、compileall 和 diff 检查通过；无新依赖、配置或数据库迁移，portable
+  主路由为 739 行。见
+  [榜单状态 Spec](specs/2026-09-14-portable-rank-status.md)。整体保持 7/8。
 
 - 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
   从 `ba08f749` 快进到 `55a39fd1`，未合并入 V5。新增 10 项提交涉及战队查询与
@@ -2228,3 +2266,71 @@ QQ 官方公开榜单入口随后接入同一便携执行注册表。全服榜�
 或时间猜测身份。榜单玩家查询新增延迟投递提交：官方适配器发送成功后才记录实时查询
 额度，发送失败不计入；OneBot 的既有调用行为保持不变。缓存管理和批量刷新暂不向官方
 平台开放，避免在首个被动消息版本中暴露尚未验收的长任务与主动进度推送。
+
+QQ 官方活动查询随后接入同一便携执行注册表。`快结束活动`、`新增活动` 和超级管理员
+`/当前活动` 直接复用 `ActivityService` 与冻结后的 `CommandCatalog` 权限规则；适配器
+没有复制活动筛选、格式化或权限判断。便携路由在目录认领阶段保留原始 `/`，执行阶段
+再使用规范化文本，因此能够区分必须带斜杠的管理命令和普通聊天。活动定时提醒尚未
+宣称完成：虽然统一出站端口已具备 QQ 官方主动发送能力，但真实应用权限、额度以及官方
+平台订阅目标仍需验证。`core` 插件清单不拥有活动功能，因此代码默认 feature 保持最小；
+使用 `full` 清单的部署可在账号级 `features` 显式启用
+`seer_activity_query`。
+
+配置型被动消息随后复用同一便携执行注册表。无 OneBot `at_user_ids` 的
+`messaging.commands` 直接返回配置文本；`messaging.sendpic.configs` 继续通过共享
+`SendpicService` 读取 local/CNB 后端并产生 `BinaryImagePart`，QQ 适配器只负责上传。
+命令目录与执行表按同一命令 ID 求交，所以未启用 feature、未配置以及依赖数字 QQ 提及
+的动作不会出现在官方帮助或被官方路由认领。图片未复制进代码或镜像，也没有新增依赖、
+SQLite 或平台专用业务实现。推送订阅菜单、定时目标和主动发送策略仍作为后续跨平台
+订阅接口处理，不与本次被动命令混合。
+
+QQ 官方鉴权随后对齐 `tencent-connect` 官方 SDK：部署配置仅接收 AppID 与
+AppSecret，由适配器调用 `getAppAccessToken` 获取短期 AccessToken、缓存在内存并在
+到期前刷新。`nonebot-adapter-qq 1.7.2` 的配置模型仍声明已弃用的静态 `token` 字段，
+bootstrap 只为满足该内部模型传入空字符串，不再把它暴露为 IronsBot 配置或环境变量。
+
+B站被动历史查询随后接入同一便携执行注册表。`动态` 复用现有账号权限、Cookie、
+历史库、详情补全和 `OutboundMessage` 渲染，并通过通用 `PortableQuerySessions` 提供
+可重复选择的数字菜单；远程图片不进入机器人仓库或镜像。主动动态推送、账号订阅和
+推送模式修改仍等待跨平台主动目标模型完成，不因被动查询可用而宣称完成。
+
+本周新增内容整组被动查询随后接入便携执行注册表。命令 ID、自然语言别名、内容分类、
+依赖 feature 和帮助说明收口为 `NewContentCommandSpec`，由命令目录、OneBot matcher
+与 QQ Official 执行共同读取，不再维护三份分类表。根分类、聚焦分类和条目详情复用
+同一个短会话；QQ Official 使用数字菜单，详情继续调用现有精灵、皮肤、技能、刻印、
+装备、成就和群星牌服务。该项未新增数据库、素材或镜像依赖。
+
+群星牌公开配置、圣域/祝印和刻印数值榜随后接入同一便携执行注册表。群星牌候选与
+圣域到效果的两级选择复用 `PortableQuerySessions`；刻印数值榜直接复用领域解析器与
+查询服务。组合根只在冻结后的命令目录包含对应命令族时才构造这些操作，精简清单不会
+被迫初始化无关服务。该项同样没有新增运行依赖、SQLite、图片或镜像资源。
+
+QQ 官方被动回复序号随后按 `tencent-connect/qqbot-nodejs` 的传输约束收口。每个入站
+消息 ID 在进程内原子分配 `msg_seq=1..4`，并使用有界 LRU 与一小时窗口避免状态无界
+增长；并发回复不会复用序号。额度或窗口耗尽时，只有部署者显式启用主动消息才移除
+入站消息 ID 降级发送，否则返回明确的永久失败。该状态纯属短期传输幂等信息，不写入
+SQLite，也没有引入 Node.js 运行时或复制腾讯 SDK。
+
+QQ 官方主动目标随后接入共享 feature policy。部署者在
+`bot.qq_official.accounts.<alias>.group_policy` / `user_policy` 中以 OpenID 声明
+目标及附加 feature；
+定时消息、活动/B站推送、重试、退订和时间偏好继续复用平台中立服务与同一个状态库。
+`TD`、`退订`、`订阅` 和 `推送时间` 已进入便携命令路由，普通群成员只读，群管理者
+与超级管理员沿用命令目录权限。该项不新增依赖、SQLite 或图片资源。真实主动消息权限、
+发送额度和时间窗口仍须以腾讯应用实机验收，不能由单元测试代替。
+
+对 `tencent-connect/openclaw-qqbot` 多账号实现的审计确认：OpenID 属于具体 AppID，
+多账号不能只扩展凭据列表。目标 `ActorRef` / `ConversationRef` 必须增加账户命名空间，
+并同步覆盖持久化主键、会话键、feature policy、Token/网关、回复序号和出站路由。
+账号别名只用于配置与环境变量命名，运行时以 AppID 作为账户命名空间，避免用字符串
+拼接或默认账号回退制造不可逆的身份串号。
+
+账户感知的基础已经实现：核心 `ActorRef` / `ConversationRef` 可携带 `account_id`，
+QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID policy 进入同一账户
+命名空间，出站器会拒绝属于其他 AppID 的目标。共享状态库的 actor、conversation、
+操作人和提醒对象均已把独立账户列纳入主键，并提供停机、原子、可校验的 v2 迁移；
+检测到旧 QQ Official OpenID 时必须由部署者提供其原 AppID。TOML 现以
+`[bot.qq_official.accounts.<alias>]` 声明多个账号；每个账号独立注册 WebSocket、
+凭据、OpenID policy、默认 feature、超级管理员、主动消息权限和回复序号。出站目标
+必须明确携带原 AppID，不允许默认账号回退。当前 Python 适配器的 sandbox 仍是进程级
+配置，因此同一进程中的账号必须连接相同的正式或沙箱环境。

@@ -348,6 +348,18 @@ def test_private_superuser_can_query_global_monitored_uids() -> None:
     ]
 
 
+def test_private_feature_user_can_query_global_monitored_uids() -> None:
+    service = _target_service(
+        _bili_config(),
+        _features(user_policy={"123": ["bili_query"]}),
+    )
+
+    assert service.query_uids(
+        _actor(123),
+        _private(123),
+    ) == [DEFAULT_BILI_ACCOUNT_UID]
+
+
 def test_push_group_rules_use_global_accounts_for_feature_groups() -> None:
     config = _bili_config(
         accounts={FIRE_BILI_ALIAS: {"uid": FIRE_BILI_UID}},

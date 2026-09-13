@@ -10,6 +10,32 @@ from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.portable_activity_commands import (
+    build_portable_activity_operations,
+)
+from ironsbot.services.portable_autocard_commands import (
+    build_portable_autocard_operations,
+)
+from ironsbot.services.portable_bilibili_commands import (
+    build_portable_bilibili_operations,
+)
+from ironsbot.services.portable_countermark_commands import (
+    build_portable_countermark_operations,
+)
+from ironsbot.services.portable_messaging_commands import (
+    build_portable_messaging_operations,
+    build_portable_sendpic_operations,
+)
+from ironsbot.services.portable_new_content_commands import (
+    build_portable_new_content_operations,
+)
+from ironsbot.services.portable_operational_commands import (
+    build_portable_meeting_operations,
+    build_portable_server_status_operations,
+)
+from ironsbot.services.portable_pet_config_commands import (
+    build_portable_pet_config_operation,
+)
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
@@ -18,8 +44,14 @@ from ironsbot.services.portable_query_sessions import (
     QueryOperationSpec,
     build_query_operation,
 )
-from ironsbot.services.portable_rank_commands import build_portable_rank_operations
+from ironsbot.services.portable_rank_commands import (
+    build_portable_rank_operations,
+    build_portable_rank_status_operations,
+)
 from ironsbot.services.portable_reply import PortableOperation, PortableReply
+from ironsbot.services.portable_team_resource_commands import (
+    build_portable_team_resource_operations,
+)
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.data_query_commands import (
@@ -53,19 +85,29 @@ from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Awaitable, Callable, Mapping
 
     from ironsbot.core.affix_commands import AffixParser
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.about import AboutService
+    from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+    from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.messaging.push_time import PushTimeOption
+    from ironsbot.services.messaging.sendpic import SendpicService
+    from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.operations.server_status import ServerStatusService
+    from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
+    from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
+    from ironsbot.services.team.resource import TeamResourceService
 
 
 class PortableCommandRouter:
@@ -98,10 +140,16 @@ class PortableCommandRouter:
     ) -> bool:
         if self._message_is_blocked(context):
             return False
+        raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = _command_context(context)
-        return self._query_sessions.recognizes_selection(command, context) or (
-            self._matching_contract(command, context=command_context) is not None
+        return self._query_sessions.recognizes_response(command, context) or (
+            self._matching_input_contract(
+                raw_command,
+                command,
+                context=command_context,
+            )
+            is not None
         ) or self._can_chat(context, command_context) or self._is_group_mention(context)
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
@@ -110,6 +158,7 @@ class PortableCommandRouter:
     ) -> PortableReply | None:
         if self._message_is_blocked(context):
             return None
+        raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = _command_context(context)
         try:
@@ -120,7 +169,11 @@ class PortableCommandRouter:
             )
         if selected is not None:
             return PortableReply(selected)
-        contract = self._matching_contract(command, context=command_context)
+        contract = self._matching_input_contract(
+            raw_command,
+            command,
+            context=command_context,
+        )
         if contract is None:
             return await self._fallback_reply(context, command_context, command)
         if contract.id == "help":
@@ -153,6 +206,18 @@ class PortableCommandRouter:
             ),
             None,
         )
+
+    def _matching_input_contract(
+        self,
+        raw_text: str,
+        normalized_text: str,
+        *,
+        context: CommandContext,
+    ) -> CommandContract | None:
+        contract = self._matching_contract(raw_text, context=context)
+        if contract is not None or raw_text == normalized_text:
+            return contract
+        return self._matching_contract(normalized_text, context=context)
 
     def _available_contracts(
         self, context: CommandContext
@@ -248,6 +313,20 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     player_id_resolver: PlayerIdResolver,
     features: FeatureService,
     ai: AiService,
+    team_resource: TeamResourceService,
+    activity: ActivityService | None = None,
+    messaging: MessagingService | None = None,
+    refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
+    sendpic: SendpicService | None = None,
+    bilibili: BilibiliService | None = None,
+    bilibili_monitor: BilibiliMonitorService | None = None,
+    server_status: ServerStatusService | None = None,
+    meeting_number: str = "",
+    meeting_template: str = "{meeting_number}",
+    pet_config: PetConfigQueryService | None = None,
+    image_command_texts: frozenset[str] = frozenset(),
+    new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
+    new_content_preview_max_items: int = 5,
 ) -> PortableCommandRouter:
     async def about_message(
         text: str,
@@ -314,14 +393,112 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer.rank_queries,
         player_id_resolver,
     )
+    rank_status_operations = _catalog_operation_family(
+        catalog,
+        {"rank.sample_status", "rank.page_status"},
+        lambda: build_portable_rank_status_operations(seer.rank_admin),
+    )
+    new_content_operations = _catalog_operations(
+        catalog,
+        build_portable_new_content_operations(
+            seer,
+            sessions,
+            features,
+            expanded_categories=new_content_expanded_categories,
+            preview_max_items=new_content_preview_max_items,
+        ),
+    )
+    autocard_operations = _catalog_operation_family(
+        catalog,
+        {"seer.autocard.query", "seer.autocard.sanctuary"},
+        lambda: build_portable_autocard_operations(
+            seer.autocard, seer.autocard_media, seer.autocard_sanctuary, sessions
+        ),
+    )
+    countermark_operations = _catalog_operation_family(
+        catalog,
+        {"seer.mintmark.rank"},
+        lambda: build_portable_countermark_operations(seer.countermark_rank),
+    )
+    team_resource_operations = _catalog_operations(
+        catalog,
+        build_portable_team_resource_operations(team_resource),
+    )
+    activity_operations = _catalog_operations(
+        catalog,
+        {} if activity is None else build_portable_activity_operations(activity),
+    )
+    messaging_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if messaging is None
+            else build_portable_messaging_operations(
+                messaging,
+                sessions,
+                refresh_push_time_jobs=refresh_push_time_jobs,
+            )
+        ),
+    )
+    sendpic_operations = _catalog_operations(
+        catalog,
+        {} if sendpic is None else build_portable_sendpic_operations(sendpic),
+    )
+    bilibili_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if bilibili is None or bilibili_monitor is None
+            else build_portable_bilibili_operations(
+                bilibili,
+                sessions,
+                notify_auth_invalid=bilibili_monitor.notify_auth_invalid,
+            )
+        ),
+    )
+    server_status_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if server_status is None
+            else build_portable_server_status_operations(server_status)
+        ),
+    )
+    meeting_operations = _catalog_operations(
+        catalog,
+        build_portable_meeting_operations(meeting_number, meeting_template),
+    )
+    pet_config_operations = (
+        {}
+        if pet_config is None or "pet_config.query" not in catalog.command_ids
+        else {
+            "pet_config.query": build_portable_pet_config_operation(
+                pet_config,
+                sessions,
+                image_command_texts=image_command_texts,
+            )
+        }
+    )
 
     operations: dict[str, PortableOperation] = {
         "about": about_message,
         "seer.data.query": data_query,
         "seer.team.query": team_query,
+        **team_resource_operations,
+        **activity_operations,
+        **messaging_operations,
+        **sendpic_operations,
+        **bilibili_operations,
+        **server_status_operations,
+        **meeting_operations,
+        **pet_config_operations,
+        **new_content_operations,
+        **autocard_operations,
+        **countermark_operations,
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,
+        **rank_status_operations,
         "seer.peak.query": _build_peak_query_operation(seer.peak_query),
         "seer.peak.rank": _build_peak_rank_operation(seer.peak_query),
         "seer.pet.query": build_query_operation(
@@ -440,6 +617,29 @@ def _affix_argument(parser: AffixParser):
         return None if parsed is None else parsed.argument
 
     return parse
+
+
+def _catalog_operations(
+    catalog: CommandCatalog,
+    operations: Mapping[str, PortableOperation],
+) -> dict[str, PortableOperation]:
+    return {
+        command_id: operation
+        for command_id, operation in operations.items()
+        if command_id in catalog.command_ids
+    }
+
+
+def _catalog_operation_family(
+    catalog: CommandCatalog,
+    command_ids: set[str],
+    factory: Callable[[], Mapping[str, PortableOperation]],
+) -> dict[str, PortableOperation]:
+    """Build one optional operation family only when its commands are loaded."""
+
+    if catalog.command_ids.isdisjoint(command_ids):
+        return {}
+    return _catalog_operations(catalog, factory())
 
 
 def _equipment_queries() -> tuple[

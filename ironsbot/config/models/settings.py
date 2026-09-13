@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -48,6 +49,11 @@ VALID_LOG_LEVELS = {
     "ERROR",
     "CRITICAL",
 }
+_QQ_OFFICIAL_TEAM_RESOURCE_PROACTIVE_ERROR = (
+    "proactive_messages must be true when "
+    "team_resource_subscription is enabled"
+)
+_QQ_OFFICIAL_ACCOUNT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
 class SettingsReferenceError(ValueError):
@@ -75,6 +81,37 @@ class MatcherPriorityConfigError(ValueError):
     @classmethod
     def bot_mention_order(cls) -> MatcherPriorityConfigError:
         return cls("bot.matcher_priority.ai_group_at must run before bot_mention_block")
+
+
+class QQOfficialConfigError(ValueError):
+    @classmethod
+    def no_enabled_accounts(cls) -> QQOfficialConfigError:
+        return cls("bot.qq_official requires at least one enabled account")
+
+    @classmethod
+    def invalid_account_name(cls) -> QQOfficialConfigError:
+        return cls(
+            "bot.qq_official account names must match [A-Za-z][A-Za-z0-9_]*"
+        )
+
+    @classmethod
+    def duplicate_app_id(cls, app_id: str) -> QQOfficialConfigError:
+        return cls(f"duplicate QQ Official AppID: {app_id}")
+
+    @classmethod
+    def duplicate_secret_environment(cls, name: str) -> QQOfficialConfigError:
+        return cls(
+            "QQ Official account aliases must be unique ignoring case; "
+            f"duplicate environment suffix: {name.upper()}"
+        )
+
+    @classmethod
+    def invalid_target_policy(cls) -> QQOfficialConfigError:
+        return cls("QQ Official target policy must be a table")
+
+    @classmethod
+    def empty_target_openid(cls) -> QQOfficialConfigError:
+        return cls("QQ Official target OpenID must not be empty")
 
 
 def _command_starts(value: object) -> list[str]:
@@ -182,16 +219,15 @@ class LoggingConfig(BaseModel):
         return normalized or None
 
 
-class QQOfficialConfig(BaseModel):
-    """QQ Official Bot credentials and the deliberately small MVP surface."""
+class QQOfficialAccountConfig(BaseModel):
+    """One independently authenticated QQ Official Bot account."""
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
     app_id: str = ""
-    token: str = Field(default="", exclude=True, repr=False)
     secret: str = Field(default="", exclude=True, repr=False)
-    sandbox: bool = False
+    proactive_messages: bool = False
     features: list[str] = Field(
         default_factory=lambda: [
             "help",
@@ -208,8 +244,10 @@ class QQOfficialConfig(BaseModel):
         ]
     )
     superusers: list[str] = Field(default_factory=list)
+    group_policy: dict[str, list[str]] = Field(default_factory=dict)
+    user_policy: dict[str, list[str]] = Field(default_factory=dict)
 
-    @field_validator("app_id", "token", "secret", mode="before")
+    @field_validator("app_id", "secret", mode="before")
     @classmethod
     def normalize_credentials(cls, value: object) -> str:
         return str(value or "").strip()
@@ -219,30 +257,93 @@ class QQOfficialConfig(BaseModel):
     def normalize_string_lists(cls, value: object) -> list[str]:
         return _command_starts(value)
 
+    @field_validator("group_policy", "user_policy", mode="before")
+    @classmethod
+    def normalize_target_policy(cls, value: object) -> dict[str, list[str]]:
+        if not isinstance(value, Mapping):
+            raise QQOfficialConfigError.invalid_target_policy()
+        policy: dict[str, list[str]] = {}
+        for raw_target, raw_features in value.items():
+            target = str(raw_target).strip()
+            if not target:
+                raise QQOfficialConfigError.empty_target_openid()
+            policy[target] = _command_starts(raw_features)
+        return policy
+
+    @property
+    def configured_features(self) -> set[str]:
+        return {
+            *self.features,
+            *(
+                feature
+                for policy in (self.group_policy, self.user_policy)
+                for features in policy.values()
+                for feature in features
+            ),
+        }
+
+
+class QQOfficialConfig(BaseModel):
+    """QQ Official transport and independently scoped bot accounts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    sandbox: bool = False
+    accounts: dict[str, QQOfficialAccountConfig] = Field(default_factory=dict)
+
     @model_validator(mode="after")
-    def validate_enabled_credentials(self) -> QQOfficialConfig:
-        if not self.enabled:
-            return self
-        missing = [
-            name
-            for name, value in (
-                ("app_id", self.app_id),
-                ("token", self.token),
-                ("secret", self.secret),
-            )
-            if not value
-        ]
-        if missing:
-            raise ValueError(
-                "bot.qq_official requires " + ", ".join(missing) + " when enabled"
-            )
-        unknown = sorted(set(self.features) - FEATURE_KEYS)
-        if unknown:
-            raise ValueError(
-                "bot.qq_official.features contains unregistered feature(s): "
-                + ", ".join(unknown)
-            )
+    def validate_accounts(self) -> QQOfficialConfig:
+        enabled_accounts = self.enabled_accounts
+        if self.enabled and not enabled_accounts:
+            raise QQOfficialConfigError.no_enabled_accounts()
+        app_ids: set[str] = set()
+        environment_names: set[str] = set()
+        for name, account in self.accounts.items():
+            if not _QQ_OFFICIAL_ACCOUNT_NAME.fullmatch(name):
+                raise QQOfficialConfigError.invalid_account_name()
+            environment_name = name.upper()
+            if environment_name in environment_names:
+                raise QQOfficialConfigError.duplicate_secret_environment(name)
+            environment_names.add(environment_name)
+            if not self.enabled or not account.enabled:
+                continue
+            missing = [
+                field
+                for field, value in (
+                    ("app_id", account.app_id),
+                    ("secret", account.secret),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(
+                    f"bot.qq_official.accounts.{name} requires "
+                    + ", ".join(missing)
+                    + " when enabled"
+                )
+            if account.app_id in app_ids:
+                raise QQOfficialConfigError.duplicate_app_id(account.app_id)
+            app_ids.add(account.app_id)
+            if (
+                "team_resource_subscription" in account.configured_features
+                and not account.proactive_messages
+            ):
+                raise ValueError(
+                    f"bot.qq_official.accounts.{name}."
+                    + _QQ_OFFICIAL_TEAM_RESOURCE_PROACTIVE_ERROR
+                )
         return self
+
+    @property
+    def enabled_accounts(self) -> dict[str, QQOfficialAccountConfig]:
+        if not self.enabled:
+            return {}
+        return {
+            name: account
+            for name, account in self.accounts.items()
+            if account.enabled
+        }
 
 
 class BotConfig(BaseModel):
@@ -327,6 +428,7 @@ class Settings(BaseModel):
                 self.features,
                 command_features=self.messaging.command_feature_keys,
                 schedule_features=self.messaging.schedule_feature_keys,
+                qq_official=self.bot.qq_official,
             )
             self._validate_onebot_references()
             self._validate_promotions()

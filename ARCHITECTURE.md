@@ -32,6 +32,14 @@ data, rendering, service, and delivery work without inventing an identity map,
 weakening the core contract, or adding a QQ-specific business branch merely to
 fill an acceptance matrix.
 
+QQ Official OpenIDs are additionally scoped to the bot application that
+received them. `ActorRef` and `ConversationRef` therefore carry an optional
+`account_id`; official-platform adapters must set it to the receiving AppID and
+must reject delivery through another account. Multi-account configuration may
+only be exposed after this account dimension is also present in every
+persistent identity key. Concatenating an AppID into an OpenID, selecting a
+default sender, or sharing a token cache between accounts is forbidden.
+
 ## Architecture Status
 
 The following distinctions are mandatory during the migration:
@@ -428,6 +436,7 @@ Platform = Literal["onebot", "qq_official"]
 @dataclass(frozen=True, slots=True)
 class ActorRef:
     platform: Platform
+    account_id: str | None
     id: str
     kind: Literal["user", "member"] = "user"
     scope_id: str | None = None
@@ -435,9 +444,20 @@ class ActorRef:
 @dataclass(frozen=True, slots=True)
 class ConversationRef:
     platform: Platform
+    account_id: str | None
     kind: Literal["private", "group", "channel", "guild"]
     id: str
 ```
+
+`account_id` is the transport-account namespace, not an actor ID. It is
+mandatory for QQ Official identities because OpenIDs are scoped to one bot
+AppID; the same textual OpenID under two applications must never share feature
+policy, bindings, sessions, quotas, push preferences, caches, or outbound
+routing. Multi-account support is therefore an identity-and-storage migration,
+not merely an `accounts` loop in bootstrap. Every account owns its credential
+refresh, gateway connection, reply sequence allocator, target policy and
+outbound sender. OneBot may leave the field empty while its existing routing
+policy intentionally shares numeric QQ identities across bot accounts.
 
 Future services should receive typed input/output values such as
 `IncomingMessageRef`, `OutboundMessage`, `RenderedImage`, and explicit
@@ -818,7 +838,7 @@ Future data work follows these rules:
   state databases use namespaced migration records; large independent stores
   may use their own schema version.
 - Platform identity migrations are offline, one-time transformations. They use
-  independent platform/kind/id/scope columns, a temporary database, a
+  independent platform/account/kind/id/scope columns, a temporary database, a
   timestamped backup, integrity and cardinality checks, then atomic
   replacement. The table-by-table contract is in
   [docs/platform-state-migration.md](docs/platform-state-migration.md).

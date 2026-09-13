@@ -332,6 +332,11 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Regular"' in smoke["run"]
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Bold"' in smoke["run"]
     assert 'test "$regular" != "$bold"' in smoke["run"]
+    assert "find_spec" in smoke["run"]
+    assert "pygments" in smoke["run"]
+    assert "pymdownx" in smoke["run"]
+    assert "template_to_pic" in smoke["run"]
+    assert "89504e470d0a1a0a" in smoke["run"]
     assert '-e EXPECTED_PYTHON_VERSION="$PYTHON_VERSION"' in smoke["run"]
     assert "sys.version_info.major, sys.version_info.minor" in smoke["run"]
     assert '"$EXPECTED_PYTHON_VERSION"' in smoke["run"]
@@ -365,6 +370,7 @@ def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> Non
     assert upload["with"]["if-no-files-found"] == "warn"
     assert "--network none --entrypoint sh" in budget["run"]
     assert "ironsbot-candidate-runtime-size-kib.txt" in budget["run"]
+    assert budget["env"]["MAX_SITE_PACKAGES_KIB"] == "122880"
 
 
 def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
@@ -460,9 +466,9 @@ def test_candidate_image_growth_requires_readable_baseline(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     ("app_kib", "site_packages_kib", "fonts_kib", "expected_ok"),
     [
-        (8192, 131072, 24576, True),
+        (8192, 122880, 24576, True),
         (8193, 1, 1, False),
-        (1, 131073, 1, False),
+        (1, 122881, 1, False),
         (1, 1, 24577, False),
     ],
 )

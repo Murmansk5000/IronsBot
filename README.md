@@ -119,30 +119,66 @@ services:
 
 QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
-套装/部件/称号、属性/异常状态、巅峰资料和榜单查询。查询出现多个候选项时直接发送数字选择，
+套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
+活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时直接发送数字选择，
 发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
 规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
-查询或绑定目标。主动推送、跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
+查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
 同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
+`[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
+`[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
+`feature` 或图片功能 `image` 加入对应账号的 `features`。本地图片继续从挂载目录
+读取，远程图片继续使用已配置后端，不会复制进机器人镜像。带数字 QQ 提醒对象的文本
+口令只在 OneBot 显示和执行，避免官方平台静默丢失 @ 语义。
+
+主动发送默认关闭。机器人应用确认具备对应平台权限后可设置
+`proactive_messages = true`；开启 `team_resource_subscription` 时必须同时开启该项，
+否则配置会被明确拒绝，避免订阅成功后无法收到提醒。平台实际发送额度和权限以
+当前机器人应用后台为准。
 
 在 `ironsbot.toml` 中启用：
 
 ```toml
 [bot.qq_official]
 enabled = true
-app_id = "你的 QQ 机器人 AppID"
 sandbox = false
-features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "ai_chat"]
+
+[bot.qq_official.accounts.example_bot]
+enabled = true
+app_id = "你的 QQ 机器人 AppID"
+proactive_messages = false
+features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 superusers = []
+
+[bot.qq_official.accounts.example_bot.group_policy]
+"群 OpenID" = ["seer_activity_push", "bili_push"]
+
+[bot.qq_official.accounts.example_bot.user_policy]
+"用户 OpenID" = ["seer_activity_push", "bili_push"]
 ```
+
+每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
+数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
+每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
+附加对应 feature。
+目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启
+`proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
+发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
+`推送时间` 管理当前会话可修改的定时推送时间。
 
 凭据只放环境变量：
 
 ```text
-QQ_OFFICIAL_TOKEN=你的 Token
-QQ_OFFICIAL_SECRET=你的 AppSecret
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
 ```
+
+腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
+AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀取账号别名的
+大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。
+
+多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
+OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
 
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
 不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID

@@ -11,7 +11,11 @@ from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
 )
-from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    require_sqlite_columns,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,18 +26,32 @@ if TYPE_CHECKING:
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS group_rank_display_limits (
     conversation_platform TEXT NOT NULL,
+    conversation_account_id TEXT NOT NULL DEFAULT '',
     conversation_kind TEXT NOT NULL,
     conversation_id TEXT NOT NULL,
     display_limit INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
     updated_by_platform TEXT NOT NULL,
+    updated_by_account_id TEXT NOT NULL DEFAULT '',
     updated_by_kind TEXT NOT NULL,
     updated_by_id TEXT NOT NULL,
     updated_by_scope_id TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (conversation_platform, conversation_kind, conversation_id)
+    PRIMARY KEY (
+        conversation_platform, conversation_account_id, conversation_kind,
+        conversation_id
+    )
 )
 """
-_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
+_MIGRATIONS = (
+    SqliteMigration(1, (_SCHEMA,)),
+    SqliteMigration(
+        2,
+        callback=require_sqlite_columns(
+            "group_rank_display_limits",
+            {"conversation_account_id", "updated_by_account_id"},
+        ),
+    ),
+)
 MIGRATION_NAMESPACE = "rank_display"
 
 
@@ -51,8 +69,9 @@ class SqliteRankDisplayStore:
                 row = conn.execute(
                     """
                     SELECT display_limit FROM group_rank_display_limits
-                    WHERE conversation_platform = ? AND conversation_kind = ?
-                      AND conversation_id = ?
+                    WHERE conversation_platform = ?
+                      AND conversation_account_id = ?
+                      AND conversation_kind = ? AND conversation_id = ?
                     """,
                     ConversationIdentityColumns.from_conversation(
                         conversation
@@ -72,16 +91,21 @@ class SqliteRankDisplayStore:
             conn.execute(
                 """
                 INSERT INTO group_rank_display_limits (
-                    conversation_platform, conversation_kind, conversation_id,
+                    conversation_platform, conversation_account_id,
+                    conversation_kind, conversation_id,
                     display_limit, updated_at,
-                    updated_by_platform, updated_by_kind, updated_by_id,
-                    updated_by_scope_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(conversation_platform, conversation_kind, conversation_id)
+                    updated_by_platform, updated_by_account_id, updated_by_kind,
+                    updated_by_id, updated_by_scope_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(
+                    conversation_platform, conversation_account_id,
+                    conversation_kind, conversation_id
+                )
                 DO UPDATE SET
                     display_limit = excluded.display_limit,
                     updated_at = excluded.updated_at,
                     updated_by_platform = excluded.updated_by_platform,
+                    updated_by_account_id = excluded.updated_by_account_id,
                     updated_by_kind = excluded.updated_by_kind,
                     updated_by_id = excluded.updated_by_id,
                     updated_by_scope_id = excluded.updated_by_scope_id

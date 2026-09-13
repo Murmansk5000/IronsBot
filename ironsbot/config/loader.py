@@ -20,10 +20,9 @@ TOMLDecodeError = tomllib.TOMLDecodeError
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
+QQ_OFFICIAL_SECRET_ENV_PREFIX = "QQ_OFFICIAL_SECRET_"
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
-    ("QQ_OFFICIAL_TOKEN", ("bot", "qq_official", "token")),
-    ("QQ_OFFICIAL_SECRET", ("bot", "qq_official", "secret")),
     ("AI_KEY", ("ai", "api_key")),
     ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
     ("GITHUB_WORKFLOW_TOKEN", ("operations", "data_sync", "github_token")),
@@ -36,6 +35,33 @@ _SECRET_ENV_PATHS = (
         ("operations", "docker_update", "registry_token"),
     ),
 )
+
+
+def _inject_qq_official_secrets(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    bot = data.get("bot")
+    qq_official = bot.get("qq_official") if isinstance(bot, dict) else None
+    accounts = (
+        qq_official.get("accounts") if isinstance(qq_official, dict) else None
+    )
+    if not isinstance(accounts, dict):
+        return
+    for raw_name, raw_account in accounts.items():
+        if not isinstance(raw_account, dict):
+            continue
+        name = str(raw_name)
+        env_name = QQ_OFFICIAL_SECRET_ENV_PREFIX + name.upper()
+        if "secret" in raw_account:
+            msg = (
+                f"bot.qq_official.accounts.{name}.secret is secret and must "
+                f"be set with {env_name}"
+            )
+            raise ValueError(msg)
+        if (value := env.get(env_name)) is not None:
+            raw_account["secret"] = value
 class ConfigFileNotFoundError(FileNotFoundError):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -216,5 +242,6 @@ def load_settings(
             path=field_path,
             env=values,
         )
+    _inject_qq_official_secrets(data, env=values)
     _inject_player_account_passwords(data, env=values)
     return Settings.model_validate(data)

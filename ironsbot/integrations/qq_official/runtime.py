@@ -11,6 +11,7 @@ from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves annotations
 from nonebot.adapters.qq import Bot as QQOfficialBot  # noqa: TC002
 from nonebot.adapters.qq.event import (
     C2CMessageCreateEvent,
+    GroupAtMessageCreateEvent,
     GroupMessageCreateEvent,
     QQMessageEvent,
 )
@@ -22,39 +23,40 @@ from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
     qq_official_incoming_message,
 )
-from ironsbot.integrations.qq_official.message_rendering import (
-    render_qq_official_outbound_message,
-)
 from ironsbot.services.portable_commands import PortableCommandRouter  # noqa: TC001
 
 if TYPE_CHECKING:
+    from ironsbot.core.outbound import OutboundMessenger
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.portable_reply import PortableReply
 
 logger = logging.getLogger(__name__)
 
 
-def install_qq_official_runtime(router: PortableCommandRouter) -> None:
+def install_qq_official_runtime(
+    router: PortableCommandRouter,
+    messenger: OutboundMessenger,
+) -> None:
     """Register passive group/C2C handlers against nonebot-adapter-qq."""
 
-    async def accepts(event: Event) -> bool:
-        return qq_official_event_is_supported(event, router)
+    async def accepts(bot: QQOfficialBot, event: Event) -> bool:
+        return qq_official_event_is_supported(bot, event, router)
 
     async def handle(
-        bot: QQOfficialBot,
         event: QQMessageEvent,
         matcher: Matcher,
+        bot: QQOfficialBot,
     ) -> None:
-        incoming = qq_official_incoming_message(event)
+        incoming = qq_official_incoming_message(event, account_id=bot.self_id)
         reply = await router.dispatch(
             MessageInputContext(
                 incoming,
-                mentions_bot=isinstance(event, GroupMessageCreateEvent),
+                mentions_bot=qq_official_event_mentions_bot(event),
             )
         )
         if reply is None:
             return
-        await deliver_qq_official_reply(bot, event, incoming, reply)
+        await deliver_qq_official_reply(messenger, incoming, reply)
         matcher.stop_propagation()
 
     matcher = on_message(
@@ -67,22 +69,32 @@ def install_qq_official_runtime(router: PortableCommandRouter) -> None:
 
 
 async def deliver_qq_official_reply(
-    bot: QQOfficialBot,
-    event: QQMessageEvent,
+    messenger: OutboundMessenger,
     incoming: IncomingMessageRef,
     reply: PortableReply,
 ) -> None:
     """Commit delivery-aware work only after the adapter accepts the reply."""
 
-    rendered = render_qq_official_outbound_message(
-        reply.message,
-        conversation=incoming.conversation,
+    from ironsbot.core.outbound import ReplyContext
+
+    result = await messenger.reply(ReplyContext.from_message(incoming), reply.message)
+    if result.delivered:
+        reply.delivered()
+        return
+    logger.warning(
+        "QQ Official reply failed: account=%s kind=%s id=%s "
+        "code=%s message=%s trace_id=%s",
+        incoming.conversation.account_id,
+        incoming.conversation.kind,
+        incoming.conversation.id,
+        result.error_code,
+        result.error_message,
+        result.trace_id,
     )
-    await bot.send(event, rendered)
-    reply.delivered()
 
 
 def qq_official_event_is_supported(
+    bot: QQOfficialBot,
     event: Event,
     router: PortableCommandRouter,
 ) -> bool:
@@ -90,10 +102,16 @@ def qq_official_event_is_supported(
         return False
     if is_qq_official_reply_event(event):
         return False
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id=bot.self_id)
     return router.recognizes(
         MessageInputContext(
             incoming,
-            mentions_bot=isinstance(event, GroupMessageCreateEvent),
+            mentions_bot=qq_official_event_mentions_bot(event),
         )
     )
+
+
+def qq_official_event_mentions_bot(event: QQMessageEvent) -> bool:
+    """Distinguish an at-event from an authorized full-group event."""
+
+    return isinstance(event, GroupAtMessageCreateEvent)

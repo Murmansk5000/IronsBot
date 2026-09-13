@@ -70,21 +70,42 @@ plugin_manifest = "full"
 superusers = []
 
 [bot.qq_official]
-# EN: Enable the QQ Official Bot WebSocket adapter in this same process.
-# ZH: 在同一进程启用 QQ 官方机器人 WebSocket 适配器。
+# EN: Enable one or more QQ Official Bot accounts in this process.
+# ZH: 在同一进程启用一个或多个 QQ 官方机器人账号。
 enabled = false
-# EN: QQ Bot application ID. Keep token and secret in environment variables.
-# ZH: QQ 机器人 AppID；Token 和 AppSecret 必须通过环境变量提供。
-app_id = ""
 # EN: Use the QQ Bot sandbox API.
-# ZH: 是否连接 QQ 官方沙箱环境。
+# ZH: 是否连接 QQ 官方沙箱环境。当前适配器要求同一进程中的账号使用相同环境。
 sandbox = false
+
+# EN: Account aliases use letters, digits, and underscores. Each account gets an
+#     isolated connection, AccessToken, OpenID namespace, policy, and send route.
+#     Set its AppSecret through QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
+# ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
+#     OpenID 命名空间、权限和发送路由；此示例的 AppSecret 使用
+#     QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
+[bot.qq_official.accounts.example_bot]
+enabled = false
+app_id = ""
+# EN: Allow adapter-level proactive sends. Keep disabled until the application has
+#     the required platform permission. Team-resource subscriptions require it.
+# ZH: 允许适配器主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
+proactive_messages = false
 # EN: Features exposed through the official adapter preview. ai_chat also requires AI_KEY.
 # ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
-features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "ai_chat"]
+features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 # EN: Official-platform OpenIDs with superuser bypass. These are not QQ numbers.
 # ZH: QQ 官方平台超级管理员 OpenID；这里不是 QQ 号。
 superusers = []
+
+# EN: Optional account-scoped targets keyed by group/user OpenID. Declaring a
+#     target also enables these extra features there; global features remain active.
+# ZH: 可选的主动推送目标，键为群/用户 OpenID；声明后会在该目标额外启用这些功能，
+#     全局 features 仍然有效。OpenID 含特殊字符时必须用引号包裹。
+[bot.qq_official.accounts.example_bot.group_policy]
+# "example-group-openid" = ["seer_activity_push", "bili_push"]
+
+[bot.qq_official.accounts.example_bot.user_policy]
+# "example-user-openid" = ["seer_activity_push", "bili_push"]
 
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.

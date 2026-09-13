@@ -395,3 +395,47 @@ async def test_team_resource_scan_keeps_private_superuser_bypass(
     await service.scan()
 
     assert sender.sent[0][0] == TeamResourceSubscriptionTarget(_actor(OWNER_ID))
+
+
+@pytest.mark.asyncio
+async def test_default_mentions_do_not_cross_platforms(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    store = TeamResourceSubscriptionStore(tmp_path / "qq_state.sqlite")
+    service = TeamResourceService(
+        TeamResourceConfig(),
+        store,
+        HEADLESS,
+        TEST_RUNTIME.features,
+        FakeTeamResourceNoticeSender(),
+        (_actor(OWNER_ID),),
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "official-group",
+    )
+    operator = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "official-owner",
+        "member",
+        conversation.id,
+    )
+
+    async def fake_query(
+        _self: TeamResourceService,
+        team_id: int,
+    ) -> TeamResourceResult:
+        return TeamResourceResult(team_id, "示例战队", "", 500)
+
+    monkeypatch.setattr(TeamResourceService, "query", fake_query)
+
+    await service.add_target_subscription(
+        target=TeamResourceSubscriptionTarget(conversation),
+        team_id=TEAM_ID,
+        threshold=None,
+        operator=operator,
+    )
+
+    assert store.list_conversation(conversation)[0].mention_actors == ()

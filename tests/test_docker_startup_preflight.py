@@ -390,6 +390,9 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "/site-packages/pip" in dockerfile
     assert "/site-packages/setuptools" in dockerfile
     assert "/site-packages/wheel" in dockerfile
+    assert "/site-packages/pygments" in dockerfile
+    assert "/site-packages/pymdownx" in dockerfile
+    assert "/site-packages/markdown" not in dockerfile
     assert ".venv/" in dockerignore
     assert ".codex/" in dockerignore
     assert "**/__pycache__/" in dockerignore

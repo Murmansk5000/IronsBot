@@ -12,7 +12,11 @@ from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
 )
-from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    require_sqlite_columns,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,11 +32,13 @@ _SCHEMA = (
     CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         actor_platform TEXT NOT NULL,
+        actor_account_id TEXT NOT NULL DEFAULT '',
         actor_kind TEXT NOT NULL,
         actor_id TEXT NOT NULL,
         actor_scope_id TEXT NOT NULL DEFAULT '',
         session_key TEXT NOT NULL,
         conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
         conversation_kind TEXT NOT NULL,
         conversation_id TEXT NOT NULL,
         role TEXT NOT NULL,
@@ -43,11 +49,21 @@ _SCHEMA = (
     """
     CREATE INDEX IF NOT EXISTS idx_ai_memory_actor_time
     ON messages (
-        actor_platform, actor_kind, actor_id, actor_scope_id, created_at DESC
+        actor_platform, actor_account_id, actor_kind, actor_id, actor_scope_id,
+        created_at DESC
     )
     """,
 )
-_MIGRATIONS = (SqliteMigration(1, _SCHEMA),)
+_MIGRATIONS = (
+    SqliteMigration(1, _SCHEMA),
+    SqliteMigration(
+        2,
+        callback=require_sqlite_columns(
+            "messages",
+            {"actor_account_id", "conversation_account_id"},
+        ),
+    ),
+)
 MIGRATION_NAMESPACE = "ai_memory"
 
 
@@ -78,11 +94,13 @@ class SqliteAiMemoryStore:
                 conn.executemany(
                     """
                     INSERT INTO messages (
-                        actor_platform, actor_kind, actor_id, actor_scope_id,
+                        actor_platform, actor_account_id, actor_kind, actor_id,
+                        actor_scope_id,
                         session_key,
-                        conversation_platform, conversation_kind, conversation_id,
+                        conversation_platform, conversation_account_id,
+                        conversation_kind, conversation_id,
                         role, content, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     rows,
                 )
@@ -115,8 +133,8 @@ class SqliteAiMemoryStore:
     ) -> list[HistoryMessage]:
         sql = """
         SELECT role, content FROM messages
-        WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
-          AND actor_scope_id = ?
+        WHERE actor_platform = ? AND actor_account_id = ?
+          AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
         """
         params: list[object] = list(_actor_values(actor))
         if exclude_current_session:
@@ -136,9 +154,9 @@ class SqliteAiMemoryStore:
         ]
 
 
-def _actor_values(actor: ActorRef) -> tuple[str, str, str, str]:
+def _actor_values(actor: ActorRef) -> tuple[str, str, str, str, str]:
     return ActorIdentityColumns.from_actor(actor).values()
 
 
-def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str]:
+def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str, str]:
     return ConversationIdentityColumns.from_conversation(conversation).values()

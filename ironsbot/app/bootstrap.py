@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
@@ -13,6 +14,7 @@ from ironsbot.core.plugin_install import scoped_plugin_install_context
 
 if TYPE_CHECKING:
     from ironsbot.app.application import Application
+    from ironsbot.config.models.settings import QQOfficialConfig
 
 
 def configure_third_party_logging() -> None:
@@ -20,23 +22,28 @@ def configure_third_party_logging() -> None:
         logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
+def qq_official_bot_configs(config: QQOfficialConfig) -> list[dict[str, object]]:
+    """Build adapter credentials without introducing a default account."""
+
+    return [
+        {
+            "id": account.app_id,
+            # adapter-qq 1.7.2 still declares the retired static token field,
+            # but authentication uses AppID + AppSecret to refresh AccessToken.
+            "token": "",
+            "secret": account.secret,
+            "use_websocket": True,
+            "intent": {"c2c_group_at_messages": True},
+        }
+        for account in config.enabled_accounts.values()
+    ]
+
+
 def bootstrap() -> Application:
     configure_third_party_logging()
     settings = load_settings()
     qq_official = settings.bot.qq_official
-    qq_bots = (
-        [
-            {
-                "id": qq_official.app_id,
-                "token": qq_official.token,
-                "secret": qq_official.secret,
-                "use_websocket": True,
-                "intent": {"c2c_group_at_messages": True},
-            }
-        ]
-        if qq_official.enabled
-        else []
-    )
+    qq_bots = qq_official_bot_configs(qq_official)
     nonebot.init(
         _env_file=(),
         environment=settings.bot.environment,
@@ -63,7 +70,7 @@ def bootstrap() -> Application:
             with application.resources.private_extensions.plugin_import_path():
                 nonebot.load_from_toml(str(manifest_path))
     application.configure(context.contributions)
-    if qq_official.enabled:
+    if qq_official.enabled_accounts:
         from ironsbot.integrations.qq_official.runtime import (
             install_qq_official_runtime,
         )
@@ -77,7 +84,32 @@ def bootstrap() -> Application:
                 player_id_resolver=application.resources.player_id_resolver,
                 features=application.resources.features,
                 ai=application.resources.ai,
-            )
+                team_resource=application.resources.team_resource,
+                activity=application.resources.activity,
+                messaging=application.resources.messaging,
+                refresh_push_time_jobs=partial(
+                    application.resources.messaging.refresh_push_time_jobs,
+                    scheduler=application.scheduler,
+                    activity_service=application.resources.activity,
+                ),
+                sendpic=application.resources.sendpic,
+                bilibili=application.resources.bilibili,
+                bilibili_monitor=application.resources.bilibili_monitor,
+                server_status=application.resources.server_status,
+                meeting_number=settings.messaging.meeting.number,
+                meeting_template=settings.messaging.meeting.template,
+                pet_config=application.resources.pet_config,
+                image_command_texts=(
+                    application.resources.sendpic.exact_command_texts
+                ),
+                new_content_expanded_categories=frozenset(
+                    settings.seer.new_content.expanded_categories
+                ),
+                new_content_preview_max_items=(
+                    settings.seer.new_content.auto_expand_max_items
+                ),
+            ),
+            application.resources.outbound_messenger,
         )
     application.install()
     return application

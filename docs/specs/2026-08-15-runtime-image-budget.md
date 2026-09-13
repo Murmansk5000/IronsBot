@@ -97,4 +97,10 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 Program  [███████░] 7/8 verified phases; real platform acceptance remains
 Phase    [█████████░] local Linux candidate verified; published CI artifact remains
 Current  [██████████] bytecode exclusion, smoke, budgets and baseline comparison verified
+
+2026-09-14：最终镜像不再携带 `pygments` 与 `pymdown-extensions`。它们仅服务
+`nonebot-plugin-htmlkit.md_to_pic`，而 IronsBot 的唯一渲染入口是
+`template_to_pic`；`markdown` 和 NoneBot 使用的 `pygtrie` 继续保留。发布 smoke
+会断言两个裁剪包不存在，并实际生成一张含中文和粗体的 PNG。依赖目录预算同步从
+128 MiB 收紧到 120 MiB，防止节省空间被后续依赖增长静默吃掉。
 ```

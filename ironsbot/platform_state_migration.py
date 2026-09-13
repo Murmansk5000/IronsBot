@@ -36,7 +36,7 @@ from ironsbot.state_migration_files import (
     copy_sqlite_bundle,
 )
 
-_VERSION = 1
+_VERSION = 2
 _MARKER_TABLE = "ironsbot_platform_identity_migration"
 _META_TABLE = "ironsbot_schema_migrations"
 _QQ_NAMESPACES = frozenset(
@@ -55,6 +55,17 @@ _QQ_IDENTITY_NAMESPACES = _QQ_NAMESPACES
 _RUNTIME_IDENTITY_NAMESPACES = frozenset({"team_audit"})
 _AI_NAMESPACES = frozenset({"ai_memory"})
 _AI_IDENTITY_NAMESPACES = _AI_NAMESPACES
+_IDENTITY_NAMESPACE_VERSIONS = {
+    "ai_memory": 2,
+    "bilibili_preferences": 3,
+    "lucky_skin_watch": 2,
+    "player_bindings": 2,
+    "player_query_limits": 2,
+    "push_subscriptions": 2,
+    "rank_display": 2,
+    "team_audit": 2,
+    "team_resources": 2,
+}
 
 
 class PlatformStateMigrationError(RuntimeError):
@@ -143,6 +154,7 @@ def migrate_platform_state_identities(  # noqa: PLR0913
     runtime_state_path: Path | None = None,
     ai_memory_path: Path | None = None,
     backup_root: Path | None = None,
+    qq_official_account_id: str | None = None,
     apply: bool = False,
     now: datetime | None = None,
 ) -> PlatformStateMigrationResult:
@@ -167,7 +179,11 @@ def migrate_platform_state_identities(  # noqa: PLR0913
             raise PlatformStateMigrationError.partial_target()
 
         expected = _source_row_counts(paths)
-        _validate_in_memory(paths, expected)
+        _validate_in_memory(
+            paths,
+            expected,
+            qq_official_account_id=qq_official_account_id,
+        )
     except sqlite3.Error as error:
         raise PlatformStateMigrationError.unreadable_source(
             paths.data_root,
@@ -198,7 +214,11 @@ def migrate_platform_state_identities(  # noqa: PLR0913
         _temporary_path(paths.ai_memory),
     )
     try:
-        _build_targets(paths, temporary)
+        _build_targets(
+            paths,
+            temporary,
+            qq_official_account_id=qq_official_account_id,
+        )
         _validate_target_files(temporary, expected)
         apply_sqlite_bundle_changes(tuple(
             SqliteBundleChange(source, target, backup.files.get(source))
@@ -242,7 +262,12 @@ def _resolve_path(root: Path, configured: Path | None, default: str) -> Path:
     return path.resolve() if path.is_absolute() else (root / path).resolve()
 
 
-def _validate_in_memory(paths: PlatformStatePaths, expected: dict[str, int]) -> None:
+def _validate_in_memory(
+    paths: PlatformStatePaths,
+    expected: dict[str, int],
+    *,
+    qq_official_account_id: str | None,
+) -> None:
     temporary = (
         open_memory_sqlite_connection(),
         open_memory_sqlite_connection(),
@@ -251,7 +276,11 @@ def _validate_in_memory(paths: PlatformStatePaths, expected: dict[str, int]) -> 
     try:
         for connection in temporary:
             connection.row_factory = sqlite3.Row
-        _build_connections(paths, temporary)
+        _build_connections(
+            paths,
+            temporary,
+            qq_official_account_id=qq_official_account_id,
+        )
         _validate_target_counts(temporary, expected)
     except (PlatformStateDataError, sqlite3.Error) as error:
         raise PlatformStateMigrationError(str(error)) from error
@@ -263,6 +292,8 @@ def _validate_in_memory(paths: PlatformStatePaths, expected: dict[str, int]) -> 
 def _build_targets(
     paths: PlatformStatePaths,
     temporary: tuple[Path, Path, Path],
+    *,
+    qq_official_account_id: str | None,
 ) -> None:
     connections = (
         open_sqlite_connection(temporary[0]),
@@ -273,7 +304,11 @@ def _build_targets(
         for connection in connections:
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
-        _build_connections(paths, connections)
+        _build_connections(
+            paths,
+            connections,
+            qq_official_account_id=qq_official_account_id,
+        )
     except BaseException:
         for connection in connections:
             connection.rollback()
@@ -289,11 +324,17 @@ def _build_targets(
 def _build_connections(
     paths: PlatformStatePaths,
     connections: tuple[sqlite3.Connection, sqlite3.Connection, sqlite3.Connection],
+    *,
+    qq_official_account_id: str | None,
 ) -> None:
     qq_state, runtime_state, ai_memory = connections
     _create_meta(qq_state)
     create_qq_state_schema(qq_state)
-    copy_qq_state(paths.qq_state, qq_state)
+    copy_qq_state(
+        paths.qq_state,
+        qq_state,
+        qq_official_account_id=qq_official_account_id,
+    )
     copy_passthrough_tables(
         paths.qq_state,
         qq_state,
@@ -309,7 +350,11 @@ def _build_connections(
 
     _create_meta(runtime_state)
     create_runtime_state_schema(runtime_state)
-    copy_runtime_state(paths.runtime_state, runtime_state)
+    copy_runtime_state(
+        paths.runtime_state,
+        runtime_state,
+        qq_official_account_id=qq_official_account_id,
+    )
     copy_passthrough_tables(
         paths.runtime_state,
         runtime_state,
@@ -325,7 +370,11 @@ def _build_connections(
 
     _create_meta(ai_memory)
     create_ai_memory_schema(ai_memory)
-    copy_ai_memory(paths.ai_memory, ai_memory)
+    copy_ai_memory(
+        paths.ai_memory,
+        ai_memory,
+        qq_official_account_id=qq_official_account_id,
+    )
     copy_passthrough_tables(
         paths.ai_memory,
         ai_memory,
@@ -362,7 +411,9 @@ def _copy_namespaces(
     timestamp = datetime.now(timezone.utc).isoformat()
     for namespace in namespaces:
         version = (
-            1 if namespace in identity_namespaces else source_versions.get(namespace, 1)
+            _IDENTITY_NAMESPACE_VERSIONS[namespace]
+            if namespace in identity_namespaces
+            else source_versions.get(namespace, 1)
         )
         target.execute(
             "INSERT INTO ironsbot_schema_migrations VALUES (?, ?, ?)",
