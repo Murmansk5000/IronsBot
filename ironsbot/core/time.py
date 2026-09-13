@@ -186,21 +186,30 @@ def clock_window_contains(
     return current >= start_second or current < end_second
 
 
-def normalized_daily_times(
+def normalized_daily_times_with_seconds(
     value: object,
     *,
     error_message: str,
 ) -> list[str]:
     return [
-        normalize_daily_time(item, error_message=error_message)
+        normalize_daily_time_with_seconds(item, error_message=error_message)
         for item in split_daily_time_values(value, error_message=error_message)
     ]
 
 
-def normalized_daily_time_csv(value: object, *, error_message: str) -> str:
+def normalized_daily_time_csv_with_seconds(
+    value: object,
+    *,
+    error_message: str,
+) -> str:
     return ",".join(
         sorted(
-            dict.fromkeys(normalized_daily_times(value, error_message=error_message))
+            dict.fromkeys(
+                normalized_daily_times_with_seconds(
+                    value,
+                    error_message=error_message,
+                )
+            )
         )
     )
 

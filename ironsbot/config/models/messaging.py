@@ -406,6 +406,17 @@ class PushUnsubscribeConfig(BaseModel):
         return self
 
 
+class ProactiveDeliveryConfig(BaseModel):
+    """Bounded retry policy shared by all proactive message producers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_attempts: int = Field(default=3, ge=1)
+    max_parallel_targets: int = Field(default=5, ge=1)
+    retry_batch_divisor: int = Field(default=3, ge=1)
+    retry_delay_seconds: float = Field(default=2.0, ge=0)
+
+
 class RedPacketNoticeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -483,6 +494,9 @@ class MessageConfig(BaseModel):
     )
     push_unsubscribe: PushUnsubscribeConfig = Field(
         default_factory=PushUnsubscribeConfig
+    )
+    proactive_delivery: ProactiveDeliveryConfig = Field(
+        default_factory=ProactiveDeliveryConfig
     )
     red_packet_notice: RedPacketNoticeConfig = Field(
         default_factory=RedPacketNoticeConfig
