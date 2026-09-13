@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_models import (
     RANK_PAGE_OVERVIEW_COMMANDS,
     RankPlayerCommand,
@@ -39,7 +40,10 @@ def build_portable_rank_operations(
     resolver: PlayerIdResolver,
 ) -> dict[str, PortableOperation]:
     owner = _PortableRankOperations(service, resolver)
-    return dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, owner.query)
+    return {
+        **dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, owner.query),
+        "rank.display_limit": owner.set_display_limit,
+    }
 
 
 def build_portable_rank_status_operations(
@@ -80,6 +84,26 @@ def build_portable_rank_status_operations(
 class _PortableRankOperations:
     service: RankQueryService
     resolver: PlayerIdResolver
+
+    async def set_display_limit(
+        self,
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        command_text = text if text.startswith("/") else f"/{text}"
+        limit = parse_rank_display_limit_command(command_text)
+        if limit is None:
+            msg = f"catalog accepted invalid rank display input: {text!r}"
+            raise ValueError(msg)
+        message = context.message
+        return OutboundMessage.from_text(
+            self.service.set_display_limit(
+                conversation=message.conversation,
+                actor=message.actor,
+                can_manage=True,
+                limit=limit,
+            )
+        )
 
     async def query(
         self,

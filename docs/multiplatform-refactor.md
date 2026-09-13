@@ -2369,3 +2369,11 @@ B站超级管理员手动刷新随后进入 portable router。OneBot 与 QQ Offi
 幸运橱窗账户、长任务进度投递或群榜单设置，不以伪映射接入。专项 `75 passed`，全量
 `3368 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。没有
 新增运行依赖、配置、数据库、素材或镜像层，真实平台验收门不变。
+
+群级榜单默认显示条数随后接入 portable rank service。`/榜单显示 N` 继续由同一 command
+contract 解析和授权，QQ Official 普通成员不可认领，群主、管理员及精确配置的群超级
+管理员才可执行；写入时保留 `(platform, AppID, group OpenID)` 会话主键和完整操作者
+ActorRef，不使用数字 QQ 映射或默认账号。专项 `55 passed`，全量
+`3370 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。完整
+示例目录的 portable 覆盖提升到 61/75，没有新增运行依赖、配置、迁移、数据库、素材或
+镜像层，真实平台验收门不变。

@@ -52,6 +52,18 @@ class _RankQueryService:
     def default_limit(self, _conversation: ConversationRef | None) -> int:
         return 17
 
+    def set_display_limit(
+        self,
+        *,
+        conversation: ConversationRef | None,
+        actor: ActorRef,
+        can_manage: bool,
+        limit: int,
+    ) -> str:
+        assert conversation is not None
+        assert can_manage
+        return f"display:{conversation.account_id}:{conversation.id}:{actor.id}:{limit}"
+
     async def list(
         self,
         command: RankListCommand,
@@ -195,6 +207,23 @@ async def test_portable_rank_dispatches_list_score_and_alias_player_queries() ->
     assert service.delivered == []
     player.delivered()
     assert service.delivered == [("成就点数", 700001)]
+
+
+@pytest.mark.asyncio
+async def test_portable_rank_display_limit_uses_full_platform_identity() -> None:
+    service = _RankQueryService()
+    operations = build_portable_rank_operations(
+        cast("RankQueryService", service),
+        _resolver(),
+    )
+    context = _context("/榜单显示 20")
+
+    result = cast(
+        "OutboundMessage",
+        await operations["rank.display_limit"]("榜单显示 20", context),
+    )
+
+    assert _text(result) == "display:None:group-openid:caller-openid:20"
 
 
 @pytest.mark.asyncio

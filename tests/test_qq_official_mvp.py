@@ -227,6 +227,21 @@ class _FakeRankQueries:
     def default_limit(self, _conversation: ConversationRef | None) -> int:
         return 10
 
+    def set_display_limit(
+        self,
+        *,
+        conversation: ConversationRef | None,
+        actor: ActorRef,
+        can_manage: bool,
+        limit: int,
+    ) -> str:
+        assert conversation is not None
+        assert can_manage
+        return (
+            f"榜单显示:{conversation.account_id}:"
+            f"{conversation.id}:{actor.id}:{limit}"
+        )
+
     async def list(
         self,
         command: RankListCommand,
@@ -331,6 +346,7 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
     bilibili: bool = False,
     operations: bool = False,
     pet_config: bool = False,
+    rank_display: bool = False,
     rank_status: bool = False,
 ) -> CommandCatalog:
     command_ids = {
@@ -355,6 +371,8 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
     }
     if rank_status:
         command_ids.update(("rank.sample_status", "rank.page_status"))
+    if rank_display:
+        command_ids.add("rank.display_limit")
     seer_contracts = tuple(
         contract
         for contract in seer_command_contracts(
@@ -1092,6 +1110,62 @@ async def test_portable_router_enforces_operational_query_access() -> None:
     assert await dispatch("/无头状态", member) is None
     assert await dispatch("/开服查询", admin) == "admin status"
     assert await dispatch("/无头状态", admin) == "instance status"
+
+
+@pytest.mark.asyncio
+async def test_portable_router_limits_rank_display_setting_to_group_managers() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["seer_rank"]),
+    )
+    rank_queries = _FakeRankQueries()
+    router = build_portable_command_router(
+        catalog=_portable_catalog(rank_display=True),
+        about=AboutService("test"),
+        seer=_fake_seer(rank_queries=rank_queries),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-openid",
+        account_id="example-app",
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "member-openid",
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    member_context = _portable_input(
+        "/榜单显示 20",
+        actor,
+        conversation,
+        group_role="member",
+        mentions_bot=False,
+    )
+    manager_context = _portable_input(
+        "/榜单显示 20",
+        actor,
+        conversation,
+        group_role="admin",
+        mentions_bot=False,
+    )
+
+    assert not router.recognizes(member_context)
+    assert await router.dispatch(member_context) is None
+    reply = await router.dispatch(manager_context)
+
+    assert reply is not None
+    assert cast("TextPart", reply.message.parts[0]).text == (
+        "榜单显示:example-app:group-openid:member-openid:20"
+    )
 
 
 @pytest.mark.asyncio
