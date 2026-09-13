@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.services.seer.images import (
+        AssetRepositoryKind,
         ImageKind,
         PublishedRenderAssetSnapshot,
     )
@@ -36,23 +37,28 @@ _URLS: dict[ImageKind, tuple[str, ...]] = {
         "seer-unity-preview-img-dumper@main/img/preview.png",
     ),
 }
-_PINNED_ASSET_PATHS: dict[ImageKind, tuple[str, ...]] = {
-    "element_type": ("newseer/assets/art/ui/assets/pettype/{}.png",),
-    "equip": ("newseer/assets/art/ui/assets/item/cloth/prev/{}.png",),
+_PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]] = {
+    "element_type": (("element_type", "newseer/assets/art/ui/assets/pettype/{}.png"),),
+    "equip": (("equip", "newseer/assets/art/ui/assets/item/cloth/prev/{}.png"),),
     "item": (
-        "newseer/assets/art/ui/assets/item/doodle/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/petitem/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/skillstone/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/throw/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/userinfo/icon/{}.png",
+        ("item", "newseer/assets/art/ui/assets/item/doodle/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/petitem/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/skillstone/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/throw/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/userinfo/icon/{}.png"),
     ),
-    "mintmark": ("newseer/assets/art/ui/assets/countermark/icon/{}.png",),
-    "mount": ("mount/{}.png",),
-    "pet_body": ("newseer/assets/art/ui/assets/pet/body/{}.png",),
-    "pet_head": ("newseer/assets/art/ui/assets/pet/head/{}.png",),
-    "sign_buff": ("newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png",),
-    "suit": ("newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png",),
-    "title": ("newseer/assets/art/ui/assets/achieve/title/{}.png",),
+    "mintmark": (("mintmark", "newseer/assets/art/ui/assets/countermark/icon/{}.png"),),
+    "mount": (
+        ("default", "newseer/assets/art/ui/assets/item/cloth/prev/{}.png"),
+        ("mount", "mount/{}.png"),
+    ),
+    "pet_body": (("pet_body", "newseer/assets/art/ui/assets/pet/body/{}.png"),),
+    "pet_head": (("pet_head", "newseer/assets/art/ui/assets/pet/head/{}.png"),),
+    "sign_buff": (
+        ("sign_buff", "newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png"),
+    ),
+    "suit": (("suit", "newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png"),),
+    "title": (("title", "newseer/assets/art/ui/assets/achieve/title/{}.png"),),
 }
 _PINNED_ASSET_ROOTS = (
     "https://raw.githubusercontent.com/{repository}/{revision}/",
@@ -140,21 +146,22 @@ class HttpSeerImageSource:
             return tuple(template.format(key) for template in _URLS[kind])
         if snapshot is None:
             raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
-        repository = snapshot.repository_for(kind)
-        if repository is None:
-            raise MissingImageRepositoryError(kind)
-        roots = tuple(
-            template.format(
-                repository=repository.repository,
-                revision=repository.revision,
+        urls: list[str] = []
+        for repository_kind, path in paths:
+            repository = snapshot.repository_for(repository_kind)
+            if repository is None:
+                continue
+            roots = (
+                root.format(
+                    repository=repository.repository,
+                    revision=repository.revision,
+                )
+                for root in _PINNED_ASSET_ROOTS
             )
-            for template in _PINNED_ASSET_ROOTS
-        )
-        return tuple(
-            f"{root}{path.format(key)}"
-            for path in paths
-            for root in roots
-        )
+            urls.extend(f"{root}{path.format(key)}" for root in roots)
+        if not urls:
+            raise MissingImageRepositoryError(kind)
+        return tuple(dict.fromkeys(urls))
 
     async def fetch_url(self, url: str) -> bytes:
         try:
@@ -170,6 +177,7 @@ class HttpSeerImageSource:
         response = await client.get(url)
         response.raise_for_status()
         return response.content
+
 
 def _image_source_error(
     error: HTTPStatusError | RequestError,

@@ -1952,6 +1952,19 @@ Ruff、compileall、公开导入和差异检查。
 
 后续切片已将座驾 PNG 切换到 SeerAPI 的 `generated-render-assets` 分支：工作流增量生成并
 提交素材，manifest v3 为 `mount` 声明仓库和精确 commit，IronsBot 统一通过
-`SeerImageSource` 获取。运行时 SQLite Blob repository 与 fallback 已删除。SeerAPI 全量
-`326 passed`，IronsBot 相关测试 `89 passed`；当前只剩真实 Actions release 与消费者
+`SeerImageSource` 获取。座驾使用有序不可变候选，先取 Unity `equip` PNG，再取构建生成
+PNG；真实发布库 36 个座驾中已有 25 个命中前者。运行时 SQLite Blob repository 与
+fallback 已删除。SeerAPI 全量
+`327 passed`，IronsBot 全量 `3239 passed, 7 skipped`；当前只剩真实 Actions release 与消费者
 smoke。QQ 身份能力仍按平台延期规则排在最后。
+
+同日使用现有 62 MB 真实发布库执行跨仓库本地 smoke：生产 finalizer 重建 manifest v3，
+36 条座驾中 25 条由固定 Unity revision 满足；IronsBot 随后通过 `DatabaseManager` 加载，
+识别 `default/mount` 两个仓库，并由生产 HTTP 图片源取得 `1300067` 的 26,603 字节、
+193×184 PNG。该测试证明本地生产者/消费者契约接通，但生成分支尚未远端发布，剩余
+11 个 Flash 缺图和真实 Actions release 仍不标为完成。
+
+同日另以临时 bare remote 原样执行 Actions 中的生成素材分支命令，验证了
+`generated-render-assets` 不存在时创建 orphan branch，以及后续 worktree 增量提交并推送
+新 revision。两轮提交不同，远端最终文件集符合预期。该 smoke 只关闭本地 Git 分支生命
+周期风险；真实 Actions 权限、资源生成耗时和发布后消费者验证仍是外部门禁。

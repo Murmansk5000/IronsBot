@@ -24,6 +24,7 @@ ImageKind = Literal[
     "suit",
     "title",
 ]
+AssetRepositoryKind = ImageKind | Literal["default"]
 
 _ASSET_REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ASSET_REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -51,7 +52,9 @@ class PublishedRenderAssetSnapshot:
         )
         return f"{repositories}:{self.manifest_revision}"
 
-    def repository_for(self, kind: ImageKind) -> PublishedAssetRepository | None:
+    def repository_for(
+        self, kind: AssetRepositoryKind
+    ) -> PublishedAssetRepository | None:
         return self.repositories.get(kind, self.repositories.get("default"))
 
 

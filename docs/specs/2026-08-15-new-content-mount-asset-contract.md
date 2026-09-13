@@ -13,9 +13,10 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 ## Problem
 
 旧实现让座驾图片先按 `equip` 查询，再从发布 SQLite 的 Blob 表读取构建期 PNG。
-当前实现已删除该运行时分叉：SeerAPI 将 PNG 增量发布到自身的
+当前实现已删除该运行时分叉：SeerAPI 将 Flash PNG 增量发布到自身的
 `generated-render-assets` 分支，manifest v3 按素材类型声明仓库和不可变提交；机器人只
-通过统一图片源读取 `mount`。
+通过统一图片源读取 `mount`。每个 `mount` 请求拥有有序不可变候选：先使用 Unity
+`equip` PNG，缺失时才使用 SeerAPI 生成的 Flash PNG。
 
 这不是运行时 SWF 转换，但它仍让一个已生成的 PNG 绕开了统一 `AssetStore`、素材
 manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_data` 也使素材
@@ -61,6 +62,8 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
   位置和 SHA-256 必须可由该 release 复现。IronsBot 只保留通用 asset/render cache。
 - Compatibility: 新 release 是唯一正常路径。IronsBot 删除 `flash_mount_repository`、
   `fallback_data` 和 `flash_mount_image` runtime 查询；旧 release 不得被静默读取。
+- Selection: manifest 和消费者使用相同的候选顺序。仓库和路径均固定到发布 revision；
+  不允许把所有座驾强制路由到生成仓库，也不允许回退到可变分支。
 
 ## Design
 
@@ -115,12 +118,15 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 | 2026-08-15 | 当前路径审计 | `new_content_renderer`、`flash_mount_repository`、SeerAPI Flash render script 与 focused tests | 已确认 PNG 在构建期生成，但 IronsBot 仍从 SQLite blob 作隐式 fallback；尚未实施。 |
 | 2026-08-15 | 上游发布能力审计 | SeerAPI `render_flash_mount_images.py`、`render_asset_repository.py`、build workflow 与 asset manifest builder | Flash 脚本只写 release SQLite；现有 asset repository 仅提供 immutable snapshot 读取，尚无 PNG 写入/发布路径，因此不得开始消费者切换。 |
 | 2026-09-05 | 重新核对真实消费者和流水线 | `services/seer/equipment.py`、新增内容 renderer、SeerAPI build workflow | 普通座驾查询也调用 `load_flash_mount_image`，删除 repository 时必须一同迁入统一素材源；上游仍只向 SQLite 写 PNG，尚无 immutable asset repository 发布步骤。本次未删除消费者或改动生产发布。 |
-| 2026-09-13 | manifest v3 与座驾素材外置 | SeerAPI 全量 326 passed；IronsBot 全量 3238 passed、7 skipped，当前 focused tests 89 passed；两仓 Ruff、compileall 与改动范围 BasedPyright | 构建端增量发布 `generated-render-assets`，消费者专用 Blob 路径已删除；尚需真实 Actions release 和机器人 consumer smoke。 |
+| 2026-09-13 | manifest v3 与座驾素材外置 | SeerAPI 全量 327 passed；IronsBot 全量 3239 passed、7 skipped，当前 focused tests 67 passed；两仓 Ruff、compileall 与改动范围 BasedPyright | 构建端增量发布 `generated-render-assets`，消费者专用 Blob 路径已删除；尚需真实 Actions release 和机器人 consumer smoke。 |
+| 2026-09-13 | 真实座驾来源复核 | 本地真实发布库 36 个座驾 manifest 条目；候选路由专项测试；生产 HTTP 图片源读取 `1300067` | 25 个已有 Unity `equip` PNG，11 个缺失；候选链固定为 Unity 优先、生成 PNG 兜底。真实固定 commit 返回 26,603 字节、193×184 的有效 PNG；生成分支仍待线上发布 smoke。 |
+| 2026-09-13 | 本地跨仓库 release smoke | 62 MB 真实发布库经生产 finalizer 重封装为 manifest v3；IronsBot `DatabaseManager`、`SeerDatabase` 与生产 HTTP 图片源消费 | 机器人识别 `default`、`mount` 两个不可变仓库，36 条座驾中 25 条 Unity 事实可用，`1300067` 成功解码为 193×184 PNG。未发布的生成分支和 11 个 Flash 缺口仍待 Actions smoke。 |
+| 2026-09-13 | 本地生成分支生命周期 smoke | 使用临时 bare remote 原样执行工作流的 orphan branch 创建、worktree 更新、提交和 push 命令 | 首次发布和增量发布生成两个不同提交，远端分支最终包含 `README.md`、`mount/1.png`、`mount/2.png`。这只验证 Git 编排，不替代真实 Actions、资源生成或消费者 smoke。 |
 
 ## Progress
 
 ```text
 Program  [█████████░] verified phases: 7/8
 Phase    [████████░░] 80%  verified slices: 4/5   estimated remaining: one production release smoke
-Current  [██████████] 100% implementation complete; next: publish and verify a real release
+Current  [██████████] 100% local real-release smoke complete; next: publish and verify generated assets
 ```
