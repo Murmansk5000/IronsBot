@@ -28,7 +28,7 @@ jobs:
             - name: Setup Python
               uses: actions/setup-python@v7
               with:
-                  python-version: "3.10"
+                  python-version: "3.11"
 
             - name: Install command manifest dependencies
               shell: bash
@@ -40,7 +40,7 @@ jobs:
               shell: bash
               run: |
                   python -m uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
-                  python -m uv tool run --python 3.10 --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
+                  python -m uv tool run --python 3.11 --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
 
             - name: Upload dependency audit evidence
               if: ${{ always() }}

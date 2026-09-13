@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import tomllib
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,7 +120,7 @@ def _run_candidate_budget(
     script.write_text(
         """docker() {
     printf '%s\t/app\n' "$BUDGET_TEST_APP_KIB"
-    printf '%s\t/usr/local/lib/python3.10/site-packages\n' \
+    printf '%s\t/usr/local/lib/python3.11/site-packages\n' \
         "$BUDGET_TEST_SITE_PACKAGES_KIB"
     printf '%s\t/usr/share/fonts\n' "$BUDGET_TEST_FONTS_KIB"
 }
@@ -462,10 +463,30 @@ def test_builder_and_runtime_pin_the_same_debian_release() -> None:
         line.strip() for line in dockerfile.splitlines() if line.startswith("FROM ")
     ]
 
+    assert "ARG PYTHON_VERSION=3.11" in dockerfile
     assert from_lines == [
-        "FROM python:3.10-bookworm AS requirements_stage",
-        "FROM python:3.10-slim-bookworm",
+        "FROM python:${PYTHON_VERSION}-bookworm AS requirements_stage",
+        "FROM python:${PYTHON_VERSION}-slim-bookworm",
     ]
+
+
+def test_runtime_python_baseline_is_consistent() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    setup = next(step for step in _steps() if step["name"] == "Setup Python")
+    audit = next(
+        step
+        for step in _steps()
+        if step["name"] == "Audit locked runtime dependencies"
+    )
+
+    assert project["project"]["requires-python"] == ">=3.11, <4.0"
+    assert project["tool"]["basedpyright"]["pythonVersion"] == "3.11"
+    assert not any(
+        dependency.startswith("tomli")
+        for dependency in project["project"]["dependencies"]
+    )
+    assert setup["with"]["python-version"] == "3.11"
+    assert "--python 3.11 --from pip-audit==2.10.1" in audit["run"]
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
@@ -475,7 +496,7 @@ def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None
     login = next(s for s in steps if s["name"] == "Login to GitHub Container Registry")
     assert steps.index(audit) < steps.index(upload) < steps.index(login)
     assert "--frozen --no-dev --no-emit-project" in audit["run"]
-    assert "--python 3.10 --from pip-audit==2.10.1" in audit["run"]
+    assert "--python 3.11 --from pip-audit==2.10.1" in audit["run"]
     assert "--require-hashes --disable-pip --strict" in audit["run"]
     assert "--fix" not in audit["run"]
     assert "--ignore-vuln" not in audit["run"]

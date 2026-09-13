@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM python:3.10-bookworm AS requirements_stage
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-bookworm AS requirements_stage
 
 WORKDIR /wheel
 
@@ -55,7 +56,9 @@ license_dir.mkdir(parents=True)
 PY
 
 
-FROM python:3.10-slim-bookworm
+FROM python:${PYTHON_VERSION}-slim-bookworm
+
+ARG PYTHON_VERSION
 
 WORKDIR /app
 
@@ -81,15 +84,15 @@ RUN apt-get update \
 # Mount wheels for installation; copying then deleting them retains a large layer.
 RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel \
     pip install --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
-    && rm -rf /usr/local/lib/python3.10/site-packages/pip \
-        /usr/local/lib/python3.10/site-packages/pip-*.dist-info \
-        /usr/local/lib/python3.10/site-packages/setuptools \
-        /usr/local/lib/python3.10/site-packages/setuptools-*.dist-info \
-        /usr/local/lib/python3.10/site-packages/wheel \
-        /usr/local/lib/python3.10/site-packages/wheel-*.dist-info \
+    && rm -rf /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip-*.dist-info \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools-*.dist-info \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/wheel \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/wheel-*.dist-info \
         /usr/local/bin/pip \
         /usr/local/bin/pip3 \
-        /usr/local/bin/pip3.10
+        /usr/local/bin/pip${PYTHON_VERSION}
 
 # Keep the runtime layer independent from repository-only material.  Tests,
 # documentation, local data and build scripts are useful in source checkouts,

@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
-import tomli
+import tomllib
 
 from ironsbot.app import docker_preflight
 from ironsbot.app.docker_preflight import (
@@ -416,8 +416,8 @@ def test_docker_image_runs_preflight_before_application() -> None:
 
 def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
     root = Path(__file__).resolve().parents[1]
-    project = tomli.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    lock = tomli.loads((root / "uv.lock").read_text(encoding="utf-8"))
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
     main = (root / "ironsbot" / "__main__.py").read_text(encoding="utf-8")
 
     dependencies = project["project"]["dependencies"]

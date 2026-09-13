@@ -5,8 +5,8 @@
 [ARCHITECTURE.md](../ARCHITECTURE.md) 为准，工作方式以
 [engineering-workflow.md](engineering-workflow.md) 为准。
 
-本轮生产基线保持 NoneBot2、OneBot v11、NapCat、Docker/Unraid 和 Python 3.10+
-不变。QQ Official 仅是未来兼容目标：在真实功能需要前，不安装
+本轮生产基线保持 NoneBot2、OneBot v11、NapCat 和 Docker/Unraid；Python 运行基线现已
+统一为 3.11+。QQ Official 仅是未来兼容目标：在真实功能需要前，不安装
 `nonebot-adapter-qq`，不创建空适配器目录，也不写入官方凭据。
 
 ## 总体约束
@@ -2104,3 +2104,13 @@ IronsBot `SeerImageSource` 同步采用“完整预览、官方图标、生成 P
 同一真实 v3 数据库重建座驾 manifest 后，Flash 计划由
 `mounts=11 candidates=11` 收缩为 `mounts=2 candidates=2`，且两个 SWF 均确认缺失，
 因此仍输出 `renderer_required=false`，不会安装 Java/FFDec。
+
+随后完成 Python 3.11 运行基线收口：项目最低版本、Docker 构建/运行阶段、发布 CI 和
+BasedPyright 使用同一版本；Dockerfile 通过一个 `PYTHON_VERSION` 参数维持两阶段一致，
+并继续固定 Debian Bookworm。Python 3.10 的 `tomli` 兼容分支和锁文件中的
+`backports-asyncio-runner` 已删除；Ruff 暂时保留 `py310` 语法风格目标，避免把运行时升级
+混同为 198 项无关机械改写。隔离 CPython 3.11.15 环境全量结果为
+`3241 passed, 7 skipped, 2 warnings`，专项 `90 passed`，BasedPyright 零错误；冻结运行
+导出不再包含上述兼容包。该证据不替代新候选镜像的 Linux 体积和 digest 验收。期间仅
+只读核对本地 `main` `55a39fd1`，没有 fetch、pull、merge 或 push。QQ 号、直接 @、绑定
+及群身份等目标 API 无法忠实表达的工作继续延期到最终平台阶段。
