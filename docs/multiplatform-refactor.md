@@ -2250,3 +2250,8 @@ QQ 官方鉴权随后对齐 `tencent-connect` 官方 SDK：部署配置仅接收
 AppSecret，由适配器调用 `getAppAccessToken` 获取短期 AccessToken、缓存在内存并在
 到期前刷新。`nonebot-adapter-qq 1.7.2` 的配置模型仍声明已弃用的静态 `token` 字段，
 bootstrap 只为满足该内部模型传入空字符串，不再把它暴露为 IronsBot 配置或环境变量。
+
+B站被动历史查询随后接入同一便携执行注册表。`动态` 复用现有账号权限、Cookie、
+历史库、详情补全和 `OutboundMessage` 渲染，并通过通用 `PortableQuerySessions` 提供
+可重复选择的数字菜单；远程图片不进入机器人仓库或镜像。主动动态推送、账号订阅和
+推送模式修改仍等待跨平台主动目标模型完成，不因被动查询可用而宣称完成。

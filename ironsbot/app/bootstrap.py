@@ -83,6 +83,8 @@ def bootstrap() -> Application:
                 activity=application.resources.activity,
                 messaging=application.resources.messaging,
                 sendpic=application.resources.sendpic,
+                bilibili=application.resources.bilibili,
+                bilibili_monitor=application.resources.bilibili_monitor,
             ),
             application.resources.outbound_messenger,
         )

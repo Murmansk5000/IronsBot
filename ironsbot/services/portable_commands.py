@@ -13,6 +13,9 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
+from ironsbot.services.portable_bilibili_commands import (
+    build_portable_bilibili_operations,
+)
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
@@ -72,6 +75,8 @@ if TYPE_CHECKING:
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+    from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.seer.data_queries import DataQueryReply
@@ -289,6 +294,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     activity: ActivityService | None = None,
     messaging: MessagingService | None = None,
     sendpic: SendpicService | None = None,
+    bilibili: BilibiliService | None = None,
+    bilibili_monitor: BilibiliMonitorService | None = None,
 ) -> PortableCommandRouter:
     async def about_message(
         text: str,
@@ -371,6 +378,18 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         catalog,
         {} if sendpic is None else build_portable_sendpic_operations(sendpic),
     )
+    bilibili_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if bilibili is None or bilibili_monitor is None
+            else build_portable_bilibili_operations(
+                bilibili,
+                sessions,
+                notify_auth_invalid=bilibili_monitor.notify_auth_invalid,
+            )
+        ),
+    )
 
     operations: dict[str, PortableOperation] = {
         "about": about_message,
@@ -380,6 +399,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **activity_operations,
         **messaging_operations,
         **sendpic_operations,
+        **bilibili_operations,
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,

@@ -4,24 +4,28 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.services.seer.query_result import QueryResult
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
-    from ironsbot.services.seer.query_result import QueryResult
 
 _T = TypeVar("_T")
-QuerySearch = Callable[[str], Awaitable["QueryResult[_T]"]]
-QuerySelect = Callable[[_T], Awaitable["QueryResult[Any]"]]
+QuerySearch = Callable[[str], Awaitable[QueryResult[_T]]]
+QuerySelect = Callable[[_T], Awaitable[QueryResult[Any]]]
 QueryArgumentParser = Callable[[str], str | None]
 _SessionKey = tuple["ActorRef", "ConversationRef"]
-_UntypedSelect = Callable[[object], Awaitable["QueryResult[Any]"]]
+_UntypedMenuSelect = Callable[
+    [object],
+    Awaitable[QueryResult[Any] | OutboundMessage],
+]
+MenuSelect = Callable[[_T], Awaitable[OutboundMessage]]
 
 
 class PortableQueryOperation(Protocol):
@@ -46,12 +50,23 @@ class QueryOperationSpec(Generic[_T]):
 
 
 @dataclass(frozen=True, slots=True)
+class PortableMenuSpec(Generic[_T]):
+    choices: tuple[_T, ...]
+    select: MenuSelect[_T]
+    prompt: OutboundMessage
+    keep_open: bool = False
+    exit_message: str = "已退出查询。"
+
+
+@dataclass(frozen=True, slots=True)
 class _PendingSelection:
     choices: tuple[object, ...]
-    select: _UntypedSelect
+    select: _UntypedMenuSelect
     prompt_title: str
     not_found_message: str
     expires_at: float
+    keep_open: bool = False
+    exit_message: str = "已退出查询。"
 
 
 class PortableQuerySessions:
@@ -115,6 +130,27 @@ class PortableQuerySessions:
             not_found_message=not_found_message,
         )
 
+    def offer_menu(
+        self,
+        context: MessageInputContext,
+        spec: PortableMenuSpec[_T],
+    ) -> OutboundMessage:
+        """Offer a custom numeric menu through the shared session store."""
+
+        async def select_untyped(value: object) -> OutboundMessage:
+            return await spec.select(cast("_T", value))
+
+        self._pending[self._key(context)] = _PendingSelection(
+            choices=tuple(spec.choices),
+            select=select_untyped,
+            prompt_title="",
+            not_found_message="",
+            expires_at=self._now() + self._ttl_seconds,
+            keep_open=spec.keep_open,
+            exit_message=spec.exit_message,
+        )
+        return spec.prompt
+
     async def select(
         self,
         text: str,
@@ -128,14 +164,22 @@ class PortableQuerySessions:
         index = int(text.strip())
         if index == 0:
             self._pending.pop(key, None)
-            return OutboundMessage.from_text("已退出查询。")
+            return OutboundMessage.from_text(pending.exit_message)
         if index > len(pending.choices):
             return OutboundMessage.from_text(
                 f"序号无效，输入 1～{len(pending.choices)}，或输入 0 退出。"
             )
 
-        self._pending.pop(key, None)
+        if not pending.keep_open:
+            self._pending.pop(key, None)
         result = await pending.select(pending.choices[index - 1])
+        if isinstance(result, OutboundMessage):
+            if pending.keep_open:
+                self._pending[key] = replace(
+                    pending,
+                    expires_at=self._now() + self._ttl_seconds,
+                )
+            return result
         return self._present(
             context,
             result,
@@ -149,7 +193,7 @@ class PortableQuerySessions:
         context: MessageInputContext,
         result: QueryResult[Any],
         *,
-        select: _UntypedSelect,
+        select: _UntypedMenuSelect,
         prompt_title: str,
         not_found_message: str,
     ) -> OutboundMessage:
