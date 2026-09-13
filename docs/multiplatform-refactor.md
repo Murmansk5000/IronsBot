@@ -2334,3 +2334,14 @@ QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID polic
 凭据、OpenID policy、默认 feature、超级管理员、主动消息权限和回复序号。出站目标
 必须明确携带原 AppID，不允许默认账号回退。当前 Python 适配器的 sandbox 仍是进程级
 配置，因此同一进程中的账号必须连接相同的正式或沙箱环境。
+
+跨平台配置目标随后按同一账户边界收口（`dc3d72d8`）。OneBot 别名继续位于
+`features.group_aliases` / `features.user_aliases`；QQ 官方群和用户 OpenID 别名改为
+位于各自 `bot.qq_official.accounts.<alias>` 下。统一解析器只产出带 platform、AppID
+和目标 ID 的类型化引用，跨平台或跨官方账号重名会在启动校验中失败，裸官方 OpenID
+不得进入无法表达所属 AppID 的全局推送目标。B站配置目标因此删除 OneBot 专用编译器，
+同一份 `bilibili.push` 可安全包含 OneBot 与官方 QQ 目标；`动态`、`B站账号` 和群/私聊
+`B站推送模式` 也共用便携执行注册表。该提交未增加依赖、SQLite、图片或镜像内容；
+Ruff、BasedPyright、compileall、差异检查通过，全量 `3362 passed, 7 skipped`。腾讯官方
+多账号实现明确要求每个账号独立连接和 Token 缓存，Bot A 收到的 OpenID 不能由 Bot B
+发送，本次结构遵守该限制；真实主动消息权限与平台额度仍留作最终实机验收。
