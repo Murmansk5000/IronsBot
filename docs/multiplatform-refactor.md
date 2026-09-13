@@ -2094,3 +2094,13 @@ SWF 时输出 `renderer_required=False`；存在可下载 SWF、HTTP 非 404 或
 保守启用 FFDec。当前真实计划为 `mounts=11 candidates=11 renderer_required=False`，
 SeerAPI 全量 `338 passed`，Ruff、compileall 与差异检查通过。生产代码净增 34 行，无新
 依赖、缓存协议或镜像内容；11 项仍保留为 pending，不伪造图片或完整 scope。
+
+随后按现有统一图片获取方式复核这 11 项：当前素材 revision 中有 9 项虽然缺少
+`cloth/prev/{id}.png`，但存在有效的官方 `cloth/icon/{id}.png`。SeerAPI manifest 与
+IronsBot `SeerImageSource` 同步采用“完整预览、官方图标、生成 PNG”的有序候选，不使用
+编号名单，也不把素材复制进机器人。真实清单解析后 36 个座驾中 34 个可用，仅
+`1301150`、`1301170` 仍无任何 Unity PNG 且 Flash URL 为 404。SeerAPI 全量
+`339 passed`，IronsBot 全量 `3241 passed, 7 skipped`；机器人依赖和镜像载荷不变。
+同一真实 v3 数据库重建座驾 manifest 后，Flash 计划由
+`mounts=11 candidates=11` 收缩为 `mounts=2 candidates=2`，且两个 SWF 均确认缺失，
+因此仍输出 `renderer_required=false`，不会安装 Java/FFDec。

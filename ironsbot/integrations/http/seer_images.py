@@ -50,6 +50,7 @@ _PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]
     "mintmark": (("mintmark", "newseer/assets/art/ui/assets/countermark/icon/{}.png"),),
     "mount": (
         ("default", "newseer/assets/art/ui/assets/item/cloth/prev/{}.png"),
+        ("default", "newseer/assets/art/ui/assets/item/cloth/icon/{}.png"),
         ("mount", "mount/{}.png"),
     ),
     "pet_body": (("pet_body", "newseer/assets/art/ui/assets/pet/body/{}.png"),),

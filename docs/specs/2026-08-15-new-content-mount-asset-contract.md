@@ -16,7 +16,8 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 当前实现已删除该运行时分叉：SeerAPI 将 Flash PNG 增量发布到自身的
 `generated-render-assets` 分支，manifest v3 按素材类型声明仓库和不可变提交；机器人只
 通过统一图片源读取 `mount`。每个 `mount` 请求拥有有序不可变候选：先使用 Unity
-`equip` PNG，缺失时才使用 SeerAPI 生成的 Flash PNG。
+完整预览 PNG，再使用同一官方仓库的物品图标，二者都缺失时才使用 SeerAPI 生成的
+Flash PNG。
 
 这不是运行时 SWF 转换，但它仍让一个已生成的 PNG 绕开了统一 `AssetStore`、素材
 manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_data` 也使素材
@@ -54,7 +55,8 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 
 ## User And Data Contract
 
-- Inputs: SeerAPI 构建期识别的座驾 ID 与生成的 PNG；已发布 asset repository revision。
+- Inputs: SeerAPI 构建期识别的座驾 ID、官方 Unity PNG 与生成的 PNG；已发布 asset
+  repository revision。
 - Outputs: `mount` manifest 条目和按 revision 固定的素材 URL；缺图时的现有可见提示。
 - Permissions and scope: `new_content_standard` 座驾缩略图和普通座驾详情查询；不影响
   非座驾查询。
@@ -125,6 +127,7 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 | 2026-09-13 | 生成范围收口 | SeerAPI 全量 `331 passed`；真实发布库经当前 finalizer 重建 manifest 后执行候选筛选 | 生成器按 manifest v3 的 `default` 仓库事实跳过 Unity 已覆盖座驾，并清理生成分支中的重复 PNG；36 个座驾只留下 11 个 Flash 缺口，首次 FFDec 候选减少约 69%。生成仓库自身的 manifest 事实不会被误判为 Unity；缺少当前 manifest 或仓库元数据会立即失败，不再静默全量渲染。 |
 | 2026-09-13 | 热构建 FFDec 门 | 完整/缺失生成 PNG 计划测试、工作流条件结构与 YAML 解析；SeerAPI 全量 `335 passed`；Ruff、CLI、compileall、diff check | 座驾生成器先复用旧 PNG、裁剪 Unity 已覆盖和退役项，再输出精确候选数；候选为空时不安装 FFDec，候选存在时继续执行原下载、渲染、pending 与增量发布路径。真实 Actions 耗时仍待量化。 |
 | 2026-09-13 | SWF 可用性预检 | 当前 v3 数据库的 11 个 Flash 候选真实预检；SeerAPI `09d66dc` 全量 `338 passed`、Ruff、compileall、diff check | 11 个官方 URL 均明确返回 404，计划输出 `renderer_required=False`，不再仅因 PNG 缺失就安装 FFDec；可下载源或瞬时网络/服务错误仍保守启用 renderer。缺图继续记 pending，不生成占位图，也不宣称 scope 完整。 |
+| 2026-09-13 | 官方图标候选复用 | 当前发布锁定 revision 对 11 个缺少完整预览图的座驾逐项 HTTP 验证；真实 v3 数据库重算 manifest 与 Flash 计划；SeerAPI 全量 `339 passed`；IronsBot 全量 `3241 passed, 7 skipped` | 其中 9 个存在官方 `cloth/icon/{id}.png`，生产者与消费者统一加入第二候选后，官方素材覆盖由 25/36 提升至 34/36；Flash 计划降为 `mounts=2 candidates=2 renderer_required=false`。仅 `1301150`、`1301170` 仍无 Unity PNG 且 Flash 404。没有复制图片、增加数据库或扩大机器人镜像。 |
 
 ## Progress
 

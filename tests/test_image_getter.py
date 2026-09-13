@@ -217,6 +217,10 @@ async def test_mount_uses_its_generated_repository_revision() -> None:
         f"{'a' * 40}/newseer/assets/art/ui/assets/item/cloth/prev/1301170.png",
         "https://cdn.jsdelivr.net/gh/Murmansk-Seer/seer-unity-assets@"
         f"{'a' * 40}/newseer/assets/art/ui/assets/item/cloth/prev/1301170.png",
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
+        f"{'a' * 40}/newseer/assets/art/ui/assets/item/cloth/icon/1301170.png",
+        "https://cdn.jsdelivr.net/gh/Murmansk-Seer/seer-unity-assets@"
+        f"{'a' * 40}/newseer/assets/art/ui/assets/item/cloth/icon/1301170.png",
         "https://raw.githubusercontent.com/example/seerapi/"
         f"{'b' * 40}/mount/1301170.png",
     ]
