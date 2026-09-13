@@ -12,7 +12,8 @@
     "messaging.topic.subscribe": "2026-08-22T21:00:48+08:00",
     "messaging.topic.subscribers": "2026-08-22T21:00:48+08:00",
     "messaging.topic.unsubscribe": "2026-08-22T21:00:48+08:00",
-    "seer.autocard.sanctuary": "2026-08-11T17:32:19+08:00"
+    "seer.autocard.sanctuary": "2026-08-11T17:32:19+08:00",
+    "seer.data.peak_environment_changes": "2026-08-14T23:15:23+08:00"
   },
   "date_policy": "first_usable",
   "schema_version": 1

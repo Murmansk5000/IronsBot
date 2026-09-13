@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from seerapi_models import (
@@ -13,12 +14,11 @@ from seerapi_models import (
     PeakSeasonORM,
     PetORM,
 )
+from sqlalchemy import text
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from sqlmodel import Session
 
     from ironsbot.services.seer.peak import (
@@ -54,6 +54,54 @@ def load_peak_pool_snapshots(
             select(model).options(selectinload(cast("Any", model.pet)))
         )
     )
+
+
+def load_peak_master_pool_snapshots(
+    session: Session,
+) -> tuple[PeakPoolSnapshot, ...]:
+    """Read the producer-owned master-pool relation without duplicating its model."""
+
+    from ironsbot.services.seer.peak import PeakPetSnapshot, PeakPoolSnapshot
+
+    rows = session.execute(
+        text(
+            "SELECT pool.id, pool.cost, pool.start_time, pool.end_time, "
+            "pet.id AS pet_id, pet.name AS pet_name, "
+            "pet.resource_id, pet.type_id "
+            "FROM peak_cost_pool AS pool "
+            "LEFT JOIN pet ON pet.peak_cost_pool_id = pool.id "
+            "ORDER BY pool.cost DESC, pool.id, pet.id"
+        )
+    ).mappings()
+    grouped: dict[int, tuple[int, datetime, datetime, list[PeakPetSnapshot]]] = {}
+    for row in rows:
+        pool_id = int(row["id"])
+        if pool_id not in grouped:
+            grouped[pool_id] = (
+                int(row["cost"]),
+                _as_datetime(row["start_time"]),
+                _as_datetime(row["end_time"]),
+                [],
+            )
+        if row["pet_id"] is not None:
+            grouped[pool_id][3].append(
+                PeakPetSnapshot(
+                    id=int(row["pet_id"]),
+                    name=str(row["pet_name"]),
+                    resource_id=int(row["resource_id"] or row["pet_id"]),
+                    type_id=int(row["type_id"] or 0),
+                )
+            )
+    return tuple(
+        PeakPoolSnapshot(pool_id, cost, start_time, end_time, tuple(pets))
+        for pool_id, (cost, start_time, end_time, pets) in grouped.items()
+    )
+
+
+def _as_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value))
 
 
 def load_peak_vote_snapshots(session: Session) -> tuple[PeakVoteSnapshot, ...]:
