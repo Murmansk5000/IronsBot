@@ -234,6 +234,8 @@ def test_size_measurement_uses_digest_and_keeps_layer_evidence(
     summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
     assert f"{repository}@{digest}" in summary
     assert "1.0 MiB" in summary
+    assert "Docker-reported image size" in summary
+    assert "uncompressed" not in summary
 
 
 def test_missing_digest_fails_without_pulling_a_mutable_tag(tmp_path: Path) -> None:

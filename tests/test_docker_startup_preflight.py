@@ -387,8 +387,10 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "/site-packages/wheel" in dockerfile
     assert ".venv/" in dockerignore
     assert ".codex/" in dockerignore
-    assert "__pycache__/" in dockerignore
+    assert "**/__pycache__/" in dockerignore
+    assert "**/*.py[cod]" in dockerignore
     assert ".pytest_cache/" in dockerignore
+    assert "ENV TZ=Asia/Shanghai" in dockerfile
     for repository_only_path in (
         "data/",
         "docker/",

@@ -250,7 +250,7 @@ jobs:
                     echo '## Docker image size'
                     echo
                     echo "- Image: \`$image\`"
-                    echo "- Local uncompressed size: **${mib} MiB** (${bytes} bytes)"
+                    echo "- Docker-reported image size: **${mib} MiB** (${bytes} bytes)"
                     echo
                     echo 'Layer details are retained in the image-size artifact.'
                     echo 'Runtime directory sizes (KiB) are also retained for code, dependencies and fonts.'

@@ -55,8 +55,8 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 7. 发布后的测量使用 `build-push-action` 返回的 digest，而不是可能变化的标签；
    保存 image inspect、逐层 history 到构建附件，并在摘要中列出真实体积。
    未发布或未测量时保持本 Spec 未完成。
-8. 发布候选在仓库登录后、正式 push 前拉取当前 `latest`，按 Docker 报告的未压缩
-   总尺寸执行相对增长门。GHCR 基线由当前 `github.repository` 推导，不写死 fork
+8. 发布候选在仓库登录后、正式 push 前拉取当前 `latest`，按同一 Docker 引擎报告的
+   镜像尺寸执行相对增长门。GHCR 基线由当前 `github.repository` 推导，不写死 fork
    所有者。默认单次最多增长 8192 KiB；基线 digest、候选大小和差值始终上传为
    独立附件。基线不可读取时发布失败，不能静默绕过比较。
 
