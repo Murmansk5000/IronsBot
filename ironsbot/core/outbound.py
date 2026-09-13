@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from string import Formatter
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
 from ironsbot.core.platform import validate_reply_deadline
@@ -104,6 +105,49 @@ class OutboundMessage:
     def __post_init__(self) -> None:
         if not self.parts:
             raise OutboundMessageError.empty_message()
+
+    @classmethod
+    def from_text(cls, text: str) -> OutboundMessage:
+        """Build the canonical one-part text message."""
+
+        return cls((TextPart(text),))
+
+
+def format_outbound_message(
+    template: str,
+    /,
+    **values: object,
+) -> OutboundMessage:
+    """Format text fields while preserving structured outbound message parts."""
+
+    formatter = Formatter()
+    parts: list[MessagePart] = []
+    for literal, field_name, format_spec, conversion in formatter.parse(template):
+        _append_text_part(parts, literal)
+        if field_name is None:
+            continue
+        if field_name not in values:
+            raise KeyError(field_name)
+        value = values[field_name]
+        if isinstance(value, (TextPart, BinaryImagePart, RemoteImagePart, MentionPart)):
+            if conversion or format_spec:
+                msg = "outbound message parts do not support conversion or format specs"
+                raise ValueError(msg)
+            parts.append(value)
+            continue
+        if conversion:
+            value = formatter.convert_field(value, conversion)
+        _append_text_part(parts, formatter.format_field(value, format_spec or ""))
+    return OutboundMessage(tuple(parts))
+
+
+def _append_text_part(parts: list[MessagePart], text: str) -> None:
+    if not text:
+        return
+    if parts and isinstance(parts[-1], TextPart):
+        parts[-1] = TextPart(parts[-1].text + text)
+        return
+    parts.append(TextPart(text))
 
 
 @dataclass(frozen=True, slots=True)

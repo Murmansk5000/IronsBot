@@ -320,7 +320,7 @@ def render_dynamic_text_message(
     except (TypeError, ValueError, KeyError):
         _LOGGER.exception("failed to render Bilibili dynamic text")
         return None
-    return OutboundMessage((TextPart(content),)) if content else None
+    return OutboundMessage.from_text(content) if content else None
 
 
 def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None:

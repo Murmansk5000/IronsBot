@@ -50,6 +50,10 @@ from ironsbot.integrations.onebot.matcher_support import (
     update_queued_menu_anchor,
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.prompt_errors import (
+    PromptLoopConfigurationError,
+    PromptSessionManagerMissingError,
+)
 from ironsbot.integrations.onebot.prompt_sessions import (
     COMMAND_COOLDOWN_TOKEN_STATE_KEY as _COMMAND_COOLDOWN_TOKEN_KEY,
 )
@@ -67,10 +71,6 @@ from ironsbot.integrations.onebot.queued_conversation_router import (
     capture_durable_queued_conversation_input,
     matches_active_queued_conversation,
     matches_active_queued_conversation_exit,
-)
-from ironsbot.runtime.prompt_errors import (
-    PromptLoopConfigurationError,
-    PromptSessionManagerMissingError,
 )
 
 SEMANTIC_REQUEST_STATE_KEY = "_ironsbot_semantic_request"
