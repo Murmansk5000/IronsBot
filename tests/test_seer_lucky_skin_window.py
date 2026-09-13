@@ -772,7 +772,7 @@ def test_manual_query_returns_today_cache_without_a_confirmation_prompt(
     replies: list[str] = []
 
     async def enter_result_prompt(*_args: object, **kwargs: object) -> None:
-        message = kwargs["prompt_message"]
+        message = cast("Awaitable[object]", kwargs["prompt_message"])
         replies.append(str(await message))
 
     monkeypatch.setattr(lucky_skin_window_plugin, "enter_prompt", enter_result_prompt)
@@ -807,7 +807,7 @@ def test_lucky_window_choice_reuses_pet_image_query(
 
     asyncio.run(
         lucky_skin_window_plugin._handle_result_selection(
-            _PluginPet(),
+            cast("Any", _PluginPet()),
             item,
             cast("Any", object()),
             private_message_event("1", user_id=1001),
@@ -837,7 +837,7 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
         replies.append(str(message))
 
     async def enter_result_prompt(*_args: object, **kwargs: object) -> None:
-        message = kwargs["prompt_message"]
+        message = cast("Awaitable[object]", kwargs["prompt_message"])
         replies.append(str(await message))
 
     monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
