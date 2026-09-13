@@ -49,11 +49,21 @@ Task     [██████████] completed only after code, tests, and 
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 本轮验证（2026-09-13）
+## 本轮验证（2026-09-14）
 
 总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
 下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
+
+- QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
+  AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
+  feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID
+  隔离。出站目标缺少或携带未知 AppID 时明确拒绝，不保留默认账号回退。审计安装的
+  `nonebot-adapter-qq 1.7.2` 后确认 AccessToken、过期时间、会话和事件序号均为 Bot
+  实例状态。公共全量 `3340 passed, 7 skipped`，Ruff、BasedPyright、compileall 和
+  diff 检查通过；私有预览 workflow `34777514033` 完成构建、smoke、体积门禁和发布。
+  见 [多账号隔离 Spec](specs/2026-09-14-qq-official-multi-account.md)。真实 AppID
+  登录与平台主动消息权限仍是 Phase 7 外部验收门，整体保持 7/8。
 
 - 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
   从 `ba08f749` 快进到 `55a39fd1`，未合并入 V5。新增 10 项提交涉及战队查询与

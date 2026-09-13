@@ -531,6 +531,44 @@ def test_qq_official_adapter_configs_include_every_enabled_account() -> None:
     assert all(item["token"] == "" for item in configs)
 
 
+def test_qq_official_config_rejects_duplicate_app_ids() -> None:
+    with pytest.raises(ValueError, match="duplicate QQ Official AppID"):
+        QQOfficialConfig(
+            enabled=True,
+            accounts={
+                "example_a": QQOfficialAccountConfig(
+                    enabled=True,
+                    app_id="same-app",
+                    secret="secret-a",
+                ),
+                "example_b": QQOfficialAccountConfig(
+                    enabled=True,
+                    app_id="same-app",
+                    secret="secret-b",
+                ),
+            },
+        )
+
+
+def test_qq_official_config_rejects_secret_environment_alias_collision() -> None:
+    with pytest.raises(ValueError, match="unique ignoring case"):
+        QQOfficialConfig(
+            accounts={
+                "example": QQOfficialAccountConfig(),
+                "EXAMPLE": QQOfficialAccountConfig(),
+            }
+        )
+
+
+def test_qq_official_config_rejects_old_single_account_fields() -> None:
+    with pytest.raises(ValueError, match="app_id"):
+        QQOfficialConfig(
+            enabled=True,
+            app_id="old-app",  # type: ignore[call-arg]
+            secret="old-secret",  # type: ignore[call-arg]
+        )
+
+
 def test_qq_official_config_rejects_retired_static_token() -> None:
     with pytest.raises(ValueError, match="token"):
         QQOfficialAccountConfig(
