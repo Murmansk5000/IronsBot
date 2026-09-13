@@ -1988,3 +1988,8 @@ SeerAPI 的 16 个效果图标分片与最终 build 现在共用本地 `setup-ff
 cache 跨构建复用；主工作流删除 32 行重复 shell。YAML 解析、CI 结构测试、SeerAPI 全量
 `332 passed`、Ruff、compileall 与差异检查通过。真实 cache hit 节省时间需由首次线上运行
 记录，不提前估算为完成证据。
+
+效果图标分片随后增加只读预检：先恢复发布缓存，再以禁用 PNG 渲染的同一资源适配器区分
+缓存命中、官方确认 404、瞬时失败和可修复缺图。前两类不再安装 FFDec，后两类才进入
+渲染；计划与渲染共用同一分片算法，最终 build 仍为座驾 Flash 缺口保留 FFDec。SeerAPI
+全量 `333 passed`，Ruff、compileall、YAML 与差异检查通过；真实 Actions 耗时仍是外部验收项。
