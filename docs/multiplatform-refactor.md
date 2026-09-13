@@ -65,6 +65,17 @@ Task     [██████████] completed only after code, tests, and 
   见 [多账号隔离 Spec](specs/2026-09-14-qq-official-multi-account.md)。真实 AppID
   登录与平台主动消息权限仍是 Phase 7 外部验收门，整体保持 7/8。
 
+- QQ Official 的低风险运维查询由提交 `fce42217` 接入公共 portable router：
+  `server_status.query`、`server_status.admin_query`、
+  `server_status.headless_instances` 和配置型 `meeting` 直接复用既有领域服务。
+  命令目录继续负责按账号 feature、会话范围和 superuser 身份筛选；OneBot 处理器
+  没有复制进官方适配器。数据同步、Docker 生命周期和榜单缓存维护仍未开放，因为
+  它们还需要平台中立的进度投递及更强的运维授权。专项 12 passed，公共全量
+  `3346 passed, 7 skipped`，Ruff、BasedPyright、compileall 和 diff 检查通过；无
+  新运行依赖，portable 主路由为 712 行。见
+  [运维查询 Spec](specs/2026-09-14-portable-operational-queries.md)。真实平台验收门
+  未变化，整体保持 7/8。
+
 - 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
   从 `ba08f749` 快进到 `55a39fd1`，未合并入 V5。新增 10 项提交涉及战队查询与
   玩家菜单、私聊战队概览、群星牌觉醒变体合并、推送队列加固、Docker 交接失败
