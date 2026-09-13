@@ -108,6 +108,46 @@ async def test_reply_uses_event_message_id_and_first_reply_sequence() -> None:
 
 
 @pytest.mark.asyncio
+async def test_replies_allocate_unique_sequences_per_event() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        "app",
+        bot_provider=lambda _app_id: bot,
+    )
+
+    for _ in range(4):
+        assert (await messenger.reply(ReplyContext(GROUP, "event-id"), TEXT)).delivered
+    exhausted = await messenger.reply(ReplyContext(GROUP, "event-id"), TEXT)
+    other = await messenger.reply(ReplyContext(GROUP, "other-event"), TEXT)
+
+    assert [call[4] for call in bot.calls] == [1, 2, 3, 4, 1]
+    assert exhausted.error_code == "passive_reply_limit_exceeded"
+    assert other.delivered
+
+
+@pytest.mark.asyncio
+async def test_reply_limit_can_fall_back_to_explicitly_enabled_proactive_send() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        "app",
+        proactive_enabled=True,
+        bot_provider=lambda _app_id: bot,
+    )
+
+    for _ in range(5):
+        result = await messenger.reply(ReplyContext(PRIVATE, "event-id"), TEXT)
+        assert result.delivered
+
+    assert [call[3:] for call in bot.calls] == [
+        ("event-id", 1),
+        ("event-id", 2),
+        ("event-id", 3),
+        ("event-id", 4),
+        (None, None),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_unavailable_bot_is_reported_without_attempting_delivery() -> None:
     messenger = QQOfficialOutboundMessenger(
         "app",

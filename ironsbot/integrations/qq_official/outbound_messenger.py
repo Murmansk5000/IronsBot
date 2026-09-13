@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 import nonebot
@@ -25,6 +25,9 @@ from ironsbot.core.platform import Platform
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialOutboundMessageError,
     render_qq_official_outbound_message,
+)
+from ironsbot.integrations.qq_official.reply_sequences import (
+    QQOfficialReplySequenceAllocator,
 )
 
 if TYPE_CHECKING:
@@ -75,6 +78,9 @@ class QQOfficialOutboundMessenger:
     app_id: str
     proactive_enabled: bool = False
     bot_provider: BotProvider = _connected_bot
+    reply_sequences: QQOfficialReplySequenceAllocator = field(
+        default_factory=QQOfficialReplySequenceAllocator
+    )
 
     def capabilities_for(
         self,
@@ -146,20 +152,33 @@ class QQOfficialOutboundMessenger:
                 "No connected QQ Official bot can deliver this message",
                 DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
+        message_sequence: int | None = None
+        if message_id is not None:
+            allocation = self.reply_sequences.allocate(message_id)
+            if allocation.sequence is None:
+                if not self.proactive_enabled:
+                    return _failure(
+                        f"passive_reply_{allocation.reason}",
+                        "QQ Official passive reply window or limit was exhausted",
+                        DeliveryFailureKind.PERMANENT,
+                    )
+                message_id = None
+            else:
+                message_sequence = allocation.sequence
         try:
             if conversation.kind == "group":
                 result = await bot.send_to_group(
                     conversation.id,
                     rendered,
                     msg_id=message_id,
-                    msg_seq=1 if message_id else None,
+                    msg_seq=message_sequence,
                 )
             else:
                 result = await bot.send_to_c2c(
                     conversation.id,
                     rendered,
                     msg_id=message_id,
-                    msg_seq=1 if message_id else None,
+                    msg_seq=message_sequence,
                 )
         except Exception as error:  # noqa: BLE001 - transport boundary
             return _exception_result(error)
