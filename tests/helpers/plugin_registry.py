@@ -427,6 +427,7 @@ def build_test_plugin_registry(
         ),
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,
+            resources.seer.pet_query,
             runtime.features,
             SchedulerFacade(),
         ),

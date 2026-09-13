@@ -91,6 +91,26 @@ def _format_store_price(price: SkinStorePrice) -> str:
     return "幸运橱窗：" + "；".join(parts)
 
 
+def format_lucky_window_price_lines(
+    price: SkinStorePrice | None,
+) -> tuple[str, ...]:
+    """Format one active lucky-window offer without presentation assets."""
+
+    if price is None or price.price <= 0:
+        return ("橱窗价格暂未获取",)
+    first = f"橱窗价：{price.price}钻"
+    if price.original_price > 0 and price.original_price != price.price:
+        first += f"（原价{price.original_price}钻）"
+    if price.ticket_num <= 0:
+        return (first,)
+    discount = price.ticket_num * FASHION_TICKET_VALUE
+    if discount < price.price:
+        second = f"最多用{price.ticket_num}张风尚券，最低{price.price - discount}钻"
+    else:
+        second = f"最多用{price.ticket_num}张风尚券，可抵扣{discount}钻"
+    return first, second
+
+
 def _dedupe_lines(lines: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []

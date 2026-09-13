@@ -24,6 +24,7 @@ from ironsbot.services.seer.rendering.lucky_skin_window import (
     present_lucky_skin_window,
     render_lucky_skin_window_document,
 )
+from ironsbot.services.seer.skin_price import SkinStorePrice
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -40,9 +41,27 @@ RENDER_WIDTH = 1040
 
 
 def test_lucky_skin_window_document_keeps_offer_identity_and_watch_state() -> None:
+    price = SkinStorePrice(
+        skin_id=SKIN_ID,
+        pool_id=1,
+        price=180,
+        original_price=200,
+        discount_rate=0,
+        selected_price=0,
+        ticket_id=1,
+        ticket_num=3,
+        start_time=0,
+        end_time=0,
+    )
     document = present_lucky_skin_window(
         (
-            LuckySkinWindowOffer(SKIN_ID, 1400101, "皮肤甲", watched=True),
+            LuckySkinWindowOffer(
+                SKIN_ID,
+                1400101,
+                "皮肤甲",
+                watched=True,
+                store_price=price,
+            ),
             LuckySkinWindowOffer(102, 1400102, "皮肤乙", watched=False),
         ),
         {SKIN_ID: "data:image/png;base64,one"},
@@ -51,7 +70,12 @@ def test_lucky_skin_window_document_keeps_offer_identity_and_watch_state() -> No
     assert document.cards[0].skin_id == SKIN_ID
     assert document.cards[0].watched is True
     assert document.cards[0].image == "data:image/png;base64,one"
+    assert document.cards[0].price_lines == (
+        "橱窗价：180钻（原价200钻）",
+        "最多用3张风尚券，最低150钻",
+    )
     assert document.cards[1].image is None
+    assert document.cards[1].price_lines == ("橱窗价格暂未获取",)
 
 
 @pytest.mark.asyncio
