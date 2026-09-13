@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import MessageCommandAction, MessageConfig
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
@@ -21,6 +25,7 @@ from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 
 class _MemoryImages:
@@ -71,14 +76,56 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
         cast("Any", object()),
     )
 
-    operations = build_portable_messaging_operations(messaging)
+    operations = build_portable_messaging_operations(
+        messaging,
+        PortableQuerySessions(),
+    )
 
-    assert set(operations) == {"messaging.portable"}
+    assert set(operations) == {
+        "messaging.portable",
+        "messaging.push_subscription",
+    }
     result = cast(
         "OutboundMessage",
         await operations["messaging.portable"]("链接", _context("链接")),
     )
     assert cast("TextPart", result.parts[0]).text == "https://example.test"
+
+
+@pytest.mark.asyncio
+async def test_portable_subscription_menu_persists_qq_official_openid(
+    tmp_path: Path,
+) -> None:
+    from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+
+    context = _context("TD")
+    conversation = context.message.conversation
+    actor = context.message.actor
+    store = PushUnsubscribeStore(tmp_path / "qq_state.sqlite")
+    messaging = MessagingService(
+        MessageConfig(),
+        ActivityConfig(),
+        store,
+        FeatureService(
+            {},
+            {actor: frozenset({"seer_activity_push"})},
+            frozenset(),
+        ),
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+    sessions = PortableQuerySessions()
+    operation = build_portable_messaging_operations(messaging, sessions)[
+        "messaging.push_subscription"
+    ]
+
+    menu = cast("OutboundMessage", await operation("TD", context))
+    assert "活动结束提醒" in cast("TextPart", menu.parts[0]).text
+
+    result = await sessions.select("1", context)
+    assert result is not None
+    assert "已退订：活动结束提醒" in cast("TextPart", result.parts[0]).text
+    assert store.is_unsubscribed(conversation, "seer_activity_push")
 
 
 @pytest.mark.asyncio

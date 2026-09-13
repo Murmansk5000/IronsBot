@@ -91,6 +91,16 @@ features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet"
 # ZH: QQ 官方平台超级管理员 OpenID；这里不是 QQ 号。
 superusers = []
 
+# EN: Optional proactive-delivery targets keyed by group/user OpenID. Declaring a
+#     target also enables these extra features there; global features remain active.
+# ZH: 可选的主动推送目标，键为群/用户 OpenID；声明后会在该目标额外启用这些功能，
+#     全局 features 仍然有效。OpenID 含特殊字符时必须用引号包裹。
+[bot.qq_official.group_policy]
+# "example-group-openid" = ["seer_activity_push", "bili_push"]
+
+[bot.qq_official.user_policy]
+# "example-user-openid" = ["seer_activity_push", "bili_push"]
+
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。

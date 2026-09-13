@@ -81,6 +81,16 @@ class MatcherPriorityConfigError(ValueError):
         return cls("bot.matcher_priority.ai_group_at must run before bot_mention_block")
 
 
+class QQOfficialConfigError(ValueError):
+    @classmethod
+    def invalid_target_policy(cls) -> QQOfficialConfigError:
+        return cls("QQ Official target policy must be a table")
+
+    @classmethod
+    def empty_target_openid(cls) -> QQOfficialConfigError:
+        return cls("QQ Official target OpenID must not be empty")
+
+
 def _command_starts(value: object) -> list[str]:
     if value is None:
         return []
@@ -212,6 +222,8 @@ class QQOfficialConfig(BaseModel):
         ]
     )
     superusers: list[str] = Field(default_factory=list)
+    group_policy: dict[str, list[str]] = Field(default_factory=dict)
+    user_policy: dict[str, list[str]] = Field(default_factory=dict)
 
     @field_validator("app_id", "secret", mode="before")
     @classmethod
@@ -222,6 +234,19 @@ class QQOfficialConfig(BaseModel):
     @classmethod
     def normalize_string_lists(cls, value: object) -> list[str]:
         return _command_starts(value)
+
+    @field_validator("group_policy", "user_policy", mode="before")
+    @classmethod
+    def normalize_target_policy(cls, value: object) -> dict[str, list[str]]:
+        if not isinstance(value, Mapping):
+            raise QQOfficialConfigError.invalid_target_policy()
+        policy: dict[str, list[str]] = {}
+        for raw_target, raw_features in value.items():
+            target = str(raw_target).strip()
+            if not target:
+                raise QQOfficialConfigError.empty_target_openid()
+            policy[target] = _command_starts(raw_features)
+        return policy
 
     @model_validator(mode="after")
     def validate_enabled_credentials(self) -> QQOfficialConfig:
@@ -239,15 +264,17 @@ class QQOfficialConfig(BaseModel):
             raise ValueError(
                 "bot.qq_official requires " + ", ".join(missing) + " when enabled"
             )
-        unknown = sorted(set(self.features) - FEATURE_KEYS)
-        if unknown:
-            raise ValueError(
-                "bot.qq_official.features contains unregistered feature(s): "
-                + ", ".join(unknown)
-            )
-        if (
-            "team_resource_subscription" in self.features
-            and not self.proactive_messages
+        configured_features = {
+            *self.features,
+            *(
+                feature
+                for policy in (self.group_policy, self.user_policy)
+                for features in policy.values()
+                for feature in features
+            ),
+        }
+        if "team_resource_subscription" in configured_features and not (
+            self.proactive_messages
         ):
             raise ValueError(_QQ_OFFICIAL_TEAM_RESOURCE_PROACTIVE_ERROR)
         return self
@@ -335,6 +362,7 @@ class Settings(BaseModel):
                 self.features,
                 command_features=self.messaging.command_feature_keys,
                 schedule_features=self.messaging.schedule_feature_keys,
+                qq_official=self.bot.qq_official,
             )
             self._validate_onebot_references()
             self._validate_promotions()

@@ -394,6 +394,7 @@ def validate_feature_config(
     *,
     command_features: Iterable[str] = (),
     schedule_features: Iterable[str] = (),
+    qq_official: QQOfficialConfig | None = None,
 ) -> dict[str, frozenset[str]]:
     normalized_commands = _normalize_feature_keys(command_features)
     normalized_schedules = _normalize_feature_keys(schedule_features)
@@ -416,6 +417,18 @@ def validate_feature_config(
     for policy_name, policy in (
         ("features.group_policy", config.group_policy),
         ("features.user_policy", config.user_policy),
+        (
+            "bot.qq_official.features",
+            {} if qq_official is None else {"default": qq_official.features},
+        ),
+        (
+            "bot.qq_official.group_policy",
+            {} if qq_official is None else qq_official.group_policy,
+        ),
+        (
+            "bot.qq_official.user_policy",
+            {} if qq_official is None else qq_official.user_policy,
+        ),
     ):
         for target, features in policy.items():
             for index, raw_feature in enumerate(features):
@@ -443,6 +456,7 @@ def build_onebot_feature_service(
         config,
         command_features=command_features,
         schedule_features=schedule_features,
+        qq_official=qq_official,
     )
     references = OneBotReferenceResolver(
         group_aliases=config.group_aliases,
@@ -479,6 +493,17 @@ def build_onebot_feature_service(
         actor_features[actor] = actor_features.get(actor, frozenset()) | (
             _expand_policy_features(features, bundles)
         )
+
+    if qq_official is not None:
+        qq_default_features = frozenset(qq_official.features)
+        for openid, features in qq_official.group_policy.items():
+            conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", openid)
+            group_features[conversation] = qq_default_features | (
+                _expand_policy_features(features, bundles)
+            )
+        for openid, features in qq_official.user_policy.items():
+            actor = ActorRef(Platform.QQ_OFFICIAL, openid)
+            actor_features[actor] = _expand_policy_features(features, bundles)
 
     return FeatureService(
         group_features=group_features,

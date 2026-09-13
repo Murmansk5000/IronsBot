@@ -147,7 +147,18 @@ sandbox = false
 proactive_messages = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 superusers = []
+
+[bot.qq_official.group_policy]
+"群 OpenID" = ["seer_activity_push", "bili_push"]
+
+[bot.qq_official.user_policy]
+"用户 OpenID" = ["seer_activity_push", "bili_push"]
 ```
+
+`group_policy` 与 `user_policy` 是主动推送目标清单，也为目标附加对应 feature。
+目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启
+`proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
+发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话。
 
 凭据只放环境变量：
 

@@ -406,7 +406,11 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     )
     messaging_operations = _catalog_operations(
         catalog,
-        {} if messaging is None else build_portable_messaging_operations(messaging),
+        (
+            {}
+            if messaging is None
+            else build_portable_messaging_operations(messaging, sessions)
+        ),
     )
     sendpic_operations = _catalog_operations(
         catalog,
