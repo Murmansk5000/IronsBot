@@ -197,6 +197,7 @@ class QQOfficialConfig(BaseModel):
             "help",
             "about",
             "seer_data",
+            "seer_player",
             "seer_team",
             "seer_pet",
             "seer_mintmark",

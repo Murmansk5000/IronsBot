@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from nonebot import on_message
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves annotations
@@ -25,6 +26,10 @@ from ironsbot.integrations.qq_official.message_rendering import (
     render_qq_official_outbound_message,
 )
 from ironsbot.services.portable_commands import PortableCommandRouter  # noqa: TC001
+
+if TYPE_CHECKING:
+    from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.services.portable_reply import PortableReply
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +54,7 @@ def install_qq_official_runtime(router: PortableCommandRouter) -> None:
         )
         if reply is None:
             return
-        rendered = render_qq_official_outbound_message(
-            reply,
-            conversation=incoming.conversation,
-        )
-        await bot.send(event, rendered)
+        await deliver_qq_official_reply(bot, event, incoming, reply)
         matcher.stop_propagation()
 
     matcher = on_message(
@@ -63,6 +64,22 @@ def install_qq_official_runtime(router: PortableCommandRouter) -> None:
     )
     matcher.append_handler(handle)
     logger.info("QQ Official passive-command runtime installed")
+
+
+async def deliver_qq_official_reply(
+    bot: QQOfficialBot,
+    event: QQMessageEvent,
+    incoming: IncomingMessageRef,
+    reply: PortableReply,
+) -> None:
+    """Commit delivery-aware work only after the adapter accepts the reply."""
+
+    rendered = render_qq_official_outbound_message(
+        reply.message,
+        conversation=incoming.conversation,
+    )
+    await bot.send(event, rendered)
+    reply.delivered()
 
 
 def qq_official_event_is_supported(

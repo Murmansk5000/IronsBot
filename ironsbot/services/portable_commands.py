@@ -4,16 +4,20 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.portable_player_commands import (
+    build_portable_player_operations,
+)
 from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
     QueryOperationSpec,
     build_query_operation,
 )
+from ironsbot.services.portable_reply import PortableOperation, PortableReply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.data_query_commands import (
@@ -46,7 +50,7 @@ from ironsbot.services.seer.query_commands import (
 from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Mapping
+    from collections.abc import Mapping
 
     from ironsbot.core.affix_commands import AffixParser
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
@@ -56,13 +60,8 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
     from ironsbot.services.seer.peak import PeakQueryService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
-
-
-class PortableOperation(Protocol):
-    def __call__(
-        self, text: str, context: MessageInputContext
-    ) -> Awaitable[OutboundMessage | str | DataQueryImageReply]: ...
 
 
 class PortableCommandRouter:
@@ -100,29 +99,35 @@ class PortableCommandRouter:
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
         self,
         context: MessageInputContext,
-    ) -> OutboundMessage | None:
+    ) -> PortableReply | None:
         command = _command_text(context.text)
         command_context = _command_context(context)
         try:
             selected = await self._query_sessions.select(command, context)
         except DataUnavailableError:
-            return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+            return PortableReply(
+                OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+            )
         if selected is not None:
-            return selected
+            return PortableReply(selected)
         contract = self._matching_contract(command, context=command_context)
         if contract is None:
             return None
         if contract.id == "help":
-            return self._help(command_context)
+            return PortableReply(self._help(command_context))
         try:
             result = await self._operations[contract.id](command, context)
         except DataUnavailableError:
-            return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
-        if isinstance(result, OutboundMessage):
+            return PortableReply(
+                OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+            )
+        if isinstance(result, PortableReply):
             return result
+        if isinstance(result, OutboundMessage):
+            return PortableReply(result)
         if isinstance(result, DataQueryImageReply):
-            return result.to_outbound()
-        return OutboundMessage.from_text(result)
+            return PortableReply(result.to_outbound())
+        return PortableReply(OutboundMessage.from_text(result))
 
     def _matching_contract(
         self,
@@ -168,6 +173,7 @@ def build_portable_command_router(
     catalog: CommandCatalog,
     about: AboutService,
     seer: SeerQueryResources,
+    player_id_resolver: PlayerIdResolver,
     features: FeatureService,
 ) -> PortableCommandRouter:
     async def about_message(
@@ -212,10 +218,17 @@ def build_portable_command_router(
         return OutboundMessage.from_text(result)
 
     sessions = PortableQuerySessions()
+    player_operations = build_portable_player_operations(
+        seer.player,
+        player_id_resolver,
+        sessions,
+    )
+
     operations: dict[str, PortableOperation] = {
         "about": about_message,
         "seer.data.query": data_query,
         "seer.team.query": team_query,
+        **player_operations,
         "seer.peak.query": _build_peak_query_operation(seer.peak_query),
         "seer.peak.rank": _build_peak_rank_operation(seer.peak_query),
         "seer.pet.query": build_query_operation(

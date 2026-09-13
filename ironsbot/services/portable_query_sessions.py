@@ -93,6 +93,28 @@ class PortableQuerySessions:
             not_found_message=spec.not_found_message,
         )
 
+    def offer(
+        self,
+        context: MessageInputContext,
+        result: QueryResult[_T],
+        *,
+        select: QuerySelect[_T],
+        prompt_title: str,
+        not_found_message: str,
+    ) -> OutboundMessage:
+        """Present choices produced outside the standard search operation."""
+
+        async def select_untyped(value: object) -> QueryResult[Any]:
+            return await select(cast("_T", value))
+
+        return self._present(
+            context,
+            result,
+            select=select_untyped,
+            prompt_title=prompt_title,
+            not_found_message=not_found_message,
+        )
+
     async def select(
         self,
         text: str,
