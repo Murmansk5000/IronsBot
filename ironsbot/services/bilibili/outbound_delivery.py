@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
@@ -47,8 +46,6 @@ DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 CATEGORY_SUBSCRIPTION_HINT = "发送 TD 可按标签管理动态订阅。"
 CATEGORY_SUBSCRIPTION_HINT_KEY = "bilibili_category_subscription_hint"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
-FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
-FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
 FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 
@@ -115,7 +112,7 @@ class BilibiliDynamicOutboundSender:
         else:
             content_message = None
         if content_message is not None:
-            await self._send_content_with_retries(
+            await self._send_content(
                 item,
                 author_mid,
                 content_message,
@@ -128,7 +125,7 @@ class BilibiliDynamicOutboundSender:
         )
         image_message = render_dynamic_image_message(item)
         if image_message is not None and image_targets.has_targets:
-            await self._send_content_with_retries(
+            await self._send_content(
                 item,
                 author_mid,
                 image_message,
@@ -163,44 +160,29 @@ class BilibiliDynamicOutboundSender:
             include_promotions=True,
         )
 
-    async def _send_content_with_retries(
+    async def _send_content(
         self,
         item: dict[str, Any],
         author_mid: int,
         content_message: OutboundMessage,
         targets: BiliPushTargets,
     ) -> None:
-        remaining = (
+        conversations = (
             *targets.full_group_conversations,
             *targets.full_private_conversations,
         )
-        for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
-            action_name = (
-                FULL_DYNAMIC_PUSH_ACTION
-                if attempt == 1
-                else f"{FULL_DYNAMIC_PUSH_ACTION} retry {attempt}/"
-                f"{FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS}"
+        summary = await self.delivery.send(
+            content_message,
+            conversations,
+            action_name=FULL_DYNAMIC_PUSH_ACTION,
+            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+        )
+        if summary.failed:
+            await self._notify_content_delivery_failure(
+                item,
+                author_mid,
+                summary.failed,
             )
-            summary = await self.delivery.send(
-                content_message,
-                remaining,
-                action_name=action_name,
-                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-            )
-            remaining = summary.failed
-            if not remaining:
-                return
-            if attempt < FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS:
-                _LOGGER.warning(
-                    "%s failed for %s targets; retrying attempt %s/%s",
-                    FULL_DYNAMIC_PUSH_ACTION,
-                    len(remaining),
-                    attempt + 1,
-                    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
-                )
-                await asyncio.sleep(FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS)
-
-        await self._notify_content_delivery_failure(item, author_mid, remaining)
 
     async def _notify_content_delivery_failure(
         self,
@@ -210,10 +192,10 @@ class BilibiliDynamicOutboundSender:
     ) -> None:
         if self.admin_notices is None:
             _LOGGER.error(
-                "%s exhausted %s attempts without an admin notice service: "
+                "%s failed after shared delivery policy without an admin notice "
+                "service: "
                 "author=%s dynamic=%s targets=%s",
                 FULL_DYNAMIC_PUSH_ACTION,
-                FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
                 author_mid,
                 item.get("id_str", "unknown"),
                 conversations,
@@ -225,7 +207,7 @@ class BilibiliDynamicOutboundSender:
         ]
         await self.admin_notices.send_private_to_superusers(
             "⚠️ B站动态正文/图片发送失败\n"
-            f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次，仍未完成。\n"
+            "已按统一推送策略重试，仍未完成。\n"
             f"UID：{author_mid}\n"
             f"动态ID：{item.get('id_str', '未知')}\n"
             f"失败目标：{'；'.join(target_lines)}\n"

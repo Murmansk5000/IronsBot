@@ -12,7 +12,6 @@ from ironsbot.services.bilibili.outbound_delivery import (
     BILI_PUSH_ADMIN_HINT,
     CATEGORY_SUBSCRIPTION_HINT,
     DYNAMIC_HISTORY_HINT,
-    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliDynamicOutboundSender,
@@ -222,20 +221,11 @@ async def test_category_subscription_hint_is_sent_for_configured_accounts(
 
 
 @pytest.mark.asyncio
-async def test_content_retries_failed_conversations_and_notifies_admins(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_content_failure_after_shared_policy_notifies_admins(
     tmp_path: Path,
 ) -> None:
-    delivery = _RecordingDelivery(content_failures=FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS)
+    delivery = _RecordingDelivery(content_failures=1)
     admin_notices = _RecordingAdminNotices()
-
-    async def no_sleep(_delay: float) -> None:
-        return None
-
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.outbound_delivery.asyncio.sleep",
-        no_sleep,
-    )
     sender = BilibiliDynamicOutboundSender(
         delivery,  # type: ignore[arg-type]
         PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
@@ -249,7 +239,7 @@ async def test_content_retries_failed_conversations_and_notifies_admins(
         _targets(full_groups=(1001,), full_users=(2001,)),
     )
 
-    assert len(delivery.content_calls) == FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS
+    assert len(delivery.content_calls) == 1
     assert len(admin_notices.messages) == 1
     message, kwargs = admin_notices.messages[0]
     assert "群：1001" in message
@@ -359,8 +349,7 @@ async def test_full_dynamic_filters_unsubscribed_targets_before_link_and_content
 
 
 @pytest.mark.asyncio
-async def test_full_dynamic_retries_only_the_failed_content_targets(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_full_dynamic_delegates_retry_policy_once(
     tmp_path: Path,
 ) -> None:
     calls: list[tuple[ConversationRef, ...]] = []
@@ -378,17 +367,8 @@ async def test_full_dynamic_retries_only_the_failed_content_targets(
                 {"message": message, "conversations": selected, **kwargs}
             )
             calls.append(selected)
-            if len(calls) == 1:
-                return ProactiveDeliverySummary((_group(1001),), (_private(2001),))
-            return ProactiveDeliverySummary(selected, ())
+            return ProactiveDeliverySummary((_group(1001),), (_private(2001),))
 
-    async def no_sleep(_delay: float) -> None:
-        return None
-
-    monkeypatch.setattr(
-        "ironsbot.services.bilibili.outbound_delivery.asyncio.sleep",
-        no_sleep,
-    )
     delivery = _PartiallyFailingDelivery()
     sender = BilibiliDynamicOutboundSender(
         delivery,  # type: ignore[arg-type]
@@ -402,10 +382,9 @@ async def test_full_dynamic_retries_only_the_failed_content_targets(
         _targets(full_groups=(1001,), full_users=(2001,)),
     )
 
-    assert calls == [(_group(1001), _private(2001)), (_private(2001),)]
+    assert calls == [(_group(1001), _private(2001))]
     assert [call["action_name"] for call in delivery.content_calls] == [
         FULL_DYNAMIC_PUSH_ACTION,
-        f"{FULL_DYNAMIC_PUSH_ACTION} retry 2/{FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS}",
     ]
 
 

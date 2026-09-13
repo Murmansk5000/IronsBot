@@ -20,6 +20,8 @@ Owner: `services.messaging.proactive_delivery`
   `retry_batch_divisor` 缩小批次。
 - 一轮中出现明确传输不可用后，不再提交尚未开始的目标。
 - 订阅过滤、推广内容和每日退订提示仍只应用一次业务规则。
+- B站正文与图片不再维护第二套三次重试循环；统一投递策略耗尽后，业务层只负责
+  发送带失败目标的管理员通知。
 
 ## Platform Boundary
 
@@ -35,4 +37,5 @@ OneBot 适配器负责把断线、超时和普通失败转换为通用 `Delivery
 ## Verification
 
 - 覆盖订阅过滤、有限并发、可重试恢复、不确定结果防重发、断线停止及目标平台能力。
+- B站投递与统一策略专项 24 项通过，删除 39 行净重复实现。
 - Ruff、BasedPyright、compileall、专项 pytest 与全量 pytest。
