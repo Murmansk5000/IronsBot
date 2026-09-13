@@ -27,7 +27,14 @@ FORBIDDEN_SERVICE_IMPORTS = (
     "ironsbot.runtime",
     "nonebot",
 )
-ALLOWED_SERVICE_INTEGRATIONS = ("ironsbot.integrations.seer_data",)
+TRANSITIONAL_SERVICE_INTEGRATION_IMPORTS = frozenset(
+    {
+        "ironsbot.integrations.seer_data.countermark_stat_rank_repository",
+        "ironsbot.integrations.seer_data.skin_image_resolution",
+        "ironsbot.integrations.seer_data.skin_price_repository",
+        "ironsbot.integrations.seer_data.skin_reference_repository",
+    }
+)
 ALLOWED_LAYER_IMPORTS = {
     "core": frozenset({"core"}),
     "config": frozenset({"config", "core"}),
@@ -211,7 +218,7 @@ def test_services_do_not_import_framework_or_outer_layers() -> None:
         if module.startswith(FORBIDDEN_SERVICE_IMPORTS)
         or (
             module.startswith("ironsbot.integrations")
-            and not module.startswith(ALLOWED_SERVICE_INTEGRATIONS)
+            and module not in TRANSITIONAL_SERVICE_INTEGRATION_IMPORTS
         )
     ]
     assert offenders == []

@@ -267,6 +267,15 @@ def test_runtime_does_not_restore_the_retired_seerapi_http_client() -> None:
     assert offenders == []
 
 
+def test_runtime_does_not_read_mount_images_from_sqlite_blobs() -> None:
+    offenders = [
+        path.relative_to(ROOT).as_posix()
+        for path in _python_files(PACKAGE)
+        if "flash_mount_image" in path.read_text(encoding="utf-8-sig")
+    ]
+    assert offenders == []
+
+
 def test_core_and_services_do_not_import_adapter_transport_types() -> None:
     offenders = [
         f"{path.relative_to(ROOT).as_posix()} imports {module}"

@@ -1,14 +1,9 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from ironsbot.integrations.seer_data.flash_mount_repository import (
-    load_flash_mount_image,
-)
-from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.formatting import format_sub_lines
 from ironsbot.services.seer.images import fetch_optional_image
 from ironsbot.services.seer.query_result import (
@@ -35,9 +30,6 @@ EQUIP_PART_TYPE_MAP = {
     5: "背景",
     MOUNT_PART_TYPE_ID: "星际座驾",
 }
-logger = logging.getLogger(__name__)
-
-
 @dataclass(frozen=True, slots=True)
 class _EquipmentReplyData:
     kind: EquipmentKind
@@ -141,27 +133,9 @@ class EquipmentQueryService:
     ) -> QueryReply:
         image = await fetch_optional_image(
             self._images,
-            reply_data.kind,
+            "mount" if reply_data.is_mount else reply_data.kind,
             str(reply_data.item_id),
         )
-        flash_image: bytes | None = None
-        if reply_data.is_mount and image.data is None:
-            try:
-                flash_image = load_flash_mount_image(
-                    self._data, reply_data.item_id
-                )
-            except PublishedDataIncompleteError:
-                logger.exception(
-                    "published Flash mount image data is unavailable: mount_id=%s",
-                    reply_data.item_id,
-                )
-                return QueryReply(
-                    text=reply_data.text,
-                    image_error="星际座驾图片数据不完整，暂时无法展示。",
-                    complete=False,
-                )
-        if flash_image is not None:
-            return QueryReply(text=reply_data.text, image=flash_image)
         if (
             reply_data.is_mount
             and image.data is None
