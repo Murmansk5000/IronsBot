@@ -57,7 +57,6 @@ from ironsbot.services.about import AboutService
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
-from ironsbot.services.portable_commands import build_portable_command_router
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
@@ -287,18 +286,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.messaging.command_cooldown,
         ),
     )
-    if settings.bot.qq_official.enabled:
-        from ironsbot.integrations.qq_official.runtime import (
-            install_qq_official_runtime,
-        )
-
-        install_qq_official_runtime(
-            build_portable_command_router(
-                about=resources.about,
-                data_queries=resources.seer.data_queries,
-                features=resources.features,
-            )
-        )
     return Application(
         settings=settings,
         driver=driver,

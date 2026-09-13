@@ -63,5 +63,19 @@ def bootstrap() -> Application:
             with application.resources.private_extensions.plugin_import_path():
                 nonebot.load_from_toml(str(manifest_path))
     application.configure(context.contributions)
+    if qq_official.enabled:
+        from ironsbot.integrations.qq_official.runtime import (
+            install_qq_official_runtime,
+        )
+        from ironsbot.services.portable_commands import build_portable_command_router
+
+        install_qq_official_runtime(
+            build_portable_command_router(
+                catalog=application.resources.commands,
+                about=application.resources.about,
+                data_queries=application.resources.seer.data_queries,
+                features=application.resources.features,
+            )
+        )
     application.install()
     return application
