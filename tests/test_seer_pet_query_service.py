@@ -30,6 +30,7 @@ class FakeData:
         self.skins: tuple[Any, ...] = ()
         self.skin_details: Any | None = None
         self.skin_image_resolutions: dict[int, SkinImageResolution] = {}
+        self.query_error: Exception | None = None
         self.session_active = False
 
     @contextmanager
@@ -69,6 +70,8 @@ class FakeData:
 
     @contextmanager
     def query(self, operation: object) -> Iterator[Any | None]:
+        if self.query_error is not None:
+            raise self.query_error
         operation_function = getattr(operation, "func", None)
         if getattr(operation_function, "__name__", "") == "load_skin_image_resolutions":
             yield self.skin_image_resolutions
@@ -281,6 +284,20 @@ async def test_pet_image_selection_includes_skin_details() -> None:
         "礼卡价格：20\n"
         "售价：100"
     )
+
+
+@pytest.mark.asyncio
+async def test_pet_image_selection_reports_incomplete_skin_price_data() -> None:
+    data = FakeData()
+    data.query_error = PublishedDataIncompleteError("skin_price", entity_id=101)
+
+    result = await _service(data).select_image(PetImageSelection(101, "皮肤"))
+
+    assert result.reply is not None
+    assert not result.reply.complete
+    assert result.reply.image == b"image:101"
+    assert result.reply.text == "💎【皮肤】\n"
+    assert result.reply.image_error == "皮肤资料数据不完整，价格信息暂时无法展示。"
 
 
 @pytest.mark.asyncio
