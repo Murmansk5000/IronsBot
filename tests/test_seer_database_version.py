@@ -519,6 +519,7 @@ def _update_asset_release(engine: Engine, revision: str, manifest: str) -> None:
 
 
 def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) -> None:
+    master_pool_cost = 35
     source = tmp_path / "seerapi.sqlite"
     engine, _ = _create_release(source, ("peak_pool",))
     with engine.begin() as connection:
@@ -551,6 +552,14 @@ def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) 
                 }
             ],
         )
+        connection.execute(
+            text(
+                "INSERT INTO peak_cost_pool(id, cost, start_time, end_time) "
+                f"VALUES (1, {master_pool_cost}, '2026-08-01T00:00:00+00:00', "
+                "'2026-09-01T00:00:00+00:00')"
+            )
+        )
+        connection.execute(text("UPDATE pet SET peak_cost_pool_id=1 WHERE id=7"))
     databases = DatabaseManager()
     data = SeerDatabase(databases, merge_connected_mintmarks=True)
     slots = (
@@ -565,6 +574,7 @@ def test_lineup_entries_remain_bound_after_database_replacement(tmp_path: Path) 
             original = resolver.resolve(slots)
             assert original[0].name == "old"
             assert (original[0].resource_id, original[0].type_id) == (1007, 4)
+            assert original[0].master_pool_cost == master_pool_cost
             assert original[0].complete
             assert not original[1].complete and original[1].resource_id == 0
             assert not original[2].complete and original[2].resource_id == 0
