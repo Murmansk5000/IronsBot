@@ -37,6 +37,8 @@ from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStor
 from ironsbot.services.about_commands import about_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+from ironsbot.services.seer.data_queries import DataQueryImageReply
+from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.query_result import QueryReply
 from tests.helpers.fake_official_platform import (
@@ -83,6 +85,29 @@ async def test_seer_reply_uses_shared_content_without_platform_identity(
     assert result.delivered
     assert transport.attempts == [(GROUP, message)]
     assert len(transport.uploads) == int(with_image)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message",
+    [
+        DataQueryImageReply(b"preview", "缓存时间：2026-09-13").to_outbound(),
+        PeakQueryResult(image=b"peak-image").to_outbound(),
+        PeakQueryResult(text="专家榜结果").to_outbound(),
+    ],
+)
+async def test_seer_specialized_results_share_the_outbound_port(
+    message: OutboundMessage,
+) -> None:
+    transport = FakeOfficialPlatform(NOW)
+
+    result = await transport.reply(ReplyContext.from_message(_incoming()), message)
+
+    assert result.delivered
+    assert transport.attempts == [(GROUP, message)]
+    assert len(transport.uploads) == sum(
+        isinstance(part, BinaryImagePart) for part in message.parts
+    )
 
 
 def _incoming() -> IncomingMessageRef:

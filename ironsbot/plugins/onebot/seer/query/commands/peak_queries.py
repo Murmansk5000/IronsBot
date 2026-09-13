@@ -7,10 +7,12 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -41,14 +43,7 @@ async def _finish_result(
     result: PeakQueryResult,
     matcher: Matcher,
 ) -> None:
-    if result.message:
-        await matcher.finish(result.message)
-        return
-    if result.text:
-        await matcher.finish(result.text)
-        return
-    if result.image is not None:
-        await matcher.finish(MessageSegment.image(result.image))
+    await matcher.finish(render_onebot_outbound_message(result.to_outbound()))
 
 
 async def _handle_pool(

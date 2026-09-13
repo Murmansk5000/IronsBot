@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import timedelta, timezone
 from typing import TYPE_CHECKING
 
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.integrations.seer_data.season_repository import load_peak_season_times
 from ironsbot.integrations.seer_data.weekly_preview_repository import (
     load_weekly_preview_links,
@@ -31,8 +32,16 @@ class DataQueryImageReply:
     image: bytes
     notice: str = ""
 
+    def to_outbound(self) -> OutboundMessage:
+        parts: list[BinaryImagePart | TextPart] = [
+            BinaryImagePart(self.image, "image/png")
+        ]
+        if self.notice:
+            parts.append(TextPart(f"\n{self.notice}"))
+        return OutboundMessage(tuple(parts))
 
-DataQueryReply = str | bytes | DataQueryImageReply
+
+DataQueryReply = str | DataQueryImageReply
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 
 

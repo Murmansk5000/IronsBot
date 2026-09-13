@@ -156,3 +156,17 @@ passed in 13.33 seconds. Full Ruff, targeted BasedPyright and diff check passed.
 Source release SHA-256 remains
 `1ef66a0039326f1f2a8d2ca523af02e6e44da7134f3edff5ce15e0d385119845`.
 No full-suite rerun is claimed for this test/documentation-only checkpoint.
+
+## Specialized Seer Result Contract (2026-09-13)
+
+Weekly-preview image results and peak query results now expose the same
+platform-neutral `to_outbound()` boundary as ordinary `QueryReply` values. The
+service result owns image/text ordering and MIME type; OneBot only renders the
+result at its adapter boundary. The obsolete raw-bytes branch in the weekly
+preview adapter was removed because the service has no such producer.
+
+The fake official capability suite accepts preview, peak image and peak text
+results through the real `OutboundMessenger` protocol, including binary upload
+counting. This expands non-QQ Phase 7 evidence without inventing OpenID-to-QQ
+mapping, direct-mention support or account-binding behavior. Those capabilities
+remain deferred until a target API can represent them.
