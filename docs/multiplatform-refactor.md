@@ -76,6 +76,15 @@ Task     [██████████] completed only after code, tests, and 
   [运维查询 Spec](specs/2026-09-14-portable-operational-queries.md)。真实平台验收门
   未变化，整体保持 7/8。
 
+- QQ Official 的精灵配置图查询由提交 `dedb2799` 接入：目录、精灵/别名解析、
+  重名数字菜单、缺图提示和二进制图片发送分别复用现有 command contract、
+  `PetConfigQueryService`、portable query session 与 outbound message，不复制 OneBot
+  会话实现；固定图片口令仍由同一保留词集合消歧。专项 9 passed，公共全量
+  `3350 passed, 7 skipped`，Ruff、BasedPyright、compileall 和 diff 检查通过；无
+  新运行依赖，portable 主路由为 730 行。见
+  [精灵配置查询 Spec](specs/2026-09-14-portable-pet-config.md)。B站账户与推送模式
+  尚依赖 OneBot 配置目标，未向 OpenID 平台暴露不完整入口；整体保持 7/8。
+
 - 本轮用户明确要求 pull 后，干净的主检出目录执行 `git pull --ff-only origin main`，
   从 `ba08f749` 快进到 `55a39fd1`，未合并入 V5。新增 10 项提交涉及战队查询与
   玩家菜单、私聊战队概览、群星牌觉醒变体合并、推送队列加固、Docker 交接失败
