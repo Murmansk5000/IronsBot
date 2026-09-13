@@ -19,6 +19,7 @@ from ironsbot.services.bilibili.outbound_delivery import (
     FULL_DYNAMIC_PUSH_ACTION,
     LINK_DYNAMIC_PUSH_ACTION,
     BilibiliDynamicOutboundSender,
+    render_dynamic_content_message,
     render_dynamic_image_message,
     render_dynamic_link_message,
     render_dynamic_text_message,
@@ -455,6 +456,30 @@ def test_image_only_dynamic_does_not_invent_content_text() -> None:
     assert text is None
     assert images is not None
     assert isinstance(images.parts[0], RemoteImagePart)
+
+
+def test_complete_dynamic_content_keeps_text_before_images() -> None:
+    message = render_dynamic_content_message(_item())
+
+    assert message is not None
+    assert isinstance(message.parts[0], TextPart)
+    assert isinstance(message.parts[1], RemoteImagePart)
+
+
+def test_complete_dynamic_content_supports_image_only_items() -> None:
+    message = render_dynamic_content_message(_item(text=""))
+
+    assert message is not None
+    assert len(message.parts) == 1
+    assert isinstance(message.parts[0], RemoteImagePart)
+
+
+def test_complete_dynamic_content_supports_text_only_items() -> None:
+    message = render_dynamic_content_message(_item(include_image=False))
+
+    assert message is not None
+    assert len(message.parts) == 1
+    assert isinstance(message.parts[0], TextPart)
 
 
 def test_bilibili_admin_hint_is_limited_once_per_group_per_day(
