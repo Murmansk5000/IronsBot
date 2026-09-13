@@ -2038,3 +2038,18 @@ Docker 交接失败继续启动由 V5 `69539177` 覆盖；战队详情由 V5 `20
 主线 `b14df7a5`、`6844980e` 和 `ba08f749` 涉及绑定战队、私聊身份视图或实时 QQ 昵称，
 依赖 QQ 账号/绑定语义；按平台延期规则留到最终适配阶段，不复制为 service 特判。本次
 针对结构门、推送队列、群星牌、Docker 预检和 B站分类执行定向回归，`35 passed`。
+
+## 发布前分支拓扑审计（2026-09-13）
+
+三个重构分支当前都没有配置 upstream，不能把本地全绿误报为已发布。相对各自本地
+`main`，SeerAPI 为 ahead 110 / behind 0；IronsBot 为 ahead 538 / behind 93；private
+为 ahead 34 / behind 7。`git merge-tree --write-tree --messages HEAD main` 的只读三方
+分析显示：SeerAPI 可零冲突连接主线；IronsBot 有 179 个冲突文件；private 有 6 个冲突
+文件。分析只写入不可达 Git tree 对象，没有改变分支、索引或工作树。
+
+IronsBot 的大部分冲突来自目标态删除旧插件目录、迁移 OneBot adapter 和重写 service
+边界，不应通过普通 merge 将旧路径恢复。最终发布顺序固定为：先发布 SeerAPI 数据与
+`generated-render-assets`，验证 release；再发布 IronsBot 消费端并运行真实 consumer /
+候选镜像 smoke；最后发布 private 扩展。连接主线历史前必须先完成逐提交语义清单，随后
+使用经明确批准的历史收口策略，而不是逐个文本冲突盲选。QQ 号、绑定、直接 @ 和实时
+昵称仍排在最终平台批次。本轮未执行 fetch、pull、merge 或 push。
