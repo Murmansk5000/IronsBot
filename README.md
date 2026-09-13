@@ -143,6 +143,17 @@ QQ_OFFICIAL_SECRET=你的 AppSecret
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
 不是普通 QQ 号；日志中的 OpenID 可用于后续配置官方平台超级管理员。
 
+QQ 官方适配器是可选运行组件。直接运行源码时使用：
+
+```powershell
+uv sync --extra qq-official
+uv run --no-sync python -m ironsbot
+```
+
+默认安装和标准 OneBot 镜像不携带该适配器及其加密依赖。构建 QQ 官方镜像时传入
+`--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
+明确报错。
+
 ## 常用赛尔查询
 
 - 首次成功查询指定米米号后，机器人会询问是否设为默认米米号；按提示回复 `是`/`y` 或 `否`/`n`。发送 `解绑米米号` 可解除绑定。绑定是快捷查询设置，不验证游戏账号所有权。

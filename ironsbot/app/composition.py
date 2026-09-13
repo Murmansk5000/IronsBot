@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 import nonebot
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
-from nonebot.adapters.qq import Adapter as QQOfficialAdapter
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.ai_health import check_configured_ai_api
@@ -47,7 +46,6 @@ from ironsbot.integrations.onebot.identity import (
     onebot_conversation_ref,
 )
 from ironsbot.integrations.onebot.matchers import MatcherFactory
-from ironsbot.integrations.qq_official.runtime import install_qq_official_runtime
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.player_bindings import (
@@ -69,6 +67,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     driver.register_adapter(OneBotV11Adapter)
     if settings.bot.qq_official.enabled:
+        try:
+            from nonebot.adapters.qq import Adapter as QQOfficialAdapter
+        except ModuleNotFoundError as error:
+            msg = (
+                "QQ Official Bot is enabled, but its optional dependency is "
+                "missing; install IronsBot with the qq-official extra"
+            )
+            raise RuntimeError(msg) from error
         driver.register_adapter(QQOfficialAdapter)
     scheduler = SchedulerFacade()
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
@@ -282,6 +288,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         ),
     )
     if settings.bot.qq_official.enabled:
+        from ironsbot.integrations.qq_official.runtime import (
+            install_qq_official_runtime,
+        )
+
         install_qq_official_runtime(
             build_portable_command_router(
                 about=resources.about,

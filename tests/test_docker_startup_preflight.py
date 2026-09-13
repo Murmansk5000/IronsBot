@@ -378,6 +378,8 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "pip install --no-deps --no-cache-dir --no-compile" in dockerfile
     assert "pip wheel --no-deps" in dockerfile
     assert "uv export --frozen --no-dev" in dockerfile
+    assert 'ARG IRONSBOT_RUNTIME_EXTRA=""' in dockerfile
+    assert 'extra_args="--extra $IRONSBOT_RUNTIME_EXTRA"' in dockerfile
     assert dockerfile.startswith("# syntax=docker/dockerfile:1\n")
     assert "COPY --from=requirements_stage /wheel" not in dockerfile
     assert (
@@ -429,6 +431,10 @@ def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
     assert "fastapi>=0.93.0,<1.0.0" in dependencies
     assert "uvicorn>=0.20.0,<1.0.0" in dependencies
     assert "websockets>=15.0" in dependencies
+    assert not any("nonebot-adapter-qq" in item for item in dependencies)
+    qq_dependencies = project["project"]["optional-dependencies"]["qq-official"]
+    assert "nonebot-adapter-qq==1.7.2" in qq_dependencies
+    assert "yarl>=1.23.0,<2.0.0" in qq_dependencies
 
     locked_names = {package["name"] for package in lock["package"]}
     assert {"fastapi", "uvicorn", "websockets"} <= locked_names

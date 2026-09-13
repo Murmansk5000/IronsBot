@@ -507,8 +507,12 @@ def test_runtime_python_baseline_is_consistent() -> None:
     assert setup["with"]["python-version"] == "${{ env.PYTHON_VERSION }}"
     assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
     version_argument = "PYTHON_VERSION=${{ env.PYTHON_VERSION }}"
+    extra_argument = "IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}"
     assert version_argument in candidate["with"]["build-args"]
     assert version_argument in publish["with"]["build-args"]
+    assert extra_argument in candidate["with"]["build-args"]
+    assert extra_argument in publish["with"]["build-args"]
+    assert 'extra_args=(--extra "$IRONSBOT_RUNTIME_EXTRA")' in audit["run"]
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:

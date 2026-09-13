@@ -72,6 +72,16 @@ Task     [██████████] completed only after code, tests, and 
   `yarl` 下限和 `cryptography <49` 上限；项目显式要求 `yarl 1.23+`，并使用 uv
   override 固定到已修复已知漏洞的 `cryptography 50.x`。适配器导入、Ed25519
   签名验证、启动和依赖审计都必须通过后才允许发布预览镜像。
+- 私有预览流水线 `34759853590` 已完成冻结依赖审计、Linux 候选构建、无网络启动
+  smoke、分目录体积门禁、基线增长检查和 GHCR 发布。镜像 digest 为
+  `sha256:5b71257be5c4116ee7e0f61c8e1f85a2515fd445166bd3ca97c1dca1c20a561a`，
+  Docker 报告大小为 246.19 MiB；其中 `/app` 4.16 MiB、site-packages 102.47 MiB、
+  字体 19.00 MiB。真实 AppID 连接仍未验收。
+- QQ Official 适配器现为 `qq-official` 可选运行组件。标准 OneBot 安装不再携带
+  适配器及其约 14.55 MiB 的 `cryptography` 目录；官方预览仓库通过
+  `IRONSBOT_RUNTIME_EXTRA=qq-official` 构建同一 Dockerfile。基础环境已在移除该
+  extra 后验证应用组合模块可导入；准确的标准 Linux 镜像差额仍以后续标准发布
+  产物为准，不把目录差额冒充压缩镜像差额。
 - 前次只读观察的本地 `main` 为 `ba08f749`。从 `4b82881b` 起新增 11 个提交：
   B站 Opus/专栏正文补全、图片合并与历史摘要持久化，巅峰池有效期/投票展示，
   当前 fork 的页脚链接，自发指令超级管理员权限，以及橱窗别名候选昵称。
@@ -254,7 +264,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
-| Phase 7 | `in_progress` | 模拟能力测试、真实 OneBot WebSocket smoke，以及 QQ Official 群/C2C MVP 的配置、事件身份、被动文字/图片回复和进程 bootstrap 已验收 | 私有预览镜像构建、真实 QQ 官方连接 smoke、随后逐功能迁移完整 Seer/AI 流程 | QQ Official 全功能可用或主动推送已获准 |
+| Phase 7 | `in_progress` | 模拟能力测试、真实 OneBot WebSocket smoke、QQ Official 群/C2C MVP，以及私有 GHCR 预览镜像的安全构建与离线 smoke 已验收 | 真实 QQ 官方连接 smoke，随后逐功能迁移完整 Seer/AI 流程 | QQ Official 全功能可用或主动推送已获准 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除

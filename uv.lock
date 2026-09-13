@@ -636,7 +636,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "hishel", extra = ["httpx"] },
     { name = "nonebot-adapter-onebot" },
-    { name = "nonebot-adapter-qq" },
     { name = "nonebot-plugin-apscheduler" },
     { name = "nonebot-plugin-htmlkit" },
     { name = "nonebot2", extra = ["httpx"] },
@@ -645,6 +644,11 @@ dependencies = [
     { name = "seerapi-models" },
     { name = "uvicorn" },
     { name = "websockets" },
+]
+
+[package.optional-dependencies]
+qq-official = [
+    { name = "nonebot-adapter-qq" },
     { name = "yarl" },
 ]
 
@@ -652,12 +656,14 @@ dependencies = [
 dev = [
     { name = "bandit" },
     { name = "basedpyright" },
+    { name = "nonebot-adapter-qq" },
     { name = "pip-audit" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pyyaml" },
     { name = "ruff" },
+    { name = "yarl" },
 ]
 
 [package.metadata]
@@ -665,7 +671,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.93.0,<1.0.0" },
     { name = "hishel", extras = ["httpx"], specifier = ">=1.2.1" },
     { name = "nonebot-adapter-onebot", specifier = ">=2.4.6" },
-    { name = "nonebot-adapter-qq", specifier = "==1.7.2" },
+    { name = "nonebot-adapter-qq", marker = "extra == 'qq-official'", specifier = "==1.7.2" },
     { name = "nonebot-plugin-apscheduler", specifier = ">=0.5.0" },
     { name = "nonebot-plugin-htmlkit", specifier = ">=0.1.0rc5" },
     { name = "nonebot2", extras = ["httpx"], specifier = ">=2.4.4" },
@@ -674,19 +680,22 @@ requires-dist = [
     { name = "seerapi-models", specifier = ">=106.4.0" },
     { name = "uvicorn", specifier = ">=0.20.0,<1.0.0" },
     { name = "websockets", specifier = ">=15.0" },
-    { name = "yarl", specifier = ">=1.23.0,<2.0.0" },
+    { name = "yarl", marker = "extra == 'qq-official'", specifier = ">=1.23.0,<2.0.0" },
 ]
+provides-extras = ["qq-official"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "bandit", specifier = ">=1.9.4" },
     { name = "basedpyright", specifier = ">=1.38.1" },
+    { name = "nonebot-adapter-qq", specifier = "==1.7.2" },
     { name = "pip-audit", specifier = ">=2.10.1" },
     { name = "pre-commit", specifier = ">=4.4.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.15.2" },
+    { name = "yarl", specifier = ">=1.23.0,<2.0.0" },
 ]
 
 [[package]]

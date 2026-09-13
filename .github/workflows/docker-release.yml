@@ -12,6 +12,7 @@ env:
     PYTHON_VERSION: "3.11"
     DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    IRONSBOT_RUNTIME_EXTRA: ${{ vars.IRONSBOT_RUNTIME_EXTRA }}
 
 jobs:
     docker:
@@ -44,7 +45,11 @@ jobs:
             - name: Audit locked runtime dependencies
               shell: bash
               run: |
-                  python -m uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
+                  extra_args=()
+                  if [ -n "$IRONSBOT_RUNTIME_EXTRA" ]; then
+                    extra_args=(--extra "$IRONSBOT_RUNTIME_EXTRA")
+                  fi
+                  python -m uv export --frozen --no-dev --no-emit-project "${extra_args[@]}" --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
                   python -m uv tool run --python "$PYTHON_VERSION" --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
 
             - name: Upload dependency audit evidence
@@ -120,6 +125,7 @@ jobs:
                   build-args: |
                       PYTHON_VERSION=${{ env.PYTHON_VERSION }}
                       IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}
+                      IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
 
@@ -245,6 +251,7 @@ jobs:
                   build-args: |
                       PYTHON_VERSION=${{ env.PYTHON_VERSION }}
                       IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}
+                      IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}
                   cache-from: type=gha
 
             - name: Record published image size

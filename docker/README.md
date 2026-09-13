@@ -286,6 +286,12 @@ GITHUB_WORKFLOW_TOKEN=
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
+The QQ Official adapter is an optional runtime component so the standard
+OneBot image does not carry its cryptography dependency. Build an official-bot
+image with `--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`. A source checkout
+uses `uv sync --extra qq-official` followed by
+`uv run --no-sync python -m ironsbot`.
+
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.
 When file logging is enabled, the default logs rotate at local midnight, keep
