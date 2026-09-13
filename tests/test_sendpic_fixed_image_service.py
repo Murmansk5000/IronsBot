@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
+from ironsbot.core.outbound import BinaryImagePart, TextPart
 from ironsbot.integrations.sendpic import LocalBackend
 from ironsbot.services.messaging.sendpic import (
     ImageNotFoundError,
@@ -51,7 +52,36 @@ def test_sendpic_service_reads_single_image(
         image_file="sample.png",
     )
 
-    assert asyncio.run(_service(tmp_path, command).fetch_single(command)) == b"abc"
+    result = asyncio.run(_service(tmp_path, command).fetch_single(command))
+
+    assert result.data == b"abc"
+    assert result.to_outbound().parts == (BinaryImagePart(b"abc", "image/png"),)
+
+
+def test_indexed_image_result_owns_platform_neutral_template_output(
+    tmp_path: Path,
+) -> None:
+    image_dir = tmp_path / "memes"
+    image_dir.mkdir()
+    (image_dir / "1.png").write_bytes(b"abc")
+    command = PicConfig(
+        id="gallery",
+        backend="local",
+        command="表情",
+        mode="indexed",
+        image_dir="memes",
+        image_filename_template="{index}.png",
+        message_template="{random_text}{index}/{total}\n{image}",
+    )
+
+    result = asyncio.run(_service(tmp_path, command).fetch_indexed(command, 1))
+
+    assert result.to_outbound(
+        command.message_template, command=command.command
+    ).parts == (
+        TextPart("自选1/1\n"),
+        BinaryImagePart(b"abc", "image/png"),
+    )
 
 
 def test_image_commands_are_empty_by_default() -> None:

@@ -10,11 +10,13 @@ from inspect import Signature, signature
 from secrets import token_urlsafe
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from ironsbot.integrations.onebot.prompt_errors import (
+    PromptSessionManagerMissingError,
+)
 from ironsbot.integrations.onebot.prompt_sessions import (
     GroupMenuAnchor,
     PromptSessionManager,
 )
-from ironsbot.runtime.prompt_errors import PromptSessionManagerMissingError
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event

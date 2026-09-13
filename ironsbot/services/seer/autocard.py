@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
 from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
@@ -63,6 +64,23 @@ class AutocardEntry:
                 url for url in (self.image_url, *self.additional_image_urls) if url
             )
         )
+
+    def to_outbound(
+        self,
+        *,
+        include_images: bool = True,
+        include_additional_images: bool = True,
+    ) -> OutboundMessage:
+        image_urls = (
+            self.image_urls
+            if include_additional_images
+            else ((self.image_url,) if self.image_url else ())
+        )
+        parts: list[RemoteImagePart | TextPart] = []
+        if include_images:
+            parts.extend(RemoteImagePart(url) for url in image_urls)
+        parts.append(TextPart(self.text))
+        return OutboundMessage(tuple(parts))
 
 
 @dataclass(slots=True, frozen=True)
