@@ -193,7 +193,6 @@ class QQOfficialConfig(BaseModel):
 
     enabled: bool = False
     app_id: str = ""
-    token: str = Field(default="", exclude=True, repr=False)
     secret: str = Field(default="", exclude=True, repr=False)
     sandbox: bool = False
     proactive_messages: bool = False
@@ -214,7 +213,7 @@ class QQOfficialConfig(BaseModel):
     )
     superusers: list[str] = Field(default_factory=list)
 
-    @field_validator("app_id", "token", "secret", mode="before")
+    @field_validator("app_id", "secret", mode="before")
     @classmethod
     def normalize_credentials(cls, value: object) -> str:
         return str(value or "").strip()
@@ -232,7 +231,6 @@ class QQOfficialConfig(BaseModel):
             name
             for name, value in (
                 ("app_id", self.app_id),
-                ("token", self.token),
                 ("secret", self.secret),
             )
             if not value

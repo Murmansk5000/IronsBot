@@ -151,9 +151,11 @@ superusers = []
 凭据只放环境变量：
 
 ```text
-QQ_OFFICIAL_TOKEN=你的 Token
 QQ_OFFICIAL_SECRET=你的 AppSecret
 ```
+
+腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
+AppSecret 获取短期 AccessToken，并在内存中自动刷新。
 
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
 不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID

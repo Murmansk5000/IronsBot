@@ -387,15 +387,23 @@ superusers = ["opaque-admin"]
     settings = load_settings(
         path,
         env={
-            "QQ_OFFICIAL_TOKEN": "example-token",
             "QQ_OFFICIAL_SECRET": "example-secret",
         },
     )
 
     assert settings.bot.qq_official.enabled
-    assert settings.bot.qq_official.token == "example-token"
     assert settings.bot.qq_official.secret == "example-secret"
     assert settings.bot.qq_official.superusers == ["opaque-admin"]
+
+
+def test_qq_official_config_rejects_retired_static_token() -> None:
+    with pytest.raises(ValueError, match="token"):
+        QQOfficialConfig(
+            enabled=True,
+            app_id="example-app",
+            secret="example-secret",
+            token="retired-token",  # type: ignore[call-arg]
+        )
 
 
 def test_team_resource_requires_qq_official_proactive_delivery() -> None:
@@ -403,7 +411,6 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
         QQOfficialConfig(
             enabled=True,
             app_id="example-app",
-            token="example-token",
             secret="example-secret",
             features=["team_resource_subscription"],
         )
@@ -411,7 +418,6 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
     config = QQOfficialConfig(
         enabled=True,
         app_id="example-app",
-        token="example-token",
         secret="example-secret",
         proactive_messages=True,
         features=["team_resource_subscription"],
@@ -965,7 +971,6 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
-            "QQ_OFFICIAL_TOKEN": "example-token",
             "QQ_OFFICIAL_SECRET": "example-secret",
         }
     )

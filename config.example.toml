@@ -73,8 +73,9 @@ superusers = []
 # EN: Enable the QQ Official Bot WebSocket adapter in this same process.
 # ZH: 在同一进程启用 QQ 官方机器人 WebSocket 适配器。
 enabled = false
-# EN: QQ Bot application ID. Keep token and secret in environment variables.
-# ZH: QQ 机器人 AppID；Token 和 AppSecret 必须通过环境变量提供。
+# EN: QQ Bot application ID. Keep AppSecret in an environment variable; the
+#     adapter obtains and refreshes AccessToken automatically.
+# ZH: QQ 机器人 AppID；AppSecret 必须通过环境变量提供，AccessToken 由适配器自动获取并刷新。
 app_id = ""
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。
