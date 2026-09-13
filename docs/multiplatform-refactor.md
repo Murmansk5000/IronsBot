@@ -1939,3 +1939,19 @@ OneBot 编码后返回正确目标用户及版本正文；这不是线上 QQ 登
 会话退出逻辑处理。本批没有新增 TOML、数据库 schema 或 QQ 身份能力。QQ 号、直接 @、
 绑定关系等目标 API 不能可靠表达的操作继续统一延期到最终平台验收，不为单个平台补写
 业务分支。
+
+## SeerAPI 构建输出与 800 行门禁收口（2026-09-13）
+
+SeerAPI 的效果图标构建和新内容索引已经分别由专用模块承担；本轮继续把 950 行的
+`solaris.analyze.output.outputter` 按 Schema 输出、JSON/数据库输出和共享辅助函数拆分，
+各模块分别保持在 541、237 和 62 行。包级公共导出不变，调用方无需改导入路径。
+
+新增源码架构测试扫描 `scripts`、Solaris、SeerAPI models 和 Python client 的维护型
+Python 模块，超过 800 行即失败。自动生成的 `openapi_comments.py` 是唯一显式豁免，
+不得借豁免名单容纳手写业务模块。SeerAPI commit `69f2af4` 通过全量 `318 passed`、
+Ruff、compileall、公开导入和差异检查。
+
+座驾 PNG 尚未切换：现有 SeerAPI 工作流对外部 `seer-unity-assets` 只有读取契约，缺少
+可验证的原子写入步骤。没有在远端素材实际发布前删除 IronsBot 的当前读取路径，也没有
+把本地生成文件冒充 immutable asset。该项继续作为 manifest 拆分 Spec 的唯一未完成
+切片；QQ 身份能力仍按平台延期规则排在最后。
