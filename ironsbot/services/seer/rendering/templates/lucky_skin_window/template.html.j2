@@ -17,7 +17,11 @@
     .missing { color: #83b4d7; font-size: 14px; text-align: center; }
     .name { min-height: 76px; padding: 10px 9px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
     .star { color: #ffd15c; margin-right: 4px; font-size: 19px; line-height: 1; }
+    .choice { display: inline-flex; align-items: center; justify-content: center; width: 21px; height: 21px; margin-right: 5px; border-radius: 3px; background: #1d5d91; color: #d9f1ff; font-size: 12px; }
     .skin-id { color: #91c8ed; margin-top: 4px; font-size: 13px; font-weight: 400; }
+    .price { min-height: 68px; padding: 9px; border-top: 1px solid #286290; color: #cde9fb; text-align: center; font-size: 12px; line-height: 1.45; }
+    .price div:first-child { color: #fff3ad; font-size: 14px; font-weight: 700; }
+    .footer { margin: 15px 3px 0; padding-top: 10px; border-top: 1px solid #245574; color: #91c8ed; text-align: center; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -27,10 +31,12 @@
       {% for offer in offers %}
       <article class="offer">
         <div class="art">{% if offer.image %}<img src="{{ offer.image }}" alt="{{ offer.name }}">{% else %}<span class="missing">立绘暂未获取</span>{% endif %}</div>
-        <div class="name"><div>{% if offer.watched %}<span class="star">⭐</span>{% endif %}{{ offer.name }}</div><div class="skin-id">皮肤ID：{{ offer.skin_id }}</div></div>
+        <div class="name"><div><span class="choice">{{ offer.index }}</span>{% if offer.watched %}<span class="star">⭐</span>{% endif %}{{ offer.name }}</div><div class="skin-id">皮肤ID：{{ offer.skin_id }}</div></div>
+        <div class="price">{% for line in offer.price_lines %}<div>{{ line }}</div>{% endfor %}</div>
       </article>
       {% endfor %}
     </section>
+    <div class="footer">发送 1-4 查看对应皮肤详情 · 0 退出</div>
   </main>
 </body>
 </html>
