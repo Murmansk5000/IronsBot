@@ -12,6 +12,7 @@ from nonebot.adapters.qq import MessageSegment
 from nonebot.adapters.qq.event import (
     C2CMessageCreateEvent,
     GroupAtMessageCreateEvent,
+    GroupMessageCreateEvent,
 )
 
 from ironsbot.config.loader import load_settings
@@ -39,6 +40,7 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 from ironsbot.integrations.qq_official.runtime import (
     deliver_qq_official_reply,
     qq_official_event_is_supported,
+    qq_official_event_mentions_bot,
 )
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
@@ -459,6 +461,29 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         ),
     )
     assert incoming.sequence == "sequence-1"
+
+
+def test_only_group_at_event_is_classified_as_bot_mention() -> None:
+    payload = {
+        "id": "message-id",
+        "content": "help",
+        "timestamp": "2026-09-13T00:00:00+08:00",
+        "author": {
+            "id": "native-author-id",
+            "bot": False,
+            "member_openid": "opaque-member",
+            "member_role": "member",
+        },
+        "group_id": "native-group-id",
+        "group_openid": "opaque-group",
+        "to_me": True,
+    }
+
+    full_message = GroupMessageCreateEvent.model_validate(payload)
+    at_message = GroupAtMessageCreateEvent.model_validate(payload)
+
+    assert not qq_official_event_mentions_bot(full_message)
+    assert qq_official_event_mentions_bot(at_message)
 
 
 def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
