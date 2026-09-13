@@ -772,11 +772,10 @@ TTL 设为零以验证再次下载。三类 HTTP 失败、恢复、严格精灵�
   皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
   适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变
   文档；不得把新的数据库读取或展示推断放回 HTML 模板或纯 presenter。
-- 新增内容发布索引、赛季时间和 Flash 座驾素材读取已经分别迁入
-  `integrations.seer_data.new_content_repository`、`season_repository` 与
-  `flash_mount_repository`。`NewContentService`、赛季倒计时和装备服务只消费
-  脱离 Session 的值对象；新功能必须沿用这一 repository 边界，而不是在 service
-  内恢复 SQLAlchemy、JSON 或 Flash 文件访问。
+- 新增内容发布索引和赛季时间分别由
+  `integrations.seer_data.new_content_repository` 与 `season_repository` 提供。
+  Flash 座驾 PNG 已由 SeerAPI 构建期发布，运行时统一通过 `SeerImageSource` 的
+  `mount` 类型获取；不得恢复 SQLite Blob repository、运行时 SWF 或专用图片缓存。
 - 当前最终图片缓存仍在素材准备和 `RenderDocument` 生成之后使用
   `render_document_cache_key()`，其 data URI 确实能保证 miss 路径的像素正确性；但这
   不满足“L3 命中零 SQL/HTTP/presenter”的目标。后续必须由发布数据的 revision 和素材
@@ -1698,6 +1697,20 @@ Bookworm/Trixie 压缩基础层约为 45.05/45.75 MiB，差异约 0.70 MiB。
 测试覆盖边界值及三个独立超限分支。该门防止后续把部署者素材、依赖增长或字体增长
 混成一个总数，也不把未运行的 CI 契约冒充实际镜像证据。
 
+候选镜像另在正式 push 前与当前 fork 的 GHCR `latest` Docker 报告尺寸比较，默认单次
+增长上限为 8192 KiB。仓库名由 `github.repository` 推导，比较使用拉取后的基线
+digest，并始终上传候选、基线和差值；基线读取
+失败或超限都会阻止发布，避免绝对分目录预算较宽时出现未被发现的大步增长。Docker
+发布、启动预检与结构边界测试 `39 passed`；该批验证时尚无真实 Linux 候选差值。
+
+随后在 Docker Desktop Linux/amd64 Engine 29.5.2 上真实构建 commit `93bd3aac21e8`。
+首次构建发现嵌套 `__pycache__` 未被根级 `.dockerignore` 规则排除，`/app` 达 9384 KiB；
+改为递归规则后重建为 4220 KiB，容器内无 `.pyc`，其余 site-packages 104644 KiB、字体
+19452 KiB，三个预算均通过。离线 entrypoint、双字重字体、配置和核心依赖导入 smoke
+通过。候选 Docker 报告 94.28 MiB；同一引擎拉取的线上 `latest` digest
+`sha256:4677ca61...` 为 405.53 MiB，候选少 311.24 MiB。该证据尚未由发布工作流上传，
+也不代表真实 QQ 平台验收；整体仍为 7/8。
+
 ## 工作项登记模板
 
 每次开始一个小任务，先在任务说明或 PR 描述中填以下内容；完成时补充真实证据：
@@ -1829,3 +1842,129 @@ B站推送与历史详情不再分别维护摘要规则。平台无关的
 保存在既有动态历史库中，后续打开详情直接复用。历史摘要只按需生成，启动时不批量
 调用 AI。OneBot 适配器不拥有压缩或持久化规则，主动投递重试仍只有通用投递服务
 一层。该切片不增加 TOML、图片资源或运行依赖。
+
+## Seer 专用结果出站收口（2026-09-13）
+
+每周预告图片、巅峰查询结果与群星牌条目补齐统一 `to_outbound()` 契约，图片、文字
+顺序和 MIME 类型由平台无关结果对象持有，OneBot 适配器只负责最终编码。群星牌普通
+查询与新增内容详情复用同一图文结果，并保留各自的附加图片策略。每周预告中没有生产者
+的裸 `bytes` 分支已删除；受限平台测试直接复用这些结果并验证图片上传。QQ 号、@ 用户
+和绑定关系没有进入本批，继续按目标 API 能力延期规则留到最后。
+
+配置型图片命令的 `{image}` 模板也从 NoneBot `MessageTemplate` 收入 core 的结构化
+出站模板。普通字段继续使用 Python 格式说明，图片等结构部件不会被转成字符串；
+`SendpicResult` 统一填充命令、随机/自选、序号、总数和图片。各平台只需编码统一结果，
+无需复制模板解析规则，现有 TOML 无需修改。
+
+## AI 意图动作执行收口（2026-09-13）
+
+AI 意图分类后的消息、推广、二次 AI 回复、战队推荐和战队资源查询统一由平台无关的
+`AiIntentActionExecutor` 生成有序 `OutboundMessage`。OneBot 插件只提供来源上下文、
+编码并发送结果；旧 `plugins.onebot.ai.team_actions` 和仅用于插件分支的
+`AiService.is_team_action()` 已删除。受限平台测试复用真实多消息动作，不引入 QQ 与
+OpenID 映射；无法由目标 API 表达的身份操作继续留到最后。
+
+## 关于页出站收口（2026-09-13）
+
+项目版本读取、关于页内容和结构化出站消息迁入平台无关的 `AboutService`。OneBot 插件
+只注册入口并编码服务结果；受限平台测试复用同一消息，验证版本内容和回复投递。共享
+文案不再声明特定传输适配器；没有新增配置、运行依赖或静态资源。QQ 号、直接 @ 和
+绑定能力仍按平台延期规则留到最后。
+
+## 幸运橱窗交互结果收口（2026-09-13）
+
+幸运橱窗 service 现在直接生成图片或文字 `OutboundMessage`，并统一拥有关注皮肤的双
+ID 标签、列表以及增删、清空、重置结果文案。OneBot 插件删除原生图片消息组装和重复
+关注格式化，只保留事件适配、登录确认与候选数字菜单，文件由 642 行降至 595 行。
+账号绑定和平台成员身份未改，仍按平台能力延期规则最后处理；没有新增配置、依赖或
+图片资源。
+
+## 运行服务器依赖收口（2026-09-13）
+
+启动入口已明确固定为 Uvicorn 的 `asyncio`、`h11` 与 `websockets-sansio` 实现，
+因此运行依赖改为直接声明 FastAPI、Uvicorn 和 WebSockets，不再通过 NoneBot 的
+FastAPI extra 间接安装 Uvicorn standard extras。冻结锁文件删除运行时未使用的
+`httptools`、`uvloop` 与 `watchfiles`，并新增依赖与入口组合的防回退测试。
+
+完整宿主进程已启动到监听状态并正常关闭；全量测试 3231 项通过、7 项跳过，Ruff、
+BasedPyright、compileall 与 diff 检查通过。精确的变更后 Linux 镜像尺寸留给发布候选
+任务补证，不以宿主环境推算。QQ 号、绑定和直接 @ 等目标 API 可能无法表达的操作不在
+本批处理，继续延期到最终平台适配。
+
+## OneBot 内容组装清零（2026-09-13）
+
+每周预告的可选参考链接与配置单图命令改由各自 service 结果生成结构化出站消息，
+OneBot 插件内已不存在 `OutboundMessage`、文字、图片或提及 part 的直接构造。新增 AST
+架构门约束该边界，受限平台验收复用真实结果类型验证图片上传与内容顺序。该变化不涉及
+QQ 号、绑定或直接 @ 解析，这些能力仍按平台 API 能力延期到最后。
+
+精简后的冻结生产依赖随后使用发布工作流相同的固定版 `pip-audit`、哈希校验和严格失败
+参数复核：53 个运行时发行包均被审计，未发现已知漏洞。临时报告不进入仓库或镜像；
+每次真实发布仍由 CI 留存与该候选对应的审计附件。
+
+## OneBot 进程冒烟与日程时间收口（2026-09-13）
+
+新增完整宿主进程测试：从临时配置启动 `python -m ironsbot`，连接实际
+`/onebot/v11/ws` 反向 WebSocket，发送标准 OneBot 私聊事件，并响应机器人发出的
+`send_msg` API 动作。测试确认“关于”命令经过真实 adapter、matcher、service 和
+OneBot 编码后返回正确目标用户及版本正文；这不是线上 QQ 登录或 QQ Official 验收。
+
+该测试同时发现秒级配置合并不完整：榜单页面刷新、战队资源、定时重启、无头重连和
+幸运橱窗仍有手动拆分时间或写死 `second=0` 的路径。五类任务现统一使用
+`ScheduledClockTime` 与 `JobRegistry.add_daily()`；配置统一规范为 `HH:MM:SS`，榜单
+活动窗口也按秒判断。131 项定向测试及包含进程冒烟的全量回归均通过（3236 passed、
+7 skipped），Ruff 与 BasedPyright 通过。QQ 号、绑定和直接 @ 等目标 API 无法表达的
+能力继续留到最终平台阶段，不阻塞当前工作。
+
+## 运行时伪通用桥接清理（2026-09-13）
+
+删除无人引用的 `runtime/bindings.py` 与 `runtime/onebot_reply.py`；二者的现行职责早已
+分别由 OneBot matcher 支持和消息输入适配器承担。仅由 OneBot 提示会话使用的异常也从
+`runtime/prompt_errors.py` 迁入 `integrations/onebot/prompt_errors.py`。`runtime` 只
+保留真正跨适配器的在途请求和缓存路径能力，并新增架构门禁止恢复这些伪通用桥接模块。
+
+该收口不改变消息行为、配置或数据库。QQ 号、绑定和直接 @ 等依赖目标平台 API 的能力
+仍按既定规则延期到最终平台阶段，不阻塞其他通用接口和发布验收工作。
+
+## 幸运橱窗价格与详情菜单（2026-09-13）
+
+幸运橱窗的四个皮肤价格由 Seer 数据 repository 一次批量读取发布 SQLite，并由 service
+统一格式化当前价、原价与风尚券信息。缺表、缺行或无有效价格时仅将该项降级为“价格
+暂未获取”，不会丢弃已经取得的四张皮肤卡片。机器人没有新增货币图片、SVG 或外部
+资源 URL；后续若需要官方货币图标，仍应由 seerapi 发布并通过既有资源接口消费。
+
+查询结果同时产出平台无关的四个皮肤选择项；OneBot 只把它们接入现有数字 prompt，
+用户发送 `1-4` 后复用统一 `PetQueryService.select_image()` 获取皮肤详情，`0` 仍由通用
+会话退出逻辑处理。本批没有新增 TOML、数据库 schema 或 QQ 身份能力。QQ 号、直接 @、
+绑定关系等目标 API 不能可靠表达的操作继续统一延期到最终平台验收，不为单个平台补写
+业务分支。
+
+## SeerAPI 构建输出与 800 行门禁收口（2026-09-13）
+
+SeerAPI 的效果图标构建和新内容索引已经分别由专用模块承担；本轮继续把 950 行的
+`solaris.analyze.output.outputter` 按 Schema 输出、JSON/数据库输出和共享辅助函数拆分，
+各模块分别保持在 541、237 和 62 行。包级公共导出不变，调用方无需改导入路径。
+
+新增源码架构测试扫描 `scripts`、Solaris、SeerAPI models 和 Python client 的维护型
+Python 模块，超过 800 行即失败。自动生成的 `openapi_comments.py` 是唯一显式豁免，
+不得借豁免名单容纳手写业务模块。SeerAPI commit `69f2af4` 通过全量 `318 passed`、
+Ruff、compileall、公开导入和差异检查。
+
+后续切片已将座驾 PNG 切换到 SeerAPI 的 `generated-render-assets` 分支：工作流增量生成并
+提交素材，manifest v3 为 `mount` 声明仓库和精确 commit，IronsBot 统一通过
+`SeerImageSource` 获取。座驾使用有序不可变候选，先取 Unity `equip` PNG，再取构建生成
+PNG；真实发布库 36 个座驾中已有 25 个命中前者。运行时 SQLite Blob repository 与
+fallback 已删除。SeerAPI 全量
+`327 passed`，IronsBot 全量 `3239 passed, 7 skipped`；当前只剩真实 Actions release 与消费者
+smoke。QQ 身份能力仍按平台延期规则排在最后。
+
+同日使用现有 62 MB 真实发布库执行跨仓库本地 smoke：生产 finalizer 重建 manifest v3，
+36 条座驾中 25 条由固定 Unity revision 满足；IronsBot 随后通过 `DatabaseManager` 加载，
+识别 `default/mount` 两个仓库，并由生产 HTTP 图片源取得 `1300067` 的 26,603 字节、
+193×184 PNG。该测试证明本地生产者/消费者契约接通，但生成分支尚未远端发布，剩余
+11 个 Flash 缺图和真实 Actions release 仍不标为完成。
+
+同日另以临时 bare remote 原样执行 Actions 中的生成素材分支命令，验证了
+`generated-render-assets` 不存在时创建 orphan branch，以及后续 worktree 增量提交并推送
+新 revision。两轮提交不同，远端最终文件集符合预期。该 smoke 只关闭本地 Git 分支生命
+周期风险；真实 Actions 权限、资源生成耗时和发布后消费者验证仍是外部门禁。

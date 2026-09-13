@@ -56,14 +56,14 @@ semantic owner、真实的用户契约和针对性验证。
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
 | 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实和官方有效期；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
 | 巅峰投票展示增强 | service 提供投票级别与周期；纯 presenter 计算总票数和占比；renderer 只消费不可变 document | 无 | completed |
-| 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
+| 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 无 | completed：价格批量读取发布库，数字菜单复用皮肤详情服务 |
 | Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 目标平台管理员身份最终验收 | completed：动作与菜单已收口；跨平台身份延期 |
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
 | Bilibili 抽奖/中奖拆分 | 复用配置驱动分类，不增加硬编码枚举或旧配置迁移器 | 无 | completed |
 | 新增技能根菜单预览 | 根预览只含新增项；技能排除本周新精灵自带技能，详情保留完整数据 | 无 | completed |
 | 队列推送加固 | 由 `ProactiveMessageDelivery` 限制并发并按通用失败类型重试；平台适配器只分类错误 | 真实平台 smoke | completed：通用策略已完成；真实传输验收延期 |
 | 群星牌觉醒卡合并 | 在 Autocard repository/view model 合并普通/觉醒事实，适配器只发送结果 | 发布数据契约审计 | completed |
-| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；QQ 交互部分最后验收 | 目标平台能力 | planned |
+| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；仅在目标 API 能表达用户绑定与会话身份时接入 | QQ 绑定与身份能力 | deferred：排到 Phase 7 最后，不阻塞非 QQ 重构 |
 | 战队详情增强 | repository 产出类型化事实，service 决定展示段，不复制旧 matcher 格式化 | 无 | partial：直接战队号详情完成；QQ 玩家目标延期 |
 | Docker 交接失败恢复 | 复用 operations 状态机并保留明确失败结果 | 可控 Docker client fixture | completed |
 | 旧生产模块拆分 | 不移植旧目录拆分；V5 已由职责边界和 800 行守卫独立完成 | 无 | completed |
@@ -94,6 +94,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-08-15 | 活动周快照 | activity storage/service/command tests, Ruff, compileall | 18 项通过；首次观察明确提示缺少上周快照。 |
 | 2026-08-15 | 请求者绑定限制 | `PlayerIdResolver` 与既有用户契约审计 | 不迁入；会缩窄已确认的直接 @ 用户解析能力。 |
 | 2026-09-13 | 本地 `main` `55a39fd1` 只读复核 | 最近 30 项提交、差异与 V5 owner 审计 | 未 fetch、pull 或 merge；QQ 身份/投递项按平台能力延期规则留到最后。 |
+| 2026-09-13 | 玩家战队菜单与私聊概览复核 | 本地 `main` `6844980e`、`b14df7a5` 与 V5 player/team owner 对照 | 直接战队号详情已由 V5 service 覆盖；菜单与私聊概览依赖 QQ 用户绑定和会话身份，按用户确认延期到 Phase 7 最后，不复制旧 OneBot matcher。 |
 | 2026-09-13 | Bilibili 抽奖/中奖拆分 | 配置加载、通用分类与订阅回归 | V5 已支持任意配置分类；示例声明独立 `lottery` / `winning`，无生产枚举或兼容迁移。 |
 | 2026-09-13 | 新增技能根菜单预览 | service、文本菜单、原生菜单准备与配置链路回归 | 统一 preview selector；修改项折叠，详情菜单不裁剪。 |
 | 2026-09-13 | Docker 交接失败恢复 | preflight 状态机、入口脚本、Docker gateway 与配置回归 | 默认等待 90 秒后清理失败更新器并启动当前镜像；可配置为严格等待。真实 Docker 交接仍留待 Linux 镜像验收。 |
@@ -104,13 +105,14 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |
 | 2026-09-13 | 巅峰投票展示增强 | 巅峰 service、纯 presenter、render adapter 专项 64 项；Ruff | 限制级/准限制级、投票周期、总票数和非负票数占比进入不可变 document；机器人不新增图片资源或数据读取职责。 |
 | 2026-09-13 | Bilibili 历史摘要 | 长文本、历史存储、菜单详情、主动投递与运行装配专项测试；Ruff、BasedPyright、compileall | 推送和详情复用 `DynamicContentCompactor`；修正 AI 摘要关键字参数契约，结果写入既有历史库并惰性复用，不执行启动批量 AI 回填。 |
+| 2026-09-13 | 幸运橱窗价格与详情菜单 | 价格 repository/service、四栏 presenter、数字 prompt 与皮肤详情复用专项测试 | 四个皮肤价格通过一次发布库查询获取；缺价格时保留卡片并明确降级；选择 1-4 复用统一皮肤详情服务。未打包货币图标或写死资源 URL。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
-Slice    [██████████████□□□] 14/17 tracked outcomes resolved; 3 remain
-Current  [██████████] peak vote presentation enhancement verified
+Slice    [███████████████□□] 15/17 tracked outcomes resolved; 2 remain
+Current  [██████████] lucky-window price choices verified
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.

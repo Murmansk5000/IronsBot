@@ -14,6 +14,7 @@ PET_RENDER_DATA_SOURCES = (
     PACKAGE / "integrations" / "seer_data" / "pet_display_data.py",
 )
 RUNTIME = PACKAGE / "runtime"
+ONEBOT_PLUGINS = PACKAGE / "plugins" / "onebot"
 APPLICATION_RESOURCES = PACKAGE / "app" / "resources.py"
 COMMAND_CATALOG = CORE / "command_catalog.py"
 SEER_REQUEST_ACTOR_METHODS = {
@@ -91,7 +92,21 @@ RETIRED_RUNTIME_NAMES = (
     "PluginDefinition",
     "MatcherRegistry",
 )
+RETIRED_RUNTIME_ADAPTER_BRIDGES = (
+    "bindings.py",
+    "onebot_reply.py",
+    "prompt_errors.py",
+)
 ADAPTER_NAMES_FORBIDDEN_IN_SERVICE_TEXT = ("OneBot", "QQ")
+OUTBOUND_CONTENT_CONSTRUCTORS = frozenset(
+    {
+        "BinaryImagePart",
+        "MentionPart",
+        "OutboundMessage",
+        "RemoteImagePart",
+        "TextPart",
+    }
+)
 
 
 class MissingArchitectureTargetMethodError(AssertionError):
@@ -231,12 +246,32 @@ def _legacy_feature_policy_calls(path: Path) -> set[str]:
     }
 
 
+def _named_calls(path: Path, names: frozenset[str]) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    return {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in names
+    }
+
+
 def test_runtime_does_not_restore_the_retired_seerapi_http_client() -> None:
     offenders = [
         f"{path.relative_to(ROOT).as_posix()} imports {module}"
         for path in _python_files(PACKAGE)
         for module in _imports(path)
         if module == "seerapi" or module.startswith("seerapi.")
+    ]
+    assert offenders == []
+
+
+def test_runtime_does_not_read_mount_images_from_sqlite_blobs() -> None:
+    offenders = [
+        path.relative_to(ROOT).as_posix()
+        for path in _python_files(PACKAGE)
+        if "flash_mount_image" in path.read_text(encoding="utf-8-sig")
     ]
     assert offenders == []
 
@@ -248,6 +283,16 @@ def test_core_and_services_do_not_import_adapter_transport_types() -> None:
         for path in _python_files(directory)
         for module in _imports(path)
         if module.startswith(FORBIDDEN_TRANSPORT_IMPORT_PREFIXES)
+    ]
+
+    assert offenders == []
+
+
+def test_onebot_plugins_do_not_assemble_platform_neutral_outbound_content() -> None:
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()} calls {name}"
+        for path in _python_files(ONEBOT_PLUGINS)
+        for name in sorted(_named_calls(path, OUTBOUND_CONTENT_CONSTRUCTORS))
     ]
 
     assert offenders == []
@@ -474,3 +519,15 @@ def test_runtime_does_not_reintroduce_core_semantic_request_bridge() -> None:
     """Semantic request models belong to core, never to a runtime re-export."""
 
     assert not (RUNTIME / "semantic_requests.py").exists()
+
+
+def test_runtime_does_not_reintroduce_onebot_adapter_bridges() -> None:
+    """OneBot event and prompt helpers belong to the OneBot integration."""
+
+    offenders = [
+        filename
+        for filename in RETIRED_RUNTIME_ADAPTER_BRIDGES
+        if (RUNTIME / filename).exists()
+    ]
+
+    assert offenders == []

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Prompt-session exceptions shared by runtime entry points."""
+"""Errors raised by the OneBot prompt-session adapter."""
 
 
 class PromptSessionManagerMissingError(RuntimeError):

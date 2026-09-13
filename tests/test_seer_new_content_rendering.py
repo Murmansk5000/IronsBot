@@ -240,11 +240,6 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
         },
     )
     monkeypatch.setattr(
-        new_content_rendering,
-        "load_flash_mount_image",
-        lambda _data, _mount_id: None,
-    )
-    monkeypatch.setattr(
         NewContentSnapshotBuilder,
         "_item_details",
         lambda *_args: NewContentItemDetails(metadata="", description=""),
@@ -298,7 +293,7 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
     assert ("mintmark", "2") in images.requests
     assert ("suit", "3") in images.requests
     assert ("equip", "4") in images.requests
-    assert ("equip", "5") in images.requests
+    assert ("mount", "5") in images.requests
     assert ("title", "601") in images.requests
     assert ("url", "https://assets.example/card-8.png") in images.requests
     assert ("url", "https://assets.example/role-9.png") in images.requests
@@ -427,11 +422,6 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
 
     cache = _Cache()
     monkeypatch.setattr(
-        new_content_rendering,
-        "load_flash_mount_image",
-        lambda _data, _mount_id: None,
-    )
-    monkeypatch.setattr(
         NewContentSnapshotBuilder,
         "_item_details",
         lambda *_args: NewContentItemDetails(metadata="", description=""),
@@ -446,7 +436,7 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
     await render_new_content_menu(
         cache,  # type: ignore[arg-type]
         _Data(),  # type: ignore[arg-type]
-        _Images(fail_keys={("equip", "1301170")}),  # type: ignore[arg-type]
+        _Images(fail_keys={("mount", "1301170")}),  # type: ignore[arg-type]
         _Autocard(),  # type: ignore[arg-type]
         render_html,
         snapshot,
@@ -461,9 +451,7 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
 
 
 @pytest.mark.asyncio
-async def test_missing_unity_mount_image_uses_flash_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_generated_mount_asset_is_rendered_and_cached() -> None:
     captured: dict[str, Any] = {}
 
     async def render_html(
@@ -478,13 +466,6 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
         captured.update(templates)
         return b"menu-image"
 
-    monkeypatch.setattr(
-        new_content_rendering,
-        "load_flash_mount_image",
-        lambda _data, mount_id: (
-            b"flash-mount" if mount_id == FLASH_TEST_MOUNT_ID else None
-        ),
-    )
     cache = _Cache()
     snapshot = NewContentSnapshot(
         baseline_established=True,
@@ -503,7 +484,7 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
     await render_new_content_menu(
         cache,  # type: ignore[arg-type]
         data,  # type: ignore[arg-type]
-        _Images(fail_keys={("equip", "1301170")}),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
         _Autocard(),  # type: ignore[arg-type]
         render_html,
         snapshot,
@@ -512,7 +493,7 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
     )
 
     item_row = next(row for row in captured["items"] if row.code == "1")
-    assert item_row.image == "data:image/png;base64,Zmxhc2gtbW91bnQ="
+    assert item_row.image == "data:image/png;base64,bW91bnQ6MTMwMTE3MA=="
     assert item_row.image_notice == ""
     assert cache.saved == b"menu-image"
 

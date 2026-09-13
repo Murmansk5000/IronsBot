@@ -34,8 +34,9 @@ async def test_compactor_uses_keyword_summary_contract() -> None:
 async def test_compactor_retries_oversized_summary_then_uses_excerpt() -> None:
     calls = 0
 
-    async def summarize(_text: str, *, max_chars: int) -> str:
+    async def summarize(text: str, *, max_chars: int) -> str:
         nonlocal calls
+        del text
         calls += 1
         return "过长" * max_chars
 
@@ -57,9 +58,9 @@ async def test_compactor_retries_oversized_summary_then_uses_excerpt() -> None:
 async def test_compactor_falls_back_when_ai_raises() -> None:
     calls = 0
 
-    async def fail(_text: str, *, max_chars: int) -> str:
+    async def fail(text: str, *, max_chars: int) -> str:
         nonlocal calls
-        del max_chars
+        del text, max_chars
         calls += 1
         raise RuntimeError
 
@@ -78,8 +79,8 @@ async def test_compactor_falls_back_when_ai_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_compactor_leaves_short_content_unchanged() -> None:
-    async def unexpected(_text: str, *, max_chars: int) -> str:
-        del max_chars
+    async def unexpected(text: str, *, max_chars: int) -> str:
+        del text, max_chars
         raise AssertionError
 
     result = await DynamicContentCompactor(

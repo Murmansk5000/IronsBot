@@ -258,8 +258,8 @@ async def test_full_dynamic_uses_summary_only_for_long_content(
     delivery = _RecordingDelivery()
     summary_calls: list[tuple[str, int]] = []
 
-    async def summarize(content: str, *, max_chars: int) -> str:
-        summary_calls.append((content, max_chars))
+    async def summarize(text: str, *, max_chars: int) -> str:
+        summary_calls.append((text, max_chars))
         return "这是忠实摘要。"
 
     content = "这是一条超过十个字符的长动态正文，用于验证统一摘要投递。"
@@ -315,8 +315,8 @@ async def test_full_dynamic_uses_summary_only_for_long_content(
 async def test_short_dynamic_does_not_call_ai_summary(tmp_path: Path) -> None:
     delivery = _RecordingDelivery()
 
-    async def unexpected_summary(_content: str, *, max_chars: int) -> str:
-        del max_chars
+    async def unexpected_summary(text: str, *, max_chars: int) -> str:
+        del text, max_chars
         raise AssertionError
 
     sender = BilibiliDynamicOutboundSender(

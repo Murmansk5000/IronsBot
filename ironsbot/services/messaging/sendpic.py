@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING, Protocol
 from ironsbot.core.affix_commands import AffixCommand
 from ironsbot.core.command_catalog import CommandContract, parsed_command_input_matcher
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    OutboundMessage,
+    format_outbound_message,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,6 +57,24 @@ class SendpicResult:
     index: int
     total: int
     random_text: str
+
+    def to_outbound(self, template: str, *, command: str) -> OutboundMessage:
+        return format_outbound_message(
+            template,
+            command=command,
+            random_text=self.random_text,
+            index=self.index,
+            total=self.total,
+            image=BinaryImagePart(self.data, "image/png"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SingleImageResult:
+    data: bytes
+
+    def to_outbound(self) -> OutboundMessage:
+        return OutboundMessage((BinaryImagePart(self.data, "image/png"),))
 
 
 class SendpicService:
@@ -106,11 +129,13 @@ class SendpicService:
             for text in (command.command, *command.aliases)
         )
 
-    async def fetch_single(self, command: PicConfig) -> bytes:
+    async def fetch_single(self, command: PicConfig) -> SingleImageResult:
         if command.mode != "single" or not command.image_file:
             raise ValueError(f"{command.id} 不是单图命令")  # noqa: TRY003
         try:
-            return await self._backends[command.backend].get_file(command.image_file)
+            return SingleImageResult(
+                await self._backends[command.backend].get_file(command.image_file)
+            )
         except FileNotFoundError as exc:
             raise ImageNotFoundError from exc
 

@@ -21,7 +21,7 @@ class ScheduledMessageOutboundSender:
     delivery: ProactiveMessageDelivery
 
     async def send(self, delivery: ScheduledMessageDelivery) -> None:
-        private_message = OutboundMessage((TextPart(delivery.message),))
+        private_message = OutboundMessage.from_text(delivery.message)
         group_message = OutboundMessage(
             (
                 *(MentionPart(actor) for actor in delivery.group_mentions),

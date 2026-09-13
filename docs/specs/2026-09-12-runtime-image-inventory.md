@@ -1,6 +1,6 @@
 # Runtime Image Inventory
 
-Status: `verified` (packaging/workflow contract only; actual image run pending)
+Status: `verified` (local Linux candidate included; published CI artifact pending)
 
 Target: bounded runtime packaging with verifiable size evidence. Owner:
 Dockerfile/build context and the existing release measurement step.
@@ -143,8 +143,8 @@ Every remaining direct runtime dependency has a current production owner:
 NoneBot and the OneBot adapter provide the active platform runtime;
 FastAPI/httpx provide the configured drivers; htmlkit and Pillow implement image
 rendering; Hishel implements the shared HTTP cache; APScheduler owns scheduled
-work; SAA encodes outgoing image messages; qrcode generates Bilibili login QR
-images; and seerapi-models/SQLAlchemy read the published database.
+work; qrcode generates Bilibili login QR images; and
+seerapi-models/SQLAlchemy read the published database.
 
 The audit later proved that `resvg-py` had no production or private-extension
 caller: its only public wrapper was itself unused. The wrapper and direct
@@ -153,6 +153,15 @@ wheel solely because it had existed in an earlier rendering experiment.
 After removal, the full suite passed (`3207 passed, 7 skipped`), together with
 Ruff, BasedPyright, compileall and the frozen dependency export check. Actual
 Linux image size remains a release-run measurement, not a projected claim.
+
+The same ownership check later removed
+`nonebot-plugin-send-anything-anywhere`. Four OneBot adapters used it only to
+wrap image bytes or URLs, while IronsBot already owns its outbound message
+contract and OneBot renderer. Those adapters now construct native OneBot image
+segments at the platform boundary. This also removes the transitive `filetype`
+and `StrEnum` distributions without changing service contracts or moving
+platform types inward. The Windows environment shed roughly 0.5 MiB of package
+payload; the exact Linux image delta remains pending candidate measurement.
 
 Development-only `nodejs_wheel`, BasedPyright, pytest, Ruff and audit tooling do
 not occur in the frozen production export. The Dockerfile already exports with
@@ -232,5 +241,43 @@ hard-coded upstream URL; source runs without build metadata omit the link rather
 than guessing ownership. This adds no asset or dependency to the image.
 
 Focused metadata, cache, workflow and render tests passed 55 cases. Ruff and diff
-checks passed. The Linux Docker daemon remains unavailable on this host, so this
-does not replace the pending real candidate smoke and size evidence.
+checks passed. At that checkpoint the Linux Docker daemon was unavailable; the
+later real candidate evidence below supersedes only that environment limitation.
+
+## Real Linux Candidate Evidence (2026-09-13)
+
+Docker Desktop's Linux/amd64 Engine 29.5.2 was started and the exact public
+commit `93bd3aac21e8ee23e6cfc7c108024073b1fae5ce` was built with the release
+Dockerfile. The network-isolated entrypoint smoke resolved distinct regular and
+bold Source Han Sans CN files, loaded the example configuration, and imported
+NoneBot and `seerapi_models` successfully.
+
+The first real build exposed nested local `__pycache__` directories in the
+context: `/app` was 9384 KiB and would have failed the 8192 KiB gate. Recursive
+Docker ignore rules removed every `.pyc`; the rebuilt candidate measured
+4220 KiB for `/app`, 104644 KiB for site-packages, and 19452 KiB for fonts.
+All three runtime budgets now pass without raising a limit.
+
+The rebuilt candidate image ID is `sha256:7ffd8c985a7c...`; Docker reports
+98,861,824 bytes (94.28 MiB). On the same engine, pulled GHCR `latest` digest
+`sha256:4677ca61fe55...` reports 425,224,471 bytes (405.53 MiB), a reduction of
+326,362,647 bytes (311.24 MiB). These are real local Docker measurements, not
+source projections. A published digest-pinned CI artifact remains pending, so
+this evidence does not claim publication or real platform acceptance.
+
+The application entry point explicitly selects the pure-Python `asyncio`, `h11`
+and `websockets-sansio` implementations. Runtime dependencies therefore declare
+FastAPI, Uvicorn and WebSockets directly instead of installing NoneBot's FastAPI
+extra, which pulled Uvicorn's unused standard accelerators. The frozen lock no
+longer contains `httptools`, `uvloop` or `watchfiles`. A full host process smoke
+reached Uvicorn's listening state and shut down cleanly with this dependency set.
+The exact post-change Linux image size remains to be remeasured by the published
+candidate workflow; the earlier local Linux measurement remains the latest
+digest-comparable evidence.
+
+The post-change frozen production export was also audited with the release
+workflow's pinned `pip-audit==2.10.1`, `--require-hashes`, `--disable-pip` and
+`--strict` options. All 53 resolved runtime distributions were inspected and no
+known vulnerability was reported. The generated requirements and JSON report
+were temporary local evidence; the workflow remains responsible for retaining
+the corresponding artifact for each published candidate.

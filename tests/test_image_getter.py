@@ -17,6 +17,7 @@ from ironsbot.integrations.storage.seer_assets import (
 )
 from ironsbot.services.seer.images import (
     ImageSourceError,
+    PublishedAssetRepository,
     PublishedRenderAssetSnapshot,
 )
 
@@ -28,8 +29,11 @@ PINNED_ASSET_SOURCE_COUNT = 2
 
 def _asset_snapshot() -> PublishedRenderAssetSnapshot:
     return PublishedRenderAssetSnapshot(
-        repository="Murmansk-Seer/seer-unity-assets",
-        revision="a" * 40,
+        repositories={
+            "default": PublishedAssetRepository(
+                "Murmansk-Seer/seer-unity-assets", "a" * 40
+            )
+        },
         manifest_revision="assets-v2",
         scopes=frozenset({"pet_info"}),
     )
@@ -185,6 +189,66 @@ async def test_pinned_asset_retries_same_revision_through_cdn() -> None:
     assert urls[1].endswith("/signbuff/33.png")
 
 
+@pytest.mark.asyncio
+async def test_mount_uses_its_generated_repository_revision() -> None:
+    urls: list[str] = []
+    snapshot = replace(
+        _asset_snapshot(),
+        repositories={
+            **_asset_snapshot().repositories,
+            "mount": PublishedAssetRepository("example/seerapi", "b" * 40),
+        },
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        status = HTTP_NOT_FOUND if "seer-unity-assets" in request.url.path else HTTP_OK
+        return httpx.Response(status, content=b"mount")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=lambda: snapshot,
+        )
+        assert await source.fetch("mount", "1301170", fallback=False) == b"mount"
+
+    assert urls == [
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
+        f"{'a' * 40}/newseer/assets/art/ui/assets/item/cloth/prev/1301170.png",
+        "https://cdn.jsdelivr.net/gh/Murmansk-Seer/seer-unity-assets@"
+        f"{'a' * 40}/newseer/assets/art/ui/assets/item/cloth/prev/1301170.png",
+        "https://raw.githubusercontent.com/example/seerapi/"
+        f"{'b' * 40}/mount/1301170.png",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mount_prefers_existing_unity_equipment_image() -> None:
+    urls: list[str] = []
+    snapshot = replace(
+        _asset_snapshot(),
+        repositories={
+            **_asset_snapshot().repositories,
+            "mount": PublishedAssetRepository("example/seerapi", "b" * 40),
+        },
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(HTTP_OK, content=b"unity-mount")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=lambda: snapshot,
+        )
+        assert await source.fetch("mount", "1301170", fallback=False) == b"unity-mount"
+
+    assert len(urls) == 1
+    assert "seer-unity-assets" in urls[0]
+    assert urls[0].endswith("/item/cloth/prev/1301170.png")
+
+
 def test_manifest_backed_images_do_not_fall_back_to_mutable_main() -> None:
     assert asyncio.run(_fetch_without_asset_snapshot()) == []
 
@@ -236,7 +300,9 @@ async def test_strict_render_assets_retry_failure_without_caching_placeholder(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("permissive_first", [True, False])
 async def test_shared_download_keeps_each_callers_fallback_policy(
-    tmp_path: Path, *, permissive_first: bool,
+    tmp_path: Path,
+    *,
+    permissive_first: bool,
 ) -> None:
     started, release, both_prepared = asyncio.Event(), asyncio.Event(), asyncio.Event()
     prepared = 0
@@ -270,13 +336,17 @@ async def test_shared_download_keeps_each_callers_fallback_policy(
         )
         tasks: list[asyncio.Task[bytes]] = []
         try:
-            tasks.append(asyncio.create_task(
-                store.fetch("pet_head", "70", fallback=permissive_first)
-            ))
+            tasks.append(
+                asyncio.create_task(
+                    store.fetch("pet_head", "70", fallback=permissive_first)
+                )
+            )
             await asyncio.wait_for(started.wait(), timeout=5)
-            tasks.append(asyncio.create_task(
-                store.fetch("pet_head", "70", fallback=not permissive_first)
-            ))
+            tasks.append(
+                asyncio.create_task(
+                    store.fetch("pet_head", "70", fallback=not permissive_first)
+                )
+            )
             await asyncio.wait_for(both_prepared.wait(), timeout=5)
             release.set()
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -320,7 +390,15 @@ async def test_queued_asset_request_keeps_its_captured_revision(tmp_path: Path) 
         )
         first = asyncio.create_task(store.fetch("pet_body", "70", fallback=False))
         await captured.wait()
-        current = replace(current, revision="b" * 40, manifest_revision="assets-v3")
+        current = replace(
+            current,
+            repositories={
+                "default": PublishedAssetRepository(
+                    "Murmansk-Seer/seer-unity-assets", "b" * 40
+                )
+            },
+            manifest_revision="assets-v3",
+        )
         old = await first
         assert ("a" * 40).encode() in old
         new = await store.fetch("pet_body", "70", fallback=False)

@@ -4,12 +4,14 @@ import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 import pytest
 
 from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.feature_policy import FeatureService
+from ironsbot.core.messaging import AiIntentAction
 from ironsbot.core.outbound import OutboundMessage, ReplyContext, TextPart
 from ironsbot.core.platform import (
     ActorRef,
@@ -20,6 +22,7 @@ from ironsbot.core.platform import (
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.responses import AiResponseResult
 from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService, _chat_key
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
@@ -187,6 +190,47 @@ async def test_actual_ai_result_obeys_transport_reply_window(
     assert result.delivered is not expired
     assert result.error_code == ("fake_reply_expired" if expired else None)
     assert transport.replies[0].sequence == incoming.sequence
+
+
+@pytest.mark.asyncio
+async def test_configured_ai_action_sequence_crosses_restricted_platform_port(
+    tmp_path: Path,
+) -> None:
+    transport = FakeOfficialPlatform(NOW)
+    executor = AiIntentActionExecutor(
+        _service(tmp_path, []),
+        PromotionCatalog({}),
+        Mock(),
+    )
+    action = AiIntentAction(
+        action="team_recommend",
+        messages=["审核入口：https://example.test/join", "审核群号：123456"],
+    )
+
+    messages = await executor.execute(action, "想加入战队")
+    results = [
+        await transport.reply(
+            ReplyContext.from_message(
+                IncomingMessageRef(
+                    OFFICIAL,
+                    ACTOR,
+                    GROUP,
+                    f"event:{index}",
+                    "想加入战队",
+                    sequence=f"sequence:{index}",
+                    reply_deadline=NOW + timedelta(seconds=10),
+                )
+            ),
+            message,
+        )
+        for index, message in enumerate(messages)
+    ]
+
+    assert all(result.delivered for result in results)
+    assert [message.parts[0] for message in messages] == [
+        TextPart("审核入口：https://example.test/join"),
+        TextPart("审核群号：123456"),
+    ]
 
 
 @pytest.mark.asyncio

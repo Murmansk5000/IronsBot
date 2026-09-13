@@ -16,9 +16,14 @@ from ironsbot.config.models.seer_lucky import (
     LuckySkinWindowAccountConfig,
     LuckySkinWindowConfig,
 )
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
+)
+from ironsbot.integrations.onebot.prompts import PromptItem
+from ironsbot.integrations.seer_data.skin_price_repository import (
+    load_active_skin_store_prices,
 )
 from ironsbot.integrations.storage.lucky_skin_watch import (
     SqliteLuckySkinWatchPreferenceStore,
@@ -47,6 +52,9 @@ from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWindowService,
     _parse_skin_ids,
 )
+from ironsbot.services.seer.pet_query import PetImageSelection
+from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
+from ironsbot.services.seer.skin_price import SkinStorePrice
 from tests.helpers.onebot_events import private_message_event
 from tests.helpers.runtime import build_test_runtime
 
@@ -82,6 +90,34 @@ EXPECTED_REQUEST = (
     351005,
     351004,
 )
+
+
+def test_lucky_skin_schedule_preserves_configured_seconds() -> None:
+    jobs: list[dict[str, object]] = []
+
+    class Scheduler:
+        def add_job(
+            self,
+            func: object,
+            trigger: str,
+            **kwargs: object,
+        ) -> None:
+            jobs.append({"func": func, "trigger": trigger, **kwargs})
+
+    service = SimpleNamespace(
+        enabled=True,
+        config=LuckySkinWindowConfig(enabled=True, time="00:02:19"),
+        clear_previous_days=lambda: None,
+        send_daily_notifications=lambda: None,
+    )
+
+    lucky_skin_window_plugin._register_schedule(
+        cast("Any", service),
+        cast("Any", Scheduler()),
+    )
+
+    assert jobs[1]["id"] == "lucky_skin_window:daily"
+    assert (jobs[1]["hour"], jobs[1]["minute"], jobs[1]["second"]) == (0, 2, 19)
 WATCH_SKIN_ID = 103
 
 
@@ -112,6 +148,21 @@ class _Data:
         )
         for skin_id in (101, 102, 103, 104, 105)
     }
+    prices: ClassVar[dict[int, SkinStorePrice]] = {
+        skin_id: SkinStorePrice(
+            skin_id=skin_id,
+            pool_id=1,
+            price=100 + skin_id,
+            original_price=200 + skin_id,
+            discount_rate=0,
+            selected_price=0,
+            ticket_id=1,
+            ticket_num=2,
+            start_time=0,
+            end_time=0,
+        )
+        for skin_id in (101, 102, 103, 104, 105)
+    }
 
     @contextmanager
     def get_many(
@@ -126,7 +177,15 @@ class _Data:
         yield tuple(skin for skin in self.skins.values() if arg in skin.name)
 
     @contextmanager
-    def query(self, operation: Any) -> Iterator[tuple[Any, ...]]:
+    def query(self, operation: Any) -> Iterator[Any]:
+        if operation.func is load_active_skin_store_prices:
+            skin_ids = operation.keywords["skin_ids"]
+            yield {
+                skin_id: self.prices[skin_id]
+                for skin_id in skin_ids
+                if skin_id in self.prices
+            }
+            return
         references = frozenset(operation.keywords["references"])
         yield tuple(
             skin for skin in self.skins.values() if skin.resource_id in references
@@ -198,7 +257,7 @@ class _NotificationSender:
 
 class _PluginService:
     def __init__(self, *, cached: object | None) -> None:
-        self.cached = cached
+        self.cached = _plugin_result() if cached is not None else None
         self.queries = 0
 
     def cached_for_actor(self, _actor: ActorRef) -> object | None:
@@ -207,15 +266,39 @@ class _PluginService:
     def account_for_actor(self, _actor: ActorRef) -> SimpleNamespace:
         return SimpleNamespace(player_id=90001)
 
-    async def check_for_actor(self, _actor: ActorRef) -> object:
+    async def check_for_actor(self, _actor: ActorRef) -> LuckySkinWindowResult:
         self.queries += 1
-        return object()
+        return _plugin_result()
 
-    def format_result(self, _result: object, *, actor: ActorRef) -> str:
-        return f"橱窗结果：{actor.id}"
+    async def result_message(
+        self, _result: object, *, actor: ActorRef
+    ) -> OutboundMessage:
+        return OutboundMessage.from_text(f"橱窗结果：{actor.id}")
 
-    async def render_result(self, _result: object, *, actor: ActorRef) -> None:
-        del actor
+    def detail_choices(
+        self,
+        _result: object,
+    ) -> tuple[QueryChoice[PetImageSelection], ...]:
+        return (
+            QueryChoice(
+                "测试皮肤",
+                "皮肤ID：101，资源ID：1400101",
+                PetImageSelection(1400101, "测试皮肤", skin_id=101),
+            ),
+        )
+
+
+class _PluginPet:
+    async def select_image(
+        self,
+        selection: PetImageSelection,
+    ) -> QueryResult[object]:
+        return QueryResult(reply=QueryReply(text=f"皮肤详情：{selection.skin_id}"))
+
+
+def _plugin_result() -> LuckySkinWindowResult:
+    offers = (LuckySkinWindowOffer(101, 1400101, "测试皮肤", watched=False),)
+    return LuckySkinWindowResult("2026-08-03", 90001, offers, from_cache=True)
 
 
 def _service(
@@ -310,7 +393,12 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
         owner_message = service.format_result(result, actor=_actor(1001))
         friend_message = service.format_result(result, actor=_actor(1002))
         assert "皮肤101（皮肤ID：101，资源ID：1400101） ★ 关注" in owner_message
+        assert "橱窗价：201钻（原价301钻）" in owner_message
+        assert "最多用2张风尚券，最低181钻" in owner_message
         assert "皮肤102（皮肤ID：102，资源ID：1400102） ★ 关注" in friend_message
+        outbound = await service.result_message(result, actor=_actor(1001))
+        assert isinstance(outbound.parts[0], TextPart)
+        assert outbound.parts[0].text == owner_message
 
     asyncio.run(check())
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
@@ -318,7 +406,7 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
         asyncio.run(service.check_for_actor(_actor(1001)))
 
 
-def test_render_result_uses_the_configured_port(tmp_path: Path) -> None:
+def test_result_message_uses_the_configured_render_port(tmp_path: Path) -> None:
     rendered_inputs: list[
         tuple[LuckySkinWindowResult, tuple[LuckySkinWindowOffer, ...]]
     ] = []
@@ -337,8 +425,10 @@ def test_render_result_uses_the_configured_port(tmp_path: Path) -> None:
 
     async def check() -> None:
         result = await service.check_for_actor(_actor(1001))
-        assert await service.render_result(result, actor=_actor(1001)) == (
-            b"lucky-window-card"
+        assert (
+            await service.result_message(result, actor=_actor(1001))
+        ).parts == (
+            BinaryImagePart(b"lucky-window-card", "image/png"),
         )
 
     asyncio.run(check())
@@ -370,11 +460,15 @@ def test_watch_defaults_accept_resource_ids_and_seed_only_once(
         (item.skin_id, item.resource_id) for item in service.watched_skins(_actor(1001))
     ] == [(101, 1_400_101)]
 
-    assert service.clear_watched_skins(_actor(1001))
+    assert service.watch_clear_message(_actor(1001)) == "已清空关注皮肤。"
     assert service.watched_skins(_actor(1001)) == ()
 
-    reset = service.reset_watched_skins(_actor(1001))
-    assert [(item.skin_id, item.resource_id) for item in reset] == [(101, 1_400_101)]
+    reset = service.watch_reset_message(_actor(1001))
+    assert "已恢复 TOML 初始关注列表。" in reset
+    assert [
+        (item.skin_id, item.resource_id)
+        for item in service.watched_skins(_actor(1001))
+    ] == [(101, 1_400_101)]
 
 
 def test_watch_management_accepts_both_ids_and_names(tmp_path: Path) -> None:
@@ -386,16 +480,27 @@ def test_watch_management_accepts_both_ids_and_names(tmp_path: Path) -> None:
 
     assert by_id == by_resource_id == by_name
     assert by_id[0].skin_id == WATCH_SKIN_ID
-    assert service.add_watched_skin(_actor(1001), by_id[0].skin_id)
-    assert not service.add_watched_skin(_actor(1001), by_id[0].skin_id)
-    assert service.remove_watched_skin(_actor(1001), by_id[0].skin_id)
-    assert not service.remove_watched_skin(_actor(1001), by_id[0].skin_id)
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=True
+    ).startswith("已关注：")
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=True
+    ).startswith("已经关注：")
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=False
+    ).startswith("已取消关注：")
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=False
+    ).startswith("尚未关注：")
 
 
-def test_watch_preferences_are_isolated_by_qq_user(tmp_path: Path) -> None:
+def test_watch_preferences_are_isolated_by_actor(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
-    assert service.add_watched_skin(_actor(1001), 104)
+    item = service.resolve_watch_candidates(_actor(1001), "104")[0]
+    assert service.watch_change_message(
+        _actor(1001), item, watched=True
+    ).startswith("已关注：")
     assert [item.skin_id for item in service.watched_skins(_actor(1001))] == [101, 104]
     assert [item.skin_id for item in service.watched_skins(_actor(1002))] == [102]
 
@@ -473,6 +578,7 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
     lucky_skin_window_plugin._install(
         registry,
         service=service,
+        pet=cast("Any", _PluginPet()),
         features=cast("FeatureService", _Features()),
     )
 
@@ -526,9 +632,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
-    message = lucky_skin_window_plugin._format_watch_list(
-        service.watched_skins(_actor(1001))
-    )
+    message = service.watch_list_message(_actor(1001))
 
     assert "皮肤ID：101，资源ID：1400101" in message
 
@@ -647,7 +751,8 @@ def test_manual_query_prompts_before_a_missing_daily_cache_login(
     asyncio.run(
         lucky_skin_window_plugin._handle_query(
             cast("Any", service),
-            cast("Any", object()),
+            cast("Any", _PluginPet()),
+            cast("Any", SimpleNamespace(state={})),
             cast("Any", SimpleNamespace(user_id=1001)),
         )
     )
@@ -666,21 +771,50 @@ def test_manual_query_returns_today_cache_without_a_confirmation_prompt(
     service = _PluginService(cached=object())
     replies: list[str] = []
 
-    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
-        replies.append(message)
+    async def enter_result_prompt(*_args: object, **kwargs: object) -> None:
+        message = kwargs["prompt_message"]
+        replies.append(str(await message))
 
-    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
+    monkeypatch.setattr(lucky_skin_window_plugin, "enter_prompt", enter_result_prompt)
 
     asyncio.run(
         lucky_skin_window_plugin._handle_query(
             cast("Any", service),
-            cast("Any", object()),
+            cast("Any", _PluginPet()),
+            cast("Any", SimpleNamespace(state={})),
             cast("Any", SimpleNamespace(user_id=1001)),
         )
     )
 
     assert service.queries == 0
     assert replies == ["橱窗结果：1001"]
+
+
+def test_lucky_window_choice_reuses_pet_image_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    replies: list[str] = []
+
+    async def send_reply(_matcher: object, _event: object, message: object) -> None:
+        replies.append(str(message))
+
+    monkeypatch.setattr(lucky_skin_window_plugin, "send_event_reply", send_reply)
+    item = PromptItem(
+        "测试皮肤",
+        "皮肤ID：101，资源ID：1400101",
+        PetImageSelection(1400101, "测试皮肤", skin_id=101),
+    )
+
+    asyncio.run(
+        lucky_skin_window_plugin._handle_result_selection(
+            _PluginPet(),
+            item,
+            cast("Any", object()),
+            private_message_event("1", user_id=1001),
+        )
+    )
+
+    assert replies == ["皮肤详情：101"]
 
 
 @pytest.mark.parametrize(
@@ -699,15 +833,21 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
     service = _PluginService(cached=None)
     replies: list[str] = []
 
-    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
-        replies.append(message)
+    async def finish_reply(_matcher: object, _event: object, message: object) -> None:
+        replies.append(str(message))
+
+    async def enter_result_prompt(*_args: object, **kwargs: object) -> None:
+        message = kwargs["prompt_message"]
+        replies.append(str(await message))
 
     monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
+    monkeypatch.setattr(lucky_skin_window_plugin, "enter_prompt", enter_result_prompt)
 
     asyncio.run(
         lucky_skin_window_plugin._handle_login_confirmation(
             cast("Any", service),
-            cast("Any", object()),
+            cast("Any", _PluginPet()),
+            cast("Any", SimpleNamespace(state={})),
             cast(
                 "Any",
                 SimpleNamespace(user_id=1001, get_plaintext=lambda: reply),

@@ -33,7 +33,7 @@ def test_register_restart_job_uses_standard_scheduler_fields() -> None:
     config = RestartConfig.model_validate(
         {
             "enabled": True,
-            "times": ["04:30"],
+            "times": ["04:30:17"],
             "grace_seconds": 0,
         }
     )
@@ -49,12 +49,12 @@ def test_register_restart_job_uses_standard_scheduler_fields() -> None:
         {
             "func": scheduled_restart_runtime._scheduled_restart,
             "trigger": "cron",
-            "id": "scheduled_bot_restart:04:30",
+            "id": "scheduled_bot_restart:04:30:17",
             "replace_existing": True,
-            "args": ["04:30", 0.0, restart_process],
+            "args": ["04:30:17", 0.0, restart_process],
             "hour": 4,
             "minute": 30,
-            "second": 0,
+            "second": 17,
             "timezone": ZoneInfo("Asia/Shanghai"),
         }
     ]

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+    from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.login import BilibiliLoginService
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class ApplicationResources:
+    about: AboutService
     features: FeatureService
     promotions: PromotionCatalog
     admin_notices: AdminNoticeService

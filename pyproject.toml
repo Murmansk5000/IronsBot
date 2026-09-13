@@ -11,13 +11,15 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.GPL-3.0", "LICENSING.md"]
 dependencies = [
     "nonebot-adapter-onebot>=2.4.6",
-    "nonebot2[fastapi,httpx]>=2.4.4",
+    "nonebot2[httpx]>=2.4.4",
+    "fastapi>=0.93.0,<1.0.0",
+    "uvicorn>=0.20.0,<1.0.0",
+    "websockets>=15.0",
     "seerapi-models>=106.4.0",
     "nonebot-plugin-htmlkit>=0.1.0rc5",
     "pillow>=12.3.0",
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
-    "nonebot-plugin-send-anything-anywhere>=0.7.1",
     "qrcode[pil]>=8.2",
     "tomli>=2; python_version < '3.11'",
 ]

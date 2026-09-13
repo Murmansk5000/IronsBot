@@ -16,12 +16,14 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runt
 from nonebot.typing import (
     T_State,  # noqa: TC002 - NoneBot resolves callback annotations
 )
-from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     bind_async,
     update_queued_menu_anchor,
+)
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
 )
 from ironsbot.integrations.onebot.prompts import (
     PROMPT_STATE_KEY,
@@ -423,12 +425,12 @@ async def _send_item_detail(
         await send_query_reply(detail, event, finish=False)
         return
     if isinstance(detail, AutocardEntry):
-        message = MessageFactory(detail.text)
-        if detail.image_url:
-            message = MessageFactory(Image(detail.image_url)) + message
+        message = render_onebot_outbound_message(
+            detail.to_outbound(include_additional_images=False)
+        )
     else:
-        message = MessageFactory(detail)
-    await message.send(at_sender=isinstance(event, GroupMessageEvent))
+        message = Message(detail)
+    await matcher.send(message, at_sender=isinstance(event, GroupMessageEvent))
 
 
 @dataclass(frozen=True, slots=True)

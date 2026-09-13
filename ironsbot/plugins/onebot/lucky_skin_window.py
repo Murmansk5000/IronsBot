@@ -11,7 +11,6 @@ from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
     MessageEvent,
-    MessageSegment,
     PrivateMessageEvent,
 )
 from nonebot.matcher import Matcher
@@ -32,7 +31,7 @@ from ironsbot.core.semantic_requests import (
     SemanticRequestSource,
     SemanticTarget,
 )
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import scheduled_clock_time
 from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
 from ironsbot.integrations.onebot.feature_policy import (
     event_is_feature_allowed,
@@ -44,10 +43,15 @@ from ironsbot.integrations.onebot.matchers import (
     MatcherFactory,
     bind_async,
 )
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_command
 from ironsbot.services.operations.scheduler import JobRegistry
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_QUERY_ACTION,
     LUCKY_SKIN_WATCH_ADD_ACTION,
@@ -77,6 +81,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.seer.pet_query import PetImageSelection, PetQueryService
 
 _JOB_PREFIX = "lucky_skin_window:"
 _LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
@@ -94,6 +99,7 @@ __plugin_meta__ = PluginMetadata(
 
 def plugin_contribution(
     service: LuckySkinWindowService,
+    pet: PetQueryService,
     features: FeatureService,
     scheduler: Scheduler,
 ) -> PluginContribution:
@@ -111,7 +117,7 @@ def plugin_contribution(
             ),
         ),
         commands=lucky_skin_window_command_contracts(),
-        install=partial(_install, service=service, features=features),
+        install=partial(_install, service=service, pet=pet, features=features),
         hooks=PluginHooks(
             startup=(
                 (
@@ -221,6 +227,7 @@ async def _finish_watch_access_error(
 
 async def _handle_query(
     service: LuckySkinWindowService,
+    pet: PetQueryService,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
@@ -239,11 +246,7 @@ async def _handle_query(
         return
 
     if cached is not None:
-        await finish_event_reply(
-            matcher,
-            event,
-            await _result_message(service, cached, actor=actor),
-        )
+        await _enter_result_prompt(service, pet, matcher, event, cached)
         return
 
     account = service.account_for_actor(actor)
@@ -255,7 +258,7 @@ async def _handle_query(
         matcher,
         event,
         namespace=_LOGIN_CONFIRMATION_NAMESPACE,
-        handlers=[bind_async(_handle_login_confirmation, service)],
+        handlers=[bind_async(_handle_login_confirmation, service, pet)],
         reply_check=lambda reply_event: (
             parse_confirmation(reply_event.get_plaintext()) is not None
         ),
@@ -269,6 +272,7 @@ async def _handle_query(
 
 async def _handle_login_confirmation(
     service: LuckySkinWindowService,
+    pet: PetQueryService,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
@@ -276,11 +280,12 @@ async def _handle_login_confirmation(
     if confirmed is not True:
         await finish_event_reply(matcher, event, "已取消幸运橱窗查询。")
         return
-    await _query_and_reply(service, matcher, event)
+    await _query_and_reply(service, pet, matcher, event)
 
 
 async def _query_and_reply(
     service: LuckySkinWindowService,
+    pet: PetQueryService,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
@@ -315,23 +320,74 @@ async def _query_and_reply(
     except Exception:  # noqa: BLE001 - the game protocol must not leak errors
         await finish_event_reply(matcher, event, "❌ 幸运橱窗查询失败，请稍后再试。")
         return
-    await finish_event_reply(
+    await _enter_result_prompt(service, pet, matcher, event, result)
+
+
+async def _enter_result_prompt(
+    service: LuckySkinWindowService,
+    pet: PetQueryService,
+    matcher: Matcher,
+    event: MessageEvent,
+    result: LuckySkinWindowResult,
+) -> None:
+    choices = service.detail_choices(result)
+    await enter_prompt(
         matcher,
         event,
-        await _result_message(service, result, actor=actor),
+        matcher.state,
+        Prompt(
+            title="幸运橱窗",
+            action=LUCKY_SKIN_QUERY_ACTION,
+            items=[
+                PromptItem(
+                    choice.name,
+                    choice.description,
+                    choice.value,
+                    semantic_target=choice.semantic_target,
+                )
+                for choice in choices
+            ],
+        ),
+        partial(_handle_result_selection, pet),
+        prompt_message=_render_result_message(
+            service,
+            result,
+            _actor_from_event(event),
+        ),
     )
 
 
-async def _result_message(
+async def _render_result_message(
     service: LuckySkinWindowService,
     result: LuckySkinWindowResult,
-    *,
     actor: ActorRef,
-) -> str | Message:
-    rendered = await service.render_result(result, actor=actor)
-    if rendered is None:
-        return service.format_result(result, actor=actor)
-    return Message(MessageSegment.image(rendered))
+) -> Message:
+    return render_onebot_outbound_message(
+        await service.result_message(result, actor=actor)
+    )
+
+
+async def _handle_result_selection(
+    pet: PetQueryService,
+    item: PromptItem[PetImageSelection],
+    matcher: Matcher,
+    event: Event,
+) -> None:
+    if not isinstance(event, MessageEvent):
+        return
+    try:
+        selected = await pet.select_image(item.value)
+    except DataUnavailableError:
+        await send_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    if selected.message:
+        await send_event_reply(matcher, event, selected.message)
+    elif selected.reply is not None:
+        await send_event_reply(
+            matcher,
+            event,
+            render_onebot_outbound_message(selected.reply.to_outbound()),
+        )
 
 
 async def _handle_watch_list(
@@ -340,14 +396,14 @@ async def _handle_watch_list(
     event: MessageEvent,
 ) -> None:
     try:
-        items = service.watched_skins(_actor_from_event(event))
+        message = service.watch_list_message(_actor_from_event(event))
     except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
         await _finish_watch_access_error(matcher, event, error)
         return
     await finish_event_reply(
         matcher,
         event,
-        _format_watch_list(items),
+        message,
     )
 
 
@@ -371,11 +427,10 @@ async def _handle_watch_change(
         await finish_event_reply(
             matcher,
             event,
-            _apply_watch_change(
-                service,
+            service.watch_change_message(
                 _actor_from_event(event),
-                operation,
                 candidates[0],
+                watched=operation == "add",
             ),
         )
         return
@@ -393,7 +448,7 @@ async def _handle_watch_change(
             items=[
                 PromptItem(
                     item.name,
-                    _watch_item_ids(item),
+                    item.identifiers,
                     item,
                 )
                 for item in candidates
@@ -415,11 +470,10 @@ async def _handle_watch_selection(
     await finish_event_reply(
         matcher,
         event,
-        _apply_watch_change(
-            service,
+        service.watch_change_message(
             _actor_from_event(event),
-            operation,
             item.value,
+            watched=operation == "add",
         ),
     )
 
@@ -430,11 +484,10 @@ async def _handle_watch_clear(
     event: MessageEvent,
 ) -> None:
     try:
-        changed = service.clear_watched_skins(_actor_from_event(event))
+        message = service.watch_clear_message(_actor_from_event(event))
     except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
         await _finish_watch_access_error(matcher, event, error)
         return
-    message = "已清空关注皮肤。" if changed else "当前没有关注皮肤。"
     await finish_event_reply(matcher, event, message)
 
 
@@ -444,61 +497,21 @@ async def _handle_watch_reset(
     event: MessageEvent,
 ) -> None:
     try:
-        items = service.reset_watched_skins(_actor_from_event(event))
+        message = service.watch_reset_message(_actor_from_event(event))
     except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
         await _finish_watch_access_error(matcher, event, error)
         return
     await finish_event_reply(
         matcher,
         event,
-        "已恢复 TOML 初始关注列表。\n" + _format_watch_list(items),
+        message,
     )
-
-
-def _apply_watch_change(
-    service: LuckySkinWindowService,
-    actor: ActorRef,
-    operation: str,
-    item: LuckySkinWatchItem,
-) -> str:
-    label = f"{item.name}（{_watch_item_ids(item)}）"
-    if operation == "add":
-        if service.add_watched_skin(actor, item.skin_id):
-            return f"已关注：{label}"
-        return f"已经关注：{label}"
-    if service.remove_watched_skin(actor, item.skin_id):
-        return f"已取消关注：{label}"
-    return f"尚未关注：{label}"
-
-
-def _format_watch_list(items: tuple[LuckySkinWatchItem, ...]) -> str:
-    lines = ["【幸运橱窗关注】"]
-    if not items:
-        lines.append("暂无关注皮肤。")
-    else:
-        lines.extend(
-            f"{index}. {item.name}（{_watch_item_ids(item)}）"
-            for index, item in enumerate(items, start=1)
-        )
-    lines.extend(
-        (
-            "发送“关注橱窗 / 订阅橱窗 + ID或名称”新增，",
-            "发送“取消关注橱窗 / 退订橱窗 + ID或名称”取消。",
-        )
-    )
-    return "\n".join(lines)
-
-
-def _watch_item_ids(item: LuckySkinWatchItem) -> str:
-    if item.resource_id > 0 and item.resource_id != item.skin_id:
-        return f"皮肤ID：{item.skin_id}，资源ID：{item.resource_id}"
-    return f"皮肤ID：{item.skin_id}"
-
 
 def _install(
     registry: MatcherFactory,
     *,
     service: LuckySkinWindowService,
+    pet: PetQueryService,
     features: FeatureService,
 ) -> None:
     priority = registry.priority("lucky_skin_window")
@@ -512,7 +525,7 @@ def _install(
         priority=priority,
         block=True,
     )
-    matcher.append_handler(bind_async(_handle_query, service))
+    matcher.append_handler(bind_async(_handle_query, service, pet))
 
     watch_list = registry.on_message(
         policy=CommandPolicy.command(
@@ -615,7 +628,10 @@ def _register_schedule(
     if not service.enabled:
         return
     config = service.config
-    daily_hour, daily_minute = daily_time_parts(config.time)
+    daily_time = scheduled_clock_time(
+        config.time,
+        error_message="invalid lucky skin window time",
+    )
     JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
         service.clear_previous_days,
         "cron",
@@ -625,13 +641,10 @@ def _register_schedule(
         second=0,
         timezone=config.timezone,
     )
-    JobRegistry(scheduler, prefix=_JOB_PREFIX).add(
+    JobRegistry(scheduler, prefix=_JOB_PREFIX).add_daily(
         service.send_daily_notifications,
-        "cron",
+        clock_time=daily_time,
         job_id="daily",
-        hour=daily_hour,
-        minute=daily_minute,
-        second=0,
         timezone=config.timezone,
     )
 
@@ -641,6 +654,7 @@ if (context := active_plugin_install_context()) is not None:
         __plugin_meta__,
         plugin_contribution(
             context.resources.lucky_skin_window,
+            context.resources.seer.pet_query,
             context.resources.features,
             context.scheduler,
         ),

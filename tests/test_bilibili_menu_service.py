@@ -193,8 +193,9 @@ def test_history_detail_generates_and_reuses_persisted_summary(
     )
     calls = 0
 
-    async def summarize(_text: str, *, max_chars: int) -> str:
+    async def summarize(text: str, *, max_chars: int) -> str:
         nonlocal calls
+        del text
         calls += 1
         assert max_chars == summary_max_chars
         return "生成后的摘要"
@@ -211,8 +212,10 @@ def test_history_detail_generates_and_reuses_persisted_summary(
     first = asyncio.run(service.prepare_dynamic_detail(record))
     second = asyncio.run(service.prepare_dynamic_detail(record))
 
-    assert first.content_override == second.content_override == (
-        "本条动态文本过长，AI总结如下：\n生成后的摘要"
+    assert (
+        first.content_override
+        == second.content_override
+        == ("本条动态文本过长，AI总结如下：\n生成后的摘要")
     )
     assert calls == 1
     saved = service.history.get("dynamic-summary")

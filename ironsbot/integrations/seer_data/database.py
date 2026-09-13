@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.db_registry import DatabaseManager
 
 UNKNOWN_VERSION = "unknown"
-_RENDER_MANIFEST_CONTRACT_VERSION = "2"
+_RENDER_MANIFEST_CONTRACT_VERSION = "3"
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
 
@@ -325,14 +325,13 @@ def _read_publication(engine: Engine) -> SeerPublication:
         rows = session.execute(
             text(
                 "SELECT key, value FROM ironsbot_metadata WHERE key IN "
-                "(:revision, :contract, :scopes, :repository, :asset_revision)"
+                "(:revision, :contract, :scopes, :repositories)"
             ),
             {
                 "revision": "render_asset_manifest_revision",
                 "contract": "render_asset_manifest_contract_version",
                 "scopes": "render_asset_manifest_complete_scopes",
-                "repository": "render_asset_manifest_asset_repository",
-                "asset_revision": "render_asset_manifest_asset_repository_revision",
+                "repositories": "render_asset_manifest_repositories",
             },
         ).all()
         values = {str(key): str(value) for key, value in rows}
@@ -354,8 +353,7 @@ def _read_publication(engine: Engine) -> SeerPublication:
         if snapshot is None:
             raise SeerApiReleaseContractError.invalid_render_manifest()
         assets = PublishedRenderAssetSnapshot(
-            repository=snapshot.repository,
-            revision=snapshot.revision,
+            repositories=snapshot.repositories,
             manifest_revision=snapshot.manifest_revision,
             scopes=frozenset(raw_scopes),
         )

@@ -61,7 +61,6 @@ class NewContentAssetRequest:
     url: str | None = None
     required: bool = False
     layout: str = "square"
-    fallback_data: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,7 +311,7 @@ class NewContentSnapshotBuilder:
             "mintmark": "mintmark",
             "suit": "suit",
             "equip": "equip",
-            "mount": "equip",
+            "mount": "mount",
         }
         if kind := image_kinds.get(item.category):
             return _seer_asset(kind, item.entity_id, required=True)

@@ -36,7 +36,9 @@ from ironsbot.integrations.onebot.matchers import (
 from ironsbot.integrations.onebot.matchers import (
     enter_prompt_loop as _enter_prompt_loop,
 )
-from ironsbot.runtime.prompt_errors import PromptSessionManagerMissingError
+from ironsbot.integrations.onebot.prompt_errors import (
+    PromptSessionManagerMissingError,
+)
 
 T = TypeVar("T")
 

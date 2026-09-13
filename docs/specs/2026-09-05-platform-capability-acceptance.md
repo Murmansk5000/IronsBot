@@ -156,3 +156,44 @@ passed in 13.33 seconds. Full Ruff, targeted BasedPyright and diff check passed.
 Source release SHA-256 remains
 `1ef66a0039326f1f2a8d2ca523af02e6e44da7134f3edff5ce15e0d385119845`.
 No full-suite rerun is claimed for this test/documentation-only checkpoint.
+
+## Specialized Seer Result Contract (2026-09-13)
+
+Weekly-preview image results, peak query results and Autocard entries now expose the same
+platform-neutral `to_outbound()` boundary as ordinary `QueryReply` values. The
+service result owns image/text ordering and MIME type; Autocard also owns its
+primary/additional-image selection. OneBot only renders the result at its
+adapter boundary. The obsolete raw-bytes branch in the weekly preview adapter
+was removed because the service has no such producer.
+
+The fake official capability suite accepts preview, peak image, peak text and
+Autocard remote-image results through the real `OutboundMessenger` protocol,
+including upload counting. This expands non-QQ Phase 7 evidence without
+inventing OpenID-to-QQ mapping, direct-mention support or account-binding
+behavior. Those capabilities remain deferred until a target API can represent
+them.
+
+Configured image commands use `format_outbound_message()` for the same reason.
+The formatter follows Python field formatting for text values while retaining
+binary/remote images and mentions as typed message parts. Structured parts
+cannot use string conversions or format specifications. `SendpicResult` now
+owns expansion of `command`, `random_text`, `index`, `total` and `image`; the
+OneBot matcher only performs final encoding. Existing TOML templates and image
+selection semantics remain unchanged.
+
+## Final OneBot Content-Assembly Removal (2026-09-13)
+
+The last two OneBot plugin-local constructors for platform-neutral content were
+removed. `DataQueryImageReply` now owns its optional reference link as part of
+the image result, and `SingleImageResult` owns configured single-image output in
+the same way that indexed `SendpicResult` already owns templated output. The
+plugins only resolve configuration, invoke the service and encode its returned
+message.
+
+An AST architecture gate now rejects direct `OutboundMessage`, text, image or
+mention content construction anywhere under `plugins.onebot`. This is a content
+ownership boundary, not a ban on an adapter consuming core outbound values.
+The restricted-platform acceptance test sends both result types through the
+real `OutboundMessenger` protocol. QQ-number lookup, binding and direct-mention
+features remain deliberately deferred when the target API cannot represent
+them.
