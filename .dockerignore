@@ -11,8 +11,8 @@
 .test-tmp/
 .uv-cache/
 
-__pycache__/
-*.py[cod]
+**/__pycache__/
+**/*.py[cod]
 *.log
 *.sqlite
 *.sqlite-*

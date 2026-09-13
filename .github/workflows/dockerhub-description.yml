@@ -1,5 +1,9 @@
 name: Update Docker Hub Description
 
+env:
+    DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
 on:
     push:
         branches:
@@ -17,11 +21,16 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v7
 
+            - name: Skip unavailable Docker Hub publication
+              if: ${{ env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == '' }}
+              run: echo "Docker Hub credentials are not configured; description publication is skipped."
+
             - name: Update Docker Hub Description
+              if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
               uses: peter-evans/dockerhub-description@v5
               with:
-                  username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
-                  repository: ${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
+                  username: ${{ env.DOCKERHUB_USERNAME }}
+                  password: ${{ env.DOCKERHUB_TOKEN }}
+                  repository: ${{ env.DOCKERHUB_USERNAME }}/ironsbot
                   short-description: Custom IronsBot image with QQ bot plugins and Unraid templates.
                   readme-filepath: ./docker/README.md

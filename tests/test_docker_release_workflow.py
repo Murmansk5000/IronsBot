@@ -8,10 +8,14 @@ import sys
 from pathlib import Path
 
 import pytest
+import tomllib
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
+DOCKERHUB_DESCRIPTION_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "dockerhub-description.yml"
+)
 
 CURRENT_ACTION_MAJORS = {
     "actions/checkout": 7,
@@ -38,6 +42,37 @@ def _steps() -> list[dict]:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["docker"][
         "steps"
     ]
+
+
+def _workflow() -> dict:
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_dockerhub_description_is_optional_without_repository_secrets() -> None:
+    workflow = yaml.safe_load(
+        DOCKERHUB_DESCRIPTION_WORKFLOW.read_text(encoding="utf-8")
+    )
+    assert workflow["env"] == {
+        "DOCKERHUB_USERNAME": "${{ secrets.DOCKERHUB_USERNAME }}",
+        "DOCKERHUB_TOKEN": "${{ secrets.DOCKERHUB_TOKEN }}",
+    }
+    steps = workflow["jobs"]["dockerhub-description"]["steps"]
+    skip = next(
+        step
+        for step in steps
+        if step["name"] == "Skip unavailable Docker Hub publication"
+    )
+    publish = next(
+        step for step in steps if step["name"] == "Update Docker Hub Description"
+    )
+    assert skip["if"] == (
+        "${{ env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == '' }}"
+    )
+    assert publish["if"] == (
+        "${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}"
+    )
+    assert publish["with"]["username"] == "${{ env.DOCKERHUB_USERNAME }}"
+    assert publish["with"]["password"] == "${{ env.DOCKERHUB_TOKEN }}"
 
 
 def test_workflows_use_current_first_party_action_contracts() -> None:
@@ -119,7 +154,7 @@ def _run_candidate_budget(
     script.write_text(
         """docker() {
     printf '%s\t/app\n' "$BUDGET_TEST_APP_KIB"
-    printf '%s\t/usr/local/lib/python3.10/site-packages\n' \
+    printf '%s\t/usr/local/lib/python3.11/site-packages\n' \
         "$BUDGET_TEST_SITE_PACKAGES_KIB"
     printf '%s\t/usr/share/fonts\n' "$BUDGET_TEST_FONTS_KIB"
 }
@@ -140,6 +175,61 @@ def _run_candidate_budget(
             "BUDGET_TEST_APP_KIB": str(app_kib),
             "BUDGET_TEST_SITE_PACKAGES_KIB": str(site_packages_kib),
             "BUDGET_TEST_FONTS_KIB": str(fonts_kib),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=20,
+    )
+
+
+def _run_candidate_growth_gate(
+    tmp_path: Path,
+    *,
+    candidate_bytes: int,
+    baseline_bytes: int,
+    baseline_available: bool = True,
+) -> subprocess.CompletedProcess:
+    step = next(
+        step
+        for step in _steps()
+        if step["name"] == "Compare runtime candidate image growth"
+    )
+    script = tmp_path / "candidate-growth.sh"
+    script.write_text(
+        r"""docker() {
+    case "$*" in
+        image\ inspect\ ironsbot-ci:*--format*Size*)
+            printf '%s\n' "$GROWTH_TEST_CANDIDATE_BYTES" ;;
+        image\ inspect\ "$baseline_image"*RepoDigests*)
+            printf '%s@sha256:%064d\n' "$baseline_image" 0 ;;
+        image\ inspect\ "$baseline_image"*Size*)
+            printf '%s\n' "$GROWTH_TEST_BASELINE_BYTES" ;;
+        pull\ "$baseline_image")
+            [ "$GROWTH_TEST_BASELINE_AVAILABLE" = "true" ] ;;
+        *)
+            printf 'unexpected docker call: %s\n' "$*" >&2
+            return 2 ;;
+    esac
+}
+"""
+        + step["run"],
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        [_bash(), "--noprofile", "--norc", "-e", "-o", "pipefail", script.name],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": ".",
+            "GITHUB_SHA": "a" * 40,
+            "BASELINE_IMAGE": str(step["env"]["BASELINE_IMAGE"]),
+            "MAX_IMAGE_GROWTH_KIB": str(step["env"]["MAX_IMAGE_GROWTH_KIB"]),
+            "GROWTH_TEST_CANDIDATE_BYTES": str(candidate_bytes),
+            "GROWTH_TEST_BASELINE_BYTES": str(baseline_bytes),
+            "GROWTH_TEST_BASELINE_AVAILABLE": str(baseline_available).lower(),
         },
         capture_output=True,
         text=True,
@@ -179,6 +269,8 @@ def test_size_measurement_uses_digest_and_keeps_layer_evidence(
     summary = (tmp_path / "summary.md").read_text(encoding="utf-8")
     assert f"{repository}@{digest}" in summary
     assert "1.0 MiB" in summary
+    assert "Docker-reported image size" in summary
+    assert "uncompressed" not in summary
 
 
 def test_missing_digest_fails_without_pulling_a_mutable_tag(tmp_path: Path) -> None:
@@ -240,6 +332,14 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Regular"' in smoke["run"]
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Bold"' in smoke["run"]
     assert 'test "$regular" != "$bold"' in smoke["run"]
+    assert "find_spec" in smoke["run"]
+    assert "pygments" in smoke["run"]
+    assert "pymdownx" in smoke["run"]
+    assert "template_to_pic" in smoke["run"]
+    assert "89504e470d0a1a0a" in smoke["run"]
+    assert '-e EXPECTED_PYTHON_VERSION="$PYTHON_VERSION"' in smoke["run"]
+    assert "sys.version_info.major, sys.version_info.minor" in smoke["run"]
+    assert '"$EXPECTED_PYTHON_VERSION"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
 
 
@@ -270,14 +370,105 @@ def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> Non
     assert upload["with"]["if-no-files-found"] == "warn"
     assert "--network none --entrypoint sh" in budget["run"]
     assert "ironsbot-candidate-runtime-size-kib.txt" in budget["run"]
+    assert budget["env"]["MAX_SITE_PACKAGES_KIB"] == "122880"
+
+
+def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
+    steps = _steps()
+    dockerhub_login = next(
+        step for step in steps if step["name"] == "Login to Docker Hub"
+    )
+    growth = next(
+        step
+        for step in steps
+        if step["name"] == "Compare runtime candidate image growth"
+    )
+    upload = next(
+        step
+        for step in steps
+        if step["name"] == "Upload candidate image growth evidence"
+    )
+    publish = next(step for step in steps if step["name"] == "Build and Publish")
+
+    assert steps.index(dockerhub_login) < steps.index(growth) < steps.index(upload)
+    assert steps.index(upload) < steps.index(publish)
+    assert growth["env"]["MAX_IMAGE_GROWTH_KIB"] == "8192"
+    assert growth["env"]["BASELINE_IMAGE"] == (
+        "ghcr.io/${{ github.repository }}:latest"
+    )
+    assert growth["env"]["FALLBACK_BASELINE_IMAGE"] == (
+        "ghcr.io/${{ github.repository_owner }}/ironsbot:latest"
+    )
+    assert 'baseline_image="${BASELINE_IMAGE,,}"' in growth["run"]
+    assert 'fallback_baseline_image="${FALLBACK_BASELINE_IMAGE,,}"' in growth["run"]
+    assert 'docker pull "$baseline_image"' in growth["run"]
+    assert 'echo "fallback_baseline=$baseline_image"' in growth["run"]
+    assert 'docker image inspect "$candidate"' in growth["run"]
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["if-no-files-found"] == "warn"
+
+
+def test_ghcr_image_repository_is_fork_aware() -> None:
+    metadata = next(step for step in _steps() if step["name"] == "Generate Tags")
+
+    assert "ghcr.io/${{ github.repository }}" in metadata["with"]["images"]
+    assert "ghcr.io/murmansk5000/ironsbot" not in WORKFLOW.read_text(
+        encoding="utf-8"
+    ).lower()
+
+
+@pytest.mark.parametrize(
+    ("growth_kib", "expected_ok"),
+    [
+        (-1024, True),
+        (0, True),
+        (8192, True),
+        (8193, False),
+    ],
+)
+def test_candidate_image_growth_shell(
+    tmp_path: Path,
+    growth_kib: int,
+    *,
+    expected_ok: bool,
+) -> None:
+    baseline_bytes = 256 * 1024 * 1024
+    result = _run_candidate_growth_gate(
+        tmp_path,
+        candidate_bytes=baseline_bytes + growth_kib * 1024,
+        baseline_bytes=baseline_bytes,
+    )
+
+    assert (result.returncode == 0) is expected_ok, result.stdout + result.stderr
+    evidence = (
+        tmp_path / "ironsbot-candidate-image-growth.txt"
+    ).read_text(encoding="utf-8")
+    assert f"growth_bytes={growth_kib * 1024}" in evidence
+    assert "baseline_digest=" in evidence
+
+
+def test_candidate_image_growth_requires_readable_baseline(tmp_path: Path) -> None:
+    result = _run_candidate_growth_gate(
+        tmp_path,
+        candidate_bytes=256 * 1024 * 1024,
+        baseline_bytes=0,
+        baseline_available=False,
+    )
+
+    assert result.returncode != 0
+    evidence = (
+        tmp_path / "ironsbot-candidate-image-growth.txt"
+    ).read_text(encoding="utf-8")
+    assert "candidate_bytes=" in evidence
+    assert "baseline_digest=" not in evidence
 
 
 @pytest.mark.parametrize(
     ("app_kib", "site_packages_kib", "fonts_kib", "expected_ok"),
     [
-        (8192, 131072, 24576, True),
+        (8192, 122880, 24576, True),
         (8193, 1, 1, False),
-        (1, 131073, 1, False),
+        (1, 122881, 1, False),
         (1, 1, 24577, False),
     ],
 )
@@ -320,10 +511,40 @@ def test_builder_and_runtime_pin_the_same_debian_release() -> None:
         line.strip() for line in dockerfile.splitlines() if line.startswith("FROM ")
     ]
 
+    assert "ARG PYTHON_VERSION=3.11" in dockerfile
     assert from_lines == [
-        "FROM python:3.10-bookworm AS requirements_stage",
-        "FROM python:3.10-slim-bookworm",
+        "FROM python:${PYTHON_VERSION}-bookworm AS requirements_stage",
+        "FROM python:${PYTHON_VERSION}-slim-bookworm",
     ]
+
+
+def test_runtime_python_baseline_is_consistent() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    workflow = _workflow()
+    expected = workflow["env"]["PYTHON_VERSION"]
+    setup = next(step for step in _steps() if step["name"] == "Setup Python")
+    audit = next(
+        step
+        for step in _steps()
+        if step["name"] == "Audit locked runtime dependencies"
+    )
+    candidate = next(
+        step for step in _steps() if step["name"] == "Build runtime candidate"
+    )
+    publish = next(step for step in _steps() if step["name"] == "Build and Publish")
+
+    assert expected == "3.11"
+    assert project["project"]["requires-python"] == f">={expected}, <4.0"
+    assert project["tool"]["basedpyright"]["pythonVersion"] == expected
+    assert not any(
+        dependency.startswith("tomli")
+        for dependency in project["project"]["dependencies"]
+    )
+    assert setup["with"]["python-version"] == "${{ env.PYTHON_VERSION }}"
+    assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
+    version_argument = "PYTHON_VERSION=${{ env.PYTHON_VERSION }}"
+    assert version_argument in candidate["with"]["build-args"]
+    assert version_argument in publish["with"]["build-args"]
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
@@ -333,7 +554,7 @@ def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None
     login = next(s for s in steps if s["name"] == "Login to GitHub Container Registry")
     assert steps.index(audit) < steps.index(upload) < steps.index(login)
     assert "--frozen --no-dev --no-emit-project" in audit["run"]
-    assert "--python 3.10 --from pip-audit==2.10.1" in audit["run"]
+    assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
     assert "--require-hashes --disable-pip --strict" in audit["run"]
     assert "--fix" not in audit["run"]
     assert "--ignore-vuln" not in audit["run"]

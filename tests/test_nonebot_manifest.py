@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
+import tomllib
 
 from ironsbot.app.nonebot_manifest import (
     PluginManifestProfile,
     nonebot_manifest_path,
 )
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 def test_project_nonebot_adapter_matches_the_onebot_v11_runtime() -> None:

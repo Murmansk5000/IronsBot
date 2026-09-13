@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+import tomllib
+
 from ironsbot.app import docker_preflight
 from ironsbot.app.docker_preflight import (
     STARTUP_PREFLIGHT_TIMEOUT_SECONDS,
@@ -373,7 +375,8 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "LICENSE*" not in dockerignore.splitlines()
     assert "COPY . /app/" not in dockerfile
     assert "ENV PYTHONDONTWRITEBYTECODE=1" in dockerfile
-    assert "pip install --no-cache-dir --no-compile" in dockerfile
+    assert "pip install --no-deps --no-cache-dir --no-compile" in dockerfile
+    assert "pip wheel --no-deps" in dockerfile
     assert "uv export --frozen --no-dev" in dockerfile
     assert dockerfile.startswith("# syntax=docker/dockerfile:1\n")
     assert "COPY --from=requirements_stage /wheel" not in dockerfile
@@ -385,10 +388,15 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "/site-packages/pip" in dockerfile
     assert "/site-packages/setuptools" in dockerfile
     assert "/site-packages/wheel" in dockerfile
+    assert "/site-packages/pygments" in dockerfile
+    assert "/site-packages/pymdownx" in dockerfile
+    assert "/site-packages/markdown" not in dockerfile
     assert ".venv/" in dockerignore
     assert ".codex/" in dockerignore
-    assert "__pycache__/" in dockerignore
+    assert "**/__pycache__/" in dockerignore
+    assert "**/*.py[cod]" in dockerignore
     assert ".pytest_cache/" in dockerignore
+    assert "ENV TZ=Asia/Shanghai" in dockerfile
     for repository_only_path in (
         "data/",
         "docker/",
@@ -408,6 +416,30 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert wait_offset < app_start_offset
     assert "run_preflight" in entrypoint[wait_offset:app_start_offset]
     assert 'exec "$@"' in entrypoint
+
+
+def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
+    root = Path(__file__).resolve().parents[1]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
+    main = (root / "ironsbot" / "__main__.py").read_text(encoding="utf-8")
+
+    dependencies = project["project"]["dependencies"]
+    assert "nonebot2[httpx]>=2.4.4" in dependencies
+    assert not any(
+        dependency.startswith("nonebot2[fastapi") for dependency in dependencies
+    )
+    assert "fastapi>=0.93.0,<1.0.0" in dependencies
+    assert "uvicorn>=0.20.0,<1.0.0" in dependencies
+    assert "websockets>=15.0" in dependencies
+
+    locked_names = {package["name"] for package in lock["package"]}
+    assert {"fastapi", "uvicorn", "websockets"} <= locked_names
+    assert locked_names.isdisjoint({"httptools", "uvloop", "watchfiles"})
+
+    assert 'loop="asyncio"' in main
+    assert 'http="h11"' in main
+    assert 'ws="websockets-sansio"' in main
 
 
 def test_startup_preflight_timeout_is_shorter_than_manual_update_timeout() -> None:
