@@ -2120,3 +2120,11 @@ BasedPyright 使用同一版本；Dockerfile 通过一个 `PYTHON_VERSION` 参�
 会在仓库登录前失败。工作流 YAML、shell 引号、25 项专项、Ruff 和 BasedPyright 通过。
 本机 Docker daemon 在有界探测内没有响应，因此该项只增强可执行发布门，不冒充新镜像
 体积或启动证据。
+
+异常状态图片也完成发布链路收口。SeerAPI 从 `battle_effect` 事实表生成
+`battle_effect/<id>` 素材 manifest 条目，使用与其他 Unity 图片相同的不可变仓库 revision；
+这类查询插图不参与精灵渲染 scope 完整性，单个缺图不会误伤其他渲染。IronsBot 删除
+`seer-unity-assets/main/.../abnormal` 可变直连，统一经 `SeerImageSource` 使用发布 revision、
+双源下载、校验磁盘缓存和并发控制。没有复制 PNG、增加 SQLite 表或运行依赖。SeerAPI
+全量 `340 passed`，IronsBot 全量 `3243 passed, 7 skipped`；两仓 Ruff、BasedPyright（适用
+仓库）、compileall 和差异检查通过。新 manifest 需随下一次数据 release 发布后才进入生产。

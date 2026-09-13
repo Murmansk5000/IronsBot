@@ -26,10 +26,6 @@ if TYPE_CHECKING:
     )
 
 _URLS: dict[ImageKind, tuple[str, ...]] = {
-    "battle_effect": (
-        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
-        "newseer/assets/art/ui/assets/battleeffect/abnormal/{}.png",
-    ),
     "preview": (
         "https://raw.githubusercontent.com/Murmansk-Seer/"
         "seer-unity-preview-img-dumper/main/img/preview.png",
@@ -38,6 +34,12 @@ _URLS: dict[ImageKind, tuple[str, ...]] = {
     ),
 }
 _PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]] = {
+    "battle_effect": (
+        (
+            "battle_effect",
+            "newseer/assets/art/ui/assets/battleeffect/abnormal/{}.png",
+        ),
+    ),
     "element_type": (("element_type", "newseer/assets/art/ui/assets/pettype/{}.png"),),
     "equip": (("equip", "newseer/assets/art/ui/assets/item/cloth/prev/{}.png"),),
     "item": (
