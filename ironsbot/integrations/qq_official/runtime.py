@@ -16,6 +16,7 @@ from nonebot.adapters.qq.event import (
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.rule import Rule
 
+from ironsbot.core.message_input import MessageInputContext
 from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
     qq_official_incoming_message,
@@ -41,9 +42,10 @@ def install_qq_official_runtime(router: PortableCommandRouter) -> None:
     ) -> None:
         incoming = qq_official_incoming_message(event)
         reply = await router.dispatch(
-            incoming.text,
-            actor=incoming.actor,
-            conversation=incoming.conversation,
+            MessageInputContext(
+                incoming,
+                mentions_bot=isinstance(event, GroupMessageCreateEvent),
+            )
         )
         if reply is None:
             return
@@ -73,7 +75,8 @@ def qq_official_event_is_supported(
         return False
     incoming = qq_official_incoming_message(event)
     return router.recognizes(
-        incoming.text,
-        actor=incoming.actor,
-        conversation=incoming.conversation,
+        MessageInputContext(
+            incoming,
+            mentions_bot=isinstance(event, GroupMessageCreateEvent),
+        )
     )

@@ -4,9 +4,14 @@ from dataclasses import dataclass
 
 import pytest
 
-from ironsbot.core.command_catalog import CommandContext
+from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
     QueryOperationSpec,
@@ -27,15 +32,23 @@ def _context(
     actor_id: str,
     *,
     group_id: str = "group-a",
-) -> CommandContext:
-    return CommandContext(
-        actor=ActorRef(
+) -> MessageInputContext:
+    actor = ActorRef(
             Platform.QQ_OFFICIAL,
             actor_id,
             "member",
             group_id,
+        )
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", group_id)
+    return MessageInputContext(
+        IncomingMessageRef(
+            platform=Platform.QQ_OFFICIAL,
+            actor=actor,
+            conversation=conversation,
+            message_id=f"message-{actor_id}-{group_id}",
+            text="",
         ),
-        conversation=ConversationRef(Platform.QQ_OFFICIAL, "group", group_id),
+        mentions_bot=True,
     )
 
 

@@ -31,9 +31,11 @@ def qq_official_incoming_message(event: QQMessageEvent) -> IncomingMessageRef:
             "member",
             conversation_id,
         )
+        group_role = event.author.member_role
     elif isinstance(event, C2CMessageCreateEvent):
         actor = ActorRef(Platform.QQ_OFFICIAL, event.author.user_openid)
         conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+        group_role = None
     else:
         msg = f"unsupported QQ Official message event: {type(event).__name__}"
         raise TypeError(msg)
@@ -43,6 +45,7 @@ def qq_official_incoming_message(event: QQMessageEvent) -> IncomingMessageRef:
         conversation=conversation,
         message_id=event.id,
         text=event.get_plaintext().strip(),
+        group_role=group_role,
         sequence=event.msg_idx,
     )
 

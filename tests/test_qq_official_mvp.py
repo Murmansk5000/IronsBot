@@ -18,8 +18,14 @@ from ironsbot.config.loader import load_settings
 from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
 from ironsbot.config.models.settings import QQOfficialConfig
 from ironsbot.core.command_catalog import CommandCatalog
+from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
@@ -35,6 +41,7 @@ from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 
 if TYPE_CHECKING:
@@ -42,6 +49,7 @@ if TYPE_CHECKING:
 
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
+    from ironsbot.services.seer.team import TeamQueryActor
 
 
 class _FakeDataQueries:
@@ -95,17 +103,52 @@ class _FakePetQuery:
         return QueryResult()
 
 
-def _fake_seer(*, pet_query: object | None = None) -> SeerQueryResources:
+class _FakePeakQuery(_UnusedQueryService):
+    async def pool(
+        self,
+        *,
+        expert: bool,
+        progress: Callable[[str], Awaitable[None]],
+    ) -> PeakQueryResult:
+        await progress("rendering")
+        return PeakQueryResult(text="专家池" if expert else "竞技池")
+
+
+class _FakeTeamQuery:
+    @staticmethod
+    def parse_team_ids(text: str) -> tuple[int, ...]:
+        return tuple(int(value) for value in text.split())
+
+    async def query(
+        self,
+        team_ids: tuple[int, ...],
+        actor: TeamQueryActor,
+    ) -> str:
+        assert actor.actor.id == "opaque-member"
+        assert actor.conversation is not None
+        assert actor.conversation.id == "group-a"
+        assert not actor.can_manage
+        return "战队:" + ",".join(str(value) for value in team_ids)
+
+
+def _fake_seer(
+    *,
+    pet_query: object | None = None,
+    peak_query: object | None = None,
+    team_query: object | None = None,
+) -> SeerQueryResources:
     unused = _UnusedQueryService()
     return cast(
         "SeerQueryResources",
         SimpleNamespace(
             data_queries=_FakeDataQueries(),
+            team_query=team_query or unused,
             pet_query=pet_query or unused,
             mintmark=unused,
             equipment=unused,
             type_query=unused,
             battle_effect=unused,
+            peak_query=peak_query or unused,
         ),
     )
 
@@ -113,11 +156,14 @@ def _fake_seer(*, pet_query: object | None = None) -> SeerQueryResources:
 def _portable_catalog() -> CommandCatalog:
     command_ids = {
         "seer.data.query",
+        "seer.team.query",
         "seer.pet.query",
         "seer.pet.image",
         "seer.mintmark.query",
         "seer.equipment.query",
         "seer.type.query",
+        "seer.peak.query",
+        "seer.peak.rank",
     }
     seer_contracts = tuple(
         contract
@@ -137,13 +183,35 @@ def _portable_catalog() -> CommandCatalog:
             "help",
             "about",
             "seer_data",
+            "seer_team",
             "seer_pet",
             "seer_mintmark",
             "seer_equipment",
             "seer_type",
+            "seer_peak",
         ),
     )
     return catalog
+
+
+def _portable_input(
+    text: str,
+    actor: ActorRef,
+    conversation: ConversationRef,
+    *,
+    group_role: str | None = None,
+) -> MessageInputContext:
+    return MessageInputContext(
+        IncomingMessageRef(
+            platform=actor.platform,
+            actor=actor,
+            conversation=conversation,
+            message_id=f"message-{actor.id}-{text}",
+            text=text,
+            group_role=group_role,
+        ),
+        mentions_bot=conversation.kind == "group",
+    )
 
 
 def test_qq_official_config_loads_credentials_from_environment(
@@ -208,6 +276,7 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         "group",
         "opaque-group",
     )
+    assert incoming.group_role == "member"
     assert incoming.sequence == "sequence-1"
 
 
@@ -247,21 +316,13 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
 
-    help_message = await router.dispatch(
-        "帮助",
-        actor=actor,
-        conversation=conversation,
-    )
+    help_message = await router.dispatch(_portable_input("帮助", actor, conversation))
     assert help_message is not None
     assert isinstance(help_message.parts[0], TextPart)
     assert "关于" in help_message.parts[0].text
     assert "数据版本" not in help_message.parts[0].text
     assert (
-        await router.dispatch(
-            "数据版本",
-            actor=actor,
-            conversation=conversation,
-        )
+        await router.dispatch(_portable_input("数据版本", actor, conversation))
         is None
     )
 
@@ -287,20 +348,64 @@ async def test_portable_router_runs_scoped_query_selection(
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
 
     choices = await router.dispatch(
-        "精灵雷伊",
-        actor=actor,
-        conversation=conversation,
+        _portable_input("精灵雷伊", actor, conversation)
     )
     assert choices is not None
     assert "1. 雷伊" in cast("TextPart", choices.parts[0]).text
-    assert router.recognizes("2", actor=actor, conversation=conversation)
+    assert router.recognizes(_portable_input("2", actor, conversation))
 
-    selected = await router.dispatch("2", actor=actor, conversation=conversation)
+    selected = await router.dispatch(_portable_input("2", actor, conversation))
     assert selected is not None
     selected_text = cast("TextPart", selected.parts[0]).text
     assert selected_text == (
         DATABASE_UNAVAILABLE_MESSAGE if fail_selection else "精灵:2394"
     )
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=QQOfficialConfig(features=["seer_peak"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(peak_query=_FakePeakQuery()),
+        features=features,
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+
+    result = await router.dispatch(_portable_input("竞技池", actor, conversation))
+
+    assert result is not None
+    assert cast("TextPart", result.parts[0]).text == "竞技池"
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_team_query_with_opaque_context() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=QQOfficialConfig(features=["seer_team"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(team_query=_FakeTeamQuery()),
+        features=features,
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
+
+    result = await router.dispatch(
+        _portable_input("战队123456 654321", actor, conversation)
+    )
+
+    assert result is not None
+    assert cast("TextPart", result.parts[0]).text == "战队:123456,654321"
 
 
 def test_c2c_identity_uses_user_openid() -> None:
@@ -325,6 +430,7 @@ def test_c2c_identity_uses_user_openid() -> None:
         "private",
         "opaque-user",
     )
+    assert incoming.group_role is None
 
 
 def test_bootstrap_registers_qq_official_adapter(tmp_path: Path) -> None:

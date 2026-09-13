@@ -7,7 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Protocol
 
 from ironsbot.core.command_catalog import CommandContext
-from ironsbot.core.commands import command_text_matches, normalize_command_text
+from ironsbot.core.commands import command_text_matches
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
@@ -22,6 +22,15 @@ from ironsbot.services.seer.data_query_commands import (
     WEEKLY_PREVIEW_COMMANDS,
 )
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.peak import (
+    PEAK_EXPERT_POOL_COMMANDS,
+    PEAK_MASTER_POOL_COMMANDS,
+    PEAK_PET_RANK_COMMANDS,
+    PEAK_POOL_COMMANDS,
+    PEAK_SUIT_RANK_COMMANDS,
+    PEAK_TITLE_RANK_COMMANDS,
+    PEAK_VOTE_COMMANDS,
+)
 from ironsbot.services.seer.query_commands import (
     BATTLE_EFFECT_QUERY,
     EQUIP_QUERY,
@@ -32,7 +41,9 @@ from ironsbot.services.seer.query_commands import (
     TYPE_QUERY,
     pet_image_input,
     pet_query_input,
+    team_query_input,
 )
+from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Mapping
@@ -40,16 +51,17 @@ if TYPE_CHECKING:
     from ironsbot.core.affix_commands import AffixParser
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.about import AboutService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
+    from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.resources import SeerQueryResources
 
 
 class PortableOperation(Protocol):
     def __call__(
-        self, text: str, context: CommandContext
+        self, text: str, context: MessageInputContext
     ) -> Awaitable[OutboundMessage | str | DataQueryImageReply]: ...
 
 
@@ -77,37 +89,31 @@ class PortableCommandRouter:
 
     def recognizes(
         self,
-        text: str,
-        *,
-        actor: ActorRef,
-        conversation: ConversationRef,
+        context: MessageInputContext,
     ) -> bool:
-        command = _command_text(text)
-        context = CommandContext(actor=actor, conversation=conversation)
+        command = _command_text(context.text)
+        command_context = _command_context(context)
         return self._query_sessions.recognizes_selection(command, context) or (
-            self._matching_contract(command, context=context) is not None
+            self._matching_contract(command, context=command_context) is not None
         )
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
         self,
-        text: str,
-        *,
-        actor: ActorRef,
-        conversation: ConversationRef,
+        context: MessageInputContext,
     ) -> OutboundMessage | None:
-        command = _command_text(text)
-        context = CommandContext(actor=actor, conversation=conversation)
+        command = _command_text(context.text)
+        command_context = _command_context(context)
         try:
             selected = await self._query_sessions.select(command, context)
         except DataUnavailableError:
             return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
         if selected is not None:
             return selected
-        contract = self._matching_contract(command, context=context)
+        contract = self._matching_contract(command, context=command_context)
         if contract is None:
             return None
         if contract.id == "help":
-            return self._help(context)
+            return self._help(command_context)
         try:
             result = await self._operations[contract.id](command, context)
         except DataUnavailableError:
@@ -164,11 +170,17 @@ def build_portable_command_router(
     seer: SeerQueryResources,
     features: FeatureService,
 ) -> PortableCommandRouter:
-    async def about_message(text: str, context: CommandContext) -> OutboundMessage:
+    async def about_message(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
         del text, context
         return about.message()
 
-    async def data_query(text: str, context: CommandContext) -> DataQueryReply:
+    async def data_query(
+        text: str,
+        context: MessageInputContext,
+    ) -> DataQueryReply:
         del context
         if command_text_matches(text, DATA_VERSION_COMMANDS):
             return await seer.data_queries.data_version()
@@ -179,10 +191,33 @@ def build_portable_command_router(
         msg = f"unsupported portable Seer data command: {text!r}"
         raise ValueError(msg)
 
+    async def team_query(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        parsed = team_query_input(text)
+        if parsed is None:
+            msg = f"catalog accepted input that its team parser rejected: {text!r}"
+            raise ValueError(msg)
+        message = context.message
+        team_ids = seer.team_query.parse_team_ids(parsed.argument)
+        result = await seer.team_query.query(
+            team_ids,
+            TeamQueryActor(
+                actor=message.actor,
+                conversation=message.conversation,
+                can_manage=False,
+            ),
+        )
+        return OutboundMessage.from_text(result)
+
     sessions = PortableQuerySessions()
     operations: dict[str, PortableOperation] = {
         "about": about_message,
         "seer.data.query": data_query,
+        "seer.team.query": team_query,
+        "seer.peak.query": _build_peak_query_operation(seer.peak_query),
+        "seer.peak.rank": _build_peak_rank_operation(seer.peak_query),
         "seer.pet.query": build_query_operation(
             sessions,
             QueryOperationSpec(
@@ -323,7 +358,7 @@ def _equipment_queries() -> tuple[
 def _first_matching_operation(
     routes: tuple[tuple[AffixParser, PortableOperation], ...],
 ) -> PortableOperation:
-    async def execute(text: str, context: CommandContext):
+    async def execute(text: str, context: MessageInputContext):
         operation = next(
             (operation for parser, operation in routes if parser(text) is not None),
             None,
@@ -336,10 +371,61 @@ def _first_matching_operation(
     return execute
 
 
-def _command_text(text: str) -> str:
-    normalized = normalize_command_text(text)
-    return (
-        normalize_command_text(normalized[1:])
-        if normalized.startswith("/")
-        else normalized
+def _command_context(context: MessageInputContext) -> CommandContext:
+    message = context.message
+    return CommandContext(
+        actor=message.actor,
+        conversation=message.conversation,
+        group_role=message.group_role,
     )
+
+
+async def _ignore_progress(_message: str) -> None:
+    """A passive platform sends only the final result for one command."""
+
+
+def _build_peak_query_operation(service: PeakQueryService) -> PortableOperation:
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del context
+        if text in PEAK_POOL_COMMANDS:
+            result = await service.pool(expert=False, progress=_ignore_progress)
+        elif text in PEAK_EXPERT_POOL_COMMANDS:
+            result = await service.pool(expert=True, progress=_ignore_progress)
+        elif text in PEAK_MASTER_POOL_COMMANDS:
+            result = await service.master_pool(_ignore_progress)
+        elif text in PEAK_VOTE_COMMANDS:
+            result = await service.vote(_ignore_progress)
+        else:
+            msg = f"unsupported portable peak query command: {text!r}"
+            raise ValueError(msg)
+        return result.to_outbound()
+
+    return execute
+
+
+def _build_peak_rank_operation(service: PeakQueryService) -> PortableOperation:
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del context
+        if text in PEAK_SUIT_RANK_COMMANDS:
+            result = await service.item_rank(text, kind="套装")
+        elif text in PEAK_TITLE_RANK_COMMANDS:
+            result = await service.item_rank(text, kind="称号")
+        elif text in PEAK_PET_RANK_COMMANDS:
+            result = await service.pet_rank(text, _ignore_progress)
+        else:
+            msg = f"unsupported portable peak rank command: {text!r}"
+            raise ValueError(msg)
+        return result.to_outbound()
+
+    return execute
+
+
+def _command_text(text: str) -> str:
+    stripped = text.strip()
+    return stripped[1:].strip() if stripped.startswith("/") else stripped

@@ -12,7 +12,7 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 
 if TYPE_CHECKING:
-    from ironsbot.core.command_catalog import CommandContext
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.seer.query_result import QueryResult
 
@@ -26,7 +26,7 @@ _UntypedSelect = Callable[[object], Awaitable["QueryResult[Any]"]]
 
 class PortableQueryOperation(Protocol):
     def __call__(
-        self, text: str, context: CommandContext
+        self, text: str, context: MessageInputContext
     ) -> Awaitable[OutboundMessage]: ...
 
 
@@ -69,14 +69,14 @@ class PortableQuerySessions:
         self._now = now
         self._pending: dict[_SessionKey, _PendingSelection] = {}
 
-    def recognizes_selection(self, text: str, context: CommandContext) -> bool:
+    def recognizes_selection(self, text: str, context: MessageInputContext) -> bool:
         key = self._key(context)
         self._drop_expired(key)
         return key in self._pending and text.strip().isdigit()
 
     async def begin(
         self,
-        context: CommandContext,
+        context: MessageInputContext,
         *,
         argument: str,
         spec: QueryOperationSpec[_T],
@@ -96,7 +96,7 @@ class PortableQuerySessions:
     async def select(
         self,
         text: str,
-        context: CommandContext,
+        context: MessageInputContext,
     ) -> OutboundMessage | None:
         key = self._key(context)
         self._drop_expired(key)
@@ -124,7 +124,7 @@ class PortableQuerySessions:
 
     def _present(
         self,
-        context: CommandContext,
+        context: MessageInputContext,
         result: QueryResult[Any],
         *,
         select: _UntypedSelect,
@@ -171,8 +171,8 @@ class PortableQuerySessions:
             self._pending.pop(key, None)
 
     @staticmethod
-    def _key(context: CommandContext) -> _SessionKey:
-        return context.actor, context.conversation
+    def _key(context: MessageInputContext) -> _SessionKey:
+        return context.message.actor, context.message.conversation
 
 
 def build_query_operation(
@@ -181,7 +181,7 @@ def build_query_operation(
 ) -> PortableQueryOperation:
     """Adapt one QueryResult service without duplicating its command grammar."""
 
-    async def execute(text: str, context: CommandContext) -> OutboundMessage:
+    async def execute(text: str, context: MessageInputContext) -> OutboundMessage:
         argument = spec.parser(text)
         if argument is None:
             msg = f"catalog accepted input that its query parser rejected: {text!r}"
