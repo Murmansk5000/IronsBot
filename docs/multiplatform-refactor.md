@@ -2361,3 +2361,11 @@ AI fallback 和结果归一化；数据、战队、榜单帮助、精灵、刻�
 依赖、配置、数据库、素材或镜像层。专项 `142 passed, 7 skipped`，全量
 `3363 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。真实
 QQ Official AppID 联机与平台权限仍是 Phase 7 的最终验收门，总进度保持 7/8。
+
+B站超级管理员手动刷新随后进入 portable router。OneBot 与 QQ Official 现在共同调用
+`BilibiliMonitorService.manual_refresh()`，并统一区分“完成、已有任务执行中、远端响应
+无效”三种结果；旧 OneBot 路径不再把已执行但 HTTP/Cookie 响应无效的检查误报为完成。
+完整示例目录 75 条命令中已有 60 条具备 portable executor；剩余项明确属于数字 QQ
+幸运橱窗账户、长任务进度投递或群榜单设置，不以伪映射接入。专项 `75 passed`，全量
+`3368 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。没有
+新增运行依赖、配置、数据库、素材或镜像层，真实平台验收门不变。

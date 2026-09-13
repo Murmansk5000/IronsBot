@@ -30,6 +30,7 @@ def build_portable_bilibili_operations(
     sessions: PortableQuerySessions,
     *,
     notify_auth_invalid: Callable[[str], Awaitable[None]],
+    refresh_now: Callable[[], Awaitable[str]],
 ) -> Mapping[str, PortableOperation]:
     """Bind the Bilibili history menu to shared portable query sessions."""
 
@@ -96,11 +97,19 @@ def build_portable_bilibili_operations(
             )
         )
 
+    async def refresh(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text, context
+        return OutboundMessage.from_text(await refresh_now())
+
     return {
         "bilibili.dynamic": dynamic,
         "bilibili.accounts": accounts,
         "bilibili.push_mode": push_mode,
         "bilibili.private_push_mode": push_mode,
+        "bilibili.refresh": refresh,
     }
 
 

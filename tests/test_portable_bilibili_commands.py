@@ -124,6 +124,7 @@ async def test_portable_bilibili_menu_reuses_numeric_session() -> None:
         cast("BilibiliService", service),
         sessions,
         notify_auth_invalid=notify,
+        refresh_now=lambda: _refresh_result("完成"),
     )["bilibili.dynamic"]
     context = _context("动态")
 
@@ -156,6 +157,7 @@ async def test_portable_bilibili_menu_reports_auth_failure() -> None:
         cast("BilibiliService", service),
         sessions,
         notify_auth_invalid=notify,
+        refresh_now=lambda: _refresh_result("完成"),
     )["bilibili.dynamic"]
 
     result = cast(
@@ -178,6 +180,7 @@ async def test_portable_bilibili_account_and_push_mode_keep_account_scope() -> N
         cast("BilibiliService", service),
         PortableQuerySessions(),
         notify_auth_invalid=notify,
+        refresh_now=lambda: _refresh_result("完成"),
     )
     context = _context("B站账号")
 
@@ -199,3 +202,36 @@ async def test_portable_bilibili_account_and_push_mode_keep_account_scope() -> N
     assert cast("TextPart", mode.parts[0]).text == (
         "模式:example-app:示例账号:链接"
     )
+
+
+async def _refresh_result(message: str) -> str:
+    return message
+
+
+@pytest.mark.asyncio
+async def test_portable_bilibili_refresh_uses_shared_monitor_action() -> None:
+    service = _FakeBilibiliService()
+    calls = 0
+
+    async def notify(_reason: str) -> None:
+        return None
+
+    async def refresh() -> str:
+        nonlocal calls
+        calls += 1
+        return "✅ 动态刷新完成。"
+
+    operations = build_portable_bilibili_operations(
+        cast("BilibiliService", service),
+        PortableQuerySessions(),
+        notify_auth_invalid=notify,
+        refresh_now=refresh,
+    )
+
+    result = cast(
+        "OutboundMessage",
+        await operations["bilibili.refresh"]("动态刷新", _context("动态刷新")),
+    )
+
+    assert cast("TextPart", result.parts[0]).text == "✅ 动态刷新完成。"
+    assert calls == 1

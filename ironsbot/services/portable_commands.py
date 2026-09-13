@@ -376,6 +376,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
                 bilibili,
                 sessions,
                 notify_auth_invalid=bilibili_monitor.notify_auth_invalid,
+                refresh_now=bilibili_monitor.manual_refresh,
             )
         ),
     )

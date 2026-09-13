@@ -50,6 +50,7 @@ from ironsbot.integrations.qq_official.runtime import (
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.meeting import meeting_command_contracts
 from ironsbot.services.operations.server_status import ServerStatusResult
@@ -73,6 +74,8 @@ if TYPE_CHECKING:
 
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+    from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -321,10 +324,11 @@ def _unused_team_resource() -> TeamResourceService:
     return cast("TeamResourceService", SimpleNamespace())
 
 
-def _portable_catalog(
+def _portable_catalog(  # noqa: PLR0913 - tests vary independent command families
     *,
     ai_chat: bool = False,
     activity: bool = False,
+    bilibili: bool = False,
     operations: bool = False,
     pet_config: bool = False,
     rank_status: bool = False,
@@ -383,6 +387,13 @@ def _portable_catalog(
         contributions.append(
             PluginContribution(id="activity", commands=activity_command_contracts())
         )
+    if bilibili:
+        contributions.append(
+            PluginContribution(
+                id="bilibili",
+                commands=bilibili_command_contracts(),
+            )
+        )
     if operations:
         contributions.extend(
             (
@@ -419,6 +430,8 @@ def _portable_catalog(
             "seer_rank",
             "ai_chat",
             "seer_activity_query",
+            "bili_query",
+            "bili_push",
             "server_status_query",
             "meeting",
             "pet_config",
@@ -1079,6 +1092,75 @@ async def test_portable_router_enforces_operational_query_access() -> None:
     assert await dispatch("/无头状态", member) is None
     assert await dispatch("/开服查询", admin) == "admin status"
     assert await dispatch("/无头状态", admin) == "instance status"
+
+
+@pytest.mark.asyncio
+async def test_portable_router_limits_bilibili_refresh_to_superusers() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(
+            features=["bili_push"],
+            superusers=["opaque-admin"],
+        ),
+    )
+    refresh_calls = 0
+
+    async def notify_auth_invalid(_reason: str) -> None:
+        return None
+
+    async def manual_refresh() -> str:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return "✅ 动态刷新完成。"
+
+    router = build_portable_command_router(
+        catalog=_portable_catalog(bilibili=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+        bilibili=cast("BilibiliService", SimpleNamespace()),
+        bilibili_monitor=cast(
+            "BilibiliMonitorService",
+            SimpleNamespace(
+                notify_auth_invalid=notify_auth_invalid,
+                manual_refresh=manual_refresh,
+            ),
+        ),
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        account_id="example-app",
+    )
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        account_id="example-app",
+    )
+
+    def private_context(actor: ActorRef) -> MessageInputContext:
+        return _portable_input(
+            "/动态刷新",
+            actor,
+            ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "private",
+                actor.id,
+                account_id=actor.account_id,
+            ),
+        )
+
+    assert not router.recognizes(private_context(member))
+    assert await router.dispatch(private_context(member)) is None
+    reply = await router.dispatch(private_context(admin))
+
+    assert reply is not None
+    assert cast("TextPart", reply.message.parts[0]).text == "✅ 动态刷新完成。"
+    assert refresh_calls == 1
 
 
 @pytest.mark.asyncio
