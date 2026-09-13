@@ -655,6 +655,17 @@ enabled = true
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
+# EN: Proactive delivery retry policy; uncomment the complete table to configure it.
+# ZH: 主动推送重试策略；需要调整时取消下列完整表的注释，不影响目标权限。
+# [messaging.proactive_delivery]
+# max_attempts = 3
+# max_parallel_targets = 5
+# retry_batch_divisor = 3
+# retry_delay_seconds = 2.0
+# EN: The first three values must be >= 1; retry delay must be >= 0 seconds.
+# Only explicitly retryable failures are retried; uncertain/permanent failures are not.
+# ZH: 前三项至少1，等待秒数非负；只重试明确可重试的失败，不重复发送不确定或永久失败。
+
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]
 # EN: Commands that open the unsubscribe menu. Matching is case-insensitive.

@@ -429,6 +429,14 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 `fallback_to_current_image_on_handoff_failure` 默认 `true`：交接超时或失败后，尝试回收更新器，
 再继续启动当前镜像；设为 `false` 时保持等待。它们不代替 `check_on_startup`，也不改变手动维护菜单的选择。
 
+### 主动推送重试参数
+
+`[messaging.proactive_delivery]` 控制主动推送：`max_attempts` 默认 `3`、`max_parallel_targets`
+默认 `5`、`retry_batch_divisor` 默认 `3`，这三项均至少为 `1`；`retry_delay_seconds` 默认 `2.0` 秒且不得为负数。
+第 `attempt` 次尝试（从 `1` 开始）的批次上限为 `max(1, ceil(max_parallel_targets / retry_batch_divisor ** (attempt - 1)))`，
+除数为 `1` 时上限不变。只重新排入明确可重试的失败；结果不确定或永久失败不重复发送，
+传输不可用时停止后续尝试。它不是聊天口令参数，不改变目标权限或保证并发送达顺序。
+
 ## 数据与缓存
 
 建议把 `/app/data` 持久化。这里会保存：
