@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
 from ironsbot.core.platform import validate_reply_deadline
@@ -51,6 +52,10 @@ class OutboundMessageError(ValueError):
     @classmethod
     def missing_delivery_error(cls) -> OutboundMessageError:
         return cls("incomplete delivery state: missing error")
+
+    @classmethod
+    def successful_delivery_failure_kind(cls) -> OutboundMessageError:
+        return cls("successful delivery must not have a failure kind")
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +142,15 @@ class DeliveryCapabilities:
     supports_images: bool
 
 
+class DeliveryFailureKind(str, Enum):
+    """Transport-neutral disposition for an unsuccessful delivery."""
+
+    PERMANENT = "permanent"
+    RETRYABLE = "retryable"
+    UNCERTAIN = "uncertain"
+    TRANSPORT_UNAVAILABLE = "transport_unavailable"
+
+
 @dataclass(frozen=True, slots=True)
 class SendResult:
     delivered: bool
@@ -144,12 +158,15 @@ class SendResult:
     error_code: str | None = None
     error_message: str | None = None
     trace_id: str | None = None
+    failure_kind: DeliveryFailureKind | None = None
 
     def __post_init__(self) -> None:
         if self.delivered and not (self.message_id or "").strip():
             raise OutboundMessageError.missing_delivery_message_id()
         if not self.delivered and not (self.error_code or self.error_message):
             raise OutboundMessageError.missing_delivery_error()
+        if self.delivered and self.failure_kind is not None:
+            raise OutboundMessageError.successful_delivery_failure_kind()
 
 
 class OutboundMessenger(Protocol):

@@ -659,6 +659,18 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
+[messaging.proactive_delivery]
+# Generic bounded fan-out policy shared by every proactive push producer.
+# 主动推送共用的有限并发与重试策略，不包含任何 QQ 号或平台错误码。
+# Default: 3; total delivery attempts for explicitly retryable failures.
+max_attempts = 3
+# Default: 5; maximum destinations submitted concurrently in one batch.
+max_parallel_targets = 5
+# Default: 3; divide retry batch capacity by this value after each attempt.
+retry_batch_divisor = 3
+# Default: 2.0; pause before each retry round.
+retry_delay_seconds = 2.0
+
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]
 # EN: Commands that open the unsubscribe menu. Matching is case-insensitive.

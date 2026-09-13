@@ -24,6 +24,7 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
+    ProactiveDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.operations import (
@@ -1729,6 +1730,7 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.activity.lead_hours == [11, 1]
     assert not app_config.messaging.command_cooldown.enabled
     assert not app_config.messaging.outbound_rate_limit.enabled
+    assert app_config.messaging.proactive_delivery == ProactiveDeliveryConfig()
     assert "seerapi" in app_config.operations.data_sync.sources
     assert (
         app_config.messaging.outbound_rate_limit.windows[0].max_messages

@@ -1792,3 +1792,13 @@ OneBot 仅承载数字菜单；旧 `check_on_restart` 配置和无调用的确�
 
 目标平台的管理员身份映射仍遵循 QQ 身份能力延期规则，最后统一验收，不在本阶段
 增加 QQ 号专用补丁。
+
+## 主动推送通用加固（2026-09-13）
+
+主动推送的有限并发、缩批重试、结果不确定时防重发和传输断线止损迁入
+`services.messaging.proactive_delivery`。平台适配器通过 `DeliveryFailureKind` 提交失败
+语义；OneBot 错误码不进入 core 或业务 service。现有 TOML 可继续使用默认策略，
+需要调参时才增加 `[messaging.proactive_delivery]`。
+
+本阶段不实现 QQ 号路由或目标平台主动消息资格映射；这些依赖平台 API 的内容仍在
+最后验收阶段处理。

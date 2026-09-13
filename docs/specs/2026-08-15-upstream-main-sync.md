@@ -60,7 +60,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
 | Bilibili 抽奖/中奖拆分 | 复用配置驱动分类，不增加硬编码枚举或旧配置迁移器 | 无 | completed |
 | 新增技能根菜单预览 | 根预览只含新增项；技能排除本周新精灵自带技能，详情保留完整数据 | 无 | completed |
-| 队列推送加固 | 先审计 V5 `ProactiveMessageDelivery`，仅在 OneBot 最后一跳补真实缺口 | 最终 OneBot smoke | planned |
+| 队列推送加固 | 由 `ProactiveMessageDelivery` 限制并发并按通用失败类型重试；平台适配器只分类错误 | 真实平台 smoke | completed：通用策略已完成；真实传输验收延期 |
 | 群星牌觉醒卡合并 | 在 Autocard repository/view model 合并普通/觉醒事实，适配器只发送结果 | 发布数据契约审计 | completed |
 | 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；QQ 交互部分最后验收 | 目标平台能力 | planned |
 | 战队详情增强 | repository 产出类型化事实，service 决定展示段，不复制旧 matcher 格式化 | 无 | partial：直接战队号详情完成；QQ 玩家目标延期 |
@@ -100,13 +100,14 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | 战队详情增强（非 QQ 部分） | team service、配置与订阅简版回归 | 直接战队号查询补标语、公告与 Boss 剩余能量；订阅提醒保持简版。按 QQ 玩家目标查询延期。 |
 | 2026-09-13 | 竞技池、专家池与大师池变化 | seerapi 317 tests；机器人 focused 327 tests、full 3189 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3`、`dadfe83` 直接使用既有池表和精灵外键发布变化；机器人统一分类、详情、图片与大师池直接查询，不复制旧专用 renderer。 |
 | 2026-09-13 | Docker 维护菜单 | operations service、命令所有权、配置与 OneBot 适配专项 143 项；Ruff、BasedPyright、compileall | 两个维护动作具有唯一 service 契约；所有维护入口打开同一菜单，删除 `check_on_restart` 和旧确认双轨。QQ/目标平台管理员身份只在最终平台阶段验收。 |
+| 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
-Slice    [████████████□□□□] 12/16 tracked outcomes resolved; 4 remain
-Current  [██████████] Docker maintenance actions and menu verified
+Slice    [█████████████□□□] 13/16 tracked outcomes resolved; 3 remain
+Current  [██████████] platform-neutral proactive delivery hardening verified
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.
