@@ -18,7 +18,7 @@ from ironsbot.services.seer.lucky_skin_window import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.config.models.seer import LuckySkinWindowConfig
+    from ironsbot.config.models.seer_lucky import LuckySkinWindowConfig
     from ironsbot.config.onebot_references import OneBotReferenceResolver
     from ironsbot.services.identity.player_accounts import PlayerAccountRegistry
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository

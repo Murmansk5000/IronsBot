@@ -29,10 +29,7 @@ from ironsbot.core.time import (
     split_daily_time_values,
 )
 
-from .seer_lucky import (  # noqa: F401 - compatibility re-export
-    LuckySkinWindowAccountConfig,
-    LuckySkinWindowConfig,
-)
+from . import seer_lucky
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -736,8 +733,8 @@ class SeerConfig(BaseModel):
     external_references: ExternalReferencesConfig = Field(
         default_factory=ExternalReferencesConfig
     )
-    lucky_skin_window: LuckySkinWindowConfig = Field(
-        default_factory=LuckySkinWindowConfig
+    lucky_skin_window: seer_lucky.LuckySkinWindowConfig = Field(
+        default_factory=seer_lucky.LuckySkinWindowConfig
     )
 
     @model_validator(mode="before")
