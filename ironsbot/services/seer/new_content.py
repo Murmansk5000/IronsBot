@@ -5,19 +5,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from ironsbot.core.value_coercion import require_int
-from ironsbot.integrations.seer_data.new_content_repository import (
-    NewContentIndex,
-    NewContentIndexRepositoryError,
-    load_new_content_index,
-)
-
-if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataReader
-
 
 NewContentCategory = Literal[
     "achievement",
@@ -89,6 +80,40 @@ _CONFIG_VERSION_TIMESTAMP_LENGTH = 14
 DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 
 
+class NewContentIndexRepositoryError(RuntimeError):
+    """The published database does not expose a complete new-content index."""
+
+
+@dataclass(frozen=True, slots=True)
+class NewContentIndexItem:
+    category: str
+    entity_id: int
+    name: str
+    sort_value: int
+    payload: dict[str, Any]
+    change_kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class NewContentIndexCategoryState:
+    category: str
+    comparison_ready: bool
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class NewContentIndex:
+    config_version: str
+    weekly_cycle: str
+    baseline_established: bool
+    items: tuple[NewContentIndexItem, ...]
+    category_states: tuple[NewContentIndexCategoryState, ...]
+
+
+class NewContentRepository(Protocol):
+    def load(self) -> NewContentIndex: ...
+
+
 class NewContentIndexUnavailableError(RuntimeError):
     """The downloaded SeerAPI release predates the embedded index."""
 
@@ -146,10 +171,77 @@ def is_new_content_category_auto_expanded(
     category: NewContentCategory,
     max_items: int,
 ) -> bool:
-    """Expand short root-menu categories; zero disables automatic expansion."""
+    """Expand root previews with a bounded number of relevant additions."""
 
-    item_count = len(snapshot.items_for(category))
-    return 0 < item_count <= max_items
+    additions = _new_content_category_preview_additions(snapshot, category)
+    return 0 < len(additions) <= max_items
+
+
+def new_content_category_preview_items(
+    snapshot: NewContentSnapshot,
+    category: NewContentCategory,
+    max_items: int,
+) -> tuple[NewContentItem, ...]:
+    """Return bounded additions suitable for the root menu."""
+
+    if max_items <= 0:
+        return ()
+    return _new_content_category_preview_additions(snapshot, category)[:max_items]
+
+
+def _new_content_category_preview_additions(
+    snapshot: NewContentSnapshot,
+    category: NewContentCategory,
+) -> tuple[NewContentItem, ...]:
+    additions = tuple(
+        item for item in snapshot.items_for(category) if item.change_kind == "added"
+    )
+    if category != "skill":
+        return additions
+    return _existing_pet_skill_additions(snapshot, additions)
+
+
+def _existing_pet_skill_additions(
+    snapshot: NewContentSnapshot,
+    skills: tuple[NewContentItem, ...],
+) -> tuple[NewContentItem, ...]:
+    new_pets = tuple(
+        item for item in snapshot.items_for("pet") if item.change_kind == "added"
+    )
+    new_pet_ids = {item.entity_id for item in new_pets}
+    new_pet_names = {item.name.strip() for item in new_pets if item.name.strip()}
+    return tuple(
+        skill
+        for skill in skills
+        if _skill_belongs_to_existing_pet(skill, new_pet_ids, new_pet_names)
+    )
+
+
+def _skill_belongs_to_existing_pet(
+    skill: NewContentItem,
+    new_pet_ids: set[int],
+    new_pet_names: set[str],
+) -> bool:
+    pets = skill.payload.get("pets")
+    if not isinstance(pets, list) or not pets:
+        return False
+    for pet in pets:
+        if not isinstance(pet, dict):
+            continue
+        raw_id = pet.get("id")
+        pet_id = (
+            raw_id
+            if isinstance(raw_id, int) and not isinstance(raw_id, bool)
+            else 0
+        )
+        pet_name = str(pet.get("name", "")).strip()
+        if pet_id:
+            if pet_id not in new_pet_ids:
+                return True
+            continue
+        if pet_name and pet_name not in new_pet_names:
+            return True
+    return False
 
 
 def format_new_content_category_count(
@@ -170,13 +262,12 @@ def format_new_content_category_count(
 class NewContentService:
     """Read-only access to the publication index; no local baseline is kept."""
 
-    def __init__(self, data: SeerDataReader) -> None:
-        self._data = data
+    def __init__(self, repository: NewContentRepository) -> None:
+        self._repository = repository
 
     def snapshot(self) -> NewContentSnapshot:
         try:
-            with self._data.query(load_new_content_index) as index:
-                return _snapshot_from_index(index)
+            return _snapshot_from_index(self._repository.load())
         except (NewContentIndexRepositoryError, TypeError, ValueError) as error:
             raise NewContentIndexUnavailableError from error
 

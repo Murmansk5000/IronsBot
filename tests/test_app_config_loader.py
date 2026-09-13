@@ -76,6 +76,7 @@ DEFAULT_RANK_REFRESH_SCHEDULE_JITTER_SECONDS = 240
 DEFAULT_RANK_REFRESH_REQUEST_INTERVAL_SECONDS = 8.0
 DEFAULT_RANK_REFRESH_REQUEST_JITTER_SECONDS = 12.0
 DEFAULT_AUTOCARD_SCORE_CUTOFF = 1000
+DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
 DEFAULT_TEAM_AUDIT_FOLLOWUP_HOURS = 24.0
 DEFAULT_TEAM_AUDIT_FINAL_FOLLOWUP_HOURS = 48.0
 DEFAULT_SEER_PLAYER_PRIORITY = 10
@@ -264,6 +265,14 @@ def _assert_example_bili_category_subscriptions(config: Settings) -> None:
     assert account.categories["winning"].label == "中奖"
 
 
+def _assert_example_new_content(config: Settings) -> None:
+    assert config.seer.new_content.expanded_categories == []
+    assert (
+        config.seer.new_content.auto_expand_max_items
+        == DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS
+    )
+
+
 def test_example_config_parses() -> None:
     config = load_settings(ROOT / "config.example.toml")
 
@@ -309,6 +318,7 @@ def test_example_config_parses() -> None:
     assert config.seer.season.autocard_name == "群星牌赛季"
     assert config.seer.season.autocard_start_time is None
     assert config.seer.season.autocard_end_time is None
+    _assert_example_new_content(config)
     assert config.operations.data_sync.on_startup
     _assert_example_bot_routing(config)
     assert not config.operations.data_sync.startup_trigger_remote_build
