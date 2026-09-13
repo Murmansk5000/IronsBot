@@ -2235,7 +2235,7 @@ QQ 官方活动查询随后接入同一便携执行注册表。`快结束活动`
 再使用规范化文本，因此能够区分必须带斜杠的管理命令和普通聊天。活动定时提醒尚未
 宣称完成：虽然统一出站端口已具备 QQ 官方主动发送能力，但真实应用权限、额度以及官方
 平台订阅目标仍需验证。`core` 插件清单不拥有活动功能，因此代码默认 feature 保持最小；
-使用 `full` 清单的部署可在 `bot.qq_official.features` 显式启用
+使用 `full` 清单的部署可在账号级 `features` 显式启用
 `seer_activity_query`。
 
 配置型被动消息随后复用同一便携执行注册表。无 OneBot `at_user_ids` 的
@@ -2274,7 +2274,8 @@ QQ 官方被动回复序号随后按 `tencent-connect/qqbot-nodejs` 的传输约
 SQLite，也没有引入 Node.js 运行时或复制腾讯 SDK。
 
 QQ 官方主动目标随后接入共享 feature policy。部署者在
-`bot.qq_official.group_policy` / `user_policy` 中以 OpenID 声明目标及附加 feature；
+`bot.qq_official.accounts.<alias>.group_policy` / `user_policy` 中以 OpenID 声明
+目标及附加 feature；
 定时消息、活动/B站推送、重试、退订和时间偏好继续复用平台中立服务与同一个状态库。
 `TD`、`退订`、`订阅` 和 `推送时间` 已进入便携命令路由，普通群成员只读，群管理者
 与超级管理员沿用命令目录权限。该项不新增依赖、SQLite 或图片资源。真实主动消息权限、
@@ -2283,12 +2284,15 @@ QQ 官方主动目标随后接入共享 feature policy。部署者在
 对 `tencent-connect/openclaw-qqbot` 多账号实现的审计确认：OpenID 属于具体 AppID，
 多账号不能只扩展凭据列表。目标 `ActorRef` / `ConversationRef` 必须增加账户命名空间，
 并同步覆盖持久化主键、会话键、feature policy、Token/网关、回复序号和出站路由。
-在该离线状态迁移完成前保持单 QQ Official 账号，避免用字符串拼接或默认账号回退制造
-不可逆的身份串号。
+账号别名只用于配置与环境变量命名，运行时以 AppID 作为账户命名空间，避免用字符串
+拼接或默认账号回退制造不可逆的身份串号。
 
 账户感知的基础已经实现：核心 `ActorRef` / `ConversationRef` 可携带 `account_id`，
 QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID policy 进入同一账户
 命名空间，出站器会拒绝属于其他 AppID 的目标。共享状态库的 actor、conversation、
 操作人和提醒对象均已把独立账户列纳入主键，并提供停机、原子、可校验的 v2 迁移；
-检测到旧 QQ Official OpenID 时必须由部署者提供其原 AppID。当前 TOML 和 bootstrap
-仍只启动一个官方机器人，下一批才扩展账号数组、独立连接和账号级策略。
+检测到旧 QQ Official OpenID 时必须由部署者提供其原 AppID。TOML 现以
+`[bot.qq_official.accounts.<alias>]` 声明多个账号；每个账号独立注册 WebSocket、
+凭据、OpenID policy、默认 feature、超级管理员、主动消息权限和回复序号。出站目标
+必须明确携带原 AppID，不允许默认账号回退。当前 Python 适配器的 sandbox 仍是进程级
+配置，因此同一进程中的账号必须连接相同的正式或沙箱环境。

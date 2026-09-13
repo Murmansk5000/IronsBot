@@ -34,6 +34,9 @@ class FeatureService:
     platform_default_features: Mapping[Platform, frozenset[str]] = field(
         default_factory=dict
     )
+    account_default_features: Mapping[tuple[Platform, str], frozenset[str]] = field(
+        default_factory=dict
+    )
 
     @property
     def configured_feature_keys(self) -> frozenset[str]:
@@ -50,6 +53,7 @@ class FeatureService:
                 *self.group_features.values(),
                 *self.actor_features.values(),
                 *self.platform_default_features.values(),
+                *self.account_default_features.values(),
             )
             for feature in features
         )
@@ -63,8 +67,7 @@ class FeatureService:
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
         return (
             self.actor_has_feature(actor, feature)
-            or feature
-            in self.platform_default_features.get(actor.platform, frozenset())
+            or feature in self._default_features(actor.platform, actor.account_id)
             or (
                 self.superuser_bypass and self.is_actor_superuser(actor)
             )
@@ -77,8 +80,24 @@ class FeatureService:
     ) -> bool:
         return feature in self.group_features.get(
             conversation,
-            self.platform_default_features.get(conversation.platform, frozenset()),
+            self._default_features(
+                conversation.platform,
+                conversation.account_id,
+            ),
         )
+
+    def _default_features(
+        self,
+        platform: Platform,
+        account_id: str | None,
+    ) -> frozenset[str]:
+        if account_id is not None:
+            account_features = self.account_default_features.get(
+                (platform, account_id)
+            )
+            if account_features is not None:
+                return account_features
+        return self.platform_default_features.get(platform, frozenset())
 
     def is_feature_allowed(
         self,

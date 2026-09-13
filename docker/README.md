@@ -101,8 +101,9 @@ services:
     environment:
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
-      # Optional QQ Official Bot credentials. Enable [bot.qq_official] first.
-      # QQ_OFFICIAL_SECRET: "change-me"
+      # Optional QQ Official Bot account secret. The suffix is the uppercase
+      # account alias under [bot.qq_official.accounts.<alias>].
+      # QQ_OFFICIAL_SECRET_EXAMPLE_BOT: "change-me"
     restart: always
 
   napcat:
@@ -278,7 +279,7 @@ GITHUB_WORKFLOW_TOKEN=
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
-| `QQ_OFFICIAL_SECRET` | QQ Official Bot AppSecret; required only when `[bot.qq_official].enabled = true`. The adapter obtains and refreshes AccessToken automatically. |
+| `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. Each account obtains and refreshes its own AccessToken. |
 | `AI_KEY` | AI chat API key. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |

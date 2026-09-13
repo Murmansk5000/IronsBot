@@ -414,21 +414,29 @@ def validate_feature_config(
         | frozenset(resolved_bundles)
     )
     invalid: list[str] = []
+    qq_policies: list[tuple[str, Mapping[str, list[str]]]] = []
+    if qq_official is not None:
+        for account_name, account in qq_official.enabled_accounts.items():
+            qq_policies.extend(
+                (
+                    (
+                        f"bot.qq_official.accounts.{account_name}.features",
+                        {"default": account.features},
+                    ),
+                    (
+                        f"bot.qq_official.accounts.{account_name}.group_policy",
+                        account.group_policy,
+                    ),
+                    (
+                        f"bot.qq_official.accounts.{account_name}.user_policy",
+                        account.user_policy,
+                    ),
+                )
+            )
     for policy_name, policy in (
         ("features.group_policy", config.group_policy),
         ("features.user_policy", config.user_policy),
-        (
-            "bot.qq_official.features",
-            {} if qq_official is None else {"default": qq_official.features},
-        ),
-        (
-            "bot.qq_official.group_policy",
-            {} if qq_official is None else qq_official.group_policy,
-        ),
-        (
-            "bot.qq_official.user_policy",
-            {} if qq_official is None else qq_official.user_policy,
-        ),
+        *qq_policies,
     ):
         for target, features in policy.items():
             for index, raw_feature in enumerate(features):
@@ -494,27 +502,38 @@ def build_onebot_feature_service(
             _expand_policy_features(features, bundles)
         )
 
-    qq_account_id = None if qq_official is None else qq_official.app_id or None
-    qq_superuser_ids = () if qq_official is None else qq_official.superusers
+    qq_superusers: list[ActorRef] = []
+    qq_account_defaults: dict[tuple[Platform, str], frozenset[str]] = {}
     if qq_official is not None:
-        qq_default_features = frozenset(qq_official.features)
-        for openid, features in qq_official.group_policy.items():
-            conversation = ConversationRef(
-                Platform.QQ_OFFICIAL,
-                "group",
-                openid,
-                account_id=qq_account_id,
+        for account in qq_official.enabled_accounts.values():
+            account_id = account.app_id
+            default_features = _expand_policy_features(account.features, bundles)
+            qq_account_defaults[(Platform.QQ_OFFICIAL, account_id)] = default_features
+            qq_superusers.extend(
+                ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    str(user_id),
+                    account_id=account_id,
+                )
+                for user_id in account.superusers
             )
-            group_features[conversation] = qq_default_features | (
-                _expand_policy_features(features, bundles)
-            )
-        for openid, features in qq_official.user_policy.items():
-            actor = ActorRef(
-                Platform.QQ_OFFICIAL,
-                openid,
-                account_id=qq_account_id,
-            )
-            actor_features[actor] = _expand_policy_features(features, bundles)
+            for openid, features in account.group_policy.items():
+                conversation = ConversationRef(
+                    Platform.QQ_OFFICIAL,
+                    "group",
+                    openid,
+                    account_id=account_id,
+                )
+                group_features[conversation] = default_features | (
+                    _expand_policy_features(features, bundles)
+                )
+            for openid, features in account.user_policy.items():
+                actor = ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    openid,
+                    account_id=account_id,
+                )
+                actor_features[actor] = _expand_policy_features(features, bundles)
 
     return FeatureService(
         group_features=group_features,
@@ -522,22 +541,11 @@ def build_onebot_feature_service(
         superusers=frozenset(
             [
                 *(ActorRef(Platform.ONEBOT, str(user_id)) for user_id in superuser_ids),
-                *(
-                    ActorRef(
-                        Platform.QQ_OFFICIAL,
-                        str(user_id),
-                        account_id=qq_account_id,
-                    )
-                    for user_id in qq_superuser_ids
-                ),
+                *qq_superusers,
             ]
         ),
         superuser_bypass=config.superuser_bypass,
-        platform_default_features={
-            Platform.QQ_OFFICIAL: frozenset(
-                () if qq_official is None else qq_official.features
-            )
-        },
+        account_default_features=qq_account_defaults,
     )
 
 

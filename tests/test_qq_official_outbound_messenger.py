@@ -49,8 +49,18 @@ class _Bot:
         return SimpleNamespace(id=self.response_id)
 
 
-GROUP = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-openid")
-PRIVATE = ConversationRef(Platform.QQ_OFFICIAL, "private", "user-openid")
+GROUP = ConversationRef(
+    Platform.QQ_OFFICIAL,
+    "group",
+    "group-openid",
+    account_id="app",
+)
+PRIVATE = ConversationRef(
+    Platform.QQ_OFFICIAL,
+    "private",
+    "user-openid",
+    account_id="app",
+)
 TEXT = OutboundMessage.from_text("result")
 
 
@@ -58,7 +68,7 @@ TEXT = OutboundMessage.from_text("result")
 async def test_proactive_delivery_is_explicitly_disabled_by_default() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
-        "app",
+        {"app": False},
         bot_provider=lambda _app_id: bot,
     )
 
@@ -81,8 +91,7 @@ async def test_enabled_proactive_delivery_uses_conversation_target(
 ) -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
-        "app",
-        proactive_enabled=True,
+        {"app": True},
         bot_provider=lambda _app_id: bot,
     )
 
@@ -98,8 +107,7 @@ async def test_account_scoped_conversation_uses_its_matching_bot() -> None:
     bot = _Bot()
     requested_accounts: list[str] = []
     messenger = QQOfficialOutboundMessenger(
-        "app",
-        proactive_enabled=True,
+        {"app": True},
         bot_provider=lambda account_id: (
             requested_accounts.append(account_id) or bot
         ),
@@ -121,8 +129,7 @@ async def test_account_scoped_conversation_uses_its_matching_bot() -> None:
 async def test_single_account_messenger_rejects_another_bot_account() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
-        "app-a",
-        proactive_enabled=True,
+        {"app-a": True},
         bot_provider=lambda _app_id: bot,
     )
     conversation = ConversationRef(
@@ -140,10 +147,79 @@ async def test_single_account_messenger_rejects_another_bot_account() -> None:
 
 
 @pytest.mark.asyncio
+async def test_multi_account_delivery_uses_own_bot_and_policy() -> None:
+    bots = {"app-a": _Bot(), "app-b": _Bot()}
+    messenger = QQOfficialOutboundMessenger(
+        {"app-a": False, "app-b": True},
+        bot_provider=bots.get,
+    )
+    target_a = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "same-openid",
+        account_id="app-a",
+    )
+    target_b = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        "same-openid",
+        account_id="app-b",
+    )
+
+    rejected = await messenger.send(target_a, TEXT)
+    delivered = await messenger.send(target_b, TEXT)
+
+    assert rejected.error_code == "proactive_disabled"
+    assert delivered.delivered
+    assert bots["app-a"].calls == []
+    assert bots["app-b"].calls[0][1] == "same-openid"
+
+
+@pytest.mark.asyncio
+async def test_reply_sequences_are_isolated_by_bot_account() -> None:
+    bots = {"app-a": _Bot(), "app-b": _Bot()}
+    messenger = QQOfficialOutboundMessenger(
+        {"app-a": False, "app-b": False},
+        bot_provider=bots.get,
+    )
+
+    for account_id in bots:
+        conversation = ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            "same-openid",
+            account_id=account_id,
+        )
+        result = await messenger.reply(
+            ReplyContext(conversation, "same-message-id"),
+            TEXT,
+        )
+        assert result.delivered
+
+    assert bots["app-a"].calls[0][4] == 1
+    assert bots["app-b"].calls[0][4] == 1
+
+
+@pytest.mark.asyncio
+async def test_accountless_official_target_is_rejected() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        {"app": True},
+        bot_provider=lambda _app_id: bot,
+    )
+    target = ConversationRef(Platform.QQ_OFFICIAL, "private", "openid")
+
+    result = await messenger.send(target, TEXT)
+
+    assert result.error_code == "account_mismatch"
+    assert bot.calls == []
+
+
+@pytest.mark.asyncio
 async def test_reply_uses_event_message_id_and_first_reply_sequence() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
-        "app",
+        {"app": False},
         bot_provider=lambda _app_id: bot,
     )
 
@@ -157,7 +233,7 @@ async def test_reply_uses_event_message_id_and_first_reply_sequence() -> None:
 async def test_replies_allocate_unique_sequences_per_event() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
-        "app",
+        {"app": False},
         bot_provider=lambda _app_id: bot,
     )
 
@@ -175,8 +251,7 @@ async def test_replies_allocate_unique_sequences_per_event() -> None:
 async def test_reply_limit_can_fall_back_to_explicitly_enabled_proactive_send() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
-        "app",
-        proactive_enabled=True,
+        {"app": True},
         bot_provider=lambda _app_id: bot,
     )
 
@@ -196,8 +271,7 @@ async def test_reply_limit_can_fall_back_to_explicitly_enabled_proactive_send() 
 @pytest.mark.asyncio
 async def test_unavailable_bot_is_reported_without_attempting_delivery() -> None:
     messenger = QQOfficialOutboundMessenger(
-        "app",
-        proactive_enabled=True,
+        {"app": True},
         bot_provider=lambda _app_id: None,
     )
 
@@ -211,8 +285,7 @@ async def test_unavailable_bot_is_reported_without_attempting_delivery() -> None
 async def test_missing_response_id_is_an_uncertain_delivery() -> None:
     bot = _Bot(response_id=None)
     messenger = QQOfficialOutboundMessenger(
-        "app",
-        proactive_enabled=True,
+        {"app": True},
         bot_provider=lambda _app_id: bot,
     )
 
@@ -226,8 +299,7 @@ async def test_missing_response_id_is_an_uncertain_delivery() -> None:
 async def test_platform_router_delegates_and_rejects_missing_adapter() -> None:
     bot = _Bot()
     official = QQOfficialOutboundMessenger(
-        "app",
-        proactive_enabled=True,
+        {"app": True},
         bot_provider=lambda _app_id: bot,
     )
     routed = PlatformOutboundMessenger({Platform.QQ_OFFICIAL: official})
