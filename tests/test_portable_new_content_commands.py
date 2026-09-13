@@ -146,7 +146,7 @@ async def test_root_menu_replaces_category_session_with_numeric_item_menu() -> N
     assert "2. ▶ 新增成就" in _text(root)
     assert "1. 超级噗纽" in _text(category)
     assert _text(detail) == "精灵详情:4927"
-    assert sessions.recognizes_selection("1", context)
+    assert sessions.recognizes_response("1", context)
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
@@ -82,6 +83,11 @@ def bootstrap() -> Application:
                 team_resource=application.resources.team_resource,
                 activity=application.resources.activity,
                 messaging=application.resources.messaging,
+                refresh_push_time_jobs=partial(
+                    application.resources.messaging.refresh_push_time_jobs,
+                    scheduler=application.scheduler,
+                    activity_service=application.resources.activity,
+                ),
                 sendpic=application.resources.sendpic,
                 bilibili=application.resources.bilibili,
                 bilibili_monitor=application.resources.bilibili_monitor,
