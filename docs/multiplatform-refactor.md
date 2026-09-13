@@ -1968,3 +1968,8 @@ smoke。QQ 身份能力仍按平台延期规则排在最后。
 `generated-render-assets` 不存在时创建 orphan branch，以及后续 worktree 增量提交并推送
 新 revision。两轮提交不同，远端最终文件集符合预期。该 smoke 只关闭本地 Git 分支生命
 周期风险；真实 Actions 权限、资源生成耗时和发布后消费者验证仍是外部门禁。
+
+生成器随后进一步以 manifest v3 的 `default` 仓库事实裁剪 FFDec 输入，不再为已有 Unity
+PNG 的座驾重复生成图片，并从生成分支移除这类冗余副本。真实发布数据复核为 36 个座驾、
+25 个 Unity 命中、11 个 Flash 缺口，首次生成候选减少约 69%；SeerAPI 全量 `329 passed`。
+该优化缩短构建并减少生成分支体积，不改变机器人候选顺序或运行镜像内容。
