@@ -2002,3 +2002,10 @@ manifest，只处理缺口并仍导出整片缓存。最终 build 仍为座驾 F
 只有确实缺 PNG 时才安装 FFDec；冷构建和新增座驾仍走原渲染及 pending 记录。座驾/CI
 专项 14 passed、SeerAPI 全量 `335 passed`，Ruff、CLI、compileall、YAML 与差异检查通过。
 真实 Actions 热构建耗时仍待发布环境记录。
+
+同日按当前提交执行三仓本地完成度审计：IronsBot 全量 `3239 passed, 7 skipped`，Ruff、
+BasedPyright（0 errors/warnings）、compileall 与差异检查通过；SeerAPI 全量 `335 passed`；
+私有扩展通过 `IRONSBOT_PUBLIC_ROOT` 联合 V5 宿主运行 `42 passed, 1 skipped`，Ruff 与
+BasedPyright 通过。审计修正了幸运橱窗测试替身的 3 个类型声明错误，没有放宽检查或改变
+生产行为。Docker Desktop Linux Engine 仍在 12 秒只读探测中超时，系统权限也不允许
+启动其服务，因此最新镜像和真实 Actions 仍保留为外部门禁。
