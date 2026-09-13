@@ -55,6 +55,13 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
     with Session(engine) as session:
         session.execute(
             text(
+                "CREATE TABLE peak_cost_pool (id INTEGER PRIMARY KEY, cost INTEGER, "
+                "start_time TEXT, end_time TEXT)"
+            )
+        )
+        session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
+        session.execute(
+            text(
                 "CREATE TABLE ironsbot_metadata "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
@@ -377,6 +384,13 @@ def test_seer_database_rejects_release_without_schema_contract(
     engine = create_engine(f"sqlite:///{source}")
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
+        session.execute(
+            text(
+                "CREATE TABLE peak_cost_pool (id INTEGER PRIMARY KEY, cost INTEGER, "
+                "start_time TEXT, end_time TEXT)"
+            )
+        )
+        session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
         session.execute(
             text(
                 "CREATE TABLE ironsbot_metadata "

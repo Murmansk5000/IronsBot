@@ -16,6 +16,7 @@ from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.peak import (
     PEAK_EXPERT_POOL_COMMANDS,
+    PEAK_MASTER_POOL_COMMANDS,
     PEAK_PET_RANK_COMMANDS,
     PEAK_POOL_COMMANDS,
     PEAK_SUIT_RANK_COMMANDS,
@@ -73,6 +74,18 @@ async def _handle_vote(
 ) -> None:
     try:
         result = await service.vote(partial(_report_progress, matcher))
+    except DataUnavailableError:
+        await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+        return
+    await _finish_result(result, matcher)
+
+
+async def _handle_master_pool(
+    service: PeakQueryService,
+    matcher: Matcher,
+) -> None:
+    try:
+        result = await service.master_pool(partial(_report_progress, matcher))
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
@@ -139,6 +152,17 @@ def install(group: SeerMatcherGroup) -> None:
         priority=priority,
     )
     expert_pool.append_handler(bind_async(_handle_pool, service, expert=True))
+
+    master_pool = group.on_fullmatch(
+        PEAK_MASTER_POOL_COMMANDS,
+        policy=CommandPolicy.command(
+            "seer_peak_master_pool",
+            help_ids=("seer.peak.query",),
+        ),
+        rule=rule,
+        priority=priority,
+    )
+    master_pool.append_handler(bind_async(_handle_master_pool, service))
 
     vote = group.on_fullmatch(
         PEAK_VOTE_COMMANDS,
