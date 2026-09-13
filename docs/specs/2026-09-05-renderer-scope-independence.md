@@ -1,6 +1,6 @@
 # Renderer Asset Scope Independence
 
-Status: verified slice; real publication gates remain open
+Status: consumer matrix verified; compatible remote publication remains open
 
 Contract: target, build-time completeness proof for each renderer's actual
 immutable asset inputs. No runtime asset guessing or mutable-source fallback.
@@ -75,3 +75,11 @@ remain Phase 4 gates; this is not complete renderer-publication acceptance.
   this slice. Its fixtures do not substitute for that final acceptance gate.
   Public full-suite startup timing risk from the preceding slice is unchanged;
   no full public rerun is claimed here. Local main remains `963a83c3`, read only.
+- 2026-09-12 follow-up expanded the opt-in consumer test to type matchup, normal
+  and expert pools, pet info, pool vote, pet rank, and private lineup. All seven
+  passed against a current producer-built release and immutable remote assets;
+  public full suite passed 3110 tests, private passed 43, and producer passed
+  308. The downloaded `seerapi-data-latest` matched its SHA-256 but was rejected
+  before rendering because it does not publish schema contract version 1.
+  Publishing that compatible database and rerunning the same seven consumers is
+  the remaining remote gate; no legacy-schema fallback is permitted.

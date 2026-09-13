@@ -38,28 +38,12 @@ from ironsbot.services.seer.data import (
     DataUnavailableError,
 )
 from ironsbot.services.seer.data_query_commands import (
-    NEW_ACHIEVEMENTS_COMMANDS,
-    NEW_AUTOCARD_CARDS_COMMANDS,
-    NEW_AUTOCARD_ROLES_COMMANDS,
-    NEW_AUTOCARD_SANCTUARIES_COMMANDS,
+    NEW_CONTENT_COMMAND_SPECS,
     NEW_CONTENT_COMMANDS,
-    NEW_EQUIPS_COMMANDS,
-    NEW_MINTMARKS_COMMANDS,
-    NEW_MOUNTS_COMMANDS,
-    NEW_PEAK_EXPERT_POOL_COMMANDS,
-    NEW_PEAK_MASTER_POOL_COMMANDS,
-    NEW_PEAK_POOL_COMMANDS,
-    NEW_PETS_COMMANDS,
-    NEW_SKILLS_COMMANDS,
-    NEW_SKINS_COMMANDS,
-    NEW_SUITS_COMMANDS,
-    PEAK_ENVIRONMENT_CHANGES_COMMANDS,
+    available_new_content_categories,
 )
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.new_content import (
-    AUTOCARD_NEW_CONTENT_CATEGORIES,
-    NEW_CONTENT_CATEGORIES,
-    PEAK_POOL_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
     NewContentIndexUnavailableError,
     NewContentItem,
@@ -112,103 +96,21 @@ def install(group: SeerMatcherGroup) -> None:
     )
     root.append_handler(bind_async(_start_new_content, service, None, group))
 
-    commands: tuple[
-        tuple[
-            tuple[NewContentCategory, ...],
-            tuple[str, ...],
-            str,
-            tuple[str, ...],
-        ],
-        ...,
-    ] = (
-        (
-            ("achievement",),
-            NEW_ACHIEVEMENTS_COMMANDS,
-            "seer.data.new_achievement",
-            (),
-        ),
-        (("pet",), NEW_PETS_COMMANDS, "seer.data.new_pet", ("seer_pet",)),
-        (
-            ("peak_pool",),
-            NEW_PEAK_POOL_COMMANDS,
-            "seer.data.new_peak_pool",
-            ("seer_pet",),
-        ),
-        (
-            ("peak_expert_pool",),
-            NEW_PEAK_EXPERT_POOL_COMMANDS,
-            "seer.data.new_peak_expert_pool",
-            ("seer_pet",),
-        ),
-        (
-            ("peak_master_pool",),
-            NEW_PEAK_MASTER_POOL_COMMANDS,
-            "seer.data.new_peak_master_pool",
-            ("seer_peak", "seer_pet"),
-        ),
-        (
-            PEAK_POOL_NEW_CONTENT_CATEGORIES,
-            PEAK_ENVIRONMENT_CHANGES_COMMANDS,
-            "seer.data.peak_environment_changes",
-            ("seer_peak", "seer_pet"),
-        ),
-        (("pet_skin",), NEW_SKINS_COMMANDS, "seer.data.new_skin", ("seer_pet",)),
-        (("skill",), NEW_SKILLS_COMMANDS, "seer.data.new_skill", ("seer_pet",)),
-        (
-            ("mintmark",),
-            NEW_MINTMARKS_COMMANDS,
-            "seer.data.new_mintmark",
-            ("seer_mintmark",),
-        ),
-        (
-            ("suit",),
-            NEW_SUITS_COMMANDS,
-            "seer.data.new_suit",
-            ("seer_equipment",),
-        ),
-        (
-            ("equip",),
-            NEW_EQUIPS_COMMANDS,
-            "seer.data.new_equip",
-            ("seer_equipment",),
-        ),
-        (
-            ("mount",),
-            NEW_MOUNTS_COMMANDS,
-            "seer.data.new_mount",
-            ("seer_equipment",),
-        ),
-        (
-            AUTOCARD_NEW_CONTENT_CATEGORIES,
-            NEW_AUTOCARD_CARDS_COMMANDS,
-            "seer.data.new_autocard",
-            ("seer_autocard",),
-        ),
-        (
-            ("autocard_role",),
-            NEW_AUTOCARD_ROLES_COMMANDS,
-            "seer.data.new_autocard_role",
-            ("seer_autocard",),
-        ),
-        (
-            ("autocard_sanctuary_effect",),
-            NEW_AUTOCARD_SANCTUARIES_COMMANDS,
-            "seer.data.new_autocard_sanctuary_effect",
-            ("seer_autocard",),
-        ),
-    )
-    for categories, messages, command_id, features in commands:
+    for spec in NEW_CONTENT_COMMAND_SPECS:
         rule = root_rule
-        for feature in features:
+        for feature in spec.required_features:
             rule = rule & seer_feature_rule(group.features, feature)
         matcher = group.on_fullmatch(
-            messages,
-            policy=CommandPolicy.command(command_id, help_ids=(command_id,)),
+            spec.commands,
+            policy=CommandPolicy.command(
+                spec.command_id,
+                help_ids=(spec.command_id,),
+            ),
             rule=rule,
             priority=group.matcher_priority("seer_data"),
         )
         matcher.append_handler(
-            bind_async(_start_new_content, service, categories, group)
+            bind_async(_start_new_content, service, spec.categories, group)
         )
 
 
@@ -270,29 +172,8 @@ def _available_categories(
 ) -> tuple[NewContentCategory, ...]:
     from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 
-    required_features: dict[NewContentCategory, tuple[str, ...]] = {
-        "pet": ("seer_pet",),
-        "peak_pool": ("seer_pet",),
-        "peak_expert_pool": ("seer_pet",),
-        "peak_master_pool": ("seer_peak", "seer_pet"),
-        "pet_skin": ("seer_pet",),
-        "skill": ("seer_pet",),
-        "mintmark": ("seer_mintmark",),
-        "suit": ("seer_equipment",),
-        "equip": ("seer_equipment",),
-        "mount": ("seer_equipment",),
-        "achievement": (),
-        "autocard_card": ("seer_autocard",),
-        "autocard_role": ("seer_autocard",),
-        "autocard_sanctuary_effect": ("seer_autocard",),
-    }
-    return tuple(
-        category
-        for category in NEW_CONTENT_CATEGORIES
-        if all(
-            event_is_feature_allowed(group.features, event, feature)
-            for feature in required_features[category]
-        )
+    return available_new_content_categories(
+        lambda feature: event_is_feature_allowed(group.features, event, feature)
     )
 
 

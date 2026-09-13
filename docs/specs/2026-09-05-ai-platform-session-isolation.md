@@ -77,3 +77,18 @@ No schema migration is required. Code rollback is a commit revert; production
 files have not been rewritten. Existing persisted turns are loaded by typed
 identity columns, never by reverse-parsing either old or new session keys.
 No production data or upstream/main changes in this slice.
+
+## Intent Action Execution (2026-09-13)
+
+Classifying an intent and executing it now share the same platform-neutral
+service boundary. `AiIntentActionExecutor` turns message, promotion, AI reply,
+team recommendation and team-resource actions into ordered `OutboundMessage`
+values. The OneBot plugin only supplies source context, renders those values and
+uses its existing sequence sender.
+
+The former `plugins.onebot.ai.team_actions` business module and
+`AiService.is_team_action()` dispatch helper were deleted rather than retained
+as compatibility wrappers. Tests cover all action families and send a real
+configured multi-message action through the restricted fake-official transport.
+No QQ/OpenID mapping, mention behavior, configuration, schema or dependency was
+added; target APIs that cannot represent QQ identity operations remain deferred.

@@ -14,6 +14,7 @@ from ironsbot.extensions.contracts import (
     PlayerLineupSlot,
 )
 from ironsbot.integrations.seer_data.peak_repository import (
+    load_peak_master_pool_snapshots,
     load_peak_pool_snapshots,
 )
 from ironsbot.integrations.seer_data.skin_image_resolution import (
@@ -43,9 +44,15 @@ class PublishedPlayerLineupEntryResolver:
         pet_ids = {slot.pet_id for slot in slots}
         skin_ids = {slot.skin_id for slot in slots if slot.skin_id > 0}
         with self._data.query(
-            lambda session: load_peak_pool_snapshots(session, expert=False)
-        ) as pools:
+            lambda session: (
+                load_peak_pool_snapshots(session, expert=False),
+                load_peak_master_pool_snapshots(session),
+            )
+        ) as (pools, master_pools):
             peak_pool_limits = active_peak_pool_limits(pools)
+            master_pool_costs = {
+                pet.id: pool.count for pool in master_pools for pet in pool.pets
+            }
         with (
             self._data.query(
                 lambda session: load_skin_image_resolutions(session, skin_ids)
@@ -83,6 +90,7 @@ class PublishedPlayerLineupEntryResolver:
                     ),
                     type_id=_type_id(pets_by_id.get(slot.pet_id)),
                     peak_pool_limit=peak_pool_limits.get(slot.pet_id),
+                    master_pool_cost=master_pool_costs.get(slot.pet_id, 0),
                     complete=(
                         (pet := pets_by_id.get(slot.pet_id)) is not None
                         and bool(pet.name.strip())

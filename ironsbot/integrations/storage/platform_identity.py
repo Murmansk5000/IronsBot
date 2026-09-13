@@ -14,9 +14,10 @@ class PlatformIdentityStorageError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class ActorIdentityColumns:
-    """The four independent columns that identify a persistent platform actor."""
+    """Columns that identify one actor within one connected bot account."""
 
     platform: str
+    account_id: str
     kind: str
     actor_id: str
     scope_id: str
@@ -25,6 +26,7 @@ class ActorIdentityColumns:
     def from_actor(cls, actor: ActorRef) -> ActorIdentityColumns:
         return cls(
             platform=actor.platform.value,
+            account_id=actor.account_id or "",
             kind=actor.kind,
             actor_id=actor.id,
             scope_id=actor.scope_id or "",
@@ -37,20 +39,28 @@ class ActorIdentityColumns:
                 self.actor_id,
                 kind=self.kind,  # type: ignore[arg-type]
                 scope_id=self.scope_id or None,
+                account_id=self.account_id or None,
             )
         except ValueError as error:
             msg = "invalid stored actor identity"
             raise PlatformIdentityStorageError(msg) from error
 
-    def values(self) -> tuple[str, str, str, str]:
-        return (self.platform, self.kind, self.actor_id, self.scope_id)
+    def values(self) -> tuple[str, str, str, str, str]:
+        return (
+            self.platform,
+            self.account_id,
+            self.kind,
+            self.actor_id,
+            self.scope_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class ConversationIdentityColumns:
-    """The three independent columns that identify a persistent conversation."""
+    """Columns that identify one conversation within one bot account."""
 
     platform: str
+    account_id: str
     kind: str
     conversation_id: str
 
@@ -61,6 +71,7 @@ class ConversationIdentityColumns:
     ) -> ConversationIdentityColumns:
         return cls(
             platform=conversation.platform.value,
+            account_id=conversation.account_id or "",
             kind=conversation.kind,
             conversation_id=conversation.id,
         )
@@ -71,10 +82,16 @@ class ConversationIdentityColumns:
                 Platform(self.platform),
                 self.kind,  # type: ignore[arg-type]
                 self.conversation_id,
+                account_id=self.account_id or None,
             )
         except ValueError as error:
             msg = "invalid stored conversation identity"
             raise PlatformIdentityStorageError(msg) from error
 
-    def values(self) -> tuple[str, str, str]:
-        return (self.platform, self.kind, self.conversation_id)
+    def values(self) -> tuple[str, str, str, str]:
+        return (
+            self.platform,
+            self.account_id,
+            self.kind,
+            self.conversation_id,
+        )

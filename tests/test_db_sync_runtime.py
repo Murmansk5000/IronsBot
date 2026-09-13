@@ -29,6 +29,10 @@ from ironsbot.services.operations.data_sync import (
 CONNECT_ERROR_MESSAGE = "connection failed"
 
 
+async def _ignore_progress(_message: str) -> None:
+    return None
+
+
 @dataclass
 class FakeJob:
     id: str
@@ -225,7 +229,9 @@ def test_manual_sync_checks_remote_versions_before_action_selection(
     monkeypatch.setattr(DatabaseSync, "check_all_databases", check_all)
     service = DataSyncService(_config(), sync)
 
-    message, should_run = asyncio.run(service.prepare_manual(force=False))
+    message, should_run = asyncio.run(
+        service.prepare_manual(force=False, progress=_ignore_progress)
+    )
 
     assert should_run
     assert "数据更新检查完成。检测到已发布的新数据：seerapi" in message
@@ -242,7 +248,9 @@ def test_manual_sync_checks_remote_versions_before_action_selection(
         is ManualDataSyncAction.UPDATE_UPSTREAM
     )
     assert service.manual_action_for_choice("3", force=False) is None
-    force_message, force_should_run = asyncio.run(service.prepare_manual(force=True))
+    force_message, force_should_run = asyncio.run(
+        service.prepare_manual(force=True, progress=_ignore_progress)
+    )
     assert force_should_run
     assert "2. 强制检查上游并重建后同步数据" in force_message
 

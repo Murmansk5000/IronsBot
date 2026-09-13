@@ -4,10 +4,17 @@ import asyncio
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+
 from ironsbot.core.bilibili import BiliBoostWindow, BiliPollingConfig
 from ironsbot.services.bilibili import monitor as monitor_module
 from ironsbot.services.bilibili.monitor import MonitorCheckResult, run_monitor_check
-from ironsbot.services.bilibili.runtime import BilibiliMonitorService
+from ironsbot.services.bilibili.runtime import (
+    BILIBILI_REFRESH_BUSY,
+    BILIBILI_REFRESH_COMPLETED,
+    BILIBILI_REFRESH_FAILED,
+    BilibiliMonitorService,
+)
 from tests.helpers.bilibili import build_test_bilibili_service
 
 BOOST_ATTEMPT_COUNT = 4
@@ -41,6 +48,45 @@ async def _ignore_push(
     _categories: tuple[str, ...],
 ) -> None:
     return None
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    (
+        (MonitorCheckResult(), BILIBILI_REFRESH_BUSY),
+        (
+            MonitorCheckResult(executed=True, valid_response=False),
+            BILIBILI_REFRESH_FAILED,
+        ),
+        (
+            MonitorCheckResult(executed=True, valid_response=True),
+            BILIBILI_REFRESH_COMPLETED,
+        ),
+    ),
+)
+def test_manual_refresh_classifies_monitor_result(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    result: MonitorCheckResult,
+    expected: str,
+) -> None:
+    service = build_test_bilibili_service(tmp_path)
+    monitor = BilibiliMonitorService(service, _ignore_auth_invalid, _ignore_push)
+    calls: list[tuple[bool, bool]] = []
+
+    async def check(
+        _self: BilibiliMonitorService,
+        *,
+        is_startup_check: bool = False,
+        force: bool = False,
+    ) -> MonitorCheckResult:
+        calls.append((is_startup_check, force))
+        return result
+
+    monkeypatch.setattr(BilibiliMonitorService, "check", check)
+
+    assert asyncio.run(monitor.manual_refresh()) == expected
+    assert calls == [(True, True)]
 
 
 def test_bili_monitor_service_registers_second_precision_scheduler_job(

@@ -70,6 +70,12 @@ def _matches_rank_query(
     peak: bool,
     reference_is_known: PlayerReferenceRecognizer,
 ) -> bool:
+    player = parse_rank_player_target_command(text)
+    if context.has_member_mentions and player is not None:
+        return (
+            kind == "global"
+            and GLOBAL_RANKS[player.rank_key].peak_season_sub_key is peak
+        )
     listed = parse_rank_list_command(text)
     if listed is not None:
         if listed.kind != kind:
@@ -84,7 +90,6 @@ def _matches_rank_query(
     scored = parse_rank_score_command(text)
     if scored is not None:
         return GLOBAL_RANKS[scored.rank_key].peak_season_sub_key is peak
-    player = parse_rank_player_target_command(text)
     return (
         player is not None
         and player.player_reference is not None

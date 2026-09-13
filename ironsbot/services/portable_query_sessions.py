@@ -1,0 +1,341 @@
+# SPDX-License-Identifier: MIT
+"""Platform-neutral single-process selection sessions for query results."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
+from time import monotonic
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast, overload
+
+from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.query_result import QueryResult
+
+if TYPE_CHECKING:
+    from typing import Literal
+
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.platform import ActorRef, ConversationRef
+
+_T = TypeVar("_T")
+QuerySearch = Callable[[str], Awaitable[QueryResult[_T]]]
+QuerySelect = Callable[[_T], Awaitable[QueryResult[Any]]]
+QueryArgumentParser = Callable[[str], str | None]
+_SessionKey = tuple["ActorRef", "ConversationRef"]
+_UntypedMenuSelect = Callable[
+    [object],
+    Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
+]
+MenuSelect = Callable[[_T], Awaitable[OutboundMessage | PortableReply]]
+TextSubmit = Callable[[str], Awaitable[OutboundMessage]]
+
+
+class PortableQueryOperation(Protocol):
+    def __call__(
+        self, text: str, context: MessageInputContext
+    ) -> Awaitable[OutboundMessage]: ...
+
+
+class PortableQuerySessionError(ValueError):
+    @classmethod
+    def invalid_ttl(cls) -> PortableQuerySessionError:
+        return cls("portable query session TTL must be positive")
+
+    @classmethod
+    def deferred_result_not_enabled(cls) -> PortableQuerySessionError:
+        return cls("portable deferred session result was not enabled by the caller")
+
+
+@dataclass(frozen=True, slots=True)
+class QueryOperationSpec(Generic[_T]):
+    parser: QueryArgumentParser
+    search: QuerySearch[_T]
+    select: QuerySelect[_T]
+    prompt_title: str
+    not_found_message: str
+
+
+@dataclass(frozen=True, slots=True)
+class PortableMenuSpec(Generic[_T]):
+    choices: tuple[_T, ...]
+    select: MenuSelect[_T]
+    prompt: OutboundMessage
+    keep_open: bool = False
+    exit_message: str = "已退出查询。"
+
+
+@dataclass(frozen=True, slots=True)
+class PortableTextInputSpec:
+    submit: TextSubmit
+    prompt: OutboundMessage
+    exit_message: str = "已退出查询。"
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingSelection:
+    choices: tuple[object, ...]
+    select: _UntypedMenuSelect
+    prompt_title: str
+    not_found_message: str
+    expires_at: float
+    keep_open: bool = False
+    exit_message: str = "已退出查询。"
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingTextInput:
+    submit: TextSubmit
+    expires_at: float
+    exit_message: str
+
+
+class PortableQuerySessions:
+    """Own short-lived numeric selections independently of an adapter framework."""
+
+    def __init__(
+        self,
+        *,
+        ttl_seconds: float = 120.0,
+        now: Callable[[], float] = monotonic,
+    ) -> None:
+        if ttl_seconds <= 0:
+            raise PortableQuerySessionError.invalid_ttl()
+        self._ttl_seconds = ttl_seconds
+        self._now = now
+        self._pending: dict[_SessionKey, _PendingSelection] = {}
+        self._pending_text: dict[_SessionKey, _PendingTextInput] = {}
+
+    def recognizes_response(self, text: str, context: MessageInputContext) -> bool:
+        key = self._key(context)
+        self._drop_expired(key)
+        return key in self._pending_text or (
+            key in self._pending and text.strip().isdigit()
+        )
+
+    async def begin(
+        self,
+        context: MessageInputContext,
+        *,
+        argument: str,
+        spec: QueryOperationSpec[_T],
+    ) -> OutboundMessage:
+        async def select_untyped(value: object) -> QueryResult[Any]:
+            return await spec.select(cast("_T", value))
+
+        result = await spec.search(argument)
+        return self._present(
+            context,
+            result,
+            select=select_untyped,
+            prompt_title=spec.prompt_title,
+            not_found_message=spec.not_found_message,
+        )
+
+    def offer(
+        self,
+        context: MessageInputContext,
+        result: QueryResult[_T],
+        *,
+        select: QuerySelect[_T],
+        prompt_title: str,
+        not_found_message: str,
+    ) -> OutboundMessage:
+        """Present choices produced outside the standard search operation."""
+
+        async def select_untyped(value: object) -> QueryResult[Any]:
+            return await select(cast("_T", value))
+
+        return self._present(
+            context,
+            result,
+            select=select_untyped,
+            prompt_title=prompt_title,
+            not_found_message=not_found_message,
+        )
+
+    def offer_menu(
+        self,
+        context: MessageInputContext,
+        spec: PortableMenuSpec[_T],
+    ) -> OutboundMessage:
+        """Offer a custom numeric menu through the shared session store."""
+
+        async def select_untyped(
+            value: object,
+        ) -> OutboundMessage | PortableReply:
+            return await spec.select(cast("_T", value))
+
+        key = self._key(context)
+        self._pending_text.pop(key, None)
+        self._pending[key] = _PendingSelection(
+            choices=tuple(spec.choices),
+            select=select_untyped,
+            prompt_title="",
+            not_found_message="",
+            expires_at=self._now() + self._ttl_seconds,
+            keep_open=spec.keep_open,
+            exit_message=spec.exit_message,
+        )
+        return spec.prompt
+
+    def offer_text_input(
+        self,
+        context: MessageInputContext,
+        spec: PortableTextInputSpec,
+    ) -> OutboundMessage:
+        key = self._key(context)
+        self._pending.pop(key, None)
+        self._pending_text[key] = _PendingTextInput(
+            submit=spec.submit,
+            expires_at=self._now() + self._ttl_seconds,
+            exit_message=spec.exit_message,
+        )
+        return spec.prompt
+
+    @overload
+    async def select(
+        self,
+        text: str,
+        context: MessageInputContext,
+        *,
+        allow_deferred: Literal[False] = False,
+    ) -> OutboundMessage | None: ...
+
+    @overload
+    async def select(
+        self,
+        text: str,
+        context: MessageInputContext,
+        *,
+        allow_deferred: Literal[True],
+    ) -> OutboundMessage | PortableReply | None: ...
+
+    async def select(
+        self,
+        text: str,
+        context: MessageInputContext,
+        *,
+        allow_deferred: bool = False,
+    ) -> OutboundMessage | PortableReply | None:
+        key = self._key(context)
+        self._drop_expired(key)
+        pending_text = self._pending_text.pop(key, None)
+        if pending_text is not None:
+            return await self._select_text(text, pending_text)
+        pending = self._pending.get(key)
+        if pending is None or not text.strip().isdigit():
+            return None
+        index = int(text.strip())
+        if index == 0:
+            self._pending.pop(key, None)
+            return OutboundMessage.from_text(pending.exit_message)
+        if index > len(pending.choices):
+            return OutboundMessage.from_text(
+                f"序号无效，输入 1～{len(pending.choices)}，或输入 0 退出。"
+            )
+
+        if not pending.keep_open:
+            self._pending.pop(key, None)
+        result = await pending.select(pending.choices[index - 1])
+        if isinstance(result, (OutboundMessage, PortableReply)):
+            if isinstance(result, PortableReply) and not allow_deferred:
+                raise PortableQuerySessionError.deferred_result_not_enabled()
+            if pending.keep_open and self._pending.get(key) is pending:
+                self._pending[key] = replace(
+                    pending,
+                    expires_at=self._now() + self._ttl_seconds,
+                )
+            return result
+        return self._present(
+            context,
+            result,
+            select=pending.select,
+            prompt_title=pending.prompt_title,
+            not_found_message=pending.not_found_message,
+        )
+
+    @staticmethod
+    async def _select_text(
+        text: str,
+        pending: _PendingTextInput,
+    ) -> OutboundMessage:
+        if text.strip() == "0":
+            return OutboundMessage.from_text(pending.exit_message)
+        return await pending.submit(text.strip())
+
+    def _present(
+        self,
+        context: MessageInputContext,
+        result: QueryResult[Any],
+        *,
+        select: _UntypedMenuSelect,
+        prompt_title: str,
+        not_found_message: str,
+    ) -> OutboundMessage:
+        key = self._key(context)
+        if result.message:
+            self._pending.pop(key, None)
+            return OutboundMessage.from_text(result.message)
+        if result.reply is not None:
+            self._pending.pop(key, None)
+            return result.reply.to_outbound()
+        if not result.choices:
+            self._pending.pop(key, None)
+            return OutboundMessage.from_text(not_found_message)
+
+        self._pending[key] = _PendingSelection(
+            choices=tuple(choice.value for choice in result.choices),
+            select=select,
+            prompt_title=prompt_title,
+            not_found_message=not_found_message,
+            expires_at=self._now() + self._ttl_seconds,
+        )
+        return OutboundMessage.from_text(
+            format_selection_menu(
+                title=prompt_title,
+                items=tuple(
+                    SelectionMenuItem(
+                        label=choice.name,
+                        detail_lines=(choice.description,)
+                        if choice.description
+                        else (),
+                        is_sub_item=choice.is_sub_choice,
+                    )
+                    for choice in result.choices
+                ),
+            )
+        )
+
+    def _drop_expired(self, key: _SessionKey) -> None:
+        pending = self._pending.get(key)
+        if pending is not None and pending.expires_at <= self._now():
+            self._pending.pop(key, None)
+        pending_text = self._pending_text.get(key)
+        if pending_text is not None and pending_text.expires_at <= self._now():
+            self._pending_text.pop(key, None)
+
+    @staticmethod
+    def _key(context: MessageInputContext) -> _SessionKey:
+        return context.message.actor, context.message.conversation
+
+
+def build_query_operation(
+    sessions: PortableQuerySessions,
+    spec: QueryOperationSpec[_T],
+) -> PortableQueryOperation:
+    """Adapt one QueryResult service without duplicating its command grammar."""
+
+    async def execute(text: str, context: MessageInputContext) -> OutboundMessage:
+        argument = spec.parser(text)
+        if argument is None:
+            msg = f"catalog accepted input that its query parser rejected: {text!r}"
+            raise ValueError(msg)
+        return await sessions.begin(
+            context,
+            argument=argument,
+            spec=spec,
+        )
+
+    return execute

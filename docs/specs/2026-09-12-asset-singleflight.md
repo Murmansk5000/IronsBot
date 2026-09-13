@@ -431,3 +431,335 @@ admission with an existing historical reply. Both repositories pass Ruff and
 compileall; changed production paths pass BasedPyright (0 errors/warnings).
 No new module, dependency, schema or TOML field. Real pixel/material/deployment
 acceptance remains outstanding; total verified phases stay at 4/8.
+
+## Native Lineup Evidence and Release Gate
+
+Native Windows htmlkit rendering was exercised with the retained real release
+database and six real pet records (70, 3549, 4511, 4911, 3407, 4525), using
+official asset-tree revision 1b53a16cfe32d36d921a04fbd8423116c5b1e2e1.
+The release at `.tmp/skin-body-publication/seerapi-data.sqlite` is rejected by
+the production loader because ironsbot_schema_contract_version is absent.
+No version marker was injected and no production validator was relaxed.
+The subsequent visual probe therefore used an explicitly offline, read-only
+repository reader and a test-only asset pin with final caching disabled. This
+is native material/presentation evidence, not release or deployment acceptance.
+
+Artifacts: `.tmp/lineup-visual-acceptance/{complete,partial,empty}.png` and
+`report.json`. The full image visibly contains six correct named portraits,
+their type badges, level labels and a pool-limit marker. The initial native
+outputs had heights 714, 723 and 710 respectively despite identical slot counts.
+The inline-block grid now has zero line height and an explicit two-row height;
+all three outputs are 490x704. Pixel color counts are 48197, 1115 and 323.
+Full and partial images were visually inspected; no title/card overlap was seen.
+
+An opt-in subprocess regression in the existing private rendering test module
+uses native htmlkit on empty, one-card and twelve-card/long-name documents and
+asserts stable dimensions and nonblank pixels. It isolates NoneBot/fontconfig
+initialization from other tests and makes no network requests. With
+IRONSBOT_NATIVE_RENDER_TESTS=1, all 42 private tests passed in 3.42s; Ruff passes.
+The native probe required an explicit Windows fontconfig directory, so this is
+not proof that default Windows deployment font discovery works. Linux fonts,
+full renderer coverage, validated producer output and live deployment remain
+separate gates. No runtime dependency or new production module was added.
+
+## Real Producer-to-Consumer Build
+
+Ran `uv run python -m scripts.build_seerapi_data_db` in the V5 producer checkout,
+with SEERAPI_DATA_OUTPUT=tmp/v5-release-acceptance/seerapi-data.sqlite and
+IRONSBOT_DATA_EFFECT_ICON_PNG_REQUIRE_CACHED=1. All source loaders used real
+network inputs. The process completed normally and produced 55.71 MiB; SHA256:
+6e3e20c364e67d1ee75e17e05b65abe3441e9c069fb5e564b6df40e253398cb5.
+Quick-check is ok. The database declares schema contract 1 and asset contract 2,
+and loads through the unchanged public DatabaseManager/SeerDatabase validator.
+
+Important limitation: REQUIRE_CACHED alone does not disable conversion. A
+cache-only invocation must also set PNG_RENDER_ENABLED=0. This run had no FFDec
+jar; the Flash loader raised and the coordinator fell back to Unity for the
+whole batch. Output metadata reports 0 Flash PNGs, 2108 Unity PNGs and 4 missing
+icons. Thus this run verifies build/load mechanics, not original Flash icon
+fidelity. The all-batch exception path discards otherwise reusable cached Flash
+results when one uncached icon needs a missing renderer; review this path before
+declaring source-preference acceptance complete.
+
+Manifest revision:
+3bcee795c7d4e7ffb10f32d11478212b984bd705785e0fddced6c1c67bfae13a.
+Asset repository revision remains 1b53a16cfe32d36d921a04fbd8423116c5b1e2e1.
+Only type_matchup is a proven complete scope. Missing manifest rows by kind:
+equip 11, item 3577, mintmark 1, pet_body 13, pet_head 9, sign_buff 5,
+soulmark_icon_png 4, title 11. These counts include optional resources, so they
+are not all fatal. Required head IDs include 2690, 3011, 3083, 3687-3692;
+mintmark 20447 and skin body 1400840 are also missing. The existing consumer
+correctly leaves lineup/pet-info/new-content final caching disabled.
+
+The same six-pet native probe was rerun through SeerRenderSessions using this
+validated producer artifact, bound asset store and bound final cache. No offline
+reader, injected metadata or test-only asset pin was used for that run. Complete,
+partial and empty results remain 490x704 with the previous pixel color counts;
+artifacts and report are in `.tmp/lineup-v5-release-acceptance/`. No final-cache
+files were written under the unproven lineup scope. This closes the local real
+producer/load/lineup-render loop, not all-renderer, Flash-fidelity, Linux or live
+platform acceptance. No remote release, production file or main merge occurred.
+
+## Per-Icon Flash Failure Isolation
+
+Producer rendering now validates Java/FFDec only after a particular icon misses
+its validated PNG cache and is eligible for rendering. The batch-wide preflight
+and its duplicate cache scan were removed. Missing tools produce a failed record
+for that icon before downloading its SWF; cached successes and confirmed absent
+assets do not need tool checks. The existing source coordinator can therefore
+request Unity only for missing icons instead of discarding all Flash results.
+
+Combined-source resolution defers REQUIRE_CACHED validation until after fallback.
+Required unresolved icons still raise an explicit error; standalone PNG cache
+construction retains its strict precondition. Confirmed unavailable official
+assets remain recorded as unavailable, not silently counted as successes. The
+coordinator reuses Flash/Unity callback types instead of declaring weaker object
+return aliases. No additional module or runtime dependency was introduced.
+
+Verified: 88 builder/metadata tests passed in 14.93s. New cases use real PNG
+cache files and renderer logic with controlled HTTP/Unity adapters: missing Java
+or jar preserves the cached Flash icon, Unity receives only the uncached ID,
+successful fallback meets the strict contract, unsuccessful fallback raises.
+Existing SWF sprite/shape, alpha, cache invalidation, missing-resource and strict
+cache tests remain covered. Their stubbed subprocess fixtures now provide valid
+tool paths for the moved checks. Targeted BasedPyright reports 0 errors/warnings;
+Ruff, compileall and diff pass. A full real-network producer rerun after this fix
+has not yet been performed; previous artifact hashes describe the pre-fix run.
+
+## Post-Fix Real Build and Native Cache Acceptance
+
+The subsequent real-network build at producer commit 825ea05 completed normally
+with REQUIRE_CACHED=1 and PNG_RENDER_ENABLED=0. Output:
+`seerapi/tmp/v5-release-acceptance-fixed/seerapi-data.sqlite`, 58,413,056 bytes,
+SHA256 `1ef66a0039326f1f2a8d2ca523af02e6e44da7134f3edff5ce15e0d385119845`.
+Full integrity_check returned ok. The unchanged V5 DatabaseManager/SeerDatabase
+accepted schema contract 1 and asset contract 2. Source publication and manifest
+revisions match the previous run; binary hash equality is not assumed.
+
+Metadata reports 2108 Unity PNGs, zero reusable Flash PNGs and four missing icons.
+The run validates strict combined-source build/load, not preservation of a large
+real Flash cache or visual equivalence to Flash. Those source-preference cases
+remain supported by the focused regression tests, not this network experiment.
+Only type_matchup remains a proven complete render scope.
+
+Native rendering against this new validated artifact produced complete, partial
+and empty lineup images at 490x704, with 48197/1115/323 RGB colors respectively.
+Grass type-matchup produced an 848x3453 PNG (1,295,126 bytes); visual inspection
+confirmed populated attack/defense icon grids, readable values and no overlapping
+sections. Two consecutive adapter calls returned identical bytes with exactly
+one native-render invocation. Generated evidence is in the ignored local directory
+`.tmp/lineup-v5-fixed-acceptance/`, including report.json.
+
+The first type-cache assertion failed because the probe set a 1 MiB total cache
+budget, smaller than the resulting image. With an isolated 32 MiB probe budget
+the check passes; production defaults to 500 MiB and was not changed. This is not
+a production cache defect. This adapter-level probe does not prove zero SQL on
+the full TypeQueryService cache-hit path. It uses explicit Windows fontconfig;
+default font discovery, Linux/native deployment, full renderer coverage and live
+platform acceptance remain open. The two existing ORM relationship warnings also
+remain. No production data, main checkout or remote release was changed.
+
+## Ordered Custom-Type Cache Identity
+
+Target: final-image identity includes every presentation-affecting input.
+Baseline: DIY type titles and primary/secondary icons retain user input order.
+Inspection found that custom_type_matchup sorted IDs only in its cache key, so
+grass+water and water+grass could share the first rendered image despite different
+titles and icon order. Keep IDs ordered in the existing key and use a v2 prefix
+to reject old unordered entries. No additional cache, module, dependency or TOML
+field is introduced; obsolete entries expire through normal cache cleanup.
+
+The regression uses the real FileRenderCache and renderer adapter with controlled
+image/native ports. It checks both an empty cache and a seeded legacy entry,
+opposite input orders, and separator variants sharing the same ordered result.
+Exactly two renders and two sets of asset requests are required across four
+requests. The seeded-cache case failed before the change. Type query/render tests
+pass (18 cases), including session closure before awaiting, cancellation, normal
+type exclusion and menu behavior. This is cache-identity acceptance only:
+TypeQueryService still resolves names and loads the matchup dataset before the
+adapter cache check. Zero-SQL hits remain open rather than being claimed here.
+
+## Type Query Cache Ownership (Supersedes Adapter-Level Cache)
+
+Target: TypeQueryService owns the single final-image cache entry before any
+repository query. Its TypeRenderSession contains a publication-bound reader,
+renderer and the existing shared RenderCache. Name resolution now delegates to
+the existing TypeCombinationDataGetter inside that same reader snapshot and
+returns detached values. There is no global-data lookup before opening the
+snapshot and no SQL session held across the native-render await.
+
+The adapter now only loads assets and renders prepared facts. Its old cache
+lookup/write and the calculator's unused cache_key field were removed. Request
+identity distinguishes selection IDs from exact search text, preserving order
+without guessing normalization rules for the name resolver. Different spellings
+may occupy separate entries; they no longer share the old calculated key. Only
+successful images are stored, not menus, messages or exceptions. Existing
+publication completeness and version gates remain authoritative. Query and
+calculator source paths are included in the shared rendering fingerprint.
+
+Service tests cover zero reader calls on hits for search/select/custom requests,
+version changes and rollback, disabled completeness scopes, failed-render retry,
+opposite DIY input order, and fingerprint inputs. Relevant query/render/key tests
+pass (27); database snapshot tests previously passed together with this migration
+(39 including the then-current query cases). Architecture/bootstrap tests pass
+(19). The prior adapter-cache tests were moved to the service boundary rather
+than retaining two caching implementations.
+
+Real post-fix producer SQLite plus SeerRenderSessions and Windows native rendering
+was exercised with search("1"): cold query 6 SQL statements, repeated query 0,
+one native render, identical 848x3453 image bytes. Search("草") produced a
+non-image response through the existing broad resolver, so the image probe uses
+an unambiguous ID; no search semantics were relaxed to make acceptance pass.
+Evidence remains in `.tmp/lineup-v5-fixed-acceptance/report.json`. This verifies
+the local type query path, not live platform deployment or completion of Phase 4.
+
+## Application-Owned Asset Flights
+
+The phase checkpoint found one real architecture violation: the asset store
+created its shared download tasks directly instead of using ApplicationLifecycle's
+TaskOwner. Initial full suite: 2831 passed, 1 failed, 319 warnings (138.59s).
+Do not whitelist this store in the architecture test. Inject the existing required
+TaskSpawner through rendering composition and the asset-store builder. The
+singleflight map still owns deduplication; TaskOwner owns task lifetime and
+shutdown. No second lifecycle or default standalone spawner is added.
+
+An explicit test cancels the only waiter, verifies its shielded download remains
+registered with TaskOwner, shuts down the owner, then verifies cancellation and
+successful retry without a stale flight. Asset/image/snapshot/architecture/startup
+focused tests pass (48). Full type checking also exposed overly broad str
+annotations in snapshot tests; use ImageKind and the real TaskOwner test port.
+Exclude generated .test-tmp from type-checker discovery, not source or tests.
+Final checkpoint: 2833 public tests passed, 319 warnings, 123.04 seconds;
+43 private tests passed with native rendering enabled. Full BasedPyright reports
+zero errors/warnings; Ruff, compileall and diff checks pass. Existing NoneBot
+ForwardRef deprecation and ORM relationship warnings remain. No phase-completion
+claim follows solely from this suite: real image/deployment acceptance is open.
+
+## Real Pet Rendering and Duplicate-Name Producer Defect
+
+Using the validated post-fix SQLite, shared asset store with TaskOwner, bound
+render sessions and native Windows HTML renderer, these images completed:
+
+| Pet ID | Dimensions | PNG bytes | RGB colors |
+| --- | --- | --- | --- |
+| 3549 | 1200x6676 | 1533629 | 41304 |
+| 4511 | 1200x4852 | 1301177 | 64981 |
+| 4911 | 1200x4266 | 1172158 | 61875 |
+| 3407 | 1200x5147 | 1464837 | 43807 |
+| 4525 | 1200x4042 | 1205803 | 35657 |
+
+Evidence: ignored `.tmp/lineup-v5-fixed-acceptance/pet-*.png` and pet-report.json.
+These counts prove nonblank output, not complete visual or semantic acceptance.
+3549's displayed facts contain glossary 533/534/535 in order. 4911 contains
+524/525 with statuses 182/183; 3407 contains 519/520 with statuses 174/175.
+Soulmark PNG records exist for all five. Global pet-info cache scope remains
+disabled by the incomplete publication; no cache completeness override was used.
+
+**Open producer defect:** 4525 has an extra glossary 223/status 57 describing
+Sun Wukong, alongside its correct glossary 224/status 58. Actual source rows:
+223 is introduced by soulmark 1739 and 1939 with text_exact_name, then gets
+status_description_similarity. Official petglossaryentrylink directly binds
+4524 to 223, and 4525 to 117/224. Neither status 57 nor 58 has show_monster_id.
+
+Root cause is `_effect_descriptions` in Solaris pet_special_effect_resolution:
+ORDER BY effect_id plus setdefault(name, ...) discards every later duplicate
+before text resolution can consult the stronger pet relation. Actual release
+has 12 duplicate-name groups, nine with differing descriptions. The fix belongs
+in generic producer candidate resolution: retain all candidates, use explicit
+pet/status/glossary evidence before text-only inference, record unresolved
+ambiguity instead of choosing the first ID, and evaluate skill-name references
+against every candidate description. Keep intentionally identical-description
+fallback distinct from differing-description ambiguity. Do not hide 223 in the
+renderer or add a 4525 exception. This defect is not fixed by the render probe;
+producer regression and corrected-fact rebuild are the next required work.
+
+## Duplicate-Name Resolution Follow-Up
+
+Producer resolution now retains every EffectDes candidate instead of taking the
+first name match. Text inference first consults the established official facts,
+then unambiguous full-description evidence; genuinely identical descriptions
+retain the deterministic lowest-ID fallback. Differing unresolved candidates are
+recorded as issues. Issue contexts from multiple soulmarks merge using the
+actual issue-table primary key, avoiding a duplicate-key build failure.
+
+The first offline rebuild exposed an additional defect: expanding the old
+skill-name substring rule added 127 facts, including glossary 224 to pet 1
+because its skill name is the ordinary verb "吸取". That intermediate artifact
+is not accepted. Skill-description references must explicitly quote the skill
+name or name it after the skill label, not merely contain that verb. A cheap
+substring prefilter precedes the reference syntax check. This changes producer
+facts only; no pet-specific renderer exception or database schema change is used.
+
+Regression evidence: 95 builder/metadata/effect tests passed before adding three
+description-edge cases; all 10 effect tests then passed. Targeted producer type
+checking, Ruff and compileall passed. Full publication, corrected native images
+and deployment acceptance remain separate gates; this is not Phase 4 completion.
+
+Offline corrected rebuild completed with integrity_check=ok: 962 effect facts,
+2666 sources, two issues, 2246 soulmark displays and one display addition.
+Against the original 6571 facts, 5609 rows were removed and three added. Removed
+source groups are predominantly bare skill-name inference (3113 without a status,
+2247 with a unique-name status); common triggering skills were 恢复, 免疫 and
+吸取. The three added rows select already-official later duplicate glossary IDs
+278 and 460 instead of introducing a new relationship. 4524 retains 223/57;
+4525 now has only 117 and 224/58. 3549 retains 533/534/535, 4911 retains 524/525,
+and 3407 retains 519/520. 4511 still has no effect facts and is not claimed fixed.
+
+The rebuilt file is the ignored diagnostic copy at producer
+`tmp/v5-effect-resolution/seerapi-data.sqlite`, not a release: metadata and asset
+manifest are inherited from the validated source copy. Raw skill-name mentions
+without explicit reference syntax are intentionally no longer evidence; real
+render acceptance must still check that stricter boundary for omissions.
+
+## Corrected Native Images and Build-Scoped Reference Reuse
+
+The corrected diagnostic SQLite was consumed through the unchanged public
+SeerRenderSessions and native Windows renderer. Six pet images completed in
+`.tmp/effect-resolution-acceptance`: 3549, 4511, 4911, 3407, 4524 and 4525.
+4524 is 1200x4175 (1083629 bytes); 4525 is 1200x4042 (1179469 bytes).
+Visual inspection of 4524/4525 confirms separate fatal-hit and HP-drain variants
+of 法天象地, each with its own icon. 4911 visually retains both knight cards.
+The other four outputs retain the previous dimensions and byte counts. This is
+not a claim of complete visual inspection for every pet or original SWF fidelity.
+
+4511's absence of an independent 不破诛罚 card was traced to the source: no
+matching glossary, EffectDes or status row exists in this dataset. Its soulmark
+1725 contains the complete description and the formatted yellow heading; that
+text is already rendered in the soulmark panel. Do not manufacture an effect
+fact or an icon simply to fill an expected standalone card.
+
+Producer skill-description lookup is now cached only within one fact build,
+keyed by skill name. Shared skills and multiple text fields reuse the same
+candidate scan; each new build starts with fresh evidence. Regression verifies
+two pets reuse one scan and a second build observes changed descriptions.
+99 related tests passed; targeted type checking, Ruff and diff checks passed.
+An in-memory full fact rebuild took 13.791 seconds, and all five effect/source/
+issue/soulmark tables exactly matched the prior corrected artifact excluding
+updated_at. This is a measured local rebuild duration, not a speedup ratio or a
+full release build time. No new dependency, persistent cache or runtime image
+component was introduced.
+
+## Peak Native Render Acceptance and Observation Time
+
+The same bound-session native probe now covers standard pool (1228x1022,
+740938 bytes), expert pool (1228x702, 646646 bytes), vote (460x884,
+113562 bytes), and pet ranking (640x1616, 220563 bytes). Pool definitions and
+pet assets come from the real diagnostic database. Vote scores and ranking
+counts are explicitly labelled offline fixtures, not fetched game results.
+Evidence: `.tmp/effect-resolution-acceptance/peak-report.json` and corresponding
+PNGs; standard pool, vote and final ranking were visually inspected.
+
+Native inspection exposed a missing model field: the ranking template printed
+"生成于" with no timestamp. PeakPetRankRenderInput now requires observed_at,
+captured immediately after the game response, before repository/render/progress
+work. The pure document carries the value into the template as "获取时间".
+Both request and document cache identities include it. No rendering-time clock
+or fallback timestamp is added. A service test advances the clock during the
+progress callback and verifies the captured response time remains unchanged.
+
+Native flex wrapping did not prevent a long title overlapping the timestamp;
+the header now uses separate block rows with time right-aligned below the title.
+The final actual 640px-wide PNG is non-overlapping. 39 focused peak/cache tests,
+targeted type checking, Ruff, compileall and diff checks passed. Global asset
+scope remains incomplete, and no game account, production data, remote release
+or platform deployment was touched. Phase 4 is still open.

@@ -59,6 +59,10 @@ async def noop_restart_process() -> None:
     return None
 
 
+async def ignore_progress(_message: str) -> None:
+    return None
+
+
 def build_docker_service(config: DockerUpdateConfig) -> DockerUpdateService:
     return DockerUpdateService(config, DockerClient(), noop_restart_process)
 
@@ -585,7 +589,7 @@ def test_docker_update_service_checks_without_starting_an_update() -> None:
         noop_restart_process,
     )
 
-    reply = asyncio.run(service.check_image_update())
+    reply = asyncio.run(service.check_image_update(progress=ignore_progress))
 
     assert docker.check_request is not None
     assert "Docker 镜像已是最新" in reply
