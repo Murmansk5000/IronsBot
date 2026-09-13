@@ -28,7 +28,9 @@ def bootstrap() -> Application:
         [
             {
                 "id": qq_official.app_id,
-                "token": qq_official.token,
+                # adapter-qq 1.7.2 still declares the retired static token field,
+                # but authentication uses AppID + AppSecret to refresh AccessToken.
+                "token": "",
                 "secret": qq_official.secret,
                 "use_websocket": True,
                 "intent": {"c2c_group_at_messages": True},
