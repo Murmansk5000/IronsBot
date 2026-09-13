@@ -26,10 +26,12 @@ class FileRenderCache:
         *,
         version_getter: Callable[[], str],
         category_available: Callable[[str], bool] | None = None,
+        scope: str = "",
     ) -> None:
         self._cache = VerifiedFileCache(cache_dir, max_size_bytes)
         self._version_getter = version_getter
         self._category_available = category_available
+        self._scope = scope
 
     def _key(self, category: str, content_key: str) -> str | None:
         if self._category_available is not None and not self._category_available(
@@ -39,9 +41,9 @@ class FileRenderCache:
         version = self._version_getter()
         if version == UNKNOWN_RENDER_CACHE_VERSION:
             return None
-        raw = "\0".join(("render-entry-v1", category, content_key, version)).encode(
-            "utf-8"
-        )
+        raw = "\0".join(
+            ("render-entry-v1", category, content_key, version, self._scope)
+        ).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()
 
     def entry(self, category: str, content_key: str) -> RenderCacheEntry:
@@ -65,7 +67,12 @@ class FileRenderCache:
         self, version: str, category_available: Callable[[str], bool]
     ) -> RenderCache:
         """Keep fully bound renders in their captured release after an update."""
-        return _SnapshotRenderCache(self._cache, version, category_available)
+        return _SnapshotRenderCache(
+            self._cache,
+            version,
+            category_available,
+            self._scope,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +80,7 @@ class _SnapshotRenderCache:
     cache: VerifiedFileCache
     version: str
     category_available: Callable[[str], bool]
+    scope: str
 
     def entry(self, category: str, content_key: str) -> RenderCacheEntry:
         allowed = (
@@ -81,7 +89,13 @@ class _SnapshotRenderCache:
         )
         key = hashlib.sha256(
             "\0".join(
-                ("render-snapshot-v1", category, content_key, self.version)
+                (
+                    "render-snapshot-v1",
+                    category,
+                    content_key,
+                    self.version,
+                    self.scope,
+                )
             ).encode("utf-8")
         ).hexdigest()
 

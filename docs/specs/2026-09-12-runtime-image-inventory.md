@@ -217,3 +217,15 @@ passed. The exact frozen Python 3.10 audit covered 59 runtime distributions and
 reported zero known vulnerabilities and zero skipped distributions. Repeated
 advisory-cache decode warnings caused network refetches and did not suppress
 audit input or findings. No workflow was dispatched and no image was published.
+
+## Fork-Aware Render Metadata
+
+Candidate and published images now receive the current repository URL as a Docker
+build argument. The runtime injects it into every HTML render and scopes final
+render-cache keys by the same value. Five Seer templates no longer package a
+hard-coded upstream URL; source runs without build metadata omit the link rather
+than guessing ownership. This adds no asset or dependency to the image.
+
+Focused metadata, cache, workflow and render tests passed 55 cases. Ruff and diff
+checks passed. The Linux Docker daemon remains unavailable on this host, so this
+does not replace the pending real candidate smoke and size evidence.
