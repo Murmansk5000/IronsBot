@@ -144,11 +144,9 @@ class DockerClient:
                 )
                 current_commit = await resolve_image_commit_summary(
                     current_image,
-                    fallback_repo=("Murmansk5000", "IronsBot"),
                 )
                 target_commit = await resolve_image_commit_summary(
                     target_image,
-                    fallback_repo=("Murmansk5000", "IronsBot"),
                 )
                 if current_image.image_id == target_image.image_id:
                     return DockerUpdateResult(
@@ -230,7 +228,6 @@ class DockerClient:
                 )
                 current_commit = await resolve_image_commit_summary(
                     current_image,
-                    fallback_repo=("Murmansk5000", "IronsBot"),
                 )
             try:
                 remote_image = await inspect_remote_image_info(
@@ -239,7 +236,6 @@ class DockerClient:
                 )
                 remote_commit = await resolve_image_commit_summary(
                     remote_image,
-                    fallback_repo=("Murmansk5000", "IronsBot"),
                 )
             except Exception as error:  # noqa: BLE001 - digest remains useful
                 logger.warning(
