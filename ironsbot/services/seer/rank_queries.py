@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, TypeVar
 
 from ironsbot.core.semantic_requests import (
@@ -86,6 +87,16 @@ class RankQueryPolicy:
     player_timeout_seconds: float
 
 
+@dataclass(frozen=True, slots=True)
+class RankPlayerPreparedReply:
+    message: str
+    on_delivered: Callable[[], None] | None = None
+
+    def delivered(self) -> None:
+        if self.on_delivered is not None:
+            self.on_delivered()
+
+
 class RankQueryService:
     def __init__(  # noqa: PLR0913 - composed rank query dependencies
         self,
@@ -155,16 +166,33 @@ class RankQueryService:
         except (RankPageConflictError, DataUnavailableError) as error:
             return str(error)
 
-    async def player(  # noqa: C901, PLR0911 - distinct query failure replies
+    async def player(
         self,
         command: RankPlayerCommand,
         *,
         actor: ActorRef | None = None,
         conversation: ConversationRef | None = None,
     ) -> str:
+        prepared = await self.prepare_player(
+            command,
+            actor=actor,
+            conversation=conversation,
+        )
+        prepared.delivered()
+        return prepared.message
+
+    async def prepare_player(  # noqa: PLR0911
+        self,
+        command: RankPlayerCommand,
+        *,
+        actor: ActorRef | None = None,
+        conversation: ConversationRef | None = None,
+    ) -> RankPlayerPreparedReply:
+        """Prepare a player-rank reply without committing delivery quota."""
+
         spec = GLOBAL_RANKS[command.rank_key]
         if not is_valid_player_id(command.player_id):
-            return PLAYER_ID_ERROR_MESSAGE
+            return RankPlayerPreparedReply(PLAYER_ID_ERROR_MESSAGE)
         quota_message = self._check_player_quota(command, actor)
         if quota_message:
             cached = fetch_cached_rank_player_result(
@@ -172,8 +200,10 @@ class RankQueryService:
                 command=command,
             )
             if cached is not None:
-                return f"{cached.message}\n\n⚠️ 今日查询额度已用完，以上为缓存数据。"
-            return quota_message
+                return RankPlayerPreparedReply(
+                    f"{cached.message}\n\n⚠️ 今日查询额度已用完，以上为缓存数据。"
+                )
+            return RankPlayerPreparedReply(quota_message)
         anchor_only = bool(quota_message)
         try:
             result = await self._run_headless_request(
@@ -198,27 +228,39 @@ class RankQueryService:
                 ),
             )
         except PlayerQueryQuotaExceededError as error:
-            return error.message
+            return RankPlayerPreparedReply(error.message)
         except _PLAYER_REQUEST_ERRORS as error:
-            return player_request_protection_message(error)
+            return RankPlayerPreparedReply(player_request_protection_message(error))
         except TimeoutError:
-            return f"❌ {spec.title}玩家查询超时，请稍后再试。"
+            return RankPlayerPreparedReply(
+                f"❌ {spec.title}玩家查询超时，请稍后再试。"
+            )
         except (SocketRecvError, NotLoggedInError, DisconnectedError) as error:
-            return self._policy.player_error(command.player_id, error)
+            return RankPlayerPreparedReply(
+                self._policy.player_error(command.player_id, error)
+            )
         except Exception as error:  # noqa: BLE001
-            return f"❌ {spec.title}玩家查询失败：{error}"
+            return RankPlayerPreparedReply(
+                f"❌ {spec.title}玩家查询失败：{error}"
+            )
         if quota_message:
-            return (
+            return RankPlayerPreparedReply(
                 result.message
                 if result.lookup.cost.lightweight_confirmed
                 else quota_message
             )
-        if (
+        should_record_quota = (
             result.lookup.failure is None
             and not result.lookup.cost.lightweight_confirmed
-        ):
-            self._record_successful_player_quota(command, actor)
-        return result.message
+        )
+        return RankPlayerPreparedReply(
+            result.message,
+            on_delivered=(
+                partial(self._record_successful_player_quota, command, actor)
+                if should_record_quota
+                else None
+            ),
+        )
 
     async def _fetch_player_message(
         self,

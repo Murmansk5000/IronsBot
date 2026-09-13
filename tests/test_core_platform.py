@@ -13,11 +13,18 @@ from ironsbot.core.platform import (
 
 
 def test_platform_refs_keep_opaque_ids_as_nonempty_strings() -> None:
-    actor = ActorRef(Platform.ONEBOT, " 123 ")
-    conversation = ConversationRef(Platform.ONEBOT, "group", " 456 ")
+    actor = ActorRef(Platform.ONEBOT, " 123 ", account_id=" bot-1 ")
+    conversation = ConversationRef(
+        Platform.ONEBOT,
+        "group",
+        " 456 ",
+        account_id=" bot-1 ",
+    )
 
     assert actor.id == "123"
+    assert actor.account_id == "bot-1"
     assert conversation.id == "456"
+    assert conversation.account_id == "bot-1"
 
 
 @pytest.mark.parametrize("value", ("", "   "))
@@ -95,6 +102,53 @@ def test_incoming_message_rejects_mismatched_declared_platform() -> None:
             conversation=ConversationRef(Platform.ONEBOT, "group", "456"),
             message_id="message-1",
             text="hello",
+        )
+
+
+def test_incoming_message_rejects_cross_account_identity_mix() -> None:
+    with pytest.raises(ValueError, match="accounts must match"):
+        IncomingMessageRef(
+            platform=Platform.QQ_OFFICIAL,
+            actor=ActorRef(
+                Platform.QQ_OFFICIAL,
+                "user-open-id",
+                account_id="bot-a",
+            ),
+            conversation=ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "private",
+                "user-open-id",
+                account_id="bot-b",
+            ),
+            message_id="message-1",
+            text="hello",
+        )
+
+
+def test_incoming_message_rejects_cross_account_direct_mention() -> None:
+    with pytest.raises(ValueError, match="conversation accounts must match"):
+        IncomingMessageRef(
+            platform=Platform.QQ_OFFICIAL,
+            actor=ActorRef(
+                Platform.QQ_OFFICIAL,
+                "user-open-id",
+                account_id="bot-a",
+            ),
+            conversation=ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                "group-open-id",
+                account_id="bot-a",
+            ),
+            message_id="message-1",
+            text="hello",
+            direct_mentions=(
+                ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    "mentioned-open-id",
+                    account_id="bot-b",
+                ),
+            ),
         )
 
 

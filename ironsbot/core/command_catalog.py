@@ -137,10 +137,15 @@ class CommandContext:
     actor: ActorRef
     conversation: ConversationRef
     group_role: str | None = None
+    member_mentions: tuple[ActorRef, ...] = ()
 
     @property
     def is_group(self) -> bool:
         return self.conversation.kind == "group"
+
+    @property
+    def has_member_mentions(self) -> bool:
+        return bool(self.member_mentions)
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]

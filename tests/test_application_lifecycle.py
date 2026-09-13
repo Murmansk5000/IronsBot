@@ -91,6 +91,19 @@ def test_lifecycle_runs_sync_and_async_hooks_in_lifecycle_order() -> None:
     assert calls == ["first", "second", "second", "first"]
 
 
+def test_lifecycle_starts_resources_before_contributions() -> None:
+    calls: list[str] = []
+    lifecycle = ApplicationLifecycle(
+        fake_driver(),
+        resource_startup_hooks=(("resource", lambda: calls.append("resource")),),
+        startup_hooks=(("plugin", lambda: calls.append("plugin")),),
+    )
+
+    asyncio.run(lifecycle.startup())
+
+    assert calls == ["resource", "plugin"]
+
+
 def test_lifecycle_cancels_tasks_before_resources() -> None:
     async def run() -> None:
         calls: list[str] = []

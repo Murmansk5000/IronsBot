@@ -8,7 +8,11 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.storage.platform_identity import ActorIdentityColumns
-from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    require_sqlite_columns,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -19,16 +23,28 @@ if TYPE_CHECKING:
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS lucky_skin_watch_preferences (
     actor_platform TEXT NOT NULL,
+    actor_account_id TEXT NOT NULL DEFAULT '',
     actor_kind TEXT NOT NULL,
     actor_id TEXT NOT NULL,
     actor_scope_id TEXT NOT NULL DEFAULT '',
     skin_ids_json TEXT NOT NULL,
     initialized_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id)
+    PRIMARY KEY (
+        actor_platform, actor_account_id, actor_kind, actor_id, actor_scope_id
+    )
 )
 """
-_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
+_MIGRATIONS = (
+    SqliteMigration(1, (_SCHEMA,)),
+    SqliteMigration(
+        2,
+        callback=require_sqlite_columns(
+            "lucky_skin_watch_preferences",
+            {"actor_account_id"},
+        ),
+    ),
+)
 MIGRATION_NAMESPACE = "lucky_skin_watch"
 
 
@@ -45,8 +61,8 @@ class SqliteLuckySkinWatchPreferenceStore:
             row = connection.execute(
                 """
                 SELECT skin_ids_json FROM lucky_skin_watch_preferences
-                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
-                  AND actor_scope_id = ?
+                WHERE actor_platform = ? AND actor_account_id = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
                 """,
                 ActorIdentityColumns.from_actor(actor).values(),
             ).fetchone()
@@ -60,10 +76,14 @@ class SqliteLuckySkinWatchPreferenceStore:
             connection.execute(
                 """
                 INSERT INTO lucky_skin_watch_preferences (
-                    actor_platform, actor_kind, actor_id, actor_scope_id,
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id,
                     skin_ids_json, initialized_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(actor_platform, actor_kind, actor_id, actor_scope_id)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id
+                )
                 DO UPDATE SET
                     skin_ids_json = excluded.skin_ids_json,
                     updated_at = excluded.updated_at

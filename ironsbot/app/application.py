@@ -46,6 +46,7 @@ class Application:
     known_features: tuple[str, ...]
     required_plugin_features: frozenset[Feature]
     contributions: tuple[PluginContribution, ...] = ()
+    resource_startup_hooks: tuple[tuple[str, Any], ...] = ()
     resource_shutdown_hooks: tuple[tuple[str, Any], ...] = ()
     lifecycle: ApplicationLifecycle | None = None
     _configured: bool = field(default=False, init=False)
@@ -73,6 +74,7 @@ class Application:
             self.driver,
             self.contributions,
             task_owner=self.task_owner,
+            resource_startup_hooks=self.resource_startup_hooks,
             resource_shutdown_hooks=self.resource_shutdown_hooks,
         )
         self._configured = True

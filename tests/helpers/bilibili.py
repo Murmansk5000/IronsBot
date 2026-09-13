@@ -3,9 +3,10 @@ from pathlib import Path
 
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
+from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import BiliConfig
-from ironsbot.integrations.onebot.bilibili_targets import (
-    build_onebot_bili_configured_targets,
+from ironsbot.integrations.configured_targets.bilibili import (
+    build_bili_configured_targets,
 )
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
@@ -74,9 +75,12 @@ def build_test_bilibili_service(
         targets=BiliTargetService(
             resolved,
             runtime.features,
-            build_onebot_bili_configured_targets(
+            build_bili_configured_targets(
                 resolved,
-                runtime.onebot_references,
+                build_platform_reference_resolver(
+                    runtime.onebot_references,
+                    (),
+                ),
             ),
             SqliteBiliPushPreferenceStore(state_path),
             PushUnsubscribeStore(state_path),
