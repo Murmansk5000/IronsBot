@@ -2345,3 +2345,11 @@ QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID polic
 Ruff、BasedPyright、compileall、差异检查通过，全量 `3362 passed, 7 skipped`。腾讯官方
 多账号实现明确要求每个账号独立连接和 Token 缓存，Bot A 收到的 OpenID 不能由 Bot B
 发送，本次结构遵守该限制；真实主动消息权限与平台额度仍留作最终实机验收。
+
+QQ 官方管理员身份随后按事件场景拆分（`a6425b9c`）。C2C `superusers` 只接受可作为
+私聊目标的 `user_openid`；新增账号级 `group_superusers` 以群别名/群 OpenID 显式绑定
+该群事件中的 `member_openid`。群成员超级管理员以 `(AppID, group_openid,
+member_openid)` 精确授权，不能越过群或账号边界，并从私聊定时推送和管理通知目标中
+排除。实现没有猜测 C2C 与群 OpenID 的对应关系，也没有引入跨平台账号合并。Ruff、
+BasedPyright、compileall、差异检查通过，全量 `3363 passed, 7 skipped`；无新增数据库、
+依赖、图片资源或镜像层。真实 OpenID 获取及管理员命令仍需目标应用联机验收。
