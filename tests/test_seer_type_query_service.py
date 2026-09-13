@@ -459,7 +459,10 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
     from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
         render_peak_pool_vote,
     )
-    from ironsbot.integrations.seer_data.peak_repository import load_peak_vote_snapshots
+    from ironsbot.integrations.seer_data.peak_repository import (
+        PublishedPeakRepository,
+        load_peak_vote_snapshots,
+    )
     from ironsbot.integrations.seer_data.pet_info_renderer import (
         render_published_pet_info,
     )
@@ -561,7 +564,7 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
             def peak_session() -> Iterator[PeakRenderSession]:
                 with sessions.open() as inputs:
                     yield PeakRenderSession(
-                        inputs.data,
+                        PublishedPeakRepository(inputs.data),
                         partial(
                             render_peak_pool,
                             inputs.cache,
@@ -644,7 +647,7 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
                     return QueryReply(image=result.image)
                 if kind in {"peak_pool_vote", "peak_pet_rank"}:
                     service = PeakQueryService(
-                        database,
+                        PublishedPeakRepository(database),
                         cast("Any", SimpleNamespace(get_game=FixtureGame)),
                         peak_session,
                     )
@@ -657,7 +660,9 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
                     return QueryReply(image=result.image)
                 # Pool queries use release data without an account/game API.
                 result = await PeakQueryService(
-                    database, cast("Any", None), peak_session
+                    PublishedPeakRepository(database),
+                    cast("Any", None),
+                    peak_session,
                 ).pool(expert=kind == "expert_pool", progress=progress)
                 assert result.image is not None, result.message
                 return QueryReply(image=result.image)

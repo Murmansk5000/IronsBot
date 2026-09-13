@@ -47,6 +47,7 @@ from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
 from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
     render_peak_pool_vote,
 )
+from ironsbot.integrations.seer_data.peak_repository import PublishedPeakRepository
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.seer_data.player_lineup_entries import (
     PublishedPlayerLineupEntryResolver,
@@ -247,7 +248,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     def peak_render_session() -> Iterator[PeakRenderSession]:
         with render_sessions.open() as inputs:
             yield PeakRenderSession(
-                inputs.data,
+                PublishedPeakRepository(inputs.data),
                 partial(
                     render_peak_pool,
                     inputs.cache,
@@ -487,7 +488,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             BattleEffectQueryService(seer_database, images),
             pet,
             PeakQueryService(
-                seer_database,
+                PublishedPeakRepository(seer_database),
                 headless,
                 peak_render_session,
             ),
