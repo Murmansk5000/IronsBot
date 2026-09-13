@@ -6,11 +6,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     bind_async,
+)
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.seer.data import DataUnavailableError
@@ -44,14 +46,10 @@ async def _finish_query(
     except DataUnavailableError:
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
-    if isinstance(reply, (bytes, DataQueryImageReply)):
-        image = reply if isinstance(reply, bytes) else reply.image
-        message = MessageFactory(Image(image))
-        if isinstance(reply, DataQueryImageReply) and reply.notice:
-            message += f"\n{reply.notice}"
-        if references is not None and (url := references.url_for(reference)):
-            message += f"\n相关查询：{url}"
-        await message.finish()
+    if isinstance(reply, DataQueryImageReply):
+        url = None if references is None else references.url_for(reference)
+        message = reply.to_outbound(reference_url=url)
+        await matcher.finish(render_onebot_outbound_message(message))
         return
     await matcher.finish(reply)
 
