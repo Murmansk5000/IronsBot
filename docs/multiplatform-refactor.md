@@ -1996,3 +1996,9 @@ manifest，只处理缺口并仍导出整片缓存。最终 build 仍为座驾 F
 全量 `333 passed`，Ruff、compileall、YAML 与差异检查通过；真实 Actions 耗时仍是外部验收项。
 资源读取、Unity 缺口和缓存导出装配只有预检持有，渲染消费其快照；总构建器由 771 行
 降到 760 行，避免两条内部命令重复网络发现或逐渐产生不同的分片语义。
+
+最终 SQLite build 随后改为效果图标缓存的严格消费者：禁止现场 PNG 渲染，缓存缺口直接
+使发布失败，不再保留第二套 FFDec backstop。座驾生成先复用现有生成分支并计算候选，
+只有确实缺 PNG 时才安装 FFDec；冷构建和新增座驾仍走原渲染及 pending 记录。座驾/CI
+专项 14 passed、SeerAPI 全量 `335 passed`，Ruff、CLI、compileall、YAML 与差异检查通过。
+真实 Actions 热构建耗时仍待发布环境记录。
