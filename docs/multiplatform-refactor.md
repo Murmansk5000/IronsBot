@@ -1974,6 +1974,10 @@ PNG 的座驾重复生成图片，并从生成分支移除这类冗余副本。�
 25 个 Unity 命中、11 个 Flash 缺口，首次生成候选减少约 69%；SeerAPI 全量 `329 passed`。
 该优化缩短构建并减少生成分支体积，不改变机器人候选顺序或运行镜像内容。
 
+生成入口进一步要求当前 manifest v3 与 typed repository 元数据；输入旧 schema 或流水线
+顺序错误时立即失败，不再退回全部座驾 FFDec。专项 11 passed、SeerAPI 全量
+`331 passed`，确保“构建突然变慢”不会掩盖发布契约错误。
+
 效果图标并发 renderer 的公共出口也固定按 icon ID 排序，不再把 worker 完成顺序泄露给
 SQLite、manifest 或错误摘要。逆序完成测试、15 项效果图标专项和 SeerAPI 全量
 `330 passed` 通过；效果图标 Spec 的前六项本地 acceptance 已据此关闭，真实 FFDec
