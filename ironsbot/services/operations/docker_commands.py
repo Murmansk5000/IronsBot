@@ -26,13 +26,13 @@ def docker_command_contracts() -> tuple[CommandContract, ...]:
             (
                 "docker_update.restart",
                 BOT_RESTART_COMMANDS,
-                "重启机器人进程",
+                "打开维护菜单，选择仅重启或更新镜像后重启",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
             (
                 "docker_update.image_update",
                 DOCKER_UPDATE_COMMANDS,
-                "检查镜像并重启机器人",
+                "打开维护菜单，选择仅重启或更新镜像后重启",
                 {"access": (CommandAccess(audience="superuser"),)},
             ),
             (

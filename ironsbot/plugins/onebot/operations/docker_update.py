@@ -11,7 +11,6 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
-from nonebot.typing import T_State
 
 from ironsbot.core.plugin_install import (
     HelpEntry,
@@ -19,10 +18,7 @@ from ironsbot.core.plugin_install import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.confirmation import (
-    EventConfirmation,
-    request_event_confirmation,
-)
+from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
@@ -36,6 +32,10 @@ from ironsbot.services.operations.docker_commands import docker_command_contract
 from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
+from ironsbot.services.operations.docker_update import (
+    docker_maintenance_menu_text,
+    parse_docker_maintenance_choice,
+)
 
 if TYPE_CHECKING:
     from nonebot.adapters import Event
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 __plugin_meta__ = PluginMetadata(
     name="镜像维护",
     description="检查或更新 Docker 镜像，并重启机器人进程。",
-    usage="超级管理员可发送“/检查更新镜像”“/更新镜像”或“/重启机器人”。",
+    usage="超级管理员可发送“/检查更新镜像”，或打开“/重启机器人”维护菜单。",
     type="application",
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
@@ -72,10 +72,34 @@ def _start_docker_update(*, startup_notice: StartupNoticeService) -> None:
 
 
 def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
-    async def handle_restart(matcher: Matcher, event: MessageEvent) -> None:
-        message, restart_action = await service.prepare_manual_restart()
+    def maintenance_reply(event: MessageEvent) -> bool:
+        return event.get_plaintext().strip() in {"0", "1", "2"}
+
+    async def handle_maintenance_choice(
+        matcher: Matcher,
+        event: MessageEvent,
+    ) -> None:
+        text = event.get_plaintext().strip()
+        if text == "0":
+            await finish_event_reply(matcher, event, "已退出机器人维护。")
+            return
+        choice = parse_docker_maintenance_choice(text)
+        if choice is None:
+            await finish_event_reply(matcher, event, "序号超出范围，输入 0 退出。")
+            return
+        message, restart_action = await service.prepare_maintenance(choice)
         await send_event_reply(matcher, event, message)
         await service.execute_restart(restart_action)
+
+    async def open_maintenance_menu(matcher: Matcher, event: MessageEvent) -> None:
+        await enter_event_reply_conversation(
+            matcher,
+            event,
+            namespace="docker_maintenance",
+            handlers=[handle_maintenance_choice],
+            reply_check=maintenance_reply,
+            prompt=docker_maintenance_menu_text(),
+        )
 
     async def handle_check_image_update(
         matcher: Matcher,
@@ -86,29 +110,6 @@ def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
             event,
             await service.check_image_update(),
         )
-
-    async def handle_image_update(matcher: Matcher, event: MessageEvent) -> None:
-        message, should_update = await service.prepare_manual_update()
-        if not should_update:
-            await finish_event_reply(matcher, event, message)
-            return
-        await request_event_confirmation(
-            matcher,
-            event,
-            EventConfirmation(
-                namespace="docker_update_confirmation",
-                check_message=message,
-                action_label="更新镜像并重启机器人",
-                executor=run_confirmed_image_update,
-            ),
-        )
-
-    async def run_confirmed_image_update(
-        _matcher: Matcher,
-        _event: MessageEvent,
-        _state: T_State,
-    ) -> str:
-        return await service.execute_manual_update()
 
     restart_matcher = registry.on_fullmatch(
         BOT_RESTART_COMMANDS,
@@ -121,7 +122,7 @@ def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    restart_matcher.append_handler(handle_restart)
+    restart_matcher.append_handler(open_maintenance_menu)
 
     update_matcher = registry.on_fullmatch(
         DOCKER_UPDATE_COMMANDS,
@@ -134,7 +135,7 @@ def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    update_matcher.append_handler(handle_image_update)
+    update_matcher.append_handler(open_maintenance_menu)
 
     check_update_matcher = registry.on_fullmatch(
         DOCKER_CHECK_UPDATE_COMMANDS,
