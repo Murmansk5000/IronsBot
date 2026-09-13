@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, Mock
@@ -13,7 +14,12 @@ from ironsbot.services.seer.rank_admin import (
     RankAdminPolicy,
     RankAdminService,
 )
-from ironsbot.services.seer.rank_list_models import RankListCommand, RankPlayerCommand
+from ironsbot.services.seer.rank_list_models import (
+    GlobalRankSpec,
+    RankCacheBatchCommand,
+    RankListCommand,
+    RankPlayerCommand,
+)
 from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.rank_pagination import RankPageConflictError
 from ironsbot.services.seer.rank_player_query import RankPlayerQueryResult
@@ -23,6 +29,8 @@ from ironsbot.services.seer.rank_queries import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ironsbot.services.operations.headless import HeadlessService
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.player_request_protection import (
@@ -228,3 +236,70 @@ async def test_empty_local_rank_refresh_returns_without_headless() -> None:
     )
 
     assert message == "❌ 当前没有本地样本缓存。先查询一些米米号后再刷新。"
+
+
+@pytest.mark.asyncio
+async def test_rank_batch_reports_progress_before_starting_headless_request() -> None:
+    events: list[str] = []
+    spec = GlobalRankSpec("图鉴积分榜", key=1, sub_key=2, unit="分")
+
+    class Rank:
+        @staticmethod
+        def get_spec(_rank_key: str) -> GlobalRankSpec:
+            return spec
+
+        @staticmethod
+        def spec_needs_sub_key(_spec: GlobalRankSpec) -> bool:
+            return False
+
+        @staticmethod
+        async def fetch_range(*_args: object, **kwargs: object) -> list[object]:
+            events.append(f"fetch:{kwargs['count']}")
+            return [object()] * 20
+
+    class Operations:
+        @staticmethod
+        @contextmanager
+        def track(*_args: object, **_kwargs: object) -> Iterator[None]:
+            yield
+
+    class Headless:
+        @staticmethod
+        def get_game() -> object:
+            events.append("get-game")
+            return SimpleNamespace(operations=Operations())
+
+    class Requests:
+        @staticmethod
+        async def run(operation: Any, **_kwargs: object) -> int:
+            events.append("request")
+            return await operation()
+
+    service = RankAdminService(
+        RankAdminPolicy(
+            rank_limit=100,
+            batch_limit=20,
+            refresh_limit=20,
+            refresh_max_age_hours=24,
+            page_cache_ttl_seconds=3600,
+            display_limit=lambda _conversation: 20,
+        ),
+        cast("RankService", Rank()),
+        cast("LocalRankService", FakeLocalRank()),
+        cast("RankPageRefreshService", SimpleNamespace()),
+        cast("HeadlessService", Headless()),
+        cast("PlayerRequestProtectionService", Requests()),
+    )
+
+    async def progress(message: str) -> None:
+        assert "本次最多请求 20 条" in message
+        events.append("progress")
+
+    result = await service.cache_batch(
+        RankCacheBatchCommand("图鉴积分", 1, 50),
+        actor=ActorRef(Platform.ONEBOT, "1"),
+        progress=progress,
+    )
+
+    assert events == ["progress", "request", "get-game", "fetch:20"]
+    assert "写入榜单页缓存：20 条" in result
