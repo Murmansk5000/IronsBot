@@ -37,6 +37,7 @@ from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStor
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+from ironsbot.services.messaging.sendpic import SingleImageResult
 from ironsbot.services.seer.autocard import AutocardEntry
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.peak import PeakQueryResult
@@ -92,7 +93,10 @@ async def test_seer_reply_uses_shared_content_without_platform_identity(
 @pytest.mark.parametrize(
     "message",
     [
-        DataQueryImageReply(b"preview", "缓存时间：2026-09-13").to_outbound(),
+        DataQueryImageReply(b"preview", "缓存时间：2026-09-13").to_outbound(
+            reference_url="https://example.test/preview"
+        ),
+        SingleImageResult(b"configured-image").to_outbound(),
         PeakQueryResult(image=b"peak-image").to_outbound(),
         PeakQueryResult(text="专家榜结果").to_outbound(),
         AutocardEntry(

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 
-from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     bind_async,
@@ -48,9 +47,8 @@ async def _finish_query(
         await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
         return
     if isinstance(reply, DataQueryImageReply):
-        message = reply.to_outbound()
-        if references is not None and (url := references.url_for(reference)):
-            message = OutboundMessage((*message.parts, TextPart(f"\n相关查询：{url}")))
+        url = None if references is None else references.url_for(reference)
+        message = reply.to_outbound(reference_url=url)
         await matcher.finish(render_onebot_outbound_message(message))
         return
     await matcher.finish(reply)

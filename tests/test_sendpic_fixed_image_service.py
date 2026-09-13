@@ -52,7 +52,10 @@ def test_sendpic_service_reads_single_image(
         image_file="sample.png",
     )
 
-    assert asyncio.run(_service(tmp_path, command).fetch_single(command)) == b"abc"
+    result = asyncio.run(_service(tmp_path, command).fetch_single(command))
+
+    assert result.data == b"abc"
+    assert result.to_outbound().parts == (BinaryImagePart(b"abc", "image/png"),)
 
 
 def test_indexed_image_result_owns_platform_neutral_template_output(

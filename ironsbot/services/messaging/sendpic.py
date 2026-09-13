@@ -69,6 +69,14 @@ class SendpicResult:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class SingleImageResult:
+    data: bytes
+
+    def to_outbound(self) -> OutboundMessage:
+        return OutboundMessage((BinaryImagePart(self.data, "image/png"),))
+
+
 class SendpicService:
     def __init__(
         self,
@@ -121,11 +129,13 @@ class SendpicService:
             for text in (command.command, *command.aliases)
         )
 
-    async def fetch_single(self, command: PicConfig) -> bytes:
+    async def fetch_single(self, command: PicConfig) -> SingleImageResult:
         if command.mode != "single" or not command.image_file:
             raise ValueError(f"{command.id} 不是单图命令")  # noqa: TRY003
         try:
-            return await self._backends[command.backend].get_file(command.image_file)
+            return SingleImageResult(
+                await self._backends[command.backend].get_file(command.image_file)
+            )
         except FileNotFoundError as exc:
             raise ImageNotFoundError from exc
 

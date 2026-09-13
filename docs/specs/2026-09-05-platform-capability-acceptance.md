@@ -180,3 +180,20 @@ cannot use string conversions or format specifications. `SendpicResult` now
 owns expansion of `command`, `random_text`, `index`, `total` and `image`; the
 OneBot matcher only performs final encoding. Existing TOML templates and image
 selection semantics remain unchanged.
+
+## Final OneBot Content-Assembly Removal (2026-09-13)
+
+The last two OneBot plugin-local constructors for platform-neutral content were
+removed. `DataQueryImageReply` now owns its optional reference link as part of
+the image result, and `SingleImageResult` owns configured single-image output in
+the same way that indexed `SendpicResult` already owns templated output. The
+plugins only resolve configuration, invoke the service and encode its returned
+message.
+
+An AST architecture gate now rejects direct `OutboundMessage`, text, image or
+mention content construction anywhere under `plugins.onebot`. This is a content
+ownership boundary, not a ban on an adapter consuming core outbound values.
+The restricted-platform acceptance test sends both result types through the
+real `OutboundMessenger` protocol. QQ-number lookup, binding and direct-mention
+features remain deliberately deferred when the target API cannot represent
+them.

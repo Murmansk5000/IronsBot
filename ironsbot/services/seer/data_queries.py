@@ -32,12 +32,14 @@ class DataQueryImageReply:
     image: bytes
     notice: str = ""
 
-    def to_outbound(self) -> OutboundMessage:
+    def to_outbound(self, *, reference_url: str | None = None) -> OutboundMessage:
         parts: list[BinaryImagePart | TextPart] = [
             BinaryImagePart(self.image, "image/png")
         ]
         if self.notice:
             parts.append(TextPart(f"\n{self.notice}"))
+        if reference_url:
+            parts.append(TextPart(f"\n相关查询：{reference_url}"))
         return OutboundMessage(tuple(parts))
 
 

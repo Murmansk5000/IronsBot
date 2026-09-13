@@ -1891,3 +1891,10 @@ FastAPI extra 间接安装 Uvicorn standard extras。冻结锁文件删除运行
 BasedPyright、compileall 与 diff 检查通过。精确的变更后 Linux 镜像尺寸留给发布候选
 任务补证，不以宿主环境推算。QQ 号、绑定和直接 @ 等目标 API 可能无法表达的操作不在
 本批处理，继续延期到最终平台适配。
+
+## OneBot 内容组装清零（2026-09-13）
+
+每周预告的可选参考链接与配置单图命令改由各自 service 结果生成结构化出站消息，
+OneBot 插件内已不存在 `OutboundMessage`、文字、图片或提及 part 的直接构造。新增 AST
+架构门约束该边界，受限平台验收复用真实结果类型验证图片上传与内容顺序。该变化不涉及
+QQ 号、绑定或直接 @ 解析，这些能力仍按平台 API 能力延期到最后。

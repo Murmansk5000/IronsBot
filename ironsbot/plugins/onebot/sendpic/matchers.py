@@ -5,7 +5,6 @@ from nonebot.typing import T_State
 
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import PicConfig
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
 from ironsbot.integrations.onebot.message_rendering import (
@@ -60,7 +59,7 @@ def create_single_image_command(
         event: MessageEvent,
     ) -> None:
         try:
-            data = await service.fetch_single(config)
+            result = await service.fetch_single(config)
         except ImageNotFoundError:
             await finish_event_reply(
                 matcher,
@@ -71,9 +70,7 @@ def create_single_image_command(
         await finish_event_reply(
             matcher,
             event,
-            render_onebot_outbound_message(
-                OutboundMessage((BinaryImagePart(data, "image/png"),))
-            ),
+            render_onebot_outbound_message(result.to_outbound()),
         )
 
     matcher.append_handler(_handle)
