@@ -76,7 +76,11 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
-    from ironsbot.services.seer.rank_list_models import RankListCommand
+    from ironsbot.services.seer.rank_admin import RankAdminService
+    from ironsbot.services.seer.rank_list_models import (
+        RankListCommand,
+        RankPageCacheStatusCommand,
+    )
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.seer.team import TeamQueryActor
     from ironsbot.services.team.resource import TeamResourceService
@@ -121,6 +125,18 @@ class _FakePetConfigService:
     async def select(self, pet_id: int) -> QueryResult[object]:
         del pet_id
         return QueryResult()
+
+
+class _FakeRankAdminService:
+    def cache_status(self, conversation: ConversationRef | None) -> str:
+        assert conversation is not None
+        return "sample status"
+
+    def page_overview(self) -> str:
+        return "page overview"
+
+    def page_status(self, command: RankPageCacheStatusCommand) -> str:
+        return f"page status:{command.rank_key}"
 
 
 class _FakePlayerIdResolver:
@@ -280,6 +296,7 @@ def _fake_seer(
     peak_query: object | None = None,
     team_query: object | None = None,
     rank_queries: object | None = None,
+    rank_admin: object | None = None,
 ) -> SeerQueryResources:
     unused = _UnusedQueryService()
     return cast(
@@ -295,6 +312,7 @@ def _fake_seer(
             peak_query=peak_query or unused,
             player=unused,
             rank_queries=rank_queries or unused,
+            rank_admin=rank_admin or unused,
         ),
     )
 
@@ -309,6 +327,7 @@ def _portable_catalog(
     activity: bool = False,
     operations: bool = False,
     pet_config: bool = False,
+    rank_status: bool = False,
 ) -> CommandCatalog:
     command_ids = {
         "seer.data.query",
@@ -330,6 +349,8 @@ def _portable_catalog(
         "rank.sample_collection",
         "rank.sample_peak",
     }
+    if rank_status:
+        command_ids.update(("rank.sample_status", "rank.page_status"))
     seer_contracts = tuple(
         contract
         for contract in seer_command_contracts(
@@ -1025,6 +1046,57 @@ async def test_portable_router_runs_pet_config_image_query() -> None:
     assert reply.message.parts == (
         BinaryImagePart(b"pet-config", "image/png"),
     )
+
+
+@pytest.mark.asyncio
+async def test_portable_router_restricts_rank_status_to_account_superuser() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(
+            features=["seer_rank"],
+            superusers=["opaque-admin"],
+        ),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(rank_status=True),
+        about=AboutService("test"),
+        seer=_fake_seer(
+            rank_admin=cast("RankAdminService", _FakeRankAdminService())
+        ),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        account_id="example-app",
+    )
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        account_id="example-app",
+    )
+
+    async def dispatch(text: str, actor: ActorRef) -> str | None:
+        conversation = ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            actor.id,
+            account_id="example-app",
+        )
+        reply = await router.dispatch(_portable_input(text, actor, conversation))
+        if reply is None:
+            return None
+        return cast("TextPart", reply.message.parts[0]).text
+
+    assert await dispatch("/样本情况", member) is None
+    assert await dispatch("/榜单情况", member) is None
+    assert await dispatch("/样本情况", admin) == "sample status"
+    assert await dispatch("/榜单情况", admin) == "page overview"
+    assert await dispatch("/榜单情况 图鉴榜", admin) == "page status:图鉴积分"
 
 
 @pytest.mark.asyncio

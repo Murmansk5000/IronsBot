@@ -14,18 +14,35 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.services.portable_rank_commands import build_portable_rank_operations
+from ironsbot.services.portable_rank_commands import (
+    build_portable_rank_operations,
+    build_portable_rank_status_operations,
+)
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 
 if TYPE_CHECKING:
     from ironsbot.services.portable_reply import PortableReply
+    from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import (
         RankListCommand,
+        RankPageCacheStatusCommand,
         RankPlayerCommand,
         RankScoreCommand,
     )
     from ironsbot.services.seer.rank_queries import RankQueryService
+
+
+class _RankAdminService:
+    def cache_status(self, conversation: ConversationRef | None) -> str:
+        assert conversation is not None
+        return f"samples:{conversation.id}"
+
+    def page_overview(self) -> str:
+        return "page overview"
+
+    def page_status(self, command: RankPageCacheStatusCommand) -> str:
+        return f"page:{command.rank_key}"
 
 
 class _RankQueryService:
@@ -229,3 +246,22 @@ async def test_rank_reports_an_unbound_mentioned_openid() -> None:
     )
 
     assert _text(result.message) == "该成员尚未绑定米米号。"
+
+
+@pytest.mark.asyncio
+async def test_portable_rank_status_operations_are_read_only_queries() -> None:
+    operations = build_portable_rank_status_operations(
+        cast("RankAdminService", _RankAdminService())
+    )
+    context = _context("/榜单情况")
+
+    samples = await operations["rank.sample_status"]("样本情况", context)
+    overview = await operations["rank.page_status"]("榜单情况", context)
+    detail = await operations["rank.page_status"]("榜单情况 图鉴榜", context)
+
+    assert isinstance(samples, OutboundMessage)
+    assert isinstance(overview, OutboundMessage)
+    assert isinstance(detail, OutboundMessage)
+    assert _text(samples) == "samples:group-openid"
+    assert _text(overview) == "page overview"
+    assert _text(detail) == "page:图鉴积分"
