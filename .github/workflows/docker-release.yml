@@ -10,6 +10,8 @@ on:
 
 env:
     PYTHON_VERSION: "3.11"
+    DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
 jobs:
     docker:
@@ -89,7 +91,7 @@ jobs:
               with:
                   images: |
                       name=ghcr.io/${{ github.repository }}
-                      name=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot,enable=${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+                      name=docker.io/${{ env.DOCKERHUB_USERNAME }}/ironsbot,enable=${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
                   tags: |
                       type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
                       type=raw,value=${{ steps.fork_version.outputs.fork_version }}
@@ -178,11 +180,11 @@ jobs:
                   password: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Login to Docker Hub
-              if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+              if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
               uses: docker/login-action@v4
               with:
-                  username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+                  username: ${{ env.DOCKERHUB_USERNAME }}
+                  password: ${{ env.DOCKERHUB_TOKEN }}
 
             - name: Compare runtime candidate image growth
               shell: bash
