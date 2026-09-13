@@ -17,7 +17,6 @@ dependencies = [
     "pillow>=12.3.0",
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
-    "nonebot-plugin-send-anything-anywhere>=0.7.1",
     "qrcode[pil]>=8.2",
     "tomli>=2; python_version < '3.11'",
 ]

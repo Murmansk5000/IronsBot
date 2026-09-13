@@ -143,8 +143,8 @@ Every remaining direct runtime dependency has a current production owner:
 NoneBot and the OneBot adapter provide the active platform runtime;
 FastAPI/httpx provide the configured drivers; htmlkit and Pillow implement image
 rendering; Hishel implements the shared HTTP cache; APScheduler owns scheduled
-work; SAA encodes outgoing image messages; qrcode generates Bilibili login QR
-images; and seerapi-models/SQLAlchemy read the published database.
+work; qrcode generates Bilibili login QR images; and
+seerapi-models/SQLAlchemy read the published database.
 
 The audit later proved that `resvg-py` had no production or private-extension
 caller: its only public wrapper was itself unused. The wrapper and direct
@@ -153,6 +153,15 @@ wheel solely because it had existed in an earlier rendering experiment.
 After removal, the full suite passed (`3207 passed, 7 skipped`), together with
 Ruff, BasedPyright, compileall and the frozen dependency export check. Actual
 Linux image size remains a release-run measurement, not a projected claim.
+
+The same ownership check later removed
+`nonebot-plugin-send-anything-anywhere`. Four OneBot adapters used it only to
+wrap image bytes or URLs, while IronsBot already owns its outbound message
+contract and OneBot renderer. Those adapters now construct native OneBot image
+segments at the platform boundary. This also removes the transitive `filetype`
+and `StrEnum` distributions without changing service contracts or moving
+platform types inward. The Windows environment shed roughly 0.5 MiB of package
+payload; the exact Linux image delta remains pending candidate measurement.
 
 Development-only `nodejs_wheel`, BasedPyright, pytest, Ruff and audit tooling do
 not occur in the frozen production export. The Dockerfile already exports with

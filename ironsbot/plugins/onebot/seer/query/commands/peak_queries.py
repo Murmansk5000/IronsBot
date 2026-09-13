@@ -7,8 +7,8 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.rules import explicit_command
@@ -48,7 +48,7 @@ async def _finish_result(
         await matcher.finish(result.text)
         return
     if result.image is not None:
-        await MessageFactory(Image(result.image)).finish(at_sender=False)
+        await matcher.finish(MessageSegment.image(result.image))
 
 
 async def _handle_pool(

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
-from nonebot_plugin_saa import Image, MessageFactory
 
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
@@ -46,12 +46,12 @@ async def _finish_query(
         return
     if isinstance(reply, (bytes, DataQueryImageReply)):
         image = reply if isinstance(reply, bytes) else reply.image
-        message = MessageFactory(Image(image))
+        message = Message(MessageSegment.image(image))
         if isinstance(reply, DataQueryImageReply) and reply.notice:
-            message += f"\n{reply.notice}"
+            message += MessageSegment.text(f"\n{reply.notice}")
         if references is not None and (url := references.url_for(reference)):
-            message += f"\n相关查询：{url}"
-        await message.finish()
+            message += MessageSegment.text(f"\n相关查询：{url}")
+        await matcher.finish(message)
         return
     await matcher.finish(reply)
 

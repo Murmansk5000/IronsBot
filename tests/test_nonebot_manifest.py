@@ -30,7 +30,6 @@ def test_project_nonebot_adapter_matches_the_onebot_v11_runtime() -> None:
 FULL_PLUGINS = [
     "nonebot_plugin_apscheduler",
     "nonebot_plugin_htmlkit",
-    "nonebot_plugin_saa",
     "ironsbot.plugins.onebot.scheduler",
     "ironsbot.plugins.onebot.clock_check",
     "ironsbot.plugins.onebot.seer.query",
@@ -64,7 +63,6 @@ FULL_PLUGINS = [
 CORE_PLUGINS = [
     "nonebot_plugin_apscheduler",
     "nonebot_plugin_htmlkit",
-    "nonebot_plugin_saa",
     "ironsbot.plugins.onebot.scheduler",
     "ironsbot.plugins.onebot.seer.query",
     "ironsbot.plugins.onebot.about",

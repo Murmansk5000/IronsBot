@@ -1,10 +1,9 @@
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Bot, Message
 from nonebot.consts import CMD_ARG_KEY, PREFIX_KEY
 from nonebot.exception import FinishedException
 from nonebot.rule import Rule, TrieRule, command, fullmatch
@@ -24,6 +23,9 @@ from ironsbot.services.messaging.sendpic import (
     SendpicService,
     sendpic_command_contracts,
 )
+
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import Bot
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 ACTOR = ActorRef(Platform.ONEBOT, "100")
@@ -311,11 +313,6 @@ async def test_handler_uses_parsed_index_once(
 ) -> None:
     service, backend = _service()
     rules, handlers = _installed(service, monkeypatch)
-    from ironsbot.plugins.onebot.sendpic import matchers
-
-    monkeypatch.setattr(
-        matchers.Image, "build", AsyncMock(return_value=Message("picture"))
-    )
     event = private_message_event(
         "表情" + (str(index) if index is not None else ""), user_id=100
     )
@@ -326,7 +323,7 @@ async def test_handler_uses_parsed_index_once(
     monkeypatch.setattr(service, "parse_indexed", parser)
     matcher = Mock(finish=AsyncMock(side_effect=FinishedException))
     with pytest.raises(FinishedException):
-        await handlers["sendpic.memes"](matcher, cast("Bot", None), state)
+        await handlers["sendpic.memes"](matcher, state)
     parser.assert_not_called()
     backend.count.assert_awaited_once_with("memes")
     if index == OUT_OF_RANGE_INDEX:
@@ -340,6 +337,8 @@ async def test_handler_uses_parsed_index_once(
             if index == SELECTED_INDEX
             else path in {"memes/1.png", "memes/2.png", "memes/3.png"}
         )
+        message = matcher.finish.await_args.args[0]
+        assert message["image"]
 
 
 def test_numbered_gallery_is_owned_by_its_contract() -> None:

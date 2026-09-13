@@ -1,9 +1,8 @@
-from nonebot.adapters import Bot, MessageTemplate
+from nonebot.adapters import MessageTemplate
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
-from nonebot_plugin_saa import Image
 
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import PicConfig
@@ -97,7 +96,6 @@ def create_image_command(
 
     async def _handler(
         m: Matcher,
-        bot: Bot,
         state: T_State,
     ) -> None:
         request: IndexedImageRequest = state[INDEXED_IMAGE_REQUEST_KEY]
@@ -106,14 +104,13 @@ def create_image_command(
         except ImageIndexOutOfRangeError as e:
             await m.finish(str(e))
 
-        image = Image(result.data)
         await m.finish(
             MessageTemplate(template).format(
                 command=config.command,
                 random_text=result.random_text,
                 index=result.index,
                 total=result.total,
-                image=await image.build(bot),
+                image=MessageSegment.image(result.data),
             )
         )
 
