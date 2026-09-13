@@ -424,6 +424,37 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
     )
     assert config.proactive_messages
 
+    with pytest.raises(ValueError, match="proactive_messages must be true"):
+        QQOfficialConfig(
+            enabled=True,
+            app_id="example-app",
+            secret="example-secret",
+            features=[],
+            group_policy={
+                "opaque-group": ["team_resource_subscription"],
+            },
+        )
+
+
+def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
+    config = QQOfficialConfig(
+        features=[],
+        group_policy={"opaque-group": ["seer_activity_push"]},
+        user_policy={"opaque-user": ["bili_push"]},
+    )
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=config,
+    )
+
+    assert features.conversations_for_feature("seer_activity_push") == [
+        ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
+    ]
+    assert features.actors_for_feature("bili_push") == [
+        ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
+    ]
+
 
 def test_qq_official_identity_keeps_openids_opaque() -> None:
     event = GroupAtMessageCreateEvent.model_validate(

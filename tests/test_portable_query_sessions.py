@@ -14,6 +14,7 @@ from ironsbot.core.platform import (
 )
 from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
+    PortableTextInputSpec,
     QueryOperationSpec,
     build_query_operation,
 )
@@ -91,13 +92,13 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
 
     assert "1. first" in _text(result)
     assert "202" in _text(result)
-    assert sessions.recognizes_selection("2", owner)
-    assert not sessions.recognizes_selection("2", other_member)
-    assert not sessions.recognizes_selection("2", other_group)
+    assert sessions.recognizes_response("2", owner)
+    assert not sessions.recognizes_response("2", other_member)
+    assert not sessions.recognizes_response("2", other_group)
     assert "序号无效" in _text(await sessions.select("9", owner))
-    assert sessions.recognizes_selection("2", owner)
+    assert sessions.recognizes_response("2", owner)
     assert _text(await sessions.select("2", owner)) == "selected:202"
-    assert not sessions.recognizes_selection("2", owner)
+    assert not sessions.recognizes_response("2", owner)
 
 
 @pytest.mark.asyncio
@@ -122,11 +123,11 @@ async def test_selection_can_exit_and_expires_without_persistence() -> None:
     second = _context("second")
     await sessions.begin(first, argument="query", spec=spec)
     assert _text(await sessions.select("0", first)) == "已退出查询。"
-    assert not sessions.recognizes_selection("1", first)
+    assert not sessions.recognizes_response("1", first)
 
     await sessions.begin(second, argument="query", spec=spec)
     clock.value = 10
-    assert not sessions.recognizes_selection("1", second)
+    assert not sessions.recognizes_response("1", second)
     assert await sessions.select("1", second) is None
 
 
@@ -154,3 +155,32 @@ async def test_query_operation_uses_service_result_contract() -> None:
     assert _text(await operation("querytarget", _context("member"))) == "found:target"
     with pytest.raises(ValueError, match="parser rejected"):
         await operation("query", _context("member"))
+
+
+@pytest.mark.asyncio
+async def test_text_input_session_claims_next_response_and_supports_exit() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("member")
+
+    async def submit(text: str) -> OutboundMessage:
+        return OutboundMessage.from_text(f"value:{text}")
+
+    sessions.offer_text_input(
+        context,
+        PortableTextInputSpec(
+            submit=submit,
+            prompt=OutboundMessage.from_text("input"),
+        ),
+    )
+    assert sessions.recognizes_response("22:30", context)
+    assert _text(await sessions.select("22:30", context)) == "value:22:30"
+    assert not sessions.recognizes_response("22:30", context)
+
+    sessions.offer_text_input(
+        context,
+        PortableTextInputSpec(
+            submit=submit,
+            prompt=OutboundMessage.from_text("input"),
+        ),
+    )
+    assert _text(await sessions.select("0", context)) == "已退出查询。"
