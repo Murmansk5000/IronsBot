@@ -13,6 +13,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
+DOCKERHUB_DESCRIPTION_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "dockerhub-description.yml"
+)
 
 CURRENT_ACTION_MAJORS = {
     "actions/checkout": 7,
@@ -43,6 +46,33 @@ def _steps() -> list[dict]:
 
 def _workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_dockerhub_description_is_optional_without_repository_secrets() -> None:
+    workflow = yaml.safe_load(
+        DOCKERHUB_DESCRIPTION_WORKFLOW.read_text(encoding="utf-8")
+    )
+    assert workflow["env"] == {
+        "DOCKERHUB_USERNAME": "${{ secrets.DOCKERHUB_USERNAME }}",
+        "DOCKERHUB_TOKEN": "${{ secrets.DOCKERHUB_TOKEN }}",
+    }
+    steps = workflow["jobs"]["dockerhub-description"]["steps"]
+    skip = next(
+        step
+        for step in steps
+        if step["name"] == "Skip unavailable Docker Hub publication"
+    )
+    publish = next(
+        step for step in steps if step["name"] == "Update Docker Hub Description"
+    )
+    assert skip["if"] == (
+        "${{ env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == '' }}"
+    )
+    assert publish["if"] == (
+        "${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}"
+    )
+    assert publish["with"]["username"] == "${{ env.DOCKERHUB_USERNAME }}"
+    assert publish["with"]["password"] == "${{ env.DOCKERHUB_TOKEN }}"
 
 
 def test_workflows_use_current_first_party_action_contracts() -> None:
