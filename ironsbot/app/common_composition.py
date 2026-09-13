@@ -58,7 +58,9 @@ def build_common_components(
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
         qq_official=(
-            settings.bot.qq_official if settings.bot.qq_official.enabled else None
+            settings.bot.qq_official
+            if settings.bot.qq_official.enabled_accounts
+            else None
         ),
     )
     outbound = GroupOutboundRateLimitService(
@@ -75,14 +77,16 @@ def build_common_components(
     platform_messengers: dict[Platform, OutboundMessenger] = {
         Platform.ONEBOT: OneBotOutboundMessenger(bot_router, outbound),
     }
-    if settings.bot.qq_official.enabled:
+    if settings.bot.qq_official.enabled_accounts:
         from ironsbot.integrations.qq_official.outbound_messenger import (
             QQOfficialOutboundMessenger,
         )
 
         platform_messengers[Platform.QQ_OFFICIAL] = QQOfficialOutboundMessenger(
-            settings.bot.qq_official.app_id,
-            proactive_enabled=settings.bot.qq_official.proactive_messages,
+            {
+                account.app_id: account.proactive_messages
+                for account in settings.bot.qq_official.enabled_accounts.values()
+            }
         )
     outbound_messenger = PlatformOutboundMessenger(platform_messengers)
     proactive_delivery = ProactiveMessageDelivery(

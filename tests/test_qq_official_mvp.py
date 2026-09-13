@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from nonebot.adapters.qq import Bot as QQOfficialBot
 from nonebot.adapters.qq import MessageSegment
 from nonebot.adapters.qq.event import (
     C2CMessageCreateEvent,
@@ -15,9 +16,13 @@ from nonebot.adapters.qq.event import (
     GroupMessageCreateEvent,
 )
 
+from ironsbot.app.bootstrap import qq_official_bot_configs
 from ironsbot.config.loader import load_settings
 from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
-from ironsbot.config.models.settings import QQOfficialConfig
+from ironsbot.config.models.settings import (
+    QQOfficialAccountConfig,
+    QQOfficialConfig,
+)
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
@@ -445,6 +450,39 @@ def _portable_input(
     )
 
 
+def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
+    *,
+    features: list[str] | None = None,
+    superusers: list[str] | None = None,
+    group_policy: dict[str, list[str]] | None = None,
+    user_policy: dict[str, list[str]] | None = None,
+    group_superusers: dict[str, list[str]] | None = None,
+    group_aliases: dict[str, str] | None = None,
+    user_aliases: dict[str, str] | None = None,
+    proactive_messages: bool = False,
+) -> QQOfficialConfig:
+    return QQOfficialConfig(
+        enabled=True,
+        accounts={
+            "example_bot": QQOfficialAccountConfig(
+                enabled=True,
+                app_id="example-app",
+                secret="example-secret",
+                features=[] if features is None else features,
+                superusers=[] if superusers is None else superusers,
+                group_policy={} if group_policy is None else group_policy,
+                user_policy={} if user_policy is None else user_policy,
+                group_superusers=(
+                    {} if group_superusers is None else group_superusers
+                ),
+                group_aliases={} if group_aliases is None else group_aliases,
+                user_aliases={} if user_aliases is None else user_aliases,
+                proactive_messages=proactive_messages,
+            )
+        },
+    )
+
+
 def test_qq_official_config_loads_credentials_from_environment(
     tmp_path: Path,
 ) -> None:
@@ -452,6 +490,9 @@ def test_qq_official_config_loads_credentials_from_environment(
     path.write_text(
         """
 [bot.qq_official]
+enabled = true
+
+[bot.qq_official.accounts.example_bot]
 enabled = true
 app_id = "example-app"
 features = ["help", "about", "seer_data"]
@@ -463,18 +504,158 @@ superusers = ["opaque-admin"]
     settings = load_settings(
         path,
         env={
-            "QQ_OFFICIAL_SECRET": "example-secret",
+            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         },
     )
 
     assert settings.bot.qq_official.enabled
-    assert settings.bot.qq_official.secret == "example-secret"
-    assert settings.bot.qq_official.superusers == ["opaque-admin"]
+    account = settings.bot.qq_official.accounts["example_bot"]
+    assert account.secret == "example-secret"
+    assert account.superusers == ["opaque-admin"]
+
+
+def test_qq_official_config_loads_independent_accounts(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        """
+[bot.qq_official]
+enabled = true
+
+[bot.qq_official.accounts.example_a]
+enabled = true
+app_id = "app-a"
+features = ["help"]
+
+[bot.qq_official.accounts.example_b]
+enabled = true
+app_id = "app-b"
+features = ["about"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(
+        path,
+        env={
+            "QQ_OFFICIAL_SECRET_EXAMPLE_A": "secret-a",
+            "QQ_OFFICIAL_SECRET_EXAMPLE_B": "secret-b",
+        },
+    )
+
+    accounts = settings.bot.qq_official.enabled_accounts
+    actual = [
+        (name, account.app_id, account.secret)
+        for name, account in accounts.items()
+    ]
+    assert actual == [
+        ("example_a", "app-a", "secret-a"),
+        ("example_b", "app-b", "secret-b"),
+    ]
+
+
+def test_qq_official_account_features_are_isolated_by_app_id() -> None:
+    config = QQOfficialConfig(
+        enabled=True,
+        accounts={
+            "example_a": QQOfficialAccountConfig(
+                enabled=True,
+                app_id="app-a",
+                secret="secret-a",
+                features=["help"],
+            ),
+            "example_b": QQOfficialAccountConfig(
+                enabled=True,
+                app_id="app-b",
+                secret="secret-b",
+                features=["about"],
+            ),
+        },
+    )
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=config,
+    )
+    actor_a = ActorRef(Platform.QQ_OFFICIAL, "same-openid", account_id="app-a")
+    actor_b = ActorRef(Platform.QQ_OFFICIAL, "same-openid", account_id="app-b")
+
+    assert features.is_actor_feature_allowed(actor_a, "help")
+    assert not features.is_actor_feature_allowed(actor_a, "about")
+    assert features.is_actor_feature_allowed(actor_b, "about")
+    assert not features.is_actor_feature_allowed(actor_b, "help")
+
+
+def test_qq_official_adapter_configs_include_every_enabled_account() -> None:
+    config = QQOfficialConfig(
+        enabled=True,
+        accounts={
+            "example_a": QQOfficialAccountConfig(
+                enabled=True,
+                app_id="app-a",
+                secret="secret-a",
+            ),
+            "example_b": QQOfficialAccountConfig(
+                enabled=True,
+                app_id="app-b",
+                secret="secret-b",
+            ),
+            "disabled": QQOfficialAccountConfig(
+                enabled=False,
+                app_id="app-disabled",
+            ),
+        },
+    )
+
+    configs = qq_official_bot_configs(config)
+
+    assert [item["id"] for item in configs] == ["app-a", "app-b"]
+    assert [item["secret"] for item in configs] == ["secret-a", "secret-b"]
+    assert all(item["token"] == "" for item in configs)
+
+
+def test_qq_official_config_rejects_duplicate_app_ids() -> None:
+    with pytest.raises(ValueError, match="duplicate QQ Official AppID"):
+        QQOfficialConfig(
+            enabled=True,
+            accounts={
+                "example_a": QQOfficialAccountConfig(
+                    enabled=True,
+                    app_id="same-app",
+                    secret="secret-a",
+                ),
+                "example_b": QQOfficialAccountConfig(
+                    enabled=True,
+                    app_id="same-app",
+                    secret="secret-b",
+                ),
+            },
+        )
+
+
+def test_qq_official_config_rejects_secret_environment_alias_collision() -> None:
+    with pytest.raises(ValueError, match="unique ignoring case"):
+        QQOfficialConfig(
+            accounts={
+                "example": QQOfficialAccountConfig(),
+                "EXAMPLE": QQOfficialAccountConfig(),
+            }
+        )
+
+
+def test_qq_official_config_rejects_old_single_account_fields() -> None:
+    with pytest.raises(ValueError, match="app_id"):
+        QQOfficialConfig(
+            enabled=True,
+            app_id="old-app",  # type: ignore[call-arg]
+            secret="old-secret",  # type: ignore[call-arg]
+        )
 
 
 def test_qq_official_config_rejects_retired_static_token() -> None:
     with pytest.raises(ValueError, match="token"):
-        QQOfficialConfig(
+        QQOfficialAccountConfig(
             enabled=True,
             app_id="example-app",
             secret="example-secret",
@@ -484,27 +665,18 @@ def test_qq_official_config_rejects_retired_static_token() -> None:
 
 def test_team_resource_requires_qq_official_proactive_delivery() -> None:
     with pytest.raises(ValueError, match="proactive_messages must be true"):
-        QQOfficialConfig(
-            enabled=True,
-            app_id="example-app",
-            secret="example-secret",
+        _qq_config(
             features=["team_resource_subscription"],
         )
 
-    config = QQOfficialConfig(
-        enabled=True,
-        app_id="example-app",
-        secret="example-secret",
+    config = _qq_config(
         proactive_messages=True,
         features=["team_resource_subscription"],
     )
-    assert config.proactive_messages
+    assert config.accounts["example_bot"].proactive_messages
 
     with pytest.raises(ValueError, match="proactive_messages must be true"):
-        QQOfficialConfig(
-            enabled=True,
-            app_id="example-app",
-            secret="example-secret",
+        _qq_config(
             features=[],
             group_policy={
                 "opaque-group": ["team_resource_subscription"],
@@ -513,7 +685,7 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
 
 
 def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
-    config = QQOfficialConfig(
+    config = _qq_config(
         features=[],
         group_policy={"opaque-group": ["seer_activity_push"]},
         user_policy={"opaque-user": ["bili_push"]},
@@ -525,11 +697,82 @@ def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
     )
 
     assert features.conversations_for_feature("seer_activity_push") == [
-        ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "opaque-group",
+            account_id="example-app",
+        )
     ]
     assert features.actors_for_feature("bili_push") == [
-        ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-user",
+            account_id="example-app",
+        )
     ]
+
+
+def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
+    config = _qq_config(
+        features=[],
+        superusers=["official_admin"],
+        group_aliases={"official_group": "opaque-group"},
+        user_aliases={"official_admin": "opaque-admin"},
+        group_policy={"official_group": ["seer_rank"]},
+    )
+    features = build_onebot_feature_service(
+        FeatureConfig(superuser_bypass=True),
+        (),
+        qq_official=config,
+    )
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        account_id="example-app",
+    )
+    group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+
+    assert features.is_actor_superuser(admin)
+    assert features.conversation_has_feature(group, "seer_rank")
+
+
+def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(superuser_bypass=True),
+        (),
+        qq_official=_qq_config(
+            features=[],
+            group_aliases={"official_group": "opaque-group"},
+            group_superusers={"official_group": ["opaque-member"]},
+        ),
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        "opaque-group",
+        "example-app",
+    )
+
+    assert features.is_actor_superuser(member)
+    assert features.is_actor_feature_allowed(member, "seer_rank")
+    assert not features.is_actor_superuser(
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-member",
+            "member",
+            "other-group",
+            "example-app",
+        )
+    )
+    assert all(actor.kind == "member" for actor in features.superuser_actors())
+    assert features.private_superuser_actors() == []
 
 
 def test_qq_official_identity_keeps_openids_opaque() -> None:
@@ -569,7 +812,7 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         }
     )
 
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id="example-app")
 
     assert incoming.platform is Platform.QQ_OFFICIAL
     assert incoming.actor == ActorRef(
@@ -577,11 +820,13 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         "opaque-member",
         "member",
         "opaque-group",
+        account_id="example-app",
     )
     assert incoming.conversation == ConversationRef(
         Platform.QQ_OFFICIAL,
         "group",
         "opaque-group",
+        account_id="example-app",
     )
     assert incoming.group_role == "member"
     assert incoming.direct_mentions == (
@@ -590,6 +835,7 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
             "mentioned-openid",
             "member",
             "opaque-group",
+            account_id="example-app",
         ),
     )
     assert incoming.sequence == "sequence-1"
@@ -653,7 +899,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
             "to_me": True,
         }
     )
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id="example-app")
     delivered: list[bool] = []
     reply = PortableReply(
         OutboundMessage.from_text("result"),
@@ -661,7 +907,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
     )
     bot = _FakeOfficialBot(fail=fail)
     messenger = QQOfficialOutboundMessenger(
-        "example-app",
+        {"example-app": False},
         bot_provider=lambda _app_id: bot,
     )
     await deliver_qq_official_reply(messenger, incoming, reply)
@@ -676,7 +922,7 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(
+        qq_official=_qq_config(
             features=["help", "about"],
             superusers=[],
         ),
@@ -690,8 +936,17 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
         ai=cast("AiService", _FakeAi()),
         team_resource=_unused_team_resource(),
     )
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-user",
+        account_id="example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
 
     help_message = await router.dispatch(_portable_input("帮助", actor, conversation))
     assert help_message is not None
@@ -709,7 +964,7 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(
+        qq_official=_qq_config(
             features=["seer_activity_query"],
             superusers=["opaque-admin"],
         ),
@@ -724,11 +979,16 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
         team_resource=_unused_team_resource(),
         activity=cast("ActivityService", _FakeActivityService()),
     )
-    member = ActorRef(Platform.QQ_OFFICIAL, "opaque-member")
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        account_id="example-app",
+    )
     member_conversation = ConversationRef(
         Platform.QQ_OFFICIAL,
         "private",
         member.id,
+        account_id="example-app",
     )
 
     ending = await router.dispatch(
@@ -746,11 +1006,16 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
         _portable_input("/当前活动", member, member_conversation)
     )
 
-    admin = ActorRef(Platform.QQ_OFFICIAL, "opaque-admin")
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        account_id="example-app",
+    )
     admin_conversation = ConversationRef(
         Platform.QQ_OFFICIAL,
         "private",
         admin.id,
+        account_id="example-app",
     )
     current = await router.dispatch(
         _portable_input("/当前活动", admin, admin_conversation)
@@ -913,7 +1178,7 @@ async def test_portable_router_runs_scoped_query_selection(
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["seer_pet"]),
+        qq_official=_qq_config(features=["seer_pet"]),
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(),
@@ -924,8 +1189,19 @@ async def test_portable_router_runs_scoped_query_selection(
         ai=cast("AiService", _FakeAi()),
         team_resource=_unused_team_resource(),
     )
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        "group-a",
+        "example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-a",
+        account_id="example-app",
+    )
 
     choices = await router.dispatch(
         _portable_input("精灵雷伊", actor, conversation)
@@ -947,7 +1223,7 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["seer_peak"]),
+        qq_official=_qq_config(features=["seer_peak"]),
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(),
@@ -958,8 +1234,13 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
         ai=cast("AiService", _FakeAi()),
         team_resource=_unused_team_resource(),
     )
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
 
     result = await router.dispatch(_portable_input("竞技池", actor, conversation))
 
@@ -972,7 +1253,7 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["seer_team"]),
+        qq_official=_qq_config(features=["seer_team"]),
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(),
@@ -983,8 +1264,19 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
         ai=cast("AiService", _FakeAi()),
         team_resource=_unused_team_resource(),
     )
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        "group-a",
+        "example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-a",
+        account_id="example-app",
+    )
 
     result = await router.dispatch(
         _portable_input("战队123456 654321", actor, conversation)
@@ -999,7 +1291,7 @@ async def test_portable_router_runs_rank_query() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["seer_rank"]),
+        qq_official=_qq_config(features=["seer_rank"]),
     )
     router = build_portable_command_router(
         catalog=_portable_catalog(),
@@ -1010,8 +1302,13 @@ async def test_portable_router_runs_rank_query() -> None:
         ai=cast("AiService", _FakeAi()),
         team_resource=_unused_team_resource(),
     )
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
 
     result = await router.dispatch(_portable_input("成就榜", actor, conversation))
 
@@ -1024,7 +1321,7 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["about", "ai_chat"]),
+        qq_official=_qq_config(features=["about", "ai_chat"]),
     )
     ai = _FakeAi()
     router = build_portable_command_router(
@@ -1036,8 +1333,13 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
         ai=cast("AiService", ai),
         team_resource=_unused_team_resource(),
     )
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
 
     reply = await router.dispatch(_portable_input("你好", actor, conversation))
 
@@ -1053,13 +1355,24 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_routes_group_mention_by_ai_availability() -> None:
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        "group-a",
+        "example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-a",
+        account_id="example-app",
+    )
     ai = _FakeAi()
     enabled_features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["ai_chat"]),
+        qq_official=_qq_config(features=["ai_chat"]),
     )
     enabled = build_portable_command_router(
         catalog=_portable_catalog(ai_chat=True),
@@ -1083,7 +1396,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
     disabled_features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["help"]),
+        qq_official=_qq_config(features=["help"]),
     )
     disabled = build_portable_command_router(
         catalog=_portable_catalog(ai_chat=True),
@@ -1110,7 +1423,7 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(features=["ai_chat"]),
+        qq_official=_qq_config(features=["ai_chat"]),
     )
     ai = _FakeAi()
     router = build_portable_command_router(
@@ -1122,8 +1435,19 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
         ai=cast("AiService", ai),
         team_resource=_unused_team_resource(),
     )
-    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        "group-a",
+        "example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-a",
+        account_id="example-app",
+    )
 
     reply = await router.dispatch(_portable_input("", actor, conversation))
 
@@ -1177,13 +1501,18 @@ def test_c2c_identity_uses_user_openid() -> None:
         }
     )
 
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id="example-app")
 
-    assert incoming.actor == ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
+    assert incoming.actor == ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-user",
+        account_id="example-app",
+    )
     assert incoming.conversation == ConversationRef(
         Platform.QQ_OFFICIAL,
         "private",
         "opaque-user",
+        account_id="example-app",
     )
     assert incoming.group_role is None
 
@@ -1197,6 +1526,9 @@ environment = "test"
 plugin_manifest = "core"
 
 [bot.qq_official]
+enabled = true
+
+[bot.qq_official.accounts.example_bot]
 enabled = true
 app_id = "example-app"
 
@@ -1219,7 +1551,7 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
-            "QQ_OFFICIAL_SECRET": "example-secret",
+            "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         }
     )
     result = subprocess.run(
@@ -1268,7 +1600,7 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
-        qq_official=QQOfficialConfig(
+        qq_official=_qq_config(
             features=["help", "about"],
             superusers=[],
         ),
@@ -1283,4 +1615,5 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         team_resource=_unused_team_resource(),
     )
 
-    assert not qq_official_event_is_supported(event, router)
+    bot = cast("QQOfficialBot", SimpleNamespace(self_id="example-app"))
+    assert not qq_official_event_is_supported(bot, event, router)
