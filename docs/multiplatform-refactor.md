@@ -2019,6 +2019,12 @@ BasedPyright 通过。审计修正了幸运橱窗测试替身的 3 个类型声�
 涉及 QQ 号、直接 @、绑定或成员身份而目标 API 无法忠实表达的能力继续留到最终平台
 适配，不阻塞这些平台无关的发布验收。
 
+真实预检还暴露了纯缓存命中时仍打印 `Rendering` 的误导性总进度。SeerAPI
+`42b9c34` 将该层统一改为 `Resolving` / `resolution progress` / `Resolved`：缓存读取、
+资源缺失判定和必要时的实际渲染共用同一准确术语，下层 FFDec 失败日志保持不变。
+定向 `4 passed`、SeerAPI 全量 `335 passed`，Ruff、compileall 与差异检查通过；数据库、
+PNG、配置和依赖均未改变。
+
 ## 本地 Main 差异复核（2026-09-13）
 
 本地 `main` 仍为 `55a39fd1`，本轮只读比较，没有 fetch、pull、merge 或 push。最新十个

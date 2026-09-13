@@ -140,6 +140,7 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | 2026-09-13 | 增量分片预检 | 缓存命中、官方 404、瞬时探测失败和可用但未缓存资源的计划测试；工作流条件结构与 YAML 解析；SeerAPI 全量 333 passed；Ruff、compileall、diff check | 16 个分片先在禁用 PNG 渲染的模式下检查缓存与官方资源状态。缓存完整或官方确认缺失的分片不安装 FFDec；只有瞬时失败或资源存在但 PNG 缺失时才进入修复。预检同时输出整片与修复 ID 快照，渲染不再重复读取 ConfigPackage 或 Unity manifest，只处理缺口并仍导出整片缓存；总构建器为 760 行。真实 Actions 节省时间仍待线上量化。 |
 | 2026-09-13 | 最终构建去渲染化 | 最终 build 严格缓存配置、座驾候选为空/非空测试、工作流条件结构与 YAML 解析；SeerAPI 全量 335 passed；Ruff、CLI、compileall、diff check | SQLite build 只消费分片产出的效果图标缓存，缺失即失败，不再拥有第二套 FFDec backstop。座驾先复用/裁剪现有生成分支并输出候选计划，只有存在候选时才安装 FFDec；冷构建与新增座驾仍进入原渲染路径。真实热构建耗时待 Actions 验证。 |
 | 2026-09-13 | 真实发布库分片预检 | 从 118 MB 历史发布库恢复 2108 个 PNG，再运行第 1/16 分片计划；完整缓存为 132/132 命中、`repair_count=0`、`needs_render=false`。复制缓存并仅移除 `icon_id=1` 后为 131/132 命中、`repair_count=1`、`repair_icon_ids=1` | 真实规模热分片无需 FFDec，单条缺口只进入精确修复快照而不重建整片；真实 Actions 权限、总耗时和发布后 consumer smoke 仍未关闭。 |
+| 2026-09-13 | SeerAPI `42b9c34` | 缓存命中日志断言；效果图标定向 4 passed；SeerAPI 全量 335 passed；Ruff、compileall、diff check | 总进度使用 `Resolving` 表示缓存、缺失判定与必要渲染，避免预检未调用 FFDec 时误报 `Rendering`；产物和执行策略不变。 |
 
 ## Progress
 
