@@ -11,14 +11,6 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from ironsbot.core import time
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
-from ironsbot.integrations.seer_data.peak_repository import (
-    PeakPeriodTimes,
-    load_peak_master_pool_snapshots,
-    load_peak_period_times,
-    load_peak_pet_snapshots,
-    load_peak_pool_snapshots,
-    load_peak_vote_snapshots,
-)
 from ironsbot.services.operations.headless_errors import (
     ClientNotInitializedError,
     DisconnectedError,
@@ -31,7 +23,6 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.data import SeerDataAccess, SeerDataReader
     from ironsbot.services.seer.rank_models import RankEntry
 
 
@@ -90,6 +81,30 @@ class PeakVoteSnapshot:
     start_time: datetime
     end_time: datetime
     pets: tuple[PeakPetSnapshot, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PeakPeriodTimes:
+    start_time: datetime
+    end_time: datetime
+
+
+class PeakRepository(Protocol):
+    def pools(self, *, expert: bool) -> tuple[PeakPoolSnapshot, ...]: ...
+
+    def master_pools(self) -> tuple[PeakPoolSnapshot, ...]: ...
+
+    def votes(self) -> tuple[PeakVoteSnapshot, ...]: ...
+
+    def period(self, *, monthly: bool) -> PeakPeriodTimes | None: ...
+
+    def pets(self, pet_ids: set[int]) -> dict[int, PeakPetSnapshot]: ...
+
+    def item_names(
+        self,
+        kind: Literal["suit", "title"],
+        item_ids: set[int],
+    ) -> dict[int, str]: ...
 
 
 def active_peak_pool_limits(
@@ -271,7 +286,7 @@ PeakPetRenderer = Callable[[PeakPetRankRenderInput], Awaitable[bytes]]
 
 @dataclass(frozen=True, slots=True)
 class PeakRenderSession:
-    data: SeerDataReader
+    repository: PeakRepository
     pool: PeakPoolRenderer
     vote: PeakVoteRenderer
     pet: PeakPetRenderer
@@ -346,11 +361,11 @@ def parse_peak_type(command: str) -> tuple[str, PeakType]:
 class PeakQueryService:
     def __init__(
         self,
-        data: SeerDataAccess,
+        repository: PeakRepository,
         headless: HeadlessService,
         render_session: PeakRenderSessionFactory,
     ) -> None:
-        self._data = data
+        self._repository = repository
         self._headless = headless
         self._render_session = render_session
 
@@ -361,10 +376,7 @@ class PeakQueryService:
         progress: ProgressReporter,
     ) -> PeakQueryResult:
         with self._render_session() as rendering:
-            with rendering.data.query(
-                lambda session: load_peak_pool_snapshots(session, expert=expert)
-            ) as loaded_pools:
-                pools = tuple(loaded_pools)
+            pools = rendering.repository.pools(expert=expert)
             label = "专家禁用池" if expert else "竞技池"
             if not pools:
                 return PeakQueryResult(
@@ -383,8 +395,7 @@ class PeakQueryService:
 
     async def master_pool(self, progress: ProgressReporter) -> PeakQueryResult:
         with self._render_session() as rendering:
-            with rendering.data.query(load_peak_master_pool_snapshots) as loaded_pools:
-                pools = tuple(loaded_pools)
+            pools = rendering.repository.master_pools()
             if not pools:
                 return PeakQueryResult(message="❌找不到大师池数据。")
             await progress("正在生成图片...")
@@ -406,8 +417,7 @@ class PeakQueryService:
         if game is None:
             return PeakQueryResult(message=error)
         with self._render_session() as rendering:
-            with rendering.data.query(load_peak_vote_snapshots) as loaded_votes:
-                votes = tuple(loaded_votes)
+            votes = rendering.repository.votes()
             pools: list[PeakVotePoolInput] = []
             now = time.now(tz=time.TZ_CN)
             for vote in sort_peak_pool_votes_by_time(votes):
@@ -463,10 +473,7 @@ class PeakQueryService:
         if game is None:
             return PeakQueryResult(message=error)
         name, peak_type = parse_peak_type(command)
-        with self._data.query(
-            lambda session: load_peak_period_times(session, monthly=False)
-        ) as times:
-            period = peak_pet_period(times, monthly=False)
+        period = peak_pet_period(self._repository.period(monthly=False), monthly=False)
         if period is None:
             return PeakQueryResult(
                 message="❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
@@ -476,29 +483,26 @@ class PeakQueryService:
                 period.sub_key,
                 peak_type,
             )
-            getter = self._data.suit
+            item_kind: Literal["suit", "title"] = "suit"
         else:
             rank_data = await game.get_peak_title_rank(
                 period.sub_key,
                 peak_type,
             )
-            getter = self._data.title
+            item_kind = "title"
         if not rank_data:
             return PeakQueryResult(message=f"❌找不到{kind}榜数据。")
-        with self._data.get_many(
-            getter,
-            {item.id for item in rank_data},
-        ) as models:
-            lines: list[str] = []
-            for index, item in enumerate(rank_data, 1):
-                model = models.get(item.id)
-                item_name = "" if model is None else model.name
-                lines.append(
-                    f"{index}. {item_name}"
-                    f" | 出场 {item.count}"
-                    f" | 胜场 {item.win}"
-                    f" | 胜率 {item.win_rate}%"
-                )
+        names = self._repository.item_names(
+            item_kind, {item.id for item in rank_data}
+        )
+        lines: list[str] = []
+        for index, item in enumerate(rank_data, 1):
+            lines.append(
+                f"{index}. {names.get(item.id, '')}"
+                f" | 出场 {item.count}"
+                f" | 胜场 {item.win}"
+                f" | 胜率 {item.win_rate}%"
+            )
         timestamp = time.now(tz=time.TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
         return PeakQueryResult(
             text=f"{name}{kind}榜（截至{timestamp}）\n" + "\n".join(lines)
@@ -515,10 +519,9 @@ class PeakQueryService:
         name, peak_type = parse_peak_type(command)
         monthly = "月" in command
         with self._render_session() as rendering:
-            with rendering.data.query(
-                lambda session: load_peak_period_times(session, monthly=monthly)
-            ) as times:
-                period = peak_pet_period(times, monthly=monthly)
+            period = peak_pet_period(
+                rendering.repository.period(monthly=monthly), monthly=monthly
+            )
             if period is None:
                 return PeakQueryResult(
                     message=(
@@ -536,12 +539,10 @@ class PeakQueryService:
             ban_rank = ban_rank[:20]
             if not pick_rank:
                 return PeakQueryResult(message="❌找不到精灵榜数据。")
-            with rendering.data.query(
-                lambda session: load_peak_pet_snapshots(
-                    session, {item.id for item in (*pick_rank, *ban_rank)}
-                )
-            ) as pet_map:
-                pets = tuple(sorted(pet_map.values(), key=lambda pet: pet.id))
+            pet_map = rendering.repository.pets(
+                {item.id for item in (*pick_rank, *ban_rank)}
+            )
+            pets = tuple(sorted(pet_map.values(), key=lambda pet: pet.id))
             await progress("正在生成图片...")
             render_input = PeakPetRankRenderInput(
                 observed_at=observed_at,

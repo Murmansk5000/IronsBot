@@ -25,7 +25,15 @@ def _snapshot(*categories: NewContentCategory) -> NewContentSnapshot:
         config_version="20260904",
         weekly_cycle="2026-09-04",
         items=tuple(
-            NewContentItem(category, index, f"Item {index}", index, {})
+            NewContentItem(
+                category,
+                index,
+                f"Item {index}",
+                index,
+                {"pets": [{"id": 999, "name": "Existing pet"}]}
+                if category == "skill"
+                else {},
+            )
             for index, category in enumerate(categories, start=1)
         ),
         category_states=tuple(
@@ -82,6 +90,39 @@ def test_auto_expansion_has_one_shared_threshold(count: int, *, expanded: bool) 
     assert len(build_new_content_menu(snapshot, layout).choices) == (
         count + 1 if expanded else 1
     )
+
+
+def test_explicit_preview_is_bounded_and_keeps_corrections_folded() -> None:
+    items = (
+        *(
+            NewContentItem("pet", index, f"Pet {index}", index, {})
+            for index in range(1, 7)
+        ),
+        NewContentItem("pet", 7, "Correction", 7, {}, "modified"),
+    )
+    snapshot = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260911",
+        weekly_cycle="2026-09-11",
+        items=items,
+        category_states=(
+            NewContentCategoryState(
+                "pet", comparison_ready=True, reason="comparable"
+            ),
+        ),
+    )
+
+    layout = plan_new_content_menu(
+        snapshot,
+        ("pet",),
+        expanded_categories=frozenset({"pet"}),
+        preview_max_items=2,
+    )
+
+    assert isinstance(layout, NewContentMenuLayout)
+    assert layout.expanded_categories == frozenset({"pet"})
+    menu = build_new_content_menu(snapshot, layout)
+    assert [choice.action.item for choice in menu.choices[1:]] == list(items[:2])
 
 
 def test_incomparable_category_is_not_reported_as_no_changes() -> None:

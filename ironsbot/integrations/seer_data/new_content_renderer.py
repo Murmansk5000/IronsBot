@@ -7,9 +7,6 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ironsbot.integrations.seer_data.flash_mount_repository import (
-    load_flash_mount_image,
-)
 from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import (
     ImageSourceError,
@@ -22,6 +19,7 @@ from ironsbot.services.seer.new_content import (
     NewContentSnapshot,
     format_new_content_category_count,
     is_new_content_category_auto_expanded,
+    new_content_category_preview_items,
 )
 from ironsbot.services.seer.render_paths import PET_INFO_IMAGES_PATH
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
@@ -87,11 +85,23 @@ async def render_new_content_menu(  # noqa: PLR0913
         )
     )
     builder = NewContentSnapshotBuilder(data, autocard)
+    preview_items = {
+        category: new_content_category_preview_items(
+            snapshot,
+            category,
+            auto_expand_max_items,
+        )
+        for category in expanded
+    }
     prepared_items = tuple(
-        prepared
+        builder.prepare_item(item)
         for category in display_categories
         if focused_category is not None or category in expanded
-        for prepared in builder.prepare(snapshot, category)
+        for item in (
+            snapshot.items_for(category)
+            if focused_category is not None
+            else preview_items[category]
+        )
     )
     incomplete = next(
         (prepared for prepared in prepared_items if not prepared.details.complete),
@@ -102,9 +112,6 @@ async def render_new_content_menu(  # noqa: PLR0913
             f"new_content_{incomplete.item.category}",
             entity_id=incomplete.item.entity_id,
         )
-    prepared_items = tuple(
-        _with_mount_fallback(data, prepared) for prepared in prepared_items
-    )
     rows = _initial_rows(
         snapshot,
         display_categories,
@@ -116,11 +123,8 @@ async def render_new_content_menu(  # noqa: PLR0913
         *(_item_visuals(images, prepared) for prepared in prepared_items)
     )
 
-    # Arbitrary card URLs are not published by the immutable Seer asset
-    # manifest, so a final image containing one must not outlive its source.
     cacheable = all(
         prepared.details.complete
-        and (prepared.asset is None or prepared.asset.url is None)
         for prepared in prepared_items
     )
     prepared_by_key = {
@@ -167,22 +171,6 @@ async def render_new_content_menu(  # noqa: PLR0913
     if cacheable:
         cache_entry.put(result)
     return result
-
-
-def _with_mount_fallback(
-    data: SeerDataReader,
-    prepared: NewContentPreparedItem,
-) -> NewContentPreparedItem:
-    asset = prepared.asset
-    if prepared.item.category != "mount" or asset is None:
-        return prepared
-    return replace(
-        prepared,
-        asset=replace(
-            asset,
-            fallback_data=load_flash_mount_image(data, prepared.item.entity_id),
-        ),
-    )
 
 
 def _cache_key(  # noqa: PLR0913
@@ -306,15 +294,11 @@ async def _asset_data_uri(
     if request is None:
         return None
     try:
-        if request.url:
-            return to_data_uri(await images.fetch_url(request.url))
         if request.kind and request.key:
             return to_data_uri(
                 await images.fetch(request.kind, request.key, fallback=False)  # type: ignore[arg-type]
             )
     except (ImageSourceError, RuntimeError, TypeError, ValueError):
-        if request.fallback_data is not None:
-            return to_data_uri(request.fallback_data)
         return None
     return None
 

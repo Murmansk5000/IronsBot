@@ -15,6 +15,7 @@ from .new_content import (
     NewContentSnapshot,
     format_new_content_item_description,
     is_new_content_category_auto_expanded,
+    new_content_category_preview_items,
     new_content_category_unavailable_message,
 )
 
@@ -31,6 +32,7 @@ class NewContentMenuLayout:
     display_categories: tuple[NewContentCategory, ...]
     focused_category: NewContentCategory | None = None
     expanded_categories: frozenset[NewContentCategory] = frozenset()
+    preview_max_items: int = DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +53,9 @@ def plan_new_content_menu(
     snapshot: NewContentSnapshot,
     available: tuple[NewContentCategory, ...],
     requested: tuple[NewContentCategory, ...] | None = None,
+    *,
+    expanded_categories: frozenset[NewContentCategory] = frozenset(),
+    preview_max_items: int = DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
 ) -> NewContentMenuLayout | str:
     """Return a visible layout or the reason no selection can be offered."""
 
@@ -77,10 +82,19 @@ def plan_new_content_menu(
         expanded_categories=frozenset(
             category
             for category in visible
-            if is_new_content_category_auto_expanded(
-                snapshot, category, DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS
+            if new_content_category_preview_items(
+                snapshot,
+                category,
+                preview_max_items,
+            )
+            and (
+                category in expanded_categories
+                or is_new_content_category_auto_expanded(
+                    snapshot, category, preview_max_items
+                )
             )
         ),
+        preview_max_items=preview_max_items,
     )
 
 
@@ -120,7 +134,14 @@ def build_new_content_menu(
         if category in layout.expanded_categories:
             choices.extend(
                 _item_choice(item, key=f"{code}{item_index}")
-                for item_index, item in enumerate(items, start=1)
+                for item_index, item in enumerate(
+                    new_content_category_preview_items(
+                        snapshot,
+                        category,
+                        layout.preview_max_items,
+                    ),
+                    start=1,
+                )
             )
     return NewContentMenu(
         title="🆕【新增内容】输入编号查看详情：", choices=tuple(choices)
