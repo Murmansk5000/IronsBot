@@ -13,8 +13,14 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
+from ironsbot.services.portable_autocard_commands import (
+    build_portable_autocard_operations,
+)
 from ironsbot.services.portable_bilibili_commands import (
     build_portable_bilibili_operations,
+)
+from ironsbot.services.portable_countermark_commands import (
+    build_portable_countermark_operations,
 )
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
@@ -69,7 +75,7 @@ from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from ironsbot.core.affix_commands import AffixParser
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
@@ -378,6 +384,18 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             preview_max_items=new_content_preview_max_items,
         ),
     )
+    autocard_operations = _catalog_operation_family(
+        catalog,
+        {"seer.autocard.query", "seer.autocard.sanctuary"},
+        lambda: build_portable_autocard_operations(
+            seer.autocard, seer.autocard_media, seer.autocard_sanctuary, sessions
+        ),
+    )
+    countermark_operations = _catalog_operation_family(
+        catalog,
+        {"seer.mintmark.rank"},
+        lambda: build_portable_countermark_operations(seer.countermark_rank),
+    )
     team_resource_operations = _catalog_operations(
         catalog,
         build_portable_team_resource_operations(team_resource),
@@ -417,6 +435,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **sendpic_operations,
         **bilibili_operations,
         **new_content_operations,
+        **autocard_operations,
+        **countermark_operations,
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,
@@ -549,6 +569,18 @@ def _catalog_operations(
         for command_id, operation in operations.items()
         if command_id in catalog.command_ids
     }
+
+
+def _catalog_operation_family(
+    catalog: CommandCatalog,
+    command_ids: set[str],
+    factory: Callable[[], Mapping[str, PortableOperation]],
+) -> dict[str, PortableOperation]:
+    """Build one optional operation family only when its commands are loaded."""
+
+    if catalog.command_ids.isdisjoint(command_ids):
+        return {}
+    return _catalog_operations(catalog, factory())
 
 
 def _equipment_queries() -> tuple[
