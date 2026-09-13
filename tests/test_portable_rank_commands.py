@@ -15,13 +15,15 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.services.portable_rank_commands import (
+    build_portable_rank_admin_operations,
     build_portable_rank_operations,
-    build_portable_rank_status_operations,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.services.portable_reply import PortableReply
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import (
@@ -34,6 +36,10 @@ if TYPE_CHECKING:
 
 
 class _RankAdminService:
+    def __init__(self, *, empty: bool = False) -> None:
+        self.refresh_events: list[str] = []
+        self.empty = empty
+
     def cache_status(self, conversation: ConversationRef | None) -> str:
         assert conversation is not None
         return f"samples:{conversation.id}"
@@ -43,6 +49,14 @@ class _RankAdminService:
 
     def page_status(self, command: RankPageCacheStatusCommand) -> str:
         return f"page:{command.rank_key}"
+
+    async def cache_refresh(self, *, actor: ActorRef, progress: object) -> str:
+        self.refresh_events.append(f"prepare:{actor.id}")
+        if self.empty:
+            return "empty"
+        await cast("Callable[[str], Awaitable[None]]", progress)("refreshing")
+        self.refresh_events.append("execute")
+        return "refreshed"
 
 
 class _RankQueryService:
@@ -278,15 +292,20 @@ async def test_rank_reports_an_unbound_mentioned_openid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_portable_rank_status_operations_are_read_only_queries() -> None:
-    operations = build_portable_rank_status_operations(
-        cast("RankAdminService", _RankAdminService())
+async def test_portable_rank_admin_operations_include_deferred_refresh() -> None:
+    service = _RankAdminService()
+    operations = build_portable_rank_admin_operations(
+        cast("RankAdminService", service)
     )
     context = _context("/榜单情况")
 
     samples = await operations["rank.sample_status"]("样本情况", context)
     overview = await operations["rank.page_status"]("榜单情况", context)
     detail = await operations["rank.page_status"]("榜单情况 图鉴榜", context)
+    refresh = cast(
+        "PortableReply",
+        await operations["rank.sample_refresh"]("刷新样本", context),
+    )
 
     assert isinstance(samples, OutboundMessage)
     assert isinstance(overview, OutboundMessage)
@@ -294,3 +313,27 @@ async def test_portable_rank_status_operations_are_read_only_queries() -> None:
     assert _text(samples) == "samples:group-openid"
     assert _text(overview) == "page overview"
     assert _text(detail) == "page:图鉴积分"
+    assert _text(refresh.message) == "refreshing"
+    assert service.refresh_events == ["prepare:caller-openid"]
+
+    refresh.delivered()
+    assert refresh.follow_up is not None
+    final = await refresh.follow_up()
+
+    assert _text(final) == "refreshed"
+    assert service.refresh_events == ["prepare:caller-openid", "execute"]
+
+
+@pytest.mark.asyncio
+async def test_portable_rank_refresh_without_progress_stays_single_reply() -> None:
+    operations = build_portable_rank_admin_operations(
+        cast("RankAdminService", _RankAdminService(empty=True))
+    )
+
+    refresh = cast(
+        "PortableReply",
+        await operations["rank.sample_refresh"]("刷新样本", _context("刷新样本")),
+    )
+
+    assert _text(refresh.message) == "empty"
+    assert refresh.follow_up is None

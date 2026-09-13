@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import (
+    PortableReply,
+    progress_operation_reply,
+)
 from ironsbot.services.seer.rank_display import parse_rank_display_limit_command
 from ironsbot.services.seer.rank_list_models import (
     RANK_PAGE_OVERVIEW_COMMANDS,
@@ -21,11 +24,15 @@ from ironsbot.services.seer.rank_list_parsing import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
+
+    ProgressReporter = Callable[[str], Awaitable[None]]
 
 _PUBLIC_RANK_COMMAND_IDS = (
     "rank.global_collection",
@@ -46,10 +53,10 @@ def build_portable_rank_operations(
     }
 
 
-def build_portable_rank_status_operations(
+def build_portable_rank_admin_operations(
     service: RankAdminService,
 ) -> dict[str, PortableOperation]:
-    """Build read-only cache diagnostics for authorized catalog users."""
+    """Build cache diagnostics and maintenance for authorized catalog users."""
 
     async def sample_status(
         text: str,
@@ -74,8 +81,23 @@ def build_portable_rank_status_operations(
             raise ValueError(msg)
         return OutboundMessage.from_text(service.page_status(command))
 
+    async def sample_refresh(
+        text: str,
+        context: MessageInputContext,
+    ) -> PortableReply:
+        del text
+
+        async def refresh(progress: ProgressReporter) -> str:
+            return await service.cache_refresh(
+                actor=context.message.actor,
+                progress=progress,
+            )
+
+        return await progress_operation_reply(refresh)
+
     return {
         "rank.sample_status": sample_status,
+        "rank.sample_refresh": sample_refresh,
         "rank.page_status": page_status,
     }
 

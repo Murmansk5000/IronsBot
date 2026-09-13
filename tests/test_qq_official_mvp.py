@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import sys
@@ -59,7 +60,7 @@ from ironsbot.services.operations.server_status_commands import (
 )
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
 from ironsbot.services.portable_commands import build_portable_command_router
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
@@ -140,6 +141,13 @@ class _FakeRankAdminService:
 
     def page_status(self, command: RankPageCacheStatusCommand) -> str:
         return f"page status:{command.rank_key}"
+
+    async def cache_refresh(self, *, actor: ActorRef, progress: object) -> str:
+        del actor
+        await cast("Callable[[str], Awaitable[None]]", progress)(
+            "sample refresh start"
+        )
+        return "sample refresh done"
 
 
 class _FakePlayerIdResolver:
@@ -370,7 +378,9 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
         "rank.sample_peak",
     }
     if rank_status:
-        command_ids.update(("rank.sample_status", "rank.page_status"))
+        command_ids.update(
+            ("rank.sample_status", "rank.sample_refresh", "rank.page_status")
+        )
     if rank_display:
         command_ids.add("rank.display_limit")
     seer_contracts = tuple(
@@ -949,6 +959,79 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
 
 
 @pytest.mark.asyncio
+async def test_qq_official_delivery_sends_deferred_result_after_ack() -> None:
+    event = C2CMessageCreateEvent.model_validate(
+        {
+            "id": "message-id",
+            "content": "/刷新样本",
+            "timestamp": "2026-09-14T00:00:00+08:00",
+            "author": {"id": "native-author-id", "user_openid": "opaque-user"},
+            "to_me": True,
+        }
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    lifecycle: list[str] = []
+
+    async def operation(progress: Callable[[str], Awaitable[None]]) -> str:
+        lifecycle.append("prepared")
+        await progress("started")
+        lifecycle.append("executed")
+        return "finished"
+
+    reply = await progress_operation_reply(operation)
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    assert lifecycle == ["prepared"]
+    await deliver_qq_official_reply(messenger, incoming, reply)
+
+    assert lifecycle == ["prepared", "executed"]
+    expected_calls = [
+        ("message-id", 1),
+        ("message-id", 2),
+    ]
+    assert bot.sent == len(expected_calls)
+    assert [call[3:] for call in bot.calls] == expected_calls
+
+
+@pytest.mark.asyncio
+async def test_failed_initial_delivery_cancels_deferred_operation() -> None:
+    event = C2CMessageCreateEvent.model_validate(
+        {
+            "id": "message-id",
+            "content": "/刷新样本",
+            "timestamp": "2026-09-14T00:00:00+08:00",
+            "author": {"id": "native-author-id", "user_openid": "opaque-user"},
+            "to_me": True,
+        }
+    )
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    cancelled = asyncio.Event()
+
+    async def operation(progress: Callable[[str], Awaitable[None]]) -> str:
+        try:
+            await progress("started")
+            return "must not run"
+        finally:
+            cancelled.set()
+
+    reply = await progress_operation_reply(operation)
+    bot = _FakeOfficialBot(fail=True)
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(messenger, incoming, reply)
+    await asyncio.wait_for(cancelled.wait(), timeout=1)
+
+    assert bot.sent == 1
+
+
+@pytest.mark.asyncio
 async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
@@ -1319,10 +1402,26 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
         return cast("TextPart", reply.message.parts[0]).text
 
     assert await dispatch("/样本情况", member) is None
+    assert await dispatch("/刷新样本", member) is None
     assert await dispatch("/榜单情况", member) is None
     assert await dispatch("/样本情况", admin) == "sample status"
     assert await dispatch("/榜单情况", admin) == "page overview"
     assert await dispatch("/榜单情况 图鉴榜", admin) == "page status:图鉴积分"
+
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        admin.id,
+        account_id="example-app",
+    )
+    refresh = await router.dispatch(
+        _portable_input("/刷新样本", admin, conversation)
+    )
+
+    assert refresh is not None
+    assert cast("TextPart", refresh.message.parts[0]).text == "sample refresh start"
+    refresh.delivery_failed()
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio

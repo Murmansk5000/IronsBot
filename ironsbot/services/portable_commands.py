@@ -41,8 +41,8 @@ from ironsbot.services.portable_query_sessions import (
     PortableQuerySessions,
 )
 from ironsbot.services.portable_rank_commands import (
+    build_portable_rank_admin_operations,
     build_portable_rank_operations,
-    build_portable_rank_status_operations,
 )
 from ironsbot.services.portable_reply import PortableOperation, PortableReply
 from ironsbot.services.portable_seer_commands import build_portable_seer_operations
@@ -319,10 +319,10 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             player_id_resolver,
         ),
     )
-    rank_status_operations = _catalog_operation_family(
+    rank_admin_operations = _catalog_operation_family(
         catalog,
-        {"rank.sample_status", "rank.page_status"},
-        lambda: build_portable_rank_status_operations(seer.rank_admin),
+        {"rank.sample_status", "rank.sample_refresh", "rank.page_status"},
+        lambda: build_portable_rank_admin_operations(seer.rank_admin),
     )
     new_content_operations = _catalog_operations(
         catalog,
@@ -423,7 +423,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **countermark_operations,
         **player_operations,
         **rank_operations,
-        **rank_status_operations,
+        **rank_admin_operations,
     }
     return PortableCommandRouter(
         catalog,

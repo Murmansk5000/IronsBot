@@ -2377,3 +2377,19 @@ ActorRef，不使用数字 QQ 映射或默认账号。专项 `55 passed`，全�
 `3370 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。完整
 示例目录的 portable 覆盖提升到 61/75，没有新增运行依赖、配置、迁移、数据库、素材或
 镜像层，真实平台验收门不变。
+
+长任务回复随后收口为通用的 portable 延迟回复契约。服务沿用既有 progress callback，
+适配器把第一条进度消息作为发送门：平台确认送达后才释放实际任务，发送失败则取消挂起
+任务；任务完成后使用同一入站事件的下一条回复序号发送最终结果。`/刷新样本` 首先接入
+该契约，空缓存仍直接返回单条错误，QQ Official 普通用户仍不能认领超级管理员命令。
+示例目录的 portable 覆盖提升到 62/75；没有新增运行依赖、配置、数据库、素材或镜像层。
+专项 `695 passed`，全量 `3373 passed, 7 skipped`；Ruff、BasedPyright、compileall、
+架构和差异检查通过。
+
+对 `tencent-connect/qqbot-agent-sdk`、`qqbot-nodejs` 和 `openclaw-qqbot` 的后续审计确认，
+长期可将 QQ Official 传输从旧 NoneBot 适配器替换为腾讯的纯 Python SDK，而不改动
+portable command、身份、feature policy 和业务服务。目标传输必须保留每 AppID 独立的
+AccessToken、连接、Session 与 OpenID 命名空间，并实现心跳、Resume、消息去重及富媒体
+发送。`GROUP_MESSAGE_CREATE` 是否实际下发仍由腾讯应用权限决定，代码支持不能代替真实
+平台授权；替换应在现有命令覆盖完成并通过真实连接 smoke 后进行，避免同时改变协议和
+业务行为。

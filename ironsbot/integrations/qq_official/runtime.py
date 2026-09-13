@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,7 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.rule import Rule
 
 from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
     qq_official_incoming_message,
@@ -26,7 +28,7 @@ from ironsbot.integrations.qq_official.identity import (
 from ironsbot.services.portable_commands import PortableCommandRouter  # noqa: TC001
 
 if TYPE_CHECKING:
-    from ironsbot.core.outbound import OutboundMessenger
+    from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.portable_reply import PortableReply
 
@@ -77,19 +79,50 @@ async def deliver_qq_official_reply(
 
     from ironsbot.core.outbound import ReplyContext
 
-    result = await messenger.reply(ReplyContext.from_message(incoming), reply.message)
-    if result.delivered:
-        reply.delivered()
+    context = ReplyContext.from_message(incoming)
+    result = await messenger.reply(context, reply.message)
+    if not result.delivered:
+        reply.delivery_failed()
+        _log_delivery_failure(incoming, result, stage="initial")
         return
+    reply.delivered()
+    if reply.follow_up is None:
+        return
+    try:
+        follow_up = await reply.follow_up()
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        logger.exception(
+            "QQ Official deferred operation failed: account=%s kind=%s id=%s",
+            incoming.conversation.account_id,
+            incoming.conversation.kind,
+            incoming.conversation.id,
+        )
+        follow_up = OutboundMessage.from_text(
+            f"❌ 操作执行失败：{type(error).__name__}"
+        )
+    follow_up_result = await messenger.reply(context, follow_up)
+    if not follow_up_result.delivered:
+        _log_delivery_failure(incoming, follow_up_result, stage="follow_up")
+
+
+def _log_delivery_failure(
+    incoming: IncomingMessageRef,
+    result: SendResult,
+    *,
+    stage: str,
+) -> None:
     logger.warning(
-        "QQ Official reply failed: account=%s kind=%s id=%s "
+        "QQ Official reply failed: stage=%s account=%s kind=%s id=%s "
         "code=%s message=%s trace_id=%s",
+        stage,
         incoming.conversation.account_id,
         incoming.conversation.kind,
         incoming.conversation.id,
-        result.error_code,
-        result.error_message,
-        result.trace_id,
+        getattr(result, "error_code", None),
+        getattr(result, "error_message", None),
+        getattr(result, "trace_id", None),
     )
 
 
