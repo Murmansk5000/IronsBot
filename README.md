@@ -4,7 +4,7 @@
 
 # IronsBot
 
-IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
+IronsBot 是一个面向 OneBot v11 与 QQ 官方机器人的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
 当前主线已经转为显式插件架构：通用功能位于 `ironsbot/plugins`，部署者自行维护的扩展位于 `ironsbot/custom_plugins`；二者都由统一注册表安装。原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
 
@@ -115,6 +115,91 @@ services:
 完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
 
+### QQ 官方机器人调试版
+
+QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
+`@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
+套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
+活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时直接发送数字选择，
+发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
+规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
+查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
+启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
+同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
+`[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
+`[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
+`feature` 或图片功能 `image` 加入对应账号的 `features`。本地图片继续从挂载目录
+读取，远程图片继续使用已配置后端，不会复制进机器人镜像。带数字 QQ 提醒对象的文本
+口令只在 OneBot 显示和执行，避免官方平台静默丢失 @ 语义。
+
+主动发送默认关闭。机器人应用确认具备对应平台权限后可设置
+`proactive_messages = true`；开启 `team_resource_subscription` 时必须同时开启该项，
+否则配置会被明确拒绝，避免订阅成功后无法收到提醒。平台实际发送额度和权限以
+当前机器人应用后台为准。
+
+在 `ironsbot.toml` 中启用：
+
+```toml
+[bot.qq_official]
+enabled = true
+sandbox = false
+
+[bot.qq_official.accounts.example_bot]
+enabled = true
+app_id = "你的 QQ 机器人 AppID"
+proactive_messages = false
+features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
+superusers = []
+
+[bot.qq_official.accounts.example_bot.group_policy]
+"群 OpenID" = ["seer_activity_push", "bili_push"]
+
+[bot.qq_official.accounts.example_bot.user_policy]
+"用户 OpenID" = ["seer_activity_push", "bili_push"]
+```
+
+每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
+数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
+每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
+附加对应 feature。
+目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启
+`proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
+发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
+`推送时间` 管理当前会话可修改的定时推送时间。
+
+凭据只放环境变量：
+
+```text
+QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
+```
+
+腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
+AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀取账号别名的
+大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。
+
+多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
+OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
+
+当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
+不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID
+与群成员 OpenID 不会被擅自视为同一身份。日志中的 OpenID 可用于配置官方平台
+超级管理员，跨平台身份关联必须由用户显式完成。
+
+腾讯官方 `qqbot-agent-sdk` 是可选运行组件。直接运行源码时使用：
+
+```powershell
+uv sync --extra qq-official
+uv run --no-sync python -m ironsbot
+```
+
+默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
+`--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
+明确报错。
+
+当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
+`GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
+腾讯平台开放相应事件并由 SDK 支持；IronsBot 不会用 NapCat 猜测或拼接 OpenID。
+
 ## 常用赛尔查询
 
 - 首次成功查询指定米米号后，机器人会询问是否设为默认米米号；按提示回复 `是`/`y` 或 `否`/`n`。发送 `解绑米米号` 可解除绑定。绑定是快捷查询设置，不验证游戏账号所有权。
@@ -123,7 +208,7 @@ services:
 - 已安装私有阵容扩展时，详情菜单和快捷命令会额外出现 `阵容`；公共镜像不硬编码该命令。`米米号` 默认只读取基础资料；扩展内容只会在用户明确选择或发送对应口令时再请求。`[seer.player.background_refresh]` 默认关闭，按需开启后才会预热扩展数据。
 - `雷伊配置`、`配置雷伊` 或 `4923配置` 会按精灵名称、别名或序号发送本地配置图；将图片命名为 `data/pet_configs/<精灵序号>.png` 即可收录。该目录不存在时会在启动时自动创建。
 - `群星牌地葬` 按名称查询卡牌，`群星牌卡98` 按卡牌 ID 查询；玩家群星牌排名通过米米号详情菜单或已绑定用户发送 `群星牌` 查询。
-- 所有以米米号为目标的查询统一支持完整米米号和已开放的 `seer.player_accounts` 名称/别名，例如 `米米号示例账号`、`巅峰示例账号`、`阵容示例账号`、`成就榜示例账号`。全服榜后的纯数字按米米号处理，例如 `成就榜123456`；名次必须写 `成就榜200名`，分数必须写 `成就榜5000点`，页码和范围仍可写 `第2页`、`50-100`。绑定操作仍只接受数字米米号。
+- 所有以米米号为目标的入口统一支持完整米米号、已开放的 `seer.player_accounts` 名称/别名，以及群内直接 @ 一名已绑定成员；绑定入口同样遵循此规则。多个 @、别名与 @ 混用或引用消息中的 @ 均不会被当作有效目标。例如可发送 `米米号示例账号`、`巅峰示例账号`、`阵容示例账号`、`成就榜示例账号`。全服榜后的纯数字按米米号处理，例如 `成就榜123456`；名次必须写 `成就榜200名`，分数必须写 `成就榜5000点`，页码和范围仍可写 `第2页`、`50-100`。
 - 自定义刻印系列维护在 `tables_custom/mintmark_series_members.csv`。当前支持 `刻印十年`、`十年01`、`刻印V10`、`V10物速`；同步并构建 alias SQLite 后生效。
 - `[seer.mintmark].merge_connected = true` 会把关联刻印合并并显示全部 ID；设为 `false` 会保留原始记录并标注关联 ID，适合排查上游数据。
 
@@ -179,8 +264,8 @@ GITHUB_WORKFLOW_TOKEN=
 数字米米号；幸运橱窗仅引用账号库中的账号，
 使用独立短时会话，不占用公共查询池。
 `public = true` 时，账号的文字 `name` / `aliases` 可在任意会话查询；`public = false` 时，只有
-`[seer.player_account_aliases]` 声明的群可使用它们，其他位置仍可直接填写数字米米号。绑定时必须
-直接填写数字米米号。
+`[seer.player_account_aliases]` 声明的群可使用它们，其他位置仍可直接填写数字米米号；
+群聊中也可直接 @ 一名已绑定成员作为玩家目标。
 多个幸运橱窗账号按到达顺序串行登录和查询；每个账号当天首次成功结果会持久化，重启后仍可复用。
 所有公共查询账号会组成可互换的工作池；米米号写在 TOML，密码只写在容器环境变量中。
 示例及调度说明见 `config.example.toml` 的 `[operations.headless]`。
@@ -353,7 +438,7 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 | `seer_autocard` | 群星牌资料和群星之巅榜。 |
 | `seer_rank` | 全服榜、样本榜、榜单情况、样本情况、缓存/刷新榜单。 |
 | `seer_data` | 下周预告、新增成就、数据版本等数据工具。 |
-| `image` | 固定图片/本地图发送。 |
+| `image` | TOML 配置的本地/CNB 单图与编号图库发送。 |
 | `meeting` | 腾讯会议回复。 |
 | `text` | 通用文本口令回复。 |
 | `text_push` | 通用定时文本推送。 |
@@ -473,13 +558,9 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员发送 `/重启机器人`（同义命令：`/机器人重启`）会进入重启流程。默认会先检查
-`murmansk5000/ironsbot:latest` 是否有新镜像；检测到新镜像时会启动一次性 Watchtower
-更新当前容器。镜像已是最新时，如果挂载了 Docker socket，会通过 Docker API 重启当前容器；
-没有 Docker socket 时才退回普通进程重启。
-
-`/更新镜像` 和 `/更新Docker` 只读取远端镜像信息，不会立刻拉取或重启。发现新镜像后，
-机器人会要求回复“是”或“y”确认，确认后才启动 Watchtower。
+超级管理员发送 `/重启机器人`、`/机器人重启`、`/更新镜像` 或 `/更新Docker` 会打开
+统一维护菜单。选择 `1` 只重启当前容器或进程，不检查镜像；选择 `2` 检查并在需要时
+启动一次性 Watchtower 更新，然后完成重启。`/检查更新镜像` 仍只读检查，不执行更新。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -492,7 +573,6 @@ TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 ```toml
 [operations.docker_update]
 check_on_startup = true
-check_on_restart = true
 image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
@@ -546,18 +626,11 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 check_on_startup = false
 ```
 
-如果不想让手动 `/重启机器人` 时检查镜像，可改为：
-
-```toml
-[operations.docker_update]
-check_on_restart = false
-```
-
 自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，
 本轮启动会被新容器替换。镜像通知会显示当前/最新镜像短号、北京时间构建时间，
 并在镜像带有 OCI revision label 时附上对应 Git commit 摘要。
 
-没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行可把两个开关改成 `false`。
+没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行可把启动检查关闭。
 新版 Unraid / Docker Engine 如果提示 `client version 1.25 is too old`，保持
 `watchtower_docker_api_version = "1.40"` 即可。
 

@@ -61,3 +61,194 @@ Rollback is a code revert; existing tables are unchanged.
   infer the timeout's cause; startup timing remains a Phase 7 acceptance risk.
 - Local main advanced independently to `963a83c3`; its master-pool changes
   were read and recorded in the ledger, not merged or claimed as migrated.
+
+## Positive Page Write Ordering (2026-09-12)
+
+Persistent positive observations had the inverse race: a late older save deleted
+overlapping newer pages, moved an already-observed player backwards, and could
+erase a newer page with an old empty response. Three real SQLite/reopen tests
+failed before the fix. Page save now takes BEGIN IMMEDIATE before checking
+overlapping page timestamps and each incoming player's last-seen/miss evidence.
+If newer contradictory evidence exists, reject the entire incoming page; do not
+splice its old rows into a newer observation. The guard and write share one
+transaction. Miss coverage is checked against each incoming rank index; another
+board/season is independent. Global nicknames only update with equal/newer time.
+
+Existing primary keys serve the player checks, avoiding a new index, table,
+cache or migration. Checks are per incoming row and use bound parameters, not a
+variable-size SQL IN list. Equal timestamps retain existing replacement behavior;
+this is a strict older-write guard, not proof of atomic official multi-page data.
+Repeated reopening, old empty pages, miss-range boundaries, independent boards,
+global nicknames and two real concurrent SQLite writers are covered.
+
+127 focused rank/cache/refresh/SQLite tests and 43 private native-enabled tests
+passed; targeted type checking, Ruff, compileall and diff checks passed. No full
+public-suite rerun in this batch, no production data change, main merge or push.
+Invalid/future timestamps and full dynamic multi-page consistency are not newly
+certified by this change. Overall verified phase count remains 4/8.
+
+## Invalid Observation Times (2026-09-12)
+
+Five SQLite regression cases initially failed: future/infinite incoming pages
+replaced valid observations, and future/infinite/negative persisted dates were
+accepted as historical evidence. The shared pure observation-age helper now
+requires a finite, nonnegative epoch not later than the supplied clock. Remaining
+player-cache lifetime reuses this validation instead of a separate date rule.
+
+Rank page and miss writes reject invalid observations before mutation. All rank
+read paths, including last-seen coordinates, score hints and page summaries,
+exclude invalid dates even when stale reads are explicitly allowed. A valid page
+header cannot make an invalid constituent fact count as valid coverage. Future
+positive evidence cannot suppress a valid miss or prevent subsequent valid
+refreshes; miss and global nickname upserts also recover from invalid dates.
+Ordinary stale observations and the existing exact TTL boundary remain unchanged.
+
+234 focused rank, scheduler, refresh, player-cache, core-time and size checks
+passed, plus 43 private native-enabled regression tests. Targeted BasedPyright,
+Ruff, compileall and diff checks passed. No schema/configuration change, new
+storage module, production mutation, main merge or push. Tests cover numeric
+invalid dates, not arbitrary corrupt SQLite values or atomic dynamic multi-page
+snapshots. Overall verified phases remain 4/8.
+
+## Page Read Snapshot (2026-09-12)
+
+A deterministic real-WAL interleaving reproduced a torn cache read: the first
+SELECT returned the old page timestamp; another connection committed a refresh;
+the second SELECT returned the new player. The resulting response mislabeled a
+new observation with an old timestamp. The regression failed before the change.
+
+Page reads now start one deferred read transaction before the metadata SELECT.
+Both SELECTs share a committed SQLite snapshot, while the WAL writer can finish
+its update. The existing connection context commits/closes the read transaction
+on return and rolls back on exceptions. Production changes are two lines in the
+existing repository, with no new module, schema, cache or configuration.
+
+Interleaving tests cover replacement, empty-to-full and full-to-empty refreshes.
+Short/empty pages retain their existing incomplete-cache behavior; the next
+connection sees the newly committed data. 166 focused rank/cache/refresh/size
+tests passed; targeted Ruff, BasedPyright and compileall passed. No full suite or
+production deployment was performed for this narrow repository change. This
+does not establish a shared snapshot across independent official page requests
+or certify the full dynamic multi-page gate. Verified phases remain 4/8.
+
+## Ordered Page Conflicts (2026-09-12)
+
+Contract: target. Ordered leaderboard consumers share RankPageSequence in the
+existing rank_pagination domain module. It checks player uniqueness and
+non-increasing scores, including ties and empty terminal pages. The previous
+score-segment-only checks now delegate to this same rule. This adds no platform
+adapter, persisted cache, dependency, configuration or alternate storage path.
+
+Raw and exclusion-filtered list assembly validate the raw pages before filtering
+or assigning visible ranks. Cache-only windows return no usable result on a
+conflict; live lists report a specific changing-leaderboard error. Linear player
+search records its page cost, stops at a conflict, and returns a failure instead
+of storing a negative lookup. Nothing silently deduplicates players and shifts
+the subsequent ranks. No automatic re-fetch loop or extra network request is
+introduced. Validation is linear in observed rows with a query-local ID set.
+
+Tests cover duplicate players, ascending score boundaries, stable ties, visible
+exclusions, a real SQLite player movement between two cache reads, list error
+presentation, and absence of a negative-cache write after a conflicting scan.
+
+Limitations: absence of a detected conflict is not proof that independently
+requested official pages share a server snapshot. Movement can skip a player
+without producing duplicate IDs or score inversions. Nonsequential score probes,
+public-rank adjustment after a positive match, and all excluded score-query
+paths still require further dynamic consistency acceptance. The full Phase 6
+gate remains open; this change must not be described as atomic live pagination.
+
+Validation: full public suite 2886 passed, 319 existing dependency warnings,
+126.71 seconds; private native-enabled suite 43 passed. Full BasedPyright
+reported zero errors/warnings; Ruff, compileall and diff checks passed. No main
+merge, production data change or push. Overall verified phase count stays 4/8.
+
+## Visible Rank Identity Confirmation (2026-09-12)
+
+Contract: target. Visible-rank finalization now receives the requested player ID
+explicitly from both live-lookup paths. Before this change three regressions
+returned a fabricated rank: a replacement player at the old index (20), an empty
+prefix (0), and a duplicate player across prefix pages (20).
+
+Adjustment reuses RankPageSequence for ordered prefix validation. If it reaches
+the previously matched index, both player ID and score must agree with the
+positive observation. A truncated prefix cannot supply a confirmed rank. On a
+conflict finalization clears the rank, preserves the observed score, and returns
+the existing changing-leaderboard failure instead of an unranked claim.
+
+No extra network request, retry, persistent evidence field or new module was
+added. The existing early exit when every excluded account has been observed
+remains: this combines independently observed evidence and is not proof of one
+official snapshot. It does not guarantee detection of unobserved movement.
+
+Regression includes replacement, empty prefix, duplicate player, changed score
+and a stable positive result, with exact page-call assertions. 161 focused
+rank/player-cache/scheduler/size tests passed; targeted BasedPyright, Ruff,
+compileall and diff checks passed. The preceding 2886-test full checkpoint was
+not rerun for this narrower change. No production changes, main merge or push;
+Phase 6 and total verified phases remain in progress and 4/8 respectively.
+
+## Binary Probe Consistency And Completion (2026-09-12)
+
+Contract: target. The shared descending-score engine now checks its bounded
+query-local probe map in rank order. A lower rank cannot have a larger score,
+and a missing earlier position cannot precede an already-observed existing
+position. Two regression cases failed before this check. Contradictions use the
+same RankPageConflictError as ordered page validation; live score commands and
+player queries report the conflict instead of inferring an insertion or absence.
+
+Player score lookup now preserves incomplete-search outcomes: exhausted point
+probes and tied-page budgets produce an explicit unconfirmed-rank failure. A
+later positive match within the permitted tie scan clears the provisional
+failure. It does not add requests or a linear-scan fallback. Probe caching and
+the existing separate budget for each of the three binary boundaries remain
+unchanged; the example configuration now describes that policy explicitly.
+
+143 focused score, observation, player, list, exclusion and size tests passed;
+targeted BasedPyright, Ruff, compileall and diff checks passed. No full-suite
+rerun, production data change, main merge or push. No new dependency, file,
+configuration field or persistent cache. Probe consistency is evidence checking,
+not proof that unobserved entries or later sampled pages share one snapshot.
+Full dynamic acceptance remains open, with verified phases at 4/8.
+
+## Post-Probe Sampling (2026-09-12)
+
+Contract: target. Player score lookup and score-population rendering now call a
+shared validator in the existing score helpers module. It validates sampled
+page order/uniqueness through RankPageSequence and checks the previously proved
+score bounds. A missing required row, changed score, expanded observed boundary
+or duplicate player cannot silently disappear from the sample while leaving an
+old confirmed population/rank in the response.
+
+An exhausted search's fallback end is speculative: only the confirmed first
+matching position and earlier nonmatching rows are enforced in that case.
+Encountering lower scores in the speculative tail remains valid. No additional
+requests, retries, dependencies, modules or persistent storage were introduced.
+Player conflicts produce the established unconfirmed failure; score commands
+propagate the existing typed conflict through the user-facing query boundary.
+
+Tests cover both callers with a predetermined completed search followed by a
+changed, empty or duplicate sample; exact single-sample call counts are checked.
+Separate tests distinguish proved and speculative upper bounds. 145 focused
+score, cache, observation, player, command and size tests passed; targeted
+BasedPyright, Ruff, compileall and diff checks passed. No full-suite rerun in this
+batch, production mutation, main merge or push. Independently timed pages still
+do not constitute a server snapshot, and unobserved movement cannot be ruled
+out. Overall verified phases remain 4/8.
+
+## Exclusion-Aware Score Limits (2026-09-12)
+
+Contract: target. The exclusion-aware score scan now uses RankPageSequence
+before filtering or renumbering. Three regressions first failed: a one-page tie
+limit fetched two pages, a five-place search returned ten matches, and repeated
+players were accepted. Match pages now stop at the configured count, and the
+visible-rank limit is enforced inside a page. Exhausted unresolved ties are
+marked truncated; a short terminal page or an observed lower score closes the
+tie normally. No new limit, retry or request was introduced.
+
+153 focused rank, score, cache, command and size tests passed. Tests include
+exact-page limits, mid-page limits, actually excluded players, duplicates, short
+pages and observed lower-score boundaries. Targeted BasedPyright, Ruff,
+compileall and diff checks passed. No full-suite rerun, production mutation,
+main merge or push. The broader phase gates remain open at 4/8; these tests
+verify bounded observed behavior, not atomic official snapshots.
