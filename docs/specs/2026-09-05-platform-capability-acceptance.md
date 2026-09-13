@@ -187,6 +187,11 @@ Bilibili source images intentionally remain `RemoteImagePart` values. They are
 dynamic content-origin URLs rather than versioned Seer release assets, so they do
 not belong in `SeerImageSource` or the SeerAPI asset manifest.
 
+The focused acceptance test sends a real domain-rendered text-and-remote-image
+history response through the restricted platform's reply port. This proves the
+portable contract only; native URL ingestion and upload behavior remain a real
+target-adapter acceptance item.
+
 Configured image commands use `format_outbound_message()` for the same reason.
 The formatter follows Python field formatting for text values while retaining
 binary/remote images and mentions as typed message parts. Structured parts

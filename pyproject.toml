@@ -110,23 +110,6 @@ ignore = [
 # Protocol/vendor-style code kept close to upstream behavior. These files are
 # still syntax-checked, import-checked, and compiled, but style-heavy rules that
 # would require a risky rewrite are scoped out here instead of hidden globally.
-"ironsbot/plugins/headless_seer/**/*.py" = [
-    "ANN002",
-    "ANN201",
-    "B904",
-    "BLE001",
-    "C901",
-    "E501",
-    "FBT001",
-    "FBT002",
-    "PERF401",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-    "PLR2004",
-    "TRY003",
-    "TRY301",
-]
 "ironsbot/integrations/headless_seer/**/*.py" = [
     "ANN002",
     "ANN201",
@@ -144,13 +127,6 @@ ignore = [
     "TRY003",
     "TRY301",
     "TRY400",
-]
-"ironsbot/plugins/bilibili/auth.py" = [
-    "BLE001",
-    "FBT001",
-    "FBT002",
-    "FBT003",
-    "PLW0603",
 ]
 "tests/test_analyze_parser.py" = ["ANN201", "B905", "E501", "PLR2004"]
 
