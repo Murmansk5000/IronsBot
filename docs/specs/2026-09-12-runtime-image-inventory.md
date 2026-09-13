@@ -274,3 +274,10 @@ reached Uvicorn's listening state and shut down cleanly with this dependency set
 The exact post-change Linux image size remains to be remeasured by the published
 candidate workflow; the earlier local Linux measurement remains the latest
 digest-comparable evidence.
+
+The post-change frozen production export was also audited with the release
+workflow's pinned `pip-audit==2.10.1`, `--require-hashes`, `--disable-pip` and
+`--strict` options. All 53 resolved runtime distributions were inspected and no
+known vulnerability was reported. The generated requirements and JSON report
+were temporary local evidence; the workflow remains responsible for retaining
+the corresponding artifact for each published candidate.

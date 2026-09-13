@@ -88,6 +88,7 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 | 2026-09-13 | 增加候选相对增长门 | Docker 发布、启动预检与结构边界测试 39 项 | 候选相对当前 fork 的 GHCR `latest` 最多增长 8192 KiB；缩小、零增长、边界值、超限、基线不可读及 fork 仓库推导均经验证，真实大小仍等首个 Linux 候选任务。 |
 | 2026-09-13 | 本机真实 Linux/amd64 候选构建 | Docker Desktop Engine 29.5.2；commit `93bd3aac21e8`；离线 entrypoint smoke、字体解析、核心导入、目录 `du`、image inspect 与线上 digest 对比 | 候选 image ID `sha256:7ffd8c98...`，Docker 报告 98,861,824 bytes（94.28 MiB）；`/app` 4220 KiB、site-packages 104644 KiB、fonts 19452 KiB，均通过预算。线上 `latest` digest `sha256:4677ca61...` 为 425,224,471 bytes（405.53 MiB），同一引擎下候选少 326,362,647 bytes（311.24 MiB）。尚未 push 或生成 GitHub Actions 发布附件。 |
 | 2026-09-13 | 移除未使用的 Uvicorn standard extras | 锁文件依赖边界测试、完整宿主进程启动与正常关闭 | 入口固定使用 `asyncio`、`h11`、`websockets-sansio`；锁文件移除 `httptools`、`uvloop`、`watchfiles`。Docker 引擎随后不可用，精确 Linux 镜像差值留给发布候选任务测量。 |
+| 2026-09-13 | 精简后冻结依赖安全复核 | CI 同参数 `pip-audit==2.10.1 --require-hashes --disable-pip --strict` | 审计 53 个运行时发行包，0 个已知漏洞；临时本地报告未进入镜像，发布任务仍需上传自己的审计附件。 |
 | 2026-09-13 | 修复嵌套字节码进入构建上下文 | 首次真实候选 `/app` 9384 KiB；递归忽略规则后重建、容器内 `find` 与 smoke | 根级 `.dockerignore` 模式没有排除嵌套 `__pycache__`；改为 `**/__pycache__/` 与 `**/*.py[cod]` 后 `/app` 降至 4220 KiB，减少 5164 KiB，容器内无 `.pyc`。同时修复 Dockerfile 旧式 `ENV` 警告。 |
 
 ## Progress
