@@ -39,6 +39,7 @@ from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 from ironsbot.services.messaging.sendpic import SingleImageResult
 from ironsbot.services.seer.autocard import AutocardEntry
+from ironsbot.services.seer.autocard_media import AutocardMediaService
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -120,6 +121,35 @@ async def test_seer_specialized_results_share_the_outbound_port(
     assert len(transport.uploads) == sum(
         isinstance(part, BinaryImagePart) for part in message.parts
     )
+
+
+@pytest.mark.asyncio
+async def test_autocard_resolves_published_binary_before_restricted_delivery() -> None:
+    class Images:
+        async def fetch(
+            self,
+            kind: str,
+            key: str,
+            *,
+            fallback: bool,
+        ) -> bytes:
+            assert (kind, key, fallback) == ("autocard_card", "card_7", False)
+            return b"published-card"
+
+    entry = AutocardEntry(
+        kind="card",
+        item_id=7,
+        name="测试牌",
+        text="卡牌详情",
+        image_key="card_7",
+    )
+    message = await AutocardMediaService(Images()).outbound(entry)  # type: ignore[arg-type]
+    transport = FakeOfficialPlatform(NOW)
+
+    result = await transport.reply(ReplyContext.from_message(_incoming()), message)
+
+    assert result.delivered
+    assert transport.uploads == [IMAGE.__class__(b"published-card", "image/png")]
 
 
 @pytest.mark.asyncio

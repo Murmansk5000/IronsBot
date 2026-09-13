@@ -90,9 +90,6 @@ class FakeImageSource:
             raise self.error
         return self.result
 
-    async def fetch_url(self, url: str) -> bytes:
-        return await self.fetch("url", url)
-
     def prepare(
         self, kind: ImageKind, key: str, *, fallback: bool
     ) -> PreparedImageRequest:

@@ -172,12 +172,6 @@ class HttpSeerImageSource:
             raise MissingImageRepositoryError(kind)
         return tuple(dict.fromkeys(urls))
 
-    async def fetch_url(self, url: str) -> bytes:
-        try:
-            return await self._get(self._clients.origin, url)
-        except (HTTPStatusError, RequestError) as error:
-            raise _image_source_error(error) from error
-
     async def _get(
         self,
         client: AsyncClient,

@@ -124,10 +124,6 @@ class _Images:
             raise ImageSourceError("missing")
         return f"{kind}:{key}".encode()
 
-    async def fetch_url(self, url: str) -> bytes:
-        self.requests.append(("url", url))
-        return url.encode()
-
 
 class _Autocard:
     def __init__(
