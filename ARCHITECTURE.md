@@ -1446,6 +1446,12 @@ The Phase 4 renderer persistence allowlist is empty. A new renderer must
 receive a detached view model and its assets; it cannot acquire a new database
 or transport exception.
 
+Legacy Seer services that still import SQL repository functions are listed by
+exact module in the layer hygiene gate. New broad `services -> integrations`
+imports are forbidden. Each migrated query surface removes its exact exception;
+`SeerDataQueryService` is the reference shape and consumes only
+`SeerDataQueryFacts` domain values.
+
 ## Current OneBot Behaviour Baseline
 
 This snapshot records what Phase 1 onward must preserve while changing its

@@ -459,6 +459,12 @@ TOML 规则编译和运行时目标解析的 `services.bilibili.targets` 分成
 revision。每周预告仍由独立的短 TTL、条件请求和陈旧缓存源处理，不与版本化渲染素材
 共用身份或缓存。
 
+**Seer 小型数据查询端口（2026-09-13）：** 周预告链接、数据生成时间和巅峰赛季时间
+由 `PublishedDataQueryRepository` 从发布库读取，再以 `SeerDataQueryFacts` 领域值交给
+service；`SeerDataQueryService` 不再导入 SQL/ORM repository 函数。服务层允许引用
+`integrations.seer_data` 的规则同时从整包前缀收紧为现存模块精确过渡清单，新增反向依赖
+会被架构测试拒绝。
+
 **Docker 协议边界拆分（2026-08-13）：** Docker 更新集成不再把 Unix socket daemon
 API、OCI Registry v2、镜像归档和管理员用例编排混在 `docker.client`。`daemon` 只负责
 本机 Docker API，`registry` 只负责镜像引用、认证和远程 manifest/config 查询，`client`

@@ -22,6 +22,9 @@ from ironsbot.integrations.onebot.lucky_skin_window import (
 from ironsbot.integrations.onebot.team_resource import (
     build_onebot_team_resource_default_mentions,
 )
+from ironsbot.integrations.seer_data.data_query_repository import (
+    PublishedDataQueryRepository,
+)
 from ironsbot.integrations.seer_data.lucky_skin_window_renderer import (
     render_lucky_skin_window,
 )
@@ -444,7 +447,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     return SeerComponents(
         seer=SeerQueryResources(
             SeerDataQueryService(
-                seer_database,
+                PublishedDataQueryRepository(seer_database),
                 weekly_preview_images,
                 settings.seer.season,
                 NewContentService(seer_database),

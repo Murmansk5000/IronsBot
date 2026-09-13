@@ -3,17 +3,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
+
+from ironsbot.services.seer.data_query_facts import PeakSeasonTimes
 
 if TYPE_CHECKING:
     from datetime import datetime
-
-
-@dataclass(frozen=True, slots=True)
-class PeakSeasonTimes:
-    start_time: datetime | None
-    end_time: datetime | None
 
 
 def load_peak_season_times(session: Any) -> PeakSeasonTimes | None:
