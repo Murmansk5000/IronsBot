@@ -10,6 +10,7 @@ from nonebot import on_message
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves annotations
 from nonebot.adapters.qq.event import (
     C2CMessageCreateEvent,
+    GroupAtMessageCreateEvent,
     GroupMessageCreateEvent,
     QQMessageEvent,
 )
@@ -48,7 +49,7 @@ def install_qq_official_runtime(
         reply = await router.dispatch(
             MessageInputContext(
                 incoming,
-                mentions_bot=isinstance(event, GroupMessageCreateEvent),
+                mentions_bot=qq_official_event_mentions_bot(event),
             )
         )
         if reply is None:
@@ -100,6 +101,12 @@ def qq_official_event_is_supported(
     return router.recognizes(
         MessageInputContext(
             incoming,
-            mentions_bot=isinstance(event, GroupMessageCreateEvent),
+            mentions_bot=qq_official_event_mentions_bot(event),
         )
     )
+
+
+def qq_official_event_mentions_bot(event: QQMessageEvent) -> bool:
+    """Distinguish an at-event from an authorized full-group event."""
+
+    return isinstance(event, GroupAtMessageCreateEvent)
