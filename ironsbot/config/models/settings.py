@@ -256,6 +256,7 @@ class QQOfficialAccountConfig(BaseModel):
         ]
     )
     superusers: list[str] = Field(default_factory=list)
+    group_superusers: dict[str, list[str]] = Field(default_factory=dict)
     group_aliases: dict[str, str] = Field(default_factory=dict)
     user_aliases: dict[str, str] = Field(default_factory=dict)
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
@@ -305,6 +306,24 @@ class QQOfficialAccountConfig(BaseModel):
                 raise QQOfficialConfigError.empty_target_openid()
             policy[target] = _command_starts(raw_features)
         return policy
+
+    @field_validator("group_superusers", mode="before")
+    @classmethod
+    def normalize_group_superusers(cls, value: object) -> dict[str, list[str]]:
+        if not isinstance(value, Mapping):
+            raise QQOfficialConfigError.invalid_target_policy()
+        result: dict[str, list[str]] = {}
+        for raw_group, raw_members in value.items():
+            group = str(raw_group).strip()
+            if not group:
+                raise QQOfficialConfigError.empty_target_openid()
+            members = _command_starts(raw_members)
+            if not members:
+                raise ValueError(  # noqa: TRY003
+                    "QQ Official group superusers must not be empty"
+                )
+            result[group] = members
+        return result
 
     @property
     def configured_features(self) -> set[str]:

@@ -39,6 +39,8 @@ reply sequences, and outbound routing by the owning AppID.
 - Bootstrap emits one `qq_bots` entry for each enabled account.
 - Inbound identity uses the connected bot's `self_id` as `account_id`.
 - Feature defaults, OpenID policy, and superusers are compiled per AppID.
+- C2C superusers use `user_openid`; group superusers are explicitly scoped by
+  group OpenID and `member_openid`, and are not private-message targets.
 - Official outbound targets without an AppID, or with an unknown AppID, fail;
   there is no default-account fallback.
 - Proactive permission and passive reply sequence allocation are per AppID.

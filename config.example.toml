@@ -93,8 +93,8 @@ proactive_messages = false
 # EN: Features exposed through the official adapter preview. ai_chat also requires AI_KEY.
 # ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
-# EN: Official-platform OpenIDs with superuser bypass. These are not QQ numbers.
-# ZH: QQ 官方平台超级管理员 OpenID；这里不是 QQ 号。
+# EN: C2C user_openids with superuser bypass. These are not QQ numbers.
+# ZH: 私聊超级管理员的 user_openid；这里不是 QQ 号。
 superusers = []
 
 # EN: Optional account-scoped targets keyed by group/user alias or OpenID. Declaring a
@@ -106,6 +106,13 @@ superusers = []
 
 [bot.qq_official.accounts.example_bot.user_policy]
 # example_official_user = ["seer_activity_push", "bili_push"]
+
+# EN: Group-scoped superusers. Keys are group aliases or raw group OpenIDs;
+#     values are member_openids observed in that group, not C2C user_openids.
+# ZH: 群聊超级管理员。键为群别名或群 OpenID，值为该群事件里的 member_openid，
+#     不能填写私聊 user_openid。
+[bot.qq_official.accounts.example_bot.group_superusers]
+# example_official_group = ["example-member-openid"]
 
 # EN: Account-scoped aliases for opaque QQ Official OpenIDs. Each alias must be
 #     globally unique across OneBot and every enabled official account.

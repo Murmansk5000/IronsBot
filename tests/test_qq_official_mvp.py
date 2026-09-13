@@ -456,6 +456,7 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
     superusers: list[str] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
+    group_superusers: dict[str, list[str]] | None = None,
     group_aliases: dict[str, str] | None = None,
     user_aliases: dict[str, str] | None = None,
     proactive_messages: bool = False,
@@ -471,6 +472,9 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
                 superusers=[] if superusers is None else superusers,
                 group_policy={} if group_policy is None else group_policy,
                 user_policy={} if user_policy is None else user_policy,
+                group_superusers=(
+                    {} if group_superusers is None else group_superusers
+                ),
                 group_aliases={} if group_aliases is None else group_aliases,
                 user_aliases={} if user_aliases is None else user_aliases,
                 proactive_messages=proactive_messages,
@@ -736,6 +740,39 @@ def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
 
     assert features.is_actor_superuser(admin)
     assert features.conversation_has_feature(group, "seer_rank")
+
+
+def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(superuser_bypass=True),
+        (),
+        qq_official=_qq_config(
+            features=[],
+            group_aliases={"official_group": "opaque-group"},
+            group_superusers={"official_group": ["opaque-member"]},
+        ),
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        "opaque-group",
+        "example-app",
+    )
+
+    assert features.is_actor_superuser(member)
+    assert features.is_actor_feature_allowed(member, "seer_rank")
+    assert not features.is_actor_superuser(
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-member",
+            "member",
+            "other-group",
+            "example-app",
+        )
+    )
+    assert all(actor.kind == "member" for actor in features.superuser_actors())
+    assert features.private_superuser_actors() == []
 
 
 def test_qq_official_identity_keeps_openids_opaque() -> None:

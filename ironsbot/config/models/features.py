@@ -517,6 +517,17 @@ def build_onebot_feature_service(
                 )
                 for user_id in account.superusers
             )
+            qq_superusers.extend(
+                ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    member_openid,
+                    "member",
+                    account.resolve_group_openid(group_reference),
+                    account_id,
+                )
+                for group_reference, members in account.group_superusers.items()
+                for member_openid in members
+            )
             for reference, features in account.group_policy.items():
                 conversation = ConversationRef(
                     Platform.QQ_OFFICIAL,
