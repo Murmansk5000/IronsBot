@@ -56,6 +56,7 @@ from ironsbot.services.operations.server_status import ServerStatusResult
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
+from ironsbot.services.pet_config_commands import pet_config_command_contracts
 from ironsbot.services.portable_commands import build_portable_command_router
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
@@ -73,6 +74,7 @@ if TYPE_CHECKING:
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.operations.server_status import ServerStatusService
+    from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_list_models import RankListCommand
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -108,6 +110,17 @@ class _FakeServerStatusService:
 
     async def query_headless_instances(self) -> ServerStatusResult:
         return ServerStatusResult("instance status")
+
+
+class _FakePetConfigService:
+    async def search(self, argument: str) -> QueryResult[int]:
+        if argument != "雷伊":
+            return QueryResult()
+        return QueryResult(reply=QueryReply(image=b"pet-config"))
+
+    async def select(self, pet_id: int) -> QueryResult[object]:
+        del pet_id
+        return QueryResult()
 
 
 class _FakePlayerIdResolver:
@@ -295,6 +308,7 @@ def _portable_catalog(
     ai_chat: bool = False,
     activity: bool = False,
     operations: bool = False,
+    pet_config: bool = False,
 ) -> CommandCatalog:
     command_ids = {
         "seer.data.query",
@@ -361,6 +375,13 @@ def _portable_catalog(
                 ),
             )
         )
+    if pet_config:
+        contributions.append(
+            PluginContribution(
+                id="pet_config",
+                commands=pet_config_command_contracts(enabled=True),
+            )
+        )
     catalog.load(
         tuple(contributions),
         known_features=(
@@ -379,6 +400,7 @@ def _portable_catalog(
             "seer_activity_query",
             "server_status_query",
             "meeting",
+            "pet_config",
         ),
     )
     return catalog
@@ -966,6 +988,43 @@ async def test_portable_router_enforces_operational_query_access() -> None:
     assert await dispatch("/无头状态", member) is None
     assert await dispatch("/开服查询", admin) == "admin status"
     assert await dispatch("/无头状态", admin) == "instance status"
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_pet_config_image_query() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["pet_config"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(pet_config=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+        pet_config=cast("PetConfigQueryService", _FakePetConfigService()),
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-user",
+        account_id="example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
+
+    reply = await router.dispatch(_portable_input("雷伊配置", actor, conversation))
+
+    assert reply is not None
+    assert reply.message.parts == (
+        BinaryImagePart(b"pet-config", "image/png"),
+    )
 
 
 @pytest.mark.asyncio

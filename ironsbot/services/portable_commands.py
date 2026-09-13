@@ -33,6 +33,9 @@ from ironsbot.services.portable_operational_commands import (
     build_portable_meeting_operations,
     build_portable_server_status_operations,
 )
+from ironsbot.services.portable_pet_config_commands import (
+    build_portable_pet_config_operation,
+)
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
@@ -94,6 +97,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.server_status import ServerStatusService
+    from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
     from ironsbot.services.seer.new_content import NewContentCategory
@@ -316,6 +320,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     server_status: ServerStatusService | None = None,
     meeting_number: str = "",
     meeting_template: str = "{meeting_number}",
+    pet_config: PetConfigQueryService | None = None,
+    image_command_texts: frozenset[str] = frozenset(),
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
     new_content_preview_max_items: int = 5,
 ) -> PortableCommandRouter:
@@ -454,6 +460,17 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         catalog,
         build_portable_meeting_operations(meeting_number, meeting_template),
     )
+    pet_config_operations = (
+        {}
+        if pet_config is None or "pet_config.query" not in catalog.command_ids
+        else {
+            "pet_config.query": build_portable_pet_config_operation(
+                pet_config,
+                sessions,
+                image_command_texts=image_command_texts,
+            )
+        }
+    )
 
     operations: dict[str, PortableOperation] = {
         "about": about_message,
@@ -466,6 +483,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **bilibili_operations,
         **server_status_operations,
         **meeting_operations,
+        **pet_config_operations,
         **new_content_operations,
         **autocard_operations,
         **countermark_operations,
