@@ -40,6 +40,10 @@ _SCHEMA = (
 _DELIVERY_CLAIM_COLUMNS = {
     "delivery_claimed_at": "delivery_claimed_at REAL NOT NULL DEFAULT 0",
 }
+_SUMMARY_COLUMNS = {
+    "summary": "summary TEXT NOT NULL DEFAULT ''",
+    "summary_generated_by_ai": ("summary_generated_by_ai INTEGER NOT NULL DEFAULT 0"),
+}
 DEFAULT_DELIVERY_CLAIM_SECONDS = 120.0
 
 
@@ -62,9 +66,18 @@ def _ensure_delivery_claim_columns(conn: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_summary_columns(conn: sqlite3.Connection) -> None:
+    ensure_sqlite_columns(
+        conn,
+        table_name="dynamics",
+        columns=_SUMMARY_COLUMNS,
+    )
+
+
 _MIGRATIONS = (
     SqliteMigration(1, _SCHEMA, _ensure_dynamic_columns),
     SqliteMigration(2, callback=_ensure_delivery_claim_columns),
+    SqliteMigration(3, callback=_ensure_summary_columns),
 )
 
 
@@ -84,6 +97,8 @@ def _record_from_row(row: sqlite3.Row) -> DynamicHistoryRecord | None:
             bool(row["pushed"]),
             bool(row["suppressed"]),
             str(row["suppression_reason"] or ""),
+            str(row["summary"] or ""),
+            bool(row["summary_generated_by_ai"]),
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as e:
         _LOGGER.warning("failed to parse Bilibili dynamic history row: %s", e)
@@ -123,10 +138,7 @@ class SqliteBiliDynamicHistoryStore:
                     REPLACE INTO checkpoints (uid, pub_ts, updated_at)
                     VALUES (?, ?, ?)
                     """,
-                    [
-                        (uid, pub_time, time.time())
-                        for uid, pub_time in cleaned.items()
-                    ],
+                    [(uid, pub_time, time.time()) for uid, pub_time in cleaned.items()],
                 )
         except sqlite3.Error as e:
             _LOGGER.warning("failed to write Bilibili checkpoints: %s", e)
@@ -234,6 +246,34 @@ class SqliteBiliDynamicHistoryStore:
             suppression_reason=snapshot.suppression_reason,
         )
 
+    def save_summary(
+        self,
+        dynamic_id: str,
+        summary: str,
+        *,
+        generated_by_ai: bool,
+    ) -> None:
+        cleaned = summary.strip()
+        if not dynamic_id or not cleaned:
+            return
+        try:
+            with self._database.connect() as conn:
+                conn.execute(
+                    """
+                    UPDATE dynamics
+                    SET summary = ?, summary_generated_by_ai = ?, updated_at = ?
+                    WHERE dynamic_id = ?
+                    """,
+                    (
+                        cleaned,
+                        1 if generated_by_ai else 0,
+                        time.time(),
+                        dynamic_id,
+                    ),
+                )
+        except sqlite3.Error as e:
+            _LOGGER.warning("failed to save Bilibili dynamic summary: %s", e)
+
     def list(
         self,
         *,
@@ -243,7 +283,8 @@ class SqliteBiliDynamicHistoryStore:
     ) -> list[DynamicHistoryRecord]:
         query = (
             "SELECT dynamic_id, uid, author_name, pub_ts, brief, raw_json, "
-            "pushed, suppressed, suppression_reason FROM dynamics"
+            "pushed, suppressed, suppression_reason, summary, "
+            "summary_generated_by_ai FROM dynamics"
         )
         params: list[int] = []
         uid_list = (
@@ -268,11 +309,7 @@ class SqliteBiliDynamicHistoryStore:
         except sqlite3.Error as e:
             _LOGGER.warning("failed to list Bilibili dynamic history: %s", e)
             return []
-        return [
-            record
-            for row in rows
-            if (record := _record_from_row(row)) is not None
-        ]
+        return [record for row in rows if (record := _record_from_row(row)) is not None]
 
     def get(self, dynamic_id: str) -> DynamicHistoryRecord | None:
         try:
@@ -280,7 +317,8 @@ class SqliteBiliDynamicHistoryStore:
                 row = conn.execute(
                     """
                     SELECT dynamic_id, uid, author_name, pub_ts, brief, raw_json,
-                        pushed, suppressed, suppression_reason
+                        pushed, suppressed, suppression_reason, summary,
+                        summary_generated_by_ai
                     FROM dynamics
                     WHERE dynamic_id = ?
                     """,
