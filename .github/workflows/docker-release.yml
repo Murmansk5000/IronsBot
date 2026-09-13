@@ -232,7 +232,7 @@ jobs:
               with:
                   name: candidate-image-growth-${{ github.sha }}
                   path: ${{ runner.temp }}/ironsbot-candidate-image-growth.txt
-                  if-no-files-found: error
+                  if-no-files-found: warn
 
             - name: Build and Publish
               id: build

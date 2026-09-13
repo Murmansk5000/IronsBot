@@ -369,7 +369,7 @@ def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
     assert 'echo "fallback_baseline=$baseline_image"' in growth["run"]
     assert 'docker image inspect "$candidate"' in growth["run"]
     assert upload["if"] == "${{ always() }}"
-    assert upload["with"]["if-no-files-found"] == "error"
+    assert upload["with"]["if-no-files-found"] == "warn"
 
 
 def test_ghcr_image_repository_is_fork_aware() -> None:

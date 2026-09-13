@@ -12,7 +12,10 @@ COPY ./pyproject.toml \
 
 RUN python -m uv export --frozen --no-dev --format requirements.txt --output-file requirements.txt --no-hashes
 
-RUN python -m pip wheel --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
+# uv.lock, including any declared override, is the dependency authority. The
+# export is complete, so pip must build exactly those artifacts without solving
+# their metadata a second time.
+RUN python -m pip wheel --no-deps --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
 
 RUN python - <<'PY'
 import io
@@ -83,7 +86,7 @@ RUN apt-get update \
 # dependencies, but remove Python's packaging toolchain from the final layer.
 # Mount wheels for installation; copying then deleting them retains a large layer.
 RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel \
-    pip install --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
+    pip install --no-deps --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
     && rm -rf /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip-*.dist-info \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools \
