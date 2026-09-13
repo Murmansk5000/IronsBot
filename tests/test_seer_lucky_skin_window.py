@@ -16,6 +16,7 @@ from ironsbot.config.models.seer_lucky import (
     LuckySkinWindowAccountConfig,
     LuckySkinWindowConfig,
 )
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
@@ -211,11 +212,10 @@ class _PluginService:
         self.queries += 1
         return object()
 
-    def format_result(self, _result: object, *, actor: ActorRef) -> str:
-        return f"橱窗结果：{actor.id}"
-
-    async def render_result(self, _result: object, *, actor: ActorRef) -> None:
-        del actor
+    async def result_message(
+        self, _result: object, *, actor: ActorRef
+    ) -> OutboundMessage:
+        return OutboundMessage.from_text(f"橱窗结果：{actor.id}")
 
 
 def _service(
@@ -311,6 +311,9 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
         friend_message = service.format_result(result, actor=_actor(1002))
         assert "皮肤101（皮肤ID：101，资源ID：1400101） ★ 关注" in owner_message
         assert "皮肤102（皮肤ID：102，资源ID：1400102） ★ 关注" in friend_message
+        outbound = await service.result_message(result, actor=_actor(1001))
+        assert isinstance(outbound.parts[0], TextPart)
+        assert outbound.parts[0].text == owner_message
 
     asyncio.run(check())
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
@@ -318,7 +321,7 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
         asyncio.run(service.check_for_actor(_actor(1001)))
 
 
-def test_render_result_uses_the_configured_port(tmp_path: Path) -> None:
+def test_result_message_uses_the_configured_render_port(tmp_path: Path) -> None:
     rendered_inputs: list[
         tuple[LuckySkinWindowResult, tuple[LuckySkinWindowOffer, ...]]
     ] = []
@@ -337,8 +340,10 @@ def test_render_result_uses_the_configured_port(tmp_path: Path) -> None:
 
     async def check() -> None:
         result = await service.check_for_actor(_actor(1001))
-        assert await service.render_result(result, actor=_actor(1001)) == (
-            b"lucky-window-card"
+        assert (
+            await service.result_message(result, actor=_actor(1001))
+        ).parts == (
+            BinaryImagePart(b"lucky-window-card", "image/png"),
         )
 
     asyncio.run(check())
@@ -370,11 +375,15 @@ def test_watch_defaults_accept_resource_ids_and_seed_only_once(
         (item.skin_id, item.resource_id) for item in service.watched_skins(_actor(1001))
     ] == [(101, 1_400_101)]
 
-    assert service.clear_watched_skins(_actor(1001))
+    assert service.watch_clear_message(_actor(1001)) == "已清空关注皮肤。"
     assert service.watched_skins(_actor(1001)) == ()
 
-    reset = service.reset_watched_skins(_actor(1001))
-    assert [(item.skin_id, item.resource_id) for item in reset] == [(101, 1_400_101)]
+    reset = service.watch_reset_message(_actor(1001))
+    assert "已恢复 TOML 初始关注列表。" in reset
+    assert [
+        (item.skin_id, item.resource_id)
+        for item in service.watched_skins(_actor(1001))
+    ] == [(101, 1_400_101)]
 
 
 def test_watch_management_accepts_both_ids_and_names(tmp_path: Path) -> None:
@@ -386,16 +395,27 @@ def test_watch_management_accepts_both_ids_and_names(tmp_path: Path) -> None:
 
     assert by_id == by_resource_id == by_name
     assert by_id[0].skin_id == WATCH_SKIN_ID
-    assert service.add_watched_skin(_actor(1001), by_id[0].skin_id)
-    assert not service.add_watched_skin(_actor(1001), by_id[0].skin_id)
-    assert service.remove_watched_skin(_actor(1001), by_id[0].skin_id)
-    assert not service.remove_watched_skin(_actor(1001), by_id[0].skin_id)
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=True
+    ).startswith("已关注：")
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=True
+    ).startswith("已经关注：")
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=False
+    ).startswith("已取消关注：")
+    assert service.watch_change_message(
+        _actor(1001), by_id[0], watched=False
+    ).startswith("尚未关注：")
 
 
-def test_watch_preferences_are_isolated_by_qq_user(tmp_path: Path) -> None:
+def test_watch_preferences_are_isolated_by_actor(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
-    assert service.add_watched_skin(_actor(1001), 104)
+    item = service.resolve_watch_candidates(_actor(1001), "104")[0]
+    assert service.watch_change_message(
+        _actor(1001), item, watched=True
+    ).startswith("已关注：")
     assert [item.skin_id for item in service.watched_skins(_actor(1001))] == [101, 104]
     assert [item.skin_id for item in service.watched_skins(_actor(1002))] == [102]
 
@@ -526,9 +546,7 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:
     service, _game, _delivery, _bindings, _headless = _service(tmp_path)
 
-    message = lucky_skin_window_plugin._format_watch_list(
-        service.watched_skins(_actor(1001))
-    )
+    message = service.watch_list_message(_actor(1001))
 
     assert "皮肤ID：101，资源ID：1400101" in message
 
@@ -666,8 +684,8 @@ def test_manual_query_returns_today_cache_without_a_confirmation_prompt(
     service = _PluginService(cached=object())
     replies: list[str] = []
 
-    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
-        replies.append(message)
+    async def finish_reply(_matcher: object, _event: object, message: object) -> None:
+        replies.append(str(message))
 
     monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
 
@@ -699,8 +717,8 @@ def test_lucky_window_login_confirmation_controls_dedicated_login(
     service = _PluginService(cached=None)
     replies: list[str] = []
 
-    async def finish_reply(_matcher: object, _event: object, message: str) -> None:
-        replies.append(message)
+    async def finish_reply(_matcher: object, _event: object, message: object) -> None:
+        replies.append(str(message))
 
     monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", finish_reply)
 
