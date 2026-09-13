@@ -86,7 +86,7 @@ class QQOfficialOutboundMessenger:
         self,
         conversation: ConversationRef,
     ) -> DeliveryCapabilities:
-        if not _supports_conversation(conversation):
+        if not _supports_conversation(conversation) or not self._owns(conversation):
             return _UNSUPPORTED
         return DeliveryCapabilities(
             can_reply_to_event=True,
@@ -102,6 +102,12 @@ class QQOfficialOutboundMessenger:
         conversation: ConversationRef,
         message: OutboundMessage,
     ) -> SendResult:
+        if not self._owns(conversation):
+            return _failure(
+                "account_mismatch",
+                "QQ Official target belongs to another bot account",
+                DeliveryFailureKind.PERMANENT,
+            )
         if not self.capabilities_for(conversation).can_send_proactively:
             return _failure(
                 "proactive_disabled",
@@ -115,6 +121,12 @@ class QQOfficialOutboundMessenger:
         context: ReplyContext,
         message: OutboundMessage,
     ) -> SendResult:
+        if not self._owns(context.conversation):
+            return _failure(
+                "account_mismatch",
+                "QQ Official reply belongs to another bot account",
+                DeliveryFailureKind.PERMANENT,
+            )
         if not self.capabilities_for(context.conversation).can_reply_to_event:
             return _failure(
                 "unsupported_conversation",
@@ -126,6 +138,9 @@ class QQOfficialOutboundMessenger:
             message,
             message_id=context.message_id,
         )
+
+    def _owns(self, conversation: ConversationRef) -> bool:
+        return conversation.account_id in {None, self.app_id}
 
     async def _deliver(
         self,
@@ -145,7 +160,8 @@ class QQOfficialOutboundMessenger:
                 str(error),
                 DeliveryFailureKind.PERMANENT,
             )
-        bot = self.bot_provider(self.app_id)
+        account_id = conversation.account_id or self.app_id
+        bot = self.bot_provider(account_id)
         if bot is None:
             return _failure(
                 "bot_unavailable",

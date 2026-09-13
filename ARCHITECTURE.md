@@ -32,6 +32,14 @@ data, rendering, service, and delivery work without inventing an identity map,
 weakening the core contract, or adding a QQ-specific business branch merely to
 fill an acceptance matrix.
 
+QQ Official OpenIDs are additionally scoped to the bot application that
+received them. `ActorRef` and `ConversationRef` therefore carry an optional
+`account_id`; official-platform adapters must set it to the receiving AppID and
+must reject delivery through another account. Multi-account configuration may
+only be exposed after this account dimension is also present in every
+persistent identity key. Concatenating an AppID into an OpenID, selecting a
+default sender, or sharing a token cache between accounts is forbidden.
+
 ## Architecture Status
 
 The following distinctions are mandatory during the migration:

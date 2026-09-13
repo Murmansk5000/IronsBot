@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from nonebot.adapters.qq import Bot as QQOfficialBot
 from nonebot.adapters.qq import MessageSegment
 from nonebot.adapters.qq.event import (
     C2CMessageCreateEvent,
@@ -438,6 +439,7 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
 
 def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
     config = QQOfficialConfig(
+        app_id="example-app",
         features=[],
         group_policy={"opaque-group": ["seer_activity_push"]},
         user_policy={"opaque-user": ["bili_push"]},
@@ -449,10 +451,19 @@ def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
     )
 
     assert features.conversations_for_feature("seer_activity_push") == [
-        ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "opaque-group",
+            account_id="example-app",
+        )
     ]
     assert features.actors_for_feature("bili_push") == [
-        ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-user",
+            account_id="example-app",
+        )
     ]
 
 
@@ -493,7 +504,7 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         }
     )
 
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id="example-app")
 
     assert incoming.platform is Platform.QQ_OFFICIAL
     assert incoming.actor == ActorRef(
@@ -501,11 +512,13 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         "opaque-member",
         "member",
         "opaque-group",
+        account_id="example-app",
     )
     assert incoming.conversation == ConversationRef(
         Platform.QQ_OFFICIAL,
         "group",
         "opaque-group",
+        account_id="example-app",
     )
     assert incoming.group_role == "member"
     assert incoming.direct_mentions == (
@@ -514,6 +527,7 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
             "mentioned-openid",
             "member",
             "opaque-group",
+            account_id="example-app",
         ),
     )
     assert incoming.sequence == "sequence-1"
@@ -577,7 +591,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
             "to_me": True,
         }
     )
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id="example-app")
     delivered: list[bool] = []
     reply = PortableReply(
         OutboundMessage.from_text("result"),
@@ -960,13 +974,18 @@ def test_c2c_identity_uses_user_openid() -> None:
         }
     )
 
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id="example-app")
 
-    assert incoming.actor == ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
+    assert incoming.actor == ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-user",
+        account_id="example-app",
+    )
     assert incoming.conversation == ConversationRef(
         Platform.QQ_OFFICIAL,
         "private",
         "opaque-user",
+        account_id="example-app",
     )
     assert incoming.group_role is None
 
@@ -1066,4 +1085,5 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         team_resource=_unused_team_resource(),
     )
 
-    assert not qq_official_event_is_supported(event, router)
+    bot = cast("QQOfficialBot", SimpleNamespace(self_id="example-app"))
+    assert not qq_official_event_is_supported(bot, event, router)

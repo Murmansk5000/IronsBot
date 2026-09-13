@@ -494,15 +494,26 @@ def build_onebot_feature_service(
             _expand_policy_features(features, bundles)
         )
 
+    qq_account_id = None if qq_official is None else qq_official.app_id or None
+    qq_superuser_ids = () if qq_official is None else qq_official.superusers
     if qq_official is not None:
         qq_default_features = frozenset(qq_official.features)
         for openid, features in qq_official.group_policy.items():
-            conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", openid)
+            conversation = ConversationRef(
+                Platform.QQ_OFFICIAL,
+                "group",
+                openid,
+                account_id=qq_account_id,
+            )
             group_features[conversation] = qq_default_features | (
                 _expand_policy_features(features, bundles)
             )
         for openid, features in qq_official.user_policy.items():
-            actor = ActorRef(Platform.QQ_OFFICIAL, openid)
+            actor = ActorRef(
+                Platform.QQ_OFFICIAL,
+                openid,
+                account_id=qq_account_id,
+            )
             actor_features[actor] = _expand_policy_features(features, bundles)
 
     return FeatureService(
@@ -512,10 +523,12 @@ def build_onebot_feature_service(
             [
                 *(ActorRef(Platform.ONEBOT, str(user_id)) for user_id in superuser_ids),
                 *(
-                    ActorRef(Platform.QQ_OFFICIAL, str(user_id))
-                    for user_id in (
-                        () if qq_official is None else qq_official.superusers
+                    ActorRef(
+                        Platform.QQ_OFFICIAL,
+                        str(user_id),
+                        account_id=qq_account_id,
                     )
+                    for user_id in qq_superuser_ids
                 ),
             ]
         ),

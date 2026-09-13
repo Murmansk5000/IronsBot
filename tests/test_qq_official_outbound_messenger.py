@@ -94,6 +94,52 @@ async def test_enabled_proactive_delivery_uses_conversation_target(
 
 
 @pytest.mark.asyncio
+async def test_account_scoped_conversation_uses_its_matching_bot() -> None:
+    bot = _Bot()
+    requested_accounts: list[str] = []
+    messenger = QQOfficialOutboundMessenger(
+        "app",
+        proactive_enabled=True,
+        bot_provider=lambda account_id: (
+            requested_accounts.append(account_id) or bot
+        ),
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-openid",
+        account_id="app",
+    )
+
+    result = await messenger.send(conversation, TEXT)
+
+    assert result.delivered
+    assert requested_accounts == ["app"]
+
+
+@pytest.mark.asyncio
+async def test_single_account_messenger_rejects_another_bot_account() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        "app-a",
+        proactive_enabled=True,
+        bot_provider=lambda _app_id: bot,
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "group-openid",
+        account_id="app-b",
+    )
+
+    result = await messenger.send(conversation, TEXT)
+
+    assert not messenger.capabilities_for(conversation).can_send_proactively
+    assert result.error_code == "account_mismatch"
+    assert bot.calls == []
+
+
+@pytest.mark.asyncio
 async def test_reply_uses_event_message_id_and_first_reply_sequence() -> None:
     bot = _Bot()
     messenger = QQOfficialOutboundMessenger(
