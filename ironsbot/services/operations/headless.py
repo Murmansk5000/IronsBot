@@ -9,7 +9,7 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
@@ -420,15 +420,15 @@ class HeadlessService:
     def register_reconnect_jobs(self, scheduler: Scheduler) -> None:
         registry = JobRegistry(scheduler, prefix="headless_reconnect_check:")
         for scheduled_time in self.reconnect_times:
-            hour, minute = daily_time_parts(scheduled_time)
-            registry.add(
+            clock_time = scheduled_clock_time(
+                scheduled_time,
+                error_message="invalid headless reconnect time",
+            )
+            registry.add_daily(
                 self.reconnect,
-                "cron",
-                job_id=scheduled_time,
+                clock_time=clock_time,
+                job_id=str(clock_time),
                 args=[scheduled_time],
-                hour=hour,
-                minute=minute,
-                second=0,
                 timezone="Asia/Shanghai",
             )
 
