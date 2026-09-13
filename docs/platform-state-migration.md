@@ -1,34 +1,39 @@
 # Platform State Migration
 
-This document is the implementation contract for the one-time migration from
-OneBot-only integer identifiers to platform-neutral state identities. It is
-written before the executable migration so each source column, target column,
-and ownership boundary is reviewable. The migration command remains dry-run by
-default and must never be invoked by normal application startup.
+This document is the implementation contract for the offline migration from
+OneBot-only integer identifiers to platform-neutral identities and from the
+first neutral schema to account-scoped identities. Each source column, target
+column, and ownership boundary is reviewable. The migration command remains
+dry-run by default and must never be invoked by normal application startup.
 
 ## Identity Columns
 
-Actor-owned state uses four independent columns:
+Actor-owned state uses five independent columns:
 
 ```text
 actor_platform     TEXT NOT NULL
+actor_account_id   TEXT NOT NULL DEFAULT ''
 actor_kind         TEXT NOT NULL
 actor_id           TEXT NOT NULL
 actor_scope_id     TEXT NOT NULL DEFAULT ''
 ```
 
-Conversation-owned state uses three independent columns:
+Conversation-owned state uses four independent columns:
 
 ```text
 conversation_platform  TEXT NOT NULL
+conversation_account_id TEXT NOT NULL DEFAULT ''
 conversation_kind      TEXT NOT NULL
 conversation_id        TEXT NOT NULL
 ```
 
-An empty `actor_scope_id` is the stored representation of `ActorRef.scope_id`
-being absent. It is not a reversible composite identifier. A future QQ Official
+Empty account columns represent platforms such as OneBot whose identifiers do
+not depend on a connected bot account. An empty `actor_scope_id` is the stored
+representation of `ActorRef.scope_id` being absent. Neither value is a reversible
+composite identifier. A QQ Official
 member actor uses `actor_kind = 'member'` and its group OpenID in
-`actor_scope_id`; a OneBot QQ account uses `actor_platform = 'onebot'`,
+`actor_scope_id`, while both actor and conversation store the receiving AppID in
+their account column. A OneBot QQ account uses `actor_platform = 'onebot'`,
 `actor_kind = 'user'`, and the decimal QQ number as `actor_id`.
 
 The application will only read these target columns after the migration. Old
@@ -98,6 +103,20 @@ uv run python -m ironsbot.state_migration \
   --data-root <data-root> \
   --platform-identities
 ```
+
+The same command upgrades the first platform-neutral schema to the
+account-scoped schema. If that database already contains QQ Official OpenIDs,
+provide the AppID that originally received them:
+
+```text
+uv run python -m ironsbot.state_migration \
+  --data-root <data-root> \
+  --platform-identities \
+  --qq-official-account-id <app-id>
+```
+
+The option is unnecessary when the existing identity rows are all OneBot. It is
+required rather than guessed when account-less QQ Official rows exist.
 
 After a successful dry run, repeat the exact command with `--apply`. The
 optional `--qq-state`, `--runtime-state`, `--ai-memory`, and `--backup-root`

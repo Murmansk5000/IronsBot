@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 BILIBILI_MONITOR_JOB_PREFIX = "bilibili_monitor_"
+BILIBILI_REFRESH_COMPLETED = "✅ 动态刷新完成。"
+BILIBILI_REFRESH_BUSY = "⏳ 动态刷新正在进行中，请稍后再试。"
+BILIBILI_REFRESH_FAILED = "❌ 动态刷新失败。"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +35,16 @@ class BilibiliMonitorService:
 
     async def notify_auth_invalid(self, reason: str) -> None:
         await self._on_auth_invalid(reason)
+
+    async def manual_refresh(self) -> str:
+        """Force one check and classify its observable result for any adapter."""
+
+        result = await self.check(is_startup_check=True, force=True)
+        if not result.executed:
+            return BILIBILI_REFRESH_BUSY
+        if not result.valid_response:
+            return BILIBILI_REFRESH_FAILED
+        return BILIBILI_REFRESH_COMPLETED
 
     async def check(
         self,

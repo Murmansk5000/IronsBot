@@ -38,3 +38,7 @@ GPL-3.0 全文见 [LICENSE.GPL-3.0](LICENSE.GPL-3.0)。
 `ironsbot/integrations/headless_seer` 中的 session 获取与登录数据包构建相关函数改写自
 [oldml/saixiaoxi](https://github.com/oldml/saixiaoxi)（MIT, Copyright (c) 2025 Adai）。
 详见 [ironsbot/integrations/headless_seer/NOTICE](ironsbot/integrations/headless_seer/NOTICE)。
+
+Docker 镜像包含 Adobe Source Han Sans CN 2.005R 字体，按 SIL Open Font License 1.1
+分发；构建时会从官方发布包提取其 `LICENSE.txt`，并保存在镜像内
+`/usr/share/doc/source-han-sans/LICENSE.txt`。

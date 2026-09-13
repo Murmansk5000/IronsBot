@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Protocol
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 BUSY_MESSAGE = "⏳ 数据更新正在进行中，请稍后再试。"
+DATA_SYNC_CHECK_START_MESSAGE = "🔄 正在检查远程数据更新，请稍等。"
+ProgressReporter = Callable[[str], Awaitable[None]]
 
 
 class ManualDataSyncAction(str, Enum):
@@ -66,13 +69,19 @@ class DataSyncService:
         self._config = config
         self._backend = backend
 
-    async def prepare_manual(self, *, force: bool) -> tuple[str, bool]:
+    async def prepare_manual(
+        self,
+        *,
+        force: bool,
+        progress: ProgressReporter,
+    ) -> tuple[str, bool]:
         names = self._backend.remote_names()
         if not names:
             return "当前没有已注册的远程同步数据库。", False
         if self._backend.is_running():
             return BUSY_MESSAGE, False
 
+        await progress(DATA_SYNC_CHECK_START_MESSAGE)
         checked, statuses = await self._backend.check_all_databases()
         if not checked:
             return BUSY_MESSAGE, False
@@ -150,8 +159,10 @@ class DataSyncService:
         *,
         action: ManualDataSyncAction,
         force: bool,
+        progress: ProgressReporter,
     ) -> str:
         trigger_remote_build = action is ManualDataSyncAction.UPDATE_UPSTREAM
+        await progress(self._manual_start_message(action=action, force=force))
         did_run, results = await self._backend.run_sync_all_databases(
             github_token=self._config.github_token,
             trigger_remote_build=trigger_remote_build,
@@ -167,6 +178,17 @@ class DataSyncService:
                 for source in self._config.sources.values()
             ),
         )
+
+    @staticmethod
+    def _manual_start_message(
+        *,
+        action: ManualDataSyncAction,
+        force: bool,
+    ) -> str:
+        if action is ManualDataSyncAction.SYNC_PUBLISHED:
+            return "🔄 正在同步已发布数据，请稍等。"
+        qualifier = "强制检查" if force else "检查"
+        return f"🔄 正在{qualifier}上游并构建后同步数据，请稍等。"
 
     async def startup(self, scheduler: Scheduler) -> str | None:
         if not self._backend.has_databases():

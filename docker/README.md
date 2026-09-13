@@ -101,6 +101,9 @@ services:
     environment:
       APP_CONFIG_PATH: "/config/ironsbot.toml"
       ONEBOT_ACCESS_TOKEN: "change-me"
+      # Optional QQ Official Bot account secret. The suffix is the uppercase
+      # account alias under [bot.qq_official.accounts.<alias>].
+      # QQ_OFFICIAL_SECRET_EXAMPLE_BOT: "change-me"
     restart: always
 
   napcat:
@@ -276,10 +279,17 @@ GITHUB_WORKFLOW_TOKEN=
 | --- | --- |
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
+| `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. Each account obtains and refreshes its own AccessToken. |
 | `AI_KEY` | AI chat API key. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
+
+The QQ Official adapter is an optional runtime component so the standard
+OneBot image does not carry its cryptography dependency. Build an official-bot
+image with `--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`. A source checkout
+uses `uv sync --extra qq-official` followed by
+`uv run --no-sync python -m ironsbot`.
 
 Set superusers, listen address, port, command prefixes, and logging under
 `[bot]` in TOML.

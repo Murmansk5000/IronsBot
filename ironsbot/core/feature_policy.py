@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
+    Platform,
     is_supported_message_actor,
 )
 
@@ -30,6 +31,12 @@ class FeatureService:
     actor_features: Mapping[ActorRef, frozenset[str]]
     superusers: frozenset[ActorRef]
     superuser_bypass: bool = True
+    platform_default_features: Mapping[Platform, frozenset[str]] = field(
+        default_factory=dict
+    )
+    account_default_features: Mapping[tuple[Platform, str], frozenset[str]] = field(
+        default_factory=dict
+    )
 
     @property
     def configured_feature_keys(self) -> frozenset[str]:
@@ -45,6 +52,8 @@ class FeatureService:
             for features in (
                 *self.group_features.values(),
                 *self.actor_features.values(),
+                *self.platform_default_features.values(),
+                *self.account_default_features.values(),
             )
             for feature in features
         )
@@ -56,8 +65,12 @@ class FeatureService:
         return feature in self.actor_features.get(actor, frozenset())
 
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
-        return self.actor_has_feature(actor, feature) or (
-            self.superuser_bypass and self.is_actor_superuser(actor)
+        return (
+            self.actor_has_feature(actor, feature)
+            or feature in self._default_features(actor.platform, actor.account_id)
+            or (
+                self.superuser_bypass and self.is_actor_superuser(actor)
+            )
         )
 
     def conversation_has_feature(
@@ -65,7 +78,26 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        return feature in self.group_features.get(conversation, frozenset())
+        return feature in self.group_features.get(
+            conversation,
+            self._default_features(
+                conversation.platform,
+                conversation.account_id,
+            ),
+        )
+
+    def _default_features(
+        self,
+        platform: Platform,
+        account_id: str | None,
+    ) -> frozenset[str]:
+        if account_id is not None:
+            account_features = self.account_default_features.get(
+                (platform, account_id)
+            )
+            if account_features is not None:
+                return account_features
+        return self.platform_default_features.get(platform, frozenset())
 
     def is_feature_allowed(
         self,
@@ -122,9 +154,16 @@ class FeatureService:
             ),
         )
 
+    def private_superuser_actors(self) -> list[ActorRef]:
+        """Return only superusers whose identity is valid for direct messages."""
+
+        return [actor for actor in self.superuser_actors() if actor.kind == "user"]
+
     def actors_with_superusers(self, feature: str) -> list[ActorRef]:
-        """Return feature actors followed by remaining superusers once each."""
+        """Return private feature actors and private superusers once each."""
 
         actors = self.actors_for_feature(feature)
-        actors.extend(actor for actor in self.superuser_actors() if actor not in actors)
+        actors.extend(
+            actor for actor in self.private_superuser_actors() if actor not in actors
+        )
         return actors

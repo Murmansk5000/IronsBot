@@ -57,7 +57,7 @@ class AdminNoticeService:
 
     def targets(self) -> AdminNoticeTargets:
         return AdminNoticeTargets(
-            private_actors=tuple(self.features.superuser_actors()),
+            private_actors=tuple(self.features.private_superuser_actors()),
             group_conversations=tuple(
                 self.features.conversations_for_feature(ADMIN_NOTICE_FEATURE)
             ),
@@ -110,7 +110,7 @@ class AdminNoticeService:
     ) -> AdminNoticeSendSummary:
         """Send an operational notice only to configured superusers in private."""
 
-        private_actors = tuple(self.features.superuser_actors())
+        private_actors = tuple(self.features.private_superuser_actors())
         if not private_actors:
             logger.warning("%s has no superuser private targets", action_name)
             return AdminNoticeSendSummary((), ())
