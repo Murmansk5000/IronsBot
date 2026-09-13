@@ -3,9 +3,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -30,6 +29,8 @@ from ironsbot.services.messaging.proactive_delivery import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.services.bilibili.content import DynamicContentCompactor
+    from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.proactive_delivery import (
         ProactiveMessageDelivery,
@@ -47,12 +48,9 @@ DYNAMIC_HISTORY_HINT = "回复“动态”查询历史动态"
 CATEGORY_SUBSCRIPTION_HINT = "发送 TD 可按标签管理动态订阅。"
 CATEGORY_SUBSCRIPTION_HINT_KEY = "bilibili_category_subscription_hint"
 DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
-FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS = 3
-FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS = 3.0
 FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 
-DynamicSummarizer = Callable[[str, int], Awaitable[str | None]]
 HistoryQueryChecker = Callable[[ConversationRef], bool]
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,10 +61,8 @@ class BilibiliDynamicOutboundSender:
 
     delivery: ProactiveMessageDelivery
     subscriptions: PushSubscriptionRepository
-    summarize: DynamicSummarizer | None = None
-    content_max_chars: int = 400
-    summary_max_chars: int = 250
-    summary_use_ai: bool = True
+    content_compactor: DynamicContentCompactor | None = None
+    history: BiliDynamicHistoryStore | None = None
     can_query_history: HistoryQueryChecker | None = None
     admin_notices: AdminNoticeService | None = None
     has_category_subscriptions: Callable[[int], bool] | None = None
@@ -110,12 +106,29 @@ class BilibiliDynamicOutboundSender:
             bili_media_subscription_key(author_mid, "text"),
         )
         if text_targets.has_targets:
-            content_override = await self._content_override(dynamic_content(item))
+            compacted = (
+                await self.content_compactor.compact(dynamic_content(item))
+                if self.content_compactor is not None
+                else None
+            )
+            content_override = (
+                compacted.display_text if compacted is not None else None
+            )
+            if (
+                compacted is not None
+                and self.history is not None
+                and (item_id := str(item.get("id_str", "")).strip())
+            ):
+                self.history.save_summary(
+                    item_id,
+                    compacted.text,
+                    generated_by_ai=compacted.generated_by_ai,
+                )
             content_message = render_dynamic_text_message(item, content_override)
         else:
             content_message = None
         if content_message is not None:
-            await self._send_content_with_retries(
+            await self._send_content(
                 item,
                 author_mid,
                 content_message,
@@ -128,7 +141,7 @@ class BilibiliDynamicOutboundSender:
         )
         image_message = render_dynamic_image_message(item)
         if image_message is not None and image_targets.has_targets:
-            await self._send_content_with_retries(
+            await self._send_content(
                 item,
                 author_mid,
                 image_message,
@@ -163,44 +176,29 @@ class BilibiliDynamicOutboundSender:
             include_promotions=True,
         )
 
-    async def _send_content_with_retries(
+    async def _send_content(
         self,
         item: dict[str, Any],
         author_mid: int,
         content_message: OutboundMessage,
         targets: BiliPushTargets,
     ) -> None:
-        remaining = (
+        conversations = (
             *targets.full_group_conversations,
             *targets.full_private_conversations,
         )
-        for attempt in range(1, FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS + 1):
-            action_name = (
-                FULL_DYNAMIC_PUSH_ACTION
-                if attempt == 1
-                else f"{FULL_DYNAMIC_PUSH_ACTION} retry {attempt}/"
-                f"{FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS}"
+        summary = await self.delivery.send(
+            content_message,
+            conversations,
+            action_name=FULL_DYNAMIC_PUSH_ACTION,
+            interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
+        )
+        if summary.failed:
+            await self._notify_content_delivery_failure(
+                item,
+                author_mid,
+                summary.failed,
             )
-            summary = await self.delivery.send(
-                content_message,
-                remaining,
-                action_name=action_name,
-                interval_seconds=DYNAMIC_PUSH_INTERVAL_SECONDS,
-            )
-            remaining = summary.failed
-            if not remaining:
-                return
-            if attempt < FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS:
-                _LOGGER.warning(
-                    "%s failed for %s targets; retrying attempt %s/%s",
-                    FULL_DYNAMIC_PUSH_ACTION,
-                    len(remaining),
-                    attempt + 1,
-                    FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
-                )
-                await asyncio.sleep(FULL_DYNAMIC_CONTENT_RETRY_DELAY_SECONDS)
-
-        await self._notify_content_delivery_failure(item, author_mid, remaining)
 
     async def _notify_content_delivery_failure(
         self,
@@ -210,10 +208,10 @@ class BilibiliDynamicOutboundSender:
     ) -> None:
         if self.admin_notices is None:
             _LOGGER.error(
-                "%s exhausted %s attempts without an admin notice service: "
+                "%s failed after shared delivery policy without an admin notice "
+                "service: "
                 "author=%s dynamic=%s targets=%s",
                 FULL_DYNAMIC_PUSH_ACTION,
-                FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS,
                 author_mid,
                 item.get("id_str", "unknown"),
                 conversations,
@@ -225,7 +223,7 @@ class BilibiliDynamicOutboundSender:
         ]
         await self.admin_notices.send_private_to_superusers(
             "⚠️ B站动态正文/图片发送失败\n"
-            f"已尝试 {FULL_DYNAMIC_CONTENT_MAX_ATTEMPTS} 次，仍未完成。\n"
+            "已按统一推送策略重试，仍未完成。\n"
             f"UID：{author_mid}\n"
             f"动态ID：{item.get('id_str', '未知')}\n"
             f"失败目标：{'；'.join(target_lines)}\n"
@@ -233,16 +231,6 @@ class BilibiliDynamicOutboundSender:
             subscription_key=FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY,
             action_name=FULL_DYNAMIC_CONTENT_FAILURE_ACTION,
         )
-
-    async def _content_override(self, content: str) -> str | None:
-        if len(content) <= self.content_max_chars:
-            return None
-        summary = (
-            await self.summarize(content, self.summary_max_chars)
-            if self.summary_use_ai and self.summarize is not None
-            else None
-        )
-        return summary or content[: self.summary_max_chars].rstrip()
 
     def _subscribed_full_targets(
         self,
