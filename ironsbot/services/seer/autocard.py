@@ -4,20 +4,13 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
 )
-from ironsbot.integrations.seer_data.autocard_repository import (
-    AutocardDataset,
-    load_autocard_dataset,
-)
-
-if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataReader
 
 AUTOCARD_PROMPT_MAX_ITEMS = 30
 AUTOCARD_QUERY_PREFIXES = ("群星牌", "卡牌", "查询群星牌")
@@ -32,6 +25,17 @@ _CARD_TYPE_NAMES = {
 }
 _AUTOCARD_NON_PET_CARD_ID_START = 20000
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True, frozen=True)
+class AutocardDataset:
+    cards: tuple[dict[str, Any], ...]
+    roles: tuple[dict[str, Any], ...]
+    natures: dict[int, str]
+
+
+class AutocardRepository(Protocol):
+    def load(self) -> AutocardDataset: ...
 
 
 @dataclass(slots=True, frozen=True)
@@ -90,16 +94,15 @@ class _AutocardIndex:
 
 
 class AutocardService:
-    def __init__(self, data: SeerDataReader) -> None:
-        self._data = data
+    def __init__(self, repository: AutocardRepository) -> None:
+        self._repository = repository
 
     def search(self, arg: str) -> AutocardSearchResult:
-        with self._data.query(load_autocard_dataset) as dataset:
-            index = _build_autocard_index(dataset)
-            matches = _search_autocard_items(
-                index,
-                _extract_autocard_query_arg(arg),
-            )
+        index = _build_autocard_index(self._repository.load())
+        matches = _search_autocard_items(
+            index,
+            _extract_autocard_query_arg(arg),
+        )
         if not matches:
             return AutocardSearchResult()
         if len(matches) == 1:
@@ -118,13 +121,13 @@ class AutocardService:
         )
 
     def select(self, value: AutocardPromptValue) -> AutocardEntry | None:
-        with self._data.query(load_autocard_dataset) as dataset:
-            index = _build_autocard_index(dataset)
-            item = (
-                _find_autocard_role_by_id(dataset, value.item_id)
-                if value.kind == "role"
-                else _find_autocard_card_by_id(index, value.item_id)
-            )
+        dataset = self._repository.load()
+        index = _build_autocard_index(dataset)
+        item = (
+            _find_autocard_role_by_id(dataset, value.item_id)
+            if value.kind == "role"
+            else _find_autocard_card_by_id(index, value.item_id)
+        )
         return None if item is None else _build_entry(index, value.kind, item)
 
 

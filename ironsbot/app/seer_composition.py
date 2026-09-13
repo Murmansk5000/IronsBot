@@ -22,6 +22,9 @@ from ironsbot.integrations.onebot.lucky_skin_window import (
 from ironsbot.integrations.onebot.team_resource import (
     build_onebot_team_resource_default_mentions,
 )
+from ironsbot.integrations.seer_data.autocard_repository import (
+    PublishedAutocardRepository,
+)
 from ironsbot.integrations.seer_data.autocard_sanctuary_repository import (
     PublishedAutocardSanctuaryRepository,
 )
@@ -313,7 +316,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 inputs.cache,
                 inputs.data,
                 inputs.images,
-                AutocardService(inputs.data),
+                AutocardService(PublishedAutocardRepository(inputs.data)),
                 render_coordinator.render,
                 snapshot,
                 display_categories,
@@ -443,7 +446,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         headless,
         player_requests,
     )
-    autocard = AutocardService(seer_database)
+    autocard = AutocardService(PublishedAutocardRepository(seer_database))
     autocard_media = AutocardMediaService(images)
     autocard_sanctuary = AutocardSanctuaryService(
         PublishedAutocardSanctuaryRepository(seer_database)

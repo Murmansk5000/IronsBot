@@ -9,6 +9,7 @@ import pytest
 from ironsbot.core.outbound import BinaryImagePart, TextPart
 from ironsbot.integrations.seer_data.autocard_repository import (
     AutocardDataset,
+    PublishedAutocardRepository,
     load_autocard_dataset,
 )
 from ironsbot.services.seer.autocard import (
@@ -174,7 +175,9 @@ class FakeData:
 
 
 def _service() -> AutocardService:
-    return AutocardService(cast("SeerDataAccess", FakeData()))
+    return AutocardService(
+        PublishedAutocardRepository(cast("SeerDataAccess", FakeData()))
+    )
 
 
 def test_autocard_search_merges_normal_and_awakened_card() -> None:

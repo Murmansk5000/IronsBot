@@ -29,7 +29,6 @@ FORBIDDEN_SERVICE_IMPORTS = (
 )
 TRANSITIONAL_SERVICE_INTEGRATION_IMPORTS = frozenset(
     {
-        "ironsbot.integrations.seer_data.autocard_repository",
         "ironsbot.integrations.seer_data.countermark_stat_rank_repository",
         "ironsbot.integrations.seer_data.peak_repository",
         "ironsbot.integrations.seer_data.skin_image_resolution",
