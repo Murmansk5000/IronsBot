@@ -7,7 +7,11 @@ import pytest
 
 from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.storage.bilibili_history import (
+    SqliteBiliDynamicHistoryStore,
+)
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
+from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.outbound_delivery import (
     BILI_PUSH_ADMIN_HINT,
     CATEGORY_SUBSCRIPTION_HINT,
@@ -254,21 +258,34 @@ async def test_full_dynamic_uses_summary_only_for_long_content(
     delivery = _RecordingDelivery()
     summary_calls: list[tuple[str, int]] = []
 
-    async def summarize(content: str, max_chars: int) -> str:
+    async def summarize(content: str, *, max_chars: int) -> str:
         summary_calls.append((content, max_chars))
         return "这是忠实摘要。"
 
+    content = "这是一条超过十个字符的长动态正文，用于验证统一摘要投递。"
+    item = _item(text=content)
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    history.save_item(
+        item,
+        pub_ts=PUB_TS,
+        author_mid=AUTHOR_MID,
+        author_name="赛尔号",
+        brief="长动态",
+    )
     sender = BilibiliDynamicOutboundSender(
         delivery,  # type: ignore[arg-type]
         PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
-        summarize=summarize,
-        content_max_chars=10,
-        summary_max_chars=8,
+        content_compactor=DynamicContentCompactor(
+            summarizer=summarize,
+            content_max_chars=10,
+            summary_max_chars=8,
+            use_ai=True,
+        ),
+        history=history,
     )
-    content = "这是一条超过十个字符的长动态正文，用于验证统一摘要投递。"
 
     await sender.send(
-        _item(text=content),
+        item,
         PUB_TS,
         1310714247,
         _targets(full_groups=(1001,), link_groups=(1002,)),
@@ -282,25 +299,35 @@ async def test_full_dynamic_uses_summary_only_for_long_content(
     assert delivery.content_calls[0]["action_name"] == FULL_DYNAMIC_PUSH_ACTION
     message = delivery.content_calls[0]["message"]
     assert isinstance(message, OutboundMessage)
-    assert message.parts[0] == TextPart("这是忠实摘要。")
+    assert message.parts[0] == TextPart(
+        "本条动态文本过长，AI总结如下：\n这是忠实摘要。"
+    )
     image = delivery.content_calls[1]["message"]
     assert isinstance(image, OutboundMessage)
     assert isinstance(image.parts[0], RemoteImagePart)
+    saved = history.get("1211894957538803730")
+    assert saved is not None
+    assert saved.summary == "这是忠实摘要。"
+    assert saved.summary_generated_by_ai
 
 
 @pytest.mark.asyncio
 async def test_short_dynamic_does_not_call_ai_summary(tmp_path: Path) -> None:
     delivery = _RecordingDelivery()
 
-    async def unexpected_summary(_content: str, _max_chars: int) -> str:
+    async def unexpected_summary(_content: str, *, max_chars: int) -> str:
+        del max_chars
         raise AssertionError
 
     sender = BilibiliDynamicOutboundSender(
         delivery,  # type: ignore[arg-type]
         PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
-        summarize=unexpected_summary,
-        content_max_chars=100,
-        summary_max_chars=6,
+        content_compactor=DynamicContentCompactor(
+            summarizer=unexpected_summary,
+            content_max_chars=100,
+            summary_max_chars=6,
+            use_ai=True,
+        ),
     )
 
     await sender.send(

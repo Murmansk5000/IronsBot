@@ -51,7 +51,7 @@ semantic owner、真实的用户契约和针对性验证。
 
 | Slice | Acceptance criteria | Dependencies | Status |
 | --- | --- | --- | --- |
-| Bilibili 正文补全 | 缺正文与截断 Opus 使用详情补全，不改变 V5 任务所有权 | 无 | completed |
+| Bilibili 正文补全与历史摘要 | 缺正文与截断 Opus 使用详情补全；推送和历史详情复用同一压缩服务，摘要持久化且按需生成 | 无 | completed |
 | 开服别名与竞技池变动入口 | 命令由 V5 service contract 提供，数据由 repository 提供 | 无 | completed |
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
 | 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实和官方有效期；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
@@ -103,6 +103,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | Docker 维护菜单 | operations service、命令所有权、配置与 OneBot 适配专项 143 项；Ruff、BasedPyright、compileall | 两个维护动作具有唯一 service 契约；所有维护入口打开同一菜单，删除 `check_on_restart` 和旧确认双轨。QQ/目标平台管理员身份只在最终平台阶段验收。 |
 | 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |
 | 2026-09-13 | 巅峰投票展示增强 | 巅峰 service、纯 presenter、render adapter 专项 64 项；Ruff | 限制级/准限制级、投票周期、总票数和非负票数占比进入不可变 document；机器人不新增图片资源或数据读取职责。 |
+| 2026-09-13 | Bilibili 历史摘要 | 长文本、历史存储、菜单详情、主动投递与运行装配专项测试；Ruff、BasedPyright、compileall | 推送和详情复用 `DynamicContentCompactor`；修正 AI 摘要关键字参数契约，结果写入既有历史库并惰性复用，不执行启动批量 AI 回填。 |
 
 ## Progress
 

@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,70 @@ def test_save_dynamic_history_snapshot_persists_fields(tmp_path: Path) -> None:
     assert saved.pushed
     assert saved.suppressed
     assert saved.suppression_reason == "test rule"
+    assert saved.summary == ""
+    assert not saved.summary_generated_by_ai
+
+
+def test_dynamic_history_preserves_saved_summary_on_snapshot_refresh(
+    tmp_path: Path,
+) -> None:
+    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
+    snapshot = DynamicHistorySnapshot(
+        item=_dynamic_item(text="完整原文"),
+        pub_ts=PUB_TS,
+        author_mid=AUTHOR_UID,
+        author_name="Seer",
+        brief="test dynamic",
+    )
+    history.save_snapshot(snapshot)
+    history.save_summary("dynamic-1", "持久化摘要", generated_by_ai=True)
+    history.save_snapshot(snapshot)
+
+    saved = history.get("dynamic-1")
+    assert saved is not None
+    assert saved.summary == "持久化摘要"
+    assert saved.summary_generated_by_ai
+
+
+def test_dynamic_history_upgrades_version_two_database(tmp_path: Path) -> None:
+    path = tmp_path / "history.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE dynamics (
+                dynamic_id TEXT PRIMARY KEY,
+                uid INTEGER NOT NULL,
+                author_name TEXT NOT NULL,
+                pub_ts INTEGER NOT NULL,
+                brief TEXT NOT NULL,
+                raw_json TEXT NOT NULL,
+                pushed INTEGER NOT NULL DEFAULT 0,
+                suppressed INTEGER NOT NULL DEFAULT 0,
+                suppression_reason TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                delivery_claimed_at REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO dynamics (
+                dynamic_id, uid, author_name, pub_ts, brief, raw_json,
+                created_at, updated_at
+            ) VALUES ('old', 1, 'Seer', 2, '旧动态', '{}', 3, 3)
+            """
+        )
+        connection.execute("PRAGMA user_version = 2")
+
+    history = SqliteBiliDynamicHistoryStore(path, 10)
+    record = history.get("old")
+
+    assert record is not None
+    assert record.summary == ""
+    assert not record.summary_generated_by_ai
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
 
 
 def test_save_target_dynamic_history_builds_and_saves_snapshots(

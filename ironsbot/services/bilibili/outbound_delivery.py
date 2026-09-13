@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -29,6 +29,8 @@ from ironsbot.services.messaging.proactive_delivery import (
 )
 
 if TYPE_CHECKING:
+    from ironsbot.services.bilibili.content import DynamicContentCompactor
+    from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.proactive_delivery import (
         ProactiveMessageDelivery,
@@ -49,7 +51,6 @@ DYNAMIC_PUSH_INTERVAL_SECONDS = 1.2
 FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY = "admin_notice"
 FULL_DYNAMIC_CONTENT_FAILURE_ACTION = "Bilibili dynamic content delivery failure"
 
-DynamicSummarizer = Callable[[str, int], Awaitable[str | None]]
 HistoryQueryChecker = Callable[[ConversationRef], bool]
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,10 +61,8 @@ class BilibiliDynamicOutboundSender:
 
     delivery: ProactiveMessageDelivery
     subscriptions: PushSubscriptionRepository
-    summarize: DynamicSummarizer | None = None
-    content_max_chars: int = 400
-    summary_max_chars: int = 250
-    summary_use_ai: bool = True
+    content_compactor: DynamicContentCompactor | None = None
+    history: BiliDynamicHistoryStore | None = None
     can_query_history: HistoryQueryChecker | None = None
     admin_notices: AdminNoticeService | None = None
     has_category_subscriptions: Callable[[int], bool] | None = None
@@ -107,7 +106,24 @@ class BilibiliDynamicOutboundSender:
             bili_media_subscription_key(author_mid, "text"),
         )
         if text_targets.has_targets:
-            content_override = await self._content_override(dynamic_content(item))
+            compacted = (
+                await self.content_compactor.compact(dynamic_content(item))
+                if self.content_compactor is not None
+                else None
+            )
+            content_override = (
+                compacted.display_text if compacted is not None else None
+            )
+            if (
+                compacted is not None
+                and self.history is not None
+                and (item_id := str(item.get("id_str", "")).strip())
+            ):
+                self.history.save_summary(
+                    item_id,
+                    compacted.text,
+                    generated_by_ai=compacted.generated_by_ai,
+                )
             content_message = render_dynamic_text_message(item, content_override)
         else:
             content_message = None
@@ -215,16 +231,6 @@ class BilibiliDynamicOutboundSender:
             subscription_key=FULL_DYNAMIC_CONTENT_FAILURE_SUBSCRIPTION_KEY,
             action_name=FULL_DYNAMIC_CONTENT_FAILURE_ACTION,
         )
-
-    async def _content_override(self, content: str) -> str | None:
-        if len(content) <= self.content_max_chars:
-            return None
-        summary = (
-            await self.summarize(content, self.summary_max_chars)
-            if self.summary_use_ai and self.summarize is not None
-            else None
-        )
-        return summary or content[: self.summary_max_chars].rstrip()
 
     def _subscribed_full_targets(
         self,

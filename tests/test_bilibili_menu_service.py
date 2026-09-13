@@ -6,6 +6,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
 )
+from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.dynamic_history import (
     DynamicHistoryRecord,
 )
@@ -15,6 +16,7 @@ from ironsbot.services.bilibili.menu import (
     dynamic_record_ids,
     select_cached_dynamic_id,
 )
+from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 from ironsbot.services.bilibili.service import BiliFeedResponse
 from tests.helpers.bilibili import build_test_bilibili_service
 
@@ -165,3 +167,54 @@ def test_bilibili_service_owns_dynamic_query_and_history(
     assert result.dynamic_ids == ("dynamic-1",)
     assert "赛尔号（UID：912345678）" in result.prompt
     assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"
+
+
+def test_history_detail_generates_and_reuses_persisted_summary(
+    tmp_path: Path,
+) -> None:
+    summary_max_chars = 20
+    service = build_test_bilibili_service(tmp_path)
+    item = {
+        "id_str": "dynamic-summary",
+        "modules": {
+            "module_dynamic": {
+                "major": {"opus": {"summary": {"text": "完整原文" * 20}}}
+            }
+        },
+    }
+    service.history.save_snapshot(
+        DynamicHistorySnapshot(
+            item=item,
+            pub_ts=1,
+            author_mid=1310714247,
+            author_name="赛尔号",
+            brief="测试动态",
+        )
+    )
+    calls = 0
+
+    async def summarize(_text: str, *, max_chars: int) -> str:
+        nonlocal calls
+        calls += 1
+        assert max_chars == summary_max_chars
+        return "生成后的摘要"
+
+    service.content_compactor = DynamicContentCompactor(
+        summarizer=summarize,
+        content_max_chars=10,
+        summary_max_chars=summary_max_chars,
+        use_ai=True,
+    )
+    record = service.history.get("dynamic-summary")
+    assert record is not None
+
+    first = asyncio.run(service.prepare_dynamic_detail(record))
+    second = asyncio.run(service.prepare_dynamic_detail(record))
+
+    assert first.content_override == second.content_override == (
+        "本条动态文本过长，AI总结如下：\n生成后的摘要"
+    )
+    assert calls == 1
+    saved = service.history.get("dynamic-summary")
+    assert saved is not None
+    assert saved.summary_generated_by_ai

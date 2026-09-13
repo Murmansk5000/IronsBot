@@ -22,6 +22,8 @@ class DynamicHistoryRecord(NamedTuple):
     pushed: bool
     suppressed: bool
     suppression_reason: str
+    summary: str = ""
+    summary_generated_by_ai: bool = False
 
 
 class BiliDynamicHistoryStore(Protocol):
@@ -32,6 +34,14 @@ class BiliDynamicHistoryStore(Protocol):
     def advance_checkpoint(self, uid: int, pub_ts: int) -> None: ...
 
     def save_snapshot(self, snapshot: DynamicHistorySnapshot) -> None: ...
+
+    def save_summary(
+        self,
+        dynamic_id: str,
+        summary: str,
+        *,
+        generated_by_ai: bool,
+    ) -> None: ...
 
     def list(
         self,
