@@ -31,21 +31,10 @@ async def handle_update_dynamic_action(
             "⚡ 正在刷新动态...",
         )
 
-        did_run = await monitor.check(
-            is_startup_check=True,
-            force=True,
-        )
-        if not did_run:
-            await finish_event_reply(
-                matcher,
-                event,
-                "⏳ 动态刷新正在进行中，请稍后再试。",
-            )
-
         await finish_event_reply(
             matcher,
             event,
-            "✅ 动态刷新完成。",
+            await monitor.manual_refresh(),
         )
 
     except FinishedException:
