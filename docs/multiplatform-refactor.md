@@ -2393,3 +2393,11 @@ AccessToken、连接、Session 与 OpenID 命名空间，并实现心跳、Resum
 发送。`GROUP_MESSAGE_CREATE` 是否实际下发仍由腾讯应用权限决定，代码支持不能代替真实
 平台授权；替换应在现有命令覆盖完成并通过真实连接 smoke 后进行，避免同时改变协议和
 业务行为。
+
+全服榜单维护命令随后复用同一 portable 延迟回复契约。`/刷新榜单` 与
+`/缓存榜单 …` 会先发送进度回执，平台确认送达后才开始无头客户端请求，完成后再发送
+最终统计；区间缓存的进度文案改为请求前可知的策略上限，实际写入数量只在最终结果中
+报告。OneBot 与 QQ Official 共用 `RankAdminService` 的相同时序，不存在官方平台专用
+分支。完整示例目录的 portable 覆盖提升到 64/75；没有新增依赖、配置、数据库、素材
+或镜像层。专项 `110 passed`，全量 `3376 passed, 7 skipped`；Ruff、BasedPyright、
+compileall 和差异检查通过，真实平台验收门不变。

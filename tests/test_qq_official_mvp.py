@@ -379,7 +379,13 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
     }
     if rank_status:
         command_ids.update(
-            ("rank.sample_status", "rank.sample_refresh", "rank.page_status")
+            (
+                "rank.sample_status",
+                "rank.sample_refresh",
+                "rank.page_status",
+                "rank.page_refresh",
+                "rank.page_batch",
+            )
         )
     if rank_display:
         command_ids.add("rank.display_limit")

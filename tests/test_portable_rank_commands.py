@@ -27,7 +27,9 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_reply import PortableReply
     from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_list_models import (
+        RankCacheBatchCommand,
         RankListCommand,
+        RankPageCacheRefreshCommand,
         RankPageCacheStatusCommand,
         RankPlayerCommand,
         RankScoreCommand,
@@ -57,6 +59,33 @@ class _RankAdminService:
         await cast("Callable[[str], Awaitable[None]]", progress)("refreshing")
         self.refresh_events.append("execute")
         return "refreshed"
+
+    async def page_refresh(
+        self,
+        command: RankPageCacheRefreshCommand,
+        *,
+        actor: ActorRef,
+        progress: object,
+    ) -> str:
+        self.refresh_events.append(f"page-prepare:{actor.id}:{command.rank_key}")
+        await cast("Callable[[str], Awaitable[None]]", progress)("page refreshing")
+        self.refresh_events.append("page-execute")
+        return "page refreshed"
+
+    async def cache_batch(
+        self,
+        command: RankCacheBatchCommand,
+        *,
+        actor: ActorRef,
+        progress: object,
+    ) -> str:
+        self.refresh_events.append(
+            f"batch-prepare:{actor.id}:{command.rank_key}:"
+            f"{command.start_rank}-{command.end_rank}"
+        )
+        await cast("Callable[[str], Awaitable[None]]", progress)("batch caching")
+        self.refresh_events.append("batch-execute")
+        return "batch cached"
 
 
 class _RankQueryService:
@@ -337,3 +366,54 @@ async def test_portable_rank_refresh_without_progress_stays_single_reply() -> No
 
     assert _text(refresh.message) == "empty"
     assert refresh.follow_up is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    (
+        "command_id",
+        "text",
+        "progress_text",
+        "events",
+        "final_text",
+    ),
+    [
+        (
+            "rank.page_refresh",
+            "/刷新榜单 图鉴榜",
+            "page refreshing",
+            ("page-prepare:caller-openid:图鉴积分", "page-execute"),
+            "page refreshed",
+        ),
+        (
+            "rank.page_batch",
+            "/缓存榜单 刻印榜 1-100",
+            "batch caching",
+            ("batch-prepare:caller-openid:刻印图鉴:1-100", "batch-execute"),
+            "batch cached",
+        ),
+    ],
+)
+async def test_portable_rank_page_maintenance_uses_deferred_reply(
+    command_id: str,
+    text: str,
+    progress_text: str,
+    events: tuple[str, str],
+    final_text: str,
+) -> None:
+    service = _RankAdminService()
+    operation = build_portable_rank_admin_operations(
+        cast("RankAdminService", service)
+    )[command_id]
+
+    reply = cast("PortableReply", await operation(text, _context(text)))
+
+    assert _text(reply.message) == progress_text
+    assert service.refresh_events == [events[0]]
+
+    reply.delivered()
+    assert reply.follow_up is not None
+    final = await reply.follow_up()
+
+    assert _text(final) == final_text
+    assert service.refresh_events == list(events)

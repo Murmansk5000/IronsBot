@@ -24,12 +24,18 @@ observable work. The adapter pauses that callback until the initial message has 
 delivered, then resumes the service method and exposes its return value as the final
 reply. Commands that finish without reporting progress remain single-message replies.
 
-## First Consumer
+## Consumers
 
-`rank.sample_refresh` is the first portable deferred command. A QQ Official
-superuser receives the existing sample-cache refresh start message immediately and
-the existing result message after refresh completion. Empty caches still return the
-single existing error message.
+`rank.sample_refresh`, `rank.page_refresh`, and `rank.page_batch` use the portable
+deferred contract. A QQ Official superuser receives the existing start message
+immediately and the existing result message after the operation completes. Commands
+that cannot start, such as refreshing an empty sample cache or caching a rank that
+requires an unavailable season key, still return one error message.
+
+Batch rank caching now reports its planned, policy-limited request count before any
+headless request starts. The final reply remains authoritative for the actual number
+of cached entries. This ordering is shared by OneBot and QQ Official rather than
+implemented as a transport-specific workaround.
 
 ## Verification
 

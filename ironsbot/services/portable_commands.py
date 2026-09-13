@@ -321,7 +321,13 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     )
     rank_admin_operations = _catalog_operation_family(
         catalog,
-        {"rank.sample_status", "rank.sample_refresh", "rank.page_status"},
+        {
+            "rank.sample_status",
+            "rank.sample_refresh",
+            "rank.page_status",
+            "rank.page_refresh",
+            "rank.page_batch",
+        },
         lambda: build_portable_rank_admin_operations(seer.rank_admin),
     )
     new_content_operations = _catalog_operations(
