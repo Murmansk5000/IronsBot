@@ -79,6 +79,8 @@ def bootstrap() -> Application:
                 ai=application.resources.ai,
                 team_resource=application.resources.team_resource,
                 activity=application.resources.activity,
+                messaging=application.resources.messaging,
+                sendpic=application.resources.sendpic,
             ),
             application.resources.outbound_messenger,
         )

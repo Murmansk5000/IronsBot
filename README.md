@@ -125,6 +125,11 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
 同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
+`[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
+`[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
+`feature` 或图片功能 `image` 加入 `bot.qq_official.features`。本地图片继续从挂载目录
+读取，远程图片继续使用已配置后端，不会复制进机器人镜像。带数字 QQ 提醒对象的文本
+口令只在 OneBot 显示和执行，避免官方平台静默丢失 @ 语义。
 
 主动发送默认关闭。机器人应用确认具备对应平台权限后可设置
 `proactive_messages = true`；开启 `team_resource_subscription` 时必须同时开启该项，

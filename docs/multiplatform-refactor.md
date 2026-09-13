@@ -2237,3 +2237,11 @@ QQ 官方活动查询随后接入同一便携执行注册表。`快结束活动`
 平台订阅目标仍需验证。`core` 插件清单不拥有活动功能，因此代码默认 feature 保持最小；
 使用 `full` 清单的部署可在 `bot.qq_official.features` 显式启用
 `seer_activity_query`。
+
+配置型被动消息随后复用同一便携执行注册表。无 OneBot `at_user_ids` 的
+`messaging.commands` 直接返回配置文本；`messaging.sendpic.configs` 继续通过共享
+`SendpicService` 读取 local/CNB 后端并产生 `BinaryImagePart`，QQ 适配器只负责上传。
+命令目录与执行表按同一命令 ID 求交，所以未启用 feature、未配置以及依赖数字 QQ 提及
+的动作不会出现在官方帮助或被官方路由认领。图片未复制进代码或镜像，也没有新增依赖、
+SQLite 或平台专用业务实现。推送订阅菜单、定时目标和主动发送策略仍作为后续跨平台
+订阅接口处理，不与本次被动命令混合。

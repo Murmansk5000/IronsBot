@@ -13,6 +13,10 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
+from ironsbot.services.portable_messaging_commands import (
+    build_portable_messaging_operations,
+    build_portable_sendpic_operations,
+)
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
@@ -68,6 +72,8 @@ if TYPE_CHECKING:
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.messaging.sendpic import SendpicService
+    from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
     from ironsbot.services.seer.peak import PeakQueryService
@@ -281,6 +287,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     ai: AiService,
     team_resource: TeamResourceService,
     activity: ActivityService | None = None,
+    messaging: MessagingService | None = None,
+    sendpic: SendpicService | None = None,
 ) -> PortableCommandRouter:
     async def about_message(
         text: str,
@@ -347,18 +355,22 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer.rank_queries,
         player_id_resolver,
     )
-    team_resource_operations = (
-        build_portable_team_resource_operations(team_resource)
-        if "team_resource.query" in catalog.command_ids
-        else {}
+    team_resource_operations = _catalog_operations(
+        catalog,
+        build_portable_team_resource_operations(team_resource),
     )
-    activity_operations = {
-        command_id: operation
-        for command_id, operation in (
-            {} if activity is None else build_portable_activity_operations(activity)
-        ).items()
-        if command_id in catalog.command_ids
-    }
+    activity_operations = _catalog_operations(
+        catalog,
+        {} if activity is None else build_portable_activity_operations(activity),
+    )
+    messaging_operations = _catalog_operations(
+        catalog,
+        {} if messaging is None else build_portable_messaging_operations(messaging),
+    )
+    sendpic_operations = _catalog_operations(
+        catalog,
+        {} if sendpic is None else build_portable_sendpic_operations(sendpic),
+    )
 
     operations: dict[str, PortableOperation] = {
         "about": about_message,
@@ -366,6 +378,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         "seer.team.query": team_query,
         **team_resource_operations,
         **activity_operations,
+        **messaging_operations,
+        **sendpic_operations,
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,
@@ -487,6 +501,17 @@ def _affix_argument(parser: AffixParser):
         return None if parsed is None else parsed.argument
 
     return parse
+
+
+def _catalog_operations(
+    catalog: CommandCatalog,
+    operations: Mapping[str, PortableOperation],
+) -> dict[str, PortableOperation]:
+    return {
+        command_id: operation
+        for command_id, operation in operations.items()
+        if command_id in catalog.command_ids
+    }
 
 
 def _equipment_queries() -> tuple[
