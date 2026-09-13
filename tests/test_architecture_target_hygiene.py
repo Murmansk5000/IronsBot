@@ -31,7 +31,7 @@ SEER_REQUEST_ACTOR_METHODS = {
         "LocalRankService": ("refresh",),
     },
     "rank_queries.py": {
-        "RankQueryService": ("list", "score", "player"),
+        "RankQueryService": ("list", "score", "player", "prepare_player"),
     },
 }
 SEER_REQUEST_CONVERSATION_METHODS = {
@@ -47,7 +47,7 @@ SEER_REQUEST_CONVERSATION_METHODS = {
         ),
     },
     "rank_queries.py": {
-        "RankQueryService": ("list", "score", "player"),
+        "RankQueryService": ("list", "score", "player", "prepare_player"),
     },
 }
 AI_REQUEST_IDENTITY_METHODS = {

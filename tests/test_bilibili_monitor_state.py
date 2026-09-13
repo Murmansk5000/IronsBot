@@ -4,9 +4,6 @@ from typing import Any, cast
 import nonebot
 import pytest
 from ironsbot.config.onebot_references import OneBotReferenceResolver
-from ironsbot.integrations.onebot.bilibili_targets import (
-    build_onebot_bili_configured_targets,
-)
 from ironsbot.plugins.onebot.bilibili.command_rules import (
     is_bili_account_command,
     is_bili_push_mode_command,
@@ -16,6 +13,7 @@ from ironsbot.config.models.features import (
     FeatureConfig,
     build_onebot_feature_service,
 )
+from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import (
     DEFAULT_BILI_LOGIN_NOTICE_COOLDOWN_SECONDS,
     DEFAULT_BILI_PUSH_CONTENT_MAX_CHARS,
@@ -25,6 +23,9 @@ from ironsbot.core.bilibili import (
 )
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.configured_targets.bilibili import (
+    build_bili_configured_targets,
+)
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
@@ -113,9 +114,12 @@ def _target_service(
     return BiliTargetService(
         config,
         features,
-        build_onebot_bili_configured_targets(
+        build_bili_configured_targets(
             config,
-            OneBotReferenceResolver({}, {}),
+            build_platform_reference_resolver(
+                OneBotReferenceResolver({}, {}),
+                (),
+            ),
         ),
         SqliteBiliPushPreferenceStore(data_dir / "preferences.sqlite"),
         PushUnsubscribeStore(data_dir / "unsubscribe.sqlite"),
@@ -354,6 +358,18 @@ def test_private_superuser_can_query_global_monitored_uids() -> None:
         375750254,
         DEFAULT_BILI_ACCOUNT_UID,
     ]
+
+
+def test_private_feature_user_can_query_global_monitored_uids() -> None:
+    service = _target_service(
+        _bili_config(),
+        _features(user_policy={"123": ["bili_query"]}),
+    )
+
+    assert service.query_uids(
+        _actor(123),
+        _private(123),
+    ) == [DEFAULT_BILI_ACCOUNT_UID]
 
 
 def test_push_group_rules_use_global_accounts_for_feature_groups() -> None:

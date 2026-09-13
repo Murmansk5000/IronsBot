@@ -12,6 +12,7 @@ from ironsbot.services.seer.autocard import (
     AUTOCARD_QUERY_SUFFIXES,
 )
 from ironsbot.services.seer.autocard_sanctuary import SANCTUARY_QUERY_PREFIXES
+from ironsbot.services.seer.data_query_commands import NEW_AUTOCARD_CARDS_COMMANDS
 from ironsbot.services.seer.query_guards import is_rank_query_text
 from ironsbot.services.seer.team import SeerTeamQueryService
 
@@ -50,8 +51,16 @@ TITLE_QUERY = AffixCommand(
 )
 TYPE_QUERY = AffixCommand(("属性",), ("属性",))
 BATTLE_EFFECT_QUERY = AffixCommand(("异常", "查询异常状态"), ("异常",))
+
+
+def is_reserved_autocard_query(text: str) -> bool:
+    return normalize_command_text(
+        text
+    ) in NEW_AUTOCARD_CARDS_COMMANDS or is_rank_query_text(text)
+
+
 AUTOCARD_QUERY = AffixCommand(
-    AUTOCARD_QUERY_PREFIXES, AUTOCARD_QUERY_SUFFIXES, reject=is_rank_query_text
+    AUTOCARD_QUERY_PREFIXES, AUTOCARD_QUERY_SUFFIXES, reject=is_reserved_autocard_query
 )
 SANCTUARY_QUERY = AffixCommand(SANCTUARY_QUERY_PREFIXES, ())
 _TEAM_QUERY = AffixCommand(("战队", "查询战队信息"), ())

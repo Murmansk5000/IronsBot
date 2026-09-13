@@ -17,12 +17,14 @@ def test_actor_identity_columns_round_trip_a_scoped_member() -> None:
         "member-open-id",
         kind="member",
         scope_id="group-open-id",
+        account_id="app-1",
     )
 
     stored = ActorIdentityColumns.from_actor(actor)
 
     assert stored.values() == (
         "qq_official",
+        "app-1",
         "member",
         "member-open-id",
         "group-open-id",
@@ -40,11 +42,16 @@ def test_actor_identity_columns_round_trip_unscoped_onebot_user() -> None:
 
 
 def test_conversation_identity_columns_round_trip() -> None:
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "channel", "channel-id")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "channel",
+        "channel-id",
+        account_id="app-1",
+    )
 
     stored = ConversationIdentityColumns.from_conversation(conversation)
 
-    assert stored.values() == ("qq_official", "channel", "channel-id")
+    assert stored.values() == ("qq_official", "app-1", "channel", "channel-id")
     assert stored.to_conversation() == conversation
 
 
@@ -52,11 +59,11 @@ def test_conversation_identity_columns_round_trip() -> None:
     ("columns", "message"),
     (
         (
-            ActorIdentityColumns("onebot", "member", "123", ""),
+            ActorIdentityColumns("onebot", "", "member", "123", ""),
             "actor identity",
         ),
         (
-            ConversationIdentityColumns("onebot", "unsupported", "123"),
+            ConversationIdentityColumns("onebot", "", "unsupported", "123"),
             "conversation identity",
         ),
     ),

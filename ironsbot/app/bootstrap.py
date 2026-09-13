@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
@@ -47,5 +48,45 @@ def bootstrap() -> Application:
             with application.resources.private_extensions.plugin_import_path():
                 nonebot.load_from_toml(str(manifest_path))
     application.configure(context.contributions)
+    if application.resources.qq_official is not None:
+        from ironsbot.services.portable_commands import build_portable_command_router
+
+        application.resources.qq_official.bind(
+            build_portable_command_router(
+                catalog=application.resources.commands,
+                about=application.resources.about,
+                seer=application.resources.seer,
+                player_id_resolver=application.resources.player_id_resolver,
+                features=application.resources.features,
+                ai=application.resources.ai,
+                team_resource=application.resources.team_resource,
+                activity=application.resources.activity,
+                messaging=application.resources.messaging,
+                refresh_push_time_jobs=partial(
+                    application.resources.messaging.refresh_push_time_jobs,
+                    scheduler=application.scheduler,
+                    activity_service=application.resources.activity,
+                ),
+                sendpic=application.resources.sendpic,
+                bilibili=application.resources.bilibili,
+                bilibili_monitor=application.resources.bilibili_monitor,
+                server_status=application.resources.server_status,
+                data_sync=application.resources.data_sync,
+                docker_update=application.resources.docker_update,
+                meeting_number=settings.messaging.meeting.number,
+                meeting_template=settings.messaging.meeting.template,
+                pet_config=application.resources.pet_config,
+                image_command_texts=(
+                    application.resources.sendpic.exact_command_texts
+                ),
+                new_content_expanded_categories=frozenset(
+                    settings.seer.new_content.expanded_categories
+                ),
+                new_content_preview_max_items=(
+                    settings.seer.new_content.auto_expand_max_items
+                ),
+            ),
+            application.resources.outbound_messenger,
+        )
     application.install()
     return application

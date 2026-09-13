@@ -39,9 +39,6 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.onebot.bilibili_rendering import (
-    build_dynamic_content_message,
-)
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
@@ -74,7 +71,12 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     databases = DatabaseManager()
     cache_paths = CachePaths(settings.paths.cache_root)
     task_owner = TaskOwner()
-    common = build_common_components(settings, task_owner)
+    common = build_common_components(
+        settings,
+        task_owner,
+        http_client=http_clients.origin,
+        cache_root=settings.paths.cache_root,
+    )
     prompt_sessions = common.prompt_sessions
     features = common.features
     promotions = common.promotions
@@ -235,10 +237,11 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless=headless,
         server_status=operations.server_status,
         subscriptions=subscriptions,
+        outbound_messenger=common.outbound_messenger,
+        qq_official=common.qq_official,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
         bilibili_monitor=bilibili_monitor,
-        bilibili_content_renderer=build_dynamic_content_message,
         lucky_skin_window=lucky_skin_window,
         messaging=messaging,
         sendpic=sendpic,
@@ -282,6 +285,16 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.messaging.command_cooldown,
         ),
     )
+    resource_startup_hooks = []
+    resource_shutdown_hooks = [
+        ("file_logging", file_logging.close),
+        ("http_clients", http_clients.close),
+        ("databases", databases.close),
+    ]
+    if common.qq_official is not None:
+        resource_startup_hooks.append(("qq_official", common.qq_official.start))
+        resource_shutdown_hooks.append(("qq_official", common.qq_official.stop))
+
     return Application(
         settings=settings,
         driver=driver,
@@ -306,9 +319,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             for feature in Feature
             if feature.value in features.configured_feature_keys
         ),
-        resource_shutdown_hooks=(
-            ("file_logging", file_logging.close),
-            ("http_clients", http_clients.close),
-            ("databases", databases.close),
-        ),
+        resource_startup_hooks=tuple(resource_startup_hooks),
+        resource_shutdown_hooks=tuple(resource_shutdown_hooks),
     )

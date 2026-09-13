@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.storage.platform_identity import ActorIdentityColumns
-from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    require_sqlite_columns,
+)
 from ironsbot.services.seer.player_binding import PlayerBindingState
 
 if TYPE_CHECKING:
@@ -16,6 +20,7 @@ if TYPE_CHECKING:
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS player_bindings (
     actor_platform TEXT NOT NULL,
+    actor_account_id TEXT NOT NULL DEFAULT '',
     actor_kind TEXT NOT NULL,
     actor_id TEXT NOT NULL,
     actor_scope_id TEXT NOT NULL DEFAULT '',
@@ -25,10 +30,18 @@ CREATE TABLE IF NOT EXISTS player_bindings (
     last_changed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id)
+    PRIMARY KEY (
+        actor_platform, actor_account_id, actor_kind, actor_id, actor_scope_id
+    )
 )
 """
-_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
+_MIGRATIONS = (
+    SqliteMigration(1, (_SCHEMA,)),
+    SqliteMigration(
+        2,
+        callback=require_sqlite_columns("player_bindings", {"actor_account_id"}),
+    ),
+)
 MIGRATION_NAMESPACE = "player_bindings"
 
 
@@ -47,8 +60,8 @@ class SqlitePlayerBindingStore:
                 """
                 SELECT player_id, player_nick, choice_completed, last_changed_at
                 FROM player_bindings
-                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
-                  AND actor_scope_id = ?
+                WHERE actor_platform = ? AND actor_account_id = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
                 """,
                 identity.values(),
             ).fetchone()
@@ -76,12 +89,16 @@ class SqlitePlayerBindingStore:
             conn.execute(
                 """
                 INSERT INTO player_bindings(
-                    actor_platform, actor_kind, actor_id, actor_scope_id,
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id,
                     player_id, player_nick,
                     choice_completed, last_changed_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-                ON CONFLICT(actor_platform, actor_kind, actor_id, actor_scope_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                ON CONFLICT(
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id
+                )
                 DO UPDATE SET
                     player_id = excluded.player_id,
                     player_nick = excluded.player_nick,
@@ -100,12 +117,16 @@ class SqlitePlayerBindingStore:
             conn.execute(
                 """
                 INSERT INTO player_bindings(
-                    actor_platform, actor_kind, actor_id, actor_scope_id,
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id,
                     player_id, player_nick,
                     choice_completed, last_changed_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, NULL, '', 1, NULL, ?, ?)
-                ON CONFLICT(actor_platform, actor_kind, actor_id, actor_scope_id)
+                VALUES (?, ?, ?, ?, ?, NULL, '', 1, NULL, ?, ?)
+                ON CONFLICT(
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id
+                )
                 DO UPDATE SET
                     choice_completed = 1,
                     updated_at = excluded.updated_at
@@ -127,8 +148,9 @@ class SqlitePlayerBindingStore:
                 UPDATE player_bindings
                 SET player_id = NULL, player_nick = '',
                     choice_completed = 1, last_changed_at = ?, updated_at = ?
-                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
-                  AND actor_scope_id = ? AND player_id IS NOT NULL
+                WHERE actor_platform = ? AND actor_account_id = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
+                  AND player_id IS NOT NULL
                 """,
                 (now, now, *identity.values()),
             )

@@ -3,7 +3,7 @@ name = "ironsbot"
 version = "0.6.1"
 description = "赛尔号信息查询机器人"
 readme = "README.md"
-requires-python = ">=3.10, <4.0"
+requires-python = ">=3.11, <4.0"
 # The combined bot/image is distributed under GPL-3.0-or-later because it
 # includes GPL components. Independently reusable MIT components keep their
 # per-file SPDX declarations. See LICENSING.md for details.
@@ -11,18 +11,26 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "LICENSE.GPL-3.0", "LICENSING.md"]
 dependencies = [
     "nonebot-adapter-onebot>=2.4.6",
-    "seerapi>=106.4.0",
-    "nonebot2[fastapi,httpx]>=2.4.4",
+    "nonebot2[httpx]>=2.4.4",
+    "fastapi>=0.93.0,<1.0.0",
+    "uvicorn>=0.20.0,<1.0.0",
+    "websockets>=15.0",
     "seerapi-models>=106.4.0",
     "nonebot-plugin-htmlkit>=0.1.0rc5",
     "pillow>=12.3.0",
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
-    "nonebot-plugin-send-anything-anywhere>=0.7.1",
     "qrcode[pil]>=8.2",
-    "tomli>=2; python_version < '3.11'",
-    "resvg-py>=0.3.3",
 ]
+
+[project.optional-dependencies]
+qq-official = [
+    "qqbot-agent-sdk==1.2.2",
+]
+
+[tool.uv]
+# Keep the optional official SDK on the audited cryptography 50 release line.
+override-dependencies = ["cryptography>=50.0.0,<51.0.0"]
 
 [tool.nonebot]
 plugin_dirs = []
@@ -111,23 +119,6 @@ ignore = [
 # Protocol/vendor-style code kept close to upstream behavior. These files are
 # still syntax-checked, import-checked, and compiled, but style-heavy rules that
 # would require a risky rewrite are scoped out here instead of hidden globally.
-"ironsbot/plugins/headless_seer/**/*.py" = [
-    "ANN002",
-    "ANN201",
-    "B904",
-    "BLE001",
-    "C901",
-    "E501",
-    "FBT001",
-    "FBT002",
-    "PERF401",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-    "PLR2004",
-    "TRY003",
-    "TRY301",
-]
 "ironsbot/integrations/headless_seer/**/*.py" = [
     "ANN002",
     "ANN201",
@@ -146,13 +137,6 @@ ignore = [
     "TRY301",
     "TRY400",
 ]
-"ironsbot/plugins/bilibili/auth.py" = [
-    "BLE001",
-    "FBT001",
-    "FBT002",
-    "FBT003",
-    "PLW0603",
-]
 "tests/test_analyze_parser.py" = ["ANN201", "B905", "E501", "PLR2004"]
 
 [tool.ruff.lint.pyupgrade]
@@ -160,10 +144,11 @@ keep-runtime-typing = true
 
 [tool.basedpyright]
 # For BasedPyright configurations, see https://docs.basedpyright.com/latest/configuration/config-files/.
-pythonVersion = "3.10"
+include = ["ironsbot", "tests"]
+pythonVersion = "3.11"
 pythonPlatform = "All"
 typeCheckingMode = "standard"
-exclude = [".codex", ".tmp", ".uv-cache", ".venv", "build"]
+exclude = [".codex", ".tmp", ".test-tmp", ".uv-cache", ".venv", "build"]
 venvPath = "."
 venv = ".venv"
 
@@ -177,4 +162,5 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pyyaml>=6.0.3",
     "ruff>=0.15.2",
+    "qqbot-agent-sdk==1.2.2",
 ]
