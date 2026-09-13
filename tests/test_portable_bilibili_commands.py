@@ -109,11 +109,11 @@ async def test_portable_bilibili_menu_reuses_numeric_session() -> None:
     assert detail is not None
     assert cast("TextPart", detail.parts[0]).text == "正文:dynamic-2"
     assert isinstance(detail.parts[1], RemoteImagePart)
-    assert sessions.recognizes_selection("1", context)
+    assert sessions.recognizes_response("1", context)
     exited = await sessions.select("0", context)
     assert exited is not None
     assert cast("TextPart", exited.parts[0]).text == "已退出动态选择。"
-    assert not sessions.recognizes_selection("1", context)
+    assert not sessions.recognizes_response("1", context)
     assert notifications == []
 
 

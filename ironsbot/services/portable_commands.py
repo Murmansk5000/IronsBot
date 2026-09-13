@@ -75,7 +75,7 @@ from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Awaitable, Callable, Mapping
 
     from ironsbot.core.affix_commands import AffixParser
     from ironsbot.core.command_catalog import CommandCatalog, CommandContract
@@ -86,6 +86,7 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.seer.data_queries import DataQueryReply
@@ -130,7 +131,7 @@ class PortableCommandRouter:
         raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = _command_context(context)
-        return self._query_sessions.recognizes_selection(command, context) or (
+        return self._query_sessions.recognizes_response(command, context) or (
             self._matching_input_contract(
                 raw_command,
                 command,
@@ -303,6 +304,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     team_resource: TeamResourceService,
     activity: ActivityService | None = None,
     messaging: MessagingService | None = None,
+    refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
     sendpic: SendpicService | None = None,
     bilibili: BilibiliService | None = None,
     bilibili_monitor: BilibiliMonitorService | None = None,
@@ -409,7 +411,11 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         (
             {}
             if messaging is None
-            else build_portable_messaging_operations(messaging, sessions)
+            else build_portable_messaging_operations(
+                messaging,
+                sessions,
+                refresh_push_time_jobs=refresh_push_time_jobs,
+            )
         ),
     )
     sendpic_operations = _catalog_operations(

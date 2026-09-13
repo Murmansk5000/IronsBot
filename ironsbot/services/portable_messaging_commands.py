@@ -8,11 +8,19 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.messaging.push_time import (
+    build_push_time_menu_prompt,
+    normalize_push_time_input,
+    push_time_value_prompt,
+)
 from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
     ImageNotFoundError,
 )
-from ironsbot.services.portable_query_sessions import PortableMenuSpec
+from ironsbot.services.portable_query_sessions import (
+    PortableMenuSpec,
+    PortableTextInputSpec,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -21,6 +29,7 @@ if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.messaging import PicConfig
     from ironsbot.core.platform import ConversationRef
+    from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
@@ -33,6 +42,8 @@ IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录�
 def build_portable_messaging_operations(
     messaging: MessagingService,
     sessions: PortableQuerySessions,
+    *,
+    refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
 ) -> Mapping[str, PortableOperation]:
     """Expose configured text commands whose semantics are platform-neutral."""
 
@@ -44,6 +55,12 @@ def build_portable_messaging_operations(
         messaging,
         sessions,
     )
+    if refresh_push_time_jobs is not None:
+        operations["messaging.push_time"] = _push_time_operation(
+            messaging,
+            sessions,
+            refresh_push_time_jobs,
+        )
     return operations
 
 
@@ -66,6 +83,26 @@ def _subscription_operation(
             sessions,
             context,
         ).root(read_only=read_only)
+
+    return execute
+
+
+def _push_time_operation(
+    messaging: MessagingService,
+    sessions: PortableQuerySessions,
+    refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]],
+) -> PortableOperation:
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        return _PortablePushTimeMenus(
+            messaging,
+            sessions,
+            context,
+            refresh_push_time_jobs,
+        ).root()
 
     return execute
 
@@ -154,6 +191,66 @@ class _PortableSubscriptionMenus:
             ),
         )
         return OutboundMessage.from_text(_menu_with_notice(prompt, notice))
+
+
+@dataclass(frozen=True, slots=True)
+class _PortablePushTimeMenus:
+    messaging: MessagingService
+    sessions: PortableQuerySessions
+    context: MessageInputContext
+    refresh_jobs: Callable[[PushTimeOption], Awaitable[None]]
+
+    @property
+    def conversation(self) -> ConversationRef:
+        return self.context.message.conversation
+
+    def root(self, notice: str | None = None) -> OutboundMessage:
+        options = self.messaging.push_time_options(self.conversation)
+        if not options:
+            return OutboundMessage.from_text("当前没有可修改时间的推送。")
+        prompt = build_push_time_menu_prompt(self.conversation, options)
+
+        async def select(option: PushTimeOption) -> OutboundMessage:
+            return self._request_value(option)
+
+        self.sessions.offer_menu(
+            self.context,
+            PortableMenuSpec(
+                choices=tuple(options),
+                select=select,
+                prompt=OutboundMessage.from_text(prompt),
+            ),
+        )
+        return OutboundMessage.from_text(_menu_with_notice(prompt, notice))
+
+    def _request_value(
+        self,
+        option: PushTimeOption,
+        error: str | None = None,
+    ) -> OutboundMessage:
+        prompt = push_time_value_prompt(option)
+
+        async def submit(text: str) -> OutboundMessage:
+            try:
+                normalized = normalize_push_time_input(option, text)
+            except ValueError as exc:
+                return self._request_value(option, str(exc))
+            result = self.messaging.update_push_time(
+                conversation=self.conversation,
+                option=option,
+                value=normalized,
+            )
+            await self.refresh_jobs(option)
+            return self.root(result)
+
+        self.sessions.offer_text_input(
+            self.context,
+            PortableTextInputSpec(
+                submit=submit,
+                prompt=OutboundMessage.from_text(prompt),
+            ),
+        )
+        return OutboundMessage.from_text(_menu_with_notice(prompt, error))
 
 
 def _menu_with_notice(prompt: str, notice: str | None) -> str:

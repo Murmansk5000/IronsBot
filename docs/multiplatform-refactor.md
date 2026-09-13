@@ -7,8 +7,8 @@
 
 本轮生产基线保持 NoneBot2、OneBot v11、NapCat 和 Docker/Unraid；Python 运行基线现已
 统一为 3.11+。QQ Official 已进入真实 MVP：同一 NoneBot 进程按配置注册
-`nonebot-adapter-qq`，首批只开放被动群/C2C 的帮助、关于、数据版本、赛季时间和
-下周预告。平台不能可靠表达的数字 QQ、绑定和主动推送继续按能力延期，不做伪映射。
+`nonebot-adapter-qq`，被动群/C2C 查询按共享命令目录逐步开放。平台不能可靠表达的
+数字 QQ 继续按能力延期，不做伪映射；主动推送只使用明确配置的 OpenID 目标。
 
 ## 总体约束
 
@@ -2272,3 +2272,16 @@ QQ 官方被动回复序号随后按 `tencent-connect/qqbot-nodejs` 的传输约
 增长；并发回复不会复用序号。额度或窗口耗尽时，只有部署者显式启用主动消息才移除
 入站消息 ID 降级发送，否则返回明确的永久失败。该状态纯属短期传输幂等信息，不写入
 SQLite，也没有引入 Node.js 运行时或复制腾讯 SDK。
+
+QQ 官方主动目标随后接入共享 feature policy。部署者在
+`bot.qq_official.group_policy` / `user_policy` 中以 OpenID 声明目标及附加 feature；
+定时消息、活动/B站推送、重试、退订和时间偏好继续复用平台中立服务与同一个状态库。
+`TD`、`退订`、`订阅` 和 `推送时间` 已进入便携命令路由，普通群成员只读，群管理者
+与超级管理员沿用命令目录权限。该项不新增依赖、SQLite 或图片资源。真实主动消息权限、
+发送额度和时间窗口仍须以腾讯应用实机验收，不能由单元测试代替。
+
+对 `tencent-connect/openclaw-qqbot` 多账号实现的审计确认：OpenID 属于具体 AppID，
+多账号不能只扩展凭据列表。目标 `ActorRef` / `ConversationRef` 必须增加账户命名空间，
+并同步覆盖持久化主键、会话键、feature policy、Token/网关、回复序号和出站路由。
+在该离线状态迁移完成前保持单 QQ Official 账号，避免用字符串拼接或默认账号回退制造
+不可逆的身份串号。

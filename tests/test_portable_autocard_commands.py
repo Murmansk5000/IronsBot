@@ -154,7 +154,7 @@ async def test_autocard_query_supports_direct_and_reusable_menu_results() -> Non
     assert _text(direct) == "卡牌详情:1"
     assert _text(menu) == "群星牌候选菜单"
     assert _text(selected) == "卡牌详情:2"
-    assert sessions.recognizes_selection("1", context)
+    assert sessions.recognizes_response("1", context)
 
 
 @pytest.mark.asyncio
