@@ -67,6 +67,7 @@ def _selection_scope(_snapshot: NewContentSnapshot) -> nullcontext[None]:
     [
         ("pet", "pet.select_info", (9,)),
         ("peak_pool", "pet.select_info", (9,)),
+        ("peak_expert_pool", "pet.select_info", (9,)),
         ("pet_skin", "pet.select_image", (PetImageSelection(123, "test", 9),)),
         ("mintmark", "mintmark.select_mintmark", (9,)),
         ("suit", "equipment.select", ("suit", 9)),

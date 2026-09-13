@@ -59,7 +59,7 @@ class NewContentDetailService:
                     item_id=item.entity_id,
                 )
             )
-        if item.category in {"pet", "peak_pool"}:
+        if item.category in {"pet", "peak_pool", "peak_expert_pool"}:
             result = await self.pet.select_info(item.entity_id)
         elif item.category == "pet_skin":
             result = await self.pet.select_image(

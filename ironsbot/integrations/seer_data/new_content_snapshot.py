@@ -112,6 +112,9 @@ class NewContentSnapshotBuilder:
         resolvers = {
             "pet": lambda: self._pet_details(item),
             "peak_pool": lambda: load_new_content_peak_pool_details(self._data, item),
+            "peak_expert_pool": lambda: load_new_content_peak_pool_details(
+                self._data, item
+            ),
             "pet_skin": lambda: self._skin_details(item),
             "skill": lambda: load_new_content_skill_details(self._data, item),
             "mintmark": lambda: self._mintmark_details(item),
@@ -285,7 +288,7 @@ class NewContentSnapshotBuilder:
     ) -> NewContentAssetRequest | None:
         if item.category == "skill":
             return None
-        if item.category in {"pet", "peak_pool"}:
+        if item.category in {"pet", "peak_pool", "peak_expert_pool"}:
             resource_id = require_int(
                 item.payload.get("resource_id", item.entity_id),
                 field=f"{item.category}.resource_id",

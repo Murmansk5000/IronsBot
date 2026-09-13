@@ -59,7 +59,7 @@ def _group() -> Mock:
 _ACTOR = ActorRef(Platform.ONEBOT, "100")
 _PRIVATE = ConversationRef(Platform.ONEBOT, "private", _ACTOR.id)
 _FEATURES = frozenset(
-    {"seer_peak", "seer_mintmark", "seer_rank", "seer_data", "ai_chat"}
+    {"seer_peak", "seer_pet", "seer_mintmark", "seer_rank", "seer_data", "ai_chat"}
 )
 
 
@@ -95,6 +95,9 @@ def catalog() -> CommandCatalog:
         ("刻印攻榜", "seer.mintmark.rank"),
         ("赛季时间", "seer.data.query"),
         ("新增内容", "seer.data.new_content"),
+        ("竞技池变化", "seer.data.new_peak_pool"),
+        ("专家池变化", "seer.data.new_peak_expert_pool"),
+        ("巅峰环境变化", "seer.data.peak_environment_changes"),
     ],
 )
 def test_non_example_peak_and_stat_commands_are_owned(

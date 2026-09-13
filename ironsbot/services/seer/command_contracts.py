@@ -25,11 +25,13 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
+    NEW_PEAK_EXPERT_POOL_COMMANDS,
     NEW_PEAK_POOL_COMMANDS,
     NEW_PETS_COMMANDS,
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
     NEW_SUITS_COMMANDS,
+    PEAK_ENVIRONMENT_CHANGES_COMMANDS,
 )
 from ironsbot.services.seer.peak import (
     PEAK_EXPERT_POOL_COMMANDS,
@@ -317,6 +319,18 @@ def seer_command_contracts(
                     NEW_PEAK_POOL_COMMANDS,
                     "查看本周竞技池限制变化",
                     {"features_all": ("seer_data", "seer_pet")},
+                ),
+                (
+                    "seer.data.new_peak_expert_pool",
+                    NEW_PEAK_EXPERT_POOL_COMMANDS,
+                    "查看本周专家池限制变化",
+                    {"features_all": ("seer_data", "seer_pet")},
+                ),
+                (
+                    "seer.data.peak_environment_changes",
+                    PEAK_ENVIRONMENT_CHANGES_COMMANDS,
+                    "查看本周竞技池与专家池变化",
+                    {"features_all": ("seer_data", "seer_peak", "seer_pet")},
                 ),
                 (
                     "seer.data.new_skin",

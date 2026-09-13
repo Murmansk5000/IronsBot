@@ -8,6 +8,7 @@ from sqlmodel import Session, create_engine
 
 from ironsbot.services.seer.new_content import (
     NEW_CONTENT_CATEGORIES,
+    NewContentCategory,
     NewContentIndexUnavailableError,
     NewContentItem,
     NewContentService,
@@ -123,10 +124,11 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
     service.require_snapshot(service.snapshot())
 
 
-def test_new_content_order_places_competitive_pool_before_skins() -> None:
-    assert NEW_CONTENT_CATEGORIES[:6] == (
+def test_new_content_order_places_peak_pools_before_skins() -> None:
+    assert NEW_CONTENT_CATEGORIES[:7] == (
         "pet",
         "peak_pool",
+        "peak_expert_pool",
         "pet_skin",
         "skill",
         "mintmark",
@@ -134,9 +136,12 @@ def test_new_content_order_places_competitive_pool_before_skins() -> None:
     )
 
 
-def test_peak_pool_change_description_distinguishes_zero_from_unlimited() -> None:
+@pytest.mark.parametrize("category", ["peak_pool", "peak_expert_pool"])
+def test_peak_pool_change_description_distinguishes_zero_from_unlimited(
+    category: NewContentCategory,
+) -> None:
     change = NewContentItem(
-        "peak_pool",
+        category,
         5000,
         "测试精灵",
         5000,

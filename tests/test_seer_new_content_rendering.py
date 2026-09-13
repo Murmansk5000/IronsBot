@@ -189,7 +189,10 @@ def _prepared(
     ).prepare_item(item)
 
 
-def test_peak_pool_item_uses_pet_details_and_head_asset() -> None:
+@pytest.mark.parametrize("category", ["peak_pool", "peak_expert_pool"])
+def test_peak_pool_item_uses_pet_details_and_head_asset(
+    category: NewContentCategory,
+) -> None:
     pet = SimpleNamespace(
         id=5000,
         type=SimpleNamespace(id=13, name="圣灵"),
@@ -199,7 +202,7 @@ def test_peak_pool_item_uses_pet_details_and_head_asset() -> None:
 
     prepared = _prepared(
         data,
-        _item("peak_pool", 5000, previous_limit=0, current_limit=2),
+        _item(category, 5000, previous_limit=0, current_limit=2),
     )
 
     assert prepared.details.metadata == "精灵 ID：5000"

@@ -8,11 +8,13 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_EQUIPS_COMMANDS,
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
+    NEW_PEAK_EXPERT_POOL_COMMANDS,
     NEW_PEAK_POOL_COMMANDS,
     NEW_PETS_COMMANDS,
     NEW_SKILLS_COMMANDS,
     NEW_SKINS_COMMANDS,
     NEW_SUITS_COMMANDS,
+    PEAK_ENVIRONMENT_CHANGES_COMMANDS,
 )
 
 
@@ -35,6 +37,7 @@ def test_new_content_categories_use_prefix_aliases_only() -> None:
     categories = {
         "精灵": NEW_PETS_COMMANDS,
         "竞技池": NEW_PEAK_POOL_COMMANDS,
+        "专家池": NEW_PEAK_EXPERT_POOL_COMMANDS,
         "皮肤": NEW_SKINS_COMMANDS,
         "技能": NEW_SKILLS_COMMANDS,
         "刻印": NEW_MINTMARKS_COMMANDS,
@@ -55,3 +58,11 @@ def test_new_content_categories_use_prefix_aliases_only() -> None:
     assert {"新增群星牌卡牌", "新增卡牌"}.issubset(NEW_AUTOCARD_CARDS_COMMANDS)
     assert "新成就" not in NEW_ACHIEVEMENTS_COMMANDS
     assert "皮肤更新" not in NEW_SKINS_COMMANDS
+
+
+def test_peak_environment_change_commands_are_unambiguous() -> None:
+    assert PEAK_ENVIRONMENT_CHANGES_COMMANDS == ("巅峰环境变化", "巅峰变化")
+    assert not set(PEAK_ENVIRONMENT_CHANGES_COMMANDS) & set(NEW_PEAK_POOL_COMMANDS)
+    assert not set(PEAK_ENVIRONMENT_CHANGES_COMMANDS) & set(
+        NEW_PEAK_EXPERT_POOL_COMMANDS
+    )
