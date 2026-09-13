@@ -150,6 +150,61 @@ def _run_candidate_budget(
     )
 
 
+def _run_candidate_growth_gate(
+    tmp_path: Path,
+    *,
+    candidate_bytes: int,
+    baseline_bytes: int,
+    baseline_available: bool = True,
+) -> subprocess.CompletedProcess:
+    step = next(
+        step
+        for step in _steps()
+        if step["name"] == "Compare runtime candidate image growth"
+    )
+    script = tmp_path / "candidate-growth.sh"
+    script.write_text(
+        r"""docker() {
+    case "$*" in
+        image\ inspect\ ironsbot-ci:*--format*Size*)
+            printf '%s\n' "$GROWTH_TEST_CANDIDATE_BYTES" ;;
+        image\ inspect\ "$baseline_image"*RepoDigests*)
+            printf '%s@sha256:%064d\n' "$baseline_image" 0 ;;
+        image\ inspect\ "$baseline_image"*Size*)
+            printf '%s\n' "$GROWTH_TEST_BASELINE_BYTES" ;;
+        pull\ "$baseline_image")
+            [ "$GROWTH_TEST_BASELINE_AVAILABLE" = "true" ] ;;
+        *)
+            printf 'unexpected docker call: %s\n' "$*" >&2
+            return 2 ;;
+    esac
+}
+"""
+        + step["run"],
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        [_bash(), "--noprofile", "--norc", "-e", "-o", "pipefail", script.name],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RUNNER_TEMP": ".",
+            "GITHUB_SHA": "a" * 40,
+            "BASELINE_IMAGE": str(step["env"]["BASELINE_IMAGE"]),
+            "MAX_IMAGE_GROWTH_KIB": str(step["env"]["MAX_IMAGE_GROWTH_KIB"]),
+            "GROWTH_TEST_CANDIDATE_BYTES": str(candidate_bytes),
+            "GROWTH_TEST_BASELINE_BYTES": str(baseline_bytes),
+            "GROWTH_TEST_BASELINE_AVAILABLE": str(baseline_available).lower(),
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=20,
+    )
+
+
 @pytest.mark.parametrize(
     "repository", ["ghcr.io/example/bot", "localhost:5000/example/bot"]
 )
@@ -270,6 +325,91 @@ def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> Non
     assert upload["with"]["if-no-files-found"] == "warn"
     assert "--network none --entrypoint sh" in budget["run"]
     assert "ironsbot-candidate-runtime-size-kib.txt" in budget["run"]
+
+
+def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
+    steps = _steps()
+    dockerhub_login = next(
+        step for step in steps if step["name"] == "Login to Docker Hub"
+    )
+    growth = next(
+        step
+        for step in steps
+        if step["name"] == "Compare runtime candidate image growth"
+    )
+    upload = next(
+        step
+        for step in steps
+        if step["name"] == "Upload candidate image growth evidence"
+    )
+    publish = next(step for step in steps if step["name"] == "Build and Publish")
+
+    assert steps.index(dockerhub_login) < steps.index(growth) < steps.index(upload)
+    assert steps.index(upload) < steps.index(publish)
+    assert growth["env"]["MAX_IMAGE_GROWTH_KIB"] == "8192"
+    assert growth["env"]["BASELINE_IMAGE"] == (
+        "ghcr.io/${{ github.repository }}:latest"
+    )
+    assert 'baseline_image="${BASELINE_IMAGE,,}"' in growth["run"]
+    assert 'docker pull "$baseline_image"' in growth["run"]
+    assert 'docker image inspect "$candidate"' in growth["run"]
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["if-no-files-found"] == "error"
+
+
+def test_ghcr_image_repository_is_fork_aware() -> None:
+    metadata = next(step for step in _steps() if step["name"] == "Generate Tags")
+
+    assert "ghcr.io/${{ github.repository }}" in metadata["with"]["images"]
+    assert "ghcr.io/murmansk5000/ironsbot" not in WORKFLOW.read_text(
+        encoding="utf-8"
+    ).lower()
+
+
+@pytest.mark.parametrize(
+    ("growth_kib", "expected_ok"),
+    [
+        (-1024, True),
+        (0, True),
+        (8192, True),
+        (8193, False),
+    ],
+)
+def test_candidate_image_growth_shell(
+    tmp_path: Path,
+    growth_kib: int,
+    *,
+    expected_ok: bool,
+) -> None:
+    baseline_bytes = 256 * 1024 * 1024
+    result = _run_candidate_growth_gate(
+        tmp_path,
+        candidate_bytes=baseline_bytes + growth_kib * 1024,
+        baseline_bytes=baseline_bytes,
+    )
+
+    assert (result.returncode == 0) is expected_ok, result.stdout + result.stderr
+    evidence = (
+        tmp_path / "ironsbot-candidate-image-growth.txt"
+    ).read_text(encoding="utf-8")
+    assert f"growth_bytes={growth_kib * 1024}" in evidence
+    assert "baseline_digest=" in evidence
+
+
+def test_candidate_image_growth_requires_readable_baseline(tmp_path: Path) -> None:
+    result = _run_candidate_growth_gate(
+        tmp_path,
+        candidate_bytes=256 * 1024 * 1024,
+        baseline_bytes=0,
+        baseline_available=False,
+    )
+
+    assert result.returncode != 0
+    evidence = (
+        tmp_path / "ironsbot-candidate-image-growth.txt"
+    ).read_text(encoding="utf-8")
+    assert "candidate_bytes=" in evidence
+    assert "baseline_digest=" not in evidence
 
 
 @pytest.mark.parametrize(

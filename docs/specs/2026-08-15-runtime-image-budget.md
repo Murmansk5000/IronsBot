@@ -55,6 +55,10 @@ Related ledger: [multiplatform-refactor.md](../multiplatform-refactor.md)
 7. 发布后的测量使用 `build-push-action` 返回的 digest，而不是可能变化的标签；
    保存 image inspect、逐层 history 到构建附件，并在摘要中列出真实体积。
    未发布或未测量时保持本 Spec 未完成。
+8. 发布候选在仓库登录后、正式 push 前拉取当前 `latest`，按 Docker 报告的未压缩
+   总尺寸执行相对增长门。GHCR 基线由当前 `github.repository` 推导，不写死 fork
+   所有者。默认单次最多增长 8192 KiB；基线 digest、候选大小和差值始终上传为
+   独立附件。基线不可读取时发布失败，不能静默绕过比较。
 
 BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com/reference/dockerfile/#run---mounttypebind)。
 源码构建要求 BuildKit；当前 GitHub workflow 已配置 Buildx。预构建镜像部署方式不变。
@@ -66,6 +70,7 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 - [x] `.venv`、`.codex`、Python 缓存与 pytest 缓存不进入 build context。
 - [x] 安装包只在 RUN 挂载中可见，最终阶段没有复制 wheelhouse 的指令（静态验收）。
 - [x] 冻结运行依赖导出；CI 的 digest 测量和层信息附件已实现并经模拟命令验证。
+- [x] 候选镜像在发布前与现有 `latest` 比较，超出 8192 KiB 时停止发布并保留证据。
 - [ ] 发布环境记录一次实际镜像层和总尺寸测量。
 
 ## Evidence
@@ -78,6 +83,7 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 | 2026-09-05 | 删除运行层 wheelhouse COPY，改为 BuildKit 只读挂载；冻结运行依赖导出 | Docker preflight 与发布 workflow 测试 16 passed；Ruff、测试模块 BasedPyright 与 diff 检查通过 | 实际执行 Bash 测量脚本，Docker 使用模拟函数；覆盖多标签、带端口仓库、缺失 digest 和附件生成。不是实际容器构建验收。 |
 | 2026-09-05 | 本地 main 和构建环境复核 | `git show main:Dockerfile`、冻结依赖导出、`docker version` | main `f19c7089` 仍 COPY wheelhouse、COPY 全仓库，且导出未显式排除 dev。V5 已按白名单复制应用并排除 dev，本轮补齐 wheelhouse 层问题。本机 Docker engine pipe 仍不存在，不报告 MiB 减少值，实际构建与 digest 测量仍待完成。 |
 | 2026-09-12 | 只读审计 Docker Hub `latest` 的 linux/amd64 manifest 与 config history | Registry digest `sha256:9aee18d5...`，10 层合计 405.51 MiB（压缩传输大小） | 当前远端仍由 main 旧 Dockerfile 构建：wheelhouse COPY 134.36 MiB、安装后删除 wheel 的层 153.02 MiB、全仓 `COPY .` 41.38 MiB。V5 已删除独立 wheelhouse 层并改为运行文件白名单，但尚未发布，因此不能声称新镜像的实际大小或节省比例。 |
+| 2026-09-13 | 增加候选相对增长门 | Docker 发布、启动预检与结构边界测试 39 项 | 候选相对当前 fork 的 GHCR `latest` 最多增长 8192 KiB；缩小、零增长、边界值、超限、基线不可读及 fork 仓库推导均经验证，真实大小仍等首个 Linux 候选任务。 |
 
 ## Progress
 

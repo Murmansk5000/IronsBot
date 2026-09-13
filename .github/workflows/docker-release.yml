@@ -85,7 +85,7 @@ jobs:
               id: metadata
               with:
                   images: |
-                      ghcr.io/murmansk5000/ironsbot
+                      ghcr.io/${{ github.repository }}
                       docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
                   tags: |
                       type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
@@ -175,6 +175,48 @@ jobs:
               with:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
                   password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - name: Compare runtime candidate image growth
+              shell: bash
+              env:
+                  BASELINE_IMAGE: ghcr.io/${{ github.repository }}:latest
+                  MAX_IMAGE_GROWTH_KIB: "8192"
+              run: |
+                  : "${BASELINE_IMAGE:?missing baseline image}"
+                  : "${MAX_IMAGE_GROWTH_KIB:?missing image growth budget}"
+                  baseline_image="${BASELINE_IMAGE,,}"
+                  candidate="ironsbot-ci:${GITHUB_SHA}"
+                  evidence="$RUNNER_TEMP/ironsbot-candidate-image-growth.txt"
+                  candidate_bytes="$(docker image inspect "$candidate" --format '{{.Size}}')"
+                  {
+                    echo "candidate=$candidate"
+                    echo "candidate_bytes=$candidate_bytes"
+                    echo "baseline=$baseline_image"
+                    echo "max_growth_kib=$MAX_IMAGE_GROWTH_KIB"
+                  } > "$evidence"
+                  docker pull "$baseline_image"
+                  baseline_digest="$(docker image inspect "$baseline_image" --format '{{index .RepoDigests 0}}')"
+                  baseline_bytes="$(docker image inspect "$baseline_image" --format '{{.Size}}')"
+                  growth_bytes="$((candidate_bytes - baseline_bytes))"
+                  growth_kib="$((growth_bytes / 1024))"
+                  {
+                    echo "baseline_digest=$baseline_digest"
+                    echo "baseline_bytes=$baseline_bytes"
+                    echo "growth_bytes=$growth_bytes"
+                    echo "growth_kib=$growth_kib"
+                  } >> "$evidence"
+                  test "$growth_bytes" -le "$((MAX_IMAGE_GROWTH_KIB * 1024))" || {
+                    echo "runtime image grew ${growth_kib} KiB; limit is ${MAX_IMAGE_GROWTH_KIB} KiB" >&2
+                    exit 1
+                  }
+
+            - name: Upload candidate image growth evidence
+              if: ${{ always() }}
+              uses: actions/upload-artifact@v7
+              with:
+                  name: candidate-image-growth-${{ github.sha }}
+                  path: ${{ runner.temp }}/ironsbot-candidate-image-growth.txt
+                  if-no-files-found: error
 
             - name: Build and Publish
               id: build
