@@ -5,33 +5,34 @@ import logging
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
-from ironsbot.integrations.seer_data.type_matchup_repository import (
-    load_type_matchup_dataset,
-    resolve_type_combinations,
-)
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 from ironsbot.services.seer.type_calc import (
     MissingTypeRelationError,
     TypeCombinationSnapshot,
     TypeMatchup,
+    TypeMatchupDataset,
     custom_type_matchup,
     type_matchup_by_id,
 )
 
 if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.render_cache import RenderCache
 
 TypeMatchupRenderer = Callable[[TypeMatchup], Awaitable[bytes]]
 
 
+class TypeMatchupRepository(Protocol):
+    def resolve(self, arg: str) -> tuple[TypeCombinationSnapshot, ...]: ...
+
+    def load_dataset(self) -> TypeMatchupDataset: ...
+
+
 @dataclass(frozen=True, slots=True)
 class TypeRenderSession:
-    data: SeerDataReader
+    repository: TypeMatchupRepository
     render: TypeMatchupRenderer
     cache: RenderCache
 
@@ -75,40 +76,38 @@ class TypeQueryService:
             else ""
         )
         if type_id is None:
-            with inputs.data.query(
-                partial(resolve_type_combinations, arg=arg)
-            ) as combinations:
-                if len(combinations) > PROMPT_MAX_ITEMS:
-                    return QueryResult(
-                        message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
-                    )
-                if len(combinations) > 1:
-                    return QueryResult(
-                        choices=tuple(
-                            QueryChoice(item.name, str(item.id), item.id)
-                            for item in combinations
-                        )
-                    )
-                if combinations:
-                    target = combinations[0]
-                    if _contains_normal_type(target):
-                        return QueryResult(message=NORMAL_TYPE_MESSAGE)
-                    type_id = target.id
-        with inputs.data.query(load_type_matchup_dataset) as dataset:
-            try:
-                matchup = (
-                    custom_type_matchup(dataset, arg=arg)
-                    if type_id is None
-                    else type_matchup_by_id(dataset, type_id=type_id)
+            combinations = inputs.repository.resolve(arg)
+            if len(combinations) > PROMPT_MAX_ITEMS:
+                return QueryResult(
+                    message=f"重名超过{PROMPT_MAX_ITEMS}个，请重新检索关键词！"
                 )
-            except MissingTypeRelationError as error:
-                logger.exception(
-                    "type matchup data is incomplete: attacker_id=%s defender_id=%s",
-                    error.attacker_id,
-                    error.defender_id,
+            if len(combinations) > 1:
+                return QueryResult(
+                    choices=tuple(
+                        QueryChoice(item.name, str(item.id), item.id)
+                        for item in combinations
+                    )
                 )
-                matchup = None
-                missing_message = INCOMPLETE_TYPE_DATA_MESSAGE
+            if combinations:
+                target = combinations[0]
+                if _contains_normal_type(target):
+                    return QueryResult(message=NORMAL_TYPE_MESSAGE)
+                type_id = target.id
+        dataset = inputs.repository.load_dataset()
+        try:
+            matchup = (
+                custom_type_matchup(dataset, arg=arg)
+                if type_id is None
+                else type_matchup_by_id(dataset, type_id=type_id)
+            )
+        except MissingTypeRelationError as error:
+            logger.exception(
+                "type matchup data is incomplete: attacker_id=%s defender_id=%s",
+                error.attacker_id,
+                error.defender_id,
+            )
+            matchup = None
+            missing_message = INCOMPLETE_TYPE_DATA_MESSAGE
         if matchup is None:
             return QueryResult(message=missing_message)
         if _contains_normal_type(matchup.target):

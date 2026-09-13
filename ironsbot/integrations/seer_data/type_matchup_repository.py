@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING
 
 from seerapi_models import ElementTypeORM
@@ -20,6 +21,23 @@ from .getters import TypeCombinationDataGetter
 
 if TYPE_CHECKING:
     from sqlmodel import Session
+
+    from ironsbot.services.seer.data import SeerDataReader
+
+
+class PublishedTypeMatchupRepository:
+    def __init__(self, data: SeerDataReader) -> None:
+        self._data = data
+
+    def resolve(self, arg: str) -> tuple[TypeCombinationSnapshot, ...]:
+        with self._data.query(
+            partial(resolve_type_combinations, arg=arg)
+        ) as combinations:
+            return combinations
+
+    def load_dataset(self) -> TypeMatchupDataset:
+        with self._data.query(load_type_matchup_dataset) as dataset:
+            return dataset
 
 
 def load_type_matchup_dataset(session: Session) -> TypeMatchupDataset:

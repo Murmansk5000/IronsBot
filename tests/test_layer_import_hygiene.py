@@ -34,7 +34,6 @@ TRANSITIONAL_SERVICE_INTEGRATION_IMPORTS = frozenset(
         "ironsbot.integrations.seer_data.skin_image_resolution",
         "ironsbot.integrations.seer_data.skin_price_repository",
         "ironsbot.integrations.seer_data.skin_reference_repository",
-        "ironsbot.integrations.seer_data.type_matchup_repository",
     }
 )
 ALLOWED_LAYER_IMPORTS = {

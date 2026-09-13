@@ -15,6 +15,9 @@ import pytest
 
 from ironsbot.core.outbound import ReplyContext, TextPart
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.seer_data.type_matchup_repository import (
+    PublishedTypeMatchupRepository,
+)
 from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.services.seer.query_result import QueryReply
 from ironsbot.services.seer.render_cache import RenderCacheEntry
@@ -108,9 +111,13 @@ def _render_session(
 ) -> TypeRenderSessionFactory:
     @contextmanager
     def session() -> Iterator[TypeRenderSession]:
-        yield TypeRenderSession(cast("SeerDataReader", data), render, NoCache())
+        yield TypeRenderSession(_repository(data), render, NoCache())
 
     return session
+
+
+def _repository(data: object) -> PublishedTypeMatchupRepository:
+    return PublishedTypeMatchupRepository(cast("SeerDataReader", data))
 
 
 class NoCache:
@@ -205,7 +212,7 @@ async def test_matchup_preparation_and_render_share_one_session(
         nonlocal active
         active = True
         try:
-            yield TypeRenderSession(cast("SeerDataReader", bound), render, NoCache())
+            yield TypeRenderSession(_repository(bound), render, NoCache())
         finally:
             active = False
 
@@ -255,7 +262,7 @@ async def test_query_cache_skips_all_reads_and_is_publication_bound(
             return (captured + matchup.target.name).encode()
 
         yield TypeRenderSession(
-            cast("SeerDataReader", data),
+            _repository(data),
             render,
             cache.bind(captured, lambda _category: allowed),
         )
@@ -305,7 +312,7 @@ async def test_custom_query_order_and_failed_render_do_not_poison_cache(
 
     @contextmanager
     def session() -> Iterator[TypeRenderSession]:
-        yield TypeRenderSession(cast("SeerDataReader", data), render, cache)
+        yield TypeRenderSession(_repository(data), render, cache)
 
     service = TypeQueryService(session)
     with pytest.raises(RuntimeError, match="render failed"):
@@ -342,7 +349,7 @@ async def test_incomplete_type_relations_fail_without_render_or_cache(
 
     @contextmanager
     def session() -> Iterator[TypeRenderSession]:
-        yield TypeRenderSession(cast("SeerDataReader", data), render, cache)
+        yield TypeRenderSession(_repository(data), render, cache)
 
     service = TypeQueryService(session)
     result = await service.search("草")
@@ -545,7 +552,7 @@ async def test_native_published_queries_cache_and_delivery(  # noqa: C901, PLR09
             def session() -> Iterator[TypeRenderSession]:
                 with sessions.open() as inputs:
                     yield TypeRenderSession(
-                        inputs.data,
+                        PublishedTypeMatchupRepository(inputs.data),
                         partial(render_type_matchup, inputs.images, coordinator.render),
                         inputs.cache,
                     )

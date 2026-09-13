@@ -52,6 +52,9 @@ from ironsbot.integrations.seer_data.player_lineup_entries import (
     PublishedPlayerLineupEntryResolver,
 )
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
+from ironsbot.integrations.seer_data.type_matchup_repository import (
+    PublishedTypeMatchupRepository,
+)
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.integrations.storage.lucky_skin_watch import (
     SqliteLuckySkinWatchPreferenceStore,
@@ -231,7 +234,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     def type_render_session() -> Iterator[TypeRenderSession]:
         with render_sessions.open() as inputs:
             yield TypeRenderSession(
-                inputs.data,
+                PublishedTypeMatchupRepository(inputs.data),
                 partial(
                     render_type_matchup,
                     inputs.images,
