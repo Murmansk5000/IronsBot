@@ -2353,3 +2353,11 @@ member_openid)` 精确授权，不能越过群或账号边界，并从私聊定�
 排除。实现没有猜测 C2C 与群 OpenID 的对应关系，也没有引入跨平台账号合并。Ruff、
 BasedPyright、compileall、差异检查通过，全量 `3363 passed, 7 skipped`；无新增数据库、
 依赖、图片资源或镜像层。真实 OpenID 获取及管理员命令仍需目标应用联机验收。
+
+可移植命令路由随后按领域拆分：`PortableCommandRouter` 仅保留权限筛选、会话选择、
+AI fallback 和结果归一化；数据、战队、榜单帮助、精灵、刻印、装备、属性、异常与巅峰
+操作统一由 `portable_seer_commands` 使用现有 parser/service/session 装配。主路由由 739
+行降至 468 行，新模块 320 行，没有改变命令、feature、回复或缓存行为，也没有增加运行
+依赖、配置、数据库、素材或镜像层。专项 `142 passed, 7 skipped`，全量
+`3363 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。真实
+QQ Official AppID 联机与平台权限仍是 Phase 7 的最终验收门，总进度保持 7/8。
