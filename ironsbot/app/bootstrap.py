@@ -78,6 +78,7 @@ def bootstrap() -> Application:
                 features=application.resources.features,
                 ai=application.resources.ai,
                 team_resource=application.resources.team_resource,
+                activity=application.resources.activity,
             ),
             application.resources.outbound_messenger,
         )

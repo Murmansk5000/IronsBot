@@ -10,6 +10,9 @@ from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.portable_activity_commands import (
+    build_portable_activity_operations,
+)
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
@@ -63,6 +66,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.about import AboutService
+    from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
@@ -102,10 +106,16 @@ class PortableCommandRouter:
     ) -> bool:
         if self._message_is_blocked(context):
             return False
+        raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = _command_context(context)
         return self._query_sessions.recognizes_selection(command, context) or (
-            self._matching_contract(command, context=command_context) is not None
+            self._matching_input_contract(
+                raw_command,
+                command,
+                context=command_context,
+            )
+            is not None
         ) or self._can_chat(context, command_context) or self._is_group_mention(context)
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
@@ -114,6 +124,7 @@ class PortableCommandRouter:
     ) -> PortableReply | None:
         if self._message_is_blocked(context):
             return None
+        raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = _command_context(context)
         try:
@@ -124,7 +135,11 @@ class PortableCommandRouter:
             )
         if selected is not None:
             return PortableReply(selected)
-        contract = self._matching_contract(command, context=command_context)
+        contract = self._matching_input_contract(
+            raw_command,
+            command,
+            context=command_context,
+        )
         if contract is None:
             return await self._fallback_reply(context, command_context, command)
         if contract.id == "help":
@@ -157,6 +172,18 @@ class PortableCommandRouter:
             ),
             None,
         )
+
+    def _matching_input_contract(
+        self,
+        raw_text: str,
+        normalized_text: str,
+        *,
+        context: CommandContext,
+    ) -> CommandContract | None:
+        contract = self._matching_contract(raw_text, context=context)
+        if contract is not None or raw_text == normalized_text:
+            return contract
+        return self._matching_contract(normalized_text, context=context)
 
     def _available_contracts(
         self, context: CommandContext
@@ -253,6 +280,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     features: FeatureService,
     ai: AiService,
     team_resource: TeamResourceService,
+    activity: ActivityService | None = None,
 ) -> PortableCommandRouter:
     async def about_message(
         text: str,
@@ -324,12 +352,20 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         if "team_resource.query" in catalog.command_ids
         else {}
     )
+    activity_operations = {
+        command_id: operation
+        for command_id, operation in (
+            {} if activity is None else build_portable_activity_operations(activity)
+        ).items()
+        if command_id in catalog.command_ids
+    }
 
     operations: dict[str, PortableOperation] = {
         "about": about_message,
         "seer.data.query": data_query,
         "seer.team.query": team_query,
         **team_resource_operations,
+        **activity_operations,
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,

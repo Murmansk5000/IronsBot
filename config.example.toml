@@ -85,7 +85,7 @@ sandbox = false
 proactive_messages = false
 # EN: Features exposed through the official adapter preview. ai_chat also requires AI_KEY.
 # ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
-features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "ai_chat"]
+features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "ai_chat"]
 # EN: Official-platform OpenIDs with superuser bypass. These are not QQ numbers.
 # ZH: QQ 官方平台超级管理员 OpenID；这里不是 QQ 号。
 superusers = []

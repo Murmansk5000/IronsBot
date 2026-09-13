@@ -43,6 +43,7 @@ from ironsbot.integrations.qq_official.runtime import (
     qq_official_event_mentions_bot,
 )
 from ironsbot.services.about import AboutService, about_command_contracts
+from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.portable_commands import build_portable_command_router
@@ -59,6 +60,7 @@ from ironsbot.services.seer.rank_command_contracts import rank_help_command_cont
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_list_models import RankListCommand
@@ -76,6 +78,14 @@ class _FakeDataQueries:
 
     async def weekly_preview(self) -> DataQueryImageReply:
         return DataQueryImageReply(b"preview")
+
+
+class _FakeActivityService:
+    async def build_current_message(self, *, soon_only: bool = False) -> str:
+        return "快结束活动" if soon_only else "当前活动"
+
+    async def build_newly_added_message(self) -> str:
+        return "新增活动"
 
 
 class _FakePlayerIdResolver:
@@ -258,7 +268,11 @@ def _unused_team_resource() -> TeamResourceService:
     return cast("TeamResourceService", SimpleNamespace())
 
 
-def _portable_catalog(*, ai_chat: bool = False) -> CommandCatalog:
+def _portable_catalog(
+    *,
+    ai_chat: bool = False,
+    activity: bool = False,
+) -> CommandCatalog:
     command_ids = {
         "seer.data.query",
         "seer.player.query",
@@ -307,6 +321,10 @@ def _portable_catalog(*, ai_chat: bool = False) -> CommandCatalog:
                 commands=ai_chat_command_contracts(enabled=True),
             )
         )
+    if activity:
+        contributions.append(
+            PluginContribution(id="activity", commands=activity_command_contracts())
+        )
     catalog.load(
         tuple(contributions),
         known_features=(
@@ -322,6 +340,7 @@ def _portable_catalog(*, ai_chat: bool = False) -> CommandCatalog:
             "seer_peak",
             "seer_rank",
             "ai_chat",
+            "seer_activity_query",
         ),
     )
     return catalog
@@ -569,6 +588,65 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     assert (
         await router.dispatch(_portable_input("数据版本", actor, conversation))
         is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_activity_queries_with_catalog_access() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=QQOfficialConfig(
+            features=["seer_activity_query"],
+            superusers=["opaque-admin"],
+        ),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(activity=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+        activity=cast("ActivityService", _FakeActivityService()),
+    )
+    member = ActorRef(Platform.QQ_OFFICIAL, "opaque-member")
+    member_conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        member.id,
+    )
+
+    ending = await router.dispatch(
+        _portable_input("快结束活动", member, member_conversation)
+    )
+    newly_added = await router.dispatch(
+        _portable_input("新增活动", member, member_conversation)
+    )
+
+    assert ending is not None
+    assert cast("TextPart", ending.message.parts[0]).text == "快结束活动"
+    assert newly_added is not None
+    assert cast("TextPart", newly_added.message.parts[0]).text == "新增活动"
+    assert not router.recognizes(
+        _portable_input("/当前活动", member, member_conversation)
+    )
+
+    admin = ActorRef(Platform.QQ_OFFICIAL, "opaque-admin")
+    admin_conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        admin.id,
+    )
+    current = await router.dispatch(
+        _portable_input("/当前活动", admin, admin_conversation)
+    )
+
+    assert current is not None
+    assert cast("TextPart", current.message.parts[0]).text == "当前活动"
+    assert not router.recognizes(
+        _portable_input("当前活动", admin, admin_conversation)
     )
 
 
