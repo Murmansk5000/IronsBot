@@ -34,7 +34,7 @@ from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
-from ironsbot.services.about_commands import about_command_contracts
+from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 from ironsbot.services.seer.autocard import AutocardEntry
@@ -116,6 +116,31 @@ async def test_seer_specialized_results_share_the_outbound_port(
     assert len(transport.uploads) == sum(
         isinstance(part, BinaryImagePart) for part in message.parts
     )
+
+
+@pytest.mark.asyncio
+async def test_about_service_crosses_restricted_platform_port(tmp_path: Path) -> None:
+    version_file = tmp_path / "__version__"
+    version_file.write_text("v9.9.9\n", encoding="utf-8")
+    transport = FakeOfficialPlatform(NOW)
+    message = AboutService.from_version_file(version_file).message()
+
+    result = await transport.reply(ReplyContext.from_message(_incoming()), message)
+
+    assert result.delivered
+    assert transport.attempts == [(GROUP, message)]
+    assert isinstance(message.parts[0], TextPart)
+    assert "版本：v9.9.9" in message.parts[0].text
+    assert "OneBot" not in message.parts[0].text
+
+
+def test_about_service_uses_unknown_version_when_file_is_missing(
+    tmp_path: Path,
+) -> None:
+    message = AboutService.from_version_file(tmp_path / "missing").message()
+
+    assert isinstance(message.parts[0], TextPart)
+    assert "版本：未知" in message.parts[0].text
 
 
 def _incoming() -> IncomingMessageRef:

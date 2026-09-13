@@ -92,6 +92,7 @@ from ironsbot.plugins.onebot.team_audit import (
 from ironsbot.plugins.onebot.team_resource import (
     plugin_contribution as team_resource_plugin_contribution,
 )
+from ironsbot.services.about import AboutService
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
@@ -183,6 +184,7 @@ def build_test_plugin_registry(
     resources = cast(
         "ApplicationResources",
         SimpleNamespace(
+            about=AboutService("test"),
             features=runtime.features,
             promotions=PromotionCatalog(config.promotions),
             admin_notices=runtime.admin_notices,
@@ -389,7 +391,7 @@ def build_test_plugin_registry(
             startup_notice=resources.startup_notice,
             scheduler=SchedulerFacade(),
         ),
-        about_plugin_contribution(),
+        about_plugin_contribution(resources.about),
         help_plugin_contribution(
             contribution_catalog=resources.contribution_catalog,
             features=runtime.features,

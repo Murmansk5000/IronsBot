@@ -22,7 +22,7 @@ from ironsbot.plugins.onebot.bilibili.command_rules import (
     is_bili_account_command,
     is_dynamic_menu_command,
 )
-from ironsbot.services.about_commands import about_command_contracts
+from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
@@ -113,7 +113,7 @@ async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
         ),
         known_features={"help", "about"},
     )
-    about.install(registry)
+    about.install(registry, AboutService("test"))
     help_plugin.install(registry, Mock(), FEATURES, catalog, ignored_plugins=())
     for call in registry.on_fullmatch.call_args_list:
         name = call.args[0]
