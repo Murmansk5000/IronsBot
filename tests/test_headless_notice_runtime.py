@@ -59,19 +59,21 @@ def build_service(
 
 def test_register_reconnect_checks_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
-    service = build_service(notices=HeadlessNoticeConfig(reconnect_check_times="00:05"))
+    service = build_service(
+        notices=HeadlessNoticeConfig(reconnect_check_times="00:05:11")
+    )
     service.register_reconnect_jobs(scheduler)
 
     assert scheduler.jobs == [
         {
             "func": service.reconnect,
             "trigger": "cron",
-            "id": "headless_reconnect_check:00:05",
+            "id": "headless_reconnect_check:00:05:11",
             "replace_existing": True,
-            "args": ["00:05"],
+            "args": ["00:05:11"],
             "hour": 0,
             "minute": 5,
-            "second": 0,
+            "second": 11,
             "timezone": "Asia/Shanghai",
         },
     ]
