@@ -256,6 +256,13 @@ def _assert_example_rank_page_refresh(config: RankPageRefreshConfig) -> None:
     assert config.times == []
 
 
+def _assert_example_bili_category_subscriptions(config: Settings) -> None:
+    account = config.bilibili.category_subscriptions.accounts["example_account"]
+    assert account.default_muted_categories == ["lottery", "winning"]
+    assert account.categories["lottery"].label == "抽奖"
+    assert account.categories["winning"].label == "中奖"
+
+
 def test_example_config_parses() -> None:
     config = load_settings(ROOT / "config.example.toml")
 
@@ -278,6 +285,7 @@ def test_example_config_parses() -> None:
     assert config.bilibili.push.mode == "full"
     assert config.bilibili.push.accounts == ["example_account"]
     assert config.bilibili.push.modes == {}
+    _assert_example_bili_category_subscriptions(config)
     assert config.bilibili.polling.windows[0].start == "07:00"
     assert "恭喜" in config.bilibili.filters.suppress_push_patterns
     assert config.messaging.meeting.commands == ["开播", "会议"]
