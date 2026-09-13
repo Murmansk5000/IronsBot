@@ -51,6 +51,11 @@ from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
+from ironsbot.services.messaging.meeting import meeting_command_contracts
+from ironsbot.services.operations.server_status import ServerStatusResult
+from ironsbot.services.operations.server_status_commands import (
+    server_status_command_contracts,
+)
 from ironsbot.services.portable_commands import build_portable_command_router
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
@@ -67,6 +72,7 @@ if TYPE_CHECKING:
 
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
+    from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_list_models import RankListCommand
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -91,6 +97,17 @@ class _FakeActivityService:
 
     async def build_newly_added_message(self) -> str:
         return "新增活动"
+
+
+class _FakeServerStatusService:
+    async def query_normal(self) -> ServerStatusResult:
+        return ServerStatusResult("normal status")
+
+    async def query_admin(self) -> ServerStatusResult:
+        return ServerStatusResult("admin status")
+
+    async def query_headless_instances(self) -> ServerStatusResult:
+        return ServerStatusResult("instance status")
 
 
 class _FakePlayerIdResolver:
@@ -277,6 +294,7 @@ def _portable_catalog(
     *,
     ai_chat: bool = False,
     activity: bool = False,
+    operations: bool = False,
 ) -> CommandCatalog:
     command_ids = {
         "seer.data.query",
@@ -330,6 +348,19 @@ def _portable_catalog(
         contributions.append(
             PluginContribution(id="activity", commands=activity_command_contracts())
         )
+    if operations:
+        contributions.extend(
+            (
+                PluginContribution(
+                    id="server_status",
+                    commands=server_status_command_contracts(),
+                ),
+                PluginContribution(
+                    id="meeting",
+                    commands=meeting_command_contracts(("会议",)),
+                ),
+            )
+        )
     catalog.load(
         tuple(contributions),
         known_features=(
@@ -346,6 +377,8 @@ def _portable_catalog(
             "seer_rank",
             "ai_chat",
             "seer_activity_query",
+            "server_status_query",
+            "meeting",
         ),
     )
     return catalog
@@ -880,6 +913,59 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
     assert not router.recognizes(
         _portable_input("当前活动", admin, admin_conversation)
     )
+
+
+@pytest.mark.asyncio
+async def test_portable_router_enforces_operational_query_access() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(
+            features=["server_status_query", "meeting"],
+            superusers=["opaque-admin"],
+        ),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(operations=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+        server_status=cast("ServerStatusService", _FakeServerStatusService()),
+        meeting_number="6638682008",
+        meeting_template="会议号：{meeting_number}",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        account_id="example-app",
+    )
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        account_id="example-app",
+    )
+
+    async def dispatch(text: str, actor: ActorRef) -> str | None:
+        conversation = ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            actor.id,
+            account_id="example-app",
+        )
+        reply = await router.dispatch(_portable_input(text, actor, conversation))
+        if reply is None:
+            return None
+        return cast("TextPart", reply.message.parts[0]).text
+
+    assert await dispatch("开服了吗", member) == "normal status"
+    assert await dispatch("会议", member) == "会议号：663-868-2008"
+    assert await dispatch("/开服查询", member) is None
+    assert await dispatch("/无头状态", member) is None
+    assert await dispatch("/开服查询", admin) == "admin status"
+    assert await dispatch("/无头状态", admin) == "instance status"
 
 
 @pytest.mark.asyncio

@@ -95,6 +95,9 @@ def bootstrap() -> Application:
                 sendpic=application.resources.sendpic,
                 bilibili=application.resources.bilibili,
                 bilibili_monitor=application.resources.bilibili_monitor,
+                server_status=application.resources.server_status,
+                meeting_number=settings.messaging.meeting.number,
+                meeting_template=settings.messaging.meeting.template,
                 new_content_expanded_categories=frozenset(
                     settings.seer.new_content.expanded_categories
                 ),

@@ -29,6 +29,10 @@ from ironsbot.services.portable_messaging_commands import (
 from ironsbot.services.portable_new_content_commands import (
     build_portable_new_content_operations,
 )
+from ironsbot.services.portable_operational_commands import (
+    build_portable_meeting_operations,
+    build_portable_server_status_operations,
+)
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
@@ -89,6 +93,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
     from ironsbot.services.seer.new_content import NewContentCategory
@@ -308,6 +313,9 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     sendpic: SendpicService | None = None,
     bilibili: BilibiliService | None = None,
     bilibili_monitor: BilibiliMonitorService | None = None,
+    server_status: ServerStatusService | None = None,
+    meeting_number: str = "",
+    meeting_template: str = "{meeting_number}",
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
     new_content_preview_max_items: int = 5,
 ) -> PortableCommandRouter:
@@ -434,6 +442,18 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             )
         ),
     )
+    server_status_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if server_status is None
+            else build_portable_server_status_operations(server_status)
+        ),
+    )
+    meeting_operations = _catalog_operations(
+        catalog,
+        build_portable_meeting_operations(meeting_number, meeting_template),
+    )
 
     operations: dict[str, PortableOperation] = {
         "about": about_message,
@@ -444,6 +464,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **messaging_operations,
         **sendpic_operations,
         **bilibili_operations,
+        **server_status_operations,
+        **meeting_operations,
         **new_content_operations,
         **autocard_operations,
         **countermark_operations,
