@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.10 AS requirements_stage
+FROM python:3.10-bookworm AS requirements_stage
 
 WORKDIR /wheel
 
@@ -13,16 +13,49 @@ RUN python -m uv export --frozen --no-dev --format requirements.txt --output-fil
 
 RUN python -m pip wheel --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
 
-RUN python -c "\
-import urllib.request, zipfile, io, os;\
-os.makedirs('/tmp/fonts', exist_ok=True);\
-url='https://github.com/adobe-fonts/source-han-sans/releases/download/2.005R/09_SourceHanSansSC.zip';\
-data=urllib.request.urlopen(url).read();\
-z=zipfile.ZipFile(io.BytesIO(data));\
-[open(f'/tmp/fonts/{os.path.basename(n)}','wb').write(z.read(n)) for n in z.namelist() if n.endswith('.otf') and ('Regular' in n or 'Bold' in n)]"
+RUN python - <<'PY'
+import io
+from pathlib import Path
+import urllib.request
+import zipfile
+
+url = (
+    "https://github.com/adobe-fonts/source-han-sans/releases/download/"
+    "2.005R/19_SourceHanSansCN.zip"
+)
+with urllib.request.urlopen(url) as response:
+    archive = zipfile.ZipFile(io.BytesIO(response.read()))
+
+font_names = {
+    "SourceHanSansCN-Regular.otf",
+    "SourceHanSansCN-Bold.otf",
+}
+font_entries = {
+    Path(name).name: name
+    for name in archive.namelist()
+    if Path(name).name in font_names
+}
+if font_entries.keys() != font_names:
+    raise RuntimeError(f"unexpected Source Han Sans CN archive: {font_entries}")
+
+font_dir = Path("/tmp/fonts")
+font_dir.mkdir(parents=True)
+for filename, entry in font_entries.items():
+    (font_dir / filename).write_bytes(archive.read(entry))
+
+license_entry = next(
+    (name for name in archive.namelist() if Path(name).name == "LICENSE.txt"),
+    None,
+)
+if license_entry is None:
+    raise RuntimeError("Source Han Sans CN archive has no LICENSE.txt")
+license_dir = Path("/tmp/font-license")
+license_dir.mkdir(parents=True)
+(license_dir / "LICENSE.txt").write_bytes(archive.read(license_entry))
+PY
 
 
-FROM python:3.10-slim
+FROM python:3.10-slim-bookworm
 
 WORKDIR /app
 
@@ -34,6 +67,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONFAULTHANDLER=1
 
 COPY --from=requirements_stage /tmp/fonts/ /usr/share/fonts/opentype/source-han-sans/
+COPY --from=requirements_stage /tmp/font-license/LICENSE.txt /usr/share/doc/source-han-sans/LICENSE.txt
 RUN apt-get update \
     && apt-get install -y --no-install-recommends fontconfig \
     && fc-cache -fv \

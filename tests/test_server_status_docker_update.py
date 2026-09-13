@@ -46,7 +46,12 @@ from ironsbot.services.operations.docker_models import (
     WatchtowerUpdateOptions,
 )
 from ironsbot.services.operations.docker_preflight import DockerStartupPreflightStore
-from ironsbot.services.operations.docker_update import DockerUpdateService
+from ironsbot.services.operations.docker_update import (
+    DockerMaintenanceChoice,
+    DockerUpdateService,
+    docker_maintenance_menu_text,
+    parse_docker_maintenance_choice,
+)
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
 
@@ -56,6 +61,22 @@ async def noop_restart_process() -> None:
 
 def build_docker_service(config: DockerUpdateConfig) -> DockerUpdateService:
     return DockerUpdateService(config, DockerClient(), noop_restart_process)
+
+
+def test_docker_maintenance_menu_has_two_explicit_actions() -> None:
+    message = docker_maintenance_menu_text()
+
+    assert "1. 仅重启机器人" in message
+    assert "2. 检查并更新镜像后重启" in message
+    assert (
+        parse_docker_maintenance_choice(" 1 ")
+        is DockerMaintenanceChoice.RESTART_ONLY
+    )
+    assert (
+        parse_docker_maintenance_choice("2")
+        is DockerMaintenanceChoice.UPDATE_AND_RESTART
+    )
+    assert parse_docker_maintenance_choice("0") is None
 
 
 def test_split_docker_image_with_tag() -> None:
@@ -495,6 +516,40 @@ def test_docker_update_service_keeps_watchtower_when_target_image_differs() -> N
     assert docker.removed is False
 
 
+def test_docker_update_service_abandons_failed_watchtower_handoff() -> None:
+    class FakeDocker:
+        removed: tuple[str, str, float] | None = None
+
+        async def socket_exists(self, socket_path: str) -> bool:
+            return socket_path == "/var/run/docker.sock"
+
+        async def remove_container(
+            self,
+            *,
+            container_id: str,
+            socket_path: str,
+            timeout_seconds: float,
+        ) -> None:
+            self.removed = (container_id, socket_path, timeout_seconds)
+
+    docker = FakeDocker()
+    service = DockerUpdateService(
+        DockerUpdateConfig(timeout_seconds=42.0),
+        docker,  # type: ignore[arg-type]
+        noop_restart_process,
+    )
+
+    asyncio.run(
+        service.abandon_update_handoff(updater_container_id="watchtower-id")
+    )
+
+    assert docker.removed == (
+        "watchtower-id",
+        "/var/run/docker.sock",
+        42.0,
+    )
+
+
 def test_docker_update_service_checks_without_starting_an_update() -> None:
     class FakeDocker:
         check_request: DockerUpdateRequest | None = None
@@ -661,34 +716,32 @@ def test_docker_update_runtime_is_registered_before_data_sync() -> None:
     assert names.index("docker_update") < names.index("db_sync")
 
 
-def test_docker_service_without_restart_check_uses_process_without_socket() -> None:
-    service = build_docker_service(
-        DockerUpdateConfig(check_on_restart=False)
-    )
+def test_docker_restart_only_uses_process_without_socket() -> None:
+    service = build_docker_service(DockerUpdateConfig())
 
-    message, restart_action = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_restart_only())
 
     assert restart_action == "process"
     assert "正在重启机器人进程" in message
+    assert "仅重启" in message
 
 
-def test_docker_service_without_restart_check_uses_docker_socket(
+def test_docker_restart_only_uses_docker_socket(
     tmp_path: Path,
 ) -> None:
     socket_path = tmp_path / "docker.sock"
     socket_path.touch()
     service = build_docker_service(
         DockerUpdateConfig(
-            check_on_restart=False,
             docker_socket_path=str(socket_path),
         )
     )
 
-    message, restart_action = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_restart_only())
 
     assert restart_action == "docker"
     assert "正在重启机器人容器" in message
-    assert "未启用重启前镜像检查" in message
+    assert "仅重启" in message
 
 
 def test_docker_service_missing_socket_continues_restart(
@@ -700,12 +753,11 @@ def test_docker_service_missing_socket_continues_restart(
     monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
     service = build_docker_service(
         DockerUpdateConfig(
-            check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
         )
     )
 
-    message, restart_action = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_update_and_restart())
 
     assert restart_action == "process"
     assert "跳过镜像检查并继续普通进程重启" in message
@@ -720,12 +772,11 @@ def test_docker_service_up_to_date_continues_restart(
     monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
     service = build_docker_service(
         DockerUpdateConfig(
-            check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
         )
     )
 
-    message, restart_action = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_update_and_restart())
 
     assert restart_action == "docker"
     assert "镜像已是最新，正在重启当前容器" in message
@@ -743,12 +794,11 @@ def test_docker_service_started_update_skips_extra_restart(
     monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
     service = build_docker_service(
         DockerUpdateConfig(
-            check_on_restart=True,
             image="murmansk5000/ironsbot:latest",
         )
     )
 
-    message, restart_action = asyncio.run(service.prepare_manual_restart())
+    message, restart_action = asyncio.run(service.prepare_update_and_restart())
 
     assert restart_action == "none"
     assert "Docker 自更新任务已启动" in message
@@ -769,14 +819,14 @@ def test_manual_update_records_expected_target_for_recreated_container(
     monkeypatch.setattr(DockerUpdateService, "run_update", fake_run)
     store = DockerStartupPreflightStore(tmp_path / "docker-preflight.json")
     service = DockerUpdateService(
-        DockerUpdateConfig(check_on_restart=True),
+        DockerUpdateConfig(),
         DockerClient(),
         noop_restart_process,
         handoff_store=store,
         instance_id="old-container",
     )
 
-    _message, restart_action = asyncio.run(service.prepare_manual_restart())
+    _message, restart_action = asyncio.run(service.prepare_update_and_restart())
 
     record = store.read()
     assert restart_action == "none"
