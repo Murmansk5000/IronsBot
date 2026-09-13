@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 from ironsbot.services.seer.images import (
     ImageSourceError,
     ImageSourceStatusError,
+    MissingImageRepositoryError,
     PreparedImageRequest,
 )
 
@@ -19,39 +20,51 @@ if TYPE_CHECKING:
 
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.services.seer.images import (
+        AssetRepositoryKind,
         ImageKind,
         PublishedRenderAssetSnapshot,
     )
 
-_URLS: dict[ImageKind, tuple[str, ...]] = {
+_PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]] = {
+    "autocard_card": (
+        ("default", "newseer/assets/art/autocard/texture/cards/{}.png"),
+    ),
+    "autocard_role": (
+        ("default", "newseer/assets/art/autocard/texture/roles/card/{}.png"),
+    ),
     "battle_effect": (
-        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
-        "newseer/assets/art/ui/assets/battleeffect/abnormal/{}.png",
+        (
+            "battle_effect",
+            "newseer/assets/art/ui/assets/battleeffect/abnormal/{}.png",
+        ),
     ),
-    "preview": (
-        "https://raw.githubusercontent.com/Murmansk-Seer/"
-        "seer-unity-preview-img-dumper/main/img/preview.png",
-        "https://cdn.jsdelivr.net/gh/Murmansk-Seer/"
-        "seer-unity-preview-img-dumper@main/img/preview.png",
-    ),
-}
-_PINNED_ASSET_PATHS: dict[ImageKind, tuple[str, ...]] = {
-    "element_type": ("newseer/assets/art/ui/assets/pettype/{}.png",),
-    "equip": ("newseer/assets/art/ui/assets/item/cloth/prev/{}.png",),
+    "element_type": (("element_type", "newseer/assets/art/ui/assets/pettype/{}.png"),),
+    "equip": (("equip", "newseer/assets/art/ui/assets/item/cloth/prev/{}.png"),),
     "item": (
-        "newseer/assets/art/ui/assets/item/doodle/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/petitem/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/skillstone/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/throw/icon/{}.png",
-        "newseer/assets/art/ui/assets/item/userinfo/icon/{}.png",
+        ("item", "newseer/assets/art/ui/assets/item/doodle/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/petitem/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/skillstone/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/throw/icon/{}.png"),
+        ("item", "newseer/assets/art/ui/assets/item/userinfo/icon/{}.png"),
     ),
-    "mintmark": ("newseer/assets/art/ui/assets/countermark/icon/{}.png",),
-    "pet_body": ("newseer/assets/art/ui/assets/pet/body/{}.png",),
-    "pet_head": ("newseer/assets/art/ui/assets/pet/head/{}.png",),
-    "sign_buff": ("newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png",),
-    "suit": ("newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png",),
-    "title": ("newseer/assets/art/ui/assets/achieve/title/{}.png",),
+    "mintmark": (("mintmark", "newseer/assets/art/ui/assets/countermark/icon/{}.png"),),
+    "mount": (
+        ("default", "newseer/assets/art/ui/assets/item/cloth/prev/{}.png"),
+        ("default", "newseer/assets/art/ui/assets/item/cloth/icon/{}.png"),
+        ("mount", "mount/{}.png"),
+    ),
+    "pet_body": (("pet_body", "newseer/assets/art/ui/assets/pet/body/{}.png"),),
+    "pet_head": (("pet_head", "newseer/assets/art/ui/assets/pet/head/{}.png"),),
+    "sign_buff": (
+        ("sign_buff", "newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png"),
+    ),
+    "suit": (("suit", "newseer/assets/art/ui/assets/item/cloth/suiticon/{}.png"),),
+    "title": (("title", "newseer/assets/art/ui/assets/achieve/title/{}.png"),),
 }
+_PINNED_ASSET_ROOTS = (
+    "https://raw.githubusercontent.com/{repository}/{revision}/",
+    "https://cdn.jsdelivr.net/gh/{repository}@{revision}/",
+)
 _FALLBACK_KINDS = frozenset({"mintmark", "pet_body", "pet_head"})
 _FALLBACK_SIZES: dict[ImageKind, int] = {
     "mintmark": 96,
@@ -92,13 +105,13 @@ class HttpSeerImageSource:
         *,
         fallback: bool,
     ) -> PreparedImageRequest:
-        snapshot = (
-            self._asset_snapshot_getter() if kind in _PINNED_ASSET_PATHS else None
-        )
+        snapshot = self._asset_snapshot_getter()
+        if snapshot is None:
+            raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
         urls = self._urls_for(kind, key, snapshot)
         return PreparedImageRequest(
-            identity=snapshot.cache_identity if snapshot is not None else "unversioned",
-            fetch=partial(self._fetch_urls, kind, urls),
+            identity=snapshot.cache_identity,
+            fetch=partial(self._fetch_urls, urls),
             fallback=(
                 partial(_local_fallback_image, kind)
                 if fallback and kind in _FALLBACK_KINDS
@@ -108,14 +121,13 @@ class HttpSeerImageSource:
 
     async def _fetch_urls(
         self,
-        kind: ImageKind,
         urls: tuple[str, ...],
     ) -> bytes:
         last_error: ImageSourceError | None = None
         for url in urls:
             try:
                 return await self._get(
-                    self._clients.origin if kind == "preview" else self._clients.cache,
+                    self._clients.cache,
                     url,
                 )
             except (HTTPStatusError, RequestError) as error:  # noqa: PERF203
@@ -127,24 +139,24 @@ class HttpSeerImageSource:
         self,
         kind: ImageKind,
         key: str,
-        snapshot: PublishedRenderAssetSnapshot | None,
+        snapshot: PublishedRenderAssetSnapshot,
     ) -> tuple[str, ...]:
-        paths = _PINNED_ASSET_PATHS.get(kind)
-        if paths is None:
-            return tuple(template.format(key) for template in _URLS[kind])
-        if snapshot is None:
-            raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
-        root = (
-            "https://raw.githubusercontent.com/"
-            f"{snapshot.repository}/{snapshot.revision}/"
-        )
-        return tuple(f"{root}{path.format(key)}" for path in paths)
-
-    async def fetch_url(self, url: str) -> bytes:
-        try:
-            return await self._get(self._clients.origin, url)
-        except (HTTPStatusError, RequestError) as error:
-            raise _image_source_error(error) from error
+        urls: list[str] = []
+        for repository_kind, path in _PINNED_ASSET_PATHS[kind]:
+            repository = snapshot.repository_for(repository_kind)
+            if repository is None:
+                continue
+            roots = (
+                root.format(
+                    repository=repository.repository,
+                    revision=repository.revision,
+                )
+                for root in _PINNED_ASSET_ROOTS
+            )
+            urls.extend(f"{root}{path.format(key)}" for root in roots)
+        if not urls:
+            raise MissingImageRepositoryError(kind)
+        return tuple(dict.fromkeys(urls))
 
     async def _get(
         self,
@@ -154,6 +166,7 @@ class HttpSeerImageSource:
         response = await client.get(url)
         response.raise_for_status()
         return response.content
+
 
 def _image_source_error(
     error: HTTPStatusError | RequestError,
