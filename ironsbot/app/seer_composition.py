@@ -34,6 +34,9 @@ from ironsbot.integrations.seer_data.lucky_skin_window_renderer import (
 from ironsbot.integrations.seer_data.new_content_renderer import (
     render_new_content_menu,
 )
+from ironsbot.integrations.seer_data.new_content_repository import (
+    PublishedNewContentRepository,
+)
 from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
     render_peak_pet_rank,
 )
@@ -287,7 +290,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     @contextmanager
     def content_selection_scope(snapshot: NewContentSnapshot) -> Iterator[None]:
         with seer_database.read_snapshot() as bound:
-            NewContentService(bound).require_snapshot(snapshot)
+            NewContentService(PublishedNewContentRepository(bound)).require_snapshot(
+                snapshot
+            )
             bound.require_current()
             yield
             bound.require_current()
@@ -301,7 +306,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         auto_expand_max_items: int,
     ) -> bytes:
         with render_sessions.open() as inputs:
-            NewContentService(inputs.data).require_snapshot(snapshot)
+            NewContentService(
+                PublishedNewContentRepository(inputs.data)
+            ).require_snapshot(snapshot)
             return await render_new_content_menu(
                 inputs.cache,
                 inputs.data,
@@ -455,7 +462,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                 PublishedDataQueryRepository(seer_database),
                 weekly_preview_images,
                 settings.seer.season,
-                NewContentService(seer_database),
+                NewContentService(PublishedNewContentRepository(seer_database)),
             ),
             CountermarkStatRankService(seer_database),
             autocard,
