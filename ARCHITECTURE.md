@@ -18,10 +18,11 @@ one business core:
 2. QQ Official Bot only; and
 3. OneBot and QQ Official Bot together.
 
-QQ Official Bot support is a future boundary, not a currently enabled
-integration. Do not add an empty official-bot plugin, fake adapters, official
-credentials, or speculative compatibility code before a concrete feature needs
-them.
+QQ Official Bot now has a deliberately small production adapter for passive
+group/C2C commands. It uses `nonebot-adapter-qq` in the same process as OneBot,
+opaque OpenIDs, shared business services, and the platform-neutral outbound
+message model. This first slice is not permission to copy OneBot plugins or to
+pretend unsupported identity and proactive-delivery capabilities exist.
 
 Platform identity work follows capability-first scheduling. If a target API
 cannot faithfully express a QQ number, a direct mention, an account binding, or
@@ -562,21 +563,20 @@ services and use cases
 integrations (SQLite, HTTP, Seer data, render assets)
         ^                         ^
         |                         |
-plugins/onebot              plugins/qq_official (future)
+plugins/onebot              integrations/qq_official
         ^                         ^
         +----------- app composition -----------+
 ```
 
-`plugins/onebot` and future `plugins/qq_official` may share services but never
-import each other's adapter/event types. A feature may be enabled for one
-platform, both, or neither; an adapter must not emulate an unavailable action
-by silently falling back to a OneBot-only operation.
+OneBot plugins and QQ Official integrations may share services but never import
+each other's adapter/event types. A feature may be enabled for one platform,
+both, or neither; an adapter must not emulate an unavailable action by silently
+falling back to a OneBot-only operation.
 
-When QQ Official Bot work actually begins, use `nonebot-adapter-qq` as the
-official adapter. Do not run a separate `botpy.Client` alongside NoneBot for
-the same official bot. Official-specific protocol and asset code belongs in a
-dedicated integration/adapter boundary, created only with the first real
-official feature.
+QQ Official Bot uses `nonebot-adapter-qq`; do not run a separate `botpy.Client`
+alongside NoneBot for the same official bot. Official-specific protocol and
+asset code belongs in `integrations.qq_official`. New commands must first expose
+a platform-neutral service operation and outbound result.
 
 ## QQ Official Capability And Safety Requirements
 
@@ -885,8 +885,9 @@ product need; it must leave the repository cleaner than it found it.
    delivery code without changing ordinary command behaviour.
 5. **Prepare data and assets.** Publish deterministic Seer facts and render
    assets before exposing them through a new transport.
-6. **Add QQ Official Bot only for a real feature.** Implement its adapter,
-   capabilities, policy checks, tests, and observability in the same change.
+6. **Expand QQ Official Bot by real feature slices.** Keep each slice runnable,
+   add capability and policy checks with the command, and never block a useful
+   passive-query release on unsupported account mapping or proactive delivery.
 
 Each phase must be independently reviewable, have migration/rollback guidance
 where persistent data changes, and avoid leaving an old and new runtime path

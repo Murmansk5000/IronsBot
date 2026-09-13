@@ -21,6 +21,7 @@ dependencies = [
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
     "qrcode[pil]>=8.2",
+    "nonebot-adapter-qq==1.7.1",
 ]
 
 [tool.nonebot]
@@ -30,6 +31,9 @@ builtin_plugins = []
 [tool.nonebot.adapters]
 nonebot-adapter-onebot = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
+]
+nonebot-adapter-qq = [
+    { name = "QQ Official", module_name = "nonebot.adapters.qq" },
 ]
 "@local" = []
 

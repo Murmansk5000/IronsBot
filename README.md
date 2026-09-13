@@ -4,7 +4,7 @@
 
 # IronsBot
 
-IronsBot 是一个面向 QQ / OneBot v11 的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
+IronsBot 是一个面向 OneBot v11 与 QQ 官方机器人的赛尔号机器人，基于 NoneBot2 构建，主要服务于自部署、Unraid 和 Docker 使用场景。
 
 当前主线已经转为显式插件架构：通用功能位于 `ironsbot/plugins`，部署者自行维护的扩展位于 `ironsbot/custom_plugins`；二者都由统一注册表安装。原版查询代码仅作为数据、渲染和协议能力的来源或基础设施依赖保留。
 
@@ -114,6 +114,34 @@ services:
 `./ironsbot-config/ironsbot.toml`。配置文件会在启动时严格校验。
 完整部署说明见
 [docker/README.md](docker/README.md) 和 [.env.example](.env.example)。
+
+### QQ 官方机器人调试版
+
+QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。首版支持群聊
+`@机器人` 与 C2C 被动消息，开放 `帮助`、`关于`、`数据版本`、`赛季倒计时`
+和 `下周预告`；其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
+规则忽略，主动推送、QQ 号绑定和依赖数字 QQ 号的功能暂未开放。
+
+在 `ironsbot.toml` 中启用：
+
+```toml
+[bot.qq_official]
+enabled = true
+app_id = "你的 QQ 机器人 AppID"
+sandbox = false
+features = ["help", "about", "seer_data"]
+superusers = []
+```
+
+凭据只放环境变量：
+
+```text
+QQ_OFFICIAL_TOKEN=你的 Token
+QQ_OFFICIAL_SECRET=你的 AppSecret
+```
+
+当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
+不是普通 QQ 号；日志中的 OpenID 可用于后续配置官方平台超级管理员。
 
 ## 常用赛尔查询
 

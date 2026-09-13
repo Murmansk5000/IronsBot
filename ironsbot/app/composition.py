@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import nonebot
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
+from nonebot.adapters.qq import Adapter as QQOfficialAdapter
 
 from ironsbot.app.activity_composition import build_activity_service
 from ironsbot.app.ai_health import check_configured_ai_api
@@ -46,6 +47,7 @@ from ironsbot.integrations.onebot.identity import (
     onebot_conversation_ref,
 )
 from ironsbot.integrations.onebot.matchers import MatcherFactory
+from ironsbot.integrations.qq_official.runtime import install_qq_official_runtime
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.player_bindings import (
@@ -57,6 +59,7 @@ from ironsbot.services.about import AboutService
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
+from ironsbot.services.portable_commands import build_portable_command_router
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
@@ -65,6 +68,8 @@ if TYPE_CHECKING:
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     driver.register_adapter(OneBotV11Adapter)
+    if settings.bot.qq_official.enabled:
+        driver.register_adapter(QQOfficialAdapter)
     scheduler = SchedulerFacade()
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
@@ -276,6 +281,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.messaging.command_cooldown,
         ),
     )
+    if settings.bot.qq_official.enabled:
+        install_qq_official_runtime(
+            build_portable_command_router(
+                about=resources.about,
+                data_queries=resources.seer.data_queries,
+                features=resources.features,
+            )
+        )
     return Application(
         settings=settings,
         driver=driver,
