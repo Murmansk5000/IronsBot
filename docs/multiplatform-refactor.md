@@ -1916,3 +1916,13 @@ OneBot 编码后返回正确目标用户及版本正文；这不是线上 QQ 登
 活动窗口也按秒判断。131 项定向测试及包含进程冒烟的全量回归均通过（3236 passed、
 7 skipped），Ruff 与 BasedPyright 通过。QQ 号、绑定和直接 @ 等目标 API 无法表达的
 能力继续留到最终平台阶段，不阻塞当前工作。
+
+## 运行时伪通用桥接清理（2026-09-13）
+
+删除无人引用的 `runtime/bindings.py` 与 `runtime/onebot_reply.py`；二者的现行职责早已
+分别由 OneBot matcher 支持和消息输入适配器承担。仅由 OneBot 提示会话使用的异常也从
+`runtime/prompt_errors.py` 迁入 `integrations/onebot/prompt_errors.py`。`runtime` 只
+保留真正跨适配器的在途请求和缓存路径能力，并新增架构门禁止恢复这些伪通用桥接模块。
+
+该收口不改变消息行为、配置或数据库。QQ 号、绑定和直接 @ 等依赖目标平台 API 的能力
+仍按既定规则延期到最终平台阶段，不阻塞其他通用接口和发布验收工作。

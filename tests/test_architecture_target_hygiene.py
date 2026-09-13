@@ -92,6 +92,11 @@ RETIRED_RUNTIME_NAMES = (
     "PluginDefinition",
     "MatcherRegistry",
 )
+RETIRED_RUNTIME_ADAPTER_BRIDGES = (
+    "bindings.py",
+    "onebot_reply.py",
+    "prompt_errors.py",
+)
 ADAPTER_NAMES_FORBIDDEN_IN_SERVICE_TEXT = ("OneBot", "QQ")
 OUTBOUND_CONTENT_CONSTRUCTORS = frozenset(
     {
@@ -505,3 +510,15 @@ def test_runtime_does_not_reintroduce_core_semantic_request_bridge() -> None:
     """Semantic request models belong to core, never to a runtime re-export."""
 
     assert not (RUNTIME / "semantic_requests.py").exists()
+
+
+def test_runtime_does_not_reintroduce_onebot_adapter_bridges() -> None:
+    """OneBot event and prompt helpers belong to the OneBot integration."""
+
+    offenders = [
+        filename
+        for filename in RETIRED_RUNTIME_ADAPTER_BRIDGES
+        if (RUNTIME / filename).exists()
+    ]
+
+    assert offenders == []
