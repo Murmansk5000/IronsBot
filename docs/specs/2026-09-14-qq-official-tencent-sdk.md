@@ -49,12 +49,17 @@ passive reply, image upload, and proactive quota behavior remain external gates.
 - [x] Disabled QQ Official mode imports no optional SDK package.
 - [x] Ruff, BasedPyright, targeted tests, full pytest, compileall, and diff checks
   pass.
-- [ ] Private preview image builds and passes its offline smoke test.
+- [x] Private preview image builds and passes its offline smoke test.
 
 Local evidence: `86 passed` in the focused SDK/lifecycle suite and `3390 passed,
 7 skipped` in the full suite. Ruff and BasedPyright report no findings. An
 isolated no-dev/no-extra environment imports the standard composition root
 without importing `qqbot_agent_sdk`.
+
+Private preview workflow `34787564915` passed dependency audit, Linux image
+build, offline smoke, size budgets, growth comparison, and GHCR publication for
+commit `c66eec1b`; published digest:
+`sha256:16c33659b96c1ffe8c70ca2a041a2f458eff3fbb1ebcd9827dd6fa644713b80a`.
 
 ## Rollback
 
