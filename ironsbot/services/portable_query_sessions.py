@@ -26,6 +26,7 @@ _UntypedMenuSelect = Callable[
     Awaitable[QueryResult[Any] | OutboundMessage],
 ]
 MenuSelect = Callable[[_T], Awaitable[OutboundMessage]]
+TextSubmit = Callable[[str], Awaitable[OutboundMessage]]
 
 
 class PortableQueryOperation(Protocol):
@@ -59,6 +60,13 @@ class PortableMenuSpec(Generic[_T]):
 
 
 @dataclass(frozen=True, slots=True)
+class PortableTextInputSpec:
+    submit: TextSubmit
+    prompt: OutboundMessage
+    exit_message: str = "已退出查询。"
+
+
+@dataclass(frozen=True, slots=True)
 class _PendingSelection:
     choices: tuple[object, ...]
     select: _UntypedMenuSelect
@@ -67,6 +75,13 @@ class _PendingSelection:
     expires_at: float
     keep_open: bool = False
     exit_message: str = "已退出查询。"
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingTextInput:
+    submit: TextSubmit
+    expires_at: float
+    exit_message: str
 
 
 class PortableQuerySessions:
@@ -83,11 +98,14 @@ class PortableQuerySessions:
         self._ttl_seconds = ttl_seconds
         self._now = now
         self._pending: dict[_SessionKey, _PendingSelection] = {}
+        self._pending_text: dict[_SessionKey, _PendingTextInput] = {}
 
-    def recognizes_selection(self, text: str, context: MessageInputContext) -> bool:
+    def recognizes_response(self, text: str, context: MessageInputContext) -> bool:
         key = self._key(context)
         self._drop_expired(key)
-        return key in self._pending and text.strip().isdigit()
+        return key in self._pending_text or (
+            key in self._pending and text.strip().isdigit()
+        )
 
     async def begin(
         self,
@@ -140,13 +158,29 @@ class PortableQuerySessions:
         async def select_untyped(value: object) -> OutboundMessage:
             return await spec.select(cast("_T", value))
 
-        self._pending[self._key(context)] = _PendingSelection(
+        key = self._key(context)
+        self._pending_text.pop(key, None)
+        self._pending[key] = _PendingSelection(
             choices=tuple(spec.choices),
             select=select_untyped,
             prompt_title="",
             not_found_message="",
             expires_at=self._now() + self._ttl_seconds,
             keep_open=spec.keep_open,
+            exit_message=spec.exit_message,
+        )
+        return spec.prompt
+
+    def offer_text_input(
+        self,
+        context: MessageInputContext,
+        spec: PortableTextInputSpec,
+    ) -> OutboundMessage:
+        key = self._key(context)
+        self._pending.pop(key, None)
+        self._pending_text[key] = _PendingTextInput(
+            submit=spec.submit,
+            expires_at=self._now() + self._ttl_seconds,
             exit_message=spec.exit_message,
         )
         return spec.prompt
@@ -158,6 +192,9 @@ class PortableQuerySessions:
     ) -> OutboundMessage | None:
         key = self._key(context)
         self._drop_expired(key)
+        pending_text = self._pending_text.pop(key, None)
+        if pending_text is not None:
+            return await self._select_text(text, pending_text)
         pending = self._pending.get(key)
         if pending is None or not text.strip().isdigit():
             return None
@@ -187,6 +224,15 @@ class PortableQuerySessions:
             prompt_title=pending.prompt_title,
             not_found_message=pending.not_found_message,
         )
+
+    @staticmethod
+    async def _select_text(
+        text: str,
+        pending: _PendingTextInput,
+    ) -> OutboundMessage:
+        if text.strip() == "0":
+            return OutboundMessage.from_text(pending.exit_message)
+        return await pending.submit(text.strip())
 
     def _present(
         self,
@@ -235,6 +281,9 @@ class PortableQuerySessions:
         pending = self._pending.get(key)
         if pending is not None and pending.expires_at <= self._now():
             self._pending.pop(key, None)
+        pending_text = self._pending_text.get(key)
+        if pending_text is not None and pending_text.expires_at <= self._now():
+            self._pending_text.pop(key, None)
 
     @staticmethod
     def _key(context: MessageInputContext) -> _SessionKey:
