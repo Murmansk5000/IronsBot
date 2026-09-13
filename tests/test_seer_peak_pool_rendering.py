@@ -329,6 +329,7 @@ async def test_peak_adapters_recover_without_caching_failed_images(  # noqa: C90
     )
     from ironsbot.services.seer.images import (
         ImageSourceError,
+        PublishedAssetRepository,
         PublishedRenderAssetSnapshot,
     )
     from ironsbot.services.seer.peak import PeakPetPickSnapshot, PeakPetRankRenderInput
@@ -359,7 +360,9 @@ async def test_peak_adapters_recover_without_caching_failed_images(  # noqa: C90
     renders = 0
     revision = "1" * 40
     publication = PublishedRenderAssetSnapshot(
-        "example/assets", revision, "manifest", frozenset()
+        {"default": PublishedAssetRepository("example/assets", revision)},
+        "manifest",
+        frozenset(),
     )
     raw_revision = f"/example/assets/{revision}/"
     cdn_revision = f"/gh/example/assets@{revision}/"

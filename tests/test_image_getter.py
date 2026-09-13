@@ -17,6 +17,7 @@ from ironsbot.integrations.storage.seer_assets import (
 )
 from ironsbot.services.seer.images import (
     ImageSourceError,
+    PublishedAssetRepository,
     PublishedRenderAssetSnapshot,
 )
 
@@ -28,8 +29,11 @@ PINNED_ASSET_SOURCE_COUNT = 2
 
 def _asset_snapshot() -> PublishedRenderAssetSnapshot:
     return PublishedRenderAssetSnapshot(
-        repository="Murmansk-Seer/seer-unity-assets",
-        revision="a" * 40,
+        repositories={
+            "default": PublishedAssetRepository(
+                "Murmansk-Seer/seer-unity-assets", "a" * 40
+            )
+        },
         manifest_revision="assets-v2",
         scopes=frozenset({"pet_info"}),
     )
@@ -320,7 +324,15 @@ async def test_queued_asset_request_keeps_its_captured_revision(tmp_path: Path) 
         )
         first = asyncio.create_task(store.fetch("pet_body", "70", fallback=False))
         await captured.wait()
-        current = replace(current, revision="b" * 40, manifest_revision="assets-v3")
+        current = replace(
+            current,
+            repositories={
+                "default": PublishedAssetRepository(
+                    "Murmansk-Seer/seer-unity-assets", "b" * 40
+                )
+            },
+            manifest_revision="assets-v3",
+        )
         old = await first
         assert ("a" * 40).encode() in old
         new = await store.fetch("pet_body", "70", fallback=False)

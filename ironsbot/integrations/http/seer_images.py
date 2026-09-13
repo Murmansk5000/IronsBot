@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw
 from ironsbot.services.seer.images import (
     ImageSourceError,
     ImageSourceStatusError,
+    MissingImageRepositoryError,
     PreparedImageRequest,
 )
 
@@ -46,6 +47,7 @@ _PINNED_ASSET_PATHS: dict[ImageKind, tuple[str, ...]] = {
         "newseer/assets/art/ui/assets/item/userinfo/icon/{}.png",
     ),
     "mintmark": ("newseer/assets/art/ui/assets/countermark/icon/{}.png",),
+    "mount": ("mount/{}.png",),
     "pet_body": ("newseer/assets/art/ui/assets/pet/body/{}.png",),
     "pet_head": ("newseer/assets/art/ui/assets/pet/head/{}.png",),
     "sign_buff": ("newseer/assets/art/ui/assets/battleeffect/signbuff/{}.png",),
@@ -138,10 +140,13 @@ class HttpSeerImageSource:
             return tuple(template.format(key) for template in _URLS[kind])
         if snapshot is None:
             raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
+        repository = snapshot.repository_for(kind)
+        if repository is None:
+            raise MissingImageRepositoryError(kind)
         roots = tuple(
             template.format(
-                repository=snapshot.repository,
-                revision=snapshot.revision,
+                repository=repository.repository,
+                revision=repository.revision,
             )
             for template in _PINNED_ASSET_ROOTS
         )
