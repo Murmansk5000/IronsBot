@@ -32,7 +32,10 @@ from ironsbot.services.seer.player_id_resolver import (
     PlayerIdResolver,
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
-from ironsbot.services.seer.player_query import extract_player_query_arg
+from ironsbot.services.seer.player_query import (
+    extract_player_binding_arg,
+    extract_player_query_arg,
+)
 from ironsbot.services.seer.player_service import (
     PendingPlayerQuery,
     PlayerQueryResult,
@@ -115,11 +118,10 @@ async def _is_player_id_query(
 
 
 async def _is_binding_command(event: Event, state: T_State) -> bool:
-    prefix = "绑定米米号"
-    text = event.get_plaintext().strip()
-    if not text.startswith(prefix):
+    argument = extract_player_binding_arg(event.get_plaintext())
+    if argument is None:
         return False
-    state[BOT_COMMAND_ARG_KEY] = text[len(prefix) :].strip()
+    state[BOT_COMMAND_ARG_KEY] = argument
     return True
 
 

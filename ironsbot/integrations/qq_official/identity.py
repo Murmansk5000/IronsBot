@@ -8,6 +8,7 @@ from nonebot.adapters.qq.event import (
     GroupMessageCreateEvent,
     QQMessageEvent,
 )
+from nonebot.adapters.qq.models import GroupMentionUser
 
 from ironsbot.core.platform import (
     ActorRef,
@@ -32,10 +33,23 @@ def qq_official_incoming_message(event: QQMessageEvent) -> IncomingMessageRef:
             conversation_id,
         )
         group_role = event.author.member_role
+        direct_mentions = tuple(
+            ActorRef(
+                Platform.QQ_OFFICIAL,
+                mention.member_openid,
+                "member",
+                conversation_id,
+            )
+            for mention in event.mentions or ()
+            if isinstance(mention, GroupMentionUser)
+            and not mention.is_you
+            and not mention.bot
+        )
     elif isinstance(event, C2CMessageCreateEvent):
         actor = ActorRef(Platform.QQ_OFFICIAL, event.author.user_openid)
         conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
         group_role = None
+        direct_mentions = ()
     else:
         msg = f"unsupported QQ Official message event: {type(event).__name__}"
         raise TypeError(msg)
@@ -45,6 +59,7 @@ def qq_official_incoming_message(event: QQMessageEvent) -> IncomingMessageRef:
         conversation=conversation,
         message_id=event.id,
         text=event.get_plaintext().strip(),
+        direct_mentions=direct_mentions,
         group_role=group_role,
         sequence=event.msg_idx,
     )

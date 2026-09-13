@@ -14,7 +14,9 @@ from ironsbot.services.seer.rank_admin import (
     RankAdminService,
 )
 from ironsbot.services.seer.rank_list_models import RankListCommand, RankPlayerCommand
+from ironsbot.services.seer.rank_models import RankLookupResult
 from ironsbot.services.seer.rank_pagination import RankPageConflictError
+from ironsbot.services.seer.rank_player_query import RankPlayerQueryResult
 from ironsbot.services.seer.rank_queries import (
     RankQueryPolicy,
     RankQueryService,
@@ -149,6 +151,35 @@ async def test_rank_player_query_rejects_invalid_player_id_before_headless() -> 
     )
 
     assert "50000 ~ 2000000000" in message
+
+
+@pytest.mark.asyncio
+async def test_prepared_rank_player_query_records_quota_after_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _query_service(FakeLocalRank(), FakeDisplay())
+    lookup = RankLookupResult(
+        title="成就点数",
+        score_name="点",
+        rank=1,
+        queried=True,
+    )
+    lookup.cost.page_starts.append(1)
+    monkeypatch.setattr(
+        service,
+        "_run_headless_request",
+        AsyncMock(return_value=RankPlayerQueryResult("result", lookup)),
+    )
+    record = Mock()
+    monkeypatch.setattr(service, "_record_successful_player_quota", record)
+    command = RankPlayerCommand(rank_key="成就点数", player_id=123456)
+
+    prepared = await service.prepare_player(command)
+
+    assert prepared.message == "result"
+    record.assert_not_called()
+    prepared.delivered()
+    record.assert_called_once_with(command, None)
 
 
 def test_rank_display_limit_is_validated_and_saved_by_service() -> None:

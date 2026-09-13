@@ -74,7 +74,9 @@ def bootstrap() -> Application:
                 catalog=application.resources.commands,
                 about=application.resources.about,
                 seer=application.resources.seer,
+                player_id_resolver=application.resources.player_id_resolver,
                 features=application.resources.features,
+                ai=application.resources.ai,
             )
         )
     application.install()

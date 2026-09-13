@@ -197,12 +197,14 @@ class QQOfficialConfig(BaseModel):
             "help",
             "about",
             "seer_data",
+            "seer_player",
             "seer_team",
             "seer_pet",
             "seer_mintmark",
             "seer_equipment",
             "seer_type",
             "seer_peak",
+            "seer_rank",
         ]
     )
     superusers: list[str] = Field(default_factory=list)
