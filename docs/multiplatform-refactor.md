@@ -454,6 +454,11 @@ TOML 规则编译和运行时目标解析的 `services.bilibili.targets` 分成
 `ApplicationResources` 的渲染回调。B站源图片属于动态内容 URL，继续使用
 `RemoteImagePart`，不混入版本化的 SeerAPI 素材清单。
 
+**Seer 图片源封口（2026-09-13）：** 通用 `SeerImageSource` 删除无人调用的可变
+`preview` 分支，现在所有合法 kind 都必须由当前 SeerAPI 发布素材清单解析到固定仓库
+revision。每周预告仍由独立的短 TTL、条件请求和陈旧缓存源处理，不与版本化渲染素材
+共用身份或缓存。
+
 **Docker 协议边界拆分（2026-08-13）：** Docker 更新集成不再把 Unix socket daemon
 API、OCI Registry v2、镜像归档和管理员用例编排混在 `docker.client`。`daemon` 只负责
 本机 Docker API，`registry` 只负责镜像引用、认证和远程 manifest/config 查询，`client`

@@ -25,14 +25,6 @@ if TYPE_CHECKING:
         PublishedRenderAssetSnapshot,
     )
 
-_URLS: dict[ImageKind, tuple[str, ...]] = {
-    "preview": (
-        "https://raw.githubusercontent.com/Murmansk-Seer/"
-        "seer-unity-preview-img-dumper/main/img/preview.png",
-        "https://cdn.jsdelivr.net/gh/Murmansk-Seer/"
-        "seer-unity-preview-img-dumper@main/img/preview.png",
-    ),
-}
 _PINNED_ASSET_PATHS: dict[ImageKind, tuple[tuple[AssetRepositoryKind, str], ...]] = {
     "autocard_card": (
         ("default", "newseer/assets/art/autocard/texture/cards/{}.png"),
@@ -113,13 +105,13 @@ class HttpSeerImageSource:
         *,
         fallback: bool,
     ) -> PreparedImageRequest:
-        snapshot = (
-            self._asset_snapshot_getter() if kind in _PINNED_ASSET_PATHS else None
-        )
+        snapshot = self._asset_snapshot_getter()
+        if snapshot is None:
+            raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
         urls = self._urls_for(kind, key, snapshot)
         return PreparedImageRequest(
-            identity=snapshot.cache_identity if snapshot is not None else "unversioned",
-            fetch=partial(self._fetch_urls, kind, urls),
+            identity=snapshot.cache_identity,
+            fetch=partial(self._fetch_urls, urls),
             fallback=(
                 partial(_local_fallback_image, kind)
                 if fallback and kind in _FALLBACK_KINDS
@@ -129,14 +121,13 @@ class HttpSeerImageSource:
 
     async def _fetch_urls(
         self,
-        kind: ImageKind,
         urls: tuple[str, ...],
     ) -> bytes:
         last_error: ImageSourceError | None = None
         for url in urls:
             try:
                 return await self._get(
-                    self._clients.origin if kind == "preview" else self._clients.cache,
+                    self._clients.cache,
                     url,
                 )
             except (HTTPStatusError, RequestError) as error:  # noqa: PERF203
@@ -148,15 +139,10 @@ class HttpSeerImageSource:
         self,
         kind: ImageKind,
         key: str,
-        snapshot: PublishedRenderAssetSnapshot | None,
+        snapshot: PublishedRenderAssetSnapshot,
     ) -> tuple[str, ...]:
-        paths = _PINNED_ASSET_PATHS.get(kind)
-        if paths is None:
-            return tuple(template.format(key) for template in _URLS[kind])
-        if snapshot is None:
-            raise ImageSourceError("当前数据版本缺少已验证的渲染素材清单")
         urls: list[str] = []
-        for repository_kind, path in paths:
+        for repository_kind, path in _PINNED_ASSET_PATHS[kind]:
             repository = snapshot.repository_for(repository_kind)
             if repository is None:
                 continue
