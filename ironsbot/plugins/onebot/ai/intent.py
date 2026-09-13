@@ -22,17 +22,18 @@ from ironsbot.core.plugin_install import (
 from ironsbot.integrations.onebot.context import build_notice_source
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.replies import finish_message_sequence
 from ironsbot.integrations.onebot.rules import natural_language
+from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
-
-from .team_actions import run_team_action
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
-    from ironsbot.core.messaging import AiIntentAction
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.team.resource import TeamResourceService
@@ -55,30 +56,7 @@ class AiIntentDependencies:
     """OneBot dependencies needed by the configured AI action adapter."""
 
     service: AiService
-    promotions: PromotionCatalog
-    team_resource: TeamResourceService
-
-
-async def _handle_ai_reply_action(
-    service: AiService,
-    action: AiIntentAction,
-    matcher: Matcher,
-    event: MessageEvent,
-    source_context: str | None,
-) -> None:
-    reply = await service.run_reply_action(
-        action,
-        event.get_plaintext(),
-        source_context=source_context,
-    )
-    if reply is None:
-        return
-
-    await finish_event_reply(
-        matcher,
-        event,
-        reply,
-    )
+    executor: AiIntentActionExecutor
 
 
 def _resolve_action_command_id(
@@ -128,34 +106,17 @@ def install(
         state: T_State,
     ) -> None:
         action = state[ACTION_KEY]
-        if dependencies.service.is_team_action(action):
-            await run_team_action(
-                matcher,
-                event,
-                action,
-                dependencies.team_resource,
-            )
+        messages = await dependencies.executor.execute(
+            action,
+            event.get_plaintext(),
+            source_context=str(state.get(ACTION_SOURCE_CONTEXT_KEY, "") or "") or None,
+        )
+        if not messages:
             return
-        if action.action == "ai_reply":
-            await _handle_ai_reply_action(
-                dependencies.service,
-                action,
-                matcher,
-                event,
-                str(state.get(ACTION_SOURCE_CONTEXT_KEY, "") or "") or None,
-            )
-            return
-        if action.action == "promotion":
-            await finish_event_reply(
-                matcher,
-                event,
-                dependencies.promotions.require(action.promotion).message,
-            )
-            return
-        await finish_event_reply(
+        await finish_message_sequence(
             matcher,
-            event,
-            action.message,
+            tuple(render_onebot_outbound_message(message) for message in messages),
+            event=event,
         )
 
     matcher = registry.on_message(
@@ -208,8 +169,11 @@ def plugin_contribution(
             install,
             dependencies=AiIntentDependencies(
                 service=service,
-                promotions=promotions,
-                team_resource=team_resource,
+                executor=AiIntentActionExecutor(
+                    service,
+                    promotions,
+                    team_resource,
+                ),
             ),
             command_help_ids=tuple(command.id for command in commands),
         ),

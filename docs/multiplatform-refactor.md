@@ -1842,3 +1842,11 @@ B站推送与历史详情不再分别维护摘要规则。平台无关的
 出站模板。普通字段继续使用 Python 格式说明，图片等结构部件不会被转成字符串；
 `SendpicResult` 统一填充命令、随机/自选、序号、总数和图片。各平台只需编码统一结果，
 无需复制模板解析规则，现有 TOML 无需修改。
+
+## AI 意图动作执行收口（2026-09-13）
+
+AI 意图分类后的消息、推广、二次 AI 回复、战队推荐和战队资源查询统一由平台无关的
+`AiIntentActionExecutor` 生成有序 `OutboundMessage`。OneBot 插件只提供来源上下文、
+编码并发送结果；旧 `plugins.onebot.ai.team_actions` 和仅用于插件分支的
+`AiService.is_team_action()` 已删除。受限平台测试复用真实多消息动作，不引入 QQ 与
+OpenID 映射；无法由目标 API 表达的身份操作继续留到最后。
