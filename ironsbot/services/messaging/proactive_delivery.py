@@ -10,10 +10,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from math import ceil
 from typing import TYPE_CHECKING
 
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import (
+    DeliveryFailureKind,
+    OutboundMessage,
+    SendResult,
+    TextPart,
+)
 from ironsbot.core.platform import ActorRef, ConversationRef
 
 if TYPE_CHECKING:
@@ -44,6 +50,22 @@ class ProactiveDeliverySummary:
 
     succeeded: tuple[ConversationRef, ...]
     failed: tuple[ConversationRef, ...]
+    uncertain: tuple[ConversationRef, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ProactiveDeliveryPolicy:
+    max_attempts: int = 3
+    max_parallel_targets: int = 5
+    retry_batch_divisor: int = 3
+    retry_delay_seconds: float = 2.0
+
+
+@dataclass(slots=True)
+class _DeliveryState:
+    succeeded: set[ConversationRef] = field(default_factory=set)
+    failed: set[ConversationRef] = field(default_factory=set)
+    uncertain: set[ConversationRef] = field(default_factory=set)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +77,7 @@ class ProactiveMessageDelivery:
     promotions: PromotionCatalog
     subscriptions: PushDeliverySubscriptions
     unsubscribe: PushUnsubscribeConfig
+    policy: ProactiveDeliveryPolicy = field(default_factory=ProactiveDeliveryPolicy)
 
     async def send(  # noqa: PLR0913 - explicit active delivery policy controls
         self,
@@ -96,31 +119,113 @@ class ProactiveMessageDelivery:
         if not selected:
             return ProactiveDeliverySummary((), ())
 
-        results = await asyncio.gather(
-            *(
-                self._send_one(
-                    request,
-                    index=index,
-                    action_name=action_name,
-                    interval_seconds=interval_seconds,
-                    subscription_key=subscription_key,
-                    include_promotions=include_promotions,
-                )
-                for index, request in enumerate(selected)
+        pending = list(selected)
+        state = _DeliveryState()
+        for attempt in range(1, self.policy.max_attempts + 1):
+            if not pending:
+                break
+            if attempt > 1 and self.policy.retry_delay_seconds > 0:
+                await asyncio.sleep(self.policy.retry_delay_seconds)
+            batch_size = max(
+                1,
+                ceil(
+                    self.policy.max_parallel_targets
+                    / self.policy.retry_batch_divisor ** (attempt - 1)
+                ),
             )
-        )
+            next_pending, transport_unavailable = await self._run_attempt(
+                pending,
+                state,
+                batch_size=batch_size,
+                action_name=action_name,
+                interval_seconds=interval_seconds,
+                subscription_key=subscription_key,
+                include_promotions=include_promotions,
+            )
+            if transport_unavailable:
+                break
+            if attempt == self.policy.max_attempts:
+                state.failed.update(
+                    request.conversation for request in next_pending
+                )
+                break
+            pending = next_pending
         return ProactiveDeliverySummary(
             tuple(
                 request.conversation
-                for request, delivered in zip(selected, results, strict=True)
-                if delivered
+                for request in selected
+                if request.conversation in state.succeeded
             ),
             tuple(
                 request.conversation
-                for request, delivered in zip(selected, results, strict=True)
-                if not delivered
+                for request in selected
+                if request.conversation in state.failed
+            ),
+            tuple(
+                request.conversation
+                for request in selected
+                if request.conversation in state.uncertain
             ),
         )
+
+    async def _run_attempt(  # noqa: PLR0913 - explicit delivery controls
+        self,
+        pending: list[ProactiveDeliveryRequest],
+        state: _DeliveryState,
+        *,
+        batch_size: int,
+        action_name: str,
+        interval_seconds: float,
+        subscription_key: str | None,
+        include_promotions: bool,
+    ) -> tuple[list[ProactiveDeliveryRequest], bool]:
+        next_pending: list[ProactiveDeliveryRequest] = []
+        for start in range(0, len(pending), batch_size):
+            batch = pending[start : start + batch_size]
+            results = await asyncio.gather(
+                *(
+                    self._send_one(
+                        request,
+                        index=index,
+                        action_name=action_name,
+                        interval_seconds=interval_seconds,
+                        subscription_key=subscription_key,
+                        include_promotions=include_promotions,
+                    )
+                    for index, request in enumerate(batch)
+                )
+            )
+            if not self._record_batch(batch, results, state, next_pending):
+                continue
+            state.failed.update(request.conversation for request in next_pending)
+            state.failed.update(
+                request.conversation for request in pending[start + len(batch) :]
+            )
+            return [], True
+        return next_pending, False
+
+    @staticmethod
+    def _record_batch(
+        batch: list[ProactiveDeliveryRequest],
+        results: list[SendResult],
+        state: _DeliveryState,
+        next_pending: list[ProactiveDeliveryRequest],
+    ) -> bool:
+        transport_unavailable = False
+        for request, result in zip(batch, results, strict=True):
+            kind = result.failure_kind or DeliveryFailureKind.PERMANENT
+            if result.delivered:
+                state.succeeded.add(request.conversation)
+            elif kind is DeliveryFailureKind.RETRYABLE:
+                next_pending.append(request)
+            else:
+                state.failed.add(request.conversation)
+                if kind is DeliveryFailureKind.UNCERTAIN:
+                    state.uncertain.add(request.conversation)
+                transport_unavailable |= (
+                    kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+                )
+        return transport_unavailable
 
     def _filter_subscribed(
         self,
@@ -146,7 +251,7 @@ class ProactiveMessageDelivery:
         interval_seconds: float,
         subscription_key: str | None,
         include_promotions: bool,
-    ) -> bool:
+    ) -> SendResult:
         if index > 0 and interval_seconds > 0:
             await asyncio.sleep(index * interval_seconds)
 
@@ -159,7 +264,11 @@ class ProactiveMessageDelivery:
                 request.conversation.kind,
                 request.conversation.id,
             )
-            return False
+            return SendResult(
+                delivered=False,
+                error_code="unsupported_conversation",
+                failure_kind=DeliveryFailureKind.PERMANENT,
+            )
 
         message = request.message
         if include_promotions:
@@ -186,9 +295,13 @@ class ProactiveMessageDelivery:
                 request.conversation.kind,
                 request.conversation.id,
             )
-            return False
+            return SendResult(
+                delivered=False,
+                error_code="delivery_exception",
+                failure_kind=DeliveryFailureKind.RETRYABLE,
+            )
         if result.delivered:
-            return True
+            return result
         _LOGGER.warning(
             "%s failed: platform=%s kind=%s id=%s code=%s message=%s trace_id=%s",
             action_name,
@@ -199,7 +312,7 @@ class ProactiveMessageDelivery:
             result.error_message,
             result.trace_id,
         )
-        return False
+        return result
 
 
 def append_push_promotions(

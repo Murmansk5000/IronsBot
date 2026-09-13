@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
-from ironsbot.core.time import daily_time_parts
+from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.operations.scheduler import JobRegistry, Scheduler
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -32,15 +32,15 @@ class ScheduledRestartService:
 
         registry = JobRegistry(scheduler, prefix=f"{JOB_ID}:")
         for scheduled_time in self.restart_times:
-            hour, minute = daily_time_parts(scheduled_time)
-            registry.add(
+            clock_time = scheduled_clock_time(
+                scheduled_time,
+                error_message="invalid scheduled restart time",
+            )
+            registry.add_daily(
                 _scheduled_restart,
-                "cron",
-                job_id=scheduled_time,
+                clock_time=clock_time,
+                job_id=str(clock_time),
                 args=[scheduled_time, self.grace_seconds, self.restart_process],
-                hour=hour,
-                minute=minute,
-                second=0,
                 timezone=LOCAL_TZ,
             )
 
