@@ -363,7 +363,10 @@ class PeakQueryService:
             start_time = pools[0].start_time.strftime("%Y-%m-%d")
             end_time = pools[0].end_time.strftime("%Y-%m-%d")
             return await _render_peak_result(
-                rendering.pool(pools, f"{label} / {start_time} ~ {end_time}"),
+                rendering.pool(
+                    pools,
+                    f"{label} / 有效期：{start_time} ~ {end_time}",
+                ),
                 label,
             )
 
@@ -379,7 +382,7 @@ class PeakQueryService:
             return await _render_peak_result(
                 rendering.pool(
                     pools,
-                    f"大师池 / 精灵竞技点 / {start_time} ~ {end_time}",
+                    f"大师池 / 精灵竞技点 / 有效期：{start_time} ~ {end_time}",
                 ),
                 "大师池",
             )

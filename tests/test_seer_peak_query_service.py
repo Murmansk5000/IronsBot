@@ -376,7 +376,15 @@ def _service(
 
 
 @pytest.mark.asyncio
-async def test_peak_pool_query_renders_with_progress() -> None:
+@pytest.mark.parametrize(
+    ("expert", "label"),
+    ((False, "竞技池"), (True, "专家禁用池")),
+)
+async def test_peak_pool_query_renders_with_progress(
+    *,
+    expert: bool,
+    label: str,
+) -> None:
     data = FakeData()
     data.query_result = (_pool_snapshot(),)
     rendered: dict[str, Any] = {}
@@ -386,14 +394,14 @@ async def test_peak_pool_query_renders_with_progress() -> None:
         progress.append(message)
 
     result = await _service(data, FakeHeadless(), rendered).pool(
-        expert=False,
+        expert=expert,
         progress=report,
     )
 
     assert result.image == b"pool"
     assert progress == ["正在生成图片..."]
     assert rendered["pool_session_open"] is False
-    assert rendered["pool"][1] == "竞技池 / 2026-07-01 ~ 2026-07-31"
+    assert rendered["pool"][1] == f"{label} / 有效期：2026-07-01 ~ 2026-07-31"
     assert rendered["pool"][0] == (
         PeakPoolSnapshot(
             id=1,
@@ -421,7 +429,7 @@ async def test_master_pool_query_reuses_pool_renderer() -> None:
     assert progress == ["正在生成图片..."]
     assert rendered["pool_session_open"] is False
     assert rendered["pool"][1] == (
-        "大师池 / 精灵竞技点 / 2026-07-01 ~ 2026-07-31 00:00"
+        "大师池 / 精灵竞技点 / 有效期：2026-07-01 ~ 2026-07-31 00:00"
     )
 
 
