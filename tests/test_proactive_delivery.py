@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
@@ -8,6 +9,7 @@ import pytest
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
+    DeliveryFailureKind,
     MentionPart,
     OutboundMessage,
     SendResult,
@@ -19,6 +21,7 @@ from ironsbot.services.activity.delivery import ActivityReminderDelivery
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import (
+    ProactiveDeliveryPolicy,
     ProactiveDeliveryRequest,
     ProactiveMessageDelivery,
 )
@@ -43,6 +46,8 @@ PRIVATE = ConversationRef(Platform.ONEBOT, "private", "1001")
 UNSUPPORTED = ConversationRef(Platform.QQ_OFFICIAL, "group", "guild-1")
 ACTOR = ActorRef(Platform.ONEBOT, "1001")
 MENTION = ActorRef(Platform.ONEBOT, "2002")
+RETRY_CALL_COUNT = 2
+MAX_PARALLEL_TARGETS = 2
 
 
 @dataclass
@@ -103,6 +108,7 @@ class FakeSubscriptions:
 @dataclass
 class FakeMessenger:
     failed: set[ConversationRef] = field(default_factory=set)
+    scripted_results: list[SendResult] = field(default_factory=list)
     calls: list[tuple[ConversationRef, OutboundMessage]] = field(default_factory=list)
 
     def capabilities_for(self, conversation: ConversationRef) -> DeliveryCapabilities:
@@ -122,6 +128,8 @@ class FakeMessenger:
         message: OutboundMessage,
     ) -> SendResult:
         self.calls.append((conversation, message))
+        if self.scripted_results:
+            return self.scripted_results.pop(0)
         if conversation in self.failed:
             return SendResult(delivered=False, error_code="delivery_failed")
         return SendResult(delivered=True, message_id=f"message-{len(self.calls)}")
@@ -130,11 +138,32 @@ class FakeMessenger:
         return SendResult(delivered=False, error_code="unsupported")
 
 
+@dataclass
+class _ConcurrentMessenger(FakeMessenger):
+    active: int = 0
+    max_active: int = 0
+
+    async def send(
+        self,
+        conversation: ConversationRef,
+        message: OutboundMessage,
+    ) -> SendResult:
+        self.calls.append((conversation, message))
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(0.01)
+            return SendResult(delivered=True, message_id=f"message-{len(self.calls)}")
+        finally:
+            self.active -= 1
+
+
 def _delivery(
     *,
     features: FakeFeatures | None = None,
     subscriptions: FakeSubscriptions | None = None,
     messenger: FakeMessenger | None = None,
+    policy: ProactiveDeliveryPolicy | None = None,
 ) -> tuple[ProactiveMessageDelivery, FakeMessenger, FakeSubscriptions]:
     resolved_features = features or FakeFeatures()
     resolved_subscriptions = subscriptions or FakeSubscriptions()
@@ -155,6 +184,7 @@ def _delivery(
             ),
             resolved_subscriptions,  # type: ignore[arg-type]
             PushUnsubscribeConfig(hint="私聊提示", group_hint="群聊提示"),
+            policy or ProactiveDeliveryPolicy(retry_delay_seconds=0),
         ),
         resolved_messenger,
         resolved_subscriptions,
@@ -215,6 +245,114 @@ async def test_proactive_delivery_returns_transport_and_capability_failures() ->
     assert summary.succeeded == ()
     assert summary.failed == (GROUP, UNSUPPORTED)
     assert [conversation for conversation, _message in messenger.calls] == [GROUP]
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_retries_only_explicitly_retryable_failures() -> None:
+    messenger = FakeMessenger(
+        scripted_results=[
+            SendResult(
+                delivered=False,
+                error_code="temporary",
+                failure_kind=DeliveryFailureKind.RETRYABLE,
+            ),
+            SendResult(delivered=True, message_id="recovered"),
+        ]
+    )
+    delivery, _messenger, _subscriptions = _delivery(messenger=messenger)
+
+    summary = await delivery.send(
+        OutboundMessage((TextPart("通知"),)),
+        (GROUP,),
+        action_name="retry",
+        interval_seconds=0,
+    )
+
+    assert summary.succeeded == (GROUP,)
+    assert summary.failed == ()
+    assert len(messenger.calls) == RETRY_CALL_COUNT
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_does_not_retry_uncertain_delivery() -> None:
+    messenger = FakeMessenger(
+        scripted_results=[
+            SendResult(
+                delivered=False,
+                error_code="timeout",
+                failure_kind=DeliveryFailureKind.UNCERTAIN,
+            )
+        ]
+    )
+    delivery, _messenger, _subscriptions = _delivery(messenger=messenger)
+
+    summary = await delivery.send(
+        OutboundMessage((TextPart("通知"),)),
+        (GROUP,),
+        action_name="uncertain",
+        interval_seconds=0,
+    )
+
+    assert summary.failed == (GROUP,)
+    assert summary.uncertain == (GROUP,)
+    assert len(messenger.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_stops_after_transport_becomes_unavailable() -> None:
+    second = ConversationRef(Platform.ONEBOT, "group", "3004")
+    messenger = FakeMessenger(
+        scripted_results=[
+            SendResult(
+                delivered=False,
+                error_code="offline",
+                failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
+            )
+        ]
+    )
+    delivery, _messenger, _subscriptions = _delivery(
+        messenger=messenger,
+        policy=ProactiveDeliveryPolicy(
+            max_parallel_targets=1,
+            retry_delay_seconds=0,
+        ),
+    )
+
+    summary = await delivery.send(
+        OutboundMessage((TextPart("通知"),)),
+        (GROUP, second),
+        action_name="offline",
+        interval_seconds=0,
+    )
+
+    assert summary.failed == (GROUP, second)
+    assert [conversation for conversation, _message in messenger.calls] == [GROUP]
+
+
+@pytest.mark.asyncio
+async def test_proactive_delivery_bounds_parallel_transport_calls() -> None:
+    conversations = tuple(
+        ConversationRef(Platform.ONEBOT, "group", str(group_id))
+        for group_id in range(3003, 3009)
+    )
+    messenger = _ConcurrentMessenger()
+    delivery, _messenger, _subscriptions = _delivery(
+        messenger=messenger,
+        policy=ProactiveDeliveryPolicy(
+            max_parallel_targets=MAX_PARALLEL_TARGETS,
+            retry_delay_seconds=0,
+        ),
+    )
+
+    summary = await delivery.send(
+        OutboundMessage((TextPart("通知"),)),
+        conversations,
+        action_name="bounded",
+        interval_seconds=0,
+    )
+
+    assert summary.succeeded == conversations
+    assert messenger.max_active == MAX_PARALLEL_TARGETS
 
 
 @pytest.mark.asyncio

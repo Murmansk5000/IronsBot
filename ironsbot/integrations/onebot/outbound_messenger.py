@@ -9,6 +9,7 @@ from nonebot.log import logger
 
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
+    DeliveryFailureKind,
     OutboundMessage,
     ReplyContext,
     SendResult,
@@ -108,6 +109,7 @@ class OneBotOutboundMessenger:
                 delivered=False,
                 error_code="unsupported_conversation",
                 error_message=("OneBot only supports private and group conversations"),
+                failure_kind=DeliveryFailureKind.PERMANENT,
             )
         try:
             rendered = render_onebot_outbound_message(
@@ -120,6 +122,7 @@ class OneBotOutboundMessenger:
                 delivered=False,
                 error_code="unsupported_message",
                 error_message=str(error),
+                failure_kind=DeliveryFailureKind.PERMANENT,
             )
         return await self._send_rendered(
             conversation,
@@ -140,6 +143,7 @@ class OneBotOutboundMessenger:
                 delivered=False,
                 error_code="bot_unavailable",
                 error_message="No connected OneBot bot can deliver this message",
+                failure_kind=DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
         decision = (
             await self._outbound.acquire_push(
@@ -154,6 +158,7 @@ class OneBotOutboundMessenger:
                 delivered=False,
                 error_code=decision.reason or "rate_limit",
                 error_message="Outbound group message is rate limited",
+                failure_kind=DeliveryFailureKind.RETRYABLE,
             )
         try:
             with use_preacquired_push_permit(
@@ -174,6 +179,7 @@ class OneBotOutboundMessenger:
                 delivered=False,
                 error_code="delivery_failed",
                 error_message=str(error),
+                failure_kind=_onebot_failure_kind(error),
             )
         message_id = _result_message_id(result)
         if message_id is None:
@@ -181,6 +187,7 @@ class OneBotOutboundMessenger:
                 delivered=False,
                 error_code="missing_message_id",
                 error_message="OneBot send response did not include message_id",
+                failure_kind=DeliveryFailureKind.UNCERTAIN,
             )
         return SendResult(delivered=True, message_id=message_id)
 
@@ -216,3 +223,26 @@ def _result_message_id(result: object) -> str | None:
         value = getattr(result, "message_id", None)
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _onebot_failure_kind(error: Exception) -> DeliveryFailureKind:
+    """Classify OneBot-specific failures at the adapter boundary."""
+
+    text = " ".join((type(error).__name__, str(error), repr(error))).casefold()
+    if any(
+        marker in text
+        for marker in (
+            "1006514",
+            "网络连接异常",
+            "账号状态为离线",
+            "账号已离线",
+            "not connected",
+            "connection closed",
+            "connection reset",
+            "websocket is closed",
+        )
+    ):
+        return DeliveryFailureKind.TRANSPORT_UNAVAILABLE
+    if "timeout" in text:
+        return DeliveryFailureKind.UNCERTAIN
+    return DeliveryFailureKind.RETRYABLE

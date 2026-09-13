@@ -91,7 +91,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
     scheduler = FakeScheduler()
     config = LocalRankConfig(
         path=tmp_path / "local-rank.sqlite",
-        time="03:30",
+        time="03:30:12",
     )
     service = LocalRankService(
         SqliteLocalRankRepository(config.path, config.max_players),
@@ -111,6 +111,7 @@ def test_register_local_rank_refresh_job_uses_standard_scheduler_fields(
             "args": [HEADLESS, service],
             "hour": 3,
             "minute": 30,
+            "second": 12,
         }
     ]
 
@@ -134,7 +135,7 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
         interval_minutes=15,
         interval_offset_minutes=4,
         schedule_jitter_seconds=240,
-        times=["01:15"],
+        times=["01:15:20"],
     )
     service = RankPageRefreshService(config, RANK)
 
@@ -153,14 +154,30 @@ def test_register_rank_page_refresh_jobs_uses_standard_scheduler_fields(
         {
             "func": seer_runtime._scheduled_rank_page_refresh,
             "trigger": "cron",
-            "id": "seer_rank_page_refresh_0115",
+            "id": "seer_rank_page_refresh_011520",
             "replace_existing": True,
             "args": [HEADLESS, service],
             "hour": 1,
             "minute": 15,
+            "second": 20,
             "jitter": 240,
         },
     ]
+
+
+def test_default_rank_page_refresh_times_register_with_seconds() -> None:
+    scheduler = FakeScheduler()
+    config = RankPageRefreshConfig()
+    service = RankPageRefreshService(config, RANK)
+
+    seer_runtime.register_rank_page_refresh_jobs(scheduler, HEADLESS, service)
+
+    assert scheduler.jobs[0]["id"] == "seer_rank_page_refresh_011500"
+    assert (
+        scheduler.jobs[0]["hour"],
+        scheduler.jobs[0]["minute"],
+        scheduler.jobs[0]["second"],
+    ) == (1, 15, 0)
 
 
 def test_scheduled_refreshes_use_background_priority() -> None:
