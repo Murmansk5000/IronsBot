@@ -20,6 +20,9 @@ from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
 )
+from ironsbot.services.portable_new_content_commands import (
+    build_portable_new_content_operations,
+)
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
@@ -81,6 +84,7 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
+    from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -296,6 +300,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     sendpic: SendpicService | None = None,
     bilibili: BilibiliService | None = None,
     bilibili_monitor: BilibiliMonitorService | None = None,
+    new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
+    new_content_preview_max_items: int = 5,
 ) -> PortableCommandRouter:
     async def about_message(
         text: str,
@@ -362,6 +368,16 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer.rank_queries,
         player_id_resolver,
     )
+    new_content_operations = _catalog_operations(
+        catalog,
+        build_portable_new_content_operations(
+            seer,
+            sessions,
+            features,
+            expanded_categories=new_content_expanded_categories,
+            preview_max_items=new_content_preview_max_items,
+        ),
+    )
     team_resource_operations = _catalog_operations(
         catalog,
         build_portable_team_resource_operations(team_resource),
@@ -400,6 +416,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **messaging_operations,
         **sendpic_operations,
         **bilibili_operations,
+        **new_content_operations,
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,

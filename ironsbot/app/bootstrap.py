@@ -85,6 +85,12 @@ def bootstrap() -> Application:
                 sendpic=application.resources.sendpic,
                 bilibili=application.resources.bilibili,
                 bilibili_monitor=application.resources.bilibili_monitor,
+                new_content_expanded_categories=frozenset(
+                    settings.seer.new_content.expanded_categories
+                ),
+                new_content_preview_max_items=(
+                    settings.seer.new_content.auto_expand_max_items
+                ),
             ),
             application.resources.outbound_messenger,
         )

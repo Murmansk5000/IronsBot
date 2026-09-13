@@ -174,7 +174,7 @@ class PortableQuerySessions:
             self._pending.pop(key, None)
         result = await pending.select(pending.choices[index - 1])
         if isinstance(result, OutboundMessage):
-            if pending.keep_open:
+            if pending.keep_open and self._pending.get(key) is pending:
                 self._pending[key] = replace(
                     pending,
                     expires_at=self._now() + self._ttl_seconds,
