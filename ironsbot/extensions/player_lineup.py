@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -39,6 +38,8 @@ from ironsbot.services.seer.player_request_protection import (
 from ironsbot.services.seer.rendering.cache_key import render_request_cache_key
 
 logger = logging.getLogger(__name__)
+_LINEUP_PACKET_MAX_ATTEMPTS = 2
+_TRANSIENT_LINEUP_PACKET_ERRORS = (TimeoutError, ConnectionError, DisconnectedError)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -48,6 +49,7 @@ if TYPE_CHECKING:
     from ironsbot.extensions.contracts import (
         PlayerDetailActionRegistration,
         PlayerLineupCacheFactory,
+        PlayerLineupPacketClient,
         PlayerLineupQueryPort,
         PlayerLineupRenderSessionFactory,
     )
@@ -264,18 +266,24 @@ class PlayerLineupQueryServices:
                 source="私有阵容插件",
                 conversation=conversation,
             ):
-                user_info = await observation.observe(
-                    lambda: game.get_user_info(player_id)
-                )
-                payload = await asyncio.wait_for(
-                    observation.observe(
-                        lambda: fetch_packet(
-                            _HeadlessLineupPacketClient(game),
-                            player_id,
-                            timeout_seconds=timeout_seconds,
-                        )
-                    ),
-                    timeout=timeout_seconds,
+                try:
+                    user_info = await observation.observe(
+                        lambda: game.get_user_info(player_id)
+                    )
+                except Exception as error:
+                    logger.warning(
+                        "player_lineup failed stage=profile player_id=%s "
+                        "error_type=%s",
+                        player_id,
+                        type(error).__name__,
+                    )
+                    raise
+                payload = await _fetch_lineup_packet(
+                    observation,
+                    fetch_packet,
+                    _HeadlessLineupPacketClient(game),
+                    player_id,
+                    timeout_seconds=timeout_seconds,
                 )
             await self.headless.mark_available(
                 source="私有阵容插件",
@@ -314,6 +322,13 @@ class PlayerLineupQueryServices:
             return PlayerLineupQueryResult(
                 error=format_player_query_error(player_id, error, self.error_message)
             )
+        except ConnectionError:
+            return PlayerLineupQueryResult(
+                error=(
+                    f"❌ 米米号 {player_id} 暂时查不了："
+                    "查询需要连接赛尔号游戏服务器；请稍后再试。"
+                )
+            )
         except Exception:
             logger.exception("private lineup query failed: player_id=%s", player_id)
             return PlayerLineupQueryResult(error="❌ 阵容查询失败，请稍后再试。")
@@ -332,6 +347,37 @@ class PlayerLineupQueryServices:
                     player_id,
                 )
         return result
+
+
+async def _fetch_lineup_packet(
+    observation: ObservationTime,
+    fetch_packet: PlayerLineupPacketFetcher,
+    client: PlayerLineupPacketClient,
+    player_id: int,
+    *,
+    timeout_seconds: float,
+) -> bytes:
+    for attempt in range(1, _LINEUP_PACKET_MAX_ATTEMPTS + 1):
+        try:
+            return await observation.observe(
+                lambda: fetch_packet(
+                    client,
+                    player_id,
+                    timeout_seconds=timeout_seconds,
+                )
+            )
+        except _TRANSIENT_LINEUP_PACKET_ERRORS as error:  # noqa: PERF203
+            logger.warning(
+                "player_lineup packet attempt failed: player_id=%s "
+                "attempt=%s/%s error_type=%s",
+                player_id,
+                attempt,
+                _LINEUP_PACKET_MAX_ATTEMPTS,
+                type(error).__name__,
+            )
+            if attempt == _LINEUP_PACKET_MAX_ATTEMPTS:
+                raise
+    raise AssertionError
 
 
 @dataclass(frozen=True, slots=True)

@@ -113,12 +113,12 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 
 ## Acceptance Tests
 
-- [ ] Flash 优先与 Unity 优先的单图标回退行为与现有 fixture 一致。
-- [ ] Unity bundle 中 Sprite/Texture2D 的优先选择、无可见 PNG 与下载异常分别记录正确结果。
-- [ ] composite -> shape FFDec 回退、透明图、超尺寸图、缓存 source/content/version 失效均验证。
-- [ ] 多 worker 完成顺序不改变按 icon ID 发布的结果；同一 ID 不重复渲染。
-- [ ] cache shard 与完整构建使用同一 resolver/renderer，输出一致。
-- [ ] `soulmark_icon`、issue、metadata 和 manifest entries 与现有发布 fixture 语义一致。
+- [x] Flash 优先与 Unity 优先的单图标回退行为与现有 fixture 一致。
+- [x] Unity bundle 中 Sprite/Texture2D 的优先选择、无可见 PNG 与下载异常分别记录正确结果。
+- [x] composite -> shape FFDec 回退、透明图、超尺寸图、缓存 source/content/version 失效均验证。
+- [x] 多 worker 完成顺序不改变按 icon ID 发布的结果；同一 ID 不重复渲染。
+- [x] cache shard 与完整构建使用同一 resolver/renderer，输出一致。
+- [x] `soulmark_icon`、issue、metadata 和 manifest entries 与现有发布 fixture 语义一致。
 - [ ] SeerAPI 全量 pytest、Ruff、CLI、compileall、`git diff --check`，以及真实 release 的
   IronsBot consumer smoke 通过。
 
@@ -135,6 +135,12 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | 2026-08-15 | 本地 release/consumer smoke | 以当前 `seerapi-data-latest` 为上游和 PNG cache，完整构建临时 SQLite 成功；IronsBot `load_pet_derived_display_data()` 读取真实 PNG；新表含 `6376` effects、`10378` sources、`2234` soulmark displays | 当前发布库尚未包含新派生表，不能作为 consumer target；新构建产物已满足 consumer 契约。仍需 GitHub Actions 的 FFDec release build 才能完成此 slice。 |
 | 2026-08-15 | SeerAPI `547582f` cached-source smoke | 完整临时构建复用 `2096` 个 Flash PNG，`0` 个 Unity fallback；IronsBot 从产物读取 `pet=300` 的魂印 PNG（16,624 bytes）和 5 条专属效果；SeerAPI `pytest`（263 passed）、Ruff、compileall、`git diff --check` | 缓存完整时不再预检或启动 Java/FFDec，增量构建无需工具链也不会错误回退 Unity。真实 GitHub Actions FFDec release 仍是最后一项发布环境验证。 |
 | 2026-08-15 | SeerAPI `9eceeac` workflow trigger audit | YAML 解析确认 data-build workflow 会监听 `scripts/effect_icon_*.py` 与 `scripts/render_asset_manifest_build.py` | 已拆分模块进入 `main` 时会触发 FFDec cache shard、正式构建和发布；避免本地重构通过而 Actions 未执行。 |
+| 2026-09-13 | 并发结果正规化 | 逆序完成的双 worker 回归测试；效果图标专项 15 passed；SeerAPI 全量 330 passed；Ruff、compileall、diff check | renderer 出口统一按 icon ID 排序，线程完成顺序不再渗入 manifest、SQLite 或错误摘要。前六项本地 acceptance 已有直接测试；真实 FFDec Actions release 仍是唯一未关闭项。 |
+| 2026-09-13 | FFDec 安装复用 | 工作流与本地 composite action YAML 解析；CI 结构测试；SeerAPI 全量 332 passed；Ruff、compileall、diff check | 16 个 cache shard 与最终 build 共用一个固定 Java/FFDec 安装入口；版本、SHA-256 和重试只维护一处，校验后的 release archive 由 Actions cache 跨构建复用。工作流删除 32 行重复安装脚本；实际 cache-hit 耗时仍待线上 Actions 量化。 |
+| 2026-09-13 | 增量分片预检 | 缓存命中、官方 404、瞬时探测失败和可用但未缓存资源的计划测试；工作流条件结构与 YAML 解析；SeerAPI 全量 333 passed；Ruff、compileall、diff check | 16 个分片先在禁用 PNG 渲染的模式下检查缓存与官方资源状态。缓存完整或官方确认缺失的分片不安装 FFDec；只有瞬时失败或资源存在但 PNG 缺失时才进入修复。预检同时输出整片与修复 ID 快照，渲染不再重复读取 ConfigPackage 或 Unity manifest，只处理缺口并仍导出整片缓存；总构建器为 760 行。真实 Actions 节省时间仍待线上量化。 |
+| 2026-09-13 | 最终构建去渲染化 | 最终 build 严格缓存配置、座驾候选为空/非空测试、工作流条件结构与 YAML 解析；SeerAPI 全量 335 passed；Ruff、CLI、compileall、diff check | SQLite build 只消费分片产出的效果图标缓存，缺失即失败，不再拥有第二套 FFDec backstop。座驾先复用/裁剪现有生成分支并输出候选计划，只有存在候选时才安装 FFDec；冷构建与新增座驾仍进入原渲染路径。真实热构建耗时待 Actions 验证。 |
+| 2026-09-13 | 真实发布库分片预检 | 从 118 MB 历史发布库恢复 2108 个 PNG，再运行第 1/16 分片计划；完整缓存为 132/132 命中、`repair_count=0`、`needs_render=false`。复制缓存并仅移除 `icon_id=1` 后为 131/132 命中、`repair_count=1`、`repair_icon_ids=1` | 真实规模热分片无需 FFDec，单条缺口只进入精确修复快照而不重建整片；真实 Actions 权限、总耗时和发布后 consumer smoke 仍未关闭。 |
+| 2026-09-13 | SeerAPI `42b9c34` | 缓存命中日志断言；效果图标定向 4 passed；SeerAPI 全量 335 passed；Ruff、compileall、diff check | 总进度使用 `Resolving` 表示缓存、缺失判定与必要渲染，避免预检未调用 FFDec 时误报 `Rendering`；产物和执行策略不变。 |
 
 ## Progress
 

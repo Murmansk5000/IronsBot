@@ -1968,3 +1968,139 @@ smoke。QQ 身份能力仍按平台延期规则排在最后。
 `generated-render-assets` 不存在时创建 orphan branch，以及后续 worktree 增量提交并推送
 新 revision。两轮提交不同，远端最终文件集符合预期。该 smoke 只关闭本地 Git 分支生命
 周期风险；真实 Actions 权限、资源生成耗时和发布后消费者验证仍是外部门禁。
+
+生成器随后进一步以 manifest v3 的 `default` 仓库事实裁剪 FFDec 输入，不再为已有 Unity
+PNG 的座驾重复生成图片，并从生成分支移除这类冗余副本。真实发布数据复核为 36 个座驾、
+25 个 Unity 命中、11 个 Flash 缺口，首次生成候选减少约 69%；SeerAPI 全量 `329 passed`。
+该优化缩短构建并减少生成分支体积，不改变机器人候选顺序或运行镜像内容。
+
+生成入口进一步要求当前 manifest v3 与 typed repository 元数据；输入旧 schema 或流水线
+顺序错误时立即失败，不再退回全部座驾 FFDec。专项 11 passed、SeerAPI 全量
+`331 passed`，确保“构建突然变慢”不会掩盖发布契约错误。
+
+效果图标并发 renderer 的公共出口也固定按 icon ID 排序，不再把 worker 完成顺序泄露给
+SQLite、manifest 或错误摘要。逆序完成测试、15 项效果图标专项和 SeerAPI 全量
+`330 passed` 通过；效果图标 Spec 的前六项本地 acceptance 已据此关闭，真实 FFDec
+Actions release 仍保持未完成。
+
+SeerAPI 的 16 个效果图标分片与最终 build 现在共用本地 `setup-ffdec` composite action。
+固定版本、SHA-256、网络重试和安装逻辑只保留一份，经校验的 FFDec archive 使用 Actions
+cache 跨构建复用；主工作流删除 32 行重复 shell。YAML 解析、CI 结构测试、SeerAPI 全量
+`332 passed`、Ruff、compileall 与差异检查通过。真实 cache hit 节省时间需由首次线上运行
+记录，不提前估算为完成证据。
+
+效果图标分片随后增加只读预检：先恢复发布缓存，再以禁用 PNG 渲染的同一资源适配器区分
+缓存命中、官方确认 404、瞬时失败和可修复缺图。前两类不再安装 FFDec，后两类才进入
+渲染；预检输出整片与修复 ID 快照，渲染命令不再重复读取 ConfigPackage 或 Unity
+manifest，只处理缺口并仍导出整片缓存。最终 build 仍为座驾 Flash 缺口保留 FFDec。SeerAPI
+全量 `333 passed`，Ruff、compileall、YAML 与差异检查通过；真实 Actions 耗时仍是外部验收项。
+资源读取、Unity 缺口和缓存导出装配只有预检持有，渲染消费其快照；总构建器由 771 行
+降到 760 行，避免两条内部命令重复网络发现或逐渐产生不同的分片语义。
+
+最终 SQLite build 随后改为效果图标缓存的严格消费者：禁止现场 PNG 渲染，缓存缺口直接
+使发布失败，不再保留第二套 FFDec backstop。座驾生成先复用现有生成分支并计算候选，
+只有确实缺 PNG 时才安装 FFDec；冷构建和新增座驾仍走原渲染及 pending 记录。座驾/CI
+专项 14 passed、SeerAPI 全量 `335 passed`，Ruff、CLI、compileall、YAML 与差异检查通过。
+真实 Actions 热构建耗时仍待发布环境记录。
+
+同日按当前提交执行三仓本地完成度审计：IronsBot 全量 `3239 passed, 7 skipped`，Ruff、
+BasedPyright（0 errors/warnings）、compileall 与差异检查通过；SeerAPI 全量 `335 passed`；
+私有扩展通过 `IRONSBOT_PUBLIC_ROOT` 联合 V5 宿主运行 `42 passed, 1 skipped`，Ruff 与
+BasedPyright 通过。审计修正了幸运橱窗测试替身的 3 个类型声明错误，没有放宽检查或改变
+生产行为。Docker Desktop Linux Engine 仍在 12 秒只读探测中超时，系统权限也不允许
+启动其服务，因此最新镜像和真实 Actions 仍保留为外部门禁。
+
+效果图标分片预检另以 118 MB 的真实历史发布库运行：成功恢复 `2108` 个 PNG，首个
+`1/16` 分片包含 `132` 个图标且全部缓存命中，输出 `repair_count=0`、
+`needs_render=false`，导出的 `132` 组 PNG/metadata 与分片 ID 快照一致。该证据确认热
+分片会跳过 FFDec。另复制同一真实缓存并仅移除 `icon_id=1` 的 PNG/metadata，预检精确
+输出 `cached_count=131`、`repair_count=1`、`repair_icon_ids=1`，没有把整个分片送去
+重建。真实 Actions 权限、缓存命中率、总耗时和发布后消费者 smoke 仍须在线上关闭。
+涉及 QQ 号、直接 @、绑定或成员身份而目标 API 无法忠实表达的能力继续留到最终平台
+适配，不阻塞这些平台无关的发布验收。
+
+真实预检还暴露了纯缓存命中时仍打印 `Rendering` 的误导性总进度。SeerAPI
+`42b9c34` 将该层统一改为 `Resolving` / `resolution progress` / `Resolved`：缓存读取、
+资源缺失判定和必要时的实际渲染共用同一准确术语，下层 FFDec 失败日志保持不变。
+定向 `4 passed`、SeerAPI 全量 `335 passed`，Ruff、compileall 与差异检查通过；数据库、
+PNG、配置和依赖均未改变。
+
+## 本地 Main 差异复核（2026-09-13）
+
+本地 `main` 仍为 `55a39fd1`，本轮只读比较，没有 fetch、pull、merge 或 push。最新十个
+主线提交中的平台无关行为均已有目标态实现：已有精灵技能预览过滤由
+`services.seer.new_content` 负责；群星牌觉醒变体合并由 V5 `d0344dac` 覆盖；排队推送
+的优先级、失败保留和清理语义由 V5 `703842e1` 的统一 OneBot outbound queue 覆盖；
+Docker 交接失败继续启动由 V5 `69539177` 覆盖；战队详情由 V5 `20316904` 覆盖；B站
+抽奖与中奖已作为两项配置化 category 存在。主线的大文件拆分目标也由三仓 800 行架构
+门持续验证，不搬回主线的旧模块边界。
+
+主线 `b14df7a5`、`6844980e` 和 `ba08f749` 涉及绑定战队、私聊身份视图或实时 QQ 昵称，
+依赖 QQ 账号/绑定语义；按平台延期规则留到最终适配阶段，不复制为 service 特判。本次
+针对结构门、推送队列、群星牌、Docker 预检和 B站分类执行定向回归，`35 passed`。
+
+## 发布前分支拓扑审计（2026-09-13）
+
+三个重构分支当前都没有配置 upstream，不能把本地全绿误报为已发布。相对各自本地
+`main`，SeerAPI 为 ahead 110 / behind 0；IronsBot 为 ahead 538 / behind 93；private
+为 ahead 34 / behind 7。`git merge-tree --write-tree --messages HEAD main` 的只读三方
+分析显示：SeerAPI 可零冲突连接主线；IronsBot 有 179 个冲突文件；private 有 6 个冲突
+文件。分析只写入不可达 Git tree 对象，没有改变分支、索引或工作树。
+
+IronsBot 的大部分冲突来自目标态删除旧插件目录、迁移 OneBot adapter 和重写 service
+边界，不应通过普通 merge 将旧路径恢复。最终发布顺序固定为：先发布 SeerAPI 数据与
+`generated-render-assets`，验证 release；再发布 IronsBot 消费端并运行真实 consumer /
+候选镜像 smoke；最后发布 private 扩展。连接主线历史前必须先完成逐提交语义清单，随后
+使用经明确批准的历史收口策略，而不是逐个文本冲突盲选。QQ 号、绑定、直接 @ 和实时
+昵称仍排在最终平台批次。本轮未执行 fetch、pull、merge 或 push。
+
+## 私有阵容差异收口（2026-09-13）
+
+私有主线中仍有两项平台无关行为未被目标态覆盖：阵容精灵的大师池费用展示，以及阵容
+封包异常的有限重试和结构诊断。公共仓库以 `ae9145e2` 暴露发布数据库中的
+`master_pool_cost`，并以 `60f0d3b2` 在底层请求自行完成超时排空后最多重试一次；不使用
+外层取消，不会把迟到响应错配给后续请求。私有仓库以 `65e626e` 使用运行时生成的费用
+徽标完成展示，没有复制主线静态字体或图片；以 `6c74437` 保存有界封包诊断并向用户返回
+明确失败信息。
+
+公共仓库全量 `3241 passed, 7 skipped`，私有扩展联合 V5 宿主 `45 passed, 1 skipped`；
+两仓 Ruff、BasedPyright、compileall 和差异检查通过。该收口不增加 TOML、数据库、静态
+资源或 QQ 身份能力。依赖 QQ 号、直接 @、绑定关系或群成员身份且目标 API 无法忠实表达
+的入口继续留到最终平台阶段，不阻塞平台无关验收。
+
+随后尝试用本机保留的真实发布产物复跑 `player_lineup` 原生验收，但现存
+`v5-release-acceptance*` 与 `v5-full-publication/seerapi-data.sqlite` 均发布 manifest
+contract v2，当前消费者严格要求 v3，因而在数据库装载阶段按设计失败，尚未进入阵容
+查询。历史 118 MiB 数据库没有发布 manifest，仅可作为生成器缓存输入。此失败不能用
+单元测试替代为通过，也不应恢复 v2 兼容；下一次有效证据必须来自当前 SeerAPI 分支
+生成的完整 v3 release，再执行同一原生测试。现有公共/私有全量回归结果不受影响。
+
+同日随后使用线上 `api-data` latest 基础库、本机历史库恢复的 `2108` 个效果图标 PNG，
+以及当前 SeerAPI 分支重新构建发布主体。构建没有启动 FFDec，产出 121.09 MiB、149 张表
+的 manifest v3 数据库；补写新内容索引后发布契约通过，当前周期为 `2026-09-11`，收录
+360 项新内容。该数据库仍诚实声明 `complete_scopes=["type_matchup"]`，因为 11 个 Flash
+座驾 PNG 和真实 generated mount revision 尚未封口。
+
+以该 v3 数据库和当前私有扩展执行 `player_lineup` 原生消费测试，真实 SQL、公共阵容
+事实解析、私有 HTML/Pillow 渲染、OneBot 编码及受限平台图片上传链路 `1 passed`
+（12.32 秒）。由于 `player_lineup` 尚非完整素材 scope，本次不宣称最终图片缓存命中或
+完整 release 发布；下一门仍是生成并发布 11 个 mount 缺口、封口不可变 manifest 后
+复跑缓存一致性。
+
+真实 mount 计划进一步确认上述 11 个官方 SWF URL 全部返回 404。此前计划只按“PNG
+缺失”决定安装 FFDec，导致任何其他数据变化触发构建时都先准备 Java/FFDec，再发现没有
+可渲染源。SeerAPI `09d66dc` 将源可用性探测提前到 renderer 门：全部为明确 404 或无效
+SWF 时输出 `renderer_required=False`；存在可下载 SWF、HTTP 非 404 或瞬时网络错误时仍
+保守启用 FFDec。当前真实计划为 `mounts=11 candidates=11 renderer_required=False`，
+SeerAPI 全量 `338 passed`，Ruff、compileall 与差异检查通过。生产代码净增 34 行，无新
+依赖、缓存协议或镜像内容；11 项仍保留为 pending，不伪造图片或完整 scope。
+
+随后按现有统一图片获取方式复核这 11 项：当前素材 revision 中有 9 项虽然缺少
+`cloth/prev/{id}.png`，但存在有效的官方 `cloth/icon/{id}.png`。SeerAPI manifest 与
+IronsBot `SeerImageSource` 同步采用“完整预览、官方图标、生成 PNG”的有序候选，不使用
+编号名单，也不把素材复制进机器人。真实清单解析后 36 个座驾中 34 个可用，仅
+`1301150`、`1301170` 仍无任何 Unity PNG 且 Flash URL 为 404。SeerAPI 全量
+`339 passed`，IronsBot 全量 `3241 passed, 7 skipped`；机器人依赖和镜像载荷不变。
+同一真实 v3 数据库重建座驾 manifest 后，Flash 计划由
+`mounts=11 candidates=11` 收缩为 `mounts=2 candidates=2`，且两个 SWF 均确认缺失，
+因此仍输出 `renderer_required=false`，不会安装 Java/FFDec。
