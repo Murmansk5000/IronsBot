@@ -95,7 +95,12 @@ RUN apt-get update \
 # Mount wheels for installation; copying then deleting them retains a large layer.
 RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel \
     pip install --no-deps --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
-    && rm -rf /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip \
+    && rm -rf /usr/local/lib/python${PYTHON_VERSION}/site-packages/pygments \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pygments-*.dist-info \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pymdownx \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pymdown_extensions-*.dist-info \
+        /usr/local/bin/pygmentize \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip-*.dist-info \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools \
         /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools-*.dist-info \

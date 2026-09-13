@@ -149,13 +149,14 @@ jobs:
                       actual_python="$(python -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")"
                       test "$actual_python" = "$EXPECTED_PYTHON_VERSION"
                       python -c "from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()"
+                      python -c 'import asyncio, importlib.util, nonebot; assert importlib.util.find_spec("pygments") is None; assert importlib.util.find_spec("pymdownx") is None; nonebot.init(driver="~fastapi+~httpx"); from nonebot_plugin_htmlkit import TEMPLATES_PATH, template_to_pic; image = asyncio.run(template_to_pic(TEMPLATES_PATH, "text.html", {"text": "IronsBot 中文渲染", "css": "body { font-weight: 700; }"}, max_width=320)); assert image.startswith(bytes.fromhex("89504e470d0a1a0a"))'
                     '
 
             - name: Enforce runtime candidate size budgets
               shell: bash
               env:
                   MAX_APP_KIB: "8192"
-                  MAX_SITE_PACKAGES_KIB: "131072"
+                  MAX_SITE_PACKAGES_KIB: "122880"
                   MAX_FONTS_KIB: "24576"
               run: |
                   inventory="$RUNNER_TEMP/ironsbot-candidate-runtime-size-kib.txt"
