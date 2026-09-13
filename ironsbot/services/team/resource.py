@@ -222,7 +222,8 @@ class TeamResourceService:
 
         effective_threshold = threshold or self._config.default_threshold
         mention_actors = (
-            tuple(dict.fromkeys(target.mention_actors)) or self.default_mention_actors
+            tuple(dict.fromkeys(target.mention_actors))
+            or self._default_mentions_for(target)
             if target.is_group
             else ()
         )
@@ -268,7 +269,7 @@ class TeamResourceService:
         result = TeamResourceResult(prompt.team_id, prompt.team_name, "", 0)
         target = TeamResourceSubscriptionTarget(
             conversation,
-            self.default_mention_actors,
+            self._default_mentions_for(TeamResourceSubscriptionTarget(conversation)),
         )
         self._save_target_subscription(
             target=target,
@@ -416,6 +417,19 @@ class TeamResourceService:
             return self._store.list_conversation(target.conversation)
         actor = target.actor
         return [] if actor is None else self._store.list_actor(actor)
+
+    def _default_mentions_for(
+        self,
+        target: TeamResourceSubscriptionTarget,
+    ) -> tuple[ActorRef, ...]:
+        conversation = target.conversation
+        if conversation is None:
+            return ()
+        return tuple(
+            actor
+            for actor in self.default_mention_actors
+            if actor.platform is conversation.platform
+        )
 
     def _all_subscriptions(
         self,

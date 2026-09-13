@@ -35,6 +35,9 @@ from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.about import AboutService, about_command_contracts
+from ironsbot.services.bilibili.outbound_delivery import (
+    render_dynamic_content_message,
+)
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
 from ironsbot.services.messaging.sendpic import SingleImageResult
@@ -150,6 +153,35 @@ async def test_autocard_resolves_published_binary_before_restricted_delivery() -
 
     assert result.delivered
     assert transport.uploads == [IMAGE.__class__(b"published-card", "image/png")]
+
+
+@pytest.mark.asyncio
+async def test_bilibili_history_content_crosses_restricted_platform_port() -> None:
+    item = {
+        "id_str": "dynamic:opaque",
+        "modules": {
+            "module_dynamic": {
+                "major": {
+                    "opus": {
+                        "summary": {"text": "动态正文"},
+                        "pics": [{"url": "https://example.test/dynamic.png"}],
+                    }
+                }
+            }
+        },
+    }
+    message = render_dynamic_content_message(item)
+    assert message is not None
+    assert message.parts == (
+        TextPart("动态正文"),
+        RemoteImagePart("https://example.test/dynamic.png"),
+    )
+    transport = FakeOfficialPlatform(NOW)
+
+    result = await transport.reply(ReplyContext.from_message(_incoming()), message)
+
+    assert result.delivered
+    assert transport.attempts == [(GROUP, message)]
 
 
 @pytest.mark.asyncio
