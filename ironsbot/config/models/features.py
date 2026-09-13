@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -25,6 +25,9 @@ from ironsbot.core.features import (
     Feature,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+
+if TYPE_CHECKING:
+    from ironsbot.config.models.settings import QQOfficialConfig
 
 FEATURE_BUNDLES: Final[dict[str, frozenset[str]]] = {
     "all": (FEATURE_KEYS - {"admin_notice", "blacklist", "seer"}) | SEER_FEATURES,
@@ -391,6 +394,7 @@ def validate_feature_config(
     *,
     command_features: Iterable[str] = (),
     schedule_features: Iterable[str] = (),
+    qq_official: QQOfficialConfig | None = None,
 ) -> dict[str, frozenset[str]]:
     normalized_commands = _normalize_feature_keys(command_features)
     normalized_schedules = _normalize_feature_keys(schedule_features)
@@ -410,9 +414,29 @@ def validate_feature_config(
         | frozenset(resolved_bundles)
     )
     invalid: list[str] = []
+    qq_policies: list[tuple[str, Mapping[str, list[str]]]] = []
+    if qq_official is not None:
+        for account_name, account in qq_official.enabled_accounts.items():
+            qq_policies.extend(
+                (
+                    (
+                        f"bot.qq_official.accounts.{account_name}.features",
+                        {"default": account.features},
+                    ),
+                    (
+                        f"bot.qq_official.accounts.{account_name}.group_policy",
+                        account.group_policy,
+                    ),
+                    (
+                        f"bot.qq_official.accounts.{account_name}.user_policy",
+                        account.user_policy,
+                    ),
+                )
+            )
     for policy_name, policy in (
         ("features.group_policy", config.group_policy),
         ("features.user_policy", config.user_policy),
+        *qq_policies,
     ):
         for target, features in policy.items():
             for index, raw_feature in enumerate(features):
@@ -432,13 +456,15 @@ def build_onebot_feature_service(
     *,
     command_features: Iterable[str] = (),
     schedule_features: Iterable[str] = (),
+    qq_official: QQOfficialConfig | None = None,
 ) -> FeatureService:
-    """Compile TOML OneBot aliases and bundles into typed policy facts."""
+    """Compile platform configuration into typed policy facts."""
 
     bundles = validate_feature_config(
         config,
         command_features=command_features,
         schedule_features=schedule_features,
+        qq_official=qq_official,
     )
     references = OneBotReferenceResolver(
         group_aliases=config.group_aliases,
@@ -476,13 +502,61 @@ def build_onebot_feature_service(
             _expand_policy_features(features, bundles)
         )
 
+    qq_superusers: list[ActorRef] = []
+    qq_account_defaults: dict[tuple[Platform, str], frozenset[str]] = {}
+    if qq_official is not None:
+        for account in qq_official.enabled_accounts.values():
+            account_id = account.app_id
+            default_features = _expand_policy_features(account.features, bundles)
+            qq_account_defaults[(Platform.QQ_OFFICIAL, account_id)] = default_features
+            qq_superusers.extend(
+                ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    account.resolve_user_openid(str(user_id)),
+                    account_id=account_id,
+                )
+                for user_id in account.superusers
+            )
+            qq_superusers.extend(
+                ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    member_openid,
+                    "member",
+                    account.resolve_group_openid(group_reference),
+                    account_id,
+                )
+                for group_reference, members in account.group_superusers.items()
+                for member_openid in members
+            )
+            for reference, features in account.group_policy.items():
+                conversation = ConversationRef(
+                    Platform.QQ_OFFICIAL,
+                    "group",
+                    account.resolve_group_openid(reference),
+                    account_id=account_id,
+                )
+                group_features[conversation] = default_features | (
+                    _expand_policy_features(features, bundles)
+                )
+            for reference, features in account.user_policy.items():
+                actor = ActorRef(
+                    Platform.QQ_OFFICIAL,
+                    account.resolve_user_openid(reference),
+                    account_id=account_id,
+                )
+                actor_features[actor] = _expand_policy_features(features, bundles)
+
     return FeatureService(
         group_features=group_features,
         actor_features=actor_features,
         superusers=frozenset(
-            ActorRef(Platform.ONEBOT, str(user_id)) for user_id in superuser_ids
+            [
+                *(ActorRef(Platform.ONEBOT, str(user_id)) for user_id in superuser_ids),
+                *qq_superusers,
+            ]
         ),
         superuser_bypass=config.superuser_bypass,
+        account_default_features=qq_account_defaults,
     )
 
 

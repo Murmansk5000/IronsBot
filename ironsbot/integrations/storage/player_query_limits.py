@@ -5,7 +5,11 @@ from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING
 
 from ironsbot.integrations.storage.platform_identity import ActorIdentityColumns
-from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    require_sqlite_columns,
+)
 from ironsbot.services.seer.player_query_limits import PlayerQueryUsage
 
 if TYPE_CHECKING:
@@ -18,6 +22,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS player_query_usage (
     local_date TEXT NOT NULL,
     actor_platform TEXT NOT NULL,
+    actor_account_id TEXT NOT NULL DEFAULT '',
     actor_kind TEXT NOT NULL,
     actor_id TEXT NOT NULL,
     actor_scope_id TEXT NOT NULL DEFAULT '',
@@ -27,12 +32,21 @@ CREATE TABLE IF NOT EXISTS player_query_usage (
     usage_count INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (
-        local_date, actor_platform, actor_kind, actor_id, actor_scope_id,
-        scope, player_id, action_key
+        local_date, actor_platform, actor_account_id, actor_kind, actor_id,
+        actor_scope_id, scope, player_id, action_key
     )
 )
 """
-_MIGRATIONS = (SqliteMigration(1, (_SCHEMA,)),)
+_MIGRATIONS = (
+    SqliteMigration(1, (_SCHEMA,)),
+    SqliteMigration(
+        2,
+        callback=require_sqlite_columns(
+            "player_query_usage",
+            {"actor_account_id"},
+        ),
+    ),
+)
 MIGRATION_NAMESPACE = "player_query_limits"
 
 
@@ -68,7 +82,8 @@ class SqlitePlayerQueryLimitStore:
                 """
                 SELECT usage_count
                 FROM player_query_usage
-                WHERE local_date = ? AND actor_platform = ? AND actor_kind = ?
+                WHERE local_date = ? AND actor_platform = ?
+                  AND actor_account_id = ? AND actor_kind = ?
                   AND actor_id = ? AND actor_scope_id = ? AND scope = ?
                   AND player_id = ? AND action_key = ?
                 """,
@@ -107,7 +122,8 @@ class SqlitePlayerQueryLimitStore:
                 """
                 SELECT usage_count
                 FROM player_query_usage
-                WHERE local_date = ? AND actor_platform = ? AND actor_kind = ?
+                WHERE local_date = ? AND actor_platform = ?
+                  AND actor_account_id = ? AND actor_kind = ?
                   AND actor_id = ? AND actor_scope_id = ? AND scope = ?
                   AND player_id = ? AND action_key = ?
                 """,
@@ -126,11 +142,11 @@ class SqlitePlayerQueryLimitStore:
                 conn.execute(
                     """
                     INSERT INTO player_query_usage(
-                        local_date, actor_platform, actor_kind, actor_id,
-                        actor_scope_id, scope, player_id,
+                        local_date, actor_platform, actor_account_id, actor_kind,
+                        actor_id, actor_scope_id, scope, player_id,
                         action_key, usage_count, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (*key, next_count, _utc_now()),
                 )
@@ -140,8 +156,9 @@ class SqlitePlayerQueryLimitStore:
                     UPDATE player_query_usage
                     SET usage_count = ?, updated_at = ?
                     WHERE local_date = ? AND actor_platform = ?
-                      AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
-                      AND scope = ? AND player_id = ? AND action_key = ?
+                      AND actor_account_id = ? AND actor_kind = ?
+                      AND actor_id = ? AND actor_scope_id = ? AND scope = ?
+                      AND player_id = ? AND action_key = ?
                     """,
                     (next_count, _utc_now(), *key),
                 )

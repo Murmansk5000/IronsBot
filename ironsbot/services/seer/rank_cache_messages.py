@@ -21,19 +21,19 @@ def build_rank_batch_start_message(
     spec: GlobalRankSpec,
     command: RankCacheBatchCommand,
     *,
-    item_count: int,
+    request_count: int,
     requested_count: int,
 ) -> str:
     truncated_text = ""
-    if requested_count > item_count:
+    if requested_count > request_count:
         truncated_text = (
             "\n本次按 seer.local_rank.batch_limit "
-            f"只处理前 {item_count} 个。"
+            f"只处理前 {request_count} 个。"
         )
 
     return (
         f"🔄 正在缓存{spec.title}第 {command.start_rank}-{command.end_rank} 名。"
-        f"\n实际拿到 {item_count} 条榜单数据。"
+        f"\n本次最多请求 {request_count} 条榜单数据。"
         "\n只写入全服榜单页缓存，不计入样本。"
         f"{truncated_text}"
     )

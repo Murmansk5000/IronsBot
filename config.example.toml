@@ -69,6 +69,60 @@ plugin_manifest = "full"
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
 
+[bot.qq_official]
+# EN: Enable one or more QQ Official Bot accounts in this process.
+# ZH: 在同一进程启用一个或多个 QQ 官方机器人账号。
+enabled = false
+# EN: Use the QQ Bot sandbox API.
+# ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
+sandbox = false
+
+# EN: Account aliases use letters, digits, and underscores. Each account gets an
+#     isolated connection, AccessToken, OpenID namespace, policy, and send route.
+#     Set its AppSecret through QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
+# ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
+#     OpenID 命名空间、权限和发送路由；此示例的 AppSecret 使用
+#     QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
+[bot.qq_official.accounts.example_bot]
+enabled = false
+app_id = ""
+# EN: Allow SDK-level proactive sends. Keep disabled until the application has
+#     the required platform permission. Team-resource subscriptions require it.
+# ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
+proactive_messages = false
+# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY.
+# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
+features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
+# EN: C2C user_openids with superuser bypass. These are not QQ numbers.
+# ZH: 私聊超级管理员的 user_openid；这里不是 QQ 号。
+superusers = []
+
+# EN: Optional account-scoped targets keyed by group/user alias or OpenID. Declaring a
+#     target also enables these extra features there; global features remain active.
+# ZH: 可选的主动推送目标，键为群/用户别名或 OpenID；声明后会在该目标额外启用这些功能，
+#     全局 features 仍然有效。OpenID 含特殊字符时必须用引号包裹。
+[bot.qq_official.accounts.example_bot.group_policy]
+# example_official_group = ["seer_activity_push", "bili_push"]
+
+[bot.qq_official.accounts.example_bot.user_policy]
+# example_official_user = ["seer_activity_push", "bili_push"]
+
+# EN: Group-scoped superusers. Keys are group aliases or raw group OpenIDs;
+#     values are member_openids observed in that group, not C2C user_openids.
+# ZH: 群聊超级管理员。键为群别名或群 OpenID，值为该群事件里的 member_openid，
+#     不能填写私聊 user_openid。
+[bot.qq_official.accounts.example_bot.group_superusers]
+# example_official_group = ["example-member-openid"]
+
+# EN: Account-scoped aliases for opaque QQ Official OpenIDs. Each alias must be
+#     globally unique across OneBot and every enabled official account.
+# ZH: QQ 官方 OpenID 的账号级别名。别名必须在 OneBot 与所有启用的官方账号中全局唯一。
+[bot.qq_official.accounts.example_bot.group_aliases]
+# example_official_group = "example-group-openid"
+
+[bot.qq_official.accounts.example_bot.user_aliases]
+# example_official_user = "example-user-openid"
+
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
@@ -100,7 +154,7 @@ activity = 70
 db_sync = 80
 team_audit = 90
 # EN: Broad fuzzy Seer matchers are intentionally late.
-# ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢“技能石”等固定图片/文本指令。
+# ZH: 精灵/刻印属于泛匹配，故意放到后面，避免抢配置的图片/文本指令。
 seer_mintmark = 100
 pet_config = 109
 seer_pet = 110
@@ -466,7 +520,7 @@ notice_timeout_seconds = 8.0
 # B 站配置分三层：
 # 1. [bilibili.accounts.<别名>] 定义稳定账号别名和 UID，不代表一定监控或推送。
 # 2. [bilibili.push].accounts 是默认推送别名，所有开启 bili_push 的群/用户都会收到。
-# 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号别名。
+# 3. [bilibili.push].groups/users 用 OneBot 别名或账号级 QQ 官方 OpenID 别名指定目标。
 # 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
 # QQ 展示使用 B 站接口返回的公开昵称，不在 TOML 中配置 nickname。
 # 模式命令支持账号别名、公开昵称或 UID。
@@ -563,14 +617,19 @@ summary_max_chars = 250
 summary_use_ai = true
 
 # Default: {}
-# EN: Group push targets keyed by feature group alias or group ID.
-# ZH: 群推送目标，键可以是群别名或群号。
+# EN: Group targets keyed by a OneBot group alias/ID or an account-scoped QQ
+#     Official group alias. Official raw OpenIDs are intentionally not accepted
+#     here because they do not identify the bot account that owns the OpenID.
+# ZH: 群推送目标可用 OneBot 群别名/群号，或某个 QQ 官方账号下的群 OpenID
+#     别名。这里不接受裸官方 OpenID，因为它不能说明归属哪个机器人账号。
 # Example: { main = { accounts = ["fire"], modes = { fire = "full" } } }
 groups = {}
 
 # Default: {}
-# EN: Private push targets keyed by user alias or user ID.
-# ZH: 私聊推送目标，键可以是用户别名或 QQ 号。
+# EN: Private targets keyed by a OneBot user alias/ID or an account-scoped QQ
+#     Official user alias. Official raw OpenIDs are intentionally not accepted.
+# ZH: 私聊推送目标可用 OneBot 用户别名/QQ号，或某个 QQ 官方账号下的用户
+#     OpenID 别名；不接受无法确定账号归属的裸官方 OpenID。
 # Example: { owner = { accounts = ["fire"], mode = "link" } }
 users = {}
 
@@ -595,13 +654,17 @@ enabled = true
 # 每个键必须是已定义的 B 站账号别名。分类正则匹配完整动态文本；配置分类后，
 # 该账号不再套用全局抽奖屏蔽规则，请在此定义需要静音的内容。
 #
-# [bilibili.category_subscriptions.accounts.example_account]
-# label = "示例账号"
-# default_muted_categories = ["lottery"]
-#
-# [bilibili.category_subscriptions.accounts.example_account.categories.lottery]
-# label = "抽奖与中奖"
-# patterns = ["恭喜", "中奖", "抽奖结果"]
+[bilibili.category_subscriptions.accounts.example_account]
+label = "示例账号"
+default_muted_categories = ["lottery", "winning"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.lottery]
+label = "抽奖"
+patterns = ["抽奖(?!结果|名单|获奖|中奖)", "参与.*抽奖", "福利抽取"]
+
+[bilibili.category_subscriptions.accounts.example_account.categories.winning]
+label = "中奖"
+patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 
 [messaging]
 # Default: []
@@ -655,16 +718,17 @@ enabled = true
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
-# EN: Proactive delivery retry policy; uncomment the complete table to configure it.
-# ZH: 主动推送重试策略；需要调整时取消下列完整表的注释，不影响目标权限。
-# [messaging.proactive_delivery]
-# max_attempts = 3
-# max_parallel_targets = 5
-# retry_batch_divisor = 3
-# retry_delay_seconds = 2.0
-# EN: The first three values must be >= 1; retry delay must be >= 0 seconds.
-# Only explicitly retryable failures are retried; uncertain/permanent failures are not.
-# ZH: 前三项至少1，等待秒数非负；只重试明确可重试的失败，不重复发送不确定或永久失败。
+[messaging.proactive_delivery]
+# Generic bounded fan-out policy shared by every proactive push producer.
+# 主动推送共用的有限并发与重试策略，不包含任何 QQ 号或平台错误码。
+# Default: 3; total delivery attempts for explicitly retryable failures.
+max_attempts = 3
+# Default: 5; maximum destinations submitted concurrently in one batch.
+max_parallel_targets = 5
+# Default: 3; divide retry batch capacity by this value after each attempt.
+retry_batch_divisor = 3
+# Default: 2.0; pause before each retry round.
+retry_delay_seconds = 2.0
 
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]
@@ -797,23 +861,21 @@ cnb_repo = ""
 # Example: "data/sendpic"
 local_root = "sendpic"
 
-# EN: Packaged single-image commands are enabled by default. Each item uses one
-# common schema: mode="single" requires image_file; mode="indexed" requires
-# image_dir and image_filename_template. Set an existing id to enabled=false
-# to disable it, or append custom commands below.
-# ZH: 内置单图命令默认启用。所有图片命令共用一套配置：mode="single"
-# 需要 image_file；mode="indexed" 需要 image_dir 和 image_filename_template。
-# 用同 ID 配置 enabled=false 可关闭内置命令，也可在下面添加自定义命令。
+# EN: Image commands are empty by default. Every command uses one schema:
+# mode="single" requires image_file; mode="indexed" requires image_dir and
+# image_filename_template. Local paths are relative to local_root.
+# ZH: 图片命令默认为空。所有图片命令共用一套配置：mode="single" 需要
+# image_file；mode="indexed" 需要 image_dir 和 image_filename_template。
+# 本地图片路径相对于 local_root。
 #
 # [[messaging.sendpic.configs]]
-# id = "example-gallery"
+# id = "example-image"
 # enabled = true
 # backend = "local"
-# command = "表情"
-# aliases = ["表情包"]
-# mode = "indexed"
-# image_dir = "memes"
-# image_filename_template = "{index}.png"
+# command = "示例图片"
+# aliases = ["图片示例"]
+# mode = "single"
+# image_file = "example.png"
 # message_template = "{image}"
 
 # EN: Multiple NapCat / OneBot v11 clients may connect to one IronsBot instance.
@@ -1029,7 +1091,7 @@ timeout_seconds = 15.0
 # Default: 20.0; EN: Team query timeout seconds. ZH: 战队查询超时秒数。
 timeout_seconds = 20.0
 # Default: ["basic", "resource", "text"]; EN: Enabled team sections. ZH: 战队展示区块。
-sections = ["basic", "resource"]
+sections = ["basic", "resource", "text"]
 
 [seer.mintmark]
 # Default: true
@@ -1065,7 +1127,8 @@ page_cache = true
 page_cache_ttl_seconds = 3600
 # Default: true; EN: Allow stale rank cache. ZH: 允许使用过期缓存。
 allow_stale_cache = true
-# Default: 32; EN: Max point probes for score-based binary rank lookup.
+# Default: 32; EN: Max new point probes per binary boundary (up to three boundaries).
+# ZH: 每个二分边界的探针上限，最多三个边界；同分段翻页另计。
 score_search_probe_limit = 32
 # Default: 5; EN: Max tied-score pages scanned after binary lookup.
 score_search_tie_page_limit = 5
@@ -1223,6 +1286,19 @@ rank_keys = ["图鉴积分", "成就点数", "精灵图鉴", "皮肤图鉴", "�
 # EN: Refresh cached pages older than this many hours after missing/partial pages.
 # ZH: 缺失页、部分缺失页补完后，刷新超过多少小时的旧页面。
 refresh_stale_after_hours = 336
+
+[seer.new_content]
+# Default: []
+# EN: Root-menu categories that may preview newly added entries even when the
+# category has more entries than auto_expand_max_items. Focused category menus
+# still show every addition and correction.
+# ZH: 根菜单中允许预览新增项目的分类；即使该分类项目总数超过自动展开上限也可预览。
+# 分类详情仍显示全部新增和修改。技能预览会排除本周新增精灵自带的技能。
+expanded_categories = []
+# Default: 5
+# EN: Maximum additions shown for each root-menu preview; 0 disables previews.
+# ZH: 每个根菜单分类最多预览的新增项目数；设为 0 关闭预览。
+auto_expand_max_items = 5
 
 [seer.season]
 # Default: "群星牌赛季"
@@ -1459,20 +1535,11 @@ warning_threshold_seconds = 3.0
 timeout_seconds = 3.0
 
 [operations.docker_update]
-# EN: Maximum handoff wait in seconds (> 0); default 90.0.
-# ZH: 更新交接等待上限，必须大于0秒，默认90.0秒。
-# handoff_timeout_seconds = 90.0
-# EN: Default true: attempt updater cleanup and continue the current image on handoff failure.
-# Set false to keep waiting; this does not replace check_on_startup.
-# ZH: 默认true，交接失败时尝试回收更新器并继续当前镜像；false保持等待，不替代启动检查开关。
-# fallback_to_current_image_on_handoff_failure = true
-# Docker 更新也分两层：
-# - check_on_startup：容器自然启动时是否先检查镜像。
-# - check_on_restart：发送 /重启机器人 时是否先检查镜像。
-# 两个开关都依赖 Docker socket；Windows 源码运行建议设为 false。
+# Docker 更新依赖 Docker socket；Windows 源码运行建议关闭启动检查。
+# /重启机器人、/机器人重启、/更新镜像、/更新Docker、/更新docker
+# 都会打开维护菜单：1 仅重启；2 检查/更新镜像后重启。
 # Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
 check_on_startup = true
-# Default: true; EN: Check Docker image before a manual restart. ZH: 手动 /重启机器人 前先检查 Docker 镜像；不需要可改为 false。
 # Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。
 image = "murmansk5000/ironsbot:latest"
 # Default: "ironsbot"; EN: Container name to update. ZH: 要更新的容器名。
@@ -1485,6 +1552,14 @@ watchtower_image = "containrrr/watchtower:latest"
 watchtower_docker_api_version = "1.40"
 # Default: 300.0; EN: Docker API timeout seconds. ZH: Docker API 超时时间。
 timeout_seconds = 300.0
+# Default: 90.0
+# EN: Maximum time to wait for a Watchtower handoff before starting the current image.
+# ZH: 等待 Watchtower 完成交接的最长秒数；超时后按下方策略处理。
+handoff_timeout_seconds = 90.0
+# Default: true
+# EN: Continue with the current image if handoff fails or times out.
+# ZH: 交接失败或超时时继续启动当前镜像；设为 false 则保持严格等待。
+fallback_to_current_image_on_handoff_failure = true
 
 [operations.private_extensions]
 # Optional private extension package. The main Unraid/Docker image remains

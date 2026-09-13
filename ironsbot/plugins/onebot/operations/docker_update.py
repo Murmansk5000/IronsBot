@@ -108,7 +108,9 @@ def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
         await finish_event_reply(
             matcher,
             event,
-            await service.check_image_update(),
+            await service.check_image_update(
+                progress=partial(send_event_reply, matcher, event)
+            ),
         )
 
     restart_matcher = registry.on_fullmatch(

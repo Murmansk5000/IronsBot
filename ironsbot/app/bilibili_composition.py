@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
+from ironsbot.integrations.configured_targets.bilibili import (
+    build_bili_configured_targets,
+)
 from ironsbot.integrations.http.bilibili import (
     fetch_bili_account_name,
     fetch_bili_dynamic_detail,
@@ -15,9 +18,6 @@ from ironsbot.integrations.http.bilibili import (
     request_bili_login_qr,
 )
 from ironsbot.integrations.onebot.bilibili_auth import send_bili_login_notice
-from ironsbot.integrations.onebot.bilibili_targets import (
-    build_onebot_bili_configured_targets,
-)
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
     SqliteBiliDynamicHistoryStore,
@@ -69,9 +69,9 @@ def build_onebot_bilibili_components(
         targets=BiliTargetService(
             settings.bilibili,
             features,
-            build_onebot_bili_configured_targets(
+            build_bili_configured_targets(
                 settings.bilibili,
-                settings.onebot_references,
+                settings.platform_references,
             ),
             SqliteBiliPushPreferenceStore(settings.paths.qq_state),
             subscriptions,
