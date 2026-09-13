@@ -10,7 +10,11 @@ from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
 )
-from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.integrations.storage.sqlite import (
+    SqliteDatabase,
+    SqliteMigration,
+    require_sqlite_columns,
+)
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourcePrivateSubscription,
     TeamResourcePrivateSubscriptionUpdate,
@@ -30,46 +34,54 @@ _SCHEMA = (
     """
     CREATE TABLE IF NOT EXISTS team_resource_subscriptions (
         conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
         conversation_kind TEXT NOT NULL,
         conversation_id TEXT NOT NULL,
         team_id INTEGER NOT NULL,
         team_name TEXT NOT NULL DEFAULT '',
         threshold INTEGER NOT NULL,
         created_by_platform TEXT NOT NULL,
+        created_by_account_id TEXT NOT NULL DEFAULT '',
         created_by_kind TEXT NOT NULL,
         created_by_id TEXT NOT NULL,
         created_by_scope_id TEXT NOT NULL DEFAULT '',
         updated_by_platform TEXT NOT NULL,
+        updated_by_account_id TEXT NOT NULL DEFAULT '',
         updated_by_kind TEXT NOT NULL,
         updated_by_id TEXT NOT NULL,
         updated_by_scope_id TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         PRIMARY KEY (
-            conversation_platform, conversation_kind, conversation_id, team_id
+            conversation_platform, conversation_account_id, conversation_kind,
+            conversation_id, team_id
         )
     )
     """,
     """
     CREATE TABLE IF NOT EXISTS team_resource_subscription_mentions (
         conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
         conversation_kind TEXT NOT NULL,
         conversation_id TEXT NOT NULL,
         team_id INTEGER NOT NULL,
         actor_platform TEXT NOT NULL,
+        actor_account_id TEXT NOT NULL DEFAULT '',
         actor_kind TEXT NOT NULL,
         actor_id TEXT NOT NULL,
         actor_scope_id TEXT NOT NULL DEFAULT '',
         position INTEGER NOT NULL,
         PRIMARY KEY (
-            conversation_platform, conversation_kind, conversation_id, team_id,
-            actor_platform, actor_kind, actor_id, actor_scope_id
+            conversation_platform, conversation_account_id, conversation_kind,
+            conversation_id, team_id, actor_platform, actor_account_id,
+            actor_kind, actor_id, actor_scope_id
         )
     )
     """,
     """
     CREATE TABLE IF NOT EXISTS team_resource_private_subscriptions (
         actor_platform TEXT NOT NULL,
+        actor_account_id TEXT NOT NULL DEFAULT '',
         actor_kind TEXT NOT NULL,
         actor_id TEXT NOT NULL,
         actor_scope_id TEXT NOT NULL DEFAULT '',
@@ -78,32 +90,54 @@ _SCHEMA = (
         threshold INTEGER NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id, team_id)
+        PRIMARY KEY (
+            actor_platform, actor_account_id, actor_kind, actor_id,
+            actor_scope_id, team_id
+        )
     )
     """,
     """
     CREATE TABLE IF NOT EXISTS team_resource_subscription_prompts (
         conversation_platform TEXT NOT NULL,
+        conversation_account_id TEXT NOT NULL DEFAULT '',
         conversation_kind TEXT NOT NULL,
         conversation_id TEXT NOT NULL,
         team_id INTEGER NOT NULL,
         team_name TEXT NOT NULL DEFAULT '',
         prompted_by_platform TEXT NOT NULL,
+        prompted_by_account_id TEXT NOT NULL DEFAULT '',
         prompted_by_kind TEXT NOT NULL,
         prompted_by_id TEXT NOT NULL,
         prompted_by_scope_id TEXT NOT NULL DEFAULT '',
         prompted_at TEXT NOT NULL,
         handled_by_platform TEXT,
+        handled_by_account_id TEXT,
         handled_by_kind TEXT,
         handled_by_id TEXT,
         handled_by_scope_id TEXT,
         handled_at TEXT,
         accepted INTEGER,
-        PRIMARY KEY (conversation_platform, conversation_kind, conversation_id)
+        PRIMARY KEY (
+            conversation_platform, conversation_account_id, conversation_kind,
+            conversation_id
+        )
     )
     """,
 )
-_MIGRATIONS = (SqliteMigration(1, _SCHEMA),)
+_MIGRATIONS = (
+    SqliteMigration(1, _SCHEMA),
+    SqliteMigration(
+        2,
+        callback=require_sqlite_columns(
+            "team_resource_subscriptions",
+            {
+                "conversation_account_id",
+                "created_by_account_id",
+                "updated_by_account_id",
+            },
+        ),
+    ),
+)
 MIGRATION_NAMESPACE = "team_resources"
 
 
@@ -119,8 +153,8 @@ class TeamResourceSubscriptionStore:
         with self._connect() as conn:
             rows = conn.execute(
                 _GROUP_SUBSCRIPTION_SELECT
-                + " ORDER BY conversation_platform, conversation_kind, "
-                "conversation_id, team_id"
+                + " ORDER BY conversation_platform, conversation_account_id, "
+                "conversation_kind, conversation_id, team_id"
             ).fetchall()
             return [_subscription_from_row(conn, row) for row in rows]
 
@@ -132,8 +166,8 @@ class TeamResourceSubscriptionStore:
             rows = conn.execute(
                 _GROUP_SUBSCRIPTION_SELECT
                 + """
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ?
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
                 ORDER BY team_id
                 """,
                 _conversation_values(conversation),
@@ -148,18 +182,22 @@ class TeamResourceSubscriptionStore:
             conn.execute(
                 """
                 INSERT INTO team_resource_subscriptions (
-                    conversation_platform, conversation_kind, conversation_id,
+                    conversation_platform, conversation_account_id,
+                    conversation_kind, conversation_id,
                     team_id, team_name, threshold,
-                    created_by_platform, created_by_kind, created_by_id,
-                    created_by_scope_id, updated_by_platform, updated_by_kind,
+                    created_by_platform, created_by_account_id, created_by_kind,
+                    created_by_id, created_by_scope_id,
+                    updated_by_platform, updated_by_account_id, updated_by_kind,
                     updated_by_id, updated_by_scope_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(
-                    conversation_platform, conversation_kind, conversation_id, team_id
+                    conversation_platform, conversation_account_id,
+                    conversation_kind, conversation_id, team_id
                 ) DO UPDATE SET
                     team_name = excluded.team_name,
                     threshold = excluded.threshold,
                     updated_by_platform = excluded.updated_by_platform,
+                    updated_by_account_id = excluded.updated_by_account_id,
                     updated_by_kind = excluded.updated_by_kind,
                     updated_by_id = excluded.updated_by_id,
                     updated_by_scope_id = excluded.updated_by_scope_id,
@@ -179,8 +217,9 @@ class TeamResourceSubscriptionStore:
             conn.execute(
                 """
                 DELETE FROM team_resource_subscription_mentions
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ? AND team_id = ?
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
+                  AND team_id = ?
                 """,
                 (*conversation_values, update.team_id),
             )
@@ -195,10 +234,12 @@ class TeamResourceSubscriptionStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT actor_platform, actor_kind, actor_id, actor_scope_id,
+                SELECT actor_platform, actor_account_id, actor_kind, actor_id,
+                       actor_scope_id,
                        team_id, team_name, threshold, created_at, updated_at
                 FROM team_resource_private_subscriptions
-                ORDER BY actor_platform, actor_kind, actor_id, actor_scope_id, team_id
+                ORDER BY actor_platform, actor_account_id, actor_kind, actor_id,
+                         actor_scope_id, team_id
                 """
             ).fetchall()
         return [_private_subscription_from_row(row) for row in rows]
@@ -207,11 +248,12 @@ class TeamResourceSubscriptionStore:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT actor_platform, actor_kind, actor_id, actor_scope_id,
+                SELECT actor_platform, actor_account_id, actor_kind, actor_id,
+                       actor_scope_id,
                        team_id, team_name, threshold, created_at, updated_at
                 FROM team_resource_private_subscriptions
-                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
-                  AND actor_scope_id = ?
+                WHERE actor_platform = ? AND actor_account_id = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
                 ORDER BY team_id
                 """,
                 _actor_values(actor),
@@ -224,11 +266,13 @@ class TeamResourceSubscriptionStore:
             conn.execute(
                 """
                 INSERT INTO team_resource_private_subscriptions (
-                    actor_platform, actor_kind, actor_id, actor_scope_id,
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id,
                     team_id, team_name, threshold, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(
-                    actor_platform, actor_kind, actor_id, actor_scope_id, team_id
+                    actor_platform, actor_account_id, actor_kind, actor_id,
+                    actor_scope_id, team_id
                 ) DO UPDATE SET
                     team_name = excluded.team_name,
                     threshold = excluded.threshold,
@@ -249,8 +293,8 @@ class TeamResourceSubscriptionStore:
             row = conn.execute(
                 """
                 SELECT 1 FROM team_resource_subscription_prompts
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ?
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
                 """,
                 _conversation_values(conversation),
             ).fetchone()
@@ -263,14 +307,17 @@ class TeamResourceSubscriptionStore:
         with self._connect() as conn:
             row = conn.execute(
                 """
-                SELECT conversation_platform, conversation_kind, conversation_id,
-                       team_id, team_name, prompted_by_platform, prompted_by_kind,
-                       prompted_by_id, prompted_by_scope_id, prompted_at,
-                       handled_by_platform, handled_by_kind, handled_by_id,
-                       handled_by_scope_id, handled_at, accepted
+                SELECT conversation_platform, conversation_account_id,
+                       conversation_kind, conversation_id, team_id, team_name,
+                       prompted_by_platform, prompted_by_account_id,
+                       prompted_by_kind, prompted_by_id, prompted_by_scope_id,
+                       prompted_at, handled_by_platform, handled_by_account_id,
+                       handled_by_kind, handled_by_id, handled_by_scope_id,
+                       handled_at, accepted
                 FROM team_resource_subscription_prompts
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ? AND handled_at IS NULL
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
+                  AND handled_at IS NULL
                 """,
                 _conversation_values(conversation),
             ).fetchone()
@@ -288,10 +335,12 @@ class TeamResourceSubscriptionStore:
             conn.execute(
                 """
                 INSERT OR IGNORE INTO team_resource_subscription_prompts (
-                    conversation_platform, conversation_kind, conversation_id,
-                    team_id, team_name, prompted_by_platform, prompted_by_kind,
-                    prompted_by_id, prompted_by_scope_id, prompted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    conversation_platform, conversation_account_id,
+                    conversation_kind, conversation_id, team_id, team_name,
+                    prompted_by_platform, prompted_by_account_id,
+                    prompted_by_kind, prompted_by_id, prompted_by_scope_id,
+                    prompted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     *_conversation_values(conversation),
@@ -313,10 +362,12 @@ class TeamResourceSubscriptionStore:
             conn.execute(
                 """
                 UPDATE team_resource_subscription_prompts
-                SET handled_by_platform = ?, handled_by_kind = ?, handled_by_id = ?,
+                SET handled_by_platform = ?, handled_by_account_id = ?,
+                    handled_by_kind = ?, handled_by_id = ?,
                     handled_by_scope_id = ?, handled_at = ?, accepted = ?
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ? AND handled_at IS NULL
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
+                  AND handled_at IS NULL
                 """,
                 (
                     *_actor_values(handled_by),
@@ -340,8 +391,9 @@ class TeamResourceSubscriptionStore:
                 """
                 UPDATE team_resource_subscriptions
                 SET team_name = ?, updated_at = ?
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ? AND team_id = ?
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
+                  AND team_id = ?
                 """,
                 (
                     team_name.strip(),
@@ -356,16 +408,18 @@ class TeamResourceSubscriptionStore:
             cursor = conn.execute(
                 """
                 DELETE FROM team_resource_subscriptions
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ? AND team_id = ?
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
+                  AND team_id = ?
                 """,
                 (*_conversation_values(conversation), team_id),
             )
             conn.execute(
                 """
                 DELETE FROM team_resource_subscription_mentions
-                WHERE conversation_platform = ? AND conversation_kind = ?
-                  AND conversation_id = ? AND team_id = ?
+                WHERE conversation_platform = ? AND conversation_account_id = ?
+                  AND conversation_kind = ? AND conversation_id = ?
+                  AND team_id = ?
                 """,
                 (*_conversation_values(conversation), team_id),
             )
@@ -385,8 +439,9 @@ class TeamResourceSubscriptionStore:
                 """
                 UPDATE team_resource_private_subscriptions
                 SET team_name = ?, updated_at = ?
-                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
-                  AND actor_scope_id = ? AND team_id = ?
+                WHERE actor_platform = ? AND actor_account_id = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
+                  AND team_id = ?
                 """,
                 (
                     team_name.strip(),
@@ -401,8 +456,9 @@ class TeamResourceSubscriptionStore:
             cursor = conn.execute(
                 """
                 DELETE FROM team_resource_private_subscriptions
-                WHERE actor_platform = ? AND actor_kind = ? AND actor_id = ?
-                  AND actor_scope_id = ? AND team_id = ?
+                WHERE actor_platform = ? AND actor_account_id = ?
+                  AND actor_kind = ? AND actor_id = ? AND actor_scope_id = ?
+                  AND team_id = ?
                 """,
                 (*_actor_values(actor), team_id),
             )
@@ -413,10 +469,11 @@ class TeamResourceSubscriptionStore:
 
 
 _GROUP_SUBSCRIPTION_SELECT = """
-    SELECT conversation_platform, conversation_kind, conversation_id,
-           team_id, team_name, threshold,
-           created_by_platform, created_by_kind, created_by_id,
-           created_by_scope_id, updated_by_platform, updated_by_kind,
+    SELECT conversation_platform, conversation_account_id, conversation_kind,
+           conversation_id, team_id, team_name, threshold,
+           created_by_platform, created_by_account_id, created_by_kind,
+           created_by_id, created_by_scope_id,
+           updated_by_platform, updated_by_account_id, updated_by_kind,
            updated_by_id, updated_by_scope_id, created_at, updated_at
     FROM team_resource_subscriptions
 """
@@ -426,19 +483,19 @@ def _subscription_from_row(
     connection: Any,
     row: tuple[Any, ...],
 ) -> TeamResourceSubscription:
-    conversation = ConversationIdentityColumns(*row[:3]).to_conversation()
-    created_by = ActorIdentityColumns(*row[6:10]).to_actor()
-    updated_by = ActorIdentityColumns(*row[10:14]).to_actor()
+    conversation = ConversationIdentityColumns(*row[:4]).to_conversation()
+    created_by = ActorIdentityColumns(*row[7:12]).to_actor()
+    updated_by = ActorIdentityColumns(*row[12:17]).to_actor()
     return TeamResourceSubscription(
         conversation=conversation,
-        team_id=int(row[3]),
-        team_name=str(row[4] or ""),
-        threshold=int(row[5]),
-        mention_actors=_mention_actors(connection, conversation, int(row[3])),
+        team_id=int(row[4]),
+        team_name=str(row[5] or ""),
+        threshold=int(row[6]),
+        mention_actors=_mention_actors(connection, conversation, int(row[4])),
         created_by=created_by,
         updated_by=updated_by,
-        created_at=str(row[14]),
-        updated_at=str(row[15]),
+        created_at=str(row[17]),
+        updated_at=str(row[18]),
     )
 
 
@@ -446,26 +503,26 @@ def _private_subscription_from_row(
     row: tuple[Any, ...],
 ) -> TeamResourcePrivateSubscription:
     return TeamResourcePrivateSubscription(
-        actor=ActorIdentityColumns(*row[:4]).to_actor(),
-        team_id=int(row[4]),
-        team_name=str(row[5] or ""),
-        threshold=int(row[6]),
-        created_at=str(row[7]),
-        updated_at=str(row[8]),
+        actor=ActorIdentityColumns(*row[:5]).to_actor(),
+        team_id=int(row[5]),
+        team_name=str(row[6] or ""),
+        threshold=int(row[7]),
+        created_at=str(row[8]),
+        updated_at=str(row[9]),
     )
 
 
 def _prompt_from_row(row: tuple[Any, ...]) -> TeamResourceSubscriptionPrompt:
-    handled_by = _optional_actor(row[10:14])
+    handled_by = _optional_actor(row[12:17])
     return TeamResourceSubscriptionPrompt(
-        conversation=ConversationIdentityColumns(*row[:3]).to_conversation(),
-        team_id=int(row[3]),
-        team_name=str(row[4] or ""),
-        prompted_by=ActorIdentityColumns(*row[5:9]).to_actor(),
-        prompted_at=str(row[9]),
+        conversation=ConversationIdentityColumns(*row[:4]).to_conversation(),
+        team_id=int(row[4]),
+        team_name=str(row[5] or ""),
+        prompted_by=ActorIdentityColumns(*row[6:11]).to_actor(),
+        prompted_at=str(row[11]),
         handled_by=handled_by,
-        handled_at=None if row[14] is None else str(row[14]),
-        accepted=None if row[15] is None else bool(row[15]),
+        handled_at=None if row[17] is None else str(row[17]),
+        accepted=None if row[18] is None else bool(row[18]),
     )
 
 
@@ -488,9 +545,11 @@ def _insert_mentions(
         connection.executemany(
             """
             INSERT INTO team_resource_subscription_mentions (
-                conversation_platform, conversation_kind, conversation_id, team_id,
-                actor_platform, actor_kind, actor_id, actor_scope_id, position
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, team_id,
+                actor_platform, actor_account_id, actor_kind, actor_id,
+                actor_scope_id, position
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )
@@ -503,10 +562,11 @@ def _mention_actors(
 ) -> tuple[ActorRef, ...]:
     rows = connection.execute(
         """
-        SELECT actor_platform, actor_kind, actor_id, actor_scope_id
+        SELECT actor_platform, actor_account_id, actor_kind, actor_id,
+               actor_scope_id
         FROM team_resource_subscription_mentions
-        WHERE conversation_platform = ? AND conversation_kind = ?
-          AND conversation_id = ? AND team_id = ?
+        WHERE conversation_platform = ? AND conversation_account_id = ?
+          AND conversation_kind = ? AND conversation_id = ? AND team_id = ?
         ORDER BY position
         """,
         (*_conversation_values(conversation), team_id),
@@ -514,11 +574,11 @@ def _mention_actors(
     return tuple(ActorIdentityColumns(*row).to_actor() for row in rows)
 
 
-def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str]:
+def _conversation_values(conversation: ConversationRef) -> tuple[str, str, str, str]:
     return ConversationIdentityColumns.from_conversation(conversation).values()
 
 
-def _actor_values(actor: ActorRef) -> tuple[str, str, str, str]:
+def _actor_values(actor: ActorRef) -> tuple[str, str, str, str, str]:
     return ActorIdentityColumns.from_actor(actor).values()
 
 

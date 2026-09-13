@@ -9,11 +9,17 @@ from pathlib import Path
 import pytest
 
 import ironsbot.platform_state_migration as migration
+from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
+from ironsbot.integrations.storage.sqlite import SqliteMigrationError
 from ironsbot.platform_state_migration import (
     PlatformStateMigrationError,
     migrate_platform_state_identities,
 )
 from ironsbot.state_migration_cli import main as state_migration_main
+
+_OLD_PLAYER_ID = 90001
+_NEW_PLAYER_ID = 90002
 
 
 class SimulatedInterruptionError(RuntimeError):
@@ -203,6 +209,134 @@ def _seed_legacy_platform_state(root: Path) -> None:
     )
 
 
+def _seed_accountless_qq_official_state(root: Path) -> None:
+    marker = """
+        CREATE TABLE ironsbot_platform_identity_migration (
+            version INTEGER NOT NULL, migrated_at TEXT NOT NULL
+        )
+    """
+    metadata = """
+        CREATE TABLE ironsbot_schema_migrations (
+            namespace TEXT PRIMARY KEY, version INTEGER NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """
+    _execute(
+        root / "state/qq_state.sqlite",
+        (
+            marker,
+            metadata,
+            "INSERT INTO ironsbot_platform_identity_migration VALUES (1, 'old')",
+            "INSERT INTO ironsbot_schema_migrations VALUES "
+            "('player_bindings', 1, 'old')",
+            "INSERT INTO ironsbot_schema_migrations VALUES "
+            "('team_resources', 1, 'old')",
+            """
+            CREATE TABLE player_bindings (
+                actor_platform TEXT NOT NULL, actor_kind TEXT NOT NULL,
+                actor_id TEXT NOT NULL, actor_scope_id TEXT NOT NULL DEFAULT '',
+                player_id INTEGER, player_nick TEXT,
+                choice_completed INTEGER NOT NULL DEFAULT 0,
+                last_changed_at TEXT, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id)
+            )
+            """,
+            """
+            INSERT INTO player_bindings VALUES (
+                'qq_official', 'user', 'same-openid', '', 90001, '旧机器人',
+                1, NULL, 'old', 'old'
+            )
+            """,
+            """
+            CREATE TABLE team_resource_subscriptions (
+                conversation_platform TEXT NOT NULL,
+                conversation_kind TEXT NOT NULL, conversation_id TEXT NOT NULL,
+                team_id INTEGER NOT NULL, team_name TEXT NOT NULL,
+                threshold INTEGER NOT NULL, created_by_platform TEXT NOT NULL,
+                created_by_kind TEXT NOT NULL, created_by_id TEXT NOT NULL,
+                created_by_scope_id TEXT NOT NULL, updated_by_platform TEXT NOT NULL,
+                updated_by_kind TEXT NOT NULL, updated_by_id TEXT NOT NULL,
+                updated_by_scope_id TEXT NOT NULL, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            INSERT INTO team_resource_subscriptions VALUES (
+                'qq_official', 'group', 'same-group-openid', 3001, '示例战队',
+                1000, 'qq_official', 'user', 'same-openid', '',
+                'qq_official', 'user', 'same-openid', '', 'old', 'old'
+            )
+            """,
+            """
+            CREATE TABLE team_resource_subscription_mentions (
+                conversation_platform TEXT NOT NULL,
+                conversation_kind TEXT NOT NULL, conversation_id TEXT NOT NULL,
+                team_id INTEGER NOT NULL, actor_platform TEXT NOT NULL,
+                actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+                actor_scope_id TEXT NOT NULL, position INTEGER NOT NULL
+            )
+            """,
+            """
+            INSERT INTO team_resource_subscription_mentions VALUES (
+                'qq_official', 'group', 'same-group-openid', 3001,
+                'qq_official', 'user', 'same-openid', '', 0
+            )
+            """,
+        ),
+    )
+    _execute(
+        root / "state/runtime_state.sqlite",
+        (
+            marker,
+            metadata,
+            "INSERT INTO ironsbot_platform_identity_migration VALUES (1, 'old')",
+            "INSERT INTO ironsbot_schema_migrations VALUES ('team_audit', 1, 'old')",
+            """
+            CREATE TABLE pending_team_audit_reminders (
+                conversation_platform TEXT NOT NULL,
+                conversation_kind TEXT NOT NULL, conversation_id TEXT NOT NULL,
+                actor_platform TEXT NOT NULL, actor_kind TEXT NOT NULL,
+                actor_id TEXT NOT NULL, actor_scope_id TEXT NOT NULL,
+                joined_at TEXT NOT NULL, remind_at TEXT NOT NULL,
+                step INTEGER NOT NULL
+            )
+            """,
+            """
+            INSERT INTO pending_team_audit_reminders VALUES (
+                'qq_official', 'group', 'same-group-openid', 'qq_official',
+                'member', 'same-openid', 'same-group-openid', 'old', 'old', 1
+            )
+            """,
+        ),
+    )
+    _execute(
+        root / "ai_chat/memory.sqlite",
+        (
+            marker,
+            metadata,
+            "INSERT INTO ironsbot_platform_identity_migration VALUES (1, 'old')",
+            "INSERT INTO ironsbot_schema_migrations VALUES ('ai_memory', 1, 'old')",
+            """
+            CREATE TABLE messages (
+                id INTEGER PRIMARY KEY, actor_platform TEXT NOT NULL,
+                actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+                actor_scope_id TEXT NOT NULL, session_key TEXT NOT NULL,
+                conversation_platform TEXT NOT NULL,
+                conversation_kind TEXT NOT NULL, conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL, content TEXT NOT NULL, created_at REAL NOT NULL
+            )
+            """,
+            """
+            INSERT INTO messages VALUES (
+                1, 'qq_official', 'user', 'same-openid', '', 'session',
+                'qq_official', 'private', 'same-openid', 'user', 'hello', 1.0
+            )
+            """,
+        ),
+    )
+
+
 def test_platform_state_migration_dry_run_is_read_only(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     _seed_legacy_platform_state(data_root)
@@ -263,10 +397,11 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
     with sqlite3.connect(data_root / "state/qq_state.sqlite") as connection:
         assert connection.execute(
             """
-            SELECT actor_platform, actor_kind, actor_id, actor_scope_id, player_id
+            SELECT actor_platform, actor_account_id, actor_kind, actor_id,
+                   actor_scope_id, player_id
             FROM player_bindings
             """
-        ).fetchall() == [("onebot", "user", "1001", "", 90001)]
+        ).fetchall() == [("onebot", "", "user", "1001", "", 90001)]
         assert connection.execute(
             """
             SELECT conversation_kind, conversation_id
@@ -322,6 +457,89 @@ def test_platform_state_migration_rejects_invalid_target_type(tmp_path: Path) ->
         migrate_platform_state_identities(data_root=data_root)
 
     assert not list(data_root.glob("platform-identity-migration-backups/*"))
+
+
+def test_accountless_qq_official_state_requires_owning_app_id(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_accountless_qq_official_state(data_root)
+
+    with pytest.raises(
+        PlatformStateMigrationError,
+        match="requires its owning AppID",
+    ):
+        migrate_platform_state_identities(data_root=data_root)
+
+
+def test_runtime_refuses_accountless_platform_identity_schema(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    _seed_accountless_qq_official_state(data_root)
+    store = SqlitePlayerBindingStore(data_root / "state/qq_state.sqlite")
+    actor = ActorRef(Platform.QQ_OFFICIAL, "same-openid", account_id="app-a")
+
+    with pytest.raises(SqliteMigrationError, match="requires offline"):
+        store.get(actor)
+
+
+def test_accountless_qq_official_state_is_scoped_and_allows_same_openid(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_accountless_qq_official_state(data_root)
+
+    result = migrate_platform_state_identities(
+        data_root=data_root,
+        qq_official_account_id="app-a",
+        apply=True,
+    )
+
+    assert result.applied
+    with sqlite3.connect(data_root / "state/qq_state.sqlite") as connection:
+        assert connection.execute(
+            """
+            SELECT conversation_account_id, created_by_account_id,
+                   updated_by_account_id
+            FROM team_resource_subscriptions
+            """
+        ).fetchone() == ("app-a", "app-a", "app-a")
+        assert connection.execute(
+            """
+            SELECT conversation_account_id, actor_account_id
+            FROM team_resource_subscription_mentions
+            """
+        ).fetchone() == ("app-a", "app-a")
+    with sqlite3.connect(data_root / "state/runtime_state.sqlite") as connection:
+        assert connection.execute(
+            """
+            SELECT conversation_account_id, actor_account_id
+            FROM pending_team_audit_reminders
+            """
+        ).fetchone() == ("app-a", "app-a")
+    with sqlite3.connect(data_root / "ai_chat/memory.sqlite") as connection:
+        assert connection.execute(
+            """
+            SELECT actor_account_id, conversation_account_id FROM messages
+            """
+        ).fetchone() == ("app-a", "app-a")
+    store = SqlitePlayerBindingStore(data_root / "state/qq_state.sqlite")
+    actor_a = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "same-openid",
+        account_id="app-a",
+    )
+    actor_b = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "same-openid",
+        account_id="app-b",
+    )
+    assert store.get(actor_a).player_id == _OLD_PLAYER_ID
+    assert store.get(actor_b).player_id is None
+
+    store.bind(actor=actor_b, player_id=_NEW_PLAYER_ID, player_nick="新机器人")
+
+    assert store.get(actor_a).player_id == _OLD_PLAYER_ID
+    assert store.get(actor_b).player_id == _NEW_PLAYER_ID
 
 
 def test_platform_state_migration_preserves_sources_when_build_fails(
@@ -409,6 +627,27 @@ def test_state_migration_cli_exposes_platform_identity_mode(
             "--data-root",
             str(data_root),
             "--platform-identities",
+        )
+    )
+
+    assert exit_code == 0
+    assert "Dry run only; no files were changed." in capsys.readouterr().out
+
+
+def test_state_migration_cli_accepts_qq_official_account_id(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_accountless_qq_official_state(data_root)
+
+    exit_code = state_migration_main(
+        (
+            "--data-root",
+            str(data_root),
+            "--platform-identities",
+            "--qq-official-account-id",
+            "app-a",
         )
     )
 

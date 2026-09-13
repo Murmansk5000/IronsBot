@@ -16,6 +16,11 @@ from ironsbot.integrations.storage.platform_identity import (
     ActorIdentityColumns,
     ConversationIdentityColumns,
 )
+from ironsbot.integrations.storage.platform_state_copy import (
+    PlatformStateDataError,
+    contains_platform_identities,
+    copy_platform_identity_tables,
+)
 from ironsbot.integrations.storage.sqlite import (
     open_sqlite_connection,
     quote_sqlite_identifier,
@@ -36,6 +41,7 @@ QQ_IDENTITY_TABLES = frozenset(
         "push_time_preferences",
         "push_unsubscriptions",
         "team_resource_private_subscriptions",
+        "team_resource_subscription_mentions",
         "team_resource_subscription_prompts",
         "team_resource_subscriptions",
     }
@@ -45,31 +51,17 @@ AI_IDENTITY_TABLES = frozenset({"messages"})
 
 _ACTOR_COLUMNS = """
     actor_platform TEXT NOT NULL,
+    actor_account_id TEXT NOT NULL DEFAULT '',
     actor_kind TEXT NOT NULL,
     actor_id TEXT NOT NULL,
     actor_scope_id TEXT NOT NULL DEFAULT ''
 """
 _CONVERSATION_COLUMNS = """
     conversation_platform TEXT NOT NULL,
+    conversation_account_id TEXT NOT NULL DEFAULT '',
     conversation_kind TEXT NOT NULL,
     conversation_id TEXT NOT NULL
 """
-
-
-class PlatformStateDataError(ValueError):
-    """Raised for legacy rows that cannot become a platform identity."""
-
-    @classmethod
-    def invalid_target_type(
-        cls,
-        location: str,
-        value: object,
-    ) -> PlatformStateDataError:
-        return cls(f"invalid target type in {location}: {value!r}")
-
-    @classmethod
-    def empty_identity(cls, location: str) -> PlatformStateDataError:
-        return cls(f"empty identity in {location}")
 
 
 def create_qq_state_schema(connection: sqlite3.Connection) -> None:
@@ -85,7 +77,10 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             last_changed_at TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id)
+            PRIMARY KEY (
+                actor_platform, actor_account_id, actor_kind, actor_id,
+                actor_scope_id
+            )
         )
         """,
         f"""
@@ -98,8 +93,8 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             usage_count INTEGER NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (
-                local_date, actor_platform, actor_kind, actor_id,
-                actor_scope_id, scope, player_id, action_key
+                local_date, actor_platform, actor_account_id, actor_kind,
+                actor_id, actor_scope_id, scope, player_id, action_key
             )
         )
         """,
@@ -109,7 +104,10 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             skin_ids_json TEXT NOT NULL,
             initialized_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id)
+            PRIMARY KEY (
+                actor_platform, actor_account_id, actor_kind, actor_id,
+                actor_scope_id
+            )
         )
         """,
         f"""
@@ -119,8 +117,8 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             feature TEXT NOT NULL,
             created_at TEXT NOT NULL,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id,
-                subscription_key
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, subscription_key
             )
         )
         """,
@@ -132,8 +130,9 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             value TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id,
-                subscription_key, preference_type
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, subscription_key,
+                preference_type
             )
         )
         """,
@@ -144,8 +143,8 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             delivered_on TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id,
-                hint_key
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, hint_key
             )
         )
         """,
@@ -156,7 +155,8 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             mode TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id, uid
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, uid
             )
         )
         """,
@@ -168,8 +168,8 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             muted INTEGER NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id,
-                uid, category
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, uid, category
             )
         )
         """,
@@ -179,10 +179,14 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             display_limit INTEGER NOT NULL,
             updated_at TEXT NOT NULL,
             updated_by_platform TEXT NOT NULL,
+            updated_by_account_id TEXT NOT NULL DEFAULT '',
             updated_by_kind TEXT NOT NULL,
             updated_by_id TEXT NOT NULL,
             updated_by_scope_id TEXT NOT NULL DEFAULT '',
-            PRIMARY KEY (conversation_platform, conversation_kind, conversation_id)
+            PRIMARY KEY (
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id
+            )
         )
         """,
         f"""
@@ -192,17 +196,20 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             team_name TEXT NOT NULL DEFAULT '',
             threshold INTEGER NOT NULL,
             created_by_platform TEXT NOT NULL,
+            created_by_account_id TEXT NOT NULL DEFAULT '',
             created_by_kind TEXT NOT NULL,
             created_by_id TEXT NOT NULL,
             created_by_scope_id TEXT NOT NULL DEFAULT '',
             updated_by_platform TEXT NOT NULL,
+            updated_by_account_id TEXT NOT NULL DEFAULT '',
             updated_by_kind TEXT NOT NULL,
             updated_by_id TEXT NOT NULL,
             updated_by_scope_id TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id, team_id
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, team_id
             )
         )
         """,
@@ -213,8 +220,10 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             {_ACTOR_COLUMNS},
             position INTEGER NOT NULL,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id, team_id,
-                actor_platform, actor_kind, actor_id, actor_scope_id
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, team_id,
+                actor_platform, actor_account_id, actor_kind, actor_id,
+                actor_scope_id
             )
         )
         """,
@@ -226,7 +235,10 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             threshold INTEGER NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            PRIMARY KEY (actor_platform, actor_kind, actor_id, actor_scope_id, team_id)
+            PRIMARY KEY (
+                actor_platform, actor_account_id, actor_kind, actor_id,
+                actor_scope_id, team_id
+            )
         )
         """,
         f"""
@@ -235,17 +247,22 @@ def create_qq_state_schema(connection: sqlite3.Connection) -> None:
             team_id INTEGER NOT NULL,
             team_name TEXT NOT NULL DEFAULT '',
             prompted_by_platform TEXT NOT NULL,
+            prompted_by_account_id TEXT NOT NULL DEFAULT '',
             prompted_by_kind TEXT NOT NULL,
             prompted_by_id TEXT NOT NULL,
             prompted_by_scope_id TEXT NOT NULL DEFAULT '',
             prompted_at TEXT NOT NULL,
             handled_by_platform TEXT,
+            handled_by_account_id TEXT,
             handled_by_kind TEXT,
             handled_by_id TEXT,
             handled_by_scope_id TEXT,
             handled_at TEXT,
             accepted INTEGER,
-            PRIMARY KEY (conversation_platform, conversation_kind, conversation_id)
+            PRIMARY KEY (
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id
+            )
         )
         """,
     )
@@ -263,8 +280,10 @@ def create_runtime_state_schema(connection: sqlite3.Connection) -> None:
             remind_at TEXT NOT NULL,
             step INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (
-                conversation_platform, conversation_kind, conversation_id,
-                actor_platform, actor_kind, actor_id, actor_scope_id
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id,
+                actor_platform, actor_account_id, actor_kind, actor_id,
+                actor_scope_id
             )
         )
         """
@@ -289,16 +308,30 @@ def create_ai_memory_schema(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX idx_ai_memory_actor_time
         ON messages (
-            actor_platform, actor_kind, actor_id, actor_scope_id, created_at DESC
+            actor_platform, actor_account_id, actor_kind, actor_id,
+            actor_scope_id, created_at DESC
         )
         """
     )
 
 
-def copy_qq_state(source: Path, target: sqlite3.Connection) -> None:
+def copy_qq_state(
+    source: Path,
+    target: sqlite3.Connection,
+    *,
+    qq_official_account_id: str | None = None,
+) -> None:
     if not source.is_file():
         return
     with closing(_read(source)) as connection:
+        if contains_platform_identities(connection, QQ_IDENTITY_TABLES):
+            copy_platform_identity_tables(
+                connection,
+                target,
+                QQ_IDENTITY_TABLES,
+                qq_official_account_id=qq_official_account_id,
+            )
+            return
         _copy_player_bindings(connection, target)
         _copy_player_query_usage(connection, target)
         _copy_lucky_skin_preferences(connection, target)
@@ -307,10 +340,23 @@ def copy_qq_state(source: Path, target: sqlite3.Connection) -> None:
         _copy_team_resources(connection, target)
 
 
-def copy_runtime_state(source: Path, target: sqlite3.Connection) -> None:
+def copy_runtime_state(
+    source: Path,
+    target: sqlite3.Connection,
+    *,
+    qq_official_account_id: str | None = None,
+) -> None:
     if not source.is_file():
         return
     with closing(_read(source)) as connection:
+        if contains_platform_identities(connection, RUNTIME_IDENTITY_TABLES):
+            copy_platform_identity_tables(
+                connection,
+                target,
+                RUNTIME_IDENTITY_TABLES,
+                qq_official_account_id=qq_official_account_id,
+            )
+            return
         for row in _rows(connection, "pending_team_audit_reminders"):
             conversation = _onebot_group(
                 row["group_id"],
@@ -324,7 +370,7 @@ def copy_runtime_state(source: Path, target: sqlite3.Connection) -> None:
             )
             target.execute(
                 "INSERT INTO pending_team_audit_reminders VALUES "
-                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     *ConversationIdentityColumns.from_conversation(
                         conversation
@@ -337,10 +383,23 @@ def copy_runtime_state(source: Path, target: sqlite3.Connection) -> None:
             )
 
 
-def copy_ai_memory(source: Path, target: sqlite3.Connection) -> None:
+def copy_ai_memory(
+    source: Path,
+    target: sqlite3.Connection,
+    *,
+    qq_official_account_id: str | None = None,
+) -> None:
     if not source.is_file():
         return
     with closing(_read(source)) as connection:
+        if contains_platform_identities(connection, AI_IDENTITY_TABLES):
+            copy_platform_identity_tables(
+                connection,
+                target,
+                AI_IDENTITY_TABLES,
+                qq_official_account_id=qq_official_account_id,
+            )
+            return
         for row in _rows(connection, "messages"):
             actor = _onebot_actor(row["user_id"], "messages")
             conversation = _legacy_conversation(
@@ -350,7 +409,9 @@ def copy_ai_memory(source: Path, target: sqlite3.Connection) -> None:
             )
             target.execute(
                 """
-                INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO messages VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 (
                     row["id"],
@@ -427,7 +488,8 @@ def _copy_player_bindings(
     for row in _rows(source, "player_bindings"):
         actor = _onebot_actor(row["qq_user_id"], "player_bindings")
         target.execute(
-            "INSERT INTO player_bindings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO player_bindings VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ActorIdentityColumns.from_actor(actor).values(),
                 row["player_id"],
@@ -447,7 +509,8 @@ def _copy_player_query_usage(
     for row in _rows(source, "player_query_usage"):
         actor = _onebot_actor(row["qq_user_id"], "player_query_usage")
         target.execute(
-            "INSERT INTO player_query_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO player_query_usage VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 row["local_date"],
                 *ActorIdentityColumns.from_actor(actor).values(),
@@ -467,7 +530,8 @@ def _copy_lucky_skin_preferences(
     for row in _rows(source, "lucky_skin_watch_preferences"):
         actor = _onebot_actor(row["qq_user_id"], "lucky_skin_watch_preferences")
         target.execute(
-            "INSERT INTO lucky_skin_watch_preferences VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO lucky_skin_watch_preferences VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ActorIdentityColumns.from_actor(actor).values(),
                 row["skin_ids_json"],
@@ -493,7 +557,7 @@ def _copy_conversation_preferences(
         "bili_push_preferences": ("uid", "mode", "updated_at"),
     }
     for table, columns in table_columns.items():
-        placeholders = ", ".join("?" for _ in range(3 + len(columns)))
+        placeholders = ", ".join("?" for _ in range(4 + len(columns)))
         for row in _rows(source, table):
             conversation = _legacy_conversation(
                 row["target_type"],
@@ -519,7 +583,8 @@ def _copy_rank_display_limits(
         conversation = _onebot_group(row["group_id"], "group_rank_display_limits")
         actor = _onebot_actor(row["updated_by"], "group_rank_display_limits")
         target.execute(
-            "INSERT INTO group_rank_display_limits VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO group_rank_display_limits VALUES "
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ConversationIdentityColumns.from_conversation(conversation).values(),
                 row["display_limit"],
@@ -539,7 +604,7 @@ def _copy_team_resources(
         updated_by = _onebot_actor(row["updated_by"], "team_resource_subscriptions")
         target.execute(
             "INSERT INTO team_resource_subscriptions VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ConversationIdentityColumns.from_conversation(conversation).values(),
                 row["team_id"],
@@ -556,7 +621,7 @@ def _copy_team_resources(
         actor = _onebot_actor(row["user_id"], "team_resource_private_subscriptions")
         target.execute(
             "INSERT INTO team_resource_private_subscriptions VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ActorIdentityColumns.from_actor(actor).values(),
                 row["team_id"],
@@ -578,7 +643,7 @@ def _copy_team_mentions(
         actor = _onebot_actor(user_id, "team_resource_subscriptions.at_user_ids")
         target.execute(
             "INSERT INTO team_resource_subscription_mentions VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ConversationIdentityColumns.from_conversation(conversation).values(),
                 row["team_id"],
@@ -604,7 +669,7 @@ def _copy_team_prompts(source: sqlite3.Connection, target: sqlite3.Connection) -
         )
         target.execute(
             "INSERT INTO team_resource_subscription_prompts VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 *ConversationIdentityColumns.from_conversation(conversation).values(),
                 row["team_id"],
@@ -620,7 +685,7 @@ def _copy_team_prompts(source: sqlite3.Connection, target: sqlite3.Connection) -
 
 def _optional_onebot_actor(value: object, table: str) -> tuple[str | None, ...]:
     if value is None:
-        return (None, None, None, None)
+        return (None, None, None, None, None)
     return ActorIdentityColumns.from_actor(_onebot_actor(value, table)).values()
 
 

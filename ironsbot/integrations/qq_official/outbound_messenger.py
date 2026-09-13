@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
@@ -73,24 +73,33 @@ def _connected_bot(app_id: str) -> QQOfficialBot | None:
     return bot if isinstance(bot, QQOfficialBot) else None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class QQOfficialOutboundMessenger:
-    app_id: str
-    proactive_enabled: bool = False
+    account_proactive: Mapping[str, bool]
     bot_provider: BotProvider = _connected_bot
-    reply_sequences: QQOfficialReplySequenceAllocator = field(
-        default_factory=QQOfficialReplySequenceAllocator
+    reply_sequences: dict[str, QQOfficialReplySequenceAllocator] = field(
+        default_factory=dict
     )
+
+    def __post_init__(self) -> None:
+        self.account_proactive = dict(self.account_proactive)
+        self.reply_sequences = {
+            account_id: self.reply_sequences.get(
+                account_id,
+                QQOfficialReplySequenceAllocator(),
+            )
+            for account_id in self.account_proactive
+        }
 
     def capabilities_for(
         self,
         conversation: ConversationRef,
     ) -> DeliveryCapabilities:
-        if not _supports_conversation(conversation):
+        if not _supports_conversation(conversation) or not self._owns(conversation):
             return _UNSUPPORTED
         return DeliveryCapabilities(
             can_reply_to_event=True,
-            can_send_proactively=self.proactive_enabled,
+            can_send_proactively=self._proactive_enabled(conversation),
             can_mention_members=True,
             supports_group_context=True,
             supports_private_context=True,
@@ -102,6 +111,12 @@ class QQOfficialOutboundMessenger:
         conversation: ConversationRef,
         message: OutboundMessage,
     ) -> SendResult:
+        if not self._owns(conversation):
+            return _failure(
+                "account_mismatch",
+                "QQ Official target belongs to another bot account",
+                DeliveryFailureKind.PERMANENT,
+            )
         if not self.capabilities_for(conversation).can_send_proactively:
             return _failure(
                 "proactive_disabled",
@@ -115,6 +130,12 @@ class QQOfficialOutboundMessenger:
         context: ReplyContext,
         message: OutboundMessage,
     ) -> SendResult:
+        if not self._owns(context.conversation):
+            return _failure(
+                "account_mismatch",
+                "QQ Official reply belongs to another bot account",
+                DeliveryFailureKind.PERMANENT,
+            )
         if not self.capabilities_for(context.conversation).can_reply_to_event:
             return _failure(
                 "unsupported_conversation",
@@ -125,6 +146,19 @@ class QQOfficialOutboundMessenger:
             context.conversation,
             message,
             message_id=context.message_id,
+        )
+
+    def _owns(self, conversation: ConversationRef) -> bool:
+        return (
+            conversation.account_id is not None
+            and conversation.account_id in self.account_proactive
+        )
+
+    def _proactive_enabled(self, conversation: ConversationRef) -> bool:
+        account_id = conversation.account_id
+        return account_id is not None and self.account_proactive.get(
+            account_id,
+            False,
         )
 
     async def _deliver(
@@ -145,7 +179,9 @@ class QQOfficialOutboundMessenger:
                 str(error),
                 DeliveryFailureKind.PERMANENT,
             )
-        bot = self.bot_provider(self.app_id)
+        account_id = conversation.account_id
+        assert account_id is not None
+        bot = self.bot_provider(account_id)
         if bot is None:
             return _failure(
                 "bot_unavailable",
@@ -154,9 +190,9 @@ class QQOfficialOutboundMessenger:
             )
         message_sequence: int | None = None
         if message_id is not None:
-            allocation = self.reply_sequences.allocate(message_id)
+            allocation = self.reply_sequences[account_id].allocate(message_id)
             if allocation.sequence is None:
-                if not self.proactive_enabled:
+                if not self._proactive_enabled(conversation):
                     return _failure(
                         f"passive_reply_{allocation.reason}",
                         "QQ Official passive reply window or limit was exhausted",

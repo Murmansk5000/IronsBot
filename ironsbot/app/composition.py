@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     driver.register_adapter(OneBotV11Adapter)
-    if settings.bot.qq_official.enabled:
+    if settings.bot.qq_official.enabled_accounts:
         try:
             from nonebot.adapters.qq import Adapter as QQOfficialAdapter
         except ModuleNotFoundError as error:

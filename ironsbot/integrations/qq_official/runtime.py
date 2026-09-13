@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from nonebot import on_message
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves annotations
+from nonebot.adapters.qq import Bot as QQOfficialBot  # noqa: TC002
 from nonebot.adapters.qq.event import (
     C2CMessageCreateEvent,
     GroupAtMessageCreateEvent,
@@ -38,14 +39,15 @@ def install_qq_official_runtime(
 ) -> None:
     """Register passive group/C2C handlers against nonebot-adapter-qq."""
 
-    async def accepts(event: Event) -> bool:
-        return qq_official_event_is_supported(event, router)
+    async def accepts(bot: QQOfficialBot, event: Event) -> bool:
+        return qq_official_event_is_supported(bot, event, router)
 
     async def handle(
         event: QQMessageEvent,
         matcher: Matcher,
+        bot: QQOfficialBot,
     ) -> None:
-        incoming = qq_official_incoming_message(event)
+        incoming = qq_official_incoming_message(event, account_id=bot.self_id)
         reply = await router.dispatch(
             MessageInputContext(
                 incoming,
@@ -80,7 +82,9 @@ async def deliver_qq_official_reply(
         reply.delivered()
         return
     logger.warning(
-        "QQ Official reply failed: kind=%s id=%s code=%s message=%s trace_id=%s",
+        "QQ Official reply failed: account=%s kind=%s id=%s "
+        "code=%s message=%s trace_id=%s",
+        incoming.conversation.account_id,
         incoming.conversation.kind,
         incoming.conversation.id,
         result.error_code,
@@ -90,6 +94,7 @@ async def deliver_qq_official_reply(
 
 
 def qq_official_event_is_supported(
+    bot: QQOfficialBot,
     event: Event,
     router: PortableCommandRouter,
 ) -> bool:
@@ -97,7 +102,7 @@ def qq_official_event_is_supported(
         return False
     if is_qq_official_reply_event(event):
         return False
-    incoming = qq_official_incoming_message(event)
+    incoming = qq_official_incoming_message(event, account_id=bot.self_id)
     return router.recognizes(
         MessageInputContext(
             incoming,
