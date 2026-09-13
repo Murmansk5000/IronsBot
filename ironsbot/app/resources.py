@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.integrations.onebot.help_hint import OneBotHelpHintPort
+    from ironsbot.integrations.qq_official.runtime import QQOfficialRuntime
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
@@ -53,6 +54,7 @@ class ApplicationResources:
     server_status: ServerStatusService
     subscriptions: PushUnsubscribeStore
     outbound_messenger: PlatformOutboundMessenger
+    qq_official: QQOfficialRuntime | None
     bilibili: BilibiliService
     bilibili_login: BilibiliLoginService
     bilibili_monitor: BilibiliMonitorService

@@ -18,34 +18,36 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
 
 if TYPE_CHECKING:
-    from nonebot.adapters.qq import Message
+    from ironsbot.integrations.qq_official.message_rendering import QQOfficialPayload
 
 
 @dataclass
 class _Bot:
     response_id: str | None = "message-1"
-    calls: list[tuple[str, str, Message, str | None, int | None]] = field(
+    calls: list[
+        tuple[str, str, tuple[QQOfficialPayload, ...], str | None, int | None]
+    ] = field(
         default_factory=list
     )
 
     async def send_to_c2c(
         self,
         openid: str,
-        message: Message,
+        payloads: tuple[QQOfficialPayload, ...],
         msg_id: str | None = None,
         msg_seq: int | None = None,
     ) -> object:
-        self.calls.append(("private", openid, message, msg_id, msg_seq))
+        self.calls.append(("private", openid, payloads, msg_id, msg_seq))
         return SimpleNamespace(id=self.response_id)
 
     async def send_to_group(
         self,
         group_openid: str,
-        message: Message,
+        payloads: tuple[QQOfficialPayload, ...],
         msg_id: str | None = None,
         msg_seq: int | None = None,
     ) -> object:
-        self.calls.append(("group", group_openid, message, msg_id, msg_seq))
+        self.calls.append(("group", group_openid, payloads, msg_id, msg_seq))
         return SimpleNamespace(id=self.response_id)
 
 
