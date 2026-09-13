@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import private_conversation_for_actor
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
@@ -45,7 +45,7 @@ class LuckySkinWindowOutboundSender:
         ):
             return False
         summary = await self.delivery.send(
-            OutboundMessage((TextPart(message),)),
+            OutboundMessage.from_text(message),
             (conversation,),
             action_name="lucky skin window daily notice",
             interval_seconds=0,

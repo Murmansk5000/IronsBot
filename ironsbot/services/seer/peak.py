@@ -10,6 +10,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from ironsbot.core import time
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
 from ironsbot.integrations.seer_data.peak_repository import (
     PeakPeriodTimes,
     load_peak_master_pool_snapshots,
@@ -287,6 +288,16 @@ class PeakQueryResult:
     text: str = ""
     image: bytes | None = None
     message: str = ""
+
+    def to_outbound(self) -> OutboundMessage:
+        if self.message:
+            return OutboundMessage.from_text(self.message)
+        if self.text:
+            return OutboundMessage.from_text(self.text)
+        if self.image is not None:
+            return OutboundMessage((BinaryImagePart(self.image, "image/png"),))
+        msg = "peak query result must contain message, text, or image"
+        raise ValueError(msg)
 
 
 async def _render_peak_result(image: Awaitable[bytes], title: str) -> PeakQueryResult:
