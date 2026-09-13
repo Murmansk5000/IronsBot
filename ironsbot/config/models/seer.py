@@ -24,7 +24,10 @@ from ironsbot.core.rank_exclusions import (
     RANK_EXCLUSION_SUPPORTED_KEYS,
 )
 from ironsbot.core.seer_ids import PLAYER_ID_MAX, PLAYER_ID_MIN
-from ironsbot.core.time import normalize_daily_time, normalized_daily_times
+from ironsbot.core.time import (
+    normalize_daily_time_with_seconds,
+    split_daily_time_values,
+)
 
 from .seer_lucky import (  # noqa: F401 - compatibility re-export
     LuckySkinWindowAccountConfig,
@@ -360,10 +363,16 @@ class RankPageRefreshConfig(BaseModel):
     @field_validator("times", mode="before")
     @classmethod
     def normalize_times(cls, value: object) -> object:
-        return normalized_daily_times(
-            value,
-            error_message=RANK_PAGE_REFRESH_TIME_ERROR,
-        )
+        return [
+            normalize_daily_time_with_seconds(
+                item,
+                error_message=RANK_PAGE_REFRESH_TIME_ERROR,
+            )
+            for item in split_daily_time_values(
+                value,
+                error_message=RANK_PAGE_REFRESH_TIME_ERROR,
+            )
+        ]
 
     @field_validator("active_start", "active_end", mode="before")
     @classmethod
@@ -373,10 +382,10 @@ class RankPageRefreshConfig(BaseModel):
         text = str(value).strip()
         if not text:
             return ""
-        return normalized_daily_times(
-            [text],
+        return normalize_daily_time_with_seconds(
+            text,
             error_message=RANK_PAGE_REFRESH_ACTIVE_TIME_ERROR,
-        )[0]
+        )
 
     @field_validator("target_limits", mode="before")
     @classmethod
@@ -555,7 +564,10 @@ class LocalRankConfig(BaseModel):
     @field_validator("time")
     @classmethod
     def normalize_time(cls, value: str) -> str:
-        return normalize_daily_time(value, error_message=LOCAL_RANK_REFRESH_TIME_ERROR)
+        return normalize_daily_time_with_seconds(
+            value,
+            error_message=LOCAL_RANK_REFRESH_TIME_ERROR,
+        )
 
 
 class TeamResourceConfig(BaseModel):
@@ -575,7 +587,16 @@ class TeamResourceConfig(BaseModel):
     @field_validator("times", mode="before")
     @classmethod
     def normalize_times(cls, value: object) -> object:
-        return normalized_daily_times(value, error_message=TEAM_RESOURCE_TIME_ERROR)
+        return [
+            normalize_daily_time_with_seconds(
+                item,
+                error_message=TEAM_RESOURCE_TIME_ERROR,
+            )
+            for item in split_daily_time_values(
+                value,
+                error_message=TEAM_RESOURCE_TIME_ERROR,
+            )
+        ]
 
 
 class RenderConfig(BaseModel):
