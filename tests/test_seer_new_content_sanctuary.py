@@ -259,7 +259,6 @@ async def test_detail_rejects_item_from_another_menu_without_starting_scope() ->
 )
 async def test_changed_detail_finishes_menu_without_sending_result(
     error: type[Exception],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     item = NewContentItem("pet", 9, "test", 9, {})
     details = Mock(select=AsyncMock(side_effect=error))
@@ -270,18 +269,38 @@ async def test_changed_detail_finishes_menu_without_sending_result(
         },
         finish=AsyncMock(),
     )
-    messages = Mock()
-    monkeypatch.setattr(
-        "ironsbot.plugins.onebot.seer.query.commands.new_content.MessageFactory",
-        messages,
-    )
-
     await _send_item_detail(item, matcher, group_message_event("1"))
 
     matcher.finish.assert_awaited_once_with(
         "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
     )
-    messages.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_autocard_detail_uses_native_onebot_image_message() -> None:
+    item = NewContentItem("autocard_card", 9, "test", 9, {})
+    detail = AutocardEntry(
+        kind="card",
+        item_id=9,
+        name="test",
+        text="卡牌详情",
+        image_url="https://example.com/card.png",
+    )
+    details = Mock(select=AsyncMock(return_value=detail))
+    matcher = Mock(
+        state={
+            NEW_CONTENT_SERVICES_KEY: _NewContentServices(details, AsyncMock()),
+            NEW_CONTENT_SNAPSHOT_KEY: _menu_snapshot(item),
+        },
+        send=AsyncMock(),
+    )
+
+    await _send_item_detail(item, matcher, group_message_event("1"))
+
+    message = matcher.send.await_args.args[0]
+    assert [segment.type for segment in message] == ["image", "text"]
+    assert message.extract_plain_text() == "卡牌详情"
+    assert matcher.send.await_args.kwargs == {"at_sender": True}
 
 
 def _effect(*, change_kind: Literal["added", "modified"] = "added") -> NewContentItem:

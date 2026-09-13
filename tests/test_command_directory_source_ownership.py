@@ -6,7 +6,7 @@ from ironsbot.core.command_catalog import CommandContext, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.plugins.onebot.bilibili.command_rules import is_update_dynamic_command
-from ironsbot.services.about_commands import about_command_contracts
+from ironsbot.services.about import about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.activity.commands import (
     CURRENT_ACTIVITY_COMMANDS,
