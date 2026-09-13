@@ -433,9 +433,10 @@ def _copy_private_unsubscriptions(target_path: Path, source_path: Path) -> int:
         target.executemany(
             """
             INSERT OR IGNORE INTO push_unsubscriptions (
-                conversation_platform, conversation_kind, conversation_id,
-                subscription_key, feature, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                conversation_platform, conversation_account_id,
+                conversation_kind, conversation_id, subscription_key,
+                feature, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (

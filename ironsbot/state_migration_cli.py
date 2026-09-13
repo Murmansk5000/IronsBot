@@ -57,8 +57,15 @@ def _parser() -> argparse.ArgumentParser:
         "--platform-identities",
         action="store_true",
         help=(
-            "Convert persisted OneBot integer identities to platform-neutral "
-            "actor and conversation columns."
+            "Convert persisted identities to account-scoped actor and "
+            "conversation columns."
+        ),
+    )
+    parser.add_argument(
+        "--qq-official-account-id",
+        help=(
+            "AppID that owns existing QQ Official OpenID rows. Required only "
+            "when upgrading account-less QQ Official state."
         ),
     )
     parser.add_argument(
@@ -77,6 +84,7 @@ def _run_platform_identity_migration(args: argparse.Namespace) -> int:
             runtime_state_path=args.runtime_state,
             ai_memory_path=args.ai_memory,
             backup_root=args.backup_root,
+            qq_official_account_id=args.qq_official_account_id,
             apply=args.apply,
         )
     except (OSError, sqlite3.Error, PlatformStateMigrationError) as error:

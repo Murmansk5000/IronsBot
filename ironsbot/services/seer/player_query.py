@@ -17,10 +17,12 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionAction,
     )
+    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.rank_models import PeakSeasonRankSummary
     from ironsbot.services.seer.sequ_extra import UnityPeakInfo
 
 PLAYER_QUERY_PREFIXES = ("查询玩家信息", "米米号")
+PLAYER_BINDING_PREFIX = "绑定米米号"
 PLAYER_COLLECTION_KEY = "_player_collection_message"
 PLAYER_PEAK_KEY = "_player_peak_message"
 PLAYER_AUTOCARD_KEY = "_player_autocard_message"
@@ -42,6 +44,7 @@ class PlayerQuerySectionPlan:
 @dataclass(frozen=True, slots=True)
 class PlayerDetailReplyRequest:
     key: str
+    kind: PlayerShortcutKind
     label: str
     menu_label: str
 
@@ -49,16 +52,19 @@ class PlayerDetailReplyRequest:
 _PLAYER_DETAIL_REQUESTS = (
     PlayerDetailReplyRequest(
         key=PLAYER_COLLECTION_KEY,
+        kind="collection",
         label="收集与排行",
         menu_label="收集",
     ),
     PlayerDetailReplyRequest(
         key=PLAYER_PEAK_KEY,
+        kind="peak",
         label="巅峰之战",
         menu_label="巅峰",
     ),
     PlayerDetailReplyRequest(
         key=PLAYER_AUTOCARD_KEY,
+        kind="autocard",
         label="群星牌排名",
         menu_label="群星牌",
     ),
@@ -98,6 +104,13 @@ def extract_player_query_arg(text_value: str) -> str | None:
         if folded.startswith(prefix.casefold()):
             return stripped[len(prefix) :].strip()
     return None
+
+
+def extract_player_binding_arg(text_value: str) -> str | None:
+    stripped = text_value.strip()
+    if not stripped.casefold().startswith(PLAYER_BINDING_PREFIX.casefold()):
+        return None
+    return stripped[len(PLAYER_BINDING_PREFIX) :].strip()
 
 
 def calculate_player_peak_scores(
@@ -334,7 +347,7 @@ def plan_player_query_sections(
     )
 
 
-def _available_builtin_detail_requests(
+def available_player_detail_requests(
     *,
     has_collection: bool,
     has_peak: bool,
@@ -358,7 +371,7 @@ def plan_player_detail_prompt(
     supports_conversation: bool,
     extension_actions: Iterable[PlayerDetailExtensionAction] = (),
 ) -> PlayerDetailPromptPlan:
-    builtin_requests = _available_builtin_detail_requests(
+    builtin_requests = available_player_detail_requests(
         has_collection=has_collection,
         has_peak=has_peak,
         has_autocard=has_autocard,

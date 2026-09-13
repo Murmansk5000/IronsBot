@@ -38,6 +38,19 @@ class SqliteMigrationError(RuntimeError):
     def invalid_namespace(cls, namespace: str) -> SqliteMigrationError:
         return cls(f"SQLite migration namespace is invalid: {namespace!r}")
 
+    @classmethod
+    def offline_migration_required(
+        cls,
+        *,
+        table_name: str,
+        missing_columns: set[str],
+    ) -> SqliteMigrationError:
+        columns = ", ".join(sorted(missing_columns))
+        return cls(
+            f"SQLite table {table_name!r} requires offline platform identity "
+            f"migration; missing columns: {columns}"
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class SqliteMigration:
@@ -256,3 +269,24 @@ def ensure_sqlite_columns(
         added.add(column_name)
 
     return added
+
+
+def require_sqlite_columns(
+    table_name: str,
+    columns: set[str],
+) -> MigrationCallback:
+    """Build a non-mutating schema gate for an offline-only migration."""
+
+    quote_sqlite_identifier(table_name)
+    for column in columns:
+        quote_sqlite_identifier(column)
+
+    def validate(connection: sqlite3.Connection) -> None:
+        missing = columns - sqlite_table_columns(connection, table_name)
+        if missing:
+            raise SqliteMigrationError.offline_migration_required(
+                table_name=table_name,
+                missing_columns=missing,
+            )
+
+    return validate

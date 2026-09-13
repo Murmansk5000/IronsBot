@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
@@ -69,14 +69,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ironsbot.services.seer.player_service_models import PlayerBaseSnapshot
-    from ironsbot.services.seer.player_shortcut_contracts import PlayerShortcutKind
     from ironsbot.services.seer.query_result import QueryReply
 
-_SHORTCUT_KINDS = {
-    PLAYER_COLLECTION_KEY: "collection",
-    PLAYER_PEAK_KEY: "peak",
-    PLAYER_AUTOCARD_KEY: "autocard",
-}
+_DETAIL_KEYS = (PLAYER_COLLECTION_KEY, PLAYER_PEAK_KEY, PLAYER_AUTOCARD_KEY)
 _SELECTION_PAIR_LENGTH = 2
 
 
@@ -199,7 +194,6 @@ async def handle_player_detail_reply(  # noqa: PLR0913
     if detail_request is None:
         raise FinishedException
 
-    kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
     menu_context = state.get(PLAYER_DETAIL_MENU_CONTEXT_KEY)
     base_snapshot = (
         menu_context.base_snapshot
@@ -213,7 +207,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
     reply = await execute_player_shortcut(
         service,
         PlayerShortcutCommand(
-            kind=kind,
+            kind=detail_request.kind,
             player_id=player_id,
             base_snapshot=base_snapshot,
         ),
@@ -422,7 +416,7 @@ def _configure_player_detail_state(
 ):
     state[PLAYER_ID_KEY] = menu_context.player_id
     state[PLAYER_DETAIL_MENU_CONTEXT_KEY] = menu_context
-    for detail_key in _SHORTCUT_KINDS:
+    for detail_key in _DETAIL_KEYS:
         state.pop(detail_key, None)
 
     visible_extensions = tuple(
@@ -496,9 +490,8 @@ def _player_detail_semantic_request(
     )
     if detail_request is None:
         return None
-    kind = cast("PlayerShortcutKind", _SHORTCUT_KINDS[detail_request.key])
     return player_shortcut_semantic_request(
-        kind=kind,
+        kind=detail_request.kind,
         player_id=player_id,
         source=SemanticRequestSource.MENU,
     )

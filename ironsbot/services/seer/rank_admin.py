@@ -81,21 +81,31 @@ class RankAdminService:
         actor: ActorRef,
         progress: ProgressReporter,
     ) -> str:
-        spec, item_count, requested_count = await self._requests.run(
-            lambda: self._cache_global_batch(self._headless.get_game(), command),
+        spec = self._rank.get_spec(command.rank_key)
+        requested_count = command.end_rank - command.start_rank + 1
+        if self._rank.spec_needs_sub_key(spec):
+            return build_rank_batch_no_players_message(spec)
+        request_count = min(requested_count, self._policy.batch_limit)
+        await progress(
+            build_rank_batch_start_message(
+                spec,
+                command,
+                request_count=request_count,
+                requested_count=requested_count,
+            )
+        )
+        item_count = await self._requests.run(
+            lambda: self._cache_global_batch(
+                self._headless.get_game(),
+                command,
+                spec=spec,
+                request_count=request_count,
+            ),
             actor=actor,
             label="手动缓存榜单",
         )
         if item_count <= 0:
             return build_rank_batch_no_players_message(spec)
-        await progress(
-            build_rank_batch_start_message(
-                spec,
-                command,
-                item_count=item_count,
-                requested_count=requested_count,
-            )
-        )
         return build_rank_batch_result_message(
             spec,
             command,
@@ -220,12 +230,10 @@ class RankAdminService:
         self,
         game: HeadlessGame,
         command: RankCacheBatchCommand,
-    ) -> tuple[GlobalRankSpec, int, int]:
-        spec = self._rank.get_spec(command.rank_key)
-        requested_count = command.end_rank - command.start_rank + 1
-        if self._rank.spec_needs_sub_key(spec):
-            return spec, 0, requested_count
-        count = min(requested_count, self._policy.batch_limit)
+        *,
+        spec: GlobalRankSpec,
+        request_count: int,
+    ) -> int:
         with game.operations.track(
             "手动缓存榜单",
             f"{spec.title} 第 {command.start_rank}-{command.end_rank}名",
@@ -236,7 +244,7 @@ class RankAdminService:
                 key=spec.key,
                 sub_key=spec.sub_key,
                 start=command.start_rank - 1,
-                count=count,
+                count=request_count,
                 use_cache=False,
             )
-        return spec, len(items), requested_count
+        return len(items)
