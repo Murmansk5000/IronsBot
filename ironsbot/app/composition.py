@@ -39,9 +39,6 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.onebot.bilibili_rendering import (
-    build_dynamic_content_message,
-)
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
@@ -236,7 +233,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         bilibili=bilibili,
         bilibili_login=bilibili_login,
         bilibili_monitor=bilibili_monitor,
-        bilibili_content_renderer=build_dynamic_content_message,
         lucky_skin_window=lucky_skin_window,
         messaging=messaging,
         sendpic=sendpic,

@@ -174,6 +174,19 @@ inventing OpenID-to-QQ mapping, direct-mention support or account-binding
 behavior. Those capabilities remain deferred until a target API can represent
 them.
 
+## Bilibili Portable History Rendering (2026-09-13)
+
+Bilibili history selection and proactive delivery now share the domain-owned
+text and remote-image renderers. The complete history response is an
+`OutboundMessage` whose text precedes its source images; text-only and image-only
+dynamics remain valid. The OneBot integration only encodes that value at the
+transport edge, so `ApplicationResources` no longer carries a OneBot-specific
+render callback.
+
+Bilibili source images intentionally remain `RemoteImagePart` values. They are
+dynamic content-origin URLs rather than versioned Seer release assets, so they do
+not belong in `SeerImageSource` or the SeerAPI asset manifest.
+
 Configured image commands use `format_outbound_message()` for the same reason.
 The formatter follows Python field formatting for text values while retaining
 binary/remote images and mentions as typed message parts. Structured parts

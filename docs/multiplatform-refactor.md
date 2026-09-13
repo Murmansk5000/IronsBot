@@ -448,6 +448,12 @@ TOML 规则编译和运行时目标解析的 `services.bilibili.targets` 分成
 全量 1392 项 pytest、Ruff、编译和 `git diff --check` 均通过。该拆分是领域内职责
 收口，不代表已与 `main` 的大规模目录重排合并；主线后续更新必须逐项按目标契约审计。
 
+**B站历史详情渲染收口（2026-09-13）：** 历史动态选择与主动推送共用
+`services.bilibili.outbound_delivery` 的平台无关文本、图片和完整内容渲染；OneBot
+插件只把 `OutboundMessage` 编码为协议消息。删除 OneBot 专用 B站渲染模块以及穿过
+`ApplicationResources` 的渲染回调。B站源图片属于动态内容 URL，继续使用
+`RemoteImagePart`，不混入版本化的 SeerAPI 素材清单。
+
 **Docker 协议边界拆分（2026-08-13）：** Docker 更新集成不再把 Unix socket daemon
 API、OCI Registry v2、镜像归档和管理员用例编排混在 `docker.client`。`daemon` 只负责
 本机 Docker API，`registry` 只负责镜像引用、认证和远程 manifest/config 查询，`client`

@@ -544,11 +544,11 @@ QQ integers.
 
 Monitored Bilibili dynamics now use the same route: the Bilibili domain renders
 portable text and remote-image parts, while the shared delivery service keeps
-subscription, promotion, queue and failure behaviour. The OneBot-only renderer
-that remains under `integrations.onebot` is for an incoming user's immediate
-query reply, not a monitored push. Numeric batch delivery and its test fixtures
-are deleted; no replacement may be passed through `ApplicationResources`, stored
-in a service, or used by a new sender.
+subscription, promotion, queue and failure behaviour. Interactive history queries
+reuse the same portable content renderer; the OneBot plugin only encodes its
+`OutboundMessage` result. Numeric batch delivery, the OneBot-only Bilibili content
+renderer and their test fixtures are deleted; no replacement may be passed through
+`ApplicationResources`, stored in a service, or used by a new sender.
 
 The eventual composition is:
 

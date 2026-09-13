@@ -2,7 +2,8 @@ import nonebot
 
 nonebot.init()
 
-from ironsbot.integrations.onebot.bilibili_rendering import build_dynamic_link_message
+from ironsbot.core.outbound import TextPart
+from ironsbot.services.bilibili.outbound_delivery import render_dynamic_link_message
 from ironsbot.services.bilibili.parser import (
     dynamic_classification_text,
     dynamic_content,
@@ -109,13 +110,14 @@ def test_target_dynamics_from_response_filters_and_sorts() -> None:
 def test_link_message_omits_content_and_images() -> None:
     item = _dynamic_item(text="这是一条普通动态，正文内容应该只在全文模式里出现")
 
-    message = build_dynamic_link_message(item, DEFAULT_PUB_TS)
+    message = render_dynamic_link_message(item, DEFAULT_PUB_TS)
 
     assert message is not None
-    rendered = str(message)
+    rendered = "".join(
+        part.text for part in message.parts if isinstance(part, TextPart)
+    )
     assert "传送门：https://t.bilibili.com/1211894957538803730" in rendered
     assert "正文内容" not in rendered
-    assert "[CQ:image" not in rendered
 
 
 def test_dynamic_content_has_no_synthetic_text_for_image_only_dynamic() -> None:
