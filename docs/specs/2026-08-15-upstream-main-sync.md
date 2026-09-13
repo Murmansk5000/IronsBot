@@ -63,7 +63,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 新增技能根菜单预览 | 根预览只含新增项；技能排除本周新精灵自带技能，详情保留完整数据 | 无 | completed |
 | 队列推送加固 | 由 `ProactiveMessageDelivery` 限制并发并按通用失败类型重试；平台适配器只分类错误 | 真实平台 smoke | completed：通用策略已完成；真实传输验收延期 |
 | 群星牌觉醒卡合并 | 在 Autocard repository/view model 合并普通/觉醒事实，适配器只发送结果 | 发布数据契约审计 | completed |
-| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；QQ 交互部分最后验收 | 目标平台能力 | planned |
+| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；仅在目标 API 能表达用户绑定与会话身份时接入 | QQ 绑定与身份能力 | deferred：排到 Phase 7 最后，不阻塞非 QQ 重构 |
 | 战队详情增强 | repository 产出类型化事实，service 决定展示段，不复制旧 matcher 格式化 | 无 | partial：直接战队号详情完成；QQ 玩家目标延期 |
 | Docker 交接失败恢复 | 复用 operations 状态机并保留明确失败结果 | 可控 Docker client fixture | completed |
 | 旧生产模块拆分 | 不移植旧目录拆分；V5 已由职责边界和 800 行守卫独立完成 | 无 | completed |
@@ -94,6 +94,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-08-15 | 活动周快照 | activity storage/service/command tests, Ruff, compileall | 18 项通过；首次观察明确提示缺少上周快照。 |
 | 2026-08-15 | 请求者绑定限制 | `PlayerIdResolver` 与既有用户契约审计 | 不迁入；会缩窄已确认的直接 @ 用户解析能力。 |
 | 2026-09-13 | 本地 `main` `55a39fd1` 只读复核 | 最近 30 项提交、差异与 V5 owner 审计 | 未 fetch、pull 或 merge；QQ 身份/投递项按平台能力延期规则留到最后。 |
+| 2026-09-13 | 玩家战队菜单与私聊概览复核 | 本地 `main` `6844980e`、`b14df7a5` 与 V5 player/team owner 对照 | 直接战队号详情已由 V5 service 覆盖；菜单与私聊概览依赖 QQ 用户绑定和会话身份，按用户确认延期到 Phase 7 最后，不复制旧 OneBot matcher。 |
 | 2026-09-13 | Bilibili 抽奖/中奖拆分 | 配置加载、通用分类与订阅回归 | V5 已支持任意配置分类；示例声明独立 `lottery` / `winning`，无生产枚举或兼容迁移。 |
 | 2026-09-13 | 新增技能根菜单预览 | service、文本菜单、原生菜单准备与配置链路回归 | 统一 preview selector；修改项折叠，详情菜单不裁剪。 |
 | 2026-09-13 | Docker 交接失败恢复 | preflight 状态机、入口脚本、Docker gateway 与配置回归 | 默认等待 90 秒后清理失败更新器并启动当前镜像；可配置为严格等待。真实 Docker 交接仍留待 Linux 镜像验收。 |
