@@ -41,6 +41,7 @@ if TYPE_CHECKING:
         AutocardPromptValue,
         AutocardService,
     )
+    from ironsbot.services.seer.autocard_media import AutocardMediaService
 
 AUTOCARD_PROMPT_NAMESPACE = "autocard"
 AUTOCARD_PROMPT_STATE_KEY = "_autocard_prompt_values"
@@ -63,6 +64,7 @@ async def _reply_with_image_fallback(
     matcher: Matcher,
     event: MessageEvent,
     entry: AutocardEntry,
+    media: AutocardMediaService,
     *,
     finish: bool,
 ) -> None:
@@ -71,7 +73,7 @@ async def _reply_with_image_fallback(
         await reply(
             matcher,
             event,
-            render_onebot_outbound_message(entry.to_outbound()),
+            render_onebot_outbound_message(await media.outbound(entry)),
         )
     except ActionFailed as error:
         logger.warning(
@@ -85,12 +87,13 @@ async def _reply_with_image_fallback(
         await reply(
             matcher,
             event,
-            render_onebot_outbound_message(entry.to_outbound(include_images=False)),
+            render_onebot_outbound_message(entry.to_outbound()),
         )
 
 
-async def _enter_autocard_prompt(
+async def _enter_autocard_prompt(  # noqa: PLR0913 - matcher conversation boundary
     service: AutocardService,
+    media: AutocardMediaService,
     matcher: Matcher,
     event: MessageEvent,
     values: Sequence[AutocardPromptValue],
@@ -101,7 +104,7 @@ async def _enter_autocard_prompt(
         matcher,
         event,
         namespace=AUTOCARD_PROMPT_NAMESPACE,
-        handlers=[bind_async(_handle_autocard_prompt_reply, service)],
+        handlers=[bind_async(_handle_autocard_prompt_reply, service, media)],
         reply_check=_is_autocard_prompt_reply,
         prompt=prompt,
     )
@@ -122,6 +125,7 @@ async def _finish_service_error(
 
 async def _handle_autocard_prompt_reply(
     service: AutocardService,
+    media: AutocardMediaService,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -158,13 +162,15 @@ async def _handle_autocard_prompt_reply(
         matcher,
         event,
         entry,
+        media,
         finish=False,
     )
-    await _enter_autocard_prompt(service, matcher, event, values, prompt=None)
+    await _enter_autocard_prompt(service, media, matcher, event, values, prompt=None)
 
 
 async def handle_autocard_query(
     service: AutocardService,
+    media: AutocardMediaService,
     matcher: Matcher,
     event: MessageEvent,
     state: T_State,
@@ -181,6 +187,7 @@ async def handle_autocard_query(
             matcher,
             event,
             result.entry,
+            media,
             finish=True,
         )
     if result.message:
@@ -189,6 +196,7 @@ async def handle_autocard_query(
         raise FinishedException
     await _enter_autocard_prompt(
         service,
+        media,
         matcher,
         event,
         result.prompt_values,
@@ -207,4 +215,10 @@ def install(group: SeerMatcherGroup) -> None:
         & explicit_command(),
         priority=group.matcher_priority("seer_autocard"),
     )
-    matcher.append_handler(bind_async(handle_autocard_query, group.resources.autocard))
+    matcher.append_handler(
+        bind_async(
+            handle_autocard_query,
+            group.resources.autocard,
+            group.resources.autocard_media,
+        )
+    )

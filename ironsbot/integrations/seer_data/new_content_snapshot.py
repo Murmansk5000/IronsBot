@@ -58,10 +58,8 @@ class NewContentAssetRequest:
 
     kind: str | None = None
     key: str | None = None
-    url: str | None = None
     required: bool = False
     layout: str = "square"
-    fallback_data: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,7 +310,7 @@ class NewContentSnapshotBuilder:
             "mintmark": "mintmark",
             "suit": "suit",
             "equip": "equip",
-            "mount": "equip",
+            "mount": "mount",
         }
         if kind := image_kinds.get(item.category):
             return _seer_asset(kind, item.entity_id, required=True)
@@ -363,12 +361,13 @@ def _autocard_asset(
     required: bool = False,
     layout: str = "square",
 ) -> NewContentAssetRequest | None:
-    if entry is None or not entry.image_url:
+    if entry is None or not entry.image_key:
         return (
             NewContentAssetRequest(required=True, layout=layout) if required else None
         )
     return NewContentAssetRequest(
-        url=entry.image_url,
+        kind="autocard_role" if entry.kind == "role" else "autocard_card",
+        key=entry.image_key,
         required=required,
         layout=layout,
     )
