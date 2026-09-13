@@ -2086,3 +2086,11 @@ contract v2，当前消费者严格要求 v3，因而在数据库装载阶段按
 （12.32 秒）。由于 `player_lineup` 尚非完整素材 scope，本次不宣称最终图片缓存命中或
 完整 release 发布；下一门仍是生成并发布 11 个 mount 缺口、封口不可变 manifest 后
 复跑缓存一致性。
+
+真实 mount 计划进一步确认上述 11 个官方 SWF URL 全部返回 404。此前计划只按“PNG
+缺失”决定安装 FFDec，导致任何其他数据变化触发构建时都先准备 Java/FFDec，再发现没有
+可渲染源。SeerAPI `09d66dc` 将源可用性探测提前到 renderer 门：全部为明确 404 或无效
+SWF 时输出 `renderer_required=False`；存在可下载 SWF、HTTP 非 404 或瞬时网络错误时仍
+保守启用 FFDec。当前真实计划为 `mounts=11 candidates=11 renderer_required=False`，
+SeerAPI 全量 `338 passed`，Ruff、compileall 与差异检查通过。生产代码净增 34 行，无新
+依赖、缓存协议或镜像内容；11 项仍保留为 pending，不伪造图片或完整 scope。

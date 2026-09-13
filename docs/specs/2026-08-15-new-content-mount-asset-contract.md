@@ -124,6 +124,7 @@ manifest 和明确的 release 兼容检查。`NewContentAssetRequest.fallback_da
 | 2026-09-13 | 本地生成分支生命周期 smoke | 使用临时 bare remote 原样执行工作流的 orphan branch 创建、worktree 更新、提交和 push 命令 | 首次发布和增量发布生成两个不同提交，远端分支最终包含 `README.md`、`mount/1.png`、`mount/2.png`。这只验证 Git 编排，不替代真实 Actions、资源生成或消费者 smoke。 |
 | 2026-09-13 | 生成范围收口 | SeerAPI 全量 `331 passed`；真实发布库经当前 finalizer 重建 manifest 后执行候选筛选 | 生成器按 manifest v3 的 `default` 仓库事实跳过 Unity 已覆盖座驾，并清理生成分支中的重复 PNG；36 个座驾只留下 11 个 Flash 缺口，首次 FFDec 候选减少约 69%。生成仓库自身的 manifest 事实不会被误判为 Unity；缺少当前 manifest 或仓库元数据会立即失败，不再静默全量渲染。 |
 | 2026-09-13 | 热构建 FFDec 门 | 完整/缺失生成 PNG 计划测试、工作流条件结构与 YAML 解析；SeerAPI 全量 `335 passed`；Ruff、CLI、compileall、diff check | 座驾生成器先复用旧 PNG、裁剪 Unity 已覆盖和退役项，再输出精确候选数；候选为空时不安装 FFDec，候选存在时继续执行原下载、渲染、pending 与增量发布路径。真实 Actions 耗时仍待量化。 |
+| 2026-09-13 | SWF 可用性预检 | 当前 v3 数据库的 11 个 Flash 候选真实预检；SeerAPI `09d66dc` 全量 `338 passed`、Ruff、compileall、diff check | 11 个官方 URL 均明确返回 404，计划输出 `renderer_required=False`，不再仅因 PNG 缺失就安装 FFDec；可下载源或瞬时网络/服务错误仍保守启用 renderer。缺图继续记 pending，不生成占位图，也不宣称 scope 完整。 |
 
 ## Progress
 
