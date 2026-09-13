@@ -182,7 +182,8 @@ async def handle_dynamic_select_action(
             )
 
         if selection.record is not None:
-            message = render_content(selection.record.item, None)
+            detail = await service.prepare_dynamic_detail(selection.record)
+            message = render_content(detail.item, detail.content_override)
             if message is None:
                 await finish_event_reply(
                     matcher,
