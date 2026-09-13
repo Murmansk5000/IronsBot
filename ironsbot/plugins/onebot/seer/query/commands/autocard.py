@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nonebot.adapters.onebot.v11 import (  # noqa: TC002 - NoneBot resolves callbacks
+    MessageEvent,
+)
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
 from nonebot.log import logger
@@ -32,8 +35,6 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.services.seer.autocard import (
         AutocardEntry,
