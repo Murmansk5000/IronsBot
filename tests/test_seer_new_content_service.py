@@ -125,10 +125,11 @@ def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:
 
 
 def test_new_content_order_places_peak_pools_before_skins() -> None:
-    assert NEW_CONTENT_CATEGORIES[:7] == (
+    assert NEW_CONTENT_CATEGORIES[:8] == (
         "pet",
         "peak_pool",
         "peak_expert_pool",
+        "peak_master_pool",
         "pet_skin",
         "skill",
         "mintmark",
@@ -150,6 +151,31 @@ def test_peak_pool_change_description_distinguishes_zero_from_unlimited(
     )
 
     assert format_new_content_item_description(change) == "修改｜5000｜限0 → 不限"
+
+
+@pytest.mark.parametrize(
+    ("previous", "current", "expected"),
+    [
+        (20, 6, "修改｜5000｜20 点 → 6 点"),
+        (None, 35, "修改｜5000｜未列入 → 35 点"),
+        (6, None, "修改｜5000｜6 点 → 未列入"),
+    ],
+)
+def test_master_pool_change_description_uses_competitive_points(
+    previous: int | None,
+    current: int | None,
+    expected: str,
+) -> None:
+    change = NewContentItem(
+        "peak_master_pool",
+        5000,
+        "测试精灵",
+        5000,
+        {"previous_limit": previous, "current_limit": current},
+        "modified",
+    )
+
+    assert format_new_content_item_description(change) == expected
 
 
 def test_category_count_separates_additions_and_modifications() -> None:

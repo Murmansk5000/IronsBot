@@ -189,7 +189,9 @@ def _prepared(
     ).prepare_item(item)
 
 
-@pytest.mark.parametrize("category", ["peak_pool", "peak_expert_pool"])
+@pytest.mark.parametrize(
+    "category", ["peak_pool", "peak_expert_pool", "peak_master_pool"]
+)
 def test_peak_pool_item_uses_pet_details_and_head_asset(
     category: NewContentCategory,
 ) -> None:

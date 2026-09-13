@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 from ironsbot.core import time
 from ironsbot.integrations.seer_data.peak_repository import (
     PeakPeriodTimes,
+    load_peak_master_pool_snapshots,
     load_peak_period_times,
     load_peak_pet_snapshots,
     load_peak_pool_snapshots,
@@ -164,6 +165,7 @@ PEAK_TYPE_NAME_MAP = {
 
 PEAK_POOL_COMMANDS = ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池")
 PEAK_EXPERT_POOL_COMMANDS = ("专家池", "巅峰专家池", "专家禁用池")
+PEAK_MASTER_POOL_COMMANDS = ("大师池", "巅峰大师池")
 PEAK_VOTE_COMMANDS = (
     "巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"
 )
@@ -177,7 +179,10 @@ PEAK_PET_RANK_COMMANDS = tuple(
     for name in PEAK_TYPE_NAME_MAP.values()
 )
 PEAK_QUERY_COMMANDS = (
-    *PEAK_POOL_COMMANDS, *PEAK_EXPERT_POOL_COMMANDS, *PEAK_VOTE_COMMANDS
+    *PEAK_POOL_COMMANDS,
+    *PEAK_EXPERT_POOL_COMMANDS,
+    *PEAK_MASTER_POOL_COMMANDS,
+    *PEAK_VOTE_COMMANDS,
 )
 PEAK_RANK_COMMANDS = (
     *PEAK_SUIT_RANK_COMMANDS, *PEAK_TITLE_RANK_COMMANDS, *PEAK_PET_RANK_COMMANDS
@@ -361,6 +366,23 @@ class PeakQueryService:
             return await _render_peak_result(
                 rendering.pool(pools, f"{label} / {start_time} ~ {end_time}"),
                 label,
+            )
+
+    async def master_pool(self, progress: ProgressReporter) -> PeakQueryResult:
+        with self._render_session() as rendering:
+            with rendering.data.query(load_peak_master_pool_snapshots) as loaded_pools:
+                pools = tuple(loaded_pools)
+            if not pools:
+                return PeakQueryResult(message="❌找不到大师池数据。")
+            await progress("正在生成图片...")
+            start_time = pools[0].start_time.strftime("%Y-%m-%d")
+            end_time = pools[0].end_time.strftime("%Y-%m-%d %H:%M")
+            return await _render_peak_result(
+                rendering.pool(
+                    pools,
+                    f"大师池 / 精灵竞技点 / {start_time} ~ {end_time}",
+                ),
+                "大师池",
             )
 
     async def vote(

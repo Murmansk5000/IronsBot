@@ -45,6 +45,7 @@ from ironsbot.services.seer.data_query_commands import (
     NEW_MINTMARKS_COMMANDS,
     NEW_MOUNTS_COMMANDS,
     NEW_PEAK_EXPERT_POOL_COMMANDS,
+    NEW_PEAK_MASTER_POOL_COMMANDS,
     NEW_PEAK_POOL_COMMANDS,
     NEW_PETS_COMMANDS,
     NEW_SKILLS_COMMANDS,
@@ -135,6 +136,12 @@ def install(group: SeerMatcherGroup) -> None:
             NEW_PEAK_EXPERT_POOL_COMMANDS,
             "seer.data.new_peak_expert_pool",
             ("seer_pet",),
+        ),
+        (
+            ("peak_master_pool",),
+            NEW_PEAK_MASTER_POOL_COMMANDS,
+            "seer.data.new_peak_master_pool",
+            ("seer_peak", "seer_pet"),
         ),
         (
             PEAK_POOL_NEW_CONTENT_CATEGORIES,
@@ -259,31 +266,30 @@ def _available_categories(
 ) -> tuple[NewContentCategory, ...]:
     from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 
-    required_features: dict[NewContentCategory, str | None] = {
-        "pet": "seer_pet",
-        "peak_pool": "seer_pet",
-        "peak_expert_pool": "seer_pet",
-        "pet_skin": "seer_pet",
-        "skill": "seer_pet",
-        "mintmark": "seer_mintmark",
-        "suit": "seer_equipment",
-        "equip": "seer_equipment",
-        "mount": "seer_equipment",
-        "achievement": None,
-        "autocard_card": "seer_autocard",
-        "autocard_role": "seer_autocard",
-        "autocard_sanctuary_effect": "seer_autocard",
+    required_features: dict[NewContentCategory, tuple[str, ...]] = {
+        "pet": ("seer_pet",),
+        "peak_pool": ("seer_pet",),
+        "peak_expert_pool": ("seer_pet",),
+        "peak_master_pool": ("seer_peak", "seer_pet"),
+        "pet_skin": ("seer_pet",),
+        "skill": ("seer_pet",),
+        "mintmark": ("seer_mintmark",),
+        "suit": ("seer_equipment",),
+        "equip": ("seer_equipment",),
+        "mount": ("seer_equipment",),
+        "achievement": (),
+        "autocard_card": ("seer_autocard",),
+        "autocard_role": ("seer_autocard",),
+        "autocard_sanctuary_effect": ("seer_autocard",),
     }
-    available: list[NewContentCategory] = []
-    for category in NEW_CONTENT_CATEGORIES:
-        required_feature = required_features[category]
-        if required_feature is None or event_is_feature_allowed(
-            group.features,
-            event,
-            required_feature,
-        ):
-            available.append(category)
-    return tuple(available)
+    return tuple(
+        category
+        for category in NEW_CONTENT_CATEGORIES
+        if all(
+            event_is_feature_allowed(group.features, event, feature)
+            for feature in required_features[category]
+        )
+    )
 
 
 def _is_new_content_input(event: Event) -> bool:

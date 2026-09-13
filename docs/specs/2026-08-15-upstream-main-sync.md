@@ -54,7 +54,7 @@ semantic owner、真实的用户契约和针对性验证。
 | Bilibili 正文补全 | 缺正文与截断 Opus 使用详情补全，不改变 V5 任务所有权 | 无 | completed |
 | 开服别名与竞技池变动入口 | 命令由 V5 service contract 提供，数据由 repository 提供 | 无 | completed |
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
-| 竞技池与专家池变动渲染 | seerapi 发布周内变化事实；机器人经 presenter 产出不可变 document，再接 HTML renderer | 大师池仍需独立数据提取 | completed |
+| 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
 | 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
 | Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 需要 operations Spec | planned |
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
@@ -98,16 +98,16 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | Docker 交接失败恢复 | preflight 状态机、入口脚本、Docker gateway 与配置回归 | 默认等待 90 秒后清理失败更新器并启动当前镜像；可配置为严格等待。真实 Docker 交接仍留待 Linux 镜像验收。 |
 | 2026-09-13 | 群星牌觉醒卡合并 | Autocard repository、service、菜单与图片回复回归 | `compose/composeTo` 形成只读变体索引；任一名称或 ID 返回同一组事实，异常关系不合并。 |
 | 2026-09-13 | 战队详情增强（非 QQ 部分） | team service、配置与订阅简版回归 | 直接战队号查询补标语、公告与 Boss 剩余能量；订阅提醒保持简版。按 QQ 玩家目标查询延期。 |
-| 2026-09-13 | 竞技池与专家池每周变化 | seerapi 314 tests；机器人 focused 330 tests、full 3178 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3` 发布限制变化事实；机器人统一分类、详情与图片入口。大师池尚未迁入。 |
+| 2026-09-13 | 竞技池、专家池与大师池变化 | seerapi 317 tests；机器人 focused 327 tests、full 3189 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3`、`dadfe83` 直接使用既有池表和精灵外键发布变化；机器人统一分类、详情、图片与大师池直接查询，不复制旧专用 renderer。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
 Slice    [███████████□□□□□] 11/16 tracked outcomes resolved; 5 remain
-Current  [██████████] competitive/expert pool changes verified
+Current  [██████████] all three peak-pool change paths verified
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.
-Master-pool extraction, the remaining planned entries, and real platform acceptance
-are not implicitly completed by this slice.
+The remaining planned entries and real platform acceptance are not implicitly
+completed by this slice.

@@ -72,10 +72,10 @@ Task     [██████████] completed only after code, tests, and 
   `d15c02f8` 撤销背包徽标变更，与 `963a83c3` 的净差异为空；随后 `dbcfb241`
   修正大师池测试注解，`d8c5c7ee` 增加固定口令分条回复。仅查看，未 fetch、pull、
   合并或移植；分条回复需单独验证配置互斥、顺序和平台中立投递。
-  先前读取的大师池/每周竞技点变化仍待移植：`master_pool` 的 SQL 读取放到
-  repository，新增命令接入当前
-  catalog，并让大师池类别参与快照、素材范围和 L3 键验证；不能直接恢复 main 中
-  的 renderer 数据访问或旧分类推断。这是待移植产品变化，不是已验收功能。
+  大师池与每周竞技点变化现已按目标边界迁入：seerapi 直接复用既有
+  `peak_cost_pool` / `pet.peak_cost_pool_id` 事实发布周变化，IronsBot repository
+  提供脱离会话的池快照，命令接入当前 catalog；新增内容统一走 immutable render
+  document。没有恢复 main 中的 renderer 数据访问、旧分类推断或额外二进制解析。
 - 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
   也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
 - 本次再次明确要求 pull 后，已在主检出目录执行 `git pull --ff-only origin main`，

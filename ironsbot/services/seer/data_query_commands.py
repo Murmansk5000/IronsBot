@@ -31,6 +31,13 @@ NEW_PEAK_EXPERT_POOL_COMMANDS = (
     "本周专家池",
     "更新专家池",
 )
+NEW_PEAK_MASTER_POOL_COMMANDS = (
+    "大师池变化",
+    "每周大师池",
+    "本周大师池",
+    "更新大师池",
+    "新增大师池",
+)
 PEAK_ENVIRONMENT_CHANGES_COMMANDS = ("巅峰环境变化", "巅峰变化")
 NEW_SKINS_COMMANDS = ("新增皮肤", "每周皮肤", "本周皮肤", "更新皮肤")
 NEW_SKILLS_COMMANDS = ("新增技能", "每周技能", "本周技能", "更新技能")
