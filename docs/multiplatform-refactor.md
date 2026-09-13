@@ -6,8 +6,9 @@
 [engineering-workflow.md](engineering-workflow.md) 为准。
 
 本轮生产基线保持 NoneBot2、OneBot v11、NapCat 和 Docker/Unraid；Python 运行基线现已
-统一为 3.11+。QQ Official 仅是未来兼容目标：在真实功能需要前，不安装
-`nonebot-adapter-qq`，不创建空适配器目录，也不写入官方凭据。
+统一为 3.11+。QQ Official 已进入真实 MVP：同一 NoneBot 进程按配置注册
+`nonebot-adapter-qq`，首批只开放被动群/C2C 的帮助、关于、数据版本、赛季时间和
+下周预告。平台不能可靠表达的数字 QQ、绑定和主动推送继续按能力延期，不做伪映射。
 
 ## 总体约束
 
@@ -48,7 +49,7 @@ Task     [██████████] completed only after code, tests, and 
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 本轮验证（2026-09-12）
+## 本轮验证（2026-09-13）
 
 总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
@@ -59,6 +60,14 @@ Task     [██████████] completed only after code, tests, and 
   玩家菜单、私聊战队概览、群星牌觉醒变体合并、推送队列加固、Docker 交接失败
   恢复、B站抽奖/中奖订阅拆分、技能预览筛选和模块拆分。已检查日志、变更文件和
   部分配置差异，尚未完成逐项行为审计或移植，不能视为 V5 已获得这些能力。
+- QQ Official 首个真实 MVP 已由提交 `d5b50c36` 接入：配置凭据从环境变量注入，
+  默认 driver 在启用时增加 WebSocket 客户端，事件转换保留 group/member OpenID，
+  平台渲染支持文本、远程图片和二进制图片，引用回复按全局规则忽略。平台中立路由
+  复用 About 与 Seer 数据服务，首批开放帮助、关于、数据版本、赛季倒计时和下周预告。
+  QQ 官方 bootstrap、事件身份、权限过滤和图片消息段有专项测试；公共全量回归为
+  3259 passed、7 skipped，Ruff、BasedPyright、compileall 与 diff 检查通过。
+  代码已推送到独立私有预览仓库；尚未使用真实 AppID 建立线上连接，因此 Phase 7
+  保持 `in_progress`，不得把适配器注册等同于平台实机验收或全部功能可用。
 - 前次只读观察的本地 `main` 为 `ba08f749`。从 `4b82881b` 起新增 11 个提交：
   B站 Opus/专栏正文补全、图片合并与历史摘要持久化，巅峰池有效期/投票展示，
   当前 fork 的页脚链接，自发指令超级管理员权限，以及橱窗别名候选昵称。
@@ -241,7 +250,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
-| Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
+| Phase 7 | `in_progress` | 模拟能力测试、真实 OneBot WebSocket smoke，以及 QQ Official 群/C2C MVP 的配置、事件身份、被动文字/图片回复和进程 bootstrap 已验收 | 私有预览镜像构建、真实 QQ 官方连接 smoke、随后逐功能迁移完整 Seer/AI 流程 | QQ Official 全功能可用或主动推送已获准 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除
@@ -1616,9 +1625,10 @@ Seer 发布集成层的宽异常捕获只保留协议错误码的人类说明查
 最终公共全量回归 `3138 passed, 7 skipped`；跳过项均要求显式真实发布素材。Ruff、
 BasedPyright、compileall、差异检查及发布数据架构守卫通过。Phase 6 关闭，总进度 7/8。
 
-### Phase 7 — 未来平台验收
+### Phase 7 — QQ Official 平台验收
 
-**目标契约：** 测试中的 `FakeOfficialPlatform`，不是实际 QQ Official 集成。
+**目标契约：** `FakeOfficialPlatform` 继续验证能力边界；生产适配由
+`integrations.qq_official` 实现，二者必须遵守同一核心身份和出站消息契约。
 
 **唯一目标路径：** 同一业务服务可在 OneBot 与 fake official capabilities 下处理
 文本、图片、权限、绑定和订阅；不触碰真实官方账号或凭据。

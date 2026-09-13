@@ -360,8 +360,13 @@ def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
     assert growth["env"]["BASELINE_IMAGE"] == (
         "ghcr.io/${{ github.repository }}:latest"
     )
+    assert growth["env"]["FALLBACK_BASELINE_IMAGE"] == (
+        "ghcr.io/${{ github.repository_owner }}/ironsbot:latest"
+    )
     assert 'baseline_image="${BASELINE_IMAGE,,}"' in growth["run"]
+    assert 'fallback_baseline_image="${FALLBACK_BASELINE_IMAGE,,}"' in growth["run"]
     assert 'docker pull "$baseline_image"' in growth["run"]
+    assert 'echo "fallback_baseline=$baseline_image"' in growth["run"]
     assert 'docker image inspect "$candidate"' in growth["run"]
     assert upload["if"] == "${{ always() }}"
     assert upload["with"]["if-no-files-found"] == "error"

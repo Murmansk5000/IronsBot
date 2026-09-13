@@ -88,8 +88,8 @@ jobs:
               id: metadata
               with:
                   images: |
-                      ghcr.io/${{ github.repository }}
-                      docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
+                      name=ghcr.io/${{ github.repository }}
+                      name=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot,enable=${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
                   tags: |
                       type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
                       type=raw,value=${{ steps.fork_version.outputs.fork_version }}
@@ -178,6 +178,7 @@ jobs:
                   password: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Login to Docker Hub
+              if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
               uses: docker/login-action@v4
               with:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -187,11 +188,13 @@ jobs:
               shell: bash
               env:
                   BASELINE_IMAGE: ghcr.io/${{ github.repository }}:latest
+                  FALLBACK_BASELINE_IMAGE: ghcr.io/${{ github.repository_owner }}/ironsbot:latest
                   MAX_IMAGE_GROWTH_KIB: "8192"
               run: |
                   : "${BASELINE_IMAGE:?missing baseline image}"
                   : "${MAX_IMAGE_GROWTH_KIB:?missing image growth budget}"
                   baseline_image="${BASELINE_IMAGE,,}"
+                  fallback_baseline_image="${FALLBACK_BASELINE_IMAGE,,}"
                   candidate="ironsbot-ci:${GITHUB_SHA}"
                   evidence="$RUNNER_TEMP/ironsbot-candidate-image-growth.txt"
                   candidate_bytes="$(docker image inspect "$candidate" --format '{{.Size}}')"
@@ -201,7 +204,11 @@ jobs:
                     echo "baseline=$baseline_image"
                     echo "max_growth_kib=$MAX_IMAGE_GROWTH_KIB"
                   } > "$evidence"
-                  docker pull "$baseline_image"
+                  if ! docker pull "$baseline_image"; then
+                    baseline_image="$fallback_baseline_image"
+                    docker pull "$baseline_image"
+                    echo "fallback_baseline=$baseline_image" >> "$evidence"
+                  fi
                   baseline_digest="$(docker image inspect "$baseline_image" --format '{{index .RepoDigests 0}}')"
                   baseline_bytes="$(docker image inspect "$baseline_image" --format '{{.Size}}')"
                   growth_bytes="$((candidate_bytes - baseline_bytes))"
