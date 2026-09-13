@@ -137,7 +137,7 @@ metadata。它不得重新拥有图标解析、缓存或子进程细节。
 | 2026-08-15 | SeerAPI `9eceeac` workflow trigger audit | YAML 解析确认 data-build workflow 会监听 `scripts/effect_icon_*.py` 与 `scripts/render_asset_manifest_build.py` | 已拆分模块进入 `main` 时会触发 FFDec cache shard、正式构建和发布；避免本地重构通过而 Actions 未执行。 |
 | 2026-09-13 | 并发结果正规化 | 逆序完成的双 worker 回归测试；效果图标专项 15 passed；SeerAPI 全量 330 passed；Ruff、compileall、diff check | renderer 出口统一按 icon ID 排序，线程完成顺序不再渗入 manifest、SQLite 或错误摘要。前六项本地 acceptance 已有直接测试；真实 FFDec Actions release 仍是唯一未关闭项。 |
 | 2026-09-13 | FFDec 安装复用 | 工作流与本地 composite action YAML 解析；CI 结构测试；SeerAPI 全量 332 passed；Ruff、compileall、diff check | 16 个 cache shard 与最终 build 共用一个固定 Java/FFDec 安装入口；版本、SHA-256 和重试只维护一处，校验后的 release archive 由 Actions cache 跨构建复用。工作流删除 32 行重复安装脚本；实际 cache-hit 耗时仍待线上 Actions 量化。 |
-| 2026-09-13 | 增量分片预检 | 缓存命中、官方 404、瞬时探测失败和可用但未缓存资源的计划测试；工作流条件结构与 YAML 解析；SeerAPI 全量 333 passed；Ruff、compileall、diff check | 16 个分片先在禁用 PNG 渲染的模式下检查缓存与官方资源状态。缓存完整或官方确认缺失的分片不安装 FFDec；只有瞬时失败或资源存在但 PNG 缺失时才进入修复，且渲染命令只接收计划选中的有序 ID，同时仍导出整片缓存。计划/渲染共用资源读取、Unity 缺口和缓存导出装配，总构建器为 761 行。最终 build 仍无条件准备 FFDec，以支持座驾 Flash 缺口。真实 Actions 节省时间仍待线上量化。 |
+| 2026-09-13 | 增量分片预检 | 缓存命中、官方 404、瞬时探测失败和可用但未缓存资源的计划测试；工作流条件结构与 YAML 解析；SeerAPI 全量 333 passed；Ruff、compileall、diff check | 16 个分片先在禁用 PNG 渲染的模式下检查缓存与官方资源状态。缓存完整或官方确认缺失的分片不安装 FFDec；只有瞬时失败或资源存在但 PNG 缺失时才进入修复。预检同时输出整片与修复 ID 快照，渲染不再重复读取 ConfigPackage 或 Unity manifest，只处理缺口并仍导出整片缓存；总构建器为 760 行。最终 build 仍无条件准备 FFDec，以支持座驾 Flash 缺口。真实 Actions 节省时间仍待线上量化。 |
 
 ## Progress
 
