@@ -64,6 +64,7 @@ class PlayerLineupPetSnapshot:
     resource_id: int
     type_id: int
     peak_pool_limit: int | None
+    master_pool_cost: int
     complete: bool
 
 
