@@ -12,6 +12,7 @@ from nonebot.adapters.qq import MessageSegment
 from nonebot.adapters.qq.event import (
     C2CMessageCreateEvent,
     GroupAtMessageCreateEvent,
+    GroupMessageCreateEvent,
 )
 
 from ironsbot.config.loader import load_settings
@@ -39,6 +40,7 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
 from ironsbot.integrations.qq_official.runtime import (
     deliver_qq_official_reply,
     qq_official_event_is_supported,
+    qq_official_event_mentions_bot,
 )
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
@@ -385,15 +387,23 @@ superusers = ["opaque-admin"]
     settings = load_settings(
         path,
         env={
-            "QQ_OFFICIAL_TOKEN": "example-token",
             "QQ_OFFICIAL_SECRET": "example-secret",
         },
     )
 
     assert settings.bot.qq_official.enabled
-    assert settings.bot.qq_official.token == "example-token"
     assert settings.bot.qq_official.secret == "example-secret"
     assert settings.bot.qq_official.superusers == ["opaque-admin"]
+
+
+def test_qq_official_config_rejects_retired_static_token() -> None:
+    with pytest.raises(ValueError, match="token"):
+        QQOfficialConfig(
+            enabled=True,
+            app_id="example-app",
+            secret="example-secret",
+            token="retired-token",  # type: ignore[call-arg]
+        )
 
 
 def test_team_resource_requires_qq_official_proactive_delivery() -> None:
@@ -401,7 +411,6 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
         QQOfficialConfig(
             enabled=True,
             app_id="example-app",
-            token="example-token",
             secret="example-secret",
             features=["team_resource_subscription"],
         )
@@ -409,7 +418,6 @@ def test_team_resource_requires_qq_official_proactive_delivery() -> None:
     config = QQOfficialConfig(
         enabled=True,
         app_id="example-app",
-        token="example-token",
         secret="example-secret",
         proactive_messages=True,
         features=["team_resource_subscription"],
@@ -478,6 +486,29 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         ),
     )
     assert incoming.sequence == "sequence-1"
+
+
+def test_only_group_at_event_is_classified_as_bot_mention() -> None:
+    payload = {
+        "id": "message-id",
+        "content": "help",
+        "timestamp": "2026-09-13T00:00:00+08:00",
+        "author": {
+            "id": "native-author-id",
+            "bot": False,
+            "member_openid": "opaque-member",
+            "member_role": "member",
+        },
+        "group_id": "native-group-id",
+        "group_openid": "opaque-group",
+        "to_me": True,
+    }
+
+    full_message = GroupMessageCreateEvent.model_validate(payload)
+    at_message = GroupAtMessageCreateEvent.model_validate(payload)
+
+    assert not qq_official_event_mentions_bot(full_message)
+    assert qq_official_event_mentions_bot(at_message)
 
 
 def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
@@ -940,7 +971,6 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
-            "QQ_OFFICIAL_TOKEN": "example-token",
             "QQ_OFFICIAL_SECRET": "example-secret",
         }
     )

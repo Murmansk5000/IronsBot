@@ -22,7 +22,6 @@ DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
-    ("QQ_OFFICIAL_TOKEN", ("bot", "qq_official", "token")),
     ("QQ_OFFICIAL_SECRET", ("bot", "qq_official", "secret")),
     ("AI_KEY", ("ai", "api_key")),
     ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
