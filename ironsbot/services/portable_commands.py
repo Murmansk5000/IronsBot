@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.commands import command_text_matches
+from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.about import AboutService
+    from ironsbot.services.ai.service import AiService
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
     from ironsbot.services.seer.peak import PeakQueryService
@@ -75,6 +77,7 @@ class PortableCommandRouter:
         operations: Mapping[str, PortableOperation],
         features: FeatureService,
         *,
+        ai: AiService,
         query_sessions: PortableQuerySessions | None = None,
     ) -> None:
         unknown = set(operations) - catalog.command_ids
@@ -86,22 +89,27 @@ class PortableCommandRouter:
         self._catalog = catalog
         self._operations = dict(operations)
         self._features = features
+        self._ai = ai
         self._query_sessions = query_sessions or PortableQuerySessions()
 
     def recognizes(
         self,
         context: MessageInputContext,
     ) -> bool:
+        if self._message_is_blocked(context):
+            return False
         command = _command_text(context.text)
         command_context = _command_context(context)
         return self._query_sessions.recognizes_selection(command, context) or (
             self._matching_contract(command, context=command_context) is not None
-        )
+        ) or self._can_chat(context, command_context) or self._is_group_mention(context)
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
+        if self._message_is_blocked(context):
+            return None
         command = _command_text(context.text)
         command_context = _command_context(context)
         try:
@@ -114,7 +122,7 @@ class PortableCommandRouter:
             return PortableReply(selected)
         contract = self._matching_contract(command, context=command_context)
         if contract is None:
-            return None
+            return await self._fallback_reply(context, command_context, command)
         if contract.id == "help":
             return PortableReply(self._help(command_context))
         try:
@@ -149,7 +157,11 @@ class PortableCommandRouter:
     def _available_contracts(
         self, context: CommandContext
     ) -> tuple[CommandContract, ...]:
-        executable_ids = self._operations.keys() | {"help"}
+        executable_ids = self._operations.keys() | {
+            "help",
+            "ai_chat.group",
+            "ai_chat.private",
+        }
         return tuple(
             contract
             for contract in self._catalog.available_for_context(
@@ -169,14 +181,73 @@ class PortableCommandRouter:
         )
         return OutboundMessage.from_text("\n".join(lines))
 
+    async def _fallback_reply(
+        self,
+        context: MessageInputContext,
+        command_context: CommandContext,
+        prompt: str,
+    ) -> PortableReply | None:
+        if self._can_chat(context, command_context):
+            if not prompt:
+                return PortableReply(
+                    OutboundMessage.from_text("你想聊什么？可以直接写问题。")
+                )
+            message = context.message
+            reply = await self._ai.chat_reply(
+                actor=message.actor,
+                conversation=message.conversation,
+                prompt=prompt,
+            )
+            return (
+                None
+                if reply is None
+                else PortableReply(OutboundMessage.from_text(reply))
+            )
+        if self._is_group_mention(context):
+            return PortableReply(
+                OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
+            )
+        return None
 
-def build_portable_command_router(
+    def _can_chat(
+        self,
+        context: MessageInputContext,
+        command_context: CommandContext,
+    ) -> bool:
+        command_id = (
+            "ai_chat.group"
+            if context.message.conversation.kind == "group"
+            else "ai_chat.private"
+        )
+        if command_id == "ai_chat.group" and not context.mentions_bot:
+            return False
+        return any(
+            contract.id == command_id
+            for contract in self._available_contracts(command_context)
+        )
+
+    def _message_is_blocked(self, context: MessageInputContext) -> bool:
+        message = context.message
+        return self._features.is_message_blocked(
+            message.actor,
+            message.conversation,
+        )
+
+    @staticmethod
+    def _is_group_mention(context: MessageInputContext) -> bool:
+        return (
+            context.message.conversation.kind == "group" and context.mentions_bot
+        )
+
+
+def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     *,
     catalog: CommandCatalog,
     about: AboutService,
     seer: SeerQueryResources,
     player_id_resolver: PlayerIdResolver,
     features: FeatureService,
+    ai: AiService,
 ) -> PortableCommandRouter:
     async def about_message(
         text: str,
@@ -358,6 +429,7 @@ def build_portable_command_router(
         catalog,
         operations,
         features,
+        ai=ai,
         query_sessions=sessions,
     )
 

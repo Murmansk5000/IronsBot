@@ -150,6 +150,7 @@ keep-runtime-typing = true
 
 [tool.basedpyright]
 # For BasedPyright configurations, see https://docs.basedpyright.com/latest/configuration/config-files/.
+include = ["ironsbot", "tests"]
 pythonVersion = "3.11"
 pythonPlatform = "All"
 typeCheckingMode = "standard"

@@ -1752,6 +1752,18 @@ digest，并始终上传候选、基线和差值；基线读取
 `sha256:4677ca61...` 为 405.53 MiB，候选少 311.24 MiB。该证据尚未由发布工作流上传，
 也不代表真实 QQ 平台验收；整体仍为 7/8。
 
+2026-09-13：QQ Official 被动入口接入现有 `AiService`，没有复制模型客户端、记忆库
+或命令白名单。已注册命令先由 `CommandCatalog` 认领；仅私聊未注册文本及群内直接
+@ 机器人的未注册文本进入 AI。AI 未配置或当前上下文未开放 `ai_chat` 时，群内直接
+@ 返回统一指令提示，私聊保持静默；引用回复继续由适配器全局忽略。portable router
+同时补齐 `FeatureService.is_message_blocked()`，防止受限平台绕过已有黑名单策略。
+OpenID 与群作用域直接进入现有 AI 会话键和 SQLite 记忆，不推导数字 QQ 号，也没有
+引入 NapCat、跨平台消息对时或新的数据库/TOML 字段。专项 AI/目录回归 `105 passed`，
+官方平台/能力/架构回归 `66 passed`，Ruff、BasedPyright、compileall 与差异检查通过。
+最终公共全量回归 `3284 passed, 7 skipped`。BasedPyright 的输入范围同时显式收口到
+`ironsbot` 与 `tests`，不再枚举历史测试临时目录；这只缩短验证时间，不改变检查等级。
+真实 AppID 联机发送、主动订阅能力和模型网络 smoke 仍是 Phase 7 完成门，整体保持 7/8。
+
 ## 工作项登记模板
 
 每次开始一个小任务，先在任务说明或 PR 描述中填以下内容；完成时补充真实证据：
