@@ -1,13 +1,16 @@
-from nonebot.adapters import MessageTemplate
-from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import PicConfig
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.messaging.sendpic import (
@@ -68,7 +71,9 @@ def create_single_image_command(
         await finish_event_reply(
             matcher,
             event,
-            MessageSegment.image(data),
+            render_onebot_outbound_message(
+                OutboundMessage((BinaryImagePart(data, "image/png"),))
+            ),
         )
 
     matcher.append_handler(_handle)
@@ -105,12 +110,8 @@ def create_image_command(
             await m.finish(str(e))
 
         await m.finish(
-            MessageTemplate(template).format(
-                command=config.command,
-                random_text=result.random_text,
-                index=result.index,
-                total=result.total,
-                image=MessageSegment.image(result.data),
+            render_onebot_outbound_message(
+                result.to_outbound(template, command=config.command)
             )
         )
 

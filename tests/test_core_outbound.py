@@ -12,6 +12,7 @@ from ironsbot.core.outbound import (
     ReplyContext,
     SendResult,
     TextPart,
+    format_outbound_message,
 )
 from ironsbot.core.platform import (
     ActorRef,
@@ -38,6 +39,32 @@ def test_outbound_message_accepts_text_and_image_parts() -> None:
 def test_outbound_message_rejects_empty_parts() -> None:
     with pytest.raises(ValueError, match="at least one part"):
         OutboundMessage(())
+
+
+def test_outbound_template_preserves_structured_parts_and_text_formatting() -> None:
+    image = BinaryImagePart(b"png", "image/png")
+
+    message = format_outbound_message(
+        "{command}第{index:02d}张：{image}（{random_text}）{{ok}}",
+        command="图片",
+        index=3,
+        image=image,
+        random_text="自选",
+    )
+
+    assert message.parts == (
+        TextPart("图片第03张："),
+        image,
+        TextPart("（自选）{ok}"),
+    )
+
+
+def test_outbound_template_rejects_formatting_a_structured_part() -> None:
+    with pytest.raises(ValueError, match="do not support"):
+        format_outbound_message(
+            "{image!s}",
+            image=BinaryImagePart(b"png", "image/png"),
+        )
 
 
 def test_reply_context_and_send_result_require_complete_delivery_state() -> None:

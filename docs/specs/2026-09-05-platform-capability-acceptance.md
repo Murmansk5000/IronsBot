@@ -172,3 +172,11 @@ including upload counting. This expands non-QQ Phase 7 evidence without
 inventing OpenID-to-QQ mapping, direct-mention support or account-binding
 behavior. Those capabilities remain deferred until a target API can represent
 them.
+
+Configured image commands use `format_outbound_message()` for the same reason.
+The formatter follows Python field formatting for text values while retaining
+binary/remote images and mentions as typed message parts. Structured parts
+cannot use string conversions or format specifications. `SendpicResult` now
+owns expansion of `command`, `random_text`, `index`, `total` and `image`; the
+OneBot matcher only performs final encoding. Existing TOML templates and image
+selection semantics remain unchanged.

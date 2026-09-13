@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING, Protocol
 from ironsbot.core.affix_commands import AffixCommand
 from ironsbot.core.command_catalog import CommandContract, parsed_command_input_matcher
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    OutboundMessage,
+    format_outbound_message,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,6 +57,16 @@ class SendpicResult:
     index: int
     total: int
     random_text: str
+
+    def to_outbound(self, template: str, *, command: str) -> OutboundMessage:
+        return format_outbound_message(
+            template,
+            command=command,
+            random_text=self.random_text,
+            index=self.index,
+            total=self.total,
+            image=BinaryImagePart(self.data, "image/png"),
+        )
 
 
 class SendpicService:
