@@ -2067,3 +2067,10 @@ IronsBot 的大部分冲突来自目标态删除旧插件目录、迁移 OneBot 
 两仓 Ruff、BasedPyright、compileall 和差异检查通过。该收口不增加 TOML、数据库、静态
 资源或 QQ 身份能力。依赖 QQ 号、直接 @、绑定关系或群成员身份且目标 API 无法忠实表达
 的入口继续留到最终平台阶段，不阻塞平台无关验收。
+
+随后尝试用本机保留的真实发布产物复跑 `player_lineup` 原生验收，但现存
+`v5-release-acceptance*` 与 `v5-full-publication/seerapi-data.sqlite` 均发布 manifest
+contract v2，当前消费者严格要求 v3，因而在数据库装载阶段按设计失败，尚未进入阵容
+查询。历史 118 MiB 数据库没有发布 manifest，仅可作为生成器缓存输入。此失败不能用
+单元测试替代为通过，也不应恢复 v2 兼容；下一次有效证据必须来自当前 SeerAPI 分支
+生成的完整 v3 release，再执行同一原生测试。现有公共/私有全量回归结果不受影响。
