@@ -67,6 +67,7 @@ class TaskOwner:
 class ApplicationLifecycle:
     driver: Driver
     task_owner: TaskOwner = field(default_factory=TaskOwner)
+    resource_startup_hooks: tuple[NamedLifecycleHook, ...] = ()
     startup_hooks: tuple[NamedLifecycleHook, ...] = ()
     shutdown_hooks: tuple[NamedLifecycleHook, ...] = ()
     resource_shutdown_hooks: tuple[NamedLifecycleHook, ...] = ()
@@ -84,11 +85,13 @@ class ApplicationLifecycle:
         contributions: tuple[PluginContribution, ...],
         *,
         task_owner: TaskOwner,
+        resource_startup_hooks: tuple[NamedLifecycleHook, ...] = (),
         resource_shutdown_hooks: tuple[NamedLifecycleHook, ...] = (),
     ) -> ApplicationLifecycle:
         return cls(
             driver=driver,
             task_owner=task_owner,
+            resource_startup_hooks=resource_startup_hooks,
             startup_hooks=tuple(
                 hook
                 for contribution in contributions
@@ -128,6 +131,10 @@ class ApplicationLifecycle:
         self._installed = True
 
     async def startup(self) -> None:
+        await self._run_lifecycle_hooks(
+            "resource_startup",
+            self.resource_startup_hooks,
+        )
         await self._run_lifecycle_hooks("startup", self.startup_hooks)
 
     async def shutdown(self) -> None:

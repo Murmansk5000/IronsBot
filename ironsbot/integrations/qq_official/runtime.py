@@ -1,73 +1,262 @@
 # SPDX-License-Identifier: MIT
-"""Install the first production QQ Official passive-command runtime."""
+"""Tencent SDK lifecycle and passive-command runtime."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
+from threading import Lock
 from typing import TYPE_CHECKING
 
-from nonebot import on_message
-from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves annotations
-from nonebot.adapters.qq import Bot as QQOfficialBot  # noqa: TC002
-from nonebot.adapters.qq.event import (
-    C2CMessageCreateEvent,
-    GroupAtMessageCreateEvent,
-    GroupMessageCreateEvent,
-    QQMessageEvent,
-)
-from nonebot.matcher import Matcher  # noqa: TC002
-from nonebot.rule import Rule
+from qqbot_agent_sdk.api_client import QQApiClient
+from qqbot_agent_sdk.event_parser import EventParser
+from qqbot_agent_sdk.session_store import WSSessionStore
+from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
+    qq_official_event_mentions_bot,
     qq_official_incoming_message,
 )
-from ironsbot.services.portable_commands import PortableCommandRouter  # noqa: TC001
+from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from pathlib import Path
+
+    from httpx import AsyncClient
+    from qqbot_agent_sdk.event_parser import InboundEvent
+
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
+    from ironsbot.services.portable_commands import PortableCommandRouter
     from ironsbot.services.portable_reply import PortableReply
 
 logger = logging.getLogger(__name__)
 
 
-def install_qq_official_runtime(
-    router: PortableCommandRouter,
-    messenger: OutboundMessenger,
-) -> None:
-    """Register passive group/C2C handlers against nonebot-adapter-qq."""
+@dataclass(frozen=True, slots=True)
+class QQOfficialRuntimeAccount:
+    app_id: str
+    secret: str
 
-    async def accepts(bot: QQOfficialBot, event: Event) -> bool:
-        return qq_official_event_is_supported(bot, event, router)
 
-    async def handle(
-        event: QQMessageEvent,
-        matcher: Matcher,
-        bot: QQOfficialBot,
-    ) -> None:
-        incoming = qq_official_incoming_message(event, account_id=bot.self_id)
-        reply = await router.dispatch(
-            MessageInputContext(
-                incoming,
-                mentions_bot=qq_official_event_mentions_bot(event),
-            )
+@dataclass(slots=True)
+class _SessionState:
+    app_id: str
+    store: WSSessionStore
+    session_id: str | None
+    sequence: int | None
+    dirty: bool = False
+    lock: Lock = field(default_factory=Lock)
+
+    @classmethod
+    def load(cls, app_id: str, root: Path) -> _SessionState:
+        store = WSSessionStore(str(root / app_id))
+        persisted = store.get(app_id)
+        resumable = persisted.is_resumable and persisted.is_fresh()
+        return cls(
+            app_id,
+            store,
+            persisted.session_id if resumable else None,
+            persisted.seq if resumable else None,
+            lock=Lock(),
         )
-        if reply is None:
-            return
-        await deliver_qq_official_reply(messenger, incoming, reply)
-        matcher.stop_propagation()
 
-    matcher = on_message(
-        rule=Rule(accepts),
-        priority=10,
-        block=True,
-    )
-    matcher.append_handler(handle)
-    logger.info("QQ Official passive-command runtime installed")
+    def get(self) -> tuple[str | None, int | None]:
+        with self.lock:
+            return self.session_id, self.sequence
+
+    def set(self, session_id: str | None, sequence: int | None) -> None:
+        with self.lock:
+            self.session_id = session_id
+            self.sequence = sequence
+            self.dirty = True
+        if session_id is None and sequence is None:
+            self.store.clear(self.app_id)
+
+    def flush(self) -> None:
+        with self.lock:
+            if not self.dirty or self.session_id is None:
+                return
+            session_id = self.session_id
+            sequence = self.sequence
+            self.dirty = False
+        self.store.save(self.app_id, session_id, sequence)
+
+
+@dataclass(slots=True)
+class _Connection:
+    api: QQApiClient
+    sender: TencentQQClient
+    websocket: QQWebSocket
+    session: _SessionState
+    started: bool = False
+
+
+class QQOfficialRuntime:
+    """Own one official SDK connection and token cache per configured AppID."""
+
+    def __init__(
+        self,
+        accounts: tuple[QQOfficialRuntimeAccount, ...],
+        *,
+        http_client: AsyncClient,
+        session_root: Path,
+    ) -> None:
+        self._router: PortableCommandRouter | None = None
+        self._messenger: OutboundMessenger | None = None
+        self._connections: dict[str, _Connection] = {}
+        for account in accounts:
+            if account.app_id in self._connections:
+                msg = f"duplicate QQ Official AppID: {account.app_id}"
+                raise ValueError(msg)
+            api = QQApiClient(
+                account.app_id,
+                account.secret,
+                f"IronsBot:{account.app_id}",
+            )
+            api.setup(http_client)
+            session = _SessionState.load(account.app_id, session_root)
+            callbacks = self._callbacks(account.app_id, api, session)
+            self._connections[account.app_id] = _Connection(
+                api=api,
+                sender=TencentQQClient(api),
+                websocket=QQWebSocket(
+                    callbacks=callbacks,
+                    log_tag=f"IronsBot:{account.app_id}",
+                ),
+                session=session,
+            )
+
+    @property
+    def account_ids(self) -> tuple[str, ...]:
+        return tuple(self._connections)
+
+    def sender(self, app_id: str) -> TencentQQClient | None:
+        connection = self._connections.get(app_id)
+        return connection.sender if connection is not None else None
+
+    def bind(
+        self,
+        router: PortableCommandRouter,
+        messenger: OutboundMessenger,
+    ) -> None:
+        if self._router is not None or self._messenger is not None:
+            msg = "QQ Official runtime is already bound"
+            raise RuntimeError(msg)
+        self._router = router
+        self._messenger = messenger
+
+    async def start(self) -> None:
+        if self._router is None or self._messenger is None:
+            msg = "QQ Official runtime must be bound before startup"
+            raise RuntimeError(msg)
+        loop = asyncio.get_running_loop()
+        started = 0
+        for app_id, connection in self._connections.items():
+            if await _start_connection(app_id, connection, loop):
+                started += 1
+        if self._connections and started == 0:
+            msg = "No QQ Official account could start"
+            raise RuntimeError(msg)
+
+    async def stop(self) -> None:
+        tasks = [
+            connection.websocket.async_stop()
+            for connection in self._connections.values()
+            if connection.started
+        ]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        for connection in self._connections.values():
+            connection.session.flush()
+            connection.started = False
+
+    async def handle_event(
+        self,
+        app_id: str,
+        event_type: str,
+        raw: Mapping[str, object],
+    ) -> None:
+        event = EventParser.parse(event_type, dict(raw))
+        if event is None or is_qq_official_reply_event(event):
+            return
+        router = self._router
+        messenger = self._messenger
+        if router is None or messenger is None:
+            logger.error("QQ Official event arrived before runtime binding")
+            return
+        incoming = qq_official_incoming_message(event, account_id=app_id)
+        context = MessageInputContext(
+            incoming,
+            mentions_bot=qq_official_event_mentions_bot(event),
+        )
+        if not router.recognizes(context):
+            return
+        reply = await router.dispatch(context)
+        if reply is not None:
+            await deliver_qq_official_reply(messenger, incoming, reply)
+
+    def _callbacks(
+        self,
+        app_id: str,
+        api: QQApiClient,
+        session: _SessionState,
+    ) -> WSCallbacks:
+        async def on_message_event(
+            event_type: str,
+            raw: dict[str, object],
+        ) -> None:
+            await self.handle_event(app_id, event_type, raw)
+
+        return WSCallbacks(
+            on_message_event=on_message_event,
+            on_connected=lambda: logger.info(
+                "QQ Official connected: app_id=%s", app_id
+            ),
+            on_disconnected=lambda: logger.warning(
+                "QQ Official disconnected: app_id=%s", app_id
+            ),
+            on_fatal_error=lambda code, message: logger.error(
+                "QQ Official fatal error: app_id=%s code=%s message=%s",
+                app_id,
+                code,
+                message,
+            ),
+            get_token=api.ensure_token_sync,
+            get_gateway_url=api.get_gateway_url_sync,
+            get_session=session.get,
+            set_session=session.set,
+            set_heartbeat_interval=lambda _interval: None,
+            clear_token=api.clear_token,
+            fail_pending=lambda reason: logger.warning(
+                "QQ Official pending operations failed: app_id=%s reason=%s",
+                app_id,
+                reason,
+            ),
+            on_heartbeat_ack=session.flush,
+        )
+
+
+async def _start_connection(
+    app_id: str,
+    connection: _Connection,
+    loop: asyncio.AbstractEventLoop,
+) -> bool:
+    try:
+        await connection.api.ensure_token()
+        gateway_url = await connection.api.get_gateway_url()
+        connection.websocket.start(gateway_url, loop)
+        connection.started = True
+        logger.info("QQ Official connection starting: app_id=%s", app_id)
+    except Exception:
+        logger.exception("QQ Official connection failed to start: app_id=%s", app_id)
+        return False
+    return True
 
 
 async def deliver_qq_official_reply(
@@ -75,7 +264,7 @@ async def deliver_qq_official_reply(
     incoming: IncomingMessageRef,
     reply: PortableReply,
 ) -> None:
-    """Commit delivery-aware work only after the adapter accepts the reply."""
+    """Commit delivery-aware work only after the official API accepts a reply."""
 
     from ironsbot.core.outbound import ReplyContext
 
@@ -107,6 +296,23 @@ async def deliver_qq_official_reply(
         _log_delivery_failure(incoming, follow_up_result, stage="follow_up")
 
 
+def qq_official_event_is_supported(
+    event: InboundEvent,
+    *,
+    account_id: str,
+    router: PortableCommandRouter,
+) -> bool:
+    if is_qq_official_reply_event(event):
+        return False
+    incoming = qq_official_incoming_message(event, account_id=account_id)
+    return router.recognizes(
+        MessageInputContext(
+            incoming,
+            mentions_bot=qq_official_event_mentions_bot(event),
+        )
+    )
+
+
 def _log_delivery_failure(
     incoming: IncomingMessageRef,
     result: SendResult,
@@ -120,31 +326,7 @@ def _log_delivery_failure(
         incoming.conversation.account_id,
         incoming.conversation.kind,
         incoming.conversation.id,
-        getattr(result, "error_code", None),
-        getattr(result, "error_message", None),
-        getattr(result, "trace_id", None),
+        result.error_code,
+        result.error_message,
+        result.trace_id,
     )
-
-
-def qq_official_event_is_supported(
-    bot: QQOfficialBot,
-    event: Event,
-    router: PortableCommandRouter,
-) -> bool:
-    if not isinstance(event, (C2CMessageCreateEvent, GroupMessageCreateEvent)):
-        return False
-    if is_qq_official_reply_event(event):
-        return False
-    incoming = qq_official_incoming_message(event, account_id=bot.self_id)
-    return router.recognizes(
-        MessageInputContext(
-            incoming,
-            mentions_bot=qq_official_event_mentions_bot(event),
-        )
-    )
-
-
-def qq_official_event_mentions_bot(event: QQMessageEvent) -> bool:
-    """Distinguish an at-event from an authorized full-group event."""
-
-    return isinstance(event, GroupAtMessageCreateEvent)

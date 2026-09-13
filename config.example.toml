@@ -74,7 +74,7 @@ superusers = []
 # ZH: 在同一进程启用一个或多个 QQ 官方机器人账号。
 enabled = false
 # EN: Use the QQ Bot sandbox API.
-# ZH: 是否连接 QQ 官方沙箱环境。当前适配器要求同一进程中的账号使用相同环境。
+# ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
 sandbox = false
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
@@ -86,11 +86,11 @@ sandbox = false
 [bot.qq_official.accounts.example_bot]
 enabled = false
 app_id = ""
-# EN: Allow adapter-level proactive sends. Keep disabled until the application has
+# EN: Allow SDK-level proactive sends. Keep disabled until the application has
 #     the required platform permission. Team-resource subscriptions require it.
-# ZH: 允许适配器主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
+# ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
 proactive_messages = false
-# EN: Features exposed through the official adapter preview. ai_chat also requires AI_KEY.
+# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY.
 # ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 # EN: C2C user_openids with superuser bypass. These are not QQ numbers.

@@ -436,8 +436,8 @@ def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
     assert "websockets>=15.0" in dependencies
     assert not any("nonebot-adapter-qq" in item for item in dependencies)
     qq_dependencies = project["project"]["optional-dependencies"]["qq-official"]
-    assert "nonebot-adapter-qq==1.7.2" in qq_dependencies
-    assert "yarl>=1.23.0,<2.0.0" in qq_dependencies
+    assert "qqbot-agent-sdk==1.2.2" in qq_dependencies
+    assert not any("nonebot-adapter-qq" in item for item in qq_dependencies)
 
     locked_names = {package["name"] for package in lock["package"]}
     assert {"fastapi", "uvicorn", "websockets"} <= locked_names

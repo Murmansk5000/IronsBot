@@ -11,6 +11,8 @@ from ironsbot.integrations.qq_official.reply_sequences import (
 if TYPE_CHECKING:
     import pytest
 
+REPLY_LIMIT = 4
+
 
 def test_reply_sequences_are_unique_under_concurrency() -> None:
     allocator = QQOfficialReplySequenceAllocator(limit=64)
@@ -45,3 +47,22 @@ def test_reply_sequence_tracking_is_bounded() -> None:
     allocator.allocate("newest")
 
     assert allocator.allocate("oldest").sequence == 1
+
+
+def test_reply_sequence_allocation_reserves_consecutive_slots() -> None:
+    allocator = QQOfficialReplySequenceAllocator(limit=REPLY_LIMIT)
+
+    assert allocator.allocate("event-id", count=3).sequence == 1
+    assert allocator.allocate("event-id").sequence == REPLY_LIMIT
+    rejected = allocator.allocate("event-id")
+
+    assert rejected.sequence is None
+    assert rejected.reason == "limit_exceeded"
+
+
+def test_reply_sequence_reservation_is_atomic_when_limit_would_be_exceeded() -> None:
+    allocator = QQOfficialReplySequenceAllocator(limit=REPLY_LIMIT)
+
+    assert allocator.allocate("event-id", count=3).sequence == 1
+    assert allocator.allocate("event-id", count=2).reason == "limit_exceeded"
+    assert allocator.allocate("event-id").sequence == REPLY_LIMIT

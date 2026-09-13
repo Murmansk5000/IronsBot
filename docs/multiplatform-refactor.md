@@ -55,6 +55,12 @@ Task     [██████████] completed only after code, tests, and 
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
 下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
 
+- QQ Official 传输正在从旧 NoneBot 适配器切换到腾讯官方
+  `qqbot-agent-sdk 1.2.2`。NoneBot 只继续托管 OneBot；腾讯 SDK 作为应用资源独立维护
+  每 AppID 的 Token、WebSocket、Resume session 和发送客户端，入站仍只进入共享
+  portable router。SDK 当前覆盖 C2C 与 `GROUP_AT_MESSAGE_CREATE`，普通群消息事件不在
+  该版本解析范围内；真实 AppID 登录、图片发送、主动额度和平台权限仍是 Phase 7 外部门。
+
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
   AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
   feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID

@@ -18,7 +18,7 @@ AppID and cannot safely support several bots with one IronsBot service.
 
 ## Goal
 
-Run several QQ Official bot accounts in one NoneBot process while preserving one
+Run several QQ Official bot accounts in one IronsBot process while preserving one
 shared command and business-service implementation. Isolate credentials,
 connections, feature defaults, superusers, OpenID policies, persisted identity,
 reply sequences, and outbound routing by the owning AppID.
@@ -32,12 +32,13 @@ reply sequences, and outbound routing by the owning AppID.
   `QQ_OFFICIAL_SECRET_<ALIAS_UPPER>`.
 - The retired static Token and old single-account fields are rejected.
 - Accounts in one process use the same production or sandbox environment because
-  `nonebot-adapter-qq` exposes sandbox selection as adapter-global configuration.
+  the Tencent SDK API base is process-wide.
 
 ## Runtime Contract
 
-- Bootstrap emits one `qq_bots` entry for each enabled account.
-- Inbound identity uses the connected bot's `self_id` as `account_id`.
+- Bootstrap creates one Tencent SDK API client, WebSocket, and session store for
+  each enabled account.
+- Inbound identity uses the owning connection's AppID as `account_id`.
 - Feature defaults, OpenID policy, and superusers are compiled per AppID.
 - C2C superusers use `user_openid`; group superusers are explicitly scoped by
   group OpenID and `member_openid`, and are not private-message targets.
@@ -49,11 +50,11 @@ reply sequences, and outbound routing by the owning AppID.
 
 ## Dependency Evidence
 
-The installed `nonebot-adapter-qq 1.7.2` iterates every configured `BotInfo` and
-constructs one `Bot` per entry. Its AccessToken, expiry, gateway session, and
-event sequence are instance fields; token requests use that instance's AppID and
-AppSecret. This matches Tencent's public multi-account guidance, which requires
-independent connection, token cache, and OpenID routing for every AppID.
+The Tencent `qqbot-agent-sdk 1.2.2` transport constructs one `QQApiClient`,
+`QQWebSocket`, and persisted resume session per AppID. Token requests use that
+instance's AppID and AppSecret. This matches Tencent's public multi-account
+guidance, which requires independent connection, token cache, and OpenID routing
+for every AppID.
 
 ## Acceptance
 
