@@ -189,6 +189,34 @@ async def test_pinned_asset_retries_same_revision_through_cdn() -> None:
     assert urls[1].endswith("/signbuff/33.png")
 
 
+@pytest.mark.asyncio
+async def test_mount_uses_its_generated_repository_revision() -> None:
+    urls: list[str] = []
+    snapshot = replace(
+        _asset_snapshot(),
+        repositories={
+            **_asset_snapshot().repositories,
+            "mount": PublishedAssetRepository("example/seerapi", "b" * 40),
+        },
+    )
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(200, content=b"mount")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=lambda: snapshot,
+        )
+        assert await source.fetch("mount", "1301170", fallback=False) == b"mount"
+
+    assert urls == [
+        "https://raw.githubusercontent.com/example/seerapi/"
+        f"{'b' * 40}/mount/1301170.png"
+    ]
+
+
 def test_manifest_backed_images_do_not_fall_back_to_mutable_main() -> None:
     assert asyncio.run(_fetch_without_asset_snapshot()) == []
 

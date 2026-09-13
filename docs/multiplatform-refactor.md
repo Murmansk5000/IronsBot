@@ -772,11 +772,10 @@ TTL 设为零以验证再次下载。三类 HTTP 失败、恢复、严格精灵�
   皮肤资源、称号和群星牌引用的同步读取，冻结为 `NewContentPreparedItem`。素材
   适配器只消费其中的 `NewContentAssetRequest`，再交给纯 presenter 生成不可变
   文档；不得把新的数据库读取或展示推断放回 HTML 模板或纯 presenter。
-- 新增内容发布索引、赛季时间和 Flash 座驾素材读取已经分别迁入
-  `integrations.seer_data.new_content_repository`、`season_repository` 与
-  `flash_mount_repository`。`NewContentService`、赛季倒计时和装备服务只消费
-  脱离 Session 的值对象；新功能必须沿用这一 repository 边界，而不是在 service
-  内恢复 SQLAlchemy、JSON 或 Flash 文件访问。
+- 新增内容发布索引和赛季时间分别由
+  `integrations.seer_data.new_content_repository` 与 `season_repository` 提供。
+  Flash 座驾 PNG 已由 SeerAPI 构建期发布，运行时统一通过 `SeerImageSource` 的
+  `mount` 类型获取；不得恢复 SQLite Blob repository、运行时 SWF 或专用图片缓存。
 - 当前最终图片缓存仍在素材准备和 `RenderDocument` 生成之后使用
   `render_document_cache_key()`，其 data URI 确实能保证 miss 路径的像素正确性；但这
   不满足“L3 命中零 SQL/HTTP/presenter”的目标。后续必须由发布数据的 revision 和素材
@@ -1951,7 +1950,8 @@ Python 模块，超过 800 行即失败。自动生成的 `openapi_comments.py` 
 不得借豁免名单容纳手写业务模块。SeerAPI commit `69f2af4` 通过全量 `318 passed`、
 Ruff、compileall、公开导入和差异检查。
 
-座驾 PNG 尚未切换：现有 SeerAPI 工作流对外部 `seer-unity-assets` 只有读取契约，缺少
-可验证的原子写入步骤。没有在远端素材实际发布前删除 IronsBot 的当前读取路径，也没有
-把本地生成文件冒充 immutable asset。该项继续作为 manifest 拆分 Spec 的唯一未完成
-切片；QQ 身份能力仍按平台延期规则排在最后。
+后续切片已将座驾 PNG 切换到 SeerAPI 的 `generated-render-assets` 分支：工作流增量生成并
+提交素材，manifest v3 为 `mount` 声明仓库和精确 commit，IronsBot 统一通过
+`SeerImageSource` 获取。运行时 SQLite Blob repository 与 fallback 已删除。SeerAPI 全量
+`326 passed`，IronsBot 相关测试 `89 passed`；当前只剩真实 Actions release 与消费者
+smoke。QQ 身份能力仍按平台延期规则排在最后。

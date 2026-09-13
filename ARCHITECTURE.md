@@ -23,6 +23,14 @@ integration. Do not add an empty official-bot plugin, fake adapters, official
 credentials, or speculative compatibility code before a concrete feature needs
 them.
 
+Platform identity work follows capability-first scheduling. If a target API
+cannot faithfully express a QQ number, a direct mention, an account binding, or
+the required membership lookup, record that capability gap and defer the
+platform adapter until the final platform phase. Continue platform-neutral
+data, rendering, service, and delivery work without inventing an identity map,
+weakening the core contract, or adding a QQ-specific business branch merely to
+fill an acceptance matrix.
+
 ## Architecture Status
 
 The following distinctions are mandatory during the migration:

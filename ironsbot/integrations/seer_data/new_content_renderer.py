@@ -7,9 +7,6 @@ import asyncio
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ironsbot.integrations.seer_data.flash_mount_repository import (
-    load_flash_mount_image,
-)
 from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.images import (
     ImageSourceError,
@@ -115,9 +112,6 @@ async def render_new_content_menu(  # noqa: PLR0913
             f"new_content_{incomplete.item.category}",
             entity_id=incomplete.item.entity_id,
         )
-    prepared_items = tuple(
-        _with_mount_fallback(data, prepared) for prepared in prepared_items
-    )
     rows = _initial_rows(
         snapshot,
         display_categories,
@@ -180,22 +174,6 @@ async def render_new_content_menu(  # noqa: PLR0913
     if cacheable:
         cache_entry.put(result)
     return result
-
-
-def _with_mount_fallback(
-    data: SeerDataReader,
-    prepared: NewContentPreparedItem,
-) -> NewContentPreparedItem:
-    asset = prepared.asset
-    if prepared.item.category != "mount" or asset is None:
-        return prepared
-    return replace(
-        prepared,
-        asset=replace(
-            asset,
-            fallback_data=load_flash_mount_image(data, prepared.item.entity_id),
-        ),
-    )
 
 
 def _cache_key(  # noqa: PLR0913
@@ -326,8 +304,6 @@ async def _asset_data_uri(
                 await images.fetch(request.kind, request.key, fallback=False)  # type: ignore[arg-type]
             )
     except (ImageSourceError, RuntimeError, TypeError, ValueError):
-        if request.fallback_data is not None:
-            return to_data_uri(request.fallback_data)
         return None
     return None
 

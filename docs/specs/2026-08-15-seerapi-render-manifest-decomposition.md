@@ -116,7 +116,7 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 | --- | --- | --- | --- |
 | Manifest domain extraction | 新模块从 SQLite + snapshot 生成既有契约的 entries/scopes/metadata；总构建器删除旧 helper | 本 Spec 接受 | completed |
 | Effect icon build extraction | SWF/Unity 图标转换使用独立配置/结果值对象，不影响 manifest domain | Manifest extraction | completed |
-| Mount publication | mount PNG 进入 immutable asset revision 与 manifest，IronsBot 删除 blob fallback | asset repository 写入设计 | planned |
+| Mount publication | mount PNG 进入 immutable asset revision 与 manifest，IronsBot 删除 blob fallback | asset repository 写入设计 | implemented；真实 release smoke 待执行 |
 | New-content index extraction | 输入 repository、分类、release state 输出分开，脚本低于 800 行 | 独立 Spec | completed |
 | Final size gate | 自有 SeerAPI 生产/构建模块均低于 800 行或有窄化记录的临时例外 | 前述 slices | completed：AST/源码门禁覆盖维护代码，生成文件显式豁免 |
 
@@ -148,13 +148,14 @@ transition 债务，也会让消费者难以证明每一种素材范围的语义
 | 2026-08-15 | 当前职责审计 | 函数声明、调用点、既有 SeerAPI build tests 与规范审计 | manifest inventory 至 metadata 仍位于 4,553 行总构建器；`render_asset_repository.py` 已独立承担 immutable snapshot 读取。 |
 | 2026-08-15 | SeerAPI `86c2de5` | `uv run pytest -q`（260 passed）、Ruff、构建器 `--help`、compileall、`git diff --check` | `render_asset_manifest_build.py` 成为唯一 manifest 计算路径；总构建器从 4,553 行降至 4,122 行。真实 release consumer smoke 尚未重跑。 |
 | 2026-09-13 | SeerAPI `69f2af4` | 全量 `318 passed`、Ruff、compileall、公开输出器导入和源码行数门禁 | 效果图标与新内容索引已分别拆入窄模块；Schema、JSON/数据库输出职责拆分后最大维护模块 753 行。仅自动生成的 `openapi_comments.py` 显式豁免。座驾远端发布仍未完成。 |
+| 2026-09-13 | typed repositories 与 mount publication | SeerAPI 全量 `326 passed`，IronsBot 全量 `3238 passed, 7 skipped`，Ruff、compileall、改动范围 BasedPyright、workflow YAML | manifest v3 支持按素材类型声明仓库；坐骑 PNG 增量发布到生成分支，机器人 Blob 读取已删除。只剩真实 Actions release consumer smoke。 |
 
 ## Progress
 
 ```text
 Program  [███████░] 7/8 verified phases; Phase 7 remains open
-Phase    [████████░░] 80%  verified slices: 4/5   remaining: mount publication
-Current  [██████████] 100% manifest extraction verified; next: isolate effect-icon conversion without changing PNG facts
+Phase    [█████████░] 90%  implementation verified; remaining: production release smoke
+Current  [██████████] 100% mount publication implementation verified; next: publish and consume a real release
 ```
 
 Only verified, committed, or explicitly waived work counts toward progress.
