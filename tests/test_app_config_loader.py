@@ -121,7 +121,6 @@ def _assert_default_push_unsubscribe(
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.check_on_startup
-    assert docker_update.check_on_restart
     assert docker_update.image == "murmansk5000/ironsbot:latest"
     assert docker_update.container_name == "ironsbot"
     assert docker_update.docker_socket_path == "/var/run/docker.sock"
@@ -1017,6 +1016,26 @@ change_cooldown_hours = 72.0
         "player",
         "binding",
         "change_cooldown_hours",
+    )
+
+
+def test_removed_docker_restart_check_field_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[operations.docker_update]
+check_on_restart = false
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
+
+    assert exc_info.value.errors()[0]["loc"] == (
+        "operations",
+        "docker_update",
+        "check_on_restart",
     )
 
 

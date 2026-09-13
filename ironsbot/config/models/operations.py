@@ -140,7 +140,6 @@ class DockerUpdateConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     check_on_startup: bool = True
-    check_on_restart: bool = True
     image: str = "murmansk5000/ironsbot:latest"
     container_name: str = "ironsbot"
     docker_socket_path: str = "/var/run/docker.sock"

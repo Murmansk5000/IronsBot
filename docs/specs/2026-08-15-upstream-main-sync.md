@@ -56,7 +56,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
 | 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
 | 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
-| Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 需要 operations Spec | planned |
+| Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 目标平台管理员身份最终验收 | completed：动作与菜单已收口；跨平台身份延期 |
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
 | Bilibili 抽奖/中奖拆分 | 复用配置驱动分类，不增加硬编码枚举或旧配置迁移器 | 无 | completed |
 | 新增技能根菜单预览 | 根预览只含新增项；技能排除本周新精灵自带技能，详情保留完整数据 | 无 | completed |
@@ -99,13 +99,14 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | 群星牌觉醒卡合并 | Autocard repository、service、菜单与图片回复回归 | `compose/composeTo` 形成只读变体索引；任一名称或 ID 返回同一组事实，异常关系不合并。 |
 | 2026-09-13 | 战队详情增强（非 QQ 部分） | team service、配置与订阅简版回归 | 直接战队号查询补标语、公告与 Boss 剩余能量；订阅提醒保持简版。按 QQ 玩家目标查询延期。 |
 | 2026-09-13 | 竞技池、专家池与大师池变化 | seerapi 317 tests；机器人 focused 327 tests、full 3189 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3`、`dadfe83` 直接使用既有池表和精灵外键发布变化；机器人统一分类、详情、图片与大师池直接查询，不复制旧专用 renderer。 |
+| 2026-09-13 | Docker 维护菜单 | operations service、命令所有权、配置与 OneBot 适配专项 143 项；Ruff、BasedPyright、compileall | 两个维护动作具有唯一 service 契约；所有维护入口打开同一菜单，删除 `check_on_restart` 和旧确认双轨。QQ/目标平台管理员身份只在最终平台阶段验收。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
-Slice    [███████████□□□□□] 11/16 tracked outcomes resolved; 5 remain
-Current  [██████████] all three peak-pool change paths verified
+Slice    [████████████□□□□] 12/16 tracked outcomes resolved; 4 remain
+Current  [██████████] Docker maintenance actions and menu verified
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.

@@ -1783,3 +1783,12 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   仍是 service 层的纯格式化规则，精灵查询只接收 `SkinDetails`。
 - **2026-08-14：** 幸运橱窗按资源 ID 补全皮肤资料的 ORM 查询迁入
   `skin_reference_repository`；协议请求、缓存和关注偏好不变。
+
+## Docker 维护动作收口（2026-09-13）
+
+`/重启机器人` 与 `/更新镜像` 不再维护“配置决定是否检查”和“另一路 yes/no
+确认”两套语义。operations service 统一暴露`仅重启`、`检查并更新后重启`两个动作，
+OneBot 仅承载数字菜单；旧 `check_on_restart` 配置和无调用的确认适配器删除。
+
+目标平台的管理员身份映射仍遵循 QQ 身份能力延期规则，最后统一验收，不在本阶段
+增加 QQ 号专用补丁。

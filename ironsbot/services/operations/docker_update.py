@@ -5,6 +5,8 @@ import asyncio
 import logging
 import os
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from .docker_formatting import (
@@ -29,6 +31,51 @@ RestartAction = Literal["none", "process", "docker"]
 ProcessRestarter = Callable[[], Awaitable[None]]
 RESTART_DELAY_SECONDS = 1.0
 logger = logging.getLogger(__name__)
+
+
+class DockerMaintenanceChoice(str, Enum):
+    """Administrator-selected Docker maintenance action."""
+
+    RESTART_ONLY = "restart_only"
+    UPDATE_AND_RESTART = "update_and_restart"
+
+
+@dataclass(frozen=True, slots=True)
+class DockerMaintenanceOption:
+    key: str
+    label: str
+    choice: DockerMaintenanceChoice
+
+
+DOCKER_MAINTENANCE_OPTIONS = (
+    DockerMaintenanceOption("1", "仅重启机器人", DockerMaintenanceChoice.RESTART_ONLY),
+    DockerMaintenanceOption(
+        "2",
+        "检查并更新镜像后重启",
+        DockerMaintenanceChoice.UPDATE_AND_RESTART,
+    ),
+)
+
+
+def parse_docker_maintenance_choice(text: str) -> DockerMaintenanceChoice | None:
+    normalized = text.strip()
+    return next(
+        (
+            option.choice
+            for option in DOCKER_MAINTENANCE_OPTIONS
+            if option.key == normalized
+        ),
+        None,
+    )
+
+
+def docker_maintenance_menu_text() -> str:
+    lines = ["选择机器人维护操作："]
+    lines.extend(
+        f"{option.key}. {option.label}" for option in DOCKER_MAINTENANCE_OPTIONS
+    )
+    lines.extend(("0.【退出】", "", "输入序号后会立即执行。"))
+    return "\n".join(lines)
 
 
 class DockerGateway(Protocol):
@@ -100,31 +147,6 @@ class DockerUpdateService:
 
         container_name, result = await self._check_update()
         return format_docker_image_check_reply(
-            container_name=container_name,
-            image=str(self._config.image),
-            result=result,
-        )
-
-    async def prepare_manual_update(self) -> tuple[str, bool]:
-        """Return a read-only image check and whether a confirmation is needed."""
-
-        container_name, result = await self._check_update()
-        return (
-            format_docker_image_check_reply(
-                container_name=container_name,
-                image=str(self._config.image),
-                result=result,
-            ),
-            result.ok and not result.up_to_date,
-        )
-
-    async def execute_manual_update(self) -> str:
-        """Start an administrator-confirmed image update."""
-
-        container_name, result = await self.run_update()
-        if result.ok and not result.up_to_date and result.updater_container_id:
-            self._save_manual_handoff(container_name, result)
-        return format_docker_update_reply(
             container_name=container_name,
             image=str(self._config.image),
             result=result,
@@ -209,9 +231,8 @@ class DockerUpdateService:
             return None
         return DockerRegistryCredentials(username=username, token=token)
 
-    async def prepare_manual_restart(self) -> tuple[str, RestartAction]:
-        if not bool(self._config.check_on_restart):
-            return await self._prepare_restart_without_image_check()
+    async def prepare_update_and_restart(self) -> tuple[str, RestartAction]:
+        """Check for an image update, apply it when present, then restart."""
 
         container_name, result = await self.run_update()
         reply = format_docker_update_reply(
@@ -234,6 +255,27 @@ class DockerUpdateService:
             else "镜像检查失败，继续普通进程重启。"
         )
         return f"{reply}\n\n{suffix}", action
+
+    async def prepare_restart_only(self) -> tuple[str, RestartAction]:
+        """Prepare a restart without checking or updating the image."""
+
+        action = await self._ordinary_restart_action()
+        target = "机器人容器" if action == "docker" else "机器人进程"
+        return (
+            f"正在重启{target}。\n"
+            "本次选择“仅重启”，不会检查或更新 Docker 镜像。",
+            action,
+        )
+
+    async def prepare_maintenance(
+        self,
+        choice: DockerMaintenanceChoice,
+    ) -> tuple[str, RestartAction]:
+        """Prepare exactly the maintenance action selected by an administrator."""
+
+        if choice is DockerMaintenanceChoice.RESTART_ONLY:
+            return await self.prepare_restart_only()
+        return await self.prepare_update_and_restart()
 
     def _save_manual_handoff(
         self,
@@ -279,16 +321,6 @@ class DockerUpdateService:
                 "docker container restart failed; falling back to process restart"
             )
             await self._restart_process()
-
-    async def _prepare_restart_without_image_check(self) -> tuple[str, RestartAction]:
-        action = await self._ordinary_restart_action()
-        if action == "docker":
-            return (
-                "正在重启机器人容器。\n"
-                "当前配置未启用重启前镜像检查；将直接重启当前 Docker 容器。",
-                action,
-            )
-        return "正在重启机器人进程。", action
 
     async def _ordinary_restart_action(self) -> RestartAction:
         socket_path = str(self._config.docker_socket_path).strip()

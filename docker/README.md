@@ -174,7 +174,6 @@ other startup tasks such as data sync and before manual restart commands:
 ```toml
 [operations.docker_update]
 check_on_startup = true
-check_on_restart = true
 watchtower_docker_api_version = "1.40"
 ```
 
