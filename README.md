@@ -122,9 +122,14 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 套装/部件/称号、属性/异常状态、巅峰资料和榜单查询。查询出现多个候选项时直接发送数字选择，
 发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
 规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
-查询或绑定目标。主动推送、跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
+查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
 同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
+
+主动发送默认关闭。机器人应用确认具备对应平台权限后可设置
+`proactive_messages = true`；开启 `team_resource_subscription` 时必须同时开启该项，
+否则配置会被明确拒绝，避免订阅成功后无法收到提醒。平台实际发送额度和权限以
+当前机器人应用后台为准。
 
 在 `ironsbot.toml` 中启用：
 
@@ -133,6 +138,7 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 enabled = true
 app_id = "你的 QQ 机器人 AppID"
 sandbox = false
+proactive_messages = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "ai_chat"]
 superusers = []
 ```

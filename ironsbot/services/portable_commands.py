@@ -20,6 +20,9 @@ from ironsbot.services.portable_query_sessions import (
 )
 from ironsbot.services.portable_rank_commands import build_portable_rank_operations
 from ironsbot.services.portable_reply import PortableOperation, PortableReply
+from ironsbot.services.portable_team_resource_commands import (
+    build_portable_team_resource_operations,
+)
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.data_query_commands import (
@@ -66,6 +69,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
+    from ironsbot.services.team.resource import TeamResourceService
 
 
 class PortableCommandRouter:
@@ -248,6 +252,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     player_id_resolver: PlayerIdResolver,
     features: FeatureService,
     ai: AiService,
+    team_resource: TeamResourceService,
 ) -> PortableCommandRouter:
     async def about_message(
         text: str,
@@ -314,11 +319,17 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer.rank_queries,
         player_id_resolver,
     )
+    team_resource_operations = (
+        build_portable_team_resource_operations(team_resource)
+        if "team_resource.query" in catalog.command_ids
+        else {}
+    )
 
     operations: dict[str, PortableOperation] = {
         "about": about_message,
         "seer.data.query": data_query,
         "seer.team.query": team_query,
+        **team_resource_operations,
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,

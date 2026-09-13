@@ -240,6 +240,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         headless=headless,
         server_status=operations.server_status,
         subscriptions=subscriptions,
+        outbound_messenger=common.outbound_messenger,
         bilibili=bilibili,
         bilibili_login=bilibili_login,
         bilibili_monitor=bilibili_monitor,

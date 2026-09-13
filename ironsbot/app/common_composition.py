@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.onebot.matchers import PromptSessionManager
 from ironsbot.integrations.onebot.outbound import (
@@ -18,6 +19,7 @@ from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
+from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
 from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryPolicy,
     ProactiveMessageDelivery,
@@ -27,6 +29,7 @@ if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.outbound import OutboundMessenger
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +42,7 @@ class CommonComponents:
     outbound: GroupOutboundRateLimitService
     subscriptions: PushUnsubscribeStore
     bot_router: BotRouter
+    outbound_messenger: PlatformOutboundMessenger
     proactive_delivery: ProactiveMessageDelivery
     admin_notices: AdminNoticeService
 
@@ -68,8 +72,21 @@ def build_common_components(
         settings.onebot_references,
     )
     promotions = PromotionCatalog(settings.promotions)
+    platform_messengers: dict[Platform, OutboundMessenger] = {
+        Platform.ONEBOT: OneBotOutboundMessenger(bot_router, outbound),
+    }
+    if settings.bot.qq_official.enabled:
+        from ironsbot.integrations.qq_official.outbound_messenger import (
+            QQOfficialOutboundMessenger,
+        )
+
+        platform_messengers[Platform.QQ_OFFICIAL] = QQOfficialOutboundMessenger(
+            settings.bot.qq_official.app_id,
+            proactive_enabled=settings.bot.qq_official.proactive_messages,
+        )
+    outbound_messenger = PlatformOutboundMessenger(platform_messengers)
     proactive_delivery = ProactiveMessageDelivery(
-        OneBotOutboundMessenger(bot_router, outbound),
+        outbound_messenger,
         features,
         promotions,
         subscriptions,
@@ -95,6 +112,7 @@ def build_common_components(
         outbound=outbound,
         subscriptions=subscriptions,
         bot_router=bot_router,
+        outbound_messenger=outbound_messenger,
         proactive_delivery=proactive_delivery,
         admin_notices=AdminNoticeService(
             features,

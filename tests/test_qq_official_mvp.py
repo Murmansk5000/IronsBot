@@ -33,6 +33,9 @@ from ironsbot.integrations.qq_official.identity import qq_official_incoming_mess
 from ironsbot.integrations.qq_official.message_rendering import (
     render_qq_official_outbound_message,
 )
+from ironsbot.integrations.qq_official.outbound_messenger import (
+    QQOfficialOutboundMessenger,
+)
 from ironsbot.integrations.qq_official.runtime import (
     deliver_qq_official_reply,
     qq_official_event_is_supported,
@@ -54,13 +57,12 @@ from ironsbot.services.seer.rank_command_contracts import rank_help_command_cont
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from nonebot.adapters.qq import Bot as QQOfficialBot
-
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.rank_list_models import RankListCommand
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.seer.team import TeamQueryActor
+    from ironsbot.services.team.resource import TeamResourceService
 
 
 class _FakeDataQueries:
@@ -192,11 +194,33 @@ class _FakeOfficialBot:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
         self.sent = 0
+        self.calls: list[tuple[str, str, object, str | None, int | None]] = []
 
-    async def send(self, _event: object, _message: object) -> None:
+    async def send_to_c2c(
+        self,
+        openid: str,
+        message: object,
+        msg_id: str | None = None,
+        msg_seq: int | None = None,
+    ) -> object:
+        self.calls.append(("private", openid, message, msg_id, msg_seq))
         self.sent += 1
         if self.fail:
             raise _TransportError
+        return SimpleNamespace(id=f"sent-{self.sent}")
+
+    async def send_to_group(
+        self,
+        group_openid: str,
+        message: object,
+        msg_id: str | None = None,
+        msg_seq: int | None = None,
+    ) -> object:
+        self.calls.append(("group", group_openid, message, msg_id, msg_seq))
+        self.sent += 1
+        if self.fail:
+            raise _TransportError
+        return SimpleNamespace(id=f"sent-{self.sent}")
 
 
 class _TransportError(RuntimeError):
@@ -226,6 +250,10 @@ def _fake_seer(
             rank_queries=rank_queries or unused,
         ),
     )
+
+
+def _unused_team_resource() -> TeamResourceService:
+    return cast("TeamResourceService", SimpleNamespace())
 
 
 def _portable_catalog(*, ai_chat: bool = False) -> CommandCatalog:
@@ -349,6 +377,27 @@ superusers = ["opaque-admin"]
     assert settings.bot.qq_official.superusers == ["opaque-admin"]
 
 
+def test_team_resource_requires_qq_official_proactive_delivery() -> None:
+    with pytest.raises(ValueError, match="proactive_messages must be true"):
+        QQOfficialConfig(
+            enabled=True,
+            app_id="example-app",
+            token="example-token",
+            secret="example-secret",
+            features=["team_resource_subscription"],
+        )
+
+    config = QQOfficialConfig(
+        enabled=True,
+        app_id="example-app",
+        token="example-token",
+        secret="example-secret",
+        proactive_messages=True,
+        features=["team_resource_subscription"],
+    )
+    assert config.proactive_messages
+
+
 def test_qq_official_identity_keeps_openids_opaque() -> None:
     event = GroupAtMessageCreateEvent.model_validate(
         {
@@ -454,25 +503,15 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
         on_delivered=lambda: delivered.append(True),
     )
     bot = _FakeOfficialBot(fail=fail)
-
-    if fail:
-        with pytest.raises(_TransportError):
-            await deliver_qq_official_reply(
-                cast("QQOfficialBot", bot),
-                event,
-                incoming,
-                reply,
-            )
-    else:
-        await deliver_qq_official_reply(
-            cast("QQOfficialBot", bot),
-            event,
-            incoming,
-            reply,
-        )
+    messenger = QQOfficialOutboundMessenger(
+        "example-app",
+        bot_provider=lambda _app_id: bot,
+    )
+    await deliver_qq_official_reply(messenger, incoming, reply)
 
     assert bot.sent == 1
     assert delivered == ([] if fail else [True])
+    assert bot.calls[0][3:] == ("message-id", 1)
 
 
 @pytest.mark.asyncio
@@ -492,6 +531,7 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
@@ -525,6 +565,7 @@ async def test_portable_router_runs_scoped_query_selection(
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
@@ -558,6 +599,7 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
@@ -582,6 +624,7 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
@@ -608,6 +651,7 @@ async def test_portable_router_runs_rank_query() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
@@ -633,6 +677,7 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", ai),
+        team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
@@ -666,6 +711,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=enabled_features,
         ai=cast("AiService", ai),
+        team_resource=_unused_team_resource(),
     )
 
     reply = await enabled.dispatch(_portable_input("在吗", actor, conversation))
@@ -689,6 +735,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=disabled_features,
         ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
     )
 
     guarded = await disabled.dispatch(
@@ -716,6 +763,7 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", ai),
+        team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-member", "member", "group-a")
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-a")
@@ -749,6 +797,7 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", ai),
+        team_resource=_unused_team_resource(),
     )
     incoming = _portable_input("关于", actor, conversation)
 
@@ -875,6 +924,7 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
     )
 
     assert not qq_official_event_is_supported(event, router)

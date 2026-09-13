@@ -48,6 +48,10 @@ VALID_LOG_LEVELS = {
     "ERROR",
     "CRITICAL",
 }
+_QQ_OFFICIAL_TEAM_RESOURCE_PROACTIVE_ERROR = (
+    "bot.qq_official.proactive_messages must be true when "
+    "team_resource_subscription is enabled"
+)
 
 
 class SettingsReferenceError(ValueError):
@@ -192,6 +196,7 @@ class QQOfficialConfig(BaseModel):
     token: str = Field(default="", exclude=True, repr=False)
     secret: str = Field(default="", exclude=True, repr=False)
     sandbox: bool = False
+    proactive_messages: bool = False
     features: list[str] = Field(
         default_factory=lambda: [
             "help",
@@ -242,6 +247,11 @@ class QQOfficialConfig(BaseModel):
                 "bot.qq_official.features contains unregistered feature(s): "
                 + ", ".join(unknown)
             )
+        if (
+            "team_resource_subscription" in self.features
+            and not self.proactive_messages
+        ):
+            raise ValueError(_QQ_OFFICIAL_TEAM_RESOURCE_PROACTIVE_ERROR)
         return self
 
 

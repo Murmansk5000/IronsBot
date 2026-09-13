@@ -77,7 +77,9 @@ def bootstrap() -> Application:
                 player_id_resolver=application.resources.player_id_resolver,
                 features=application.resources.features,
                 ai=application.resources.ai,
-            )
+                team_resource=application.resources.team_resource,
+            ),
+            application.resources.outbound_messenger,
         )
     application.install()
     return application

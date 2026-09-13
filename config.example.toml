@@ -79,6 +79,10 @@ app_id = ""
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。
 sandbox = false
+# EN: Allow adapter-level proactive sends. Keep disabled until the application has
+#     the required platform permission. Team-resource subscriptions require it.
+# ZH: 允许适配器主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
+proactive_messages = false
 # EN: Features exposed through the official adapter preview. ai_chat also requires AI_KEY.
 # ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "ai_chat"]
