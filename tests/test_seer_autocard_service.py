@@ -6,9 +6,10 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.core.outbound import RemoteImagePart, TextPart
+from ironsbot.core.outbound import BinaryImagePart, TextPart
 from ironsbot.integrations.seer_data.autocard_repository import (
     AutocardDataset,
+    PublishedAutocardRepository,
     load_autocard_dataset,
 )
 from ironsbot.services.seer.autocard import (
@@ -16,6 +17,7 @@ from ironsbot.services.seer.autocard import (
     AutocardService,
     _build_autocard_index,
 )
+from ironsbot.services.seer.autocard_media import AutocardMediaService
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -173,7 +175,9 @@ class FakeData:
 
 
 def _service() -> AutocardService:
-    return AutocardService(cast("SeerDataAccess", FakeData()))
+    return AutocardService(
+        PublishedAutocardRepository(cast("SeerDataAccess", FakeData()))
+    )
 
 
 def test_autocard_search_merges_normal_and_awakened_card() -> None:
@@ -189,10 +193,7 @@ def test_autocard_search_merges_normal_and_awakened_card() -> None:
     assert "普通效果：回合开始时回复1点生命" in result.entry.text
     assert "觉醒效果：回合开始时回复2点生命" in result.entry.text
     assert result.entry.text.count("描述：经典草系精灵牌") == 1
-    assert result.entry.image_urls[0].endswith(
-        "/newseer/assets/art/autocard/texture/cards/card_1.png"
-    )
-    assert len(result.entry.image_urls) == 1
+    assert result.entry.image_keys == ("card_1",)
 
 
 def test_autocard_search_supports_card_id_and_rejects_plain_number() -> None:
@@ -251,23 +252,51 @@ def test_autocard_group_shows_identical_variant_fields_once() -> None:
     assert "普通身材" not in entry.text
     assert "觉醒身材" not in entry.text
     assert entry.text.count("效果：护盾") == 1
-    assert len(entry.image_urls) == VARIANT_IMAGE_COUNT
+    assert entry.image_keys == ("card_2", "card_3")
 
 
 def test_autocard_outbound_controls_images_without_rebuilding_text() -> None:
     entry = _service().search("群星牌布布花").entry
 
     assert entry is not None
-    complete = entry.to_outbound()
-    primary = entry.to_outbound(include_additional_images=False)
-    text_only = entry.to_outbound(include_images=False)
+    complete = entry.to_outbound(image_contents=(b"normal", b"awakened"))
+    primary = entry.to_outbound(image_contents=(b"normal",))
+    text_only = entry.to_outbound()
 
     assert (
-        sum(isinstance(part, RemoteImagePart) for part in complete.parts)
+        sum(isinstance(part, BinaryImagePart) for part in complete.parts)
         == VARIANT_IMAGE_COUNT
     )
-    assert sum(isinstance(part, RemoteImagePart) for part in primary.parts) == 1
+    assert sum(isinstance(part, BinaryImagePart) for part in primary.parts) == 1
     assert text_only.parts == (TextPart(entry.text),)
+
+
+@pytest.mark.asyncio
+async def test_autocard_media_uses_versioned_asset_keys_and_skips_missing() -> None:
+    class Images:
+        def __init__(self) -> None:
+            self.requests: list[tuple[str, str, bool]] = []
+
+        async def fetch(self, kind: str, key: str, *, fallback: bool) -> bytes:
+            self.requests.append((kind, key, fallback))
+            if key == "card_3":
+                raise RuntimeError("missing")
+            return key.encode()
+
+    entry = _service().search("群星牌布布花").entry
+    assert entry is not None
+    images = Images()
+
+    message = await AutocardMediaService(images).outbound(entry)  # type: ignore[arg-type]
+
+    assert images.requests == [
+        ("autocard_card", "card_2", False),
+        ("autocard_card", "card_3", False),
+    ]
+    assert message.parts == (
+        BinaryImagePart(b"card_2", "image/png"),
+        TextPart(entry.text),
+    )
 
 
 def test_autocard_raw_selection_keeps_single_card_for_new_content() -> None:
@@ -307,9 +336,7 @@ def test_autocard_select_returns_rendered_role_entry() -> None:
     assert "属性：火 | 生命：20" in entry.text
     assert "技能：破界" in entry.text
     assert "升级：伤害+1" in entry.text
-    assert entry.image_url.endswith(
-        "/newseer/assets/art/autocard/texture/roles/card/role_7.png"
-    )
+    assert entry.image_key == "role_7"
 
 
 def test_autocard_repository_rejects_malformed_published_integer() -> None:

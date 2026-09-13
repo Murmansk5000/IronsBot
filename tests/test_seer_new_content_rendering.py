@@ -124,10 +124,6 @@ class _Images:
             raise ImageSourceError("missing")
         return f"{kind}:{key}".encode()
 
-    async def fetch_url(self, url: str) -> bytes:
-        self.requests.append(("url", url))
-        return url.encode()
-
 
 class _Autocard:
     def __init__(
@@ -146,7 +142,7 @@ class _Autocard:
             item_id=item_id,
             name="测试群星牌",
             text="",
-            image_url=f"https://assets.example/{kind}-{item_id}.png",
+            image_key=f"{kind}_{item_id}",
         )
 
 
@@ -240,11 +236,6 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
         },
     )
     monkeypatch.setattr(
-        new_content_rendering,
-        "load_flash_mount_image",
-        lambda _data, _mount_id: None,
-    )
-    monkeypatch.setattr(
         NewContentSnapshotBuilder,
         "_item_details",
         lambda *_args: NewContentItemDetails(metadata="", description=""),
@@ -298,10 +289,10 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
     assert ("mintmark", "2") in images.requests
     assert ("suit", "3") in images.requests
     assert ("equip", "4") in images.requests
-    assert ("equip", "5") in images.requests
+    assert ("mount", "5") in images.requests
     assert ("title", "601") in images.requests
-    assert ("url", "https://assets.example/card-8.png") in images.requests
-    assert ("url", "https://assets.example/role-9.png") in images.requests
+    assert ("autocard_card", "card_8") in images.requests
+    assert ("autocard_role", "role_9") in images.requests
 
 
 @pytest.mark.asyncio
@@ -427,11 +418,6 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
 
     cache = _Cache()
     monkeypatch.setattr(
-        new_content_rendering,
-        "load_flash_mount_image",
-        lambda _data, _mount_id: None,
-    )
-    monkeypatch.setattr(
         NewContentSnapshotBuilder,
         "_item_details",
         lambda *_args: NewContentItemDetails(metadata="", description=""),
@@ -446,7 +432,7 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
     await render_new_content_menu(
         cache,  # type: ignore[arg-type]
         _Data(),  # type: ignore[arg-type]
-        _Images(fail_keys={("equip", "1301170")}),  # type: ignore[arg-type]
+        _Images(fail_keys={("mount", "1301170")}),  # type: ignore[arg-type]
         _Autocard(),  # type: ignore[arg-type]
         render_html,
         snapshot,
@@ -461,9 +447,7 @@ async def test_missing_mount_image_uses_pending_notice_without_cache(
 
 
 @pytest.mark.asyncio
-async def test_missing_unity_mount_image_uses_flash_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_generated_mount_asset_is_rendered_and_cached() -> None:
     captured: dict[str, Any] = {}
 
     async def render_html(
@@ -478,13 +462,6 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
         captured.update(templates)
         return b"menu-image"
 
-    monkeypatch.setattr(
-        new_content_rendering,
-        "load_flash_mount_image",
-        lambda _data, mount_id: (
-            b"flash-mount" if mount_id == FLASH_TEST_MOUNT_ID else None
-        ),
-    )
     cache = _Cache()
     snapshot = NewContentSnapshot(
         baseline_established=True,
@@ -503,7 +480,7 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
     await render_new_content_menu(
         cache,  # type: ignore[arg-type]
         data,  # type: ignore[arg-type]
-        _Images(fail_keys={("equip", "1301170")}),  # type: ignore[arg-type]
+        _Images(),  # type: ignore[arg-type]
         _Autocard(),  # type: ignore[arg-type]
         render_html,
         snapshot,
@@ -512,7 +489,7 @@ async def test_missing_unity_mount_image_uses_flash_fallback(
     )
 
     item_row = next(row for row in captured["items"] if row.code == "1")
-    assert item_row.image == "data:image/png;base64,Zmxhc2gtbW91bnQ="
+    assert item_row.image == "data:image/png;base64,bW91bnQ6MTMwMTE3MA=="
     assert item_row.image_notice == ""
     assert cache.saved == b"menu-image"
 
@@ -540,6 +517,14 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         items=(
             _item("autocard_sanctuary_effect", 1),
             _item("autocard_sanctuary_effect", 2),
+            NewContentItem(
+                "autocard_sanctuary_effect",
+                3,
+                "修正条目",
+                3,
+                {},
+                "modified",
+            ),
             *(_item("skill", 100 + index) for index in range(6)),
         ),
     )
@@ -562,7 +547,7 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         False,
     ]
     assert [row.description for row in captured["items"] if row.is_category] == [
-        "2 项新增",
+        "2 项新增｜1 项修改",
         "6 项新增",
     ]
 
@@ -634,7 +619,7 @@ async def test_autocard_root_menu_uses_group_title() -> None:
 
 
 @pytest.mark.asyncio
-async def test_external_autocard_image_skips_final_render_cache() -> None:
+async def test_versioned_autocard_image_allows_final_render_cache() -> None:
     cache = _Cache()
 
     async def render_html(*_args: object, **_kwargs: object) -> bytes:
@@ -656,7 +641,7 @@ async def test_external_autocard_image_skips_final_render_cache() -> None:
         "autocard_card",
     )
 
-    assert cache.saved is None
+    assert cache.saved == b"menu-image"
 
 
 def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
@@ -821,7 +806,7 @@ def test_autocard_menu_details_keep_intro_left_and_skills_right() -> None:
         item_id=8,
         name="破界者",
         text="",
-        image_url="",
+        image_key="",
         description="如果界限定义了存在，那么打破界限的人，是在毁灭这个世界，还是在重新定义自己？",
         skill_name="破界",
         skill_text="造成 3 点伤害。",
@@ -847,7 +832,7 @@ async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
         item_id=98,
         name="布布种子",
         text="",
-        image_url="https://assets.example/card-98.png",
+        image_key="card_98",
     )
     autocard = _Autocard({("card", 98): card})
 
@@ -878,7 +863,7 @@ async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
     assert pet_image is not None
     assert card_image is not None
     assert ("pet_head", "70") in images.requests
-    assert ("url", "https://assets.example/card-98.png") in images.requests
+    assert ("autocard_card", "card_98") in images.requests
 
 
 @pytest.mark.parametrize(
