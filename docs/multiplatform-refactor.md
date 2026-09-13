@@ -2009,3 +2009,12 @@ BasedPyright（0 errors/warnings）、compileall 与差异检查通过；SeerAPI
 BasedPyright 通过。审计修正了幸运橱窗测试替身的 3 个类型声明错误，没有放宽检查或改变
 生产行为。Docker Desktop Linux Engine 仍在 12 秒只读探测中超时，系统权限也不允许
 启动其服务，因此最新镜像和真实 Actions 仍保留为外部门禁。
+
+效果图标分片预检另以 118 MB 的真实历史发布库运行：成功恢复 `2108` 个 PNG，首个
+`1/16` 分片包含 `132` 个图标且全部缓存命中，输出 `repair_count=0`、
+`needs_render=false`，导出的 `132` 组 PNG/metadata 与分片 ID 快照一致。该证据确认热
+分片会跳过 FFDec。另复制同一真实缓存并仅移除 `icon_id=1` 的 PNG/metadata，预检精确
+输出 `cached_count=131`、`repair_count=1`、`repair_icon_ids=1`，没有把整个分片送去
+重建。真实 Actions 权限、缓存命中率、总耗时和发布后消费者 smoke 仍须在线上关闭。
+涉及 QQ 号、直接 @、绑定或成员身份而目标 API 无法忠实表达的能力继续留到最终平台
+适配，不阻塞这些平台无关的发布验收。
