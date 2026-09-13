@@ -199,10 +199,15 @@ async def _unexpected_render(**_kwargs: object) -> bytes:
     raise AssertionError
 
 
+EXPECTED_TOTAL_VOTES = 223
+EXPECTED_VOTE_RENDER_WIDTH = 960
+
+
 def _vote_pools() -> tuple[PeakVotePoolInput, ...]:
     return (
         PeakVotePoolInput(
-            title="限2池票选",
+            title="限制级",
+            period="8月5日12点 - 8月6日0点",
             items=(
                 PeakVoteItemSnapshot(id=100, name="旧名", score=123),
                 PeakVoteItemSnapshot(id=999, name="未收录", score=100),
@@ -221,8 +226,31 @@ def test_peak_vote_presentation_uses_snapshot_and_fallback_name() -> None:
 
     assert document.pools[0].ranks[0].name == "雷伊"
     assert document.pools[0].ranks[0].head_img == "rei"
+    assert document.pools[0].period == "8月5日12点 - 8月6日0点"
+    assert document.pools[0].total_votes == EXPECTED_TOTAL_VOTES
+    assert [rank.percentage for rank in document.pools[0].ranks] == [55, 45]
     assert document.pools[0].ranks[1].name == "未收录"
     assert document.pools[0].ranks[1].type_icon == ""
+
+
+def test_peak_vote_presentation_handles_zero_and_negative_votes() -> None:
+    pools = (
+        PeakVotePoolInput(
+            title="准限制级",
+            period="8月5日12点 - 8月6日0点",
+            items=(PeakVoteItemSnapshot(id=100, name="雷伊", score=-1),),
+            pets=(_pet(100, "雷伊", 70, 1),),
+        ),
+    )
+
+    document = present_peak_pool_vote(
+        pools,
+        "2026-08-05 12:00",
+        PetImageAssets(pet_heads=((70, "rei"),), type_icons=((1, "electric"),)),
+    )
+
+    assert document.pools[0].total_votes == 0
+    assert document.pools[0].ranks[0].percentage == 0
 
 
 def test_peak_vote_document_key_changes_with_rendered_time() -> None:
@@ -258,6 +286,7 @@ async def test_peak_vote_adapter_deduplicates_assets_and_writes_final_cache() ->
     assert result == b"rendered-vote"
     assert images.requests == [("pet_head", "70"), ("element_type", "1")]
     assert captured["templates"]["generated_at"] == generated_at
+    assert captured["max_width"] == EXPECTED_VOTE_RENDER_WIDTH
     assert cache.writes == [
         (
             "peak_pool_vote",
