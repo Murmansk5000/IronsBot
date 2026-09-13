@@ -204,7 +204,6 @@ def build_test_plugin_registry(
                 check_on_connect=_noop_startup,
                 register_job=_noop_startup,
             ),
-            bilibili_content_renderer=lambda _item, _content: None,
             lucky_skin_window=SimpleNamespace(
                 enabled=False,
                 is_eligible_actor=lambda _actor: False,
@@ -261,6 +260,7 @@ def build_test_plugin_registry(
                     ),
                     select=lambda _value: None,
                 ),
+                autocard_media=SimpleNamespace(outbound=_noop_query),
                 autocard_sanctuary=SimpleNamespace(
                     search=_noop_query,
                     select=_noop_query,
@@ -351,7 +351,6 @@ def build_test_plugin_registry(
             features=runtime.features,
             monitor=resources.bilibili_monitor,
             scheduler=SchedulerFacade(),
-            render_content=resources.bilibili_content_renderer,
         ),
         messaging_plugin_contribution(
             config=config.messaging,

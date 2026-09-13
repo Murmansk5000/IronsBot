@@ -182,6 +182,67 @@ class LoggingConfig(BaseModel):
         return normalized or None
 
 
+class QQOfficialConfig(BaseModel):
+    """QQ Official Bot credentials and the deliberately small MVP surface."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    app_id: str = ""
+    token: str = Field(default="", exclude=True, repr=False)
+    secret: str = Field(default="", exclude=True, repr=False)
+    sandbox: bool = False
+    features: list[str] = Field(
+        default_factory=lambda: [
+            "help",
+            "about",
+            "seer_data",
+            "seer_team",
+            "seer_pet",
+            "seer_mintmark",
+            "seer_equipment",
+            "seer_type",
+            "seer_peak",
+        ]
+    )
+    superusers: list[str] = Field(default_factory=list)
+
+    @field_validator("app_id", "token", "secret", mode="before")
+    @classmethod
+    def normalize_credentials(cls, value: object) -> str:
+        return str(value or "").strip()
+
+    @field_validator("features", "superusers", mode="before")
+    @classmethod
+    def normalize_string_lists(cls, value: object) -> list[str]:
+        return _command_starts(value)
+
+    @model_validator(mode="after")
+    def validate_enabled_credentials(self) -> QQOfficialConfig:
+        if not self.enabled:
+            return self
+        missing = [
+            name
+            for name, value in (
+                ("app_id", self.app_id),
+                ("token", self.token),
+                ("secret", self.secret),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                "bot.qq_official requires " + ", ".join(missing) + " when enabled"
+            )
+        unknown = sorted(set(self.features) - FEATURE_KEYS)
+        if unknown:
+            raise ValueError(
+                "bot.qq_official.features contains unregistered feature(s): "
+                + ", ".join(unknown)
+            )
+        return self
+
+
 class BotConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -194,6 +255,7 @@ class BotConfig(BaseModel):
     plugin_manifest: Literal["full", "core"] = "full"
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
+    qq_official: QQOfficialConfig = Field(default_factory=QQOfficialConfig)
     matcher_priority: MatcherPriorityConfig = Field(
         default_factory=MatcherPriorityConfig
     )
@@ -221,6 +283,14 @@ class BotConfig(BaseModel):
     @classmethod
     def normalize_command_start(cls, value: object) -> object:
         return _command_starts(value)
+
+    @property
+    def effective_driver(self) -> str:
+        """Add the client transport required by enabled outbound adapters."""
+
+        if self.qq_official.enabled and "~websockets" not in self.driver.split("+"):
+            return f"{self.driver}+~websockets"
+        return self.driver
 
 
 class PathsConfig(BaseModel):

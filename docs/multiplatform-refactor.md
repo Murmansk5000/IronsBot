@@ -5,9 +5,10 @@
 [ARCHITECTURE.md](../ARCHITECTURE.md) 为准，工作方式以
 [engineering-workflow.md](engineering-workflow.md) 为准。
 
-本轮生产基线保持 NoneBot2、OneBot v11、NapCat、Docker/Unraid 和 Python 3.10+
-不变。QQ Official 仅是未来兼容目标：在真实功能需要前，不安装
-`nonebot-adapter-qq`，不创建空适配器目录，也不写入官方凭据。
+本轮生产基线保持 NoneBot2、OneBot v11、NapCat 和 Docker/Unraid；Python 运行基线现已
+统一为 3.11+。QQ Official 已进入真实 MVP：同一 NoneBot 进程按配置注册
+`nonebot-adapter-qq`，首批只开放被动群/C2C 的帮助、关于、数据版本、赛季时间和
+下周预告。平台不能可靠表达的数字 QQ、绑定和主动推送继续按能力延期，不做伪映射。
 
 ## 总体约束
 
@@ -48,7 +49,7 @@ Task     [██████████] completed only after code, tests, and 
 
 进度条只表达已验证的阶段或当前任务完成状态。除非 Spec 已定义可审计的加权验收项，禁止报出整体百分比或总体 ETA。
 
-## 本轮验证（2026-09-12）
+## 本轮验证（2026-09-13）
 
 总任务 `[███████□]`：Phase 0 至 Phase 6 已验收，当前为 7/8；各阶段关闭依据见
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
@@ -59,6 +60,28 @@ Task     [██████████] completed only after code, tests, and 
   玩家菜单、私聊战队概览、群星牌觉醒变体合并、推送队列加固、Docker 交接失败
   恢复、B站抽奖/中奖订阅拆分、技能预览筛选和模块拆分。已检查日志、变更文件和
   部分配置差异，尚未完成逐项行为审计或移植，不能视为 V5 已获得这些能力。
+- QQ Official 首个真实 MVP 已由提交 `d5b50c36` 接入：配置凭据从环境变量注入，
+  默认 driver 在启用时增加 WebSocket 客户端，事件转换保留 group/member OpenID，
+  平台渲染支持文本、远程图片和二进制图片，引用回复按全局规则忽略。平台中立路由
+  复用 About 与 Seer 数据服务，首批开放帮助、关于、数据版本、赛季倒计时和下周预告。
+  QQ 官方 bootstrap、事件身份、权限过滤和图片消息段有专项测试；公共全量回归为
+  3259 passed、7 skipped，Ruff、BasedPyright、compileall 与 diff 检查通过。
+  代码已推送到独立私有预览仓库；尚未使用真实 AppID 建立线上连接，因此 Phase 7
+  保持 `in_progress`，不得把适配器注册等同于平台实机验收或全部功能可用。
+- QQ Official 依赖升级到 `nonebot-adapter-qq 1.7.2`。该发布的元数据仍保留过旧的
+  `yarl` 下限和 `cryptography <49` 上限；项目显式要求 `yarl 1.23+`，并使用 uv
+  override 固定到已修复已知漏洞的 `cryptography 50.x`。适配器导入、Ed25519
+  签名验证、启动和依赖审计都必须通过后才允许发布预览镜像。
+- 私有预览流水线 `34759853590` 已完成冻结依赖审计、Linux 候选构建、无网络启动
+  smoke、分目录体积门禁、基线增长检查和 GHCR 发布。镜像 digest 为
+  `sha256:5b71257be5c4116ee7e0f61c8e1f85a2515fd445166bd3ca97c1dca1c20a561a`，
+  Docker 报告大小为 246.19 MiB；其中 `/app` 4.16 MiB、site-packages 102.47 MiB、
+  字体 19.00 MiB。真实 AppID 连接仍未验收。
+- QQ Official 适配器现为 `qq-official` 可选运行组件。标准 OneBot 安装不再携带
+  适配器及其约 14.55 MiB 的 `cryptography` 目录；官方预览仓库通过
+  `IRONSBOT_RUNTIME_EXTRA=qq-official` 构建同一 Dockerfile。基础环境已在移除该
+  extra 后验证应用组合模块可导入；准确的标准 Linux 镜像差额仍以后续标准发布
+  产物为准，不把目录差额冒充压缩镜像差额。
 - 前次只读观察的本地 `main` 为 `ba08f749`。从 `4b82881b` 起新增 11 个提交：
   B站 Opus/专栏正文补全、图片合并与历史摘要持久化，巅峰池有效期/投票展示，
   当前 fork 的页脚链接，自发指令超级管理员权限，以及橱窗别名候选昵称。
@@ -241,7 +264,7 @@ Phase 4 完成门；按 2026-09-12 用户确认的职责边界，此要求已被
 | Phase 4 | `completed` | repository/snapshot/presenter/renderer 边界、请求级 L3、素材范围与版本、缺图/失败恢复/不完整禁缓存、七类真实候选库消费，以及最终 schema 清单与 DDL 指纹的生产和消费校验均已验收 | 后续渲染器复用同一发布事实、素材和缓存契约；新增表先扩展 SeerAPI 最终发布契约 | 官方全部缺失素材已补齐或线上 release 已发布 |
 | Phase 5 | `completed` | 统一解析、目录/安装规则交叉矩阵、私有 manifest 联合装配，以及真实详情服务到会话的成功/部分失败/取消/缓存时间均已验收；整体审计与全量回归见本阶段记录 | 后续入口沿用唯一 resolver/catalog/outbound；真实平台投递留在 Phase 7 | 所有平台 API 已支持 QQ 身份操作或生产发布已完成 |
 | Phase 6 | `completed` | 配置严格拒绝旧字段；发布 schema、表清单、DDL 指纹、各领域事实和错误语义均已收口；宽异常审计与架构守卫防止数据库故障退化为空结果 | 后续发布字段沿用严格标量和 `PublishedDataIncompleteError` 契约 | 所有外部网络和业务部分结果都必须禁止 |
-| Phase 7 | `in_progress` | 首批模拟平台测试覆盖出站值、命令权限、绑定仓储和订阅投递 | 完整 Seer/AI 流程、审计与真实 OneBot smoke test | 真实 QQ Official 已接入 |
+| Phase 7 | `in_progress` | 模拟能力测试、真实 OneBot WebSocket smoke、QQ Official 群/C2C MVP，以及私有 GHCR 预览镜像的安全构建与离线 smoke 已验收 | 真实 QQ 官方连接 smoke，随后逐功能迁移完整 Seer/AI 流程 | QQ Official 全功能可用或主动推送已获准 |
 
 **配置兼容收口（2026-08-13）：** 玩家实时查询额度只接受
 `seer.player.query_limits.bound_other_daily_limit`。已删除
@@ -447,6 +470,23 @@ TOML 规则编译和运行时目标解析的 `services.bilibili.targets` 分成
 需要的窄类型或规则函数，不保留旧的聚合渲染兼容入口。B站目标/投递相关 44 项测试与
 全量 1392 项 pytest、Ruff、编译和 `git diff --check` 均通过。该拆分是领域内职责
 收口，不代表已与 `main` 的大规模目录重排合并；主线后续更新必须逐项按目标契约审计。
+
+**B站历史详情渲染收口（2026-09-13）：** 历史动态选择与主动推送共用
+`services.bilibili.outbound_delivery` 的平台无关文本、图片和完整内容渲染；OneBot
+插件只把 `OutboundMessage` 编码为协议消息。删除 OneBot 专用 B站渲染模块以及穿过
+`ApplicationResources` 的渲染回调。B站源图片属于动态内容 URL，继续使用
+`RemoteImagePart`，不混入版本化的 SeerAPI 素材清单。
+
+**Seer 图片源封口（2026-09-13）：** 通用 `SeerImageSource` 删除无人调用的可变
+`preview` 分支，现在所有合法 kind 都必须由当前 SeerAPI 发布素材清单解析到固定仓库
+revision。每周预告仍由独立的短 TTL、条件请求和陈旧缓存源处理，不与版本化渲染素材
+共用身份或缓存。
+
+**Seer 小型数据查询端口（2026-09-13）：** 周预告链接、数据生成时间和巅峰赛季时间
+由 `PublishedDataQueryRepository` 从发布库读取，再以 `SeerDataQueryFacts` 领域值交给
+service；`SeerDataQueryService` 不再导入 SQL/ORM repository 函数。服务层允许引用
+`integrations.seer_data` 的规则同时从整包前缀收紧为现存模块精确过渡清单，新增反向依赖
+会被架构测试拒绝。
 
 **Docker 协议边界拆分（2026-08-13）：** Docker 更新集成不再把 Unix socket daemon
 API、OCI Registry v2、镜像归档和管理员用例编排混在 `docker.client`。`daemon` 只负责
@@ -1599,9 +1639,10 @@ Seer 发布集成层的宽异常捕获只保留协议错误码的人类说明查
 最终公共全量回归 `3138 passed, 7 skipped`；跳过项均要求显式真实发布素材。Ruff、
 BasedPyright、compileall、差异检查及发布数据架构守卫通过。Phase 6 关闭，总进度 7/8。
 
-### Phase 7 — 未来平台验收
+### Phase 7 — QQ Official 平台验收
 
-**目标契约：** 测试中的 `FakeOfficialPlatform`，不是实际 QQ Official 集成。
+**目标契约：** `FakeOfficialPlatform` 继续验证能力边界；生产适配由
+`integrations.qq_official` 实现，二者必须遵守同一核心身份和出站消息契约。
 
 **唯一目标路径：** 同一业务服务可在 OneBot 与 fake official capabilities 下处理
 文本、图片、权限、绑定和订阅；不触碰真实官方账号或凭据。
@@ -2104,3 +2145,58 @@ IronsBot `SeerImageSource` 同步采用“完整预览、官方图标、生成 P
 同一真实 v3 数据库重建座驾 manifest 后，Flash 计划由
 `mounts=11 candidates=11` 收缩为 `mounts=2 candidates=2`，且两个 SWF 均确认缺失，
 因此仍输出 `renderer_required=false`，不会安装 Java/FFDec。
+
+随后完成 Python 3.11 运行基线收口：项目最低版本、Docker 构建/运行阶段、发布 CI 和
+BasedPyright 使用同一版本；Dockerfile 通过一个 `PYTHON_VERSION` 参数维持两阶段一致，
+并继续固定 Debian Bookworm。Python 3.10 的 `tomli` 兼容分支和锁文件中的
+`backports-asyncio-runner` 已删除；Ruff 暂时保留 `py310` 语法风格目标，避免把运行时升级
+混同为 198 项无关机械改写。隔离 CPython 3.11.15 环境全量结果为
+`3241 passed, 7 skipped, 2 warnings`，专项 `90 passed`，BasedPyright 零错误；冻结运行
+导出不再包含上述兼容包。该证据不替代新候选镜像的 Linux 体积和 digest 验收。期间仅
+只读核对本地 `main` `55a39fd1`，没有 fetch、pull、merge 或 push。QQ 号、直接 @、绑定
+及群身份等目标 API 无法忠实表达的工作继续延期到最终平台阶段。
+
+发布工作流随后将 Python 小版本收成单一环境值，并同时传给 setup-python、冻结依赖审计、
+候选/正式 Docker 构建及候选容器。离线 smoke 在镜像内部读取 `sys.version_info`，版本不符
+会在仓库登录前失败。工作流 YAML、shell 引号、25 项专项、Ruff 和 BasedPyright 通过。
+本机 Docker daemon 在有界探测内没有响应，因此该项只增强可执行发布门，不冒充新镜像
+体积或启动证据。
+
+异常状态图片也完成发布链路收口。SeerAPI 从 `battle_effect` 事实表生成
+`battle_effect/<id>` 素材 manifest 条目，使用与其他 Unity 图片相同的不可变仓库 revision；
+这类查询插图不参与精灵渲染 scope 完整性，单个缺图不会误伤其他渲染。IronsBot 删除
+`seer-unity-assets/main/.../abnormal` 可变直连，统一经 `SeerImageSource` 使用发布 revision、
+双源下载、校验磁盘缓存和并发控制。没有复制 PNG、增加 SQLite 表或运行依赖。SeerAPI
+全量 `340 passed`，IronsBot 全量 `3243 passed, 7 skipped`；两仓 Ruff、BasedPyright（适用
+仓库）、compileall 和差异检查通过。新 manifest 需随下一次数据 release 发布后才进入生产。
+
+群星牌卡面随后也复用同一发布链路。业务服务不再拼接
+`seer-unity-assets/main` URL，只保存由官方 `picID`/卡牌 ID 推导出的
+`autocard_card` 或 `autocard_role` 资源 key；应用侧通过 `SeerImageSource` 按当前
+SeerAPI release 声明的不可变 revision 下载，继续共享双源回退、校验磁盘缓存、内存缓存
+和并发限制。新增内容菜单也改读同一资源 key，因此其最终渲染缓存重新具备确定性。图片仍
+留在 Unity 资源仓库，没有复制进机器人代码或 SQLite。依赖 QQ 号的入口没有纳入本批次。
+
+QQ 官方预览运行时随后移除自身的命令元数据副本。适配器只把 OpenID 事件转换为统一
+`ActorRef` / `ConversationRef`；冻结后的 `CommandCatalog` 负责输入认领、feature 与权限，
+便携执行注册表只按命令 ID 提供平台无关业务函数。安装时机从应用组合阶段移到插件贡献
+完成并冻结目录之后，因此帮助、关于和赛尔数据命令不再在两个目录中分别维护示例与说明。
+后续扩展精灵、刻印和榜单时必须沿用同一执行注册机制，不能向 QQ 适配器添加专用命令表。
+
+QQ 官方查询随后扩展到精灵/立绘、刻印/宝石、套装/部件/称号以及属性/异常状态。
+这些入口继续由 `CommandCatalog` 认领文本，并直接复用现有 Seer 查询 service；新增的
+平台无关候选会话只负责把 `QueryResult` 转成数字菜单。会话以
+`(ActorRef, ConversationRef)` 隔离、在内存中限时保存，支持 `1..N` 选择和 `0` 退出，
+不新增 SQLite，也不复制 OneBot matcher 的业务逻辑。
+
+QQ 官方平台只提供不透明 OpenID。群聊成员、C2C 用户和群会话分别使用带作用域的
+`ActorRef` / `ConversationRef`，不得还原、猜测或互相等同为普通 QQ 号。额度、绑定、
+订阅等后续身份状态必须以该平台身份键保存；如果需要关联 OneBot QQ 号，必须由用户
+显式完成跨平台身份链接。
+
+便携路由随后改为直接接收 `MessageInputContext`，不再由适配器分别传入文本、用户、
+群和角色。QQ 官方群事件的 `member_role` 进入同一个 `CommandContext` 权限判断；领域
+参数保留原始内部空格并由各自解析器处理，修复多战队 ID 被路由层拼接的问题。战队
+详情及巅峰池、投票、套装/称号/精灵榜均复用现有 service 和 `OutboundMessage`，没有
+添加官方平台专用业务实现。战队资源订阅仍不在官方平台开放，因为该流程需要尚未
+验收的主动消息能力；直接战队查询不会展示一个无法完成的订阅入口。

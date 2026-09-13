@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
+    Platform,
     is_supported_message_actor,
 )
 
@@ -30,6 +31,9 @@ class FeatureService:
     actor_features: Mapping[ActorRef, frozenset[str]]
     superusers: frozenset[ActorRef]
     superuser_bypass: bool = True
+    platform_default_features: Mapping[Platform, frozenset[str]] = field(
+        default_factory=dict
+    )
 
     @property
     def configured_feature_keys(self) -> frozenset[str]:
@@ -45,6 +49,7 @@ class FeatureService:
             for features in (
                 *self.group_features.values(),
                 *self.actor_features.values(),
+                *self.platform_default_features.values(),
             )
             for feature in features
         )
@@ -56,8 +61,13 @@ class FeatureService:
         return feature in self.actor_features.get(actor, frozenset())
 
     def is_actor_feature_allowed(self, actor: ActorRef, feature: str) -> bool:
-        return self.actor_has_feature(actor, feature) or (
-            self.superuser_bypass and self.is_actor_superuser(actor)
+        return (
+            self.actor_has_feature(actor, feature)
+            or feature
+            in self.platform_default_features.get(actor.platform, frozenset())
+            or (
+                self.superuser_bypass and self.is_actor_superuser(actor)
+            )
         )
 
     def conversation_has_feature(
@@ -65,7 +75,10 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        return feature in self.group_features.get(conversation, frozenset())
+        return feature in self.group_features.get(
+            conversation,
+            self.platform_default_features.get(conversation.platform, frozenset()),
+        )
 
     def is_feature_allowed(
         self,

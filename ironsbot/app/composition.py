@@ -39,9 +39,6 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.onebot.bilibili_rendering import (
-    build_dynamic_content_message,
-)
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
@@ -68,6 +65,16 @@ if TYPE_CHECKING:
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
     driver.register_adapter(OneBotV11Adapter)
+    if settings.bot.qq_official.enabled:
+        try:
+            from nonebot.adapters.qq import Adapter as QQOfficialAdapter
+        except ModuleNotFoundError as error:
+            msg = (
+                "QQ Official Bot is enabled, but its optional dependency is "
+                "missing; install IronsBot with the qq-official extra"
+            )
+            raise RuntimeError(msg) from error
+        driver.register_adapter(QQOfficialAdapter)
     scheduler = SchedulerFacade()
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
@@ -236,7 +243,6 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         bilibili=bilibili,
         bilibili_login=bilibili_login,
         bilibili_monitor=bilibili_monitor,
-        bilibili_content_renderer=build_dynamic_content_message,
         lucky_skin_window=lucky_skin_window,
         messaging=messaging,
         sendpic=sendpic,

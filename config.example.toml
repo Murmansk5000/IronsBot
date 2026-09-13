@@ -69,6 +69,23 @@ plugin_manifest = "full"
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。
 superusers = []
 
+[bot.qq_official]
+# EN: Enable the QQ Official Bot WebSocket adapter in this same process.
+# ZH: 在同一进程启用 QQ 官方机器人 WebSocket 适配器。
+enabled = false
+# EN: QQ Bot application ID. Keep token and secret in environment variables.
+# ZH: QQ 机器人 AppID；Token 和 AppSecret 必须通过环境变量提供。
+app_id = ""
+# EN: Use the QQ Bot sandbox API.
+# ZH: 是否连接 QQ 官方沙箱环境。
+sandbox = false
+# EN: Features exposed through the official adapter preview.
+# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出。
+features = ["help", "about", "seer_data", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak"]
+# EN: Official-platform OpenIDs with superuser bypass. These are not QQ numbers.
+# ZH: QQ 官方平台超级管理员 OpenID；这里不是 QQ 号。
+superusers = []
+
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。

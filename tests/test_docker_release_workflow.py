@@ -8,10 +8,14 @@ import sys
 from pathlib import Path
 
 import pytest
+import tomllib
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "docker-release.yml"
+DOCKERHUB_DESCRIPTION_WORKFLOW = (
+    ROOT / ".github" / "workflows" / "dockerhub-description.yml"
+)
 
 CURRENT_ACTION_MAJORS = {
     "actions/checkout": 7,
@@ -38,6 +42,37 @@ def _steps() -> list[dict]:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["docker"][
         "steps"
     ]
+
+
+def _workflow() -> dict:
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
+def test_dockerhub_description_is_optional_without_repository_secrets() -> None:
+    workflow = yaml.safe_load(
+        DOCKERHUB_DESCRIPTION_WORKFLOW.read_text(encoding="utf-8")
+    )
+    assert workflow["env"] == {
+        "DOCKERHUB_USERNAME": "${{ secrets.DOCKERHUB_USERNAME }}",
+        "DOCKERHUB_TOKEN": "${{ secrets.DOCKERHUB_TOKEN }}",
+    }
+    steps = workflow["jobs"]["dockerhub-description"]["steps"]
+    skip = next(
+        step
+        for step in steps
+        if step["name"] == "Skip unavailable Docker Hub publication"
+    )
+    publish = next(
+        step for step in steps if step["name"] == "Update Docker Hub Description"
+    )
+    assert skip["if"] == (
+        "${{ env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == '' }}"
+    )
+    assert publish["if"] == (
+        "${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}"
+    )
+    assert publish["with"]["username"] == "${{ env.DOCKERHUB_USERNAME }}"
+    assert publish["with"]["password"] == "${{ env.DOCKERHUB_TOKEN }}"
 
 
 def test_workflows_use_current_first_party_action_contracts() -> None:
@@ -119,7 +154,7 @@ def _run_candidate_budget(
     script.write_text(
         """docker() {
     printf '%s\t/app\n' "$BUDGET_TEST_APP_KIB"
-    printf '%s\t/usr/local/lib/python3.10/site-packages\n' \
+    printf '%s\t/usr/local/lib/python3.11/site-packages\n' \
         "$BUDGET_TEST_SITE_PACKAGES_KIB"
     printf '%s\t/usr/share/fonts\n' "$BUDGET_TEST_FONTS_KIB"
 }
@@ -297,6 +332,9 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Regular"' in smoke["run"]
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Bold"' in smoke["run"]
     assert 'test "$regular" != "$bold"' in smoke["run"]
+    assert '-e EXPECTED_PYTHON_VERSION="$PYTHON_VERSION"' in smoke["run"]
+    assert "sys.version_info.major, sys.version_info.minor" in smoke["run"]
+    assert '"$EXPECTED_PYTHON_VERSION"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
 
 
@@ -352,11 +390,16 @@ def test_candidate_growth_gate_precedes_publish_and_keeps_evidence() -> None:
     assert growth["env"]["BASELINE_IMAGE"] == (
         "ghcr.io/${{ github.repository }}:latest"
     )
+    assert growth["env"]["FALLBACK_BASELINE_IMAGE"] == (
+        "ghcr.io/${{ github.repository_owner }}/ironsbot:latest"
+    )
     assert 'baseline_image="${BASELINE_IMAGE,,}"' in growth["run"]
+    assert 'fallback_baseline_image="${FALLBACK_BASELINE_IMAGE,,}"' in growth["run"]
     assert 'docker pull "$baseline_image"' in growth["run"]
+    assert 'echo "fallback_baseline=$baseline_image"' in growth["run"]
     assert 'docker image inspect "$candidate"' in growth["run"]
     assert upload["if"] == "${{ always() }}"
-    assert upload["with"]["if-no-files-found"] == "error"
+    assert upload["with"]["if-no-files-found"] == "warn"
 
 
 def test_ghcr_image_repository_is_fork_aware() -> None:
@@ -462,10 +505,44 @@ def test_builder_and_runtime_pin_the_same_debian_release() -> None:
         line.strip() for line in dockerfile.splitlines() if line.startswith("FROM ")
     ]
 
+    assert "ARG PYTHON_VERSION=3.11" in dockerfile
     assert from_lines == [
-        "FROM python:3.10-bookworm AS requirements_stage",
-        "FROM python:3.10-slim-bookworm",
+        "FROM python:${PYTHON_VERSION}-bookworm AS requirements_stage",
+        "FROM python:${PYTHON_VERSION}-slim-bookworm",
     ]
+
+
+def test_runtime_python_baseline_is_consistent() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    workflow = _workflow()
+    expected = workflow["env"]["PYTHON_VERSION"]
+    setup = next(step for step in _steps() if step["name"] == "Setup Python")
+    audit = next(
+        step
+        for step in _steps()
+        if step["name"] == "Audit locked runtime dependencies"
+    )
+    candidate = next(
+        step for step in _steps() if step["name"] == "Build runtime candidate"
+    )
+    publish = next(step for step in _steps() if step["name"] == "Build and Publish")
+
+    assert expected == "3.11"
+    assert project["project"]["requires-python"] == f">={expected}, <4.0"
+    assert project["tool"]["basedpyright"]["pythonVersion"] == expected
+    assert not any(
+        dependency.startswith("tomli")
+        for dependency in project["project"]["dependencies"]
+    )
+    assert setup["with"]["python-version"] == "${{ env.PYTHON_VERSION }}"
+    assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
+    version_argument = "PYTHON_VERSION=${{ env.PYTHON_VERSION }}"
+    extra_argument = "IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}"
+    assert version_argument in candidate["with"]["build-args"]
+    assert version_argument in publish["with"]["build-args"]
+    assert extra_argument in candidate["with"]["build-args"]
+    assert extra_argument in publish["with"]["build-args"]
+    assert 'extra_args=(--extra "$IRONSBOT_RUNTIME_EXTRA")' in audit["run"]
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
@@ -475,7 +552,7 @@ def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None
     login = next(s for s in steps if s["name"] == "Login to GitHub Container Registry")
     assert steps.index(audit) < steps.index(upload) < steps.index(login)
     assert "--frozen --no-dev --no-emit-project" in audit["run"]
-    assert "--python 3.10 --from pip-audit==2.10.1" in audit["run"]
+    assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
     assert "--require-hashes --disable-pip --strict" in audit["run"]
     assert "--fix" not in audit["run"]
     assert "--ignore-vuln" not in audit["run"]

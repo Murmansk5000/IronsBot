@@ -8,6 +8,12 @@ on:
             - "v*"
     workflow_dispatch:
 
+env:
+    PYTHON_VERSION: "3.11"
+    DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    IRONSBOT_RUNTIME_EXTRA: ${{ vars.IRONSBOT_RUNTIME_EXTRA }}
+
 jobs:
     docker:
         runs-on: ubuntu-latest
@@ -28,7 +34,7 @@ jobs:
             - name: Setup Python
               uses: actions/setup-python@v7
               with:
-                  python-version: "3.10"
+                  python-version: ${{ env.PYTHON_VERSION }}
 
             - name: Install command manifest dependencies
               shell: bash
@@ -39,8 +45,12 @@ jobs:
             - name: Audit locked runtime dependencies
               shell: bash
               run: |
-                  python -m uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
-                  python -m uv tool run --python 3.10 --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
+                  extra_args=()
+                  if [ -n "$IRONSBOT_RUNTIME_EXTRA" ]; then
+                    extra_args=(--extra "$IRONSBOT_RUNTIME_EXTRA")
+                  fi
+                  python -m uv export --frozen --no-dev --no-emit-project "${extra_args[@]}" --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
+                  python -m uv tool run --python "$PYTHON_VERSION" --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
 
             - name: Upload dependency audit evidence
               if: ${{ always() }}
@@ -85,8 +95,8 @@ jobs:
               id: metadata
               with:
                   images: |
-                      ghcr.io/${{ github.repository }}
-                      docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ironsbot
+                      name=ghcr.io/${{ github.repository }}
+                      name=docker.io/${{ env.DOCKERHUB_USERNAME }}/ironsbot,enable=${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
                   tags: |
                       type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
                       type=raw,value=${{ steps.fork_version.outputs.fork_version }}
@@ -113,7 +123,9 @@ jobs:
                   tags: ironsbot-ci:${{ github.sha }}
                   labels: ${{ steps.metadata.outputs.labels }}
                   build-args: |
+                      PYTHON_VERSION=${{ env.PYTHON_VERSION }}
                       IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}
+                      IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
 
@@ -124,6 +136,7 @@ jobs:
                   sed 's/^check_on_startup = true$/check_on_startup = false/' \
                     config.example.toml > "$smoke_config"
                   docker run --rm --network none \
+                    -e EXPECTED_PYTHON_VERSION="$PYTHON_VERSION" \
                     -e APP_CONFIG_PATH=/config/ironsbot.toml \
                     -v "$smoke_config:/config/ironsbot.toml:ro" \
                     "ironsbot-ci:${GITHUB_SHA}" \
@@ -133,6 +146,8 @@ jobs:
                       test -f "$regular"
                       test -f "$bold"
                       test "$regular" != "$bold"
+                      actual_python="$(python -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")"
+                      test "$actual_python" = "$EXPECTED_PYTHON_VERSION"
                       python -c "from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()"
                     '
 
@@ -171,20 +186,23 @@ jobs:
                   password: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Login to Docker Hub
+              if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
               uses: docker/login-action@v4
               with:
-                  username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+                  username: ${{ env.DOCKERHUB_USERNAME }}
+                  password: ${{ env.DOCKERHUB_TOKEN }}
 
             - name: Compare runtime candidate image growth
               shell: bash
               env:
                   BASELINE_IMAGE: ghcr.io/${{ github.repository }}:latest
+                  FALLBACK_BASELINE_IMAGE: ghcr.io/${{ github.repository_owner }}/ironsbot:latest
                   MAX_IMAGE_GROWTH_KIB: "8192"
               run: |
                   : "${BASELINE_IMAGE:?missing baseline image}"
                   : "${MAX_IMAGE_GROWTH_KIB:?missing image growth budget}"
                   baseline_image="${BASELINE_IMAGE,,}"
+                  fallback_baseline_image="${FALLBACK_BASELINE_IMAGE,,}"
                   candidate="ironsbot-ci:${GITHUB_SHA}"
                   evidence="$RUNNER_TEMP/ironsbot-candidate-image-growth.txt"
                   candidate_bytes="$(docker image inspect "$candidate" --format '{{.Size}}')"
@@ -194,7 +212,11 @@ jobs:
                     echo "baseline=$baseline_image"
                     echo "max_growth_kib=$MAX_IMAGE_GROWTH_KIB"
                   } > "$evidence"
-                  docker pull "$baseline_image"
+                  if ! docker pull "$baseline_image"; then
+                    baseline_image="$fallback_baseline_image"
+                    docker pull "$baseline_image"
+                    echo "fallback_baseline=$baseline_image" >> "$evidence"
+                  fi
                   baseline_digest="$(docker image inspect "$baseline_image" --format '{{index .RepoDigests 0}}')"
                   baseline_bytes="$(docker image inspect "$baseline_image" --format '{{.Size}}')"
                   growth_bytes="$((candidate_bytes - baseline_bytes))"
@@ -216,7 +238,7 @@ jobs:
               with:
                   name: candidate-image-growth-${{ github.sha }}
                   path: ${{ runner.temp }}/ironsbot-candidate-image-growth.txt
-                  if-no-files-found: error
+                  if-no-files-found: warn
 
             - name: Build and Publish
               id: build
@@ -227,7 +249,9 @@ jobs:
                   tags: ${{ steps.metadata.outputs.tags }}
                   labels: ${{ steps.metadata.outputs.labels }}
                   build-args: |
+                      PYTHON_VERSION=${{ env.PYTHON_VERSION }}
                       IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}
+                      IRONSBOT_RUNTIME_EXTRA=${{ env.IRONSBOT_RUNTIME_EXTRA }}
                   cache-from: type=gha
 
             - name: Record published image size

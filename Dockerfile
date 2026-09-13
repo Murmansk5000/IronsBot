@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1
-FROM python:3.10-bookworm AS requirements_stage
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-bookworm AS requirements_stage
+
+ARG IRONSBOT_RUNTIME_EXTRA=""
 
 WORKDIR /wheel
 
@@ -9,9 +12,18 @@ COPY ./pyproject.toml \
   ./uv.lock \
   /wheel/
 
-RUN python -m uv export --frozen --no-dev --format requirements.txt --output-file requirements.txt --no-hashes
+RUN set -eu; \
+    extra_args=""; \
+    if [ -n "$IRONSBOT_RUNTIME_EXTRA" ]; then \
+        extra_args="--extra $IRONSBOT_RUNTIME_EXTRA"; \
+    fi; \
+    python -m uv export --frozen --no-dev $extra_args \
+        --format requirements.txt --output-file requirements.txt --no-hashes
 
-RUN python -m pip wheel --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
+# uv.lock, including any declared override, is the dependency authority. The
+# export is complete, so pip must build exactly those artifacts without solving
+# their metadata a second time.
+RUN python -m pip wheel --no-deps --wheel-dir=/wheel --no-cache-dir --requirement ./requirements.txt
 
 RUN python - <<'PY'
 import io
@@ -55,7 +67,9 @@ license_dir.mkdir(parents=True)
 PY
 
 
-FROM python:3.10-slim-bookworm
+FROM python:${PYTHON_VERSION}-slim-bookworm
+
+ARG PYTHON_VERSION
 
 WORKDIR /app
 
@@ -80,16 +94,16 @@ RUN apt-get update \
 # dependencies, but remove Python's packaging toolchain from the final layer.
 # Mount wheels for installation; copying then deleting them retains a large layer.
 RUN --mount=type=bind,from=requirements_stage,source=/wheel,target=/wheel \
-    pip install --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
-    && rm -rf /usr/local/lib/python3.10/site-packages/pip \
-        /usr/local/lib/python3.10/site-packages/pip-*.dist-info \
-        /usr/local/lib/python3.10/site-packages/setuptools \
-        /usr/local/lib/python3.10/site-packages/setuptools-*.dist-info \
-        /usr/local/lib/python3.10/site-packages/wheel \
-        /usr/local/lib/python3.10/site-packages/wheel-*.dist-info \
+    pip install --no-deps --no-cache-dir --no-compile --no-index --find-links=/wheel -r /wheel/requirements.txt \
+    && rm -rf /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/pip-*.dist-info \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/setuptools-*.dist-info \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/wheel \
+        /usr/local/lib/python${PYTHON_VERSION}/site-packages/wheel-*.dist-info \
         /usr/local/bin/pip \
         /usr/local/bin/pip3 \
-        /usr/local/bin/pip3.10
+        /usr/local/bin/pip${PYTHON_VERSION}
 
 # Keep the runtime layer independent from repository-only material.  Tests,
 # documentation, local data and build scripts are useful in source checkouts,

@@ -4,45 +4,31 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.core.value_coercion import require_bool_flag, require_int
+from ironsbot.services.seer.new_content import (
+    NewContentIndex,
+    NewContentIndexCategoryState,
+    NewContentIndexItem,
+    NewContentIndexRepositoryError,
+)
 
 if TYPE_CHECKING:
     from sqlmodel import Session
 
-
-class NewContentIndexRepositoryError(RuntimeError):
-    """The published database does not expose a complete new-content index."""
+    from ironsbot.services.seer.data import SeerDataReader
 
 
-@dataclass(frozen=True, slots=True)
-class NewContentIndexItem:
-    category: str
-    entity_id: int
-    name: str
-    sort_value: int
-    payload: dict[str, Any]
-    change_kind: str
+class PublishedNewContentRepository:
+    def __init__(self, data: SeerDataReader) -> None:
+        self._data = data
 
-
-@dataclass(frozen=True, slots=True)
-class NewContentIndexCategoryState:
-    category: str
-    comparison_ready: bool
-    reason: str
-
-
-@dataclass(frozen=True, slots=True)
-class NewContentIndex:
-    config_version: str
-    weekly_cycle: str
-    baseline_established: bool
-    items: tuple[NewContentIndexItem, ...]
-    category_states: tuple[NewContentIndexCategoryState, ...]
+    def load(self) -> NewContentIndex:
+        with self._data.query(load_new_content_index) as index:
+            return index
 
 
 def load_new_content_index(session: Session) -> NewContentIndex:

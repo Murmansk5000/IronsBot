@@ -323,6 +323,21 @@ def render_dynamic_text_message(
     return OutboundMessage.from_text(content) if content else None
 
 
+def render_dynamic_content_message(
+    item: dict[str, Any],
+    content_override: str | None = None,
+) -> OutboundMessage | None:
+    """Render the complete portable body used by interactive history queries."""
+
+    text = render_dynamic_text_message(item, content_override)
+    images = render_dynamic_image_message(item)
+    parts = (
+        *(text.parts if text is not None else ()),
+        *(images.parts if images is not None else ()),
+    )
+    return OutboundMessage(parts) if parts else None
+
+
 def render_dynamic_image_message(item: dict[str, Any]) -> OutboundMessage | None:
     """Render dynamic source images independently from text delivery."""
 

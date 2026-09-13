@@ -23,16 +23,32 @@ def configure_third_party_logging() -> None:
 def bootstrap() -> Application:
     configure_third_party_logging()
     settings = load_settings()
+    qq_official = settings.bot.qq_official
+    qq_bots = (
+        [
+            {
+                "id": qq_official.app_id,
+                "token": qq_official.token,
+                "secret": qq_official.secret,
+                "use_websocket": True,
+                "intent": {"c2c_group_at_messages": True},
+            }
+        ]
+        if qq_official.enabled
+        else []
+    )
     nonebot.init(
         _env_file=(),
         environment=settings.bot.environment,
-        driver=settings.bot.driver,
+        driver=settings.bot.effective_driver,
         host=settings.bot.host,
         port=settings.bot.port,
         log_level=settings.bot.log_level,
         command_start=set(settings.bot.command_start),
         superusers={str(value) for value in settings.superuser_ids},
         onebot_access_token=settings.bot.onebot_token or None,
+        qq_bots=qq_bots,
+        qq_is_sandbox=qq_official.sandbox,
         apscheduler_autostart=False,
     )
     application = build_application(settings)
@@ -47,5 +63,19 @@ def bootstrap() -> Application:
             with application.resources.private_extensions.plugin_import_path():
                 nonebot.load_from_toml(str(manifest_path))
     application.configure(context.contributions)
+    if qq_official.enabled:
+        from ironsbot.integrations.qq_official.runtime import (
+            install_qq_official_runtime,
+        )
+        from ironsbot.services.portable_commands import build_portable_command_router
+
+        install_qq_official_runtime(
+            build_portable_command_router(
+                catalog=application.resources.commands,
+                about=application.resources.about,
+                seer=application.resources.seer,
+                features=application.resources.features,
+            )
+        )
     application.install()
     return application

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -54,7 +54,6 @@ class ApplicationResources:
     bilibili: BilibiliService
     bilibili_login: BilibiliLoginService
     bilibili_monitor: BilibiliMonitorService
-    bilibili_content_renderer: Callable[[dict[str, Any], str | None], Any | None]
     lucky_skin_window: LuckySkinWindowService
     messaging: MessagingService
     sendpic: SendpicService

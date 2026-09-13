@@ -21,6 +21,9 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.clients import HttpClients
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
 from ironsbot.integrations.seer_data.database import SeerDatabase
+from ironsbot.integrations.seer_data.new_content_repository import (
+    PublishedNewContentRepository,
+)
 from ironsbot.integrations.seer_data.player_lineup_entries import (
     PublishedPlayerLineupEntryResolver,
 )
@@ -676,7 +679,7 @@ def test_retained_content_index_is_checked_against_bound_publication(
         databases.load_from_file("seerapi", str(source))
         with data.read_snapshot() as bound:
             bound.require_current()
-            service = NewContentService(bound)
+            service = NewContentService(PublishedNewContentRepository(bound))
             menu = service.snapshot()
             with engine.begin() as connection:
                 connection.exec_driver_sql("UPDATE new_content_item SET name = 'new'")
@@ -687,7 +690,7 @@ def test_retained_content_index_is_checked_against_bound_publication(
             assert service.snapshot().items[0].name == "old"
             with data.read_snapshot() as fresh:
                 fresh.require_current()
-                current = NewContentService(fresh)
+                current = NewContentService(PublishedNewContentRepository(fresh))
                 with pytest.raises(NewContentSnapshotChangedError):
                     current.require_snapshot(menu)
                 assert current.snapshot().items[0].name == "new"
@@ -700,7 +703,9 @@ def test_retained_content_index_is_checked_against_bound_publication(
             with engine.begin() as connection:
                 connection.exec_driver_sql("UPDATE new_content_item SET name = 'old'")
             databases.load_from_file("seerapi", str(source))
-            assert NewContentService(data).snapshot() == menu
+            assert NewContentService(
+                PublishedNewContentRepository(data)
+            ).snapshot() == menu
             with pytest.raises(DataPublicationChangedError):
                 bound.require_current()
     finally:

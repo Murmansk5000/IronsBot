@@ -80,7 +80,7 @@ not complete Phase 4/7 or prove production rollout.
 Target: the existing release workflow must audit the frozen production dependency
 set before registry login or image publication, without installing audit tooling
 in the runtime image. Export hashed requirements with no development dependencies
-or root project, then run pinned pip-audit 2.10.1 under Python 3.10. Collection
+or root project, then run pinned pip-audit 2.10.1 under Python 3.11. Collection
 errors, advisory failures and export failures stop release; no automatic fixes,
 ignored advisories or continue-on-error. Preserve requirements and JSON evidence
 even when auditing fails. This is a Python package advisory gate, not a scan of
@@ -281,3 +281,32 @@ workflow's pinned `pip-audit==2.10.1`, `--require-hashes`, `--disable-pip` and
 known vulnerability was reported. The generated requirements and JSON report
 were temporary local evidence; the workflow remains responsible for retaining
 the corresponding artifact for each published candidate.
+
+## Python 3.11 Runtime Baseline (2026-09-13)
+
+The application, both Docker stages, the release workflow and BasedPyright now
+share Python 3.11 as the minimum runtime. The Dockerfile exposes one
+`PYTHON_VERSION` build argument and keeps both stages on Bookworm, so the builder
+and runtime cannot silently drift to different Python or Debian releases. Python
+3.10's conditional `tomli` compatibility path and the no-longer-required
+`backports-asyncio-runner` lock entry were removed. Ruff intentionally retains
+its `py310` syntax-style target for now: raising that target would trigger a
+separate repository-wide modernization and is not required to execute on 3.11.
+
+An isolated CPython 3.11.15 environment completed the full suite with 3241
+passed, 7 skipped and 2 warnings. The focused packaging/configuration suite
+passed 90 tests, BasedPyright reported zero errors, and the exact hashed audit
+covered 52 applicable distributions with zero known vulnerabilities. The compact
+frozen runtime export contained 152 lines with neither `tomli` nor
+`backports-asyncio-runner`. The lock update removed substantially more metadata
+than it added. These results prove the source and dependency baseline; they do
+not establish a new image-size delta. The published candidate workflow must
+still produce the Linux directory inventory and digest evidence.
+
+The release workflow now declares that minor version once and passes it to
+setup-python, the pinned audit tool, both Docker builds and the candidate
+container. The network-isolated smoke reads `sys.version_info` inside the built
+image and rejects a mismatch before registry credentials are used. Workflow
+parsing, shell quoting, 25 release-workflow tests, Ruff and BasedPyright passed.
+The local Docker daemon did not answer a bounded version probe, so this improves
+the executable publication gate but does not claim a new local image run.

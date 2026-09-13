@@ -159,19 +159,38 @@ No full-suite rerun is claimed for this test/documentation-only checkpoint.
 
 ## Specialized Seer Result Contract (2026-09-13)
 
-Weekly-preview image results, peak query results and Autocard entries now expose the same
-platform-neutral `to_outbound()` boundary as ordinary `QueryReply` values. The
-service result owns image/text ordering and MIME type; Autocard also owns its
-primary/additional-image selection. OneBot only renders the result at its
-adapter boundary. The obsolete raw-bytes branch in the weekly preview adapter
-was removed because the service has no such producer.
+Weekly-preview image results, peak query results and Autocard entries expose the same
+platform-neutral outbound boundary as ordinary `QueryReply` values. The service result
+owns image/text ordering and MIME type. Autocard stores only published asset keys; its
+media service resolves primary/additional images through the release-bound
+`SeerImageSource` before constructing binary image parts. OneBot only renders the result
+at its adapter boundary. The obsolete raw-bytes branch in the weekly preview adapter was
+removed because the service has no such producer.
 
 The fake official capability suite accepts preview, peak image, peak text and
-Autocard remote-image results through the real `OutboundMessenger` protocol,
+Autocard binary-image results through the real `OutboundMessenger` protocol,
 including upload counting. This expands non-QQ Phase 7 evidence without
 inventing OpenID-to-QQ mapping, direct-mention support or account-binding
 behavior. Those capabilities remain deferred until a target API can represent
 them.
+
+## Bilibili Portable History Rendering (2026-09-13)
+
+Bilibili history selection and proactive delivery now share the domain-owned
+text and remote-image renderers. The complete history response is an
+`OutboundMessage` whose text precedes its source images; text-only and image-only
+dynamics remain valid. The OneBot integration only encodes that value at the
+transport edge, so `ApplicationResources` no longer carries a OneBot-specific
+render callback.
+
+Bilibili source images intentionally remain `RemoteImagePart` values. They are
+dynamic content-origin URLs rather than versioned Seer release assets, so they do
+not belong in `SeerImageSource` or the SeerAPI asset manifest.
+
+The focused acceptance test sends a real domain-rendered text-and-remote-image
+history response through the restricted platform's reply port. This proves the
+portable contract only; native URL ingestion and upload behavior remain a real
+target-adapter acceptance item.
 
 Configured image commands use `format_outbound_message()` for the same reason.
 The formatter follows Python field formatting for text values while retaining

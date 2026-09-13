@@ -22,11 +22,23 @@ from ironsbot.integrations.onebot.lucky_skin_window import (
 from ironsbot.integrations.onebot.team_resource import (
     build_onebot_team_resource_default_mentions,
 )
+from ironsbot.integrations.seer_data.autocard_repository import (
+    PublishedAutocardRepository,
+)
+from ironsbot.integrations.seer_data.autocard_sanctuary_repository import (
+    PublishedAutocardSanctuaryRepository,
+)
+from ironsbot.integrations.seer_data.data_query_repository import (
+    PublishedDataQueryRepository,
+)
 from ironsbot.integrations.seer_data.lucky_skin_window_renderer import (
     render_lucky_skin_window,
 )
 from ironsbot.integrations.seer_data.new_content_renderer import (
     render_new_content_menu,
+)
+from ironsbot.integrations.seer_data.new_content_repository import (
+    PublishedNewContentRepository,
 )
 from ironsbot.integrations.seer_data.peak_pet_rank_renderer import (
     render_peak_pet_rank,
@@ -35,11 +47,15 @@ from ironsbot.integrations.seer_data.peak_pool_renderer import render_peak_pool
 from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
     render_peak_pool_vote,
 )
+from ironsbot.integrations.seer_data.peak_repository import PublishedPeakRepository
 from ironsbot.integrations.seer_data.pet_info_renderer import render_published_pet_info
 from ironsbot.integrations.seer_data.player_lineup_entries import (
     PublishedPlayerLineupEntryResolver,
 )
 from ironsbot.integrations.seer_data.type_matchup_renderer import render_type_matchup
+from ironsbot.integrations.seer_data.type_matchup_repository import (
+    PublishedTypeMatchupRepository,
+)
 from ironsbot.integrations.storage.local_rank import SqliteLocalRankRepository
 from ironsbot.integrations.storage.lucky_skin_watch import (
     SqliteLuckySkinWatchPreferenceStore,
@@ -58,6 +74,7 @@ from ironsbot.integrations.storage.team_resources import (
 )
 from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
+from ironsbot.services.seer.autocard_media import AutocardMediaService
 from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
@@ -218,7 +235,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     def type_render_session() -> Iterator[TypeRenderSession]:
         with render_sessions.open() as inputs:
             yield TypeRenderSession(
-                inputs.data,
+                PublishedTypeMatchupRepository(inputs.data),
                 partial(
                     render_type_matchup,
                     inputs.images,
@@ -231,7 +248,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     def peak_render_session() -> Iterator[PeakRenderSession]:
         with render_sessions.open() as inputs:
             yield PeakRenderSession(
-                inputs.data,
+                PublishedPeakRepository(inputs.data),
                 partial(
                     render_peak_pool,
                     inputs.cache,
@@ -280,7 +297,9 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     @contextmanager
     def content_selection_scope(snapshot: NewContentSnapshot) -> Iterator[None]:
         with seer_database.read_snapshot() as bound:
-            NewContentService(bound).require_snapshot(snapshot)
+            NewContentService(PublishedNewContentRepository(bound)).require_snapshot(
+                snapshot
+            )
             bound.require_current()
             yield
             bound.require_current()
@@ -294,12 +313,14 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         auto_expand_max_items: int,
     ) -> bytes:
         with render_sessions.open() as inputs:
-            NewContentService(inputs.data).require_snapshot(snapshot)
+            NewContentService(
+                PublishedNewContentRepository(inputs.data)
+            ).require_snapshot(snapshot)
             return await render_new_content_menu(
                 inputs.cache,
                 inputs.data,
                 inputs.images,
-                AutocardService(inputs.data),
+                AutocardService(PublishedAutocardRepository(inputs.data)),
                 render_coordinator.render,
                 snapshot,
                 display_categories,
@@ -429,8 +450,11 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         headless,
         player_requests,
     )
-    autocard = AutocardService(seer_database)
-    autocard_sanctuary = AutocardSanctuaryService(seer_database)
+    autocard = AutocardService(PublishedAutocardRepository(seer_database))
+    autocard_media = AutocardMediaService(images)
+    autocard_sanctuary = AutocardSanctuaryService(
+        PublishedAutocardSanctuaryRepository(seer_database)
+    )
     equipment = EquipmentQueryService(seer_database, images)
     pet = PetQueryService(seer_database, images, render_pet)
     mintmark = MintmarkQueryService(
@@ -442,13 +466,14 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     return SeerComponents(
         seer=SeerQueryResources(
             SeerDataQueryService(
-                seer_database,
+                PublishedDataQueryRepository(seer_database),
                 weekly_preview_images,
                 settings.seer.season,
-                NewContentService(seer_database),
+                NewContentService(PublishedNewContentRepository(seer_database)),
             ),
             CountermarkStatRankService(seer_database),
             autocard,
+            autocard_media,
             autocard_sanctuary,
             SeerTeamQueryService(
                 settings.seer.team,
@@ -463,7 +488,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             BattleEffectQueryService(seer_database, images),
             pet,
             PeakQueryService(
-                seer_database,
+                PublishedPeakRepository(seer_database),
                 headless,
                 peak_render_session,
             ),

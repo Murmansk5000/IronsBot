@@ -93,10 +93,6 @@ class SeerAssetStore:
                 raise
             return request.fallback()
 
-    async def fetch_url(self, url: str) -> bytes:
-        cache_key = _cache_key("url", url)
-        return await self._get_or_fetch(cache_key, lambda: self._source.fetch_url(url))
-
     async def _get_or_fetch(
         self,
         cache_key: str,
@@ -178,11 +174,6 @@ class _BoundAssetSource:
 
     async def fetch(self, kind: ImageKind, key: str, *, fallback: bool = True) -> bytes:
         return await self.store._fetch_from(self.source, kind, key, fallback=fallback)
-
-    async def fetch_url(self, url: str) -> bytes:
-        return await self.store._get_or_fetch(
-            _cache_key("url", url), lambda: self.source.fetch_url(url)
-        )
 
 
 class _MemoryAssetCache:

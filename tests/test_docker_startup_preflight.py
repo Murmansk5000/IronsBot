@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
-import tomli
+import tomllib
 
 from ironsbot.app import docker_preflight
 from ironsbot.app.docker_preflight import (
@@ -375,8 +375,11 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert "LICENSE*" not in dockerignore.splitlines()
     assert "COPY . /app/" not in dockerfile
     assert "ENV PYTHONDONTWRITEBYTECODE=1" in dockerfile
-    assert "pip install --no-cache-dir --no-compile" in dockerfile
+    assert "pip install --no-deps --no-cache-dir --no-compile" in dockerfile
+    assert "pip wheel --no-deps" in dockerfile
     assert "uv export --frozen --no-dev" in dockerfile
+    assert 'ARG IRONSBOT_RUNTIME_EXTRA=""' in dockerfile
+    assert 'extra_args="--extra $IRONSBOT_RUNTIME_EXTRA"' in dockerfile
     assert dockerfile.startswith("# syntax=docker/dockerfile:1\n")
     assert "COPY --from=requirements_stage /wheel" not in dockerfile
     assert (
@@ -416,8 +419,8 @@ def test_docker_image_runs_preflight_before_application() -> None:
 
 def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
     root = Path(__file__).resolve().parents[1]
-    project = tomli.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    lock = tomli.loads((root / "uv.lock").read_text(encoding="utf-8"))
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    lock = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))
     main = (root / "ironsbot" / "__main__.py").read_text(encoding="utf-8")
 
     dependencies = project["project"]["dependencies"]
@@ -428,6 +431,10 @@ def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
     assert "fastapi>=0.93.0,<1.0.0" in dependencies
     assert "uvicorn>=0.20.0,<1.0.0" in dependencies
     assert "websockets>=15.0" in dependencies
+    assert not any("nonebot-adapter-qq" in item for item in dependencies)
+    qq_dependencies = project["project"]["optional-dependencies"]["qq-official"]
+    assert "nonebot-adapter-qq==1.7.2" in qq_dependencies
+    assert "yarl>=1.23.0,<2.0.0" in qq_dependencies
 
     locked_names = {package["name"] for package in lock["package"]}
     assert {"fastapi", "uvicorn", "websockets"} <= locked_names

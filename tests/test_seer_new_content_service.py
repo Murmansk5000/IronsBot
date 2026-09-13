@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from sqlmodel import Session, create_engine
 
+from ironsbot.integrations.seer_data.new_content_repository import (
+    PublishedNewContentRepository,
+)
 from ironsbot.services.seer.new_content import (
     NEW_CONTENT_CATEGORIES,
     NewContentCategory,
@@ -34,7 +37,9 @@ class FakeData:
 
 
 def _service(path: Path) -> NewContentService:
-    return NewContentService(cast("SeerDataAccess", FakeData(path)))
+    return NewContentService(
+        PublishedNewContentRepository(cast("SeerDataAccess", FakeData(path)))
+    )
 
 
 def test_reads_embedded_release_index_and_payload(tmp_path: Path) -> None:

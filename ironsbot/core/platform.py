@@ -181,6 +181,7 @@ class IncomingMessageRef:
     message_id: str
     text: str
     direct_mentions: tuple[ActorRef, ...] = ()
+    group_role: str | None = None
     reply_to_id: str | None = None
     sequence: str | None = None
     reply_deadline: datetime | None = None
@@ -204,6 +205,8 @@ class IncomingMessageRef:
             for mention in self.direct_mentions
         ):
             raise PlatformReferenceError.mention_conversation_platform_mismatch()
+        if self.group_role is not None:
+            object.__setattr__(self, "group_role", self.group_role.strip() or None)
         if self.reply_to_id is not None:
             object.__setattr__(
                 self,

@@ -106,13 +106,15 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | 巅峰投票展示增强 | 巅峰 service、纯 presenter、render adapter 专项 64 项；Ruff | 限制级/准限制级、投票周期、总票数和非负票数占比进入不可变 document；机器人不新增图片资源或数据读取职责。 |
 | 2026-09-13 | Bilibili 历史摘要 | 长文本、历史存储、菜单详情、主动投递与运行装配专项测试；Ruff、BasedPyright、compileall | 推送和详情复用 `DynamicContentCompactor`；修正 AI 摘要关键字参数契约，结果写入既有历史库并惰性复用，不执行启动批量 AI 回填。 |
 | 2026-09-13 | 幸运橱窗价格与详情菜单 | 价格 repository/service、四栏 presenter、数字 prompt 与皮肤详情复用专项测试 | 四个皮肤价格通过一次发布库查询获取；缺价格时保留卡片并明确降级；选择 1-4 复用统一皮肤详情服务。未打包货币图标或写死资源 URL。 |
+| 2026-09-13 | Python 3.11 运行基线 | 隔离 CPython 3.11.15 全量 3241 passed/7 skipped；专项 90 passed；BasedPyright、冻结依赖导出 | 吸收主线平台无关的运行版本目标并统一 Docker/CI/类型检查；未 merge 主线，Ruff 语法风格目标暂不机械升级。 |
+| 2026-09-13 | Bilibili 历史详情渲染收口 | Bilibili parser/outbound/plugin/registry 专项测试；Ruff、BasedPyright | 历史查询和主动推送复用平台无关 `OutboundMessage` 组装；删除 OneBot 专用 renderer 与资源回调。动态源图保留为远程图片部件，不错误纳入 SeerAPI 素材发布。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
 Slice    [███████████████□□] 15/17 tracked outcomes resolved; 2 remain
-Current  [██████████] lucky-window price choices verified
+Current  [██████████] Bilibili portable history rendering verified
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.

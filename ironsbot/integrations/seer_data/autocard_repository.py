@@ -4,16 +4,18 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.core.value_coercion import require_int
+from ironsbot.services.seer.autocard import AutocardDataset
 
 if TYPE_CHECKING:
     from sqlmodel import Session
+
+    from ironsbot.services.seer.data import SeerDataReader
 
 _MISSING_TABLE_MESSAGE = "数据库缺少群星牌表，请先更新 IronsBot 数据库。"
 _EMPTY_DATA_MESSAGE = "数据库没有群星牌数据，请先更新 IronsBot 数据库。"
@@ -55,11 +57,13 @@ _ROLE_QUERY = text(
 )
 
 
-@dataclass(slots=True, frozen=True)
-class AutocardDataset:
-    cards: tuple[dict[str, Any], ...]
-    roles: tuple[dict[str, Any], ...]
-    natures: dict[int, str]
+class PublishedAutocardRepository:
+    def __init__(self, data: SeerDataReader) -> None:
+        self._data = data
+
+    def load(self) -> AutocardDataset:
+        with self._data.query(load_autocard_dataset) as dataset:
+            return dataset
 
 
 def load_autocard_dataset(session: Session) -> AutocardDataset:

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from nonebot.plugin import PluginMetadata
 
@@ -21,8 +21,6 @@ from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from .commands import install
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from nonebot.adapters.onebot.v11 import Bot
 
     from ironsbot.core.feature_policy import FeatureService
@@ -50,7 +48,6 @@ def plugin_contribution(
     features: FeatureService,
     monitor: BilibiliMonitorService,
     scheduler: Scheduler,
-    render_content: Callable[[dict[str, Any], str | None], Any | None],
 ) -> PluginContribution:
     """Declare Bilibili commands, delivery construction, and monitor lifecycle."""
 
@@ -70,7 +67,6 @@ def plugin_contribution(
             features=features,
             monitor=monitor,
             targets=service.targets,
-            render_content=render_content,
         ),
         hooks=PluginHooks(
             startup=(
@@ -97,6 +93,5 @@ if (context := active_plugin_install_context()) is not None:
             features=context.resources.features,
             monitor=context.resources.bilibili_monitor,
             scheduler=context.scheduler,
-            render_content=context.resources.bilibili_content_renderer,
         ),
     )

@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
 ImageKind = Literal[
+    "autocard_card",
+    "autocard_role",
     "battle_effect",
     "element_type",
     "equip",
@@ -19,7 +21,6 @@ ImageKind = Literal[
     "mount",
     "pet_body",
     "pet_head",
-    "preview",
     "sign_buff",
     "suit",
     "title",
@@ -125,9 +126,6 @@ class SeerImageSource(Protocol):
         fallback: bool = True,
     ) -> bytes: ...
 
-    async def fetch_url(self, url: str) -> bytes: ...
-
-
 @dataclass(frozen=True, slots=True)
 class PreparedImageRequest:
     """One immutable source identity paired with its exact download operation."""
@@ -146,9 +144,6 @@ class SeerImageRequestSource(Protocol):
         *,
         fallback: bool,
     ) -> PreparedImageRequest: ...
-
-    async def fetch_url(self, url: str) -> bytes: ...
-
 
 @dataclass(frozen=True, slots=True)
 class ImageFetchResult:

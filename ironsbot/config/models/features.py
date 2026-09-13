@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -25,6 +25,9 @@ from ironsbot.core.features import (
     Feature,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+
+if TYPE_CHECKING:
+    from ironsbot.config.models.settings import QQOfficialConfig
 
 FEATURE_BUNDLES: Final[dict[str, frozenset[str]]] = {
     "all": (FEATURE_KEYS - {"admin_notice", "blacklist", "seer"}) | SEER_FEATURES,
@@ -432,8 +435,9 @@ def build_onebot_feature_service(
     *,
     command_features: Iterable[str] = (),
     schedule_features: Iterable[str] = (),
+    qq_official: QQOfficialConfig | None = None,
 ) -> FeatureService:
-    """Compile TOML OneBot aliases and bundles into typed policy facts."""
+    """Compile platform configuration into typed policy facts."""
 
     bundles = validate_feature_config(
         config,
@@ -480,9 +484,22 @@ def build_onebot_feature_service(
         group_features=group_features,
         actor_features=actor_features,
         superusers=frozenset(
-            ActorRef(Platform.ONEBOT, str(user_id)) for user_id in superuser_ids
+            [
+                *(ActorRef(Platform.ONEBOT, str(user_id)) for user_id in superuser_ids),
+                *(
+                    ActorRef(Platform.QQ_OFFICIAL, str(user_id))
+                    for user_id in (
+                        () if qq_official is None else qq_official.superusers
+                    )
+                ),
+            ]
         ),
         superuser_bypass=config.superuser_bypass,
+        platform_default_features={
+            Platform.QQ_OFFICIAL: frozenset(
+                () if qq_official is None else qq_official.features
+            )
+        },
     )
 
 

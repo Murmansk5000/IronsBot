@@ -3,7 +3,7 @@ name = "ironsbot"
 version = "0.5.1"
 description = "赛尔号信息查询机器人"
 readme = "README.md"
-requires-python = ">=3.10, <4.0"
+requires-python = ">=3.11, <4.0"
 # The combined bot/image is distributed under GPL-3.0-or-later because it
 # includes GPL components. Independently reusable MIT components keep their
 # per-file SPDX declarations. See LICENSING.md for details.
@@ -21,8 +21,19 @@ dependencies = [
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
     "qrcode[pil]>=8.2",
-    "tomli>=2; python_version < '3.11'",
 ]
+
+[project.optional-dependencies]
+qq-official = [
+    # adapter-qq 1.7.2 metadata predates its Pydantic 2.12/yarl compatibility fix.
+    "yarl>=1.23.0,<2.0.0",
+    "nonebot-adapter-qq==1.7.2",
+]
+
+[tool.uv]
+# adapter-qq 1.7.2 still caps cryptography below 49, while its Ed25519 usage is
+# compatible with cryptography 50 and older releases contain known CVEs.
+override-dependencies = ["cryptography>=50.0.0,<51.0.0"]
 
 [tool.nonebot]
 plugin_dirs = []
@@ -31,6 +42,9 @@ builtin_plugins = []
 [tool.nonebot.adapters]
 nonebot-adapter-onebot = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
+]
+nonebot-adapter-qq = [
+    { name = "QQ Official", module_name = "nonebot.adapters.qq" },
 ]
 "@local" = []
 
@@ -111,23 +125,6 @@ ignore = [
 # Protocol/vendor-style code kept close to upstream behavior. These files are
 # still syntax-checked, import-checked, and compiled, but style-heavy rules that
 # would require a risky rewrite are scoped out here instead of hidden globally.
-"ironsbot/plugins/headless_seer/**/*.py" = [
-    "ANN002",
-    "ANN201",
-    "B904",
-    "BLE001",
-    "C901",
-    "E501",
-    "FBT001",
-    "FBT002",
-    "PERF401",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-    "PLR2004",
-    "TRY003",
-    "TRY301",
-]
 "ironsbot/integrations/headless_seer/**/*.py" = [
     "ANN002",
     "ANN201",
@@ -146,13 +143,6 @@ ignore = [
     "TRY301",
     "TRY400",
 ]
-"ironsbot/plugins/bilibili/auth.py" = [
-    "BLE001",
-    "FBT001",
-    "FBT002",
-    "FBT003",
-    "PLW0603",
-]
 "tests/test_analyze_parser.py" = ["ANN201", "B905", "E501", "PLR2004"]
 
 [tool.ruff.lint.pyupgrade]
@@ -160,7 +150,7 @@ keep-runtime-typing = true
 
 [tool.basedpyright]
 # For BasedPyright configurations, see https://docs.basedpyright.com/latest/configuration/config-files/.
-pythonVersion = "3.10"
+pythonVersion = "3.11"
 pythonPlatform = "All"
 typeCheckingMode = "standard"
 exclude = [".codex", ".tmp", ".test-tmp", ".uv-cache", ".venv", "build"]
@@ -177,4 +167,6 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pyyaml>=6.0.3",
     "ruff>=0.15.2",
+    "nonebot-adapter-qq==1.7.2",
+    "yarl>=1.23.0,<2.0.0",
 ]

@@ -53,6 +53,9 @@ def build_common_components(
         settings.superuser_ids,
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
+        qq_official=(
+            settings.bot.qq_official if settings.bot.qq_official.enabled else None
+        ),
     )
     outbound = GroupOutboundRateLimitService(
         settings.messaging.outbound_rate_limit,

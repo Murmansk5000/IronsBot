@@ -124,10 +124,6 @@ class _Images:
             raise ImageSourceError("missing")
         return f"{kind}:{key}".encode()
 
-    async def fetch_url(self, url: str) -> bytes:
-        self.requests.append(("url", url))
-        return url.encode()
-
 
 class _Autocard:
     def __init__(
@@ -146,7 +142,7 @@ class _Autocard:
             item_id=item_id,
             name="测试群星牌",
             text="",
-            image_url=f"https://assets.example/{kind}-{item_id}.png",
+            image_key=f"{kind}_{item_id}",
         )
 
 
@@ -295,8 +291,8 @@ async def test_render_new_content_menu_uses_category_specific_thumbnails(
     assert ("equip", "4") in images.requests
     assert ("mount", "5") in images.requests
     assert ("title", "601") in images.requests
-    assert ("url", "https://assets.example/card-8.png") in images.requests
-    assert ("url", "https://assets.example/role-9.png") in images.requests
+    assert ("autocard_card", "card_8") in images.requests
+    assert ("autocard_role", "role_9") in images.requests
 
 
 @pytest.mark.asyncio
@@ -623,7 +619,7 @@ async def test_autocard_root_menu_uses_group_title() -> None:
 
 
 @pytest.mark.asyncio
-async def test_external_autocard_image_skips_final_render_cache() -> None:
+async def test_versioned_autocard_image_allows_final_render_cache() -> None:
     cache = _Cache()
 
     async def render_html(*_args: object, **_kwargs: object) -> bytes:
@@ -645,7 +641,7 @@ async def test_external_autocard_image_skips_final_render_cache() -> None:
         "autocard_card",
     )
 
-    assert cache.saved is None
+    assert cache.saved == b"menu-image"
 
 
 def test_pet_menu_details_include_icons_intro_and_base_stats() -> None:
@@ -810,7 +806,7 @@ def test_autocard_menu_details_keep_intro_left_and_skills_right() -> None:
         item_id=8,
         name="破界者",
         text="",
-        image_url="",
+        image_key="",
         description="如果界限定义了存在，那么打破界限的人，是在毁灭这个世界，还是在重新定义自己？",
         skill_name="破界",
         skill_text="造成 3 点伤害。",
@@ -836,7 +832,7 @@ async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
         item_id=98,
         name="布布种子",
         text="",
-        image_url="https://assets.example/card-98.png",
+        image_key="card_98",
     )
     autocard = _Autocard({("card", 98): card})
 
@@ -867,7 +863,7 @@ async def test_sanctuary_images_follow_explicit_pet_or_card_relation() -> None:
     assert pet_image is not None
     assert card_image is not None
     assert ("pet_head", "70") in images.requests
-    assert ("url", "https://assets.example/card-98.png") in images.requests
+    assert ("autocard_card", "card_98") in images.requests
 
 
 @pytest.mark.parametrize(

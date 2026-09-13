@@ -5,19 +5,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from ironsbot.core.value_coercion import require_int
-from ironsbot.integrations.seer_data.new_content_repository import (
-    NewContentIndex,
-    NewContentIndexRepositoryError,
-    load_new_content_index,
-)
-
-if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataReader
-
 
 NewContentCategory = Literal[
     "achievement",
@@ -87,6 +78,40 @@ CATEGORY_NAMES: dict[NewContentCategory, str] = {
 _CONFIG_VERSION_DATE_LENGTH = 8
 _CONFIG_VERSION_TIMESTAMP_LENGTH = 14
 DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS = 5
+
+
+class NewContentIndexRepositoryError(RuntimeError):
+    """The published database does not expose a complete new-content index."""
+
+
+@dataclass(frozen=True, slots=True)
+class NewContentIndexItem:
+    category: str
+    entity_id: int
+    name: str
+    sort_value: int
+    payload: dict[str, Any]
+    change_kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class NewContentIndexCategoryState:
+    category: str
+    comparison_ready: bool
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class NewContentIndex:
+    config_version: str
+    weekly_cycle: str
+    baseline_established: bool
+    items: tuple[NewContentIndexItem, ...]
+    category_states: tuple[NewContentIndexCategoryState, ...]
+
+
+class NewContentRepository(Protocol):
+    def load(self) -> NewContentIndex: ...
 
 
 class NewContentIndexUnavailableError(RuntimeError):
@@ -237,13 +262,12 @@ def format_new_content_category_count(
 class NewContentService:
     """Read-only access to the publication index; no local baseline is kept."""
 
-    def __init__(self, data: SeerDataReader) -> None:
-        self._data = data
+    def __init__(self, repository: NewContentRepository) -> None:
+        self._repository = repository
 
     def snapshot(self) -> NewContentSnapshot:
         try:
-            with self._data.query(load_new_content_index) as index:
-                return _snapshot_from_index(index)
+            return _snapshot_from_index(self._repository.load())
         except (NewContentIndexRepositoryError, TypeError, ValueError) as error:
             raise NewContentIndexUnavailableError from error
 

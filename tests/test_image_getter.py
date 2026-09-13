@@ -124,6 +124,16 @@ async def _fetch_sign_buff() -> tuple[bytes, list[str]]:
         await clients.close()
 
 
+async def _fetch_battle_effect() -> tuple[bytes, list[str]]:
+    cache = _ItemFallbackClient()
+    clients = HttpClients(cache=cache)
+    images = HttpSeerImageSource(clients, asset_snapshot_getter=_asset_snapshot)
+    try:
+        return await images.fetch("battle_effect", "19", fallback=False), cache.urls
+    finally:
+        await clients.close()
+
+
 async def _fetch_without_asset_snapshot() -> list[str]:
     cache = _ItemFallbackClient()
     clients = HttpClients(cache=cache)
@@ -159,6 +169,17 @@ def test_sign_buff_image_uses_official_battle_effect_assets() -> None:
         "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
         "newseer/assets/art/ui/assets/battleeffect/signbuff/33.png"
+    ]
+
+
+def test_battle_effect_image_uses_the_published_asset_revision() -> None:
+    data, urls = asyncio.run(_fetch_battle_effect())
+
+    assert data == b"item-image"
+    assert urls == [
+        "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"
+        "newseer/assets/art/ui/assets/battleeffect/abnormal/19.png"
     ]
 
 
@@ -224,6 +245,41 @@ async def test_mount_uses_its_generated_repository_revision() -> None:
         "https://raw.githubusercontent.com/example/seerapi/"
         f"{'b' * 40}/mount/1301170.png",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "key", "suffix"),
+    [
+        ("autocard_card", "card_7", "/autocard/texture/cards/card_7.png"),
+        (
+            "autocard_role",
+            "role_9",
+            "/autocard/texture/roles/card/role_9.png",
+        ),
+    ],
+)
+async def test_autocard_uses_the_published_asset_revision(
+    kind: str,
+    key: str,
+    suffix: str,
+) -> None:
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(HTTP_OK, content=b"autocard")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_asset_snapshot,
+        )
+        assert await source.fetch(kind, key, fallback=False) == b"autocard"  # type: ignore[arg-type]
+
+    assert len(urls) == 1
+    assert f"/{'a' * 40}/" in urls[0]
+    assert urls[0].endswith(suffix)
 
 
 @pytest.mark.asyncio
