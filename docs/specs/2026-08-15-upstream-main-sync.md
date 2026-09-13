@@ -55,6 +55,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 开服别名与竞技池变动入口 | 命令由 V5 service contract 提供，数据由 repository 提供 | 无 | completed |
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
 | 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
+| 巅峰投票展示增强 | service 提供投票级别与周期；纯 presenter 计算总票数和占比；renderer 只消费不可变 document | 无 | completed |
 | 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
 | Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 目标平台管理员身份最终验收 | completed：动作与菜单已收口；跨平台身份延期 |
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
@@ -101,13 +102,14 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | 竞技池、专家池与大师池变化 | seerapi 317 tests；机器人 focused 327 tests、full 3189 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3`、`dadfe83` 直接使用既有池表和精灵外键发布变化；机器人统一分类、详情、图片与大师池直接查询，不复制旧专用 renderer。 |
 | 2026-09-13 | Docker 维护菜单 | operations service、命令所有权、配置与 OneBot 适配专项 143 项；Ruff、BasedPyright、compileall | 两个维护动作具有唯一 service 契约；所有维护入口打开同一菜单，删除 `check_on_restart` 和旧确认双轨。QQ/目标平台管理员身份只在最终平台阶段验收。 |
 | 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |
+| 2026-09-13 | 巅峰投票展示增强 | 巅峰 service、纯 presenter、render adapter 专项 64 项；Ruff | 限制级/准限制级、投票周期、总票数和非负票数占比进入不可变 document；机器人不新增图片资源或数据读取职责。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
-Slice    [█████████████□□□] 13/16 tracked outcomes resolved; 3 remain
-Current  [██████████] platform-neutral proactive delivery hardening verified
+Slice    [██████████████□□□] 14/17 tracked outcomes resolved; 3 remain
+Current  [██████████] peak vote presentation enhancement verified
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from . import HtmlTemplateRenderer
     from .pet_image_assets import PetImageAssets
 
-TABLE_WIDTH = 400
+TABLE_WIDTH = 900
 CONTAINER_PADDING = 20 * 2
 
 
@@ -34,6 +34,7 @@ class PeakVoteRankDocument:
     pet_id: int
     name: str
     score: int
+    percentage: int
     head_img: str
     type_icon: str
 
@@ -41,6 +42,8 @@ class PeakVoteRankDocument:
 @dataclass(frozen=True, slots=True)
 class PeakVotePoolDocument:
     title: str
+    period: str
+    total_votes: int
     ranks: tuple[PeakVoteRankDocument, ...]
 
 
@@ -63,26 +66,28 @@ def present_peak_pool_vote(
 ) -> PeakPoolVoteRenderDocument:
     """Prepare a deterministic vote document without I/O or clock access."""
     pet_map = {pet.id: pet for pool in pools for pet in pool.pets}
-    head_icons = assets.pet_head_by_resource_id
-    type_icons = assets.type_icon_by_id
-    documents = tuple(
-        PeakVotePoolDocument(
-            title=pool.title,
-            ranks=tuple(
-                _present_rank(
-                    rank=index,
-                    item=item,
-                    pet_map=pet_map,
-                    head_icons=head_icons,
-                    type_icons=type_icons,
-                )
-                for index, item in enumerate(pool.items, 1)
-            ),
+    documents = []
+    for pool in pools:
+        total_votes = sum(max(item.score, 0) for item in pool.items)
+        documents.append(
+            PeakVotePoolDocument(
+                title=pool.title,
+                period=pool.period,
+                total_votes=total_votes,
+                ranks=tuple(
+                    _present_rank(
+                        rank=index,
+                        item=item,
+                        total_votes=total_votes,
+                        pet_map=pet_map,
+                        assets=assets,
+                    )
+                    for index, item in enumerate(pool.items, 1)
+                ),
+            )
         )
-        for pool in pools
-    )
     return PeakPoolVoteRenderDocument(
-        pools=documents,
+        pools=tuple(documents),
         generated_at=generated_at,
     )
 
@@ -91,10 +96,11 @@ def _present_rank(
     *,
     rank: int,
     item: PeakVoteItemSnapshot,
+    total_votes: int,
     pet_map: Mapping[int, PeakPetSnapshot],
-    head_icons: Mapping[int, str],
-    type_icons: Mapping[int, str],
+    assets: PetImageAssets,
 ) -> PeakVoteRankDocument:
+    percentage = round(max(item.score, 0) / total_votes * 100) if total_votes else 0
     pet = pet_map.get(item.id)
     if pet is None:
         return PeakVoteRankDocument(
@@ -102,6 +108,7 @@ def _present_rank(
             pet_id=item.id,
             name=item.name,
             score=item.score,
+            percentage=percentage,
             head_img="",
             type_icon="",
         )
@@ -110,8 +117,9 @@ def _present_rank(
         pet_id=item.id,
         name=pet.name,
         score=item.score,
-        head_img=head_icons[pet.resource_id],
-        type_icon=type_icons[pet.type_id],
+        percentage=percentage,
+        head_img=assets.pet_head_by_resource_id[pet.resource_id],
+        type_icon=assets.type_icon_by_id[pet.type_id],
     )
 
 

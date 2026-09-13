@@ -231,9 +231,7 @@ def test_master_pool_repository_uses_existing_cost_relation() -> None:
                 "(20, 20, '2026-09-04 10:00:00', '2026-11-27 10:00:00')"
             )
         )
-        session.execute(
-            text("INSERT INTO pet VALUES (5000, '圣灵谱尼', 45000, 2, 35)")
-        )
+        session.execute(text("INSERT INTO pet VALUES (5000, '圣灵谱尼', 45000, 2, 35)"))
 
         pools = load_peak_master_pool_snapshots(session)
 
@@ -560,6 +558,8 @@ async def test_peak_vote_fetches_only_active_pools(
     assert result.image == b"vote"
     assert called_subkeys == [202]
     assert len(rendered["vote"]) == 1
+    assert rendered["vote"][0].title == "限制级"
+    assert rendered["vote"][0].period == "7月20日18点 - 7月20日20点"
 
 
 @pytest.mark.asyncio
