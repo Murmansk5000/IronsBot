@@ -58,7 +58,6 @@ from ironsbot.services.seer.data_query_commands import (
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.new_content import (
     AUTOCARD_NEW_CONTENT_CATEGORIES,
-    DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
     NEW_CONTENT_CATEGORIES,
     PEAK_POOL_NEW_CONTENT_CATEGORIES,
     NewContentCategory,
@@ -81,6 +80,7 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import send_query_reply
 
 if TYPE_CHECKING:
+    from ironsbot.services.seer.autocard_media import AutocardMediaService
     from ironsbot.services.seer.data_queries import SeerDataQueryService
     from ironsbot.services.seer.new_content_details import NewContentDetailService
     from ironsbot.services.seer.resources import NewContentMenuRenderer
@@ -230,7 +230,11 @@ async def _start_new_content(  # noqa: PLR0913
         return
 
     layout = plan_new_content_menu(
-        snapshot, _available_categories(group, event), categories
+        snapshot,
+        _available_categories(group, event),
+        categories,
+        expanded_categories=group.new_content_expanded_categories,
+        preview_max_items=group.new_content_preview_max_items,
     )
     if isinstance(layout, str):
         await matcher.finish(layout)
@@ -240,6 +244,7 @@ async def _start_new_content(  # noqa: PLR0913
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(
         details=group.resources.new_content_details,
         menu_renderer=group.resources.new_content_menu,
+        autocard_media=group.resources.autocard_media,
     )
     state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
     await enter_prompt(
@@ -380,7 +385,7 @@ async def _render_content_prompt(
             layout.focused_category,
             "新增内容",
             layout.expanded_categories,
-            DEFAULT_NEW_CONTENT_AUTO_EXPAND_MAX_ITEMS,
+            layout.preview_max_items,
         )
     except NewContentSnapshotChangedError:
         return prompt.build_event_message(event)
@@ -423,7 +428,10 @@ async def _send_item_detail(
         return
     if isinstance(detail, AutocardEntry):
         message = render_onebot_outbound_message(
-            detail.to_outbound(include_additional_images=False)
+            await services.autocard_media.outbound(
+                detail,
+                include_additional_images=False,
+            )
         )
     else:
         message = Message(detail)
@@ -434,3 +442,4 @@ async def _send_item_detail(
 class _NewContentServices:
     details: NewContentDetailService
     menu_renderer: NewContentMenuRenderer
+    autocard_media: AutocardMediaService

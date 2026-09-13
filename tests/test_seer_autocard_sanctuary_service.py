@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from ironsbot.integrations.seer_data.autocard_sanctuary_repository import (
+    PublishedAutocardSanctuaryRepository,
+)
 from ironsbot.services.seer.autocard_sanctuary import (
     AutocardSanctuaryService,
     SanctuaryPromptValue,
@@ -68,7 +71,9 @@ def _service(
     fails: bool = False,
 ) -> AutocardSanctuaryService:
     return AutocardSanctuaryService(
-        cast("SeerDataAccess", _Data(rows, fails=fails))
+        PublishedAutocardSanctuaryRepository(
+            cast("SeerDataAccess", _Data(rows, fails=fails))
+        )
     )
 
 

@@ -3,12 +3,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, TypeVar
 
-from seerapi_models import ApiMetadataORM
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
-    from datetime import datetime
 
     from seerapi_models import (
         BattleEffectORM,
@@ -58,11 +56,6 @@ class PublishedDataIncompleteError(DataUnavailableError):
 
 class DataPublicationChangedError(DataUnavailableError):
     """The loaded publication changed before an operation could deliver its result."""
-
-
-def load_data_generated_at(session: Session) -> datetime | None:
-    metadata = session.exec(select(ApiMetadataORM)).first()
-    return None if metadata is None else metadata.generate_time
 
 
 class SeerDataReader(Protocol):

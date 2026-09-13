@@ -13,7 +13,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from ironsbot.core import time
 from ironsbot.integrations.seer_data.peak_repository import (
-    PeakPeriodTimes,
+    PublishedPeakRepository,
     load_peak_master_pool_snapshots,
     load_peak_pet_snapshots,
     load_peak_pool_snapshots,
@@ -24,6 +24,7 @@ from ironsbot.services.seer import peak
 from ironsbot.services.seer.images import ImageSourceError
 from ironsbot.services.seer.peak import (
     PeakItemData,
+    PeakPeriodTimes,
     PeakPetSnapshot,
     PeakPoolSnapshot,
     PeakQueryService,
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
     from ironsbot.services.operations.headless import HeadlessService
-    from ironsbot.services.seer.data import SeerDataAccess, SeerDataReader
+    from ironsbot.services.seer.data import SeerDataReader
     from ironsbot.services.seer.peak import (
         PeakPetRenderer,
         PeakPoolRenderer,
@@ -335,11 +336,15 @@ def _render_session(
     def session() -> Iterator[PeakRenderSession]:
         data.render_open = True
         try:
-            yield PeakRenderSession(cast("SeerDataReader", data), pool, vote, pet)
+            yield PeakRenderSession(_repository(data), pool, vote, pet)
         finally:
             data.render_open = False
 
     return session
+
+
+def _repository(data: object) -> PublishedPeakRepository:
+    return PublishedPeakRepository(cast("SeerDataReader", data))
 
 
 def _service(
@@ -369,7 +374,7 @@ def _service(
         return b"pet"
 
     return PeakQueryService(
-        cast("SeerDataAccess", global_data if global_data is not None else data),
+        _repository(global_data if global_data is not None else data),
         cast("HeadlessService", headless),
         _render_session(data, render_pool, render_vote, render_pet),
     )
@@ -610,7 +615,7 @@ async def test_peak_vote_reports_render_timeout(
         return None
 
     service = PeakQueryService(
-        cast("SeerDataAccess", data),
+        _repository(data),
         cast("HeadlessService", FakeHeadless(FakeGame())),
         _render_session(data, render_pool, render_vote, render_pet),
     )
@@ -663,7 +668,7 @@ async def test_peak_render_failure_and_recovery(
         assert not data.query_open
 
     service = PeakQueryService(
-        cast("SeerDataAccess", data),
+        _repository(data),
         cast("HeadlessService", FakeHeadless(Game())),
         _render_session(data, render, render, render),
     )
