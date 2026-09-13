@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import nonebot
@@ -55,6 +56,7 @@ from ironsbot.integrations.storage.player_bindings import (
 )
 from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
+from ironsbot.services.about import AboutService
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
@@ -223,6 +225,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         )
 
     resources = ApplicationResources(
+        about=AboutService.from_version_file(Path("__version__")),
         features=features,
         promotions=promotions,
         admin_notices=admin_notices,
