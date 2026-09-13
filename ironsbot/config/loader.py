@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import os
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import tomllib
 
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.commands import normalize_command_text
@@ -13,11 +14,6 @@ from ironsbot.core.seer_ids import is_valid_player_id
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover - exercised on Python 3.10 in deployment
-    import tomli as tomllib
 
 TOMLDecodeError = tomllib.TOMLDecodeError
 
