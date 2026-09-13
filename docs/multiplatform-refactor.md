@@ -2286,8 +2286,9 @@ QQ 官方主动目标随后接入共享 feature policy。部署者在
 在该离线状态迁移完成前保持单 QQ Official 账号，避免用字符串拼接或默认账号回退制造
 不可逆的身份串号。
 
-账户感知的第一批基础已经实现：核心 `ActorRef` / `ConversationRef` 可携带
-`account_id`，QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID policy
-也进入同一账户命名空间，单账号出站器会拒绝属于其他 AppID 的目标。当前 TOML 仍只
-接受一个官方机器人；共享状态库的身份主键尚未加入账户列，因此不能据此开放账号数组。
-下一批必须先提供停机、原子、可校验的状态迁移，再扩展 bootstrap 与出站路由。
+账户感知的基础已经实现：核心 `ActorRef` / `ConversationRef` 可携带 `account_id`，
+QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID policy 进入同一账户
+命名空间，出站器会拒绝属于其他 AppID 的目标。共享状态库的 actor、conversation、
+操作人和提醒对象均已把独立账户列纳入主键，并提供停机、原子、可校验的 v2 迁移；
+检测到旧 QQ Official OpenID 时必须由部署者提供其原 AppID。当前 TOML 和 bootstrap
+仍只启动一个官方机器人，下一批才扩展账号数组、独立连接和账号级策略。
