@@ -6,12 +6,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ironsbot.services.seer import equipment as equipment_service
-from ironsbot.services.seer.data import PublishedDataIncompleteError
 from ironsbot.services.seer.equipment import EquipmentQueryService
 
 NOT_FOUND_IMAGE_ERROR = "404 Not Found"
-FLASH_TEST_MOUNT_ID = 1301170
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -221,9 +218,7 @@ async def test_equipment_selection_reports_missing_item() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mount_without_official_image_uses_pending_message(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_mount_without_official_image_uses_pending_message() -> None:
     data = FakeData()
     data.values[data.equip] = (
         SimpleNamespace(
@@ -233,12 +228,6 @@ async def test_mount_without_official_image_uses_pending_message(
             suit=None,
             bonus=None,
         ),
-    )
-
-    monkeypatch.setattr(
-        equipment_service,
-        "load_flash_mount_image",
-        lambda _data, _mount_id: None,
     )
 
     result = await _service(data, MissingImages()).select("equip", 1301170)
@@ -250,9 +239,7 @@ async def test_mount_without_official_image_uses_pending_message(
 
 
 @pytest.mark.asyncio
-async def test_mount_without_unity_image_uses_flash_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_mount_uses_generated_mount_asset_kind() -> None:
     data = FakeData()
     data.values[data.equip] = (
         SimpleNamespace(
@@ -263,48 +250,25 @@ async def test_mount_without_unity_image_uses_flash_fallback(
             bonus=None,
         ),
     )
-    monkeypatch.setattr(
-        equipment_service,
-        "load_flash_mount_image",
-        lambda _data, mount_id: (
-            b"flash-mount" if mount_id == FLASH_TEST_MOUNT_ID else None
-        ),
-    )
+    requested: list[tuple[object, str]] = []
 
-    result = await _service(data, MissingImages()).select("equip", 1301170)
+    class MountImages(FakeImages):
+        async def fetch(
+            self,
+            kind: object,
+            key: str,
+            *,
+            fallback: bool = True,
+        ) -> bytes:
+            requested.append((kind, key))
+            return await super().fetch(kind, key, fallback=fallback)
+
+    result = await _service(data, MountImages()).select("equip", 1301170)
 
     assert result.reply is not None
-    assert result.reply.image == b"flash-mount"
+    assert result.reply.image == b"image:1301170"
     assert result.reply.image_error == ""
-    assert "暂未上线" not in result.reply.text
-
-
-@pytest.mark.asyncio
-async def test_mount_reports_incomplete_published_flash_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    data = FakeData()
-    data.values[data.equip] = (
-        SimpleNamespace(
-            id=1301170,
-            name="帝皇驹",
-            part_type=SimpleNamespace(id=6),
-            suit=None,
-            bonus=None,
-        ),
-    )
-
-    def fail(_data: object, mount_id: int) -> None:
-        raise PublishedDataIncompleteError("flash_mount_image", entity_id=mount_id)
-
-    monkeypatch.setattr(equipment_service, "load_flash_mount_image", fail)
-
-    result = await _service(data, MissingImages()).select("equip", 1301170)
-
-    assert result.reply is not None
-    assert not result.reply.complete
-    assert result.reply.image is None
-    assert result.reply.image_error == "星际座驾图片数据不完整，暂时无法展示。"
+    assert requested == [("mount", "1301170")]
 
 
 @pytest.mark.asyncio

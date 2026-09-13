@@ -5,6 +5,8 @@ from typing import Any
 
 from ironsbot.services.seer.rendering import TemplatePath
 
+from .project_metadata import current_project_url
+
 HTML_TEMPLATE_RENDERER_SOURCE_PATH = Path(__file__).resolve()
 
 
@@ -18,10 +20,12 @@ async def render_html_template(
 ) -> bytes:
     from nonebot_plugin_htmlkit import template_to_pic
 
+    context = dict(templates)
+    context.setdefault("project_url", current_project_url())
     return await template_to_pic(
         template_path,
         template_name,
-        templates,
+        context,
         max_width=max_width,
         allow_refit=allow_refit,
     )

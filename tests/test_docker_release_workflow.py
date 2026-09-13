@@ -225,6 +225,11 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert candidate["with"]["push"] is False
     assert candidate["with"]["context"] == publish["with"]["context"] == "."
     assert candidate["with"]["labels"] == publish["with"]["labels"]
+    expected_project_url = (
+        "IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}"
+    )
+    assert expected_project_url in candidate["with"]["build-args"]
+    assert expected_project_url in publish["with"]["build-args"]
     assert steps.index(candidate) < steps.index(smoke)
     assert steps.index(smoke) < steps.index(ghcr_login) < steps.index(publish)
     assert steps.index(smoke) < steps.index(dockerhub_login) < steps.index(publish)
@@ -249,9 +254,7 @@ def test_candidate_size_gate_precedes_registry_login_and_keeps_evidence() -> Non
         if step["name"] == "Enforce runtime candidate size budgets"
     )
     upload = next(
-        step
-        for step in steps
-        if step["name"] == "Upload candidate size evidence"
+        step for step in steps if step["name"] == "Upload candidate size evidence"
     )
     login = next(
         step for step in steps if step["name"] == "Login to GitHub Container Registry"
@@ -301,6 +304,8 @@ def test_candidate_size_budget_shell(
 def test_runtime_uses_two_weight_cn_subset_fonts() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
+    assert 'ARG IRONSBOT_PROJECT_URL=""' in dockerfile
+    assert "ENV IRONSBOT_PROJECT_URL=${IRONSBOT_PROJECT_URL}" in dockerfile
     assert "19_SourceHanSansCN.zip" in dockerfile
     assert "09_SourceHanSansSC.zip" not in dockerfile
     assert '"SourceHanSansCN-Regular.otf"' in dockerfile

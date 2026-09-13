@@ -3,20 +3,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Literal, Protocol
 
 from ironsbot.core.selection import (
     SelectionMenuItem,
     SelectionMenuSection,
     format_selection_menu,
 )
-from ironsbot.integrations.seer_data.autocard_sanctuary_repository import (
-    AutocardSanctuaryRow,
-    load_autocard_sanctuary_rows,
-)
-
-if TYPE_CHECKING:
-    from ironsbot.services.seer.data import SeerDataAccess
 
 SANCTUARY_QUERY_PREFIXES = (
     "群星牌场地",
@@ -28,6 +21,25 @@ SANCTUARY_QUERY_PREFIXES = (
 SANCTUARY_PROMPT_MAX_ITEMS = 30
 
 _NAME_STRIP_PATTERN = re.compile(r"[\s.·・•‧∙⋅。\-_/]+")
+
+
+@dataclass(frozen=True, slots=True)
+class AutocardSanctuaryRow:
+    effect_id: int
+    sanctuary_id: int
+    effect_name: str
+    description: str
+    unlock_round: int
+    stage: int
+    sanctuary_name: str
+    sanctuary_pet_id: int
+    sanctuary_pet_name: str
+
+
+class AutocardSanctuaryRepository(Protocol):
+    def load(self) -> tuple[AutocardSanctuaryRow, ...]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class SanctuaryEffect:
     id: int
@@ -78,38 +90,36 @@ class _SanctuaryDataset:
 class AutocardSanctuaryService:
     """Read official element sanctuaries and their round-based blessings."""
 
-    def __init__(self, data: SeerDataAccess) -> None:
-        self._data = data
+    def __init__(self, repository: AutocardSanctuaryRepository) -> None:
+        self._repository = repository
 
     def search(self, arg: str) -> SanctuarySearchResult:
         query = _extract_query_arg(arg)
-        with self._data.query(load_autocard_sanctuary_rows) as rows:
-            dataset = _build_sanctuary_dataset(rows)
-            if not query:
-                return _sanctuary_menu_result(dataset)
-            values = _matching_values(dataset, query)
-            if not values:
-                return SanctuarySearchResult(
-                    message=f"❌ 未找到群星牌场地或祝印：{query}"
-                )
-            if len(values) == 1:
-                return _selection_result(dataset, values[0])
-            if len(values) > SANCTUARY_PROMPT_MAX_ITEMS:
-                return SanctuarySearchResult(
-                    message=(
-                        f"❌ 场地或祝印匹配超过 {SANCTUARY_PROMPT_MAX_ITEMS} 个，"
-                        "请换更精确的关键词。"
-                    )
-                )
+        dataset = _build_sanctuary_dataset(self._repository.load())
+        if not query:
+            return _sanctuary_menu_result(dataset)
+        values = _matching_values(dataset, query)
+        if not values:
             return SanctuarySearchResult(
-                prompt_values=tuple(values),
-                prompt_text=_matching_prompt_text(dataset, values),
+                message=f"❌ 未找到群星牌场地或祝印：{query}"
             )
+        if len(values) == 1:
+            return _selection_result(dataset, values[0])
+        if len(values) > SANCTUARY_PROMPT_MAX_ITEMS:
+            return SanctuarySearchResult(
+                message=(
+                    f"❌ 场地或祝印匹配超过 {SANCTUARY_PROMPT_MAX_ITEMS} 个，"
+                    "请换更精确的关键词。"
+                )
+            )
+        return SanctuarySearchResult(
+            prompt_values=tuple(values),
+            prompt_text=_matching_prompt_text(dataset, values),
+        )
 
     def select(self, value: SanctuaryPromptValue) -> SanctuarySearchResult:
-        with self._data.query(load_autocard_sanctuary_rows) as rows:
-            dataset = _build_sanctuary_dataset(rows)
-            return _selection_result(dataset, value)
+        dataset = _build_sanctuary_dataset(self._repository.load())
+        return _selection_result(dataset, value)
 
 
 def format_sanctuary_overview(sanctuary: Sanctuary) -> tuple[

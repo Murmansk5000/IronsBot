@@ -10,9 +10,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ironsbot.core.value_coercion import require_int
+from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryRow
 
 if TYPE_CHECKING:
     from sqlmodel import Session
+
+    from ironsbot.services.seer.data import SeerDataAccess
 
 _MISSING_TABLE_MESSAGE = "数据库缺少群星牌场地效果表，请先更新 IronsBot 数据库。"
 _EMPTY_DATA_MESSAGE = "数据库没有群星牌场地效果数据，请先更新 IronsBot 数据库。"
@@ -42,16 +45,12 @@ _EFFECT_QUERY = text(
 
 
 @dataclass(frozen=True, slots=True)
-class AutocardSanctuaryRow:
-    effect_id: int
-    sanctuary_id: int
-    effect_name: str
-    description: str
-    unlock_round: int
-    stage: int
-    sanctuary_name: str
-    sanctuary_pet_id: int
-    sanctuary_pet_name: str
+class PublishedAutocardSanctuaryRepository:
+    data: SeerDataAccess
+
+    def load(self) -> tuple[AutocardSanctuaryRow, ...]:
+        with self.data.query(load_autocard_sanctuary_rows) as rows:
+            return rows
 
 
 def load_autocard_sanctuary_rows(
