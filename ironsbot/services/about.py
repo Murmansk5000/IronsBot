@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import CommandContract
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -47,7 +47,7 @@ class AboutService:
         return cls(version or "未知")
 
     def message(self) -> OutboundMessage:
-        return OutboundMessage((TextPart(ABOUT_MESSAGE.format(version=self.version)),))
+        return OutboundMessage.from_text(ABOUT_MESSAGE.format(version=self.version))
 
 
 def about_command_contracts() -> tuple[CommandContract, ...]:

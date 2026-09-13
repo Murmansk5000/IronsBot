@@ -106,6 +106,12 @@ class OutboundMessage:
         if not self.parts:
             raise OutboundMessageError.empty_message()
 
+    @classmethod
+    def from_text(cls, text: str) -> OutboundMessage:
+        """Build the canonical one-part text message."""
+
+        return cls((TextPart(text),))
+
 
 def format_outbound_message(
     template: str,

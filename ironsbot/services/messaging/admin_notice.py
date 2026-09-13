@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypeAlias
 
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import ActorRef, ConversationRef
 
 if TYPE_CHECKING:
@@ -72,7 +72,7 @@ class AdminNoticeService:
         interval_seconds: float = 1.5,
     ) -> AdminNoticeSendSummary:
         return await self.send_message(
-            OutboundMessage((TextPart(text),)),
+            OutboundMessage.from_text(text),
             subscription_key=subscription_key,
             action_name=action_name,
             interval_seconds=interval_seconds,
@@ -116,7 +116,7 @@ class AdminNoticeService:
             return AdminNoticeSendSummary((), ())
 
         return await self.sender.send_admin_notice(
-            OutboundMessage((TextPart(text),)),
+            OutboundMessage.from_text(text),
             private_actors=private_actors,
             group_conversations=(),
             action_name=action_name,

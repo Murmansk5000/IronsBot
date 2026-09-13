@@ -36,6 +36,10 @@ def test_outbound_message_accepts_text_and_image_parts() -> None:
     assert len(message.parts) == PART_COUNT
 
 
+def test_outbound_message_builds_canonical_text_message() -> None:
+    assert OutboundMessage.from_text("hello").parts == (TextPart("hello"),)
+
+
 def test_outbound_message_rejects_empty_parts() -> None:
     with pytest.raises(ValueError, match="at least one part"):
         OutboundMessage(())

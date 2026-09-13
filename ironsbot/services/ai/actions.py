@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import OutboundMessage
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -56,7 +56,7 @@ class AiIntentActionExecutor:
 
 def _text_messages(messages: Iterable[str]) -> tuple[OutboundMessage, ...]:
     return tuple(
-        OutboundMessage((TextPart(message),))
+        OutboundMessage.from_text(message)
         for message in messages
         if isinstance(message, str) and message
     )
