@@ -1,6 +1,6 @@
 # Runtime Image Inventory
 
-Status: `verified` (packaging/workflow contract only; actual image run pending)
+Status: `verified` (local Linux candidate included; published CI artifact pending)
 
 Target: bounded runtime packaging with verifiable size evidence. Owner:
 Dockerfile/build context and the existing release measurement step.
@@ -241,5 +241,26 @@ hard-coded upstream URL; source runs without build metadata omit the link rather
 than guessing ownership. This adds no asset or dependency to the image.
 
 Focused metadata, cache, workflow and render tests passed 55 cases. Ruff and diff
-checks passed. The Linux Docker daemon remains unavailable on this host, so this
-does not replace the pending real candidate smoke and size evidence.
+checks passed. At that checkpoint the Linux Docker daemon was unavailable; the
+later real candidate evidence below supersedes only that environment limitation.
+
+## Real Linux Candidate Evidence (2026-09-13)
+
+Docker Desktop's Linux/amd64 Engine 29.5.2 was started and the exact public
+commit `93bd3aac21e8ee23e6cfc7c108024073b1fae5ce` was built with the release
+Dockerfile. The network-isolated entrypoint smoke resolved distinct regular and
+bold Source Han Sans CN files, loaded the example configuration, and imported
+NoneBot and `seerapi_models` successfully.
+
+The first real build exposed nested local `__pycache__` directories in the
+context: `/app` was 9384 KiB and would have failed the 8192 KiB gate. Recursive
+Docker ignore rules removed every `.pyc`; the rebuilt candidate measured
+4220 KiB for `/app`, 104644 KiB for site-packages, and 19452 KiB for fonts.
+All three runtime budgets now pass without raising a limit.
+
+The rebuilt candidate image ID is `sha256:7ffd8c985a7c...`; Docker reports
+98,861,824 bytes (94.28 MiB). On the same engine, pulled GHCR `latest` digest
+`sha256:4677ca61fe55...` reports 425,224,471 bytes (405.53 MiB), a reduction of
+326,362,647 bytes (311.24 MiB). These are real local Docker measurements, not
+source projections. A published digest-pinned CI artifact remains pending, so
+this evidence does not claim publication or real platform acceptance.

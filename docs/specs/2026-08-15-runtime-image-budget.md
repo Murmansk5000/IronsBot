@@ -71,6 +71,8 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 - [x] 安装包只在 RUN 挂载中可见，最终阶段没有复制 wheelhouse 的指令（静态验收）。
 - [x] 冻结运行依赖导出；CI 的 digest 测量和层信息附件已实现并经模拟命令验证。
 - [x] 候选镜像在发布前与现有 `latest` 比较，超出 8192 KiB 时停止发布并保留证据。
+- [x] 在 Linux/amd64 Docker 引擎真实构建候选，执行离线启动、字体、依赖导入、
+  字节码排除和三个目录预算检查。
 - [ ] 发布环境记录一次实际镜像层和总尺寸测量。
 
 ## Evidence
@@ -84,11 +86,13 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 | 2026-09-05 | 本地 main 和构建环境复核 | `git show main:Dockerfile`、冻结依赖导出、`docker version` | main `f19c7089` 仍 COPY wheelhouse、COPY 全仓库，且导出未显式排除 dev。V5 已按白名单复制应用并排除 dev，本轮补齐 wheelhouse 层问题。本机 Docker engine pipe 仍不存在，不报告 MiB 减少值，实际构建与 digest 测量仍待完成。 |
 | 2026-09-12 | 只读审计 Docker Hub `latest` 的 linux/amd64 manifest 与 config history | Registry digest `sha256:9aee18d5...`，10 层合计 405.51 MiB（压缩传输大小） | 当前远端仍由 main 旧 Dockerfile 构建：wheelhouse COPY 134.36 MiB、安装后删除 wheel 的层 153.02 MiB、全仓 `COPY .` 41.38 MiB。V5 已删除独立 wheelhouse 层并改为运行文件白名单，但尚未发布，因此不能声称新镜像的实际大小或节省比例。 |
 | 2026-09-13 | 增加候选相对增长门 | Docker 发布、启动预检与结构边界测试 39 项 | 候选相对当前 fork 的 GHCR `latest` 最多增长 8192 KiB；缩小、零增长、边界值、超限、基线不可读及 fork 仓库推导均经验证，真实大小仍等首个 Linux 候选任务。 |
+| 2026-09-13 | 本机真实 Linux/amd64 候选构建 | Docker Desktop Engine 29.5.2；commit `93bd3aac21e8`；离线 entrypoint smoke、字体解析、核心导入、目录 `du`、image inspect 与线上 digest 对比 | 候选 image ID `sha256:7ffd8c98...`，Docker 报告 98,861,824 bytes（94.28 MiB）；`/app` 4220 KiB、site-packages 104644 KiB、fonts 19452 KiB，均通过预算。线上 `latest` digest `sha256:4677ca61...` 为 425,224,471 bytes（405.53 MiB），同一引擎下候选少 326,362,647 bytes（311.24 MiB）。尚未 push 或生成 GitHub Actions 发布附件。 |
+| 2026-09-13 | 修复嵌套字节码进入构建上下文 | 首次真实候选 `/app` 9384 KiB；递归忽略规则后重建、容器内 `find` 与 smoke | 根级 `.dockerignore` 模式没有排除嵌套 `__pycache__`；改为 `**/__pycache__/` 与 `**/*.py[cod]` 后 `/app` 降至 4220 KiB，减少 5164 KiB，容器内无 `.pyc`。同时修复 Dockerfile 旧式 `ENV` 警告。 |
 
 ## Progress
 
 ```text
-Program  [███░░░░░░░]  verified phases: 3/8; this static boundary is complete, real image measurement remains
-Phase    [██████████] static build context protection verified; image-size acceptance remains open
-Current  [██████████] wheelhouse and measurement code verified; actual image build and size pending
+Program  [███████░] 7/8 verified phases; real platform acceptance remains
+Phase    [█████████░] local Linux candidate verified; published CI artifact remains
+Current  [██████████] bytecode exclusion, smoke, budgets and baseline comparison verified
 ```

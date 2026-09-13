@@ -1702,7 +1702,15 @@ Bookworm/Trixie 压缩基础层约为 45.05/45.75 MiB，差异约 0.70 MiB。
 增长上限为 8192 KiB。仓库名由 `github.repository` 推导，比较使用拉取后的基线
 digest，并始终上传候选、基线和差值；基线读取
 失败或超限都会阻止发布，避免绝对分目录预算较宽时出现未被发现的大步增长。Docker
-发布、启动预检与结构边界测试 `39 passed`；真实差值仍须由 Linux 候选任务产生。
+发布、启动预检与结构边界测试 `39 passed`；该批验证时尚无真实 Linux 候选差值。
+
+随后在 Docker Desktop Linux/amd64 Engine 29.5.2 上真实构建 commit `93bd3aac21e8`。
+首次构建发现嵌套 `__pycache__` 未被根级 `.dockerignore` 规则排除，`/app` 达 9384 KiB；
+改为递归规则后重建为 4220 KiB，容器内无 `.pyc`，其余 site-packages 104644 KiB、字体
+19452 KiB，三个预算均通过。离线 entrypoint、双字重字体、配置和核心依赖导入 smoke
+通过。候选 Docker 报告 94.28 MiB；同一引擎拉取的线上 `latest` digest
+`sha256:4677ca61...` 为 405.53 MiB，候选少 311.24 MiB。该证据尚未由发布工作流上传，
+也不代表真实 QQ 平台验收；整体仍为 7/8。
 
 ## 工作项登记模板
 
