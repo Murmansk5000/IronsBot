@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
+import tomli
+
 from ironsbot.app import docker_preflight
 from ironsbot.app.docker_preflight import (
     STARTUP_PREFLIGHT_TIMEOUT_SECONDS,
@@ -410,6 +412,30 @@ def test_docker_image_runs_preflight_before_application() -> None:
     assert wait_offset < app_start_offset
     assert "run_preflight" in entrypoint[wait_offset:app_start_offset]
     assert 'exec "$@"' in entrypoint
+
+
+def test_runtime_server_uses_only_declared_protocol_dependencies() -> None:
+    root = Path(__file__).resolve().parents[1]
+    project = tomli.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    lock = tomli.loads((root / "uv.lock").read_text(encoding="utf-8"))
+    main = (root / "ironsbot" / "__main__.py").read_text(encoding="utf-8")
+
+    dependencies = project["project"]["dependencies"]
+    assert "nonebot2[httpx]>=2.4.4" in dependencies
+    assert not any(
+        dependency.startswith("nonebot2[fastapi") for dependency in dependencies
+    )
+    assert "fastapi>=0.93.0,<1.0.0" in dependencies
+    assert "uvicorn>=0.20.0,<1.0.0" in dependencies
+    assert "websockets>=15.0" in dependencies
+
+    locked_names = {package["name"] for package in lock["package"]}
+    assert {"fastapi", "uvicorn", "websockets"} <= locked_names
+    assert locked_names.isdisjoint({"httptools", "uvloop", "watchfiles"})
+
+    assert 'loop="asyncio"' in main
+    assert 'http="h11"' in main
+    assert 'ws="websockets-sansio"' in main
 
 
 def test_startup_preflight_timeout_is_shorter_than_manual_update_timeout() -> None:

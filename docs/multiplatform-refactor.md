@@ -1879,3 +1879,15 @@ ID 标签、列表以及增删、清空、重置结果文案。OneBot 插件删�
 关注格式化，只保留事件适配、登录确认与候选数字菜单，文件由 642 行降至 595 行。
 账号绑定和平台成员身份未改，仍按平台能力延期规则最后处理；没有新增配置、依赖或
 图片资源。
+
+## 运行服务器依赖收口（2026-09-13）
+
+启动入口已明确固定为 Uvicorn 的 `asyncio`、`h11` 与 `websockets-sansio` 实现，
+因此运行依赖改为直接声明 FastAPI、Uvicorn 和 WebSockets，不再通过 NoneBot 的
+FastAPI extra 间接安装 Uvicorn standard extras。冻结锁文件删除运行时未使用的
+`httptools`、`uvloop` 与 `watchfiles`，并新增依赖与入口组合的防回退测试。
+
+完整宿主进程已启动到监听状态并正常关闭；全量测试 3231 项通过、7 项跳过，Ruff、
+BasedPyright、compileall 与 diff 检查通过。精确的变更后 Linux 镜像尺寸留给发布候选
+任务补证，不以宿主环境推算。QQ 号、绑定和直接 @ 等目标 API 可能无法表达的操作不在
+本批处理，继续延期到最终平台适配。

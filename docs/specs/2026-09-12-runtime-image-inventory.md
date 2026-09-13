@@ -264,3 +264,13 @@ The rebuilt candidate image ID is `sha256:7ffd8c985a7c...`; Docker reports
 326,362,647 bytes (311.24 MiB). These are real local Docker measurements, not
 source projections. A published digest-pinned CI artifact remains pending, so
 this evidence does not claim publication or real platform acceptance.
+
+The application entry point explicitly selects the pure-Python `asyncio`, `h11`
+and `websockets-sansio` implementations. Runtime dependencies therefore declare
+FastAPI, Uvicorn and WebSockets directly instead of installing NoneBot's FastAPI
+extra, which pulled Uvicorn's unused standard accelerators. The frozen lock no
+longer contains `httptools`, `uvloop` or `watchfiles`. A full host process smoke
+reached Uvicorn's listening state and shut down cleanly with this dependency set.
+The exact post-change Linux image size remains to be remeasured by the published
+candidate workflow; the earlier local Linux measurement remains the latest
+digest-comparable evidence.
