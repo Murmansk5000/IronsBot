@@ -2401,3 +2401,12 @@ AccessToken、连接、Session 与 OpenID 命名空间，并实现心跳、Resum
 分支。完整示例目录的 portable 覆盖提升到 64/75；没有新增依赖、配置、数据库、素材
 或镜像层。专项 `110 passed`，全量 `3376 passed, 7 skipped`；Ruff、BasedPyright、
 compileall 和差异检查通过，真实平台验收门不变。
+
+数据与镜像只读维护随后接入 portable router。`/更新数据`、`/强制更新数据` 的远端检查
+和菜单选择后的实际同步各自使用一次送达门，避免平台尚未确认进度回执时就触发构建或
+下载；通用数字菜单因此可以返回 `PortableReply`，不是数据更新专用分支。
+`/检查更新镜像` 同样先回执再访问镜像仓库，并保持只读。OneBot 也改用相同的
+progress-aware service API。覆盖提升到 67/75，剩余 8 条是两条需要“最终消息送达后
+执行重启”的维护命令及 6 条依赖数字 QQ 账户配置的幸运橱窗命令。该增量没有新增依赖、
+数据库、配置字段、二进制素材或镜像层。专项 `119 passed`，全量
+`3381 passed, 7 skipped`；Ruff、BasedPyright、compileall 和差异检查通过。

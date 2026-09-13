@@ -28,6 +28,8 @@ from ironsbot.services.portable_new_content_commands import (
     build_portable_new_content_operations,
 )
 from ironsbot.services.portable_operational_commands import (
+    build_portable_data_sync_operations,
+    build_portable_docker_operations,
     build_portable_meeting_operations,
     build_portable_server_status_operations,
 )
@@ -67,6 +69,8 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
+    from ironsbot.services.operations.data_sync import DataSyncService
+    from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.seer.new_content import NewContentCategory
@@ -127,13 +131,21 @@ class PortableCommandRouter:
         command = _command_text(context.text)
         command_context = _command_context(context)
         try:
-            selected = await self._query_sessions.select(command, context)
+            selected = await self._query_sessions.select(
+                command,
+                context,
+                allow_deferred=True,
+            )
         except DataUnavailableError:
             return PortableReply(
                 OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
             )
         if selected is not None:
-            return PortableReply(selected)
+            return (
+                selected
+                if isinstance(selected, PortableReply)
+                else PortableReply(selected)
+            )
         contract = self._matching_input_contract(
             raw_command,
             command,
@@ -286,6 +298,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     bilibili: BilibiliService | None = None,
     bilibili_monitor: BilibiliMonitorService | None = None,
     server_status: ServerStatusService | None = None,
+    data_sync: DataSyncService | None = None,
+    docker_update: DockerUpdateService | None = None,
     meeting_number: str = "",
     meeting_template: str = "{meeting_number}",
     pet_config: PetConfigQueryService | None = None,
@@ -397,6 +411,22 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             else build_portable_server_status_operations(server_status)
         ),
     )
+    data_sync_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if data_sync is None
+            else build_portable_data_sync_operations(data_sync, sessions)
+        ),
+    )
+    docker_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if docker_update is None
+            else build_portable_docker_operations(docker_update)
+        ),
+    )
     meeting_operations = _catalog_operations(
         catalog,
         build_portable_meeting_operations(meeting_number, meeting_template),
@@ -422,6 +452,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **sendpic_operations,
         **bilibili_operations,
         **server_status_operations,
+        **data_sync_operations,
+        **docker_operations,
         **meeting_operations,
         **pet_config_operations,
         **new_content_operations,
