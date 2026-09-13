@@ -16,6 +16,8 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
+import tomllib
+
 from ironsbot.services.operations.docker_models import (
     DockerImageArchiveRequest,
     DockerRegistryCredentials,
@@ -41,12 +43,6 @@ _PYTHON_MODULE_PATTERN = re.compile(
 )
 _PRIVATE_MODULE_PREFIX = "ironsbot_private_"
 logger = logging.getLogger(__name__)
-
-try:
-    import tomllib  # pyright: ignore[reportMissingImports]
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
-    import tomli as tomllib  # pyright: ignore[reportMissingImports]
-
 
 class PrivateExtensionError(RuntimeError):
     pass
