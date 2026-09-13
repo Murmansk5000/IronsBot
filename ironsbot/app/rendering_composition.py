@@ -12,6 +12,7 @@ from ironsbot.integrations.htmlkit import (
     render_html_template,
 )
 from ironsbot.integrations.http.seer_images import HttpSeerImageSource
+from ironsbot.integrations.project_metadata import current_project_url
 from ironsbot.integrations.seer_data import SEER_DATA_RENDERERS_PATH
 from ironsbot.integrations.storage.render_cache import FileRenderCache
 from ironsbot.integrations.storage.render_cache_version import RenderCacheVersion
@@ -97,6 +98,7 @@ def build_seer_rendering_components(
         render_config.final_cache_max_size_mb * 1024 * 1024,
         version_getter=versions,
         category_available=seer_database.render_category_available,
+        scope=current_project_url(),
     )
     return (
         images,

@@ -24,6 +24,7 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     OutboundRateLimitConfig,
     OutboundRateLimitWindowConfig,
+    ProactiveDeliveryConfig,
     PushUnsubscribeConfig,
 )
 from ironsbot.config.models.operations import (
@@ -121,7 +122,6 @@ def _assert_default_push_unsubscribe(
 
 def _assert_default_docker_update(docker_update: DockerUpdateConfig) -> None:
     assert docker_update.check_on_startup
-    assert docker_update.check_on_restart
     assert docker_update.image == "murmansk5000/ironsbot:latest"
     assert docker_update.container_name == "ironsbot"
     assert docker_update.docker_socket_path == "/var/run/docker.sock"
@@ -1020,6 +1020,26 @@ change_cooldown_hours = 72.0
     )
 
 
+def test_removed_docker_restart_check_field_is_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[operations.docker_update]
+check_on_restart = false
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
+
+    assert exc_info.value.errors()[0]["loc"] == (
+        "operations",
+        "docker_update",
+        "check_on_restart",
+    )
+
+
 def test_player_background_refresh_loads(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
@@ -1710,6 +1730,7 @@ def test_app_config_defaults_cover_runtime_services() -> None:
     assert app_config.activity.lead_hours == [11, 1]
     assert not app_config.messaging.command_cooldown.enabled
     assert not app_config.messaging.outbound_rate_limit.enabled
+    assert app_config.messaging.proactive_delivery == ProactiveDeliveryConfig()
     assert "seerapi" in app_config.operations.data_sync.sources
     assert (
         app_config.messaging.outbound_rate_limit.windows[0].max_messages

@@ -132,22 +132,27 @@ can claim Linux runtime acceptance.
 
 ## Frozen Runtime Footprint Audit
 
-The frozen `--no-dev` export contains 59 packages. Installing that exact export
-into an isolated Python 3.10 Windows environment occupies about 64.49 MiB in
-`site-packages`; this is diagnostic evidence rather than a Linux image-size
-measurement. The largest runtime packages are htmlkit's native rendering core
-(about 16.06 MiB), Pillow (about 13.96 MiB), SQLAlchemy (about 8.37 MiB),
-Pydantic Core (about 5.37 MiB), Pygments (about 4.27 MiB), and resvg-py (about
-1.89 MiB).
+The frozen `--no-dev` export originally contained 59 packages. Installing that
+exact export into an isolated Python 3.10 Windows environment occupied about
+64.49 MiB in `site-packages`; this is diagnostic evidence rather than a Linux
+image-size measurement. The largest runtime packages were htmlkit's native
+rendering core (about 16.06 MiB), Pillow (about 13.96 MiB), SQLAlchemy (about
+8.37 MiB), Pydantic Core (about 5.37 MiB), and Pygments (about 4.27 MiB).
 
-Every direct runtime dependency has a current production owner: NoneBot and the
-OneBot adapter provide the active platform runtime; FastAPI/httpx provide the
-configured drivers; htmlkit, Pillow and resvg-py implement image rendering;
-Hishel implements the shared HTTP cache; APScheduler owns scheduled work; SAA
-encodes outgoing image messages; qrcode generates Bilibili login QR images;
-and seerapi-models/SQLAlchemy read the published database. Therefore this audit
-removes no direct dependency. Deleting any of these packages would remove an
-active feature or merely move the same dependency behind an implicit import.
+Every remaining direct runtime dependency has a current production owner:
+NoneBot and the OneBot adapter provide the active platform runtime;
+FastAPI/httpx provide the configured drivers; htmlkit and Pillow implement image
+rendering; Hishel implements the shared HTTP cache; APScheduler owns scheduled
+work; SAA encodes outgoing image messages; qrcode generates Bilibili login QR
+images; and seerapi-models/SQLAlchemy read the published database.
+
+The audit later proved that `resvg-py` had no production or private-extension
+caller: its only public wrapper was itself unused. The wrapper and direct
+dependency were removed rather than shipping an approximately 1.17 MiB Linux
+wheel solely because it had existed in an earlier rendering experiment.
+After removal, the full suite passed (`3207 passed, 7 skipped`), together with
+Ruff, BasedPyright, compileall and the frozen dependency export check. Actual
+Linux image size remains a release-run measurement, not a projected claim.
 
 Development-only `nodejs_wheel`, BasedPyright, pytest, Ruff and audit tooling do
 not occur in the frozen production export. The Dockerfile already exports with
@@ -217,3 +222,15 @@ passed. The exact frozen Python 3.10 audit covered 59 runtime distributions and
 reported zero known vulnerabilities and zero skipped distributions. Repeated
 advisory-cache decode warnings caused network refetches and did not suppress
 audit input or findings. No workflow was dispatched and no image was published.
+
+## Fork-Aware Render Metadata
+
+Candidate and published images now receive the current repository URL as a Docker
+build argument. The runtime injects it into every HTML render and scopes final
+render-cache keys by the same value. Five Seer templates no longer package a
+hard-coded upstream URL; source runs without build metadata omit the link rather
+than guessing ownership. This adds no asset or dependency to the image.
+
+Focused metadata, cache, workflow and render tests passed 55 cases. Ruff and diff
+checks passed. The Linux Docker daemon remains unavailable on this host, so this
+does not replace the pending real candidate smoke and size evidence.

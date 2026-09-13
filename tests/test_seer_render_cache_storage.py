@@ -31,6 +31,26 @@ def test_render_cache_get_and_put_are_scoped_by_db_version(tmp_path: Path) -> No
     assert len(list(tmp_path.glob("*.json"))) == 1
 
 
+def test_render_cache_is_scoped_by_project_metadata(tmp_path: Path) -> None:
+    first = FileRenderCache(
+        tmp_path,
+        1024,
+        version_getter=lambda: "release",
+        scope="https://example.test/first",
+    )
+    second = FileRenderCache(
+        tmp_path,
+        1024,
+        version_getter=lambda: "release",
+        scope="https://example.test/second",
+    )
+
+    first.entry("pet_info", "25").put(b"first")
+
+    assert first.entry("pet_info", "25").get() == b"first"
+    assert second.entry("pet_info", "25").get() is None
+
+
 def test_bound_render_cache_keeps_late_writes_in_original_release(
     tmp_path: Path,
 ) -> None:

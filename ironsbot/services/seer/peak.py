@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 from ironsbot.core import time
 from ironsbot.integrations.seer_data.peak_repository import (
     PeakPeriodTimes,
+    load_peak_master_pool_snapshots,
     load_peak_period_times,
     load_peak_pet_snapshots,
     load_peak_pool_snapshots,
@@ -164,9 +165,8 @@ PEAK_TYPE_NAME_MAP = {
 
 PEAK_POOL_COMMANDS = ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池")
 PEAK_EXPERT_POOL_COMMANDS = ("专家池", "巅峰专家池", "专家禁用池")
-PEAK_VOTE_COMMANDS = (
-    "巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选"
-)
+PEAK_MASTER_POOL_COMMANDS = ("大师池", "巅峰大师池")
+PEAK_VOTE_COMMANDS = ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选")
 PEAK_SUIT_RANK_COMMANDS = tuple(f"{name}套装榜" for name in PEAK_TYPE_NAME_MAP.values())
 PEAK_TITLE_RANK_COMMANDS = tuple(
     f"{name}称号榜" for name in PEAK_TYPE_NAME_MAP.values()
@@ -177,10 +177,15 @@ PEAK_PET_RANK_COMMANDS = tuple(
     for name in PEAK_TYPE_NAME_MAP.values()
 )
 PEAK_QUERY_COMMANDS = (
-    *PEAK_POOL_COMMANDS, *PEAK_EXPERT_POOL_COMMANDS, *PEAK_VOTE_COMMANDS
+    *PEAK_POOL_COMMANDS,
+    *PEAK_EXPERT_POOL_COMMANDS,
+    *PEAK_MASTER_POOL_COMMANDS,
+    *PEAK_VOTE_COMMANDS,
 )
 PEAK_RANK_COMMANDS = (
-    *PEAK_SUIT_RANK_COMMANDS, *PEAK_TITLE_RANK_COMMANDS, *PEAK_PET_RANK_COMMANDS
+    *PEAK_SUIT_RANK_COMMANDS,
+    *PEAK_TITLE_RANK_COMMANDS,
+    *PEAK_PET_RANK_COMMANDS,
 )
 
 PEAK_PET_KEY_MAP = {
@@ -220,6 +225,7 @@ class PeakVoteItemSnapshot:
 @dataclass(frozen=True, slots=True)
 class PeakVotePoolInput:
     title: str
+    period: str
     items: tuple[PeakVoteItemSnapshot, ...]
     pets: tuple[PeakPetSnapshot, ...]
 
@@ -228,6 +234,7 @@ PeakVoteRenderer = Callable[
     [tuple[PeakVotePoolInput, ...], str],
     Awaitable[bytes],
 ]
+
 
 @dataclass(frozen=True, slots=True)
 class PeakPetPickSnapshot:
@@ -350,17 +357,34 @@ class PeakQueryService:
             label = "专家禁用池" if expert else "竞技池"
             if not pools:
                 return PeakQueryResult(
-                    message=(
-                        f"❌找不到{label}数据。"
-                        "（这是一个bug，请反馈给开发者）"
-                    )
+                    message=(f"❌找不到{label}数据。（这是一个bug，请反馈给开发者）")
                 )
             await progress("正在生成图片...")
             start_time = pools[0].start_time.strftime("%Y-%m-%d")
             end_time = pools[0].end_time.strftime("%Y-%m-%d")
             return await _render_peak_result(
-                rendering.pool(pools, f"{label} / {start_time} ~ {end_time}"),
+                rendering.pool(
+                    pools,
+                    f"{label} / 有效期：{start_time} ~ {end_time}",
+                ),
                 label,
+            )
+
+    async def master_pool(self, progress: ProgressReporter) -> PeakQueryResult:
+        with self._render_session() as rendering:
+            with rendering.data.query(load_peak_master_pool_snapshots) as loaded_pools:
+                pools = tuple(loaded_pools)
+            if not pools:
+                return PeakQueryResult(message="❌找不到大师池数据。")
+            await progress("正在生成图片...")
+            start_time = pools[0].start_time.strftime("%Y-%m-%d")
+            end_time = pools[0].end_time.strftime("%Y-%m-%d %H:%M")
+            return await _render_peak_result(
+                rendering.pool(
+                    pools,
+                    f"大师池 / 精灵竞技点 / 有效期：{start_time} ~ {end_time}",
+                ),
+                "大师池",
             )
 
     async def vote(
@@ -380,17 +404,18 @@ class PeakQueryService:
                 end_time = normalize_peak_vote_time(vote.end_time)
                 if not start_time <= now <= end_time:
                     continue
-                title = (
-                    f"限{vote.count}池票选"
-                    f"<br>票选时间：{start_time:%Y-%m-%d} ~ "
-                    f"{end_time:%Y-%m-%d}"
-                )
                 if vote.count == LIMIT_POOL_VOTE_COUNT:
+                    title = "限制级"
                     rank = await game.get_limit_pool_vote(vote.subkey)
                 elif vote.count == SEMI_LIMIT_POOL_VOTE_COUNT:
+                    title = "准限制级"
                     rank = await game.get_semi_limit_pool_vote(vote.subkey)
                 else:
                     continue
+                period = (
+                    f"{start_time.month}月{start_time.day}日{start_time.hour}点"
+                    f" - {end_time.month}月{end_time.day}日{end_time.hour}点"
+                )
                 pools.append(
                     PeakVotePoolInput(
                         items=tuple(
@@ -402,6 +427,7 @@ class PeakQueryService:
                             for item in rank
                         ),
                         title=title,
+                        period=period,
                         pets=vote.pets,
                     )
                 )
@@ -485,8 +511,7 @@ class PeakQueryService:
             if period is None:
                 return PeakQueryResult(
                     message=(
-                        "❌找不到专家禁用池数据。"
-                        "（这是一个bug，请反馈给开发者）"
+                        "❌找不到专家禁用池数据。（这是一个bug，请反馈给开发者）"
                         if monthly
                         else "❌找不到赛季数据（这是一个bug，请反馈给开发者）。"
                     )

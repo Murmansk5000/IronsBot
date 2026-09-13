@@ -62,7 +62,7 @@ Task     [██████████] completed only after code, tests, and 
 - 前次只读观察的本地 `main` 为 `ba08f749`。从 `4b82881b` 起新增 11 个提交：
   B站 Opus/专栏正文补全、图片合并与历史摘要持久化，巅峰池有效期/投票展示，
   当前 fork 的页脚链接，自发指令超级管理员权限，以及橱窗别名候选昵称。
-  已读取提交、相关代码和 Docker 差异；本轮没有 fetch/pull/merge 或移植。
+  当前 fork 页脚链接现已通过构建元数据迁入；其余项目仍按各自边界处理。
   迁入时分别归属 HTTP integration、内容/投递 service、历史 repository、渲染
   view model、平台身份权限边界和玩家引用服务，不能复制旧插件内部依赖。
   `4b82881b` 的消息数组配置同样仍待独立迁入，不能误认为已在 V5 生效。
@@ -72,10 +72,10 @@ Task     [██████████] completed only after code, tests, and 
   `d15c02f8` 撤销背包徽标变更，与 `963a83c3` 的净差异为空；随后 `dbcfb241`
   修正大师池测试注解，`d8c5c7ee` 增加固定口令分条回复。仅查看，未 fetch、pull、
   合并或移植；分条回复需单独验证配置互斥、顺序和平台中立投递。
-  先前读取的大师池/每周竞技点变化仍待移植：`master_pool` 的 SQL 读取放到
-  repository，新增命令接入当前
-  catalog，并让大师池类别参与快照、素材范围和 L3 键验证；不能直接恢复 main 中
-  的 renderer 数据访问或旧分类推断。这是待移植产品变化，不是已验收功能。
+  大师池与每周竞技点变化现已按目标边界迁入：seerapi 直接复用既有
+  `peak_cost_pool` / `pet.peak_cost_pool_id` 事实发布周变化，IronsBot repository
+  提供脱离会话的池快照，命令接入当前 catalog；新增内容统一走 immutable render
+  document。没有恢复 main 中的 renderer 数据访问、旧分类推断或额外二进制解析。
 - 后续用户明确要求拉取最新代码后已执行 `git fetch origin`：远端 main 没有新提交，
   也没有对应 V5 远端分支；未执行 main 合并或重写当前分支。
 - 本次再次明确要求 pull 后，已在主检出目录执行 `git pull --ff-only origin main`，
@@ -1783,3 +1783,49 @@ target/transition/baseline 收口职责；Git 冲突只表明文本同时被改�
   仍是 service 层的纯格式化规则，精灵查询只接收 `SkinDetails`。
 - **2026-08-14：** 幸运橱窗按资源 ID 补全皮肤资料的 ORM 查询迁入
   `skin_reference_repository`；协议请求、缓存和关注偏好不变。
+
+## Docker 维护动作收口（2026-09-13）
+
+`/重启机器人` 与 `/更新镜像` 不再维护“配置决定是否检查”和“另一路 yes/no
+确认”两套语义。operations service 统一暴露`仅重启`、`检查并更新后重启`两个动作，
+OneBot 仅承载数字菜单；旧 `check_on_restart` 配置和无调用的确认适配器删除。
+
+目标平台的管理员身份映射仍遵循 QQ 身份能力延期规则，最后统一验收，不在本阶段
+增加 QQ 号专用补丁。
+
+## 主动推送通用加固（2026-09-13）
+
+主动推送的有限并发、缩批重试、结果不确定时防重发和传输断线止损迁入
+`services.messaging.proactive_delivery`。平台适配器通过 `DeliveryFailureKind` 提交失败
+语义；OneBot 错误码不进入 core 或业务 service。现有 TOML 可继续使用默认策略，
+需要调参时才增加 `[messaging.proactive_delivery]`。
+
+B站正文与图片此前仍有一层固定三次重试，叠加统一策略后可能放大发送次数。该私有
+循环现已删除：B站 service 每种内容只提交一次，重试、缩批与失败分类全部由通用
+投递服务负责；策略耗尽后的管理员通知保持在 B站业务层。
+
+本阶段不实现 QQ 号路由或目标平台主动消息资格映射；这些依赖平台 API 的内容仍在
+最后验收阶段处理。
+
+## 巅峰投票展示增强（2026-09-13）
+
+本地只读 `main` 的投票周期、总票数与占比展示已按 V5 边界迁入。巅峰 service
+只提供投票级别、时间范围和脱离 Session 的投票快照；纯 presenter 计算非负总票数
+及整数占比并生成不可变 document；HTML renderer 不读取数据库或下载额外资源。
+展示改为 900px 紧凑卡片布局，图片仍由现有 SeerAPI 图片源按需获取，机器人仓库
+没有新增静态图片或运行时资源包。
+
+## 渲染项目元数据（2026-09-13）
+
+Docker 候选与发布镜像统一注入当前构建仓库的 `IRONSBOT_PROJECT_URL`。HTMLKit
+适配器为所有模板提供该值，五个 Seer 图片页脚不再硬编码某个上游仓库；源码运行
+未注入时只显示通用 IronsBot 标识。项目地址同时进入最终图片缓存作用域，切换 fork
+不会复用带旧页脚的图片。该改动没有增加图片、字体或运行时依赖。
+
+## B站长文本收口（2026-09-13）
+
+B站推送与历史详情不再分别维护摘要规则。平台无关的
+`DynamicContentCompactor` 统一执行长度判断、AI 摘要、有限重试和确定性截断；摘要
+保存在既有动态历史库中，后续打开详情直接复用。历史摘要只按需生成，启动时不批量
+调用 AI。OneBot 适配器不拥有压缩或持久化规则，主动投递重试仍只有通用投递服务
+一层。该切片不增加 TOML、图片资源或运行依赖。

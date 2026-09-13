@@ -7,6 +7,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
+from ironsbot.services.bilibili.content import (
+    CompactedDynamicContent,
+    DynamicContentCompactor,
+)
 from ironsbot.services.bilibili.dynamic_history import save_target_dynamics
 from ironsbot.services.bilibili.hydration import (
     DynamicDetailFetcher,
@@ -20,7 +24,11 @@ from ironsbot.services.bilibili.menu import (
     build_dynamic_menu_text,
     dynamic_record_ids,
 )
-from ironsbot.services.bilibili.parser import target_dynamics_from_response
+from ironsbot.services.bilibili.parser import (
+    dynamic_content,
+    target_dynamics_from_response,
+)
+from ironsbot.services.bilibili.push import build_dynamic_history_snapshot
 from ironsbot.services.bilibili.schedule import AutoCheckState, BoostSlot
 
 if TYPE_CHECKING:
@@ -28,7 +36,10 @@ if TYPE_CHECKING:
 
     from ironsbot.core.bilibili import BiliConfig
     from ironsbot.core.platform import ActorRef, ConversationRef
-    from ironsbot.services.bilibili.dynamic_history import BiliDynamicHistoryStore
+    from ironsbot.services.bilibili.dynamic_history import (
+        BiliDynamicHistoryStore,
+        DynamicHistoryRecord,
+    )
     from ironsbot.services.bilibili.targets import BiliTargetService
 
 logger = logging.getLogger(__name__)
@@ -53,6 +64,12 @@ class BiliFeedResponse:
     data: object
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedDynamicDetail:
+    item: dict[str, Any]
+    content_override: str | None = None
+
+
 @dataclass(slots=True)
 class BilibiliService:
     config: BiliConfig
@@ -62,6 +79,7 @@ class BilibiliService:
     fetch_feed: Callable[[str], Awaitable[BiliFeedResponse]]
     fetch_detail: DynamicDetailFetcher
     spawn: Callable[..., asyncio.Task[Any]]
+    content_compactor: DynamicContentCompactor | None = None
     check_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     auto_check_state: AutoCheckState = field(default_factory=AutoCheckState)
     pending_check: bool = field(default=False, init=False)
@@ -231,3 +249,38 @@ class BilibiliService:
             cached_ids,
             raw_text,
         )
+
+    async def prepare_dynamic_detail(
+        self,
+        record: DynamicHistoryRecord,
+    ) -> PreparedDynamicDetail:
+        """Hydrate and compact one history item through shared services."""
+        item = await self.resolve_dynamic_item(record.item)
+        if item != record.item:
+            self.history.save_snapshot(
+                build_dynamic_history_snapshot(
+                    item,
+                    pub_ts=record.pub_ts,
+                    author_mid=record.uid,
+                    suppression_reason=record.suppression_reason,
+                    pushed=record.pushed,
+                )
+            )
+        current = self.history.get(record.dynamic_id) or record
+        if current.summary:
+            persisted = CompactedDynamicContent(
+                text=current.summary,
+                generated_by_ai=current.summary_generated_by_ai,
+            )
+            return PreparedDynamicDetail(item, persisted.display_text)
+        if self.content_compactor is None:
+            return PreparedDynamicDetail(item)
+        compacted = await self.content_compactor.compact(dynamic_content(item))
+        if compacted is None:
+            return PreparedDynamicDetail(item)
+        self.history.save_summary(
+            record.dynamic_id,
+            compacted.text,
+            generated_by_ai=compacted.generated_by_ai,
+        )
+        return PreparedDynamicDetail(item, compacted.display_text)

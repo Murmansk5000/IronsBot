@@ -22,11 +22,16 @@ _REQUIRED_TABLES: frozenset[str] = frozenset(
         "ironsbot_metadata",
         "item",
         "mintmark",
+        "peak_cost_pool",
         "peak_pool",
         "pet",
         "skill",
     )
 )
+_REQUIRED_COLUMNS: dict[str, frozenset[str]] = {
+    "peak_cost_pool": frozenset({"id", "cost", "start_time", "end_time"}),
+    "pet": frozenset({"peak_cost_pool_id"}),
+}
 
 
 class SeerApiReleaseContractError(ValueError):
@@ -35,6 +40,12 @@ class SeerApiReleaseContractError(ValueError):
     @classmethod
     def missing_tables(cls, tables: list[str]) -> SeerApiReleaseContractError:
         return cls(f"SeerAPI 发布数据库缺少必需表: {', '.join(tables)}")
+
+    @classmethod
+    def missing_columns(
+        cls, table: str, columns: list[str]
+    ) -> SeerApiReleaseContractError:
+        return cls(f"SeerAPI 发布数据库表 {table} 缺少必需字段: {', '.join(columns)}")
 
     @classmethod
     def incompatible_schema_version(
@@ -112,6 +123,16 @@ def validate_published_seerapi_release(engine: Engine) -> None:
         missing_tables = sorted(_REQUIRED_TABLES - tables)
         if missing_tables:
             raise SeerApiReleaseContractError.missing_tables(missing_tables)
+        for table, required_columns in _REQUIRED_COLUMNS.items():
+            actual_columns = {
+                str(row[1])
+                for row in connection.execute(text(f"PRAGMA table_info({table})"))
+            }
+            missing_columns = sorted(required_columns - actual_columns)
+            if missing_columns:
+                raise SeerApiReleaseContractError.missing_columns(
+                    table, missing_columns
+                )
         metadata = dict(
             connection.execute(
                 text(

@@ -659,6 +659,18 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
+[messaging.proactive_delivery]
+# Generic bounded fan-out policy shared by every proactive push producer.
+# 主动推送共用的有限并发与重试策略，不包含任何 QQ 号或平台错误码。
+# Default: 3; total delivery attempts for explicitly retryable failures.
+max_attempts = 3
+# Default: 5; maximum destinations submitted concurrently in one batch.
+max_parallel_targets = 5
+# Default: 3; divide retry batch capacity by this value after each attempt.
+retry_batch_divisor = 3
+# Default: 2.0; pause before each retry round.
+retry_delay_seconds = 2.0
+
 [messaging.push_unsubscribe]
 # Default: ["td", "退订"]
 # EN: Commands that open the unsubscribe menu. Matching is case-insensitive.
@@ -1457,14 +1469,11 @@ warning_threshold_seconds = 3.0
 timeout_seconds = 3.0
 
 [operations.docker_update]
-# Docker 更新也分两层：
-# - check_on_startup：容器自然启动时是否先检查镜像。
-# - check_on_restart：发送 /重启机器人 时是否先检查镜像。
-# 两个开关都依赖 Docker socket；Windows 源码运行建议设为 false。
+# Docker 更新依赖 Docker socket；Windows 源码运行建议关闭启动检查。
+# /重启机器人、/机器人重启、/更新镜像、/更新Docker、/更新docker
+# 都会打开维护菜单：1 仅重启；2 检查/更新镜像后重启。
 # Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
 check_on_startup = true
-# Default: true; EN: Check Docker image before a manual restart. ZH: 手动 /重启机器人 前先检查 Docker 镜像；不需要可改为 false。
-check_on_restart = true
 # Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。
 image = "murmansk5000/ironsbot:latest"
 # Default: "ironsbot"; EN: Container name to update. ZH: 要更新的容器名。

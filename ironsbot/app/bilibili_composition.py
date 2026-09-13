@@ -26,6 +26,7 @@ from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
 )
 from ironsbot.services.bilibili.accounts import BiliAccountNames
+from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.login import BilibiliLoginService
 from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutboundSender
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
@@ -115,15 +116,22 @@ def build_onebot_bilibili_monitor(  # noqa: PLR0913 - composition root
         send_notice=notice_sender,
         is_online=lambda: bot_router.default_bot() is not None,
     )
-    push_delivery = BilibiliDynamicOutboundSender(
-        proactive_delivery,
-        subscriptions,
+    compactor = DynamicContentCompactor(
         getattr(ai_service, "summarize_bilibili_dynamic", None),
         config.push.content_max_chars,
         config.push.summary_max_chars,
         config.push.summary_use_ai,
-        service.targets.can_conversation_query_history,
-        admin_notices,
-        lambda uid: service.targets.category_config_for_uid(uid) is not None,
+    )
+    service.content_compactor = compactor
+    push_delivery = BilibiliDynamicOutboundSender(
+        delivery=proactive_delivery,
+        subscriptions=subscriptions,
+        content_compactor=compactor,
+        history=service.history,
+        can_query_history=service.targets.can_conversation_query_history,
+        admin_notices=admin_notices,
+        has_category_subscriptions=(
+            lambda uid: service.targets.category_config_for_uid(uid) is not None
+        ),
     )
     return BilibiliMonitorService(service, auth_invalid, push_delivery.send)

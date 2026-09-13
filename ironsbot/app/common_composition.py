@@ -18,7 +18,10 @@ from ironsbot.integrations.onebot.router import BotRouter
 from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
-from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+from ironsbot.services.messaging.proactive_delivery import (
+    ProactiveDeliveryPolicy,
+    ProactiveMessageDelivery,
+)
 
 if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
@@ -68,6 +71,18 @@ def build_common_components(
         promotions,
         subscriptions,
         settings.messaging.push_unsubscribe,
+        ProactiveDeliveryPolicy(
+            max_attempts=settings.messaging.proactive_delivery.max_attempts,
+            max_parallel_targets=(
+                settings.messaging.proactive_delivery.max_parallel_targets
+            ),
+            retry_batch_divisor=(
+                settings.messaging.proactive_delivery.retry_batch_divisor
+            ),
+            retry_delay_seconds=(
+                settings.messaging.proactive_delivery.retry_delay_seconds
+            ),
+        ),
     )
     install_outbound_rate_limit_hooks(outbound)
     return CommonComponents(

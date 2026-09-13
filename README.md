@@ -473,13 +473,9 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员发送 `/重启机器人`（同义命令：`/机器人重启`）会进入重启流程。默认会先检查
-`murmansk5000/ironsbot:latest` 是否有新镜像；检测到新镜像时会启动一次性 Watchtower
-更新当前容器。镜像已是最新时，如果挂载了 Docker socket，会通过 Docker API 重启当前容器；
-没有 Docker socket 时才退回普通进程重启。
-
-`/更新镜像` 和 `/更新Docker` 只读取远端镜像信息，不会立刻拉取或重启。发现新镜像后，
-机器人会要求回复“是”或“y”确认，确认后才启动 Watchtower。
+超级管理员发送 `/重启机器人`、`/机器人重启`、`/更新镜像` 或 `/更新Docker` 会打开
+统一维护菜单。选择 `1` 只重启当前容器或进程，不检查镜像；选择 `2` 检查并在需要时
+启动一次性 Watchtower 更新，然后完成重启。`/检查更新镜像` 仍只读检查，不执行更新。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -492,7 +488,6 @@ TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 ```toml
 [operations.docker_update]
 check_on_startup = true
-check_on_restart = true
 image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
@@ -546,18 +541,11 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 check_on_startup = false
 ```
 
-如果不想让手动 `/重启机器人` 时检查镜像，可改为：
-
-```toml
-[operations.docker_update]
-check_on_restart = false
-```
-
 自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，
 本轮启动会被新容器替换。镜像通知会显示当前/最新镜像短号、北京时间构建时间，
 并在镜像带有 OCI revision label 时附上对应 Git commit 摘要。
 
-没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行可把两个开关改成 `false`。
+没有挂载 Docker socket 时，镜像检查会被跳过；Windows 源码运行可把启动检查关闭。
 新版 Unraid / Docker Engine 如果提示 `client version 1.25 is too old`，保持
 `watchtower_docker_api_version = "1.40"` 即可。
 

@@ -51,16 +51,17 @@ semantic owner、真实的用户契约和针对性验证。
 
 | Slice | Acceptance criteria | Dependencies | Status |
 | --- | --- | --- | --- |
-| Bilibili 正文补全 | 缺正文与截断 Opus 使用详情补全，不改变 V5 任务所有权 | 无 | completed |
+| Bilibili 正文补全与历史摘要 | 缺正文与截断 Opus 使用详情补全；推送和历史详情复用同一压缩服务，摘要持久化且按需生成 | 无 | completed |
 | 开服别名与竞技池变动入口 | 命令由 V5 service contract 提供，数据由 repository 提供 | 无 | completed |
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
-| 竞技池变动渲染 | presenter 先产出不可变 document，再接 HTML renderer | 需要 render document Spec | planned |
+| 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实和官方有效期；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
+| 巅峰投票展示增强 | service 提供投票级别与周期；纯 presenter 计算总票数和占比；renderer 只消费不可变 document | 无 | completed |
 | 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
-| Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 需要 operations Spec | planned |
+| Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 目标平台管理员身份最终验收 | completed：动作与菜单已收口；跨平台身份延期 |
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
 | Bilibili 抽奖/中奖拆分 | 复用配置驱动分类，不增加硬编码枚举或旧配置迁移器 | 无 | completed |
 | 新增技能根菜单预览 | 根预览只含新增项；技能排除本周新精灵自带技能，详情保留完整数据 | 无 | completed |
-| 队列推送加固 | 先审计 V5 `ProactiveMessageDelivery`，仅在 OneBot 最后一跳补真实缺口 | 最终 OneBot smoke | planned |
+| 队列推送加固 | 由 `ProactiveMessageDelivery` 限制并发并按通用失败类型重试；平台适配器只分类错误 | 真实平台 smoke | completed：通用策略已完成；真实传输验收延期 |
 | 群星牌觉醒卡合并 | 在 Autocard repository/view model 合并普通/觉醒事实，适配器只发送结果 | 发布数据契约审计 | completed |
 | 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；QQ 交互部分最后验收 | 目标平台能力 | planned |
 | 战队详情增强 | repository 产出类型化事实，service 决定展示段，不复制旧 matcher 格式化 | 无 | partial：直接战队号详情完成；QQ 玩家目标延期 |
@@ -98,15 +99,20 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | Docker 交接失败恢复 | preflight 状态机、入口脚本、Docker gateway 与配置回归 | 默认等待 90 秒后清理失败更新器并启动当前镜像；可配置为严格等待。真实 Docker 交接仍留待 Linux 镜像验收。 |
 | 2026-09-13 | 群星牌觉醒卡合并 | Autocard repository、service、菜单与图片回复回归 | `compose/composeTo` 形成只读变体索引；任一名称或 ID 返回同一组事实，异常关系不合并。 |
 | 2026-09-13 | 战队详情增强（非 QQ 部分） | team service、配置与订阅简版回归 | 直接战队号查询补标语、公告与 Boss 剩余能量；订阅提醒保持简版。按 QQ 玩家目标查询延期。 |
+| 2026-09-13 | 竞技池、专家池与大师池变化 | seerapi 317 tests；机器人 focused 327 tests、full 3189 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3`、`dadfe83` 直接使用既有池表和精灵外键发布变化及真实有效期；机器人统一分类、详情、图片与大师池直接查询，不复制旧专用 renderer。 |
+| 2026-09-13 | Docker 维护菜单 | operations service、命令所有权、配置与 OneBot 适配专项 143 项；Ruff、BasedPyright、compileall | 两个维护动作具有唯一 service 契约；所有维护入口打开同一菜单，删除 `check_on_restart` 和旧确认双轨。QQ/目标平台管理员身份只在最终平台阶段验收。 |
+| 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |
+| 2026-09-13 | 巅峰投票展示增强 | 巅峰 service、纯 presenter、render adapter 专项 64 项；Ruff | 限制级/准限制级、投票周期、总票数和非负票数占比进入不可变 document；机器人不新增图片资源或数据读取职责。 |
+| 2026-09-13 | Bilibili 历史摘要 | 长文本、历史存储、菜单详情、主动投递与运行装配专项测试；Ruff、BasedPyright、compileall | 推送和详情复用 `DynamicContentCompactor`；修正 AI 摘要关键字参数契约，结果写入既有历史库并惰性复用，不执行启动批量 AI 回填。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
-Slice    [██████████□□□□□□] 10/16 tracked outcomes resolved; 6 remain
-Current  [██████████] direct team detail enhancement verified
+Slice    [██████████████□□□] 14/17 tracked outcomes resolved; 3 remain
+Current  [██████████] peak vote presentation enhancement verified
 ```
 
-The activity snapshot slice is committed as V5 `80ce3c3e`. QQ-specific product
-work remains subject to the platform capability deferral rule; the remaining
-planned entries are not implicitly merged.
+QQ-specific product work remains subject to the platform capability deferral rule.
+The remaining planned entries and real platform acceptance are not implicitly
+completed by this slice.
