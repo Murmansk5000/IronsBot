@@ -18,6 +18,8 @@ from ironsbot.integrations.onebot.identity import (
 if TYPE_CHECKING:
     from nonebot.adapters import Event
 
+    from ironsbot.core.platform import ActorRef
+
 _RAW_AT_PATTERN = re.compile(r"\[(?:CQ:)?at,qq=([^\],]+)")
 
 
@@ -43,19 +45,7 @@ def message_input_context(event: Event) -> MessageInputContext:
     """
 
     self_id = str(getattr(event, "self_id", "") or "").strip()
-    message = _current_message(event)
-    mentions_bot = False
-    member_ids: list[str] = []
-
-    for segment in message:
-        if getattr(segment, "type", "") != "at":
-            continue
-        raw_target = str(getattr(segment, "data", {}).get("qq", "")).strip()
-        if self_id and raw_target == self_id:
-            mentions_bot = True
-            continue
-        if raw_target.isdigit() and raw_target not in member_ids:
-            member_ids.append(raw_target)
+    mentions_bot, member_mentions = _direct_mentions(event, self_id=self_id)
 
     raw_message = str(getattr(event, "raw_message", "") or "")
     raw_targets = tuple(
@@ -87,13 +77,37 @@ def message_input_context(event: Event) -> MessageInputContext:
             conversation=conversation,
             message_id=_message_id(event),
             text=text,
-            direct_mentions=tuple(
-                onebot_actor_ref(member_id) for member_id in member_ids
-            ),
+            direct_mentions=member_mentions,
             reply_to_id=event_reply_message_id(event),
         ),
         mentions_bot=mentions_bot,
     )
+
+
+def onebot_direct_member_mentions(event: Event) -> tuple[ActorRef, ...]:
+    """Read current-message member targets without requiring event metadata."""
+
+    self_id = str(getattr(event, "self_id", "") or "").strip()
+    return _direct_mentions(event, self_id=self_id)[1]
+
+
+def _direct_mentions(
+    event: Event,
+    *,
+    self_id: str,
+) -> tuple[bool, tuple[ActorRef, ...]]:
+    mentions_bot = False
+    member_ids: list[str] = []
+    for segment in _current_message(event):
+        if getattr(segment, "type", "") != "at":
+            continue
+        raw_target = str(getattr(segment, "data", {}).get("qq", "")).strip()
+        if self_id and raw_target == self_id:
+            mentions_bot = True
+            continue
+        if raw_target.isdigit() and raw_target not in member_ids:
+            member_ids.append(raw_target)
+    return mentions_bot, tuple(onebot_actor_ref(value) for value in member_ids)
 
 
 def _current_message(event: Event) -> Any:

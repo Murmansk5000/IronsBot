@@ -119,7 +119,7 @@ services:
 
 QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
-套装/部件/称号、属性/异常状态和巅峰资料查询。查询出现多个候选项时直接发送数字选择，
+套装/部件/称号、属性/异常状态、巅峰资料和榜单查询。查询出现多个候选项时直接发送数字选择，
 发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
 规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
 查询或绑定目标。主动推送、跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
@@ -131,7 +131,7 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 enabled = true
 app_id = "你的 QQ 机器人 AppID"
 sandbox = false
-features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak"]
+features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank"]
 superusers = []
 ```
 

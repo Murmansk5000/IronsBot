@@ -17,6 +17,7 @@ from ironsbot.services.portable_query_sessions import (
     QueryOperationSpec,
     build_query_operation,
 )
+from ironsbot.services.portable_rank_commands import build_portable_rank_operations
 from ironsbot.services.portable_reply import PortableOperation, PortableReply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
@@ -47,6 +48,7 @@ from ironsbot.services.seer.query_commands import (
     pet_query_input,
     team_query_input,
 )
+from ironsbot.services.seer.rank_help import format_rank_help
 from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
@@ -217,11 +219,29 @@ def build_portable_command_router(
         )
         return OutboundMessage.from_text(result)
 
+    async def rank_help_message(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        command_help = catalog.format_for_context(
+            _command_context(context),
+            features,
+            plugin_id="rank_help",
+        )
+        return OutboundMessage.from_text(
+            f"📊【可用榜单】\n{format_rank_help(command_help)}"
+        )
+
     sessions = PortableQuerySessions()
     player_operations = build_portable_player_operations(
         seer.player,
         player_id_resolver,
         sessions,
+    )
+    rank_operations = build_portable_rank_operations(
+        seer.rank_queries,
+        player_id_resolver,
     )
 
     operations: dict[str, PortableOperation] = {
@@ -229,6 +249,8 @@ def build_portable_command_router(
         "seer.data.query": data_query,
         "seer.team.query": team_query,
         **player_operations,
+        "rank.help": rank_help_message,
+        **rank_operations,
         "seer.peak.query": _build_peak_query_operation(seer.peak_query),
         "seer.peak.rank": _build_peak_rank_operation(seer.peak_query),
         "seer.pet.query": build_query_operation(
@@ -390,6 +412,7 @@ def _command_context(context: MessageInputContext) -> CommandContext:
         actor=message.actor,
         conversation=message.conversation,
         group_role=message.group_role,
+        member_mentions=message.direct_mentions,
     )
 
 

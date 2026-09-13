@@ -204,6 +204,7 @@ class QQOfficialConfig(BaseModel):
             "seer_equipment",
             "seer_type",
             "seer_peak",
+            "seer_rank",
         ]
     )
     superusers: list[str] = Field(default_factory=list)

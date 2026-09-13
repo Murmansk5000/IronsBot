@@ -46,6 +46,7 @@ from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
+from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -53,6 +54,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.qq import Bot as QQOfficialBot
 
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.rank_list_models import RankListCommand
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.seer.team import TeamQueryActor
 
@@ -149,6 +151,21 @@ class _FakeTeamQuery:
         return "战队:" + ",".join(str(value) for value in team_ids)
 
 
+class _FakeRankQueries:
+    def default_limit(self, _conversation: ConversationRef | None) -> int:
+        return 10
+
+    async def list(
+        self,
+        command: RankListCommand,
+        *,
+        actor: ActorRef | None = None,
+        conversation: ConversationRef | None = None,
+    ) -> str:
+        del actor, conversation
+        return f"榜单:{command.rank_key}:{command.start_rank}:{command.limit}"
+
+
 class _FakeOfficialBot:
     def __init__(self, *, fail: bool = False) -> None:
         self.fail = fail
@@ -169,6 +186,7 @@ def _fake_seer(
     pet_query: object | None = None,
     peak_query: object | None = None,
     team_query: object | None = None,
+    rank_queries: object | None = None,
 ) -> SeerQueryResources:
     unused = _UnusedQueryService()
     return cast(
@@ -183,6 +201,7 @@ def _fake_seer(
             battle_effect=unused,
             peak_query=peak_query or unused,
             player=unused,
+            rank_queries=rank_queries or unused,
         ),
     )
 
@@ -202,10 +221,22 @@ def _portable_catalog() -> CommandCatalog:
         "seer.type.query",
         "seer.peak.query",
         "seer.peak.rank",
+        "rank.help",
+        "rank.global_collection",
+        "rank.global_peak",
+        "rank.sample_collection",
+        "rank.sample_peak",
     }
     seer_contracts = tuple(
         contract
         for contract in seer_command_contracts(
+            cast("PlayerIdResolver", _FakePlayerIdResolver())
+        )
+        if contract.id in command_ids
+    )
+    rank_contracts = tuple(
+        contract
+        for contract in rank_help_command_contracts(
             cast("PlayerIdResolver", _FakePlayerIdResolver())
         )
         if contract.id in command_ids
@@ -216,6 +247,7 @@ def _portable_catalog() -> CommandCatalog:
             PluginContribution(id="help", commands=help_command_contracts()),
             PluginContribution(id="about", commands=about_command_contracts()),
             PluginContribution(id="seer_query", commands=seer_contracts),
+            PluginContribution(id="rank_help", commands=rank_contracts),
         ),
         known_features=(
             "help",
@@ -228,6 +260,7 @@ def _portable_catalog() -> CommandCatalog:
             "seer_equipment",
             "seer_type",
             "seer_peak",
+            "seer_rank",
         ),
     )
     return catalog
@@ -521,6 +554,29 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
 
     assert result is not None
     assert cast("TextPart", result.message.parts[0]).text == "战队:123456,654321"
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_rank_query() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=QQOfficialConfig(features=["seer_rank"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(rank_queries=_FakeRankQueries()),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user")
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "private", actor.id)
+
+    result = await router.dispatch(_portable_input("成就榜", actor, conversation))
+
+    assert result is not None
+    assert cast("TextPart", result.message.parts[0]).text == "榜单:成就点数:1:10"
 
 
 def test_c2c_identity_uses_user_openid() -> None:
