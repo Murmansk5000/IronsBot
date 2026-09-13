@@ -312,9 +312,12 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         player_id_resolver,
         sessions,
     )
-    rank_operations = build_portable_rank_operations(
-        seer.rank_queries,
-        player_id_resolver,
+    rank_operations = _catalog_operations(
+        catalog,
+        build_portable_rank_operations(
+            seer.rank_queries,
+            player_id_resolver,
+        ),
     )
     rank_status_operations = _catalog_operation_family(
         catalog,
