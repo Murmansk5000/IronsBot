@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Message, MessageEvent, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
 from nonebot.log import logger
@@ -19,6 +18,9 @@ from ironsbot.integrations.onebot.matchers import (
     bind_async,
     get_prompt_session_manager,
 )
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
 from ironsbot.integrations.onebot.params import parse_string_arg
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import affix_command, explicit_command
@@ -30,6 +32,8 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from nonebot.adapters.onebot.v11 import MessageEvent
 
     from ironsbot.services.seer.autocard import (
         AutocardEntry,
@@ -54,15 +58,6 @@ def _invalidate_autocard_prompt(
     )
 
 
-def _build_autocard_reply(entry: AutocardEntry, *, image: bool) -> Message:
-    message = Message()
-    if image:
-        for image_url in entry.image_urls:
-            message += MessageSegment.image(image_url)
-    message += MessageSegment.text(entry.text)
-    return message
-
-
 async def _reply_with_image_fallback(
     matcher: Matcher,
     event: MessageEvent,
@@ -72,7 +67,11 @@ async def _reply_with_image_fallback(
 ) -> None:
     reply = finish_event_reply if finish else send_event_reply
     try:
-        await reply(matcher, event, _build_autocard_reply(entry, image=True))
+        await reply(
+            matcher,
+            event,
+            render_onebot_outbound_message(entry.to_outbound()),
+        )
     except ActionFailed as error:
         logger.warning(
             "autocard image reply failed, falling back to text: "
@@ -82,7 +81,11 @@ async def _reply_with_image_fallback(
             entry.name,
             error,
         )
-        await reply(matcher, event, _build_autocard_reply(entry, image=False))
+        await reply(
+            matcher,
+            event,
+            render_onebot_outbound_message(entry.to_outbound(include_images=False)),
+        )
 
 
 async def _enter_autocard_prompt(

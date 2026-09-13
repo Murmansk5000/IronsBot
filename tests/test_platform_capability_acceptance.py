@@ -37,6 +37,7 @@ from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStor
 from ironsbot.services.about_commands import about_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
+from ironsbot.services.seer.autocard import AutocardEntry
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -94,6 +95,13 @@ async def test_seer_reply_uses_shared_content_without_platform_identity(
         DataQueryImageReply(b"preview", "缓存时间：2026-09-13").to_outbound(),
         PeakQueryResult(image=b"peak-image").to_outbound(),
         PeakQueryResult(text="专家榜结果").to_outbound(),
+        AutocardEntry(
+            kind="card",
+            item_id=1,
+            name="测试牌",
+            text="卡牌详情",
+            image_url="https://example.test/card.png",
+        ).to_outbound(),
     ],
 )
 async def test_seer_specialized_results_share_the_outbound_port(

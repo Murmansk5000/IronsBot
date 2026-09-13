@@ -159,14 +159,16 @@ No full-suite rerun is claimed for this test/documentation-only checkpoint.
 
 ## Specialized Seer Result Contract (2026-09-13)
 
-Weekly-preview image results and peak query results now expose the same
+Weekly-preview image results, peak query results and Autocard entries now expose the same
 platform-neutral `to_outbound()` boundary as ordinary `QueryReply` values. The
-service result owns image/text ordering and MIME type; OneBot only renders the
-result at its adapter boundary. The obsolete raw-bytes branch in the weekly
-preview adapter was removed because the service has no such producer.
+service result owns image/text ordering and MIME type; Autocard also owns its
+primary/additional-image selection. OneBot only renders the result at its
+adapter boundary. The obsolete raw-bytes branch in the weekly preview adapter
+was removed because the service has no such producer.
 
-The fake official capability suite accepts preview, peak image and peak text
-results through the real `OutboundMessenger` protocol, including binary upload
-counting. This expands non-QQ Phase 7 evidence without inventing OpenID-to-QQ
-mapping, direct-mention support or account-binding behavior. Those capabilities
-remain deferred until a target API can represent them.
+The fake official capability suite accepts preview, peak image, peak text and
+Autocard remote-image results through the real `OutboundMessenger` protocol,
+including upload counting. This expands non-QQ Phase 7 evidence without
+inventing OpenID-to-QQ mapping, direct-mention support or account-binding
+behavior. Those capabilities remain deferred until a target API can represent
+them.
