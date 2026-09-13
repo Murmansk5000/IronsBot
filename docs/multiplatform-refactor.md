@@ -68,6 +68,10 @@ Task     [██████████] completed only after code, tests, and 
   3259 passed、7 skipped，Ruff、BasedPyright、compileall 与 diff 检查通过。
   代码已推送到独立私有预览仓库；尚未使用真实 AppID 建立线上连接，因此 Phase 7
   保持 `in_progress`，不得把适配器注册等同于平台实机验收或全部功能可用。
+- QQ Official 依赖升级到 `nonebot-adapter-qq 1.7.2`。该发布的元数据仍保留过旧的
+  `yarl` 下限和 `cryptography <49` 上限；项目显式要求 `yarl 1.23+`，并使用 uv
+  override 固定到已修复已知漏洞的 `cryptography 50.x`。适配器导入、Ed25519
+  签名验证、启动和依赖审计都必须通过后才允许发布预览镜像。
 - 前次只读观察的本地 `main` 为 `ba08f749`。从 `4b82881b` 起新增 11 个提交：
   B站 Opus/专栏正文补全、图片合并与历史摘要持久化，巅峰池有效期/投票展示，
   当前 fork 的页脚链接，自发指令超级管理员权限，以及橱窗别名候选昵称。

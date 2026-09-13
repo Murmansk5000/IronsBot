@@ -79,6 +79,7 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
                 "id": "native-author-id",
                 "bot": False,
                 "member_openid": "opaque-member",
+                "member_role": "member",
             },
             "group_id": "native-group-id",
             "group_openid": "opaque-group",

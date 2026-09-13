@@ -21,8 +21,15 @@ dependencies = [
     "hishel[httpx]>=1.2.1",
     "nonebot-plugin-apscheduler>=0.5.0",
     "qrcode[pil]>=8.2",
-    "nonebot-adapter-qq==1.7.1",
+    # adapter-qq 1.7.2 metadata predates its Pydantic 2.12/yarl compatibility fix.
+    "yarl>=1.23.0,<2.0.0",
+    "nonebot-adapter-qq==1.7.2",
 ]
+
+[tool.uv]
+# adapter-qq 1.7.2 still caps cryptography below 49, while its Ed25519 usage is
+# compatible with cryptography 50 and older releases contain known CVEs.
+override-dependencies = ["cryptography>=50.0.0,<51.0.0"]
 
 [tool.nonebot]
 plugin_dirs = []
