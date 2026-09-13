@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -11,15 +10,17 @@ from ironsbot.services.seer.data_queries import (
     DataQueryImageReply,
     SeerDataQueryService,
 )
+from ironsbot.services.seer.data_query_facts import WeeklyPreviewLinks
 from ironsbot.services.seer.weekly_preview_images import (
     WeeklyPreviewImage,
     WeeklyPreviewImageError,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-    from ironsbot.services.seer.data import SeerDataAccess
+    from ironsbot.services.seer.data_query_facts import (
+        PeakSeasonTimes,
+        SeerDataQueryFacts,
+    )
     from ironsbot.services.seer.new_content import NewContentService
     from ironsbot.services.seer.weekly_preview_images import WeeklyPreviewImageSource
 
@@ -29,13 +30,18 @@ class FakeNewContent:
         return object()
 
 
-class FakeData:
+class FakeFacts:
     def __init__(self, value: Any) -> None:
         self.value = value
 
-    @contextmanager
-    def query(self, _operation: object) -> Iterator[Any]:
-        yield self.value
+    def weekly_preview_links(self) -> WeeklyPreviewLinks:
+        return WeeklyPreviewLinks(*self.value)
+
+    def generated_at(self) -> datetime | None:
+        return cast("datetime | None", self.value)
+
+    def peak_season_times(self) -> PeakSeasonTimes | None:
+        return cast("PeakSeasonTimes | None", self.value)
 
 
 PREVIEW_TIME = datetime(2026, 8, 10, 3, 0, tzinfo=timezone.utc)
@@ -65,7 +71,7 @@ def _service(
     fail: bool = False,
 ) -> SeerDataQueryService:
     return SeerDataQueryService(
-        cast("SeerDataAccess", FakeData(value)),
+        cast("SeerDataQueryFacts", FakeFacts(value)),
         cast(
             "WeeklyPreviewImageSource",
             FakePreviewImages(stale=stale, fail=fail),

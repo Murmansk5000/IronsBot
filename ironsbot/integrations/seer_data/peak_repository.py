@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, cast
+from functools import partial
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from seerapi_models import (
     PeakExpertPoolORM,
@@ -18,9 +18,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import selectinload
 from sqlmodel import col, select
 
+from ironsbot.services.seer.peak import PeakPeriodTimes
+
 if TYPE_CHECKING:
     from sqlmodel import Session
 
+    from ironsbot.services.seer.data import SeerDataAccess, SeerDataReader
     from ironsbot.services.seer.peak import (
         PeakPetSnapshot,
         PeakPoolSnapshot,
@@ -28,10 +31,48 @@ if TYPE_CHECKING:
     )
 
 
-@dataclass(frozen=True, slots=True)
-class PeakPeriodTimes:
-    start_time: datetime
-    end_time: datetime
+class PublishedPeakRepository:
+    def __init__(self, data: SeerDataReader) -> None:
+        self._data = data
+
+    def pools(self, *, expert: bool) -> tuple[PeakPoolSnapshot, ...]:
+        with self._data.query(
+            partial(load_peak_pool_snapshots, expert=expert)
+        ) as pools:
+            return pools
+
+    def master_pools(self) -> tuple[PeakPoolSnapshot, ...]:
+        with self._data.query(load_peak_master_pool_snapshots) as pools:
+            return pools
+
+    def votes(self) -> tuple[PeakVoteSnapshot, ...]:
+        with self._data.query(load_peak_vote_snapshots) as votes:
+            return votes
+
+    def period(self, *, monthly: bool) -> PeakPeriodTimes | None:
+        with self._data.query(
+            partial(load_peak_period_times, monthly=monthly)
+        ) as period:
+            return period
+
+    def pets(self, pet_ids: set[int]) -> dict[int, PeakPetSnapshot]:
+        with self._data.query(
+            partial(load_peak_pet_snapshots, pet_ids=pet_ids)
+        ) as pets:
+            return pets
+
+    def item_names(
+        self,
+        kind: Literal["suit", "title"],
+        item_ids: set[int],
+    ) -> dict[int, str]:
+        data = cast("SeerDataAccess", self._data)
+        getter = data.suit if kind == "suit" else data.title
+        with data.get_many(getter, item_ids) as models:
+            return {
+                item_id: str(model.name)
+                for item_id, model in models.items()
+            }
 
 
 def load_peak_pool_snapshots(
