@@ -25,14 +25,11 @@ dependencies = [
 
 [project.optional-dependencies]
 qq-official = [
-    # adapter-qq 1.7.2 metadata predates its Pydantic 2.12/yarl compatibility fix.
-    "yarl>=1.23.0,<2.0.0",
-    "nonebot-adapter-qq==1.7.2",
+    "qqbot-agent-sdk==1.2.2",
 ]
 
 [tool.uv]
-# adapter-qq 1.7.2 still caps cryptography below 49, while its Ed25519 usage is
-# compatible with cryptography 50 and older releases contain known CVEs.
+# Keep the optional official SDK on the audited cryptography 50 release line.
 override-dependencies = ["cryptography>=50.0.0,<51.0.0"]
 
 [tool.nonebot]
@@ -42,9 +39,6 @@ builtin_plugins = []
 [tool.nonebot.adapters]
 nonebot-adapter-onebot = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" },
-]
-nonebot-adapter-qq = [
-    { name = "QQ Official", module_name = "nonebot.adapters.qq" },
 ]
 "@local" = []
 
@@ -168,6 +162,5 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pyyaml>=6.0.3",
     "ruff>=0.15.2",
-    "nonebot-adapter-qq==1.7.2",
-    "yarl>=1.23.0,<2.0.0",
+    "qqbot-agent-sdk==1.2.2",
 ]

@@ -55,6 +55,12 @@ Task     [██████████] completed only after code, tests, and 
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
 下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
 
+- QQ Official 传输正在从旧 NoneBot 适配器切换到腾讯官方
+  `qqbot-agent-sdk 1.2.2`。NoneBot 只继续托管 OneBot；腾讯 SDK 作为应用资源独立维护
+  每 AppID 的 Token、WebSocket、Resume session 和发送客户端，入站仍只进入共享
+  portable router。SDK 当前覆盖 C2C 与 `GROUP_AT_MESSAGE_CREATE`，普通群消息事件不在
+  该版本解析范围内；真实 AppID 登录、图片发送、主动额度和平台权限仍是 Phase 7 外部门。
+
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
   AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
   feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID
@@ -2334,3 +2340,79 @@ QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID polic
 凭据、OpenID policy、默认 feature、超级管理员、主动消息权限和回复序号。出站目标
 必须明确携带原 AppID，不允许默认账号回退。当前 Python 适配器的 sandbox 仍是进程级
 配置，因此同一进程中的账号必须连接相同的正式或沙箱环境。
+
+跨平台配置目标随后按同一账户边界收口（`dc3d72d8`）。OneBot 别名继续位于
+`features.group_aliases` / `features.user_aliases`；QQ 官方群和用户 OpenID 别名改为
+位于各自 `bot.qq_official.accounts.<alias>` 下。统一解析器只产出带 platform、AppID
+和目标 ID 的类型化引用，跨平台或跨官方账号重名会在启动校验中失败，裸官方 OpenID
+不得进入无法表达所属 AppID 的全局推送目标。B站配置目标因此删除 OneBot 专用编译器，
+同一份 `bilibili.push` 可安全包含 OneBot 与官方 QQ 目标；`动态`、`B站账号` 和群/私聊
+`B站推送模式` 也共用便携执行注册表。该提交未增加依赖、SQLite、图片或镜像内容；
+Ruff、BasedPyright、compileall、差异检查通过，全量 `3362 passed, 7 skipped`。腾讯官方
+多账号实现明确要求每个账号独立连接和 Token 缓存，Bot A 收到的 OpenID 不能由 Bot B
+发送，本次结构遵守该限制；真实主动消息权限与平台额度仍留作最终实机验收。
+
+QQ 官方管理员身份随后按事件场景拆分（`a6425b9c`）。C2C `superusers` 只接受可作为
+私聊目标的 `user_openid`；新增账号级 `group_superusers` 以群别名/群 OpenID 显式绑定
+该群事件中的 `member_openid`。群成员超级管理员以 `(AppID, group_openid,
+member_openid)` 精确授权，不能越过群或账号边界，并从私聊定时推送和管理通知目标中
+排除。实现没有猜测 C2C 与群 OpenID 的对应关系，也没有引入跨平台账号合并。Ruff、
+BasedPyright、compileall、差异检查通过，全量 `3363 passed, 7 skipped`；无新增数据库、
+依赖、图片资源或镜像层。真实 OpenID 获取及管理员命令仍需目标应用联机验收。
+
+可移植命令路由随后按领域拆分：`PortableCommandRouter` 仅保留权限筛选、会话选择、
+AI fallback 和结果归一化；数据、战队、榜单帮助、精灵、刻印、装备、属性、异常与巅峰
+操作统一由 `portable_seer_commands` 使用现有 parser/service/session 装配。主路由由 739
+行降至 468 行，新模块 320 行，没有改变命令、feature、回复或缓存行为，也没有增加运行
+依赖、配置、数据库、素材或镜像层。专项 `142 passed, 7 skipped`，全量
+`3363 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。真实
+QQ Official AppID 联机与平台权限仍是 Phase 7 的最终验收门，总进度保持 7/8。
+
+B站超级管理员手动刷新随后进入 portable router。OneBot 与 QQ Official 现在共同调用
+`BilibiliMonitorService.manual_refresh()`，并统一区分“完成、已有任务执行中、远端响应
+无效”三种结果；旧 OneBot 路径不再把已执行但 HTTP/Cookie 响应无效的检查误报为完成。
+完整示例目录 75 条命令中已有 60 条具备 portable executor；剩余项明确属于数字 QQ
+幸运橱窗账户、长任务进度投递或群榜单设置，不以伪映射接入。专项 `75 passed`，全量
+`3368 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。没有
+新增运行依赖、配置、数据库、素材或镜像层，真实平台验收门不变。
+
+群级榜单默认显示条数随后接入 portable rank service。`/榜单显示 N` 继续由同一 command
+contract 解析和授权，QQ Official 普通成员不可认领，群主、管理员及精确配置的群超级
+管理员才可执行；写入时保留 `(platform, AppID, group OpenID)` 会话主键和完整操作者
+ActorRef，不使用数字 QQ 映射或默认账号。专项 `55 passed`，全量
+`3370 passed, 7 skipped`；Ruff、BasedPyright、compileall、结构和差异检查通过。完整
+示例目录的 portable 覆盖提升到 61/75，没有新增运行依赖、配置、迁移、数据库、素材或
+镜像层，真实平台验收门不变。
+
+长任务回复随后收口为通用的 portable 延迟回复契约。服务沿用既有 progress callback，
+适配器把第一条进度消息作为发送门：平台确认送达后才释放实际任务，发送失败则取消挂起
+任务；任务完成后使用同一入站事件的下一条回复序号发送最终结果。`/刷新样本` 首先接入
+该契约，空缓存仍直接返回单条错误，QQ Official 普通用户仍不能认领超级管理员命令。
+示例目录的 portable 覆盖提升到 62/75；没有新增运行依赖、配置、数据库、素材或镜像层。
+专项 `695 passed`，全量 `3373 passed, 7 skipped`；Ruff、BasedPyright、compileall、
+架构和差异检查通过。
+
+对 `tencent-connect/qqbot-agent-sdk`、`qqbot-nodejs` 和 `openclaw-qqbot` 的后续审计确认，
+长期可将 QQ Official 传输从旧 NoneBot 适配器替换为腾讯的纯 Python SDK，而不改动
+portable command、身份、feature policy 和业务服务。目标传输必须保留每 AppID 独立的
+AccessToken、连接、Session 与 OpenID 命名空间，并实现心跳、Resume、消息去重及富媒体
+发送。`GROUP_MESSAGE_CREATE` 是否实际下发仍由腾讯应用权限决定，代码支持不能代替真实
+平台授权；替换应在现有命令覆盖完成并通过真实连接 smoke 后进行，避免同时改变协议和
+业务行为。
+
+全服榜单维护命令随后复用同一 portable 延迟回复契约。`/刷新榜单` 与
+`/缓存榜单 …` 会先发送进度回执，平台确认送达后才开始无头客户端请求，完成后再发送
+最终统计；区间缓存的进度文案改为请求前可知的策略上限，实际写入数量只在最终结果中
+报告。OneBot 与 QQ Official 共用 `RankAdminService` 的相同时序，不存在官方平台专用
+分支。完整示例目录的 portable 覆盖提升到 64/75；没有新增依赖、配置、数据库、素材
+或镜像层。专项 `110 passed`，全量 `3376 passed, 7 skipped`；Ruff、BasedPyright、
+compileall 和差异检查通过，真实平台验收门不变。
+
+数据与镜像只读维护随后接入 portable router。`/更新数据`、`/强制更新数据` 的远端检查
+和菜单选择后的实际同步各自使用一次送达门，避免平台尚未确认进度回执时就触发构建或
+下载；通用数字菜单因此可以返回 `PortableReply`，不是数据更新专用分支。
+`/检查更新镜像` 同样先回执再访问镜像仓库，并保持只读。OneBot 也改用相同的
+progress-aware service API。覆盖提升到 67/75，剩余 8 条是两条需要“最终消息送达后
+执行重启”的维护命令及 6 条依赖数字 QQ 账户配置的幸运橱窗命令。该增量没有新增依赖、
+数据库、配置字段、二进制素材或镜像层。专项 `119 passed`，全量
+`3381 passed, 7 skipped`；Ruff、BasedPyright、compileall 和差异检查通过。

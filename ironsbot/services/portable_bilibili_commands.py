@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
 from ironsbot.services.bilibili.outbound_delivery import (
     render_dynamic_content_message,
 )
@@ -29,6 +30,7 @@ def build_portable_bilibili_operations(
     sessions: PortableQuerySessions,
     *,
     notify_auth_invalid: Callable[[str], Awaitable[None]],
+    refresh_now: Callable[[], Awaitable[str]],
 ) -> Mapping[str, PortableOperation]:
     """Bind the Bilibili history menu to shared portable query sessions."""
 
@@ -70,7 +72,45 @@ def build_portable_bilibili_operations(
             ),
         )
 
-    return {"bilibili.dynamic": dynamic}
+    async def accounts(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        return OutboundMessage.from_text(
+            await service.targets.account_summary(context.message.conversation)
+        )
+
+    async def push_mode(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        parsed = parse_bili_push_mode_command(text)
+        if parsed is None:
+            return OutboundMessage.from_text("❌ B站推送模式指令格式错误。")
+        account_ref, raw_mode = parsed
+        return OutboundMessage.from_text(
+            await service.targets.update_push_mode(
+                context.message.conversation,
+                account_ref,
+                raw_mode,
+            )
+        )
+
+    async def refresh(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text, context
+        return OutboundMessage.from_text(await refresh_now())
+
+    return {
+        "bilibili.dynamic": dynamic,
+        "bilibili.accounts": accounts,
+        "bilibili.push_mode": push_mode,
+        "bilibili.private_push_mode": push_mode,
+        "bilibili.refresh": refresh,
+    }
 
 
 async def _dynamic_detail(

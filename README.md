@@ -185,16 +185,20 @@ OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带�
 与群成员 OpenID 不会被擅自视为同一身份。日志中的 OpenID 可用于配置官方平台
 超级管理员，跨平台身份关联必须由用户显式完成。
 
-QQ 官方适配器是可选运行组件。直接运行源码时使用：
+腾讯官方 `qqbot-agent-sdk` 是可选运行组件。直接运行源码时使用：
 
 ```powershell
 uv sync --extra qq-official
 uv run --no-sync python -m ironsbot
 ```
 
-默认安装和标准 OneBot 镜像不携带该适配器及其加密依赖。构建 QQ 官方镜像时传入
+默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
 `--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
 明确报错。
+
+当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
+`GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
+腾讯平台开放相应事件并由 SDK 支持；IronsBot 不会用 NapCat 猜测或拼接 OpenID。
 
 ## 常用赛尔查询
 

@@ -154,9 +154,16 @@ class FeatureService:
             ),
         )
 
+    def private_superuser_actors(self) -> list[ActorRef]:
+        """Return only superusers whose identity is valid for direct messages."""
+
+        return [actor for actor in self.superuser_actors() if actor.kind == "user"]
+
     def actors_with_superusers(self, feature: str) -> list[ActorRef]:
-        """Return feature actors followed by remaining superusers once each."""
+        """Return private feature actors and private superusers once each."""
 
         actors = self.actors_for_feature(feature)
-        actors.extend(actor for actor in self.superuser_actors() if actor not in actors)
+        actors.extend(
+            actor for actor in self.private_superuser_actors() if actor not in actors
+        )
         return actors

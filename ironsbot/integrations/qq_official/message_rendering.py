@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: MIT
-"""Render platform-neutral outbound values for QQ Official Bot."""
+"""Render platform-neutral messages into Tencent SDK send operations."""
 
 from __future__ import annotations
 
-from nonebot.adapters.qq import Message, MessageSegment
+from dataclasses import dataclass
 
 from ironsbot.core.outbound import (
     BinaryImagePart,
@@ -25,29 +25,59 @@ class QQOfficialOutboundMessageError(ValueError):
         return cls(f"Unsupported outbound part: {type(part).__name__}")
 
 
+@dataclass(frozen=True, slots=True)
+class QQOfficialTextPayload:
+    content: str
+
+
+@dataclass(frozen=True, slots=True)
+class QQOfficialImagePayload:
+    content: bytes | None = None
+    url: str | None = None
+    filename: str = "ironsbot.png"
+
+
+QQOfficialPayload = QQOfficialTextPayload | QQOfficialImagePayload
+
+
 def render_qq_official_outbound_message(
     message: OutboundMessage,
     *,
     conversation: ConversationRef,
-) -> Message:
-    rendered = Message()
+) -> tuple[QQOfficialPayload, ...]:
+    """Preserve ordered text/mention runs and individual image payloads."""
+
+    rendered: list[QQOfficialPayload] = []
+    text: list[str] = []
+
+    def flush_text() -> None:
+        content = "".join(text)
+        text.clear()
+        if content:
+            rendered.append(QQOfficialTextPayload(content))
+
     for part in message.parts:
         if isinstance(part, TextPart):
-            rendered += MessageSegment.text(part.text)
-        elif isinstance(part, BinaryImagePart):
-            rendered += MessageSegment.file_image(
-                part.content,
-                file_name=part.filename or _image_filename(part.content_type),
-            )
-        elif isinstance(part, RemoteImagePart):
-            rendered += MessageSegment.image(part.url)
+            text.append(part.text)
         elif isinstance(part, MentionPart):
             if not _supports_group_mention(conversation, part):
                 raise QQOfficialOutboundMessageError.unsupported_mention()
-            rendered += MessageSegment.mention_user(part.actor.id)
+            text.append(f"<@{part.actor.id}>")
+        elif isinstance(part, BinaryImagePart):
+            flush_text()
+            rendered.append(
+                QQOfficialImagePayload(
+                    content=part.content,
+                    filename=part.filename or _image_filename(part.content_type),
+                )
+            )
+        elif isinstance(part, RemoteImagePart):
+            flush_text()
+            rendered.append(QQOfficialImagePayload(url=part.url))
         else:
             raise QQOfficialOutboundMessageError.unsupported_part(part)
-    return rendered
+    flush_text()
+    return tuple(rendered)
 
 
 def _supports_group_mention(
@@ -60,6 +90,7 @@ def _supports_group_mention(
         and part.actor.platform is Platform.QQ_OFFICIAL
         and part.actor.kind == "member"
         and part.actor.scope_id == conversation.id
+        and part.actor.account_id == conversation.account_id
     )
 
 

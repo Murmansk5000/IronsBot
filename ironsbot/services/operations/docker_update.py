@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 
 RestartAction = Literal["none", "process", "docker"]
 ProcessRestarter = Callable[[], Awaitable[None]]
+ProgressReporter = Callable[[str], Awaitable[None]]
 RESTART_DELAY_SECONDS = 1.0
+DOCKER_IMAGE_CHECK_START_MESSAGE = "🔄 正在检查 Docker 镜像更新，请稍等。"
 logger = logging.getLogger(__name__)
 
 
@@ -142,9 +144,10 @@ class DockerUpdateService:
             result = await self._docker.start_update(self._request(container_name))
         return container_name, result
 
-    async def check_image_update(self) -> str:
+    async def check_image_update(self, *, progress: ProgressReporter) -> str:
         """Check the registry manifest without pulling or restarting anything."""
 
+        await progress(DOCKER_IMAGE_CHECK_START_MESSAGE)
         container_name, result = await self._check_update()
         return format_docker_image_check_reply(
             container_name=container_name,

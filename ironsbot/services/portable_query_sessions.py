@@ -6,13 +6,16 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast, overload
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryResult
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
 
@@ -23,9 +26,9 @@ QueryArgumentParser = Callable[[str], str | None]
 _SessionKey = tuple["ActorRef", "ConversationRef"]
 _UntypedMenuSelect = Callable[
     [object],
-    Awaitable[QueryResult[Any] | OutboundMessage],
+    Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
 ]
-MenuSelect = Callable[[_T], Awaitable[OutboundMessage]]
+MenuSelect = Callable[[_T], Awaitable[OutboundMessage | PortableReply]]
 TextSubmit = Callable[[str], Awaitable[OutboundMessage]]
 
 
@@ -39,6 +42,10 @@ class PortableQuerySessionError(ValueError):
     @classmethod
     def invalid_ttl(cls) -> PortableQuerySessionError:
         return cls("portable query session TTL must be positive")
+
+    @classmethod
+    def deferred_result_not_enabled(cls) -> PortableQuerySessionError:
+        return cls("portable deferred session result was not enabled by the caller")
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +162,9 @@ class PortableQuerySessions:
     ) -> OutboundMessage:
         """Offer a custom numeric menu through the shared session store."""
 
-        async def select_untyped(value: object) -> OutboundMessage:
+        async def select_untyped(
+            value: object,
+        ) -> OutboundMessage | PortableReply:
             return await spec.select(cast("_T", value))
 
         key = self._key(context)
@@ -185,11 +194,31 @@ class PortableQuerySessions:
         )
         return spec.prompt
 
+    @overload
     async def select(
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage | None:
+        *,
+        allow_deferred: Literal[False] = False,
+    ) -> OutboundMessage | None: ...
+
+    @overload
+    async def select(
+        self,
+        text: str,
+        context: MessageInputContext,
+        *,
+        allow_deferred: Literal[True],
+    ) -> OutboundMessage | PortableReply | None: ...
+
+    async def select(
+        self,
+        text: str,
+        context: MessageInputContext,
+        *,
+        allow_deferred: bool = False,
+    ) -> OutboundMessage | PortableReply | None:
         key = self._key(context)
         self._drop_expired(key)
         pending_text = self._pending_text.pop(key, None)
@@ -210,7 +239,9 @@ class PortableQuerySessions:
         if not pending.keep_open:
             self._pending.pop(key, None)
         result = await pending.select(pending.choices[index - 1])
-        if isinstance(result, OutboundMessage):
+        if isinstance(result, (OutboundMessage, PortableReply)):
+            if isinstance(result, PortableReply) and not allow_deferred:
+                raise PortableQuerySessionError.deferred_result_not_enabled()
             if pending.keep_open and self._pending.get(key) is pending:
                 self._pending[key] = replace(
                     pending,

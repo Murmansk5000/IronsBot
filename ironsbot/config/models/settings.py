@@ -27,6 +27,10 @@ from ironsbot.config.onebot_references import (
     OneBotReferenceList,
     OneBotReferenceResolver,
 )
+from ironsbot.config.platform_references import (
+    PlatformReferenceResolver,
+    build_platform_reference_resolver,
+)
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
 from ironsbot.core.features import FEATURE_KEYS
@@ -112,6 +116,14 @@ class QQOfficialConfigError(ValueError):
     @classmethod
     def empty_target_openid(cls) -> QQOfficialConfigError:
         return cls("QQ Official target OpenID must not be empty")
+
+    @classmethod
+    def invalid_alias_mapping(cls) -> QQOfficialConfigError:
+        return cls("QQ Official target aliases must be a table")
+
+    @classmethod
+    def empty_target_alias(cls) -> QQOfficialConfigError:
+        return cls("QQ Official target alias must not be empty or numeric")
 
 
 def _command_starts(value: object) -> list[str]:
@@ -244,6 +256,9 @@ class QQOfficialAccountConfig(BaseModel):
         ]
     )
     superusers: list[str] = Field(default_factory=list)
+    group_superusers: dict[str, list[str]] = Field(default_factory=dict)
+    group_aliases: dict[str, str] = Field(default_factory=dict)
+    user_aliases: dict[str, str] = Field(default_factory=dict)
     group_policy: dict[str, list[str]] = Field(default_factory=dict)
     user_policy: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -257,6 +272,28 @@ class QQOfficialAccountConfig(BaseModel):
     def normalize_string_lists(cls, value: object) -> list[str]:
         return _command_starts(value)
 
+    @field_validator("group_aliases", "user_aliases", mode="before")
+    @classmethod
+    def normalize_target_aliases(cls, value: object) -> dict[str, str]:
+        if not isinstance(value, Mapping):
+            raise QQOfficialConfigError.invalid_alias_mapping()
+        aliases: dict[str, str] = {}
+        for raw_alias, raw_openid in value.items():
+            alias = str(raw_alias).strip()
+            if not alias or alias.isdecimal():
+                raise QQOfficialConfigError.empty_target_alias()
+            openid = str(raw_openid).strip()
+            if not openid:
+                raise QQOfficialConfigError.empty_target_openid()
+            aliases[alias] = openid
+        return aliases
+
+    def resolve_group_openid(self, reference: str) -> str:
+        return self.group_aliases.get(reference, reference)
+
+    def resolve_user_openid(self, reference: str) -> str:
+        return self.user_aliases.get(reference, reference)
+
     @field_validator("group_policy", "user_policy", mode="before")
     @classmethod
     def normalize_target_policy(cls, value: object) -> dict[str, list[str]]:
@@ -269,6 +306,24 @@ class QQOfficialAccountConfig(BaseModel):
                 raise QQOfficialConfigError.empty_target_openid()
             policy[target] = _command_starts(raw_features)
         return policy
+
+    @field_validator("group_superusers", mode="before")
+    @classmethod
+    def normalize_group_superusers(cls, value: object) -> dict[str, list[str]]:
+        if not isinstance(value, Mapping):
+            raise QQOfficialConfigError.invalid_target_policy()
+        result: dict[str, list[str]] = {}
+        for raw_group, raw_members in value.items():
+            group = str(raw_group).strip()
+            if not group:
+                raise QQOfficialConfigError.empty_target_openid()
+            members = _command_starts(raw_members)
+            if not members:
+                raise ValueError(  # noqa: TRY003
+                    "QQ Official group superusers must not be empty"
+                )
+            result[group] = members
+        return result
 
     @property
     def configured_features(self) -> set[str]:
@@ -387,15 +442,6 @@ class BotConfig(BaseModel):
     def normalize_command_start(cls, value: object) -> object:
         return _command_starts(value)
 
-    @property
-    def effective_driver(self) -> str:
-        """Add the client transport required by enabled outbound adapters."""
-
-        if self.qq_official.enabled and "~websockets" not in self.driver.split("+"):
-            return f"{self.driver}+~websockets"
-        return self.driver
-
-
 class PathsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -477,6 +523,13 @@ class Settings(BaseModel):
         )
 
     @property
+    def platform_references(self) -> PlatformReferenceResolver:
+        return build_platform_reference_resolver(
+            self.onebot_references,
+            self.bot.qq_official.enabled_accounts.values(),
+        )
+
+    @property
     def player_accounts(self) -> PlayerAccountRegistry:
         groups: dict[ConversationRef, list[str]] = {}
         for group_ref, account_refs in self.seer.player_account_aliases.items():
@@ -520,6 +573,7 @@ class Settings(BaseModel):
 
     def _validate_onebot_references(self) -> None:
         references = self.onebot_references
+        platform_references = self.platform_references
         accounts = self.player_accounts
         _ = self.headless_accounts
         references.resolve_users(self.bot.superusers, location="bot.superusers")
@@ -545,12 +599,12 @@ class Settings(BaseModel):
         )
         self._validate_mapping_refs(
             self.bilibili.push.groups,
-            resolve=references.resolve_group,
+            resolve=platform_references.group_conversation_ref,
             location="bilibili.push.groups",
         )
         self._validate_mapping_refs(
             self.bilibili.push.users,
-            resolve=references.resolve_user,
+            resolve=platform_references.private_conversation_ref,
             location="bilibili.push.users",
         )
         lucky_users: set[int] = set()
@@ -616,7 +670,7 @@ class Settings(BaseModel):
     def _validate_mapping_refs(
         mapping: Mapping[str, object],
         *,
-        resolve: Callable[..., int],
+        resolve: Callable[..., object],
         location: str,
     ) -> None:
         Settings._validate_policy_refs(
@@ -629,7 +683,7 @@ class Settings(BaseModel):
     def _validate_policy_refs(
         policy: Mapping[str, object],
         *,
-        resolve: Callable[..., int],
+        resolve: Callable[..., object],
         location: str,
     ) -> None:
         for reference in policy:
