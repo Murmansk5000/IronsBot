@@ -44,7 +44,10 @@ from ironsbot.services.portable_query_sessions import (
     QueryOperationSpec,
     build_query_operation,
 )
-from ironsbot.services.portable_rank_commands import build_portable_rank_operations
+from ironsbot.services.portable_rank_commands import (
+    build_portable_rank_operations,
+    build_portable_rank_status_operations,
+)
 from ironsbot.services.portable_reply import PortableOperation, PortableReply
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
@@ -390,6 +393,11 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer.rank_queries,
         player_id_resolver,
     )
+    rank_status_operations = _catalog_operation_family(
+        catalog,
+        {"rank.sample_status", "rank.page_status"},
+        lambda: build_portable_rank_status_operations(seer.rank_admin),
+    )
     new_content_operations = _catalog_operations(
         catalog,
         build_portable_new_content_operations(
@@ -490,6 +498,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **player_operations,
         "rank.help": rank_help_message,
         **rank_operations,
+        **rank_status_operations,
         "seer.peak.query": _build_peak_query_operation(seer.peak_query),
         "seer.peak.rank": _build_peak_rank_operation(seer.peak_query),
         "seer.pet.query": build_query_operation(

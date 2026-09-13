@@ -8,9 +8,13 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_reply import PortableReply
-from ironsbot.services.seer.rank_list_models import RankPlayerCommand
+from ironsbot.services.seer.rank_list_models import (
+    RANK_PAGE_OVERVIEW_COMMANDS,
+    RankPlayerCommand,
+)
 from ironsbot.services.seer.rank_list_parsing import (
     parse_rank_list_command,
+    parse_rank_page_cache_status_command,
     parse_rank_player_target_command,
     parse_rank_score_command,
 )
@@ -19,6 +23,7 @@ if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.rank_admin import RankAdminService
     from ironsbot.services.seer.rank_queries import RankQueryService
 
 _PUBLIC_RANK_COMMAND_IDS = (
@@ -35,6 +40,40 @@ def build_portable_rank_operations(
 ) -> dict[str, PortableOperation]:
     owner = _PortableRankOperations(service, resolver)
     return dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, owner.query)
+
+
+def build_portable_rank_status_operations(
+    service: RankAdminService,
+) -> dict[str, PortableOperation]:
+    """Build read-only cache diagnostics for authorized catalog users."""
+
+    async def sample_status(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        return OutboundMessage.from_text(
+            service.cache_status(context.message.conversation)
+        )
+
+    async def page_status(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del context
+        command_text = text if text.startswith("/") else f"/{text}"
+        if command_text in RANK_PAGE_OVERVIEW_COMMANDS:
+            return OutboundMessage.from_text(service.page_overview())
+        command = parse_rank_page_cache_status_command(command_text)
+        if command is None:
+            msg = f"catalog accepted invalid rank status input: {text!r}"
+            raise ValueError(msg)
+        return OutboundMessage.from_text(service.page_status(command))
+
+    return {
+        "rank.sample_status": sample_status,
+        "rank.page_status": page_status,
+    }
 
 
 @dataclass(frozen=True, slots=True)
