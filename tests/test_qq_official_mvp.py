@@ -9,15 +9,9 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
-from nonebot.adapters.qq import Bot as QQOfficialBot
-from nonebot.adapters.qq import MessageSegment
-from nonebot.adapters.qq.event import (
-    C2CMessageCreateEvent,
-    GroupAtMessageCreateEvent,
-    GroupMessageCreateEvent,
-)
+from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
+from qqbot_agent_sdk.event_parser import InboundEvent
 
-from ironsbot.app.bootstrap import qq_official_bot_configs
 from ironsbot.config.loader import load_settings
 from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
 from ironsbot.config.models.settings import (
@@ -38,6 +32,8 @@ from ironsbot.core.platform import (
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
+    QQOfficialImagePayload,
+    QQOfficialTextPayload,
     render_qq_official_outbound_message,
 )
 from ironsbot.integrations.qq_official.outbound_messenger import (
@@ -79,6 +75,7 @@ from ironsbot.services.seer.rank_command_contracts import rank_help_command_cont
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from ironsbot.integrations.qq_official.message_rendering import QQOfficialPayload
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
@@ -335,11 +332,11 @@ class _FakeOfficialBot:
     async def send_to_c2c(
         self,
         openid: str,
-        message: object,
+        payloads: tuple[QQOfficialPayload, ...],
         msg_id: str | None = None,
         msg_seq: int | None = None,
     ) -> object:
-        self.calls.append(("private", openid, message, msg_id, msg_seq))
+        self.calls.append(("private", openid, payloads, msg_id, msg_seq))
         self.sent += 1
         if self.fail:
             raise _TransportError
@@ -348,11 +345,11 @@ class _FakeOfficialBot:
     async def send_to_group(
         self,
         group_openid: str,
-        message: object,
+        payloads: tuple[QQOfficialPayload, ...],
         msg_id: str | None = None,
         msg_seq: int | None = None,
     ) -> object:
-        self.calls.append(("group", group_openid, message, msg_id, msg_seq))
+        self.calls.append(("group", group_openid, payloads, msg_id, msg_seq))
         self.sent += 1
         if self.fail:
             raise _TransportError
@@ -361,6 +358,29 @@ class _FakeOfficialBot:
 
 class _TransportError(RuntimeError):
     pass
+
+
+def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
+    *,
+    event_type: str = "C2C_MESSAGE_CREATE",
+    chat_scope: str = "c2c",
+    chat_id: str = "opaque-user",
+    user_id: str = "opaque-user",
+    content: str = "about",
+    message_type: int = 0,
+    raw: dict[str, object] | None = None,
+) -> InboundEvent:
+    return InboundEvent(
+        event_type=event_type,
+        chat_id=chat_id,
+        user_id=user_id,
+        chat_scope=chat_scope,
+        content=content,
+        message_id="message-id",
+        timestamp="2026-09-13T00:00:00+08:00",
+        message_type=message_type,
+        raw=raw or {},
+    )
 
 
 def _fake_seer(
@@ -695,7 +715,7 @@ def test_qq_official_account_features_are_isolated_by_app_id() -> None:
     assert not features.is_actor_feature_allowed(actor_b, "help")
 
 
-def test_qq_official_adapter_configs_include_every_enabled_account() -> None:
+def test_qq_official_config_exposes_every_enabled_account() -> None:
     config = QQOfficialConfig(
         enabled=True,
         accounts={
@@ -716,11 +736,15 @@ def test_qq_official_adapter_configs_include_every_enabled_account() -> None:
         },
     )
 
-    configs = qq_official_bot_configs(config)
-
-    assert [item["id"] for item in configs] == ["app-a", "app-b"]
-    assert [item["secret"] for item in configs] == ["secret-a", "secret-b"]
-    assert all(item["token"] == "" for item in configs)
+    assert tuple(config.enabled_accounts) == ("example_a", "example_b")
+    assert [account.app_id for account in config.enabled_accounts.values()] == [
+        "app-a",
+        "app-b",
+    ]
+    assert [account.secret for account in config.enabled_accounts.values()] == [
+        "secret-a",
+        "secret-b",
+    ]
 
 
 def test_qq_official_config_rejects_duplicate_app_ids() -> None:
@@ -884,11 +908,13 @@ def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
 
 
 def test_qq_official_identity_keeps_openids_opaque() -> None:
-    event = GroupAtMessageCreateEvent.model_validate(
-        {
-            "id": "message-id",
-            "content": "help",
-            "timestamp": "2026-09-13T00:00:00+08:00",
+    event = _sdk_event(
+        event_type="GROUP_AT_MESSAGE_CREATE",
+        chat_scope="group",
+        chat_id="opaque-group",
+        user_id="opaque-member",
+        content="help",
+        raw={
             "author": {
                 "id": "native-author-id",
                 "bot": False,
@@ -916,8 +942,7 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
                     "username": "target",
                 },
             ],
-            "to_me": True,
-        }
+        },
     )
 
     incoming = qq_official_incoming_message(event, account_id="example-app")
@@ -950,23 +975,8 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
 
 
 def test_only_group_at_event_is_classified_as_bot_mention() -> None:
-    payload = {
-        "id": "message-id",
-        "content": "help",
-        "timestamp": "2026-09-13T00:00:00+08:00",
-        "author": {
-            "id": "native-author-id",
-            "bot": False,
-            "member_openid": "opaque-member",
-            "member_role": "member",
-        },
-        "group_id": "native-group-id",
-        "group_openid": "opaque-group",
-        "to_me": True,
-    }
-
-    full_message = GroupMessageCreateEvent.model_validate(payload)
-    at_message = GroupAtMessageCreateEvent.model_validate(payload)
+    full_message = _sdk_event(event_type="GROUP_MESSAGE_CREATE")
+    at_message = _sdk_event(event_type="GROUP_AT_MESSAGE_CREATE")
 
     assert not qq_official_event_mentions_bot(full_message)
     assert qq_official_event_mentions_bot(at_message)
@@ -984,9 +994,11 @@ def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
         conversation=conversation,
     )
 
-    assert rendered[0] == MessageSegment.text("result")
-    assert rendered[1].type == "file_image"
-    assert rendered[1].data["file_name"] == "preview.png"
+    assert rendered[0] == QQOfficialTextPayload("result")
+    assert rendered[1] == QQOfficialImagePayload(
+        content=b"image",
+        filename="preview.png",
+    )
 
 
 @pytest.mark.asyncio
@@ -995,18 +1007,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
     *,
     fail: bool,
 ) -> None:
-    event = C2CMessageCreateEvent.model_validate(
-        {
-            "id": "message-id",
-            "content": "about",
-            "timestamp": "2026-09-13T00:00:00+08:00",
-            "author": {
-                "id": "native-author-id",
-                "user_openid": "opaque-user",
-            },
-            "to_me": True,
-        }
-    )
+    event = _sdk_event()
     incoming = qq_official_incoming_message(event, account_id="example-app")
     delivered: list[bool] = []
     reply = PortableReply(
@@ -1027,15 +1028,7 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
 
 @pytest.mark.asyncio
 async def test_qq_official_delivery_sends_deferred_result_after_ack() -> None:
-    event = C2CMessageCreateEvent.model_validate(
-        {
-            "id": "message-id",
-            "content": "/刷新样本",
-            "timestamp": "2026-09-14T00:00:00+08:00",
-            "author": {"id": "native-author-id", "user_openid": "opaque-user"},
-            "to_me": True,
-        }
-    )
+    event = _sdk_event(content="/刷新样本")
     incoming = qq_official_incoming_message(event, account_id="example-app")
     lifecycle: list[str] = []
 
@@ -1066,15 +1059,7 @@ async def test_qq_official_delivery_sends_deferred_result_after_ack() -> None:
 
 @pytest.mark.asyncio
 async def test_failed_initial_delivery_cancels_deferred_operation() -> None:
-    event = C2CMessageCreateEvent.model_validate(
-        {
-            "id": "message-id",
-            "content": "/刷新样本",
-            "timestamp": "2026-09-14T00:00:00+08:00",
-            "author": {"id": "native-author-id", "user_openid": "opaque-user"},
-            "to_me": True,
-        }
-    )
+    event = _sdk_event(content="/刷新样本")
     incoming = qq_official_incoming_message(event, account_id="example-app")
     cancelled = asyncio.Event()
 
@@ -1879,18 +1864,7 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
 
 
 def test_c2c_identity_uses_user_openid() -> None:
-    event = C2CMessageCreateEvent.model_validate(
-        {
-            "id": "message-id",
-            "content": "about",
-            "timestamp": "2026-09-13T00:00:00+08:00",
-            "author": {
-                "id": "native-author-id",
-                "user_openid": "opaque-user",
-            },
-            "to_me": True,
-        }
-    )
+    event = _sdk_event()
 
     incoming = qq_official_incoming_message(event, account_id="example-app")
 
@@ -1908,7 +1882,7 @@ def test_c2c_identity_uses_user_openid() -> None:
     assert incoming.group_role is None
 
 
-def test_bootstrap_registers_qq_official_adapter(tmp_path: Path) -> None:
+def test_bootstrap_constructs_qq_official_sdk_runtime(tmp_path: Path) -> None:
     config_path = tmp_path / "ironsbot.toml"
     config_path.write_text(
         """
@@ -1952,7 +1926,8 @@ check_on_startup = false
             (
                 "from ironsbot.app.bootstrap import bootstrap; "
                 "app = bootstrap(); "
-                "assert {'OneBot V11', 'QQ'} <= set(app.driver._adapters); "
+                "assert set(app.driver._adapters) == {'OneBot V11'}; "
+                "assert app.resources.qq_official.account_ids == ('example-app',); "
                 "print('QQ_OFFICIAL_BOOTSTRAP_OK')"
             ),
         ],
@@ -1971,22 +1946,9 @@ check_on_startup = false
 
 
 def test_qq_official_quoted_reply_is_not_dispatched() -> None:
-    event = C2CMessageCreateEvent.model_validate(
-        {
-            "id": "message-id",
-            "content": "about",
-            "timestamp": "2026-09-13T00:00:00+08:00",
-            "author": {
-                "id": "native-author-id",
-                "user_openid": "opaque-user",
-            },
-            "reply": {
-                "content": "quoted",
-                "message_type": 0,
-                "msg_idx": "quoted-sequence",
-            },
-            "to_me": True,
-        }
+    event = _sdk_event(
+        message_type=MSG_TYPE_QUOTE,
+        raw={"message_scene": {"ext": ["ref_msg_idx=quoted-sequence"]}},
     )
     features = build_onebot_feature_service(
         FeatureConfig(),
@@ -2006,5 +1968,8 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         team_resource=_unused_team_resource(),
     )
 
-    bot = cast("QQOfficialBot", SimpleNamespace(self_id="example-app"))
-    assert not qq_official_event_is_supported(bot, event, router)
+    assert not qq_official_event_is_supported(
+        event,
+        account_id="example-app",
+        router=router,
+    )

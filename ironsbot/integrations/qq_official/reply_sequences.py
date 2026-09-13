@@ -40,7 +40,15 @@ class QQOfficialReplySequenceAllocator:
         self._tracked: OrderedDict[str, _TrackedReply] = OrderedDict()
         self._lock = Lock()
 
-    def allocate(self, message_id: str) -> ReplySequenceAllocation:
+    def allocate(
+        self,
+        message_id: str,
+        *,
+        count: int = 1,
+    ) -> ReplySequenceAllocation:
+        if count < 1:
+            msg = "QQ reply sequence reservation must be positive"
+            raise ValueError(msg)
         now = monotonic()
         with self._lock:
             tracked = self._tracked.get(message_id)
@@ -48,13 +56,17 @@ class QQOfficialReplySequenceAllocator:
                 self._tracked.move_to_end(message_id)
                 return ReplySequenceAllocation(None, "expired")
             if tracked is not None:
-                if tracked.count >= self._limit:
+                if tracked.count + count > self._limit:
                     return ReplySequenceAllocation(None, "limit_exceeded")
-                tracked.count += 1
+                first_sequence = tracked.count + 1
+                tracked.count += count
                 self._tracked.move_to_end(message_id)
-                return ReplySequenceAllocation(tracked.count)
+                return ReplySequenceAllocation(first_sequence)
+
+            if count > self._limit:
+                return ReplySequenceAllocation(None, "limit_exceeded")
 
             while len(self._tracked) >= self._max_tracked_messages:
                 self._tracked.popitem(last=False)
-            self._tracked[message_id] = _TrackedReply(count=1, first_seen=now)
+            self._tracked[message_id] = _TrackedReply(count=count, first_seen=now)
             return ReplySequenceAllocation(1)
