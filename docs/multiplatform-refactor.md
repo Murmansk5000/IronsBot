@@ -1982,3 +1982,9 @@ PNG 的座驾重复生成图片，并从生成分支移除这类冗余副本。�
 SQLite、manifest 或错误摘要。逆序完成测试、15 项效果图标专项和 SeerAPI 全量
 `330 passed` 通过；效果图标 Spec 的前六项本地 acceptance 已据此关闭，真实 FFDec
 Actions release 仍保持未完成。
+
+SeerAPI 的 16 个效果图标分片与最终 build 现在共用本地 `setup-ffdec` composite action。
+固定版本、SHA-256、网络重试和安装逻辑只保留一份，经校验的 FFDec archive 使用 Actions
+cache 跨构建复用；主工作流删除 32 行重复 shell。YAML 解析、CI 结构测试、SeerAPI 全量
+`332 passed`、Ruff、compileall 与差异检查通过。真实 cache hit 节省时间需由首次线上运行
+记录，不提前估算为完成证据。
