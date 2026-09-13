@@ -423,6 +423,12 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 单图使用 `mode = "single"` 与 `image_file`，图库使用 `mode = "indexed"`、`image_dir` 与
 `image_filename_template`。图片仍使用已配置的后端与路径，配置声明不绕过原有功能和群组/用户权限。
 
+### Docker 更新交接失败处理
+
+`operations.docker_update.handoff_timeout_seconds` 默认 `90.0` 秒，必须大于零。
+`fallback_to_current_image_on_handoff_failure` 默认 `true`：交接超时或失败后，尝试回收更新器，
+再继续启动当前镜像；设为 `false` 时保持等待。它们不代替 `check_on_startup`，也不改变手动维护菜单的选择。
+
 ## 数据与缓存
 
 建议把 `/app/data` 持久化。这里会保存：
@@ -519,13 +525,10 @@ startup_trigger_remote_build = true
 
 ## Docker 自更新与重启
 
-超级管理员发送 `/重启机器人`（同义命令：`/机器人重启`）会进入重启流程。默认会先检查
-`murmansk5000/ironsbot:latest` 是否有新镜像；检测到新镜像时会启动一次性 Watchtower
-更新当前容器。镜像已是最新时，如果挂载了 Docker socket，会通过 Docker API 重启当前容器；
-没有 Docker socket 时才退回普通进程重启。
-
-`/更新镜像` 和 `/更新Docker` 只读取远端镜像信息，不会立刻拉取或重启。发现新镜像后，
-机器人会要求回复“是”或“y”确认，确认后才启动 Watchtower。
+超级管理员发送 `/重启机器人`（同义命令：`/机器人重启`）或 `/更新镜像`、`/更新Docker`
+会打开维护菜单，按菜单选择仅重启或更新后重启，回复 `0` 取消。只有选择更新后重启才进入镜像更新流程，
+不再使用“是”或“y”确认更新。仅重启分支不在本次操作检查更新；挂载 Docker socket 时通过 Docker API
+重启当前容器，否则使用原进程重启路径。下一次容器自然启动的 preflight 仍由下文的启动设置独立控制。
 
 这个能力需要把宿主机 Docker socket 挂进容器：
 
@@ -538,7 +541,6 @@ TOML 可调整检查时机、容器名、目标镜像和 Watchtower 镜像：
 ```toml
 [operations.docker_update]
 check_on_startup = true
-check_on_restart = true
 image = "murmansk5000/ironsbot:latest"
 container_name = "ironsbot"
 docker_socket_path = "/var/run/docker.sock"
@@ -592,12 +594,9 @@ DOCKER_REGISTRY_TOKEN=private-image-pull-token
 check_on_startup = false
 ```
 
-如果不想让手动 `/重启机器人` 时检查镜像，可改为：
+手动 `/重启机器人` 会打开正式维护菜单：选择仅重启分支，只执行本次重启；选择更新后重启分支，才进入镜像更新流程。
 
-```toml
-[operations.docker_update]
-check_on_restart = false
-```
+下一次 Docker 容器启动的 preflight 独立执行，仍由 `operations.docker_update.check_on_startup` 控制，并按已有更新交接状态处理。仅重启不表示下一次容器启动也跳过检查；此处不改变前文的启动设置。
 
 自然启动检查任务注册在数据同步之前；如果发现新镜像，Watchtower 会重建容器，
 本轮启动会被新容器替换。镜像通知会显示当前/最新镜像短号、北京时间构建时间，
