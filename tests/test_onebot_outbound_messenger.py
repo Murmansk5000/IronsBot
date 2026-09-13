@@ -8,6 +8,7 @@ import pytest
 from ironsbot.config.models.messaging import OutboundRateLimitConfig
 from ironsbot.core.outbound import (
     BinaryImagePart,
+    DeliveryFailureKind,
     MentionPart,
     OutboundMessage,
     ReplyContext,
@@ -103,9 +104,21 @@ async def test_onebot_outbound_messenger_rejects_unsupported_conversation() -> N
 
     assert not result.delivered
     assert result.error_code == "unsupported_conversation"
+    assert result.failure_kind is DeliveryFailureKind.PERMANENT
     assert not messenger.capabilities_for(
         ConversationRef(Platform.QQ_OFFICIAL, "group", "1001")
     ).can_send_proactively
+
+
+@pytest.mark.asyncio
+async def test_onebot_outbound_messenger_marks_disconnected_route() -> None:
+    result = await _messenger().send(
+        ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)),
+        OutboundMessage((TextPart("hello"),)),
+    )
+
+    assert not result.delivered
+    assert result.failure_kind is DeliveryFailureKind.TRANSPORT_UNAVAILABLE
 
 
 @pytest.mark.asyncio
@@ -139,4 +152,5 @@ async def test_onebot_outbound_messenger_drops_rate_limited_proactive_send(
 
     assert not result.delivered
     assert result.error_code == "rate_limit"
+    assert result.failure_kind is DeliveryFailureKind.RETRYABLE
     assert bot.group_messages == []

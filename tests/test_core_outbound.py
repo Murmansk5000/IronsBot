@@ -6,6 +6,7 @@ import pytest
 
 from ironsbot.core.outbound import (
     BinaryImagePart,
+    DeliveryFailureKind,
     OutboundMessage,
     RemoteImagePart,
     ReplyContext,
@@ -55,6 +56,12 @@ def test_send_result_rejects_incomplete_state() -> None:
         SendResult(delivered=True)
     with pytest.raises(ValueError):
         SendResult(delivered=False)
+    with pytest.raises(ValueError, match="failure kind"):
+        SendResult(
+            delivered=True,
+            message_id="message",
+            failure_kind=DeliveryFailureKind.RETRYABLE,
+        )
 
 
 def test_both_inbound_and_outbound_reject_naive_deadlines() -> None:

@@ -146,7 +146,9 @@ class FakeJob:
 
 def test_register_team_resource_jobs_uses_standard_scheduler_fields() -> None:
     scheduler = FakeScheduler()
-    service = _service(TeamResourceConfig(enabled=True, times=["22:30", "23:45"]))
+    service = _service(
+        TeamResourceConfig(enabled=True, times=["22:30:15", "23:45"])
+    )
 
     service.register_jobs(scheduler)
 
@@ -155,18 +157,20 @@ def test_register_team_resource_jobs_uses_standard_scheduler_fields() -> None:
         {
             "func": scan,
             "trigger": "cron",
-            "id": "team_resource_scan_2230",
+            "id": "team_resource_scan_223015",
             "replace_existing": True,
             "hour": 22,
             "minute": 30,
+            "second": 15,
         },
         {
             "func": scan,
             "trigger": "cron",
-            "id": "team_resource_scan_2345",
+            "id": "team_resource_scan_234500",
             "replace_existing": True,
             "hour": 23,
             "minute": 45,
+            "second": 0,
         },
     ]
 
