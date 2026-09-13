@@ -8,6 +8,9 @@ on:
             - "v*"
     workflow_dispatch:
 
+env:
+    PYTHON_VERSION: "3.11"
+
 jobs:
     docker:
         runs-on: ubuntu-latest
@@ -28,7 +31,7 @@ jobs:
             - name: Setup Python
               uses: actions/setup-python@v7
               with:
-                  python-version: "3.11"
+                  python-version: ${{ env.PYTHON_VERSION }}
 
             - name: Install command manifest dependencies
               shell: bash
@@ -40,7 +43,7 @@ jobs:
               shell: bash
               run: |
                   python -m uv export --frozen --no-dev --no-emit-project --format requirements.txt --output-file "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" > /dev/null
-                  python -m uv tool run --python 3.11 --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
+                  python -m uv tool run --python "$PYTHON_VERSION" --from pip-audit==2.10.1 pip-audit --requirement "$RUNNER_TEMP/ironsbot-runtime-requirements.txt" --require-hashes --disable-pip --strict --progress-spinner off --format json --output "$RUNNER_TEMP/ironsbot-dependency-audit.json"
 
             - name: Upload dependency audit evidence
               if: ${{ always() }}
@@ -113,6 +116,7 @@ jobs:
                   tags: ironsbot-ci:${{ github.sha }}
                   labels: ${{ steps.metadata.outputs.labels }}
                   build-args: |
+                      PYTHON_VERSION=${{ env.PYTHON_VERSION }}
                       IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
@@ -124,6 +128,7 @@ jobs:
                   sed 's/^check_on_startup = true$/check_on_startup = false/' \
                     config.example.toml > "$smoke_config"
                   docker run --rm --network none \
+                    -e EXPECTED_PYTHON_VERSION="$PYTHON_VERSION" \
                     -e APP_CONFIG_PATH=/config/ironsbot.toml \
                     -v "$smoke_config:/config/ironsbot.toml:ro" \
                     "ironsbot-ci:${GITHUB_SHA}" \
@@ -133,6 +138,8 @@ jobs:
                       test -f "$regular"
                       test -f "$bold"
                       test "$regular" != "$bold"
+                      actual_python="$(python -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")"
+                      test "$actual_python" = "$EXPECTED_PYTHON_VERSION"
                       python -c "from ironsbot.config.loader import load_settings; import nonebot, seerapi_models; load_settings()"
                     '
 
@@ -227,6 +234,7 @@ jobs:
                   tags: ${{ steps.metadata.outputs.tags }}
                   labels: ${{ steps.metadata.outputs.labels }}
                   build-args: |
+                      PYTHON_VERSION=${{ env.PYTHON_VERSION }}
                       IRONSBOT_PROJECT_URL=${{ github.server_url }}/${{ github.repository }}
                   cache-from: type=gha
 

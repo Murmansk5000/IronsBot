@@ -302,3 +302,11 @@ frozen runtime export contained 152 lines with neither `tomli` nor
 than it added. These results prove the source and dependency baseline; they do
 not establish a new image-size delta. The published candidate workflow must
 still produce the Linux directory inventory and digest evidence.
+
+The release workflow now declares that minor version once and passes it to
+setup-python, the pinned audit tool, both Docker builds and the candidate
+container. The network-isolated smoke reads `sys.version_info` inside the built
+image and rejects a mismatch before registry credentials are used. Workflow
+parsing, shell quoting, 25 release-workflow tests, Ruff and BasedPyright passed.
+The local Docker daemon did not answer a bounded version probe, so this improves
+the executable publication gate but does not claim a new local image run.

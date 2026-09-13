@@ -2114,3 +2114,9 @@ BasedPyright 使用同一版本；Dockerfile 通过一个 `PYTHON_VERSION` 参�
 导出不再包含上述兼容包。该证据不替代新候选镜像的 Linux 体积和 digest 验收。期间仅
 只读核对本地 `main` `55a39fd1`，没有 fetch、pull、merge 或 push。QQ 号、直接 @、绑定
 及群身份等目标 API 无法忠实表达的工作继续延期到最终平台阶段。
+
+发布工作流随后将 Python 小版本收成单一环境值，并同时传给 setup-python、冻结依赖审计、
+候选/正式 Docker 构建及候选容器。离线 smoke 在镜像内部读取 `sys.version_info`，版本不符
+会在仓库登录前失败。工作流 YAML、shell 引号、25 项专项、Ruff 和 BasedPyright 通过。
+本机 Docker daemon 在有界探测内没有响应，因此该项只增强可执行发布门，不冒充新镜像
+体积或启动证据。

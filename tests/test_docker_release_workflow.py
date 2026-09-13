@@ -41,6 +41,10 @@ def _steps() -> list[dict]:
     ]
 
 
+def _workflow() -> dict:
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
 def test_workflows_use_current_first_party_action_contracts() -> None:
     uses_pattern = re.compile(r"uses:\s+([^\s@]+)@v(\d+)\s*$")
     observed: set[str] = set()
@@ -298,6 +302,9 @@ def test_runtime_candidate_is_smoked_before_registry_login_and_publish() -> None
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Regular"' in smoke["run"]
     assert 'fc-match -f "%{file}" "Source Han Sans CN:style=Bold"' in smoke["run"]
     assert 'test "$regular" != "$bold"' in smoke["run"]
+    assert '-e EXPECTED_PYTHON_VERSION="$PYTHON_VERSION"' in smoke["run"]
+    assert "sys.version_info.major, sys.version_info.minor" in smoke["run"]
+    assert '"$EXPECTED_PYTHON_VERSION"' in smoke["run"]
     assert "load_settings()" in smoke["run"]
 
 
@@ -472,21 +479,31 @@ def test_builder_and_runtime_pin_the_same_debian_release() -> None:
 
 def test_runtime_python_baseline_is_consistent() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    workflow = _workflow()
+    expected = workflow["env"]["PYTHON_VERSION"]
     setup = next(step for step in _steps() if step["name"] == "Setup Python")
     audit = next(
         step
         for step in _steps()
         if step["name"] == "Audit locked runtime dependencies"
     )
+    candidate = next(
+        step for step in _steps() if step["name"] == "Build runtime candidate"
+    )
+    publish = next(step for step in _steps() if step["name"] == "Build and Publish")
 
-    assert project["project"]["requires-python"] == ">=3.11, <4.0"
-    assert project["tool"]["basedpyright"]["pythonVersion"] == "3.11"
+    assert expected == "3.11"
+    assert project["project"]["requires-python"] == f">={expected}, <4.0"
+    assert project["tool"]["basedpyright"]["pythonVersion"] == expected
     assert not any(
         dependency.startswith("tomli")
         for dependency in project["project"]["dependencies"]
     )
-    assert setup["with"]["python-version"] == "3.11"
-    assert "--python 3.11 --from pip-audit==2.10.1" in audit["run"]
+    assert setup["with"]["python-version"] == "${{ env.PYTHON_VERSION }}"
+    assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
+    version_argument = "PYTHON_VERSION=${{ env.PYTHON_VERSION }}"
+    assert version_argument in candidate["with"]["build-args"]
+    assert version_argument in publish["with"]["build-args"]
 
 
 def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None:
@@ -496,7 +513,7 @@ def test_runtime_audit_precedes_credentials_and_keeps_failure_evidence() -> None
     login = next(s for s in steps if s["name"] == "Login to GitHub Container Registry")
     assert steps.index(audit) < steps.index(upload) < steps.index(login)
     assert "--frozen --no-dev --no-emit-project" in audit["run"]
-    assert "--python 3.11 --from pip-audit==2.10.1" in audit["run"]
+    assert '--python "$PYTHON_VERSION" --from pip-audit==2.10.1' in audit["run"]
     assert "--require-hashes --disable-pip --strict" in audit["run"]
     assert "--fix" not in audit["run"]
     assert "--ignore-vuln" not in audit["run"]
