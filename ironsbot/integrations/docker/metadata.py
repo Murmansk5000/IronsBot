@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 GITHUB_REPO_PATH_PARTS = 2
 logger = logging.getLogger(__name__)
 
+
 def github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | None:
     source = labels.get("org.opencontainers.image.source", "").strip()
     if not source:
@@ -28,17 +29,16 @@ def github_repo_from_image_labels(labels: dict[str, str]) -> tuple[str, str] | N
         return None
     return parts[0], repo
 
+
 async def resolve_image_commit_summary(
     image_info: DockerImageInfo,
-    *,
-    fallback_repo: tuple[str, str] | None = None,
 ) -> str:
     revision = image_info.labels.get("org.opencontainers.image.revision", "").strip()
     if not revision:
         return ""
 
     short_revision = revision[:12]
-    repo = github_repo_from_image_labels(image_info.labels) or fallback_repo
+    repo = github_repo_from_image_labels(image_info.labels)
     if repo is not None:
         owner, name = repo
         try:

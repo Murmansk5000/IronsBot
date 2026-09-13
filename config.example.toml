@@ -1448,6 +1448,13 @@ warning_threshold_seconds = 3.0
 timeout_seconds = 3.0
 
 [operations.docker_update]
+# EN: Maximum handoff wait in seconds (> 0); default 90.0.
+# ZH: 更新交接等待上限，必须大于0秒，默认90.0秒。
+# handoff_timeout_seconds = 90.0
+# EN: Default true: attempt updater cleanup and continue the current image on handoff failure.
+# Set false to keep waiting; this does not replace check_on_startup.
+# ZH: 默认true，交接失败时尝试回收更新器并继续当前镜像；false保持等待，不替代启动检查开关。
+# fallback_to_current_image_on_handoff_failure = true
 # Docker 更新也分两层：
 # - check_on_startup：容器自然启动时是否先检查镜像。
 # - check_on_restart：发送 /重启机器人 时是否先检查镜像。
@@ -1455,7 +1462,6 @@ timeout_seconds = 3.0
 # Default: true; EN: Check Docker image during natural startup before other startup runtimes. ZH: 自然启动时先检查 Docker 镜像；不需要可改为 false。
 check_on_startup = true
 # Default: true; EN: Check Docker image before a manual restart. ZH: 手动 /重启机器人 前先检查 Docker 镜像；不需要可改为 false。
-check_on_restart = true
 # Default: "murmansk5000/ironsbot:latest"; EN: Image expected for self update. ZH: 自更新目标镜像，仅用于提示和核对。
 image = "murmansk5000/ironsbot:latest"
 # Default: "ironsbot"; EN: Container name to update. ZH: 要更新的容器名。
