@@ -7,15 +7,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-import nonebot
-from nonebot.adapters.qq import Bot as QQOfficialBot
-from nonebot.adapters.qq.exception import (
-    ActionFailed,
-    NetworkError,
-    RateLimitException,
-    UnauthorizedException,
-)
-
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
     DeliveryFailureKind,
@@ -24,6 +15,7 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import Platform
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialOutboundMessageError,
+    QQOfficialPayload,
     render_qq_official_outbound_message,
 )
 from ironsbot.integrations.qq_official.reply_sequences import (
@@ -31,8 +23,6 @@ from ironsbot.integrations.qq_official.reply_sequences import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.qq import Message
-
     from ironsbot.core.outbound import OutboundMessage, ReplyContext
     from ironsbot.core.platform import ConversationRef
 
@@ -41,7 +31,7 @@ class QQOfficialMessageSender(Protocol):
     async def send_to_c2c(
         self,
         openid: str,
-        message: Message,
+        payloads: tuple[QQOfficialPayload, ...],
         msg_id: str | None = None,
         msg_seq: int | None = None,
     ) -> object: ...
@@ -49,7 +39,7 @@ class QQOfficialMessageSender(Protocol):
     async def send_to_group(
         self,
         group_openid: str,
-        message: Message,
+        payloads: tuple[QQOfficialPayload, ...],
         msg_id: str | None = None,
         msg_seq: int | None = None,
     ) -> object: ...
@@ -57,7 +47,6 @@ class QQOfficialMessageSender(Protocol):
 
 BotProvider = Callable[[str], QQOfficialMessageSender | None]
 
-_SERVER_ERROR_STATUS = 500
 _UNSUPPORTED = DeliveryCapabilities(
     can_reply_to_event=False,
     can_send_proactively=False,
@@ -68,15 +57,10 @@ _UNSUPPORTED = DeliveryCapabilities(
 )
 
 
-def _connected_bot(app_id: str) -> QQOfficialBot | None:
-    bot = nonebot.get_bots().get(app_id)
-    return bot if isinstance(bot, QQOfficialBot) else None
-
-
 @dataclass(slots=True)
 class QQOfficialOutboundMessenger:
     account_proactive: Mapping[str, bool]
-    bot_provider: BotProvider = _connected_bot
+    bot_provider: BotProvider
     reply_sequences: dict[str, QQOfficialReplySequenceAllocator] = field(
         default_factory=dict
     )
@@ -169,7 +153,7 @@ class QQOfficialOutboundMessenger:
         message_id: str | None = None,
     ) -> SendResult:
         try:
-            rendered = render_qq_official_outbound_message(
+            payloads = render_qq_official_outbound_message(
                 message,
                 conversation=conversation,
             )
@@ -190,7 +174,10 @@ class QQOfficialOutboundMessenger:
             )
         message_sequence: int | None = None
         if message_id is not None:
-            allocation = self.reply_sequences[account_id].allocate(message_id)
+            allocation = self.reply_sequences[account_id].allocate(
+                message_id,
+                count=len(payloads),
+            )
             if allocation.sequence is None:
                 if not self._proactive_enabled(conversation):
                     return _failure(
@@ -205,14 +192,14 @@ class QQOfficialOutboundMessenger:
             if conversation.kind == "group":
                 result = await bot.send_to_group(
                     conversation.id,
-                    rendered,
+                    payloads,
                     msg_id=message_id,
                     msg_seq=message_sequence,
                 )
             else:
                 result = await bot.send_to_c2c(
                     conversation.id,
-                    rendered,
+                    payloads,
                     msg_id=message_id,
                     msg_seq=message_sequence,
                 )
@@ -236,30 +223,29 @@ def _supports_conversation(conversation: ConversationRef) -> bool:
 
 
 def _result_id(result: object) -> str | None:
-    value = getattr(result, "id", None)
+    if isinstance(result, Mapping):
+        value = result.get("id")
+    else:
+        value = getattr(result, "id", None)
     normalized = str(value).strip() if value is not None else ""
     return normalized or None
 
 
 def _exception_result(error: Exception) -> SendResult:
-    if isinstance(error, RateLimitException):
+    message = str(error)
+    lowered = message.lower()
+    if "429" in lowered or "rate limit" in lowered:
         kind = DeliveryFailureKind.RETRYABLE
-    elif isinstance(error, NetworkError):
+    elif "timeout" in lowered or "network" in lowered:
         kind = DeliveryFailureKind.UNCERTAIN
-    elif isinstance(error, UnauthorizedException):
+    elif any(code in lowered for code in ("400", "401", "403")):
         kind = DeliveryFailureKind.PERMANENT
-    elif isinstance(error, ActionFailed):
-        kind = (
-            DeliveryFailureKind.RETRYABLE
-            if error.status_code >= _SERVER_ERROR_STATUS
-            else DeliveryFailureKind.PERMANENT
-        )
     else:
         kind = DeliveryFailureKind.RETRYABLE
     return SendResult(
         delivered=False,
         error_code=_error_code(error),
-        error_message=str(error),
+        error_message=message,
         trace_id=getattr(error, "trace_id", None),
         failure_kind=kind,
     )

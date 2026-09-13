@@ -442,15 +442,6 @@ class BotConfig(BaseModel):
     def normalize_command_start(cls, value: object) -> object:
         return _command_starts(value)
 
-    @property
-    def effective_driver(self) -> str:
-        """Add the client transport required by enabled outbound adapters."""
-
-        if self.qq_official.enabled and "~websockets" not in self.driver.split("+"):
-            return f"{self.driver}+~websockets"
-        return self.driver
-
-
 class PathsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
