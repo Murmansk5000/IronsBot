@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.selection import (
     SelectionMenuItem,
     format_selection_menu,
@@ -30,10 +30,6 @@ _CARD_TYPE_NAMES = {
     3: "衍生精灵牌",
     4: "特殊牌",
 }
-_AUTOCARD_ASSET_BASE_URL = (
-    "https://raw.githubusercontent.com/Murmansk-Seer/seer-unity-assets/main/"
-    "newseer/assets/art/autocard/texture"
-)
 _AUTOCARD_NON_PET_CARD_ID_START = 20000
 logger = logging.getLogger(__name__)
 
@@ -50,35 +46,29 @@ class AutocardEntry:
     item_id: int
     name: str
     text: str
-    image_url: str
+    image_key: str
     description: str = ""
     skill_name: str = ""
     skill_text: str = ""
     skill_upgrade: str = ""
-    additional_image_urls: tuple[str, ...] = ()
+    additional_image_keys: tuple[str, ...] = ()
 
     @property
-    def image_urls(self) -> tuple[str, ...]:
+    def image_keys(self) -> tuple[str, ...]:
         return tuple(
             dict.fromkeys(
-                url for url in (self.image_url, *self.additional_image_urls) if url
+                key for key in (self.image_key, *self.additional_image_keys) if key
             )
         )
 
     def to_outbound(
         self,
         *,
-        include_images: bool = True,
-        include_additional_images: bool = True,
+        image_contents: tuple[bytes, ...] = (),
     ) -> OutboundMessage:
-        image_urls = (
-            self.image_urls
-            if include_additional_images
-            else ((self.image_url,) if self.image_url else ())
-        )
-        parts: list[RemoteImagePart | TextPart] = []
-        if include_images:
-            parts.extend(RemoteImagePart(url) for url in image_urls)
+        parts: list[BinaryImagePart | TextPart] = [
+            BinaryImagePart(content, "image/png") for content in image_contents
+        ]
         parts.append(TextPart(self.text))
         return OutboundMessage(tuple(parts))
 
@@ -295,15 +285,6 @@ def _format_autocard_entry(
         if awakened is not None:
             return _format_card_group(index.dataset, base, awakened)
     return _format_card(index.dataset, item)
-
-
-def _autocard_image_url(kind: str, item: dict[str, Any]) -> str:
-    image_name = _autocard_image_name(kind, item)
-    if not image_name:
-        return ""
-    if kind == "role":
-        return f"{_AUTOCARD_ASSET_BASE_URL}/roles/card/{image_name}.png"
-    return f"{_AUTOCARD_ASSET_BASE_URL}/cards/{image_name}.png"
 
 
 def _build_autocard_prompt_values(
@@ -556,17 +537,17 @@ def _build_entry(
 ) -> AutocardEntry:
     is_role = kind == "role"
     base, awakened = _card_pair(index, item) if kind == "card_group" else (item, None)
-    awakened_image_url = (
-        _autocard_image_url("card", awakened) if awakened is not None else ""
+    awakened_image_key = (
+        _autocard_image_name("card", awakened) if awakened is not None else ""
     )
     return AutocardEntry(
         kind="card" if kind == "card_group" else kind,
         item_id=_int_field(base, "id"),
         name=_entry_name(base),
         text=_format_autocard_entry(index, kind, item),
-        image_url=_autocard_image_url("card", base)
+        image_key=_autocard_image_name("card", base)
         if awakened
-        else _autocard_image_url(kind, item),
+        else _autocard_image_name(kind, item),
         description=_clean_text(_field(item, "desc" if is_role else "des", default="")),
         skill_name=(
             _clean_text(_field(item, "skillName", "skill_name", default=""))
@@ -586,5 +567,5 @@ def _build_entry(
             if is_role
             else ""
         ),
-        additional_image_urls=(awakened_image_url,) if awakened_image_url else (),
+        additional_image_keys=(awakened_image_key,) if awakened_image_key else (),
     )

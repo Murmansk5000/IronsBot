@@ -58,6 +58,7 @@ from ironsbot.integrations.storage.team_resources import (
 )
 from ironsbot.services.pet_config import PetConfigQueryService
 from ironsbot.services.seer.autocard import AutocardService
+from ironsbot.services.seer.autocard_media import AutocardMediaService
 from ironsbot.services.seer.autocard_sanctuary import AutocardSanctuaryService
 from ironsbot.services.seer.battle_effect import BattleEffectQueryService
 from ironsbot.services.seer.countermark_stat_rank import CountermarkStatRankService
@@ -430,6 +431,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player_requests,
     )
     autocard = AutocardService(seer_database)
+    autocard_media = AutocardMediaService(images)
     autocard_sanctuary = AutocardSanctuaryService(seer_database)
     equipment = EquipmentQueryService(seer_database, images)
     pet = PetQueryService(seer_database, images, render_pet)
@@ -449,6 +451,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
             ),
             CountermarkStatRankService(seer_database),
             autocard,
+            autocard_media,
             autocard_sanctuary,
             SeerTeamQueryService(
                 settings.seer.team,

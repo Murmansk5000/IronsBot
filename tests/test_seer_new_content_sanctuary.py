@@ -8,6 +8,8 @@ import nonebot
 import pytest
 from nonebot.adapters.onebot.v11 import Message
 
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+
 try:
     nonebot.get_driver()
 except ValueError:
@@ -118,7 +120,7 @@ async def test_content_card_detail_preserves_entry_and_missing_result(
 ) -> None:
     kind = "role" if category == "autocard_role" else "card"
     entry = AutocardEntry(
-        kind=kind, item_id=9, name="test", text="detail", image_url="url"
+        kind=kind, item_id=9, name="test", text="detail", image_key="card_9"
     )
     dependencies = Mock()
     dependencies.autocard.select.return_value = entry if found else None
@@ -264,7 +266,9 @@ async def test_changed_detail_finishes_menu_without_sending_result(
     details = Mock(select=AsyncMock(side_effect=error))
     matcher = Mock(
         state={
-            NEW_CONTENT_SERVICES_KEY: _NewContentServices(details, AsyncMock()),
+            NEW_CONTENT_SERVICES_KEY: _NewContentServices(
+                details, AsyncMock(), AsyncMock()
+            ),
             NEW_CONTENT_SNAPSHOT_KEY: _menu_snapshot(item),
         },
         finish=AsyncMock(),
@@ -284,12 +288,21 @@ async def test_autocard_detail_uses_native_onebot_image_message() -> None:
         item_id=9,
         name="test",
         text="卡牌详情",
-        image_url="https://example.com/card.png",
+        image_key="card_9",
     )
     details = Mock(select=AsyncMock(return_value=detail))
+    media = Mock(
+        outbound=AsyncMock(
+            return_value=OutboundMessage(
+                (BinaryImagePart(b"card", "image/png"), TextPart("卡牌详情"))
+            )
+        )
+    )
     matcher = Mock(
         state={
-            NEW_CONTENT_SERVICES_KEY: _NewContentServices(details, AsyncMock()),
+            NEW_CONTENT_SERVICES_KEY: _NewContentServices(
+                details, AsyncMock(), media
+            ),
             NEW_CONTENT_SNAPSHOT_KEY: _menu_snapshot(item),
         },
         send=AsyncMock(),
@@ -301,6 +314,10 @@ async def test_autocard_detail_uses_native_onebot_image_message() -> None:
     assert [segment.type for segment in message] == ["image", "text"]
     assert message.extract_plain_text() == "卡牌详情"
     assert matcher.send.await_args.kwargs == {"at_sender": True}
+    media.outbound.assert_awaited_once_with(
+        detail,
+        include_additional_images=False,
+    )
 
 
 def _effect(*, change_kind: Literal["added", "modified"] = "added") -> NewContentItem:

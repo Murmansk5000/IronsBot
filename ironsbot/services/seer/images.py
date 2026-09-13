@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
 ImageKind = Literal[
+    "autocard_card",
+    "autocard_role",
     "battle_effect",
     "element_type",
     "equip",

@@ -123,11 +123,8 @@ async def render_new_content_menu(  # noqa: PLR0913
         *(_item_visuals(images, prepared) for prepared in prepared_items)
     )
 
-    # Arbitrary card URLs are not published by the immutable Seer asset
-    # manifest, so a final image containing one must not outlive its source.
     cacheable = all(
         prepared.details.complete
-        and (prepared.asset is None or prepared.asset.url is None)
         for prepared in prepared_items
     )
     prepared_by_key = {
@@ -297,8 +294,6 @@ async def _asset_data_uri(
     if request is None:
         return None
     try:
-        if request.url:
-            return to_data_uri(await images.fetch_url(request.url))
         if request.kind and request.key:
             return to_data_uri(
                 await images.fetch(request.kind, request.key, fallback=False)  # type: ignore[arg-type]

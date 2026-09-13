@@ -2128,3 +2128,10 @@ BasedPyright 使用同一版本；Dockerfile 通过一个 `PYTHON_VERSION` 参�
 双源下载、校验磁盘缓存和并发控制。没有复制 PNG、增加 SQLite 表或运行依赖。SeerAPI
 全量 `340 passed`，IronsBot 全量 `3243 passed, 7 skipped`；两仓 Ruff、BasedPyright（适用
 仓库）、compileall 和差异检查通过。新 manifest 需随下一次数据 release 发布后才进入生产。
+
+群星牌卡面随后也复用同一发布链路。业务服务不再拼接
+`seer-unity-assets/main` URL，只保存由官方 `picID`/卡牌 ID 推导出的
+`autocard_card` 或 `autocard_role` 资源 key；应用侧通过 `SeerImageSource` 按当前
+SeerAPI release 声明的不可变 revision 下载，继续共享双源回退、校验磁盘缓存、内存缓存
+和并发限制。新增内容菜单也改读同一资源 key，因此其最终渲染缓存重新具备确定性。图片仍
+留在 Unity 资源仓库，没有复制进机器人代码或 SQLite。依赖 QQ 号的入口没有纳入本批次。

@@ -248,6 +248,41 @@ async def test_mount_uses_its_generated_repository_revision() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "key", "suffix"),
+    [
+        ("autocard_card", "card_7", "/autocard/texture/cards/card_7.png"),
+        (
+            "autocard_role",
+            "role_9",
+            "/autocard/texture/roles/card/role_9.png",
+        ),
+    ],
+)
+async def test_autocard_uses_the_published_asset_revision(
+    kind: str,
+    key: str,
+    suffix: str,
+) -> None:
+    urls: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(HTTP_OK, content=b"autocard")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        source = HttpSeerImageSource(
+            HttpClients(cache=client, origin=client),
+            asset_snapshot_getter=_asset_snapshot,
+        )
+        assert await source.fetch(kind, key, fallback=False) == b"autocard"  # type: ignore[arg-type]
+
+    assert len(urls) == 1
+    assert f"/{'a' * 40}/" in urls[0]
+    assert urls[0].endswith(suffix)
+
+
+@pytest.mark.asyncio
 async def test_mount_prefers_existing_unity_equipment_image() -> None:
     urls: list[str] = []
     snapshot = replace(

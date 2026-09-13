@@ -80,6 +80,7 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 from ..query_conversation import send_query_reply
 
 if TYPE_CHECKING:
+    from ironsbot.services.seer.autocard_media import AutocardMediaService
     from ironsbot.services.seer.data_queries import SeerDataQueryService
     from ironsbot.services.seer.new_content_details import NewContentDetailService
     from ironsbot.services.seer.resources import NewContentMenuRenderer
@@ -243,6 +244,7 @@ async def _start_new_content(  # noqa: PLR0913
     state[NEW_CONTENT_SERVICES_KEY] = _NewContentServices(
         details=group.resources.new_content_details,
         menu_renderer=group.resources.new_content_menu,
+        autocard_media=group.resources.autocard_media,
     )
     state[NEW_CONTENT_MENU_LAYOUT_KEY] = layout
     await enter_prompt(
@@ -426,7 +428,10 @@ async def _send_item_detail(
         return
     if isinstance(detail, AutocardEntry):
         message = render_onebot_outbound_message(
-            detail.to_outbound(include_additional_images=False)
+            await services.autocard_media.outbound(
+                detail,
+                include_additional_images=False,
+            )
         )
     else:
         message = Message(detail)
@@ -437,3 +442,4 @@ async def _send_item_detail(
 class _NewContentServices:
     details: NewContentDetailService
     menu_renderer: NewContentMenuRenderer
+    autocard_media: AutocardMediaService

@@ -261,6 +261,7 @@ def build_test_plugin_registry(
                     ),
                     select=lambda _value: None,
                 ),
+                autocard_media=SimpleNamespace(outbound=_noop_query),
                 autocard_sanctuary=SimpleNamespace(
                     search=_noop_query,
                     select=_noop_query,

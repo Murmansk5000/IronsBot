@@ -104,7 +104,7 @@ async def test_seer_reply_uses_shared_content_without_platform_identity(
             item_id=1,
             name="测试牌",
             text="卡牌详情",
-            image_url="https://example.test/card.png",
+            image_key="card_1",
         ).to_outbound(),
     ],
 )
