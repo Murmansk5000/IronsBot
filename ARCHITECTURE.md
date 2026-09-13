@@ -18,10 +18,27 @@ one business core:
 2. QQ Official Bot only; and
 3. OneBot and QQ Official Bot together.
 
-QQ Official Bot support is a future boundary, not a currently enabled
-integration. Do not add an empty official-bot plugin, fake adapters, official
-credentials, or speculative compatibility code before a concrete feature needs
-them.
+QQ Official Bot now has a deliberately small production adapter for passive
+group/C2C commands. It uses `nonebot-adapter-qq` in the same process as OneBot,
+opaque OpenIDs, shared business services, and the platform-neutral outbound
+message model. This first slice is not permission to copy OneBot plugins or to
+pretend unsupported identity and proactive-delivery capabilities exist.
+
+Platform identity work follows capability-first scheduling. If a target API
+cannot faithfully express a QQ number, a direct mention, an account binding, or
+the required membership lookup, record that capability gap and defer the
+platform adapter until the final platform phase. Continue platform-neutral
+data, rendering, service, and delivery work without inventing an identity map,
+weakening the core contract, or adding a QQ-specific business branch merely to
+fill an acceptance matrix.
+
+QQ Official OpenIDs are additionally scoped to the bot application that
+received them. `ActorRef` and `ConversationRef` therefore carry an optional
+`account_id`; official-platform adapters must set it to the receiving AppID and
+must reject delivery through another account. Multi-account configuration may
+only be exposed after this account dimension is also present in every
+persistent identity key. Concatenating an AppID into an OpenID, selecting a
+default sender, or sharing a token cache between accounts is forbidden.
 
 ## Architecture Status
 
@@ -419,6 +436,7 @@ Platform = Literal["onebot", "qq_official"]
 @dataclass(frozen=True, slots=True)
 class ActorRef:
     platform: Platform
+    account_id: str | None
     id: str
     kind: Literal["user", "member"] = "user"
     scope_id: str | None = None
@@ -426,9 +444,20 @@ class ActorRef:
 @dataclass(frozen=True, slots=True)
 class ConversationRef:
     platform: Platform
+    account_id: str | None
     kind: Literal["private", "group", "channel", "guild"]
     id: str
 ```
+
+`account_id` is the transport-account namespace, not an actor ID. It is
+mandatory for QQ Official identities because OpenIDs are scoped to one bot
+AppID; the same textual OpenID under two applications must never share feature
+policy, bindings, sessions, quotas, push preferences, caches, or outbound
+routing. Multi-account support is therefore an identity-and-storage migration,
+not merely an `accounts` loop in bootstrap. Every account owns its credential
+refresh, gateway connection, reply sequence allocator, target policy and
+outbound sender. OneBot may leave the field empty while its existing routing
+policy intentionally shares numeric QQ identities across bot accounts.
 
 Future services should receive typed input/output values such as
 `IncomingMessageRef`, `OutboundMessage`, `RenderedImage`, and explicit
@@ -536,11 +565,11 @@ QQ integers.
 
 Monitored Bilibili dynamics now use the same route: the Bilibili domain renders
 portable text and remote-image parts, while the shared delivery service keeps
-subscription, promotion, queue and failure behaviour. The OneBot-only renderer
-that remains under `integrations.onebot` is for an incoming user's immediate
-query reply, not a monitored push. Numeric batch delivery and its test fixtures
-are deleted; no replacement may be passed through `ApplicationResources`, stored
-in a service, or used by a new sender.
+subscription, promotion, queue and failure behaviour. Interactive history queries
+reuse the same portable content renderer; the OneBot plugin only encodes its
+`OutboundMessage` result. Numeric batch delivery, the OneBot-only Bilibili content
+renderer and their test fixtures are deleted; no replacement may be passed through
+`ApplicationResources`, stored in a service, or used by a new sender.
 
 The eventual composition is:
 
@@ -554,21 +583,20 @@ services and use cases
 integrations (SQLite, HTTP, Seer data, render assets)
         ^                         ^
         |                         |
-plugins/onebot              plugins/qq_official (future)
+plugins/onebot              integrations/qq_official
         ^                         ^
         +----------- app composition -----------+
 ```
 
-`plugins/onebot` and future `plugins/qq_official` may share services but never
-import each other's adapter/event types. A feature may be enabled for one
-platform, both, or neither; an adapter must not emulate an unavailable action
-by silently falling back to a OneBot-only operation.
+OneBot plugins and QQ Official integrations may share services but never import
+each other's adapter/event types. A feature may be enabled for one platform,
+both, or neither; an adapter must not emulate an unavailable action by silently
+falling back to a OneBot-only operation.
 
-When QQ Official Bot work actually begins, use `nonebot-adapter-qq` as the
-official adapter. Do not run a separate `botpy.Client` alongside NoneBot for
-the same official bot. Official-specific protocol and asset code belongs in a
-dedicated integration/adapter boundary, created only with the first real
-official feature.
+QQ Official Bot uses `nonebot-adapter-qq`; do not run a separate `botpy.Client`
+alongside NoneBot for the same official bot. Official-specific protocol and
+asset code belongs in `integrations.qq_official`. New commands must first expose
+a platform-neutral service operation and outbound result.
 
 ## QQ Official Capability And Safety Requirements
 
@@ -757,9 +785,15 @@ asset materialization, and reject a release lacking an asset-manifest revision.
 Those paths, plus private lineup via `PlayerLineupRenderPort`, calculate their
 request key before data/asset preparation. The private lineup keeps its own
 presentation module, but its adapter alone owns asset loading, final-cache
-access, and the HTML render port. The remaining Phase 4 gate is complete,
-scope-aware SeerAPI asset-manifest validation and revision-bound asset retrieval,
-not another runtime cache order. A build-time manifest that records an immutable
+access, and the HTML render port. The remaining Phase 4 consumer gate is
+scope-aware SeerAPI asset-manifest validation, revision-bound asset retrieval,
+and tested behavior for complete, missing, and failed assets. It does not require
+every official asset to exist. Asset collection, conversion, and publication
+belong to the producer; missing upstream resources remain producer backlog,
+not a reason to add extraction or conversion to the bot. An incomplete scope
+must still be excluded from complete final-image caching. Phase closure requires
+consumer evidence across the declared render categories, not merely changing
+this gate or passing one renderer test. A build-time manifest that records an immutable
 asset-tree revision is insufficient while a consumer still fetches the mutable
 `main` branch: the resolved asset URL or asset source must be derived from the
 same published revision that participates in the final-image request key.
@@ -804,7 +838,7 @@ Future data work follows these rules:
   state databases use namespaced migration records; large independent stores
   may use their own schema version.
 - Platform identity migrations are offline, one-time transformations. They use
-  independent platform/kind/id/scope columns, a temporary database, a
+  independent platform/account/kind/id/scope columns, a temporary database, a
   timestamped backup, integrity and cardinality checks, then atomic
   replacement. The table-by-table contract is in
   [docs/platform-state-migration.md](docs/platform-state-migration.md).
@@ -814,9 +848,16 @@ Future data work follows these rules:
   key, or the persistence contract of a core service. Adding a second schema,
   a lazy legacy import, or a dual-read branch is prohibited; use the offline
   migration instead.
-- A downloaded data release is validated for schema version and required tables
-  before atomic replacement. Incompatible data disables only the affected
-  feature and notifies administrators without removing the data-update path.
+- After every producer post-processing step, SeerAPI validates its complete
+  required-table set and SQLite integrity, then seals the ordered physical table
+  manifest and canonical table/index/trigger DDL fingerprint into release
+  metadata. Before atomic replacement, IronsBot verifies the supported contract
+  version, stable consumer minimum, every declared table, and the recomputed DDL
+  fingerprint. The complete producer table inventory has one authority in
+  SeerAPI; consumers must not duplicate all table names or accept a self-declared
+  manifest without physical verification. Incompatible data disables only the
+  affected feature and notifies administrators without removing the data-update
+  path.
 
 ### Cross-Repository Data Publication Contract
 
@@ -834,6 +875,13 @@ reconstructed inside IronsBot. A change that crosses `seerapi`,
    rows, assets, and integrity before a consumer is allowed to rely on it.
 4. IronsBot consumes the published view through `integrations.seer_data` and
    passes a render-ready view model to its renderer.
+
+The producer repository and the PyPI `seerapi` HTTP client are different
+dependencies. IronsBot's runtime uses `seerapi-models` and the validated local
+publication; it must not restore the unused HTTP client as a parallel data
+access path. Asset and release downloads continue through the application-owned
+HTTP integrations. Dependency removal must be tested with the package actually
+absent, not just removed from pyproject while remaining installed locally.
 
 The consuming repository must not add a second association resolver, raw SWF
 conversion fallback, best-effort text guesser, or legacy-table read merely to
@@ -857,8 +905,9 @@ product need; it must leave the repository cleaner than it found it.
    delivery code without changing ordinary command behaviour.
 5. **Prepare data and assets.** Publish deterministic Seer facts and render
    assets before exposing them through a new transport.
-6. **Add QQ Official Bot only for a real feature.** Implement its adapter,
-   capabilities, policy checks, tests, and observability in the same change.
+6. **Expand QQ Official Bot by real feature slices.** Keep each slice runnable,
+   add capability and policy checks with the command, and never block a useful
+   passive-query release on unsupported account mapping or proactive delivery.
 
 Each phase must be independently reviewable, have migration/rollback guidance
 where persistent data changes, and avoid leaving an old and new runtime path
@@ -1291,10 +1340,9 @@ The authoritative TOML top-level schema is:
 ```
 
 Nested models may live in separate files, but they are reachable only through
-`Settings`. Every model uses `extra="forbid"`. The TOML loader reports and
-ignores unknown fields; invalid known values, unknown features, unknown account
-references, incomplete actions, and invalid section names fail startup with
-their exact configuration path.
+`Settings`. Every model uses `extra="forbid"`. Unknown fields, invalid known
+values, unknown features, unknown account references, incomplete actions, and
+invalid section names fail startup with their exact configuration path.
 
 The loader has no cache, cleanup pass, fallback schema, or automatic mutation.
 Missing TOML is a deployment concern: the
@@ -1418,6 +1466,12 @@ remaining target-state work:
 The Phase 4 renderer persistence allowlist is empty. A new renderer must
 receive a detached view model and its assets; it cannot acquire a new database
 or transport exception.
+
+Legacy Seer services that still import SQL repository functions are listed by
+exact module in the layer hygiene gate. New broad `services -> integrations`
+imports are forbidden. Each migrated query surface removes its exact exception;
+`SeerDataQueryService` is the reference shape and consumes only
+`SeerDataQueryFacts` domain values.
 
 ## Current OneBot Behaviour Baseline
 
