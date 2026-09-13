@@ -512,25 +512,25 @@ def build_onebot_feature_service(
             qq_superusers.extend(
                 ActorRef(
                     Platform.QQ_OFFICIAL,
-                    str(user_id),
+                    account.resolve_user_openid(str(user_id)),
                     account_id=account_id,
                 )
                 for user_id in account.superusers
             )
-            for openid, features in account.group_policy.items():
+            for reference, features in account.group_policy.items():
                 conversation = ConversationRef(
                     Platform.QQ_OFFICIAL,
                     "group",
-                    openid,
+                    account.resolve_group_openid(reference),
                     account_id=account_id,
                 )
                 group_features[conversation] = default_features | (
                     _expand_policy_features(features, bundles)
                 )
-            for openid, features in account.user_policy.items():
+            for reference, features in account.user_policy.items():
                 actor = ActorRef(
                     Platform.QQ_OFFICIAL,
-                    openid,
+                    account.resolve_user_openid(reference),
                     account_id=account_id,
                 )
                 actor_features[actor] = _expand_policy_features(features, bundles)

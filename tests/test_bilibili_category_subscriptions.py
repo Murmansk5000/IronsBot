@@ -2,10 +2,11 @@ from pathlib import Path
 
 from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
 from ironsbot.config.onebot_references import OneBotReferenceResolver
+from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.platform import ConversationRef, Platform
-from ironsbot.integrations.onebot.bilibili_targets import (
-    build_onebot_bili_configured_targets,
+from ironsbot.integrations.configured_targets.bilibili import (
+    build_bili_configured_targets,
 )
 from ironsbot.integrations.storage.bilibili_preferences import (
     SqliteBiliPushPreferenceStore,
@@ -50,8 +51,12 @@ def _service(path: Path) -> tuple[BiliTargetService, ConversationRef]:
         BiliTargetService(
             config,
             features,
-            build_onebot_bili_configured_targets(
-                config, OneBotReferenceResolver({"example_group": 123456}, {})
+            build_bili_configured_targets(
+                config,
+                build_platform_reference_resolver(
+                    OneBotReferenceResolver({"example_group": 123456}, {}),
+                    (),
+                ),
             ),
             SqliteBiliPushPreferenceStore(path / "qq_state.sqlite"),
             PushUnsubscribeStore(path / "qq_state.sqlite"),

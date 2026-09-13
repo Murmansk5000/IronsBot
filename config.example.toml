@@ -97,15 +97,24 @@ features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet"
 # ZH: QQ 官方平台超级管理员 OpenID；这里不是 QQ 号。
 superusers = []
 
-# EN: Optional account-scoped targets keyed by group/user OpenID. Declaring a
+# EN: Optional account-scoped targets keyed by group/user alias or OpenID. Declaring a
 #     target also enables these extra features there; global features remain active.
-# ZH: 可选的主动推送目标，键为群/用户 OpenID；声明后会在该目标额外启用这些功能，
+# ZH: 可选的主动推送目标，键为群/用户别名或 OpenID；声明后会在该目标额外启用这些功能，
 #     全局 features 仍然有效。OpenID 含特殊字符时必须用引号包裹。
 [bot.qq_official.accounts.example_bot.group_policy]
-# "example-group-openid" = ["seer_activity_push", "bili_push"]
+# example_official_group = ["seer_activity_push", "bili_push"]
 
 [bot.qq_official.accounts.example_bot.user_policy]
-# "example-user-openid" = ["seer_activity_push", "bili_push"]
+# example_official_user = ["seer_activity_push", "bili_push"]
+
+# EN: Account-scoped aliases for opaque QQ Official OpenIDs. Each alias must be
+#     globally unique across OneBot and every enabled official account.
+# ZH: QQ 官方 OpenID 的账号级别名。别名必须在 OneBot 与所有启用的官方账号中全局唯一。
+[bot.qq_official.accounts.example_bot.group_aliases]
+# example_official_group = "example-group-openid"
+
+[bot.qq_official.accounts.example_bot.user_aliases]
+# example_official_user = "example-user-openid"
 
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
@@ -504,7 +513,7 @@ notice_timeout_seconds = 8.0
 # B 站配置分三层：
 # 1. [bilibili.accounts.<别名>] 定义稳定账号别名和 UID，不代表一定监控或推送。
 # 2. [bilibili.push].accounts 是默认推送别名，所有开启 bili_push 的群/用户都会收到。
-# 3. [bilibili.push.groups.<群别名>].accounts 是该群额外追加的账号别名。
+# 3. [bilibili.push].groups/users 用 OneBot 别名或账号级 QQ 官方 OpenID 别名指定目标。
 # 推送形式默认由 [bilibili.push].mode 决定，单个账号可用 modes 改成 full/link。
 # QQ 展示使用 B 站接口返回的公开昵称，不在 TOML 中配置 nickname。
 # 模式命令支持账号别名、公开昵称或 UID。
@@ -601,14 +610,19 @@ summary_max_chars = 250
 summary_use_ai = true
 
 # Default: {}
-# EN: Group push targets keyed by feature group alias or group ID.
-# ZH: 群推送目标，键可以是群别名或群号。
+# EN: Group targets keyed by a OneBot group alias/ID or an account-scoped QQ
+#     Official group alias. Official raw OpenIDs are intentionally not accepted
+#     here because they do not identify the bot account that owns the OpenID.
+# ZH: 群推送目标可用 OneBot 群别名/群号，或某个 QQ 官方账号下的群 OpenID
+#     别名。这里不接受裸官方 OpenID，因为它不能说明归属哪个机器人账号。
 # Example: { main = { accounts = ["fire"], modes = { fire = "full" } } }
 groups = {}
 
 # Default: {}
-# EN: Private push targets keyed by user alias or user ID.
-# ZH: 私聊推送目标，键可以是用户别名或 QQ 号。
+# EN: Private targets keyed by a OneBot user alias/ID or an account-scoped QQ
+#     Official user alias. Official raw OpenIDs are intentionally not accepted.
+# ZH: 私聊推送目标可用 OneBot 用户别名/QQ号，或某个 QQ 官方账号下的用户
+#     OpenID 别名；不接受无法确定账号归属的裸官方 OpenID。
 # Example: { owner = { accounts = ["fire"], mode = "link" } }
 users = {}
 

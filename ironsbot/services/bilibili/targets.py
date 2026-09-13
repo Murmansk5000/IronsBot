@@ -94,9 +94,8 @@ class BiliTargetService:
     ) -> list[int]:
         """Resolve readable Bilibili accounts for one platform conversation.
 
-        Current TOML account-target mappings are resolved to typed OneBot
-        references at the feature-configuration boundary. Other platforms
-        fail closed until they provide their own configuration adapter.
+        TOML account-target mappings are resolved to typed platform and bot
+        account references at the configuration boundary.
         """
 
         private_superuser_query = (
@@ -131,7 +130,11 @@ class BiliTargetService:
             return self.features.conversation_has_feature(conversation, "bili_query")
         if conversation.kind == "private":
             return self.features.is_actor_feature_allowed(
-                ActorRef(conversation.platform, conversation.id),
+                ActorRef(
+                    conversation.platform,
+                    conversation.id,
+                    account_id=conversation.account_id,
+                ),
                 "bili_query",
             )
         return False

@@ -450,12 +450,14 @@ def _portable_input(
     )
 
 
-def _qq_config(
+def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
     *,
     features: list[str] | None = None,
     superusers: list[str] | None = None,
     group_policy: dict[str, list[str]] | None = None,
     user_policy: dict[str, list[str]] | None = None,
+    group_aliases: dict[str, str] | None = None,
+    user_aliases: dict[str, str] | None = None,
     proactive_messages: bool = False,
 ) -> QQOfficialConfig:
     return QQOfficialConfig(
@@ -469,6 +471,8 @@ def _qq_config(
                 superusers=[] if superusers is None else superusers,
                 group_policy={} if group_policy is None else group_policy,
                 user_policy={} if user_policy is None else user_policy,
+                group_aliases={} if group_aliases is None else group_aliases,
+                user_aliases={} if user_aliases is None else user_aliases,
                 proactive_messages=proactive_messages,
             )
         },
@@ -703,6 +707,35 @@ def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
             account_id="example-app",
         )
     ]
+
+
+def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
+    config = _qq_config(
+        features=[],
+        superusers=["official_admin"],
+        group_aliases={"official_group": "opaque-group"},
+        user_aliases={"official_admin": "opaque-admin"},
+        group_policy={"official_group": ["seer_rank"]},
+    )
+    features = build_onebot_feature_service(
+        FeatureConfig(superuser_bypass=True),
+        (),
+        qq_official=config,
+    )
+    admin = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-admin",
+        account_id="example-app",
+    )
+    group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+
+    assert features.is_actor_superuser(admin)
+    assert features.conversation_has_feature(group, "seer_rank")
 
 
 def test_qq_official_identity_keeps_openids_opaque() -> None:
