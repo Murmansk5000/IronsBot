@@ -2074,3 +2074,15 @@ contract v2，当前消费者严格要求 v3，因而在数据库装载阶段按
 查询。历史 118 MiB 数据库没有发布 manifest，仅可作为生成器缓存输入。此失败不能用
 单元测试替代为通过，也不应恢复 v2 兼容；下一次有效证据必须来自当前 SeerAPI 分支
 生成的完整 v3 release，再执行同一原生测试。现有公共/私有全量回归结果不受影响。
+
+同日随后使用线上 `api-data` latest 基础库、本机历史库恢复的 `2108` 个效果图标 PNG，
+以及当前 SeerAPI 分支重新构建发布主体。构建没有启动 FFDec，产出 121.09 MiB、149 张表
+的 manifest v3 数据库；补写新内容索引后发布契约通过，当前周期为 `2026-09-11`，收录
+360 项新内容。该数据库仍诚实声明 `complete_scopes=["type_matchup"]`，因为 11 个 Flash
+座驾 PNG 和真实 generated mount revision 尚未封口。
+
+以该 v3 数据库和当前私有扩展执行 `player_lineup` 原生消费测试，真实 SQL、公共阵容
+事实解析、私有 HTML/Pillow 渲染、OneBot 编码及受限平台图片上传链路 `1 passed`
+（12.32 秒）。由于 `player_lineup` 尚非完整素材 scope，本次不宣称最终图片缓存命中或
+完整 release 发布；下一门仍是生成并发布 11 个 mount 缺口、封口不可变 manifest 后
+复跑缓存一致性。
