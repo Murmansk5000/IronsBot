@@ -56,7 +56,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 活动周快照 | 只通过活动 service 与 runtime-state 事实存储实现 | 无 | verified |
 | 竞技池、专家池与大师池变动渲染 | seerapi 发布周内变化事实和官方有效期；机器人经 presenter 产出不可变 document，再接 HTML renderer | 无 | completed |
 | 巅峰投票展示增强 | service 提供投票级别与周期；纯 presenter 计算总票数和占比；renderer 只消费不可变 document | 无 | completed |
-| 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 需要幸运橱窗 Spec | planned |
+| 幸运橱窗卡片与价格菜单 | 使用 skin repositories、关注偏好和 V5 prompt 边界 | 无 | completed：价格批量读取发布库，数字菜单复用皮肤详情服务 |
 | Docker 维护/更新确认 | 使用 operations service、明确管理员权限与确认会话 | 目标平台管理员身份最终验收 | completed：动作与菜单已收口；跨平台身份延期 |
 | 绑定限制 | 审计后不迁入：V5 已确认所有米米号入口支持一个直接 @ 用户解析，不能额外要求请求者先绑定 | 无 | superseded |
 | Bilibili 抽奖/中奖拆分 | 复用配置驱动分类，不增加硬编码枚举或旧配置迁移器 | 无 | completed |
@@ -105,13 +105,14 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |
 | 2026-09-13 | 巅峰投票展示增强 | 巅峰 service、纯 presenter、render adapter 专项 64 项；Ruff | 限制级/准限制级、投票周期、总票数和非负票数占比进入不可变 document；机器人不新增图片资源或数据读取职责。 |
 | 2026-09-13 | Bilibili 历史摘要 | 长文本、历史存储、菜单详情、主动投递与运行装配专项测试；Ruff、BasedPyright、compileall | 推送和详情复用 `DynamicContentCompactor`；修正 AI 摘要关键字参数契约，结果写入既有历史库并惰性复用，不执行启动批量 AI 回填。 |
+| 2026-09-13 | 幸运橱窗价格与详情菜单 | 价格 repository/service、四栏 presenter、数字 prompt 与皮肤详情复用专项测试 | 四个皮肤价格通过一次发布库查询获取；缺价格时保留卡片并明确降级；选择 1-4 复用统一皮肤详情服务。未打包货币图标或写死资源 URL。 |
 
 ## Progress
 
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
-Slice    [██████████████□□□] 14/17 tracked outcomes resolved; 3 remain
-Current  [██████████] peak vote presentation enhancement verified
+Slice    [███████████████□□] 15/17 tracked outcomes resolved; 2 remain
+Current  [██████████] lucky-window price choices verified
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.

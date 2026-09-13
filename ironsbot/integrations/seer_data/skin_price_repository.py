@@ -88,6 +88,49 @@ def _load_store_prices(session: Session, skin_id: int) -> list[SkinStorePrice]:
     return [SkinStorePrice(**_price_mapping(row)) for row in rows]
 
 
+def load_active_skin_store_prices(
+    session: Session,
+    *,
+    skin_ids: tuple[int, ...],
+    now: int | None = None,
+) -> dict[int, SkinStorePrice]:
+    """Load the first active lucky-window price for each skin in one query."""
+
+    unique_ids = tuple(dict.fromkeys(skin_id for skin_id in skin_ids if skin_id > 0))
+    if not unique_ids:
+        return {}
+    placeholders = ", ".join(
+        f":skin_id_{index}" for index in range(len(unique_ids))
+    )
+    params = {
+        f"skin_id_{index}": skin_id for index, skin_id in enumerate(unique_ids)
+    }
+    params["now"] = int(time.time()) if now is None else now
+    try:
+        rows = session.execute(
+            text(
+                f"""
+                SELECT skin_id, pool_id, price, original_price, discount_rate,
+                       selected_price, ticket_id, ticket_num, start_time, end_time
+                FROM skin_store_price
+                WHERE skin_id IN ({placeholders})
+                  AND (start_time <= 0 OR start_time <= :now)
+                  AND (end_time <= 0 OR :now <= end_time)
+                ORDER BY skin_id, pool_id, row_index
+                """
+            ),
+            params,
+        ).all()
+    except SQLAlchemyError as error:
+        raise PublishedDataIncompleteError("skin_price") from error
+
+    prices: dict[int, SkinStorePrice] = {}
+    for row in rows:
+        price = SkinStorePrice(**_price_mapping(row))
+        prices.setdefault(price.skin_id, price)
+    return prices
+
+
 def _price_mapping(row: Any) -> dict[str, int]:
     mapping = cast(
         "Mapping[str, Any]", row._mapping if hasattr(row, "_mapping") else row

@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ironsbot.services.seer.render_paths import LUCKY_SKIN_WINDOW_TEMPLATE_PATH
+from ironsbot.services.seer.skin_price import format_lucky_window_price_lines
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -19,10 +20,12 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class LuckySkinWindowCard:
+    index: int
     skin_id: int
     name: str
     watched: bool
     image: str | None
+    price_lines: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,12 +45,14 @@ def present_lucky_skin_window(
     return LuckySkinWindowRenderDocument(
         tuple(
             LuckySkinWindowCard(
+                index=index,
                 skin_id=offer.skin_id,
                 name=offer.name,
                 watched=offer.watched,
                 image=images_by_skin_id.get(offer.skin_id),
+                price_lines=format_lucky_window_price_lines(offer.store_price),
             )
-            for offer in offers
+            for index, offer in enumerate(offers, start=1)
         )
     )
 

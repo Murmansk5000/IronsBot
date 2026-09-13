@@ -14,8 +14,18 @@ from typing import TYPE_CHECKING, Protocol
 from zoneinfo import ZoneInfo
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
+from ironsbot.integrations.seer_data.skin_price_repository import (
+    load_active_skin_store_prices,
+)
 from ironsbot.integrations.seer_data.skin_reference_repository import (
     load_skins_by_resource_id,
+)
+from ironsbot.services.seer.data import PublishedDataIncompleteError
+from ironsbot.services.seer.pet_query import PetImageSelection
+from ironsbot.services.seer.query_result import QueryChoice
+from ironsbot.services.seer.skin_price import (
+    SkinStorePrice,
+    format_lucky_window_price_lines,
 )
 
 if TYPE_CHECKING:
@@ -141,6 +151,7 @@ class LuckySkinWindowOffer:
     resource_id: int
     name: str
     watched: bool
+    store_price: SkinStorePrice | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,12 +453,33 @@ class LuckySkinWindowService:
         from_cache: bool,
     ) -> LuckySkinWindowResult:
         resolved = self._skin_items_by_reference(skin_ids)
+        skin_ids_by_reference = {
+            reference: (item.skin_id if item is not None else reference)
+            for reference in skin_ids
+            for item in (resolved.get(reference),)
+        }
+        try:
+            with self._data.query(
+                partial(
+                    load_active_skin_store_prices,
+                    skin_ids=tuple(skin_ids_by_reference.values()),
+                )
+            ) as store_prices:
+                active_prices = store_prices
+        except PublishedDataIncompleteError as error:
+            logger.warning(
+                "lucky skin window prices unavailable: day=%s error=%s",
+                day,
+                error,
+            )
+            active_prices = {}
         offers = tuple(
             LuckySkinWindowOffer(
-                skin_id=(item.skin_id if item is not None else reference),
+                skin_id=skin_ids_by_reference[reference],
                 resource_id=(item.resource_id if item is not None else 0),
                 name=(item.name if item is not None else f"皮肤 {reference}"),
                 watched=False,
+                store_price=active_prices.get(skin_ids_by_reference[reference]),
             )
             for reference in skin_ids
             for item in (resolved.get(reference),)
@@ -461,7 +493,29 @@ class LuckySkinWindowService:
             marker = " ★ 关注" if offer.watched else ""
             identifiers = _skin_identifiers(offer.skin_id, offer.resource_id)
             lines.append(f"{index}. {offer.name}（{identifiers}）{marker}")
+            lines.extend(
+                f"   {line}"
+                for line in format_lucky_window_price_lines(offer.store_price)
+            )
+        lines.append("发送 1-4 查看对应皮肤详情 · 0 退出")
         return "\n".join(lines)
+
+    @staticmethod
+    def detail_choices(
+        result: LuckySkinWindowResult,
+    ) -> tuple[QueryChoice[PetImageSelection], ...]:
+        return tuple(
+            QueryChoice(
+                offer.name,
+                _skin_identifiers(offer.skin_id, offer.resource_id),
+                PetImageSelection(
+                    offer.resource_id,
+                    offer.name,
+                    skin_id=offer.skin_id,
+                ),
+            )
+            for offer in result.offers
+        )
 
     async def render_result(
         self,
