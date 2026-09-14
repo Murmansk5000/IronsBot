@@ -15,6 +15,7 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.integrations.onebot.observer import ObserverApiRejected
 from ironsbot.integrations.onebot.outbound import OutboundRateLimitDecision
 from ironsbot.integrations.onebot.outbound_messenger import OneBotOutboundMessenger
 from tests.helpers.runtime import build_test_runtime
@@ -25,6 +26,21 @@ if TYPE_CHECKING:
 
 GROUP_ID = 1001
 MENTIONED_USER_ID = 2002
+
+
+@pytest.mark.asyncio
+async def test_observer_rejection_is_permanent(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        _Bot, "send_group_msg", AsyncMock(side_effect=ObserverApiRejected())
+    )
+    result = await _messenger(_Bot()).send(
+        ConversationRef(Platform.ONEBOT, "group", str(GROUP_ID)),
+        OutboundMessage.from_text("suppressed"),
+    )
+    assert not result.delivered
+    assert result.failure_kind is DeliveryFailureKind.PERMANENT
 
 
 @dataclass
