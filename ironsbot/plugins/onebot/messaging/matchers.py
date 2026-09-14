@@ -67,9 +67,11 @@ async def handle_message_command(
         if isinstance(event, GroupMessageEvent)
         else []
     )
+    for message in action.messages[:-1]:
+        await matcher.send(message)
     await finish_matcher_message(
         matcher,
-        action.message,
+        action.messages[-1],
         at_user_ids=at_user_ids,
         event=event,
     )

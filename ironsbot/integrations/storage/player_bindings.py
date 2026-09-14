@@ -109,7 +109,6 @@ class SqlitePlayerBindingStore:
                 """,
                 (*identity.values(), player_id, player_nick, now, now, now),
             )
-
     def decline(self, *, actor: ActorRef) -> None:
         now = _utc_now()
         identity = ActorIdentityColumns.from_actor(actor)

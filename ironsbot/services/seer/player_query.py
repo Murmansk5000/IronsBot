@@ -383,7 +383,10 @@ def plan_player_detail_prompt(
     )
     extension_selections = tuple(
         (str(index), action.id)
-        for index, action in enumerate(extensions, start=len(builtin_selections) + 1)
+        for index, action in enumerate(
+            extensions,
+            start=len(builtin_selections) + 1,
+        )
     )
     has_actions = bool(builtin_selections or extension_selections)
     accepted_commands = _unique_commands(
