@@ -82,9 +82,11 @@ startup_timeout_seconds = 15.0
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
-#     Set its AppSecret through QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
+#     The same alias selects the target in `关联官方账号 <alias>`. Set its
+#     AppSecret through QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
 # ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
-#     OpenID 命名空间、权限和发送路由；此示例的 AppSecret 使用
+#     OpenID 命名空间、权限和发送路由；`关联官方账号 <账号别名>` 也使用此别名；
+#     此示例的 AppSecret 使用
 #     QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
 [bot.qq_official.accounts.example_bot]
 enabled = false
