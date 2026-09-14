@@ -70,7 +70,6 @@ if TYPE_CHECKING:
 class PlayerCommandDependencies:
     player: PlayerService
     features: FeatureService
-    identity_links: IdentityLinkCommands
     detail_extensions: PlayerDetailExtensionRegistry = field(
         default_factory=PlayerDetailExtensionRegistry
     )
@@ -341,7 +340,7 @@ async def handle_player_unbind(
 
 
 async def handle_identity_link_begin(
-    dependencies: PlayerCommandDependencies,
+    identity_links: IdentityLinkCommands,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
@@ -349,31 +348,31 @@ async def handle_identity_link_begin(
     await finish_event_reply(
         matcher,
         event,
-        await dependencies.identity_links.begin_text(event.get_plaintext(), context),
+        await identity_links.begin_text(event.get_plaintext(), context),
     )
 
 
 async def handle_identity_link_status(
-    dependencies: PlayerCommandDependencies,
+    identity_links: IdentityLinkCommands,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
     await finish_event_reply(
         matcher,
         event,
-        await dependencies.identity_links.status_text(message_input_context(event)),
+        await identity_links.status_text(message_input_context(event)),
     )
 
 
 async def handle_identity_link_revoke(
-    dependencies: PlayerCommandDependencies,
+    identity_links: IdentityLinkCommands,
     matcher: Matcher,
     event: MessageEvent,
 ) -> None:
     await finish_event_reply(
         matcher,
         event,
-        await dependencies.identity_links.revoke_text(message_input_context(event)),
+        await identity_links.revoke_text(message_input_context(event)),
     )
 
 
@@ -382,7 +381,6 @@ def install(group: SeerMatcherGroup) -> None:
     dependencies = PlayerCommandDependencies(
         service,
         group.features,
-        group.identity_links,
         group.resources.player_detail_extensions,
         group.player_id_resolver,
     )
@@ -399,7 +397,7 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     identity_begin_matcher.append_handler(
-        bind_async(handle_identity_link_begin, dependencies)
+        bind_async(handle_identity_link_begin, group.identity_links)
     )
 
     identity_status_matcher = group.on_fullmatch(
@@ -413,7 +411,7 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     identity_status_matcher.append_handler(
-        bind_async(handle_identity_link_status, dependencies)
+        bind_async(handle_identity_link_status, group.identity_links)
     )
 
     identity_revoke_matcher = group.on_fullmatch(
@@ -427,7 +425,7 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     identity_revoke_matcher.append_handler(
-        bind_async(handle_identity_link_revoke, dependencies)
+        bind_async(handle_identity_link_revoke, group.identity_links)
     )
 
     binding_matcher = group.on_message(

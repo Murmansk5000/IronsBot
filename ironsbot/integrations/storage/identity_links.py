@@ -5,15 +5,22 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, cast
 
 from ironsbot.integrations.storage.sqlite import SqliteDatabase, SqliteMigration
+from ironsbot.services.identity_link_store import (
+    CrossPlatformIdentityLink,
+    IdentityLinkChallengeExpiredError,
+    IdentityLinkChallengeInvalidError,
+    IdentityLinkConflictError,
+    OfficialIdentity,
+)
 
 if TYPE_CHECKING:
     import sqlite3
     from pathlib import Path
 
-OfficialIdentityKind = Literal["member", "user"]
+    from ironsbot.core.platform import ActorKind
 
 _MIGRATIONS = (
     SqliteMigration(
@@ -69,39 +76,6 @@ _MIGRATIONS = (
         ),
     ),
 )
-
-
-class IdentityLinkStoreError(RuntimeError):
-    pass
-
-
-class IdentityLinkChallengeInvalidError(IdentityLinkStoreError):
-    pass
-
-
-class IdentityLinkChallengeExpiredError(IdentityLinkStoreError):
-    pass
-
-
-class IdentityLinkConflictError(IdentityLinkStoreError):
-    def __init__(self, existing_qq_id: str) -> None:
-        self.existing_qq_id = existing_qq_id
-        super().__init__("QQ Official identity is already linked")
-
-
-@dataclass(frozen=True, slots=True)
-class OfficialIdentity:
-    app_id: str
-    kind: OfficialIdentityKind
-    openid: str
-    scope_id: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class CrossPlatformIdentityLink:
-    onebot_qq_id: str
-    official: OfficialIdentity
-    linked_at: float
 
 
 @dataclass(slots=True)
@@ -290,7 +264,7 @@ class SqliteIdentityLinkStore:
                 onebot_qq_id,
                 OfficialIdentity(
                     str(row[0]),
-                    cast("OfficialIdentityKind", str(row[1])),
+                    cast("ActorKind", str(row[1])),
                     str(row[2]),
                     str(row[3]),
                 ),

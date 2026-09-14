@@ -37,8 +37,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _LINK_REQUIRED = (
-    "❌ 当前官方身份尚未关联 OneBot QQ。\n"
-    "请先在 OneBot 私聊发送“关联官方账号”获取令牌，再在这里发送“关联账号 <令牌>”。"
+    "❌ 当前官方身份尚未关联数字账号。\n"
+    "请先在另一接入端私聊机器人发送“关联官方账号”获取令牌，"
+    "再在这里发送“关联账号 <令牌>”。"
 )
 _Confirmation = Literal["confirm", "cancel"]
 
@@ -293,6 +294,6 @@ def _access_error(
     query: bool,
 ) -> str:
     if isinstance(error, LuckySkinWindowNotConfiguredError):
-        return "❌ 当前关联 QQ 未配置幸运橱窗账号。"
+        return "❌ 当前关联的数字账号未配置幸运橱窗。"
     action = "查询" if query else "管理橱窗关注"
     return f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再{action}。"

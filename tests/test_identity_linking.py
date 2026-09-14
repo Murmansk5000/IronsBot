@@ -15,13 +15,13 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.integrations.storage.identity_links import (
+from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
+from ironsbot.services.identity_link_commands import IdentityLinkCommands
+from ironsbot.services.identity_link_store import (
     IdentityLinkChallengeInvalidError,
     IdentityLinkConflictError,
     OfficialIdentity,
-    SqliteIdentityLinkStore,
 )
-from ironsbot.services.identity_link_commands import IdentityLinkCommands
 from ironsbot.services.identity_linking import (
     IdentityLinkingAccountError,
     IdentityLinkingConflictError,

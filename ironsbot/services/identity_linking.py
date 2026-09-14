@@ -9,20 +9,18 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import Platform
-from ironsbot.integrations.storage.identity_links import (
+from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.services.identity_link_store import (
     CrossPlatformIdentityLink,
     IdentityLinkChallengeExpiredError,
     IdentityLinkChallengeInvalidError,
     IdentityLinkConflictError,
+    IdentityLinkStore,
     OfficialIdentity,
-    SqliteIdentityLinkStore,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
-
-    from ironsbot.core.platform import ActorRef
 
 _TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 _TOKEN_LENGTH = 8
@@ -47,11 +45,11 @@ class IdentityLinkingError(ValueError):
 class IdentityLinkingPlatformError(IdentityLinkingError):
     @classmethod
     def onebot_required(cls) -> IdentityLinkingPlatformError:
-        return cls("只能从 OneBot QQ 账号生成关联令牌。")
+        return cls("只能从数字账号接入端生成关联令牌。")
 
     @classmethod
     def official_required(cls) -> IdentityLinkingPlatformError:
-        return cls("只能由 QQ 官方机器人身份确认关联令牌。")
+        return cls("只能由官方机器人身份确认关联令牌。")
 
 
 class IdentityLinkingAccountError(IdentityLinkingError):
@@ -61,7 +59,7 @@ class IdentityLinkingAccountError(IdentityLinkingError):
 
     @classmethod
     def unavailable(cls) -> IdentityLinkingAccountError:
-        return cls("当前没有启用 QQ 官方机器人账号。")
+        return cls("当前没有启用官方机器人账号。")
 
     @classmethod
     def selection_required(cls, choices: str) -> IdentityLinkingAccountError:
@@ -75,7 +73,7 @@ class IdentityLinkingTokenError(IdentityLinkingError):
 
     @classmethod
     def expired(cls) -> IdentityLinkingTokenError:
-        return cls("关联令牌已过期，请在 OneBot 机器人处重新生成。")
+        return cls("关联令牌已过期，请在另一接入端重新生成。")
 
     @classmethod
     def invalid(cls) -> IdentityLinkingTokenError:
@@ -85,7 +83,7 @@ class IdentityLinkingTokenError(IdentityLinkingError):
 class IdentityLinkingConflictError(IdentityLinkingError):
     @classmethod
     def already_linked(cls) -> IdentityLinkingConflictError:
-        return cls("当前官方身份已经关联到另一个 QQ 账号，请先解除原关联。")
+        return cls("当前官方身份已经关联到另一个数字账号，请先解除原关联。")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +101,7 @@ class IdentityLinkChallenge:
 
 @dataclass(frozen=True, slots=True)
 class IdentityLinkingService:
-    store: SqliteIdentityLinkStore
+    store: IdentityLinkStore
     accounts: Mapping[str, OfficialAccount]
     challenge_ttl_seconds: float = 600.0
     clock: Callable[[], float] = time.time
@@ -172,7 +170,7 @@ class IdentityLinkingService:
         return () if link is None else (link,)
 
     async def linked_onebot_actor(self, actor: ActorRef) -> ActorRef | None:
-        """Resolve an exact, explicitly linked identity to its OneBot actor."""
+        """Resolve an exact, explicitly linked identity to its numeric QQ actor."""
 
         if actor.platform is Platform.ONEBOT:
             _onebot_qq_id(actor)
@@ -180,8 +178,6 @@ class IdentityLinkingService:
         link = await self.store.for_official(_official_identity(actor))
         if link is None:
             return None
-        from ironsbot.core.platform import ActorRef
-
         return ActorRef(Platform.ONEBOT, link.onebot_qq_id)
 
     async def revoke(self, actor: ActorRef) -> int:

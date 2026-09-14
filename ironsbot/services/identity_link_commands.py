@@ -13,7 +13,7 @@ from ironsbot.services.identity_linking import IdentityLinkingError
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.integrations.storage.identity_links import (
+    from ironsbot.services.identity_link_store import (
         CrossPlatformIdentityLink,
     )
     from ironsbot.services.identity_linking import IdentityLinkingService
@@ -88,10 +88,10 @@ class IdentityLinkCommands:
         if not links:
             return "当前账号尚未建立跨平台关联。"
         if context.message.actor.platform is Platform.ONEBOT:
-            lines = ["已关联的 QQ 官方身份："]
+            lines = ["已关联的官方机器人身份："]
             lines.extend(_format_official_link(link) for link in links)
             return "\n".join(lines)
-        return f"当前官方身份已关联 QQ：{_mask_qq_id(links[0].onebot_qq_id)}。"
+        return f"当前官方身份已关联数字账号：{_mask_qq_id(links[0].onebot_qq_id)}。"
 
     async def revoke_text(
         self,

@@ -103,7 +103,7 @@ class PortableCommandRouterError(ValueError):
         command_ids: set[str],
     ) -> PortableCommandRouterError:
         return cls(
-            "QQ Official direct commands have no portable operation: "
+            "official-platform direct commands have no portable operation: "
             + ", ".join(sorted(command_ids))
         )
 
