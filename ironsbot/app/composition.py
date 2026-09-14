@@ -216,15 +216,14 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
     ai_input_routing = AiInputRoutingService(features, command_catalog)
-    identity_links = IdentityLinkCommands(
-        IdentityLinkingService(
-            SqliteIdentityLinkStore(settings.paths.qq_state),
-            {
-                alias: OfficialAccount(alias, account.app_id)
-                for alias, account in settings.bot.qq_official.enabled_accounts.items()
-            },
-        )
+    identity_linking = IdentityLinkingService(
+        SqliteIdentityLinkStore(settings.paths.qq_state),
+        {
+            alias: OfficialAccount(alias, account.app_id)
+            for alias, account in settings.bot.qq_official.enabled_accounts.items()
+        },
     )
+    identity_links = IdentityLinkCommands(identity_linking)
 
     def poke_hint_candidates(
         group_id: int | None,
@@ -296,6 +295,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             max_per_window=settings.features.help.hint_max_per_window,
         ),
         identity_links=identity_links,
+        identity_linking=identity_linking,
         private_extensions=private_extensions,
     )
     matcher_factory = MatcherFactory(
