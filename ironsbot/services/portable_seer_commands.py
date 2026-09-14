@@ -47,6 +47,7 @@ from ironsbot.services.seer.query_commands import (
     TYPE_QUERY,
     pet_image_input,
     pet_query_input,
+    team_player_query_reference,
     team_query_input,
 )
 from ironsbot.services.seer.rank_help import format_rank_help
@@ -65,16 +66,18 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.mintmark import MintmarkQueryService
     from ironsbot.services.seer.peak import PeakQueryService
     from ironsbot.services.seer.pet_query import PetQueryService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.seer.team import SeerTeamQueryService
     from ironsbot.services.seer.type_query import TypeQueryService
 
 
-def build_portable_seer_operations(
+def build_portable_seer_operations(  # noqa: PLR0913 - explicit composition dependencies
     catalog: CommandCatalog,
     seer: SeerQueryResources,
     sessions: PortableQuerySessions,
     features: FeatureService,
+    player_id_resolver: PlayerIdResolver,
     *,
     image_command_texts: frozenset[str] = frozenset(),
 ) -> dict[str, PortableOperation]:
@@ -88,6 +91,7 @@ def build_portable_seer_operations(
         "seer.team.query": build_portable_team_query_operation(
             seer.team_query,
             features,
+            player_id_resolver,
         ),
         "rank.help": build_portable_rank_help_operation(catalog, features),
         "seer.peak.query": build_portable_peak_query_operation(seer.peak_query),
@@ -278,6 +282,7 @@ def build_portable_data_query_operation(
 def build_portable_team_query_operation(
     service: SeerTeamQueryService,
     features: FeatureService,
+    resolver: PlayerIdResolver,
 ) -> PortableOperation:
     """Build the shared team query with normalized actor authorization."""
 
@@ -286,29 +291,66 @@ def build_portable_team_query_operation(
         context: MessageInputContext,
     ) -> OutboundMessage:
         parsed = team_query_input(text)
-        if parsed is None:
+        if parsed is not None and not context.has_member_mentions:
+            return await query_portable_team_ids(
+                service,
+                features,
+                context,
+                service.parse_team_ids(parsed.argument),
+            )
+        reference = team_player_query_reference(text)
+        if reference is None:
             msg = f"catalog accepted input that its team parser rejected: {text!r}"
             raise ValueError(msg)
-        message = context.message
-        result = await service.query(
-            service.parse_team_ids(parsed.argument),
-            TeamQueryActor(
-                actor=message.actor,
-                conversation=(
-                    message.conversation
-                    if message.conversation.kind == "group"
-                    else None
-                ),
-                can_manage=can_manage_group_actor(
-                    features,
-                    message.actor,
-                    message.group_role,
-                ),
-            ),
+        if not features.is_feature_allowed(
+            context.message.actor, context.message.conversation, "seer_team"
+        ):
+            return OutboundMessage.from_text("该功能当前未对你开放。")
+        resolved = resolver.resolve(context, reference, allow_default_binding=False)
+        if resolved.error is not None:
+            return OutboundMessage.from_text(resolved.error)
+        if resolved.player_id is None:
+            msg = "resolved team query has no player ID"
+            raise ValueError(msg)
+        result = await service.query_player_team(
+            resolved.player_id,
+            team_query_actor(features, context),
         )
         return OutboundMessage.from_text(result)
 
     return execute
+
+
+async def query_portable_team_ids(
+    service: SeerTeamQueryService,
+    features: FeatureService,
+    context: MessageInputContext,
+    team_ids: tuple[int, ...],
+) -> OutboundMessage:
+    """Execute direct commands and menu selections through the same team policy."""
+    message = context.message
+    if not features.is_feature_allowed(
+        message.actor, message.conversation, "seer_team"
+    ):
+        return OutboundMessage.from_text("该功能当前未对你开放。")
+    result = await service.query(
+        team_ids,
+        team_query_actor(features, context),
+    )
+    return OutboundMessage.from_text(result)
+
+
+def team_query_actor(
+    features: FeatureService, context: MessageInputContext
+) -> TeamQueryActor:
+    message = context.message
+    return TeamQueryActor(
+        actor=message.actor,
+        conversation=message.conversation
+        if message.conversation.kind == "group"
+        else None,
+        can_manage=can_manage_group_actor(features, message.actor, message.group_role),
+    )
 
 
 def build_portable_rank_help_operation(
