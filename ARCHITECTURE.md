@@ -19,9 +19,10 @@ one business core:
 3. OneBot and QQ Official Bot together.
 
 QQ Official Bot now has a deliberately small production adapter for passive
-group/C2C commands. It uses `nonebot-adapter-qq` in the same process as OneBot,
-opaque OpenIDs, shared business services, and the platform-neutral outbound
-message model. This first slice is not permission to copy OneBot plugins or to
+group/C2C commands. It uses Tencent's `qqbot-agent-sdk`, opaque OpenIDs, shared
+business services, and the platform-neutral outbound message model. The
+application lifecycle owns its transport; NoneBot continues to host OneBot.
+This first slice is not permission to copy OneBot plugins or to
 pretend unsupported identity and proactive-delivery capabilities exist.
 
 Platform identity work follows capability-first scheduling. If a target API
@@ -593,10 +594,14 @@ each other's adapter/event types. A feature may be enabled for one platform,
 both, or neither; an adapter must not emulate an unavailable action by silently
 falling back to a OneBot-only operation.
 
-QQ Official Bot uses `nonebot-adapter-qq`; do not run a separate `botpy.Client`
-alongside NoneBot for the same official bot. Official-specific protocol and
-asset code belongs in `integrations.qq_official`. New commands must first expose
-a platform-neutral service operation and outbound result.
+QQ Official Bot uses `qqbot-agent-sdk`, as specified in
+`docs/specs/2026-09-14-qq-official-tencent-sdk.md`. The composition root and
+application lifecycle own one official transport per AppID; do not additionally
+register `nonebot-adapter-qq` or run `botpy.Client` for that same account.
+Official-specific protocol and asset code belongs in `integrations.qq_official`.
+New commands must first expose a platform-neutral service operation and outbound
+result. The SDK owns short-lived access-token refresh; the retired static Token
+must not be restored as a configuration requirement.
 
 ## QQ Official Capability And Safety Requirements
 
@@ -630,6 +635,66 @@ class DeliveryCapabilities:
 - Record a trace ID, platform, capability decision, and official error code for
   failed deliveries so platform restrictions can be distinguished from product
   bugs.
+
+## Read-Only OneBot Assistance (Target)
+
+An opt-in deployment may use NapCat/OneBot only as an identity and membership
+observer while QQ Official is the sole message sender. This target does not
+change standalone OneBot defaults and is not implemented merely by enabling
+both adapters. It adds no permission to bypass official delivery restrictions.
+NapCat assistance is optional: absence of OneBot, an identity link or a numeric
+QQ account must not block standalone Official startup, ordinary commands or its
+release acceptance. Complete that independent deployment before using the
+observer enhancement as a reason to defer Official validation.
+
+Current implementation is only the isolation slice: `[bot].onebot_observer`
+defaults to false; when enabled, an adapter-level read-only API allowlist rejects
+writes and a OneBot event preprocessor prevents business matcher execution.
+Denied delivery is permanent, not retryable. No identity-link collection,
+correlation or QQ-backed official state lookup is enabled by this setting yet.
+
+- Official events own command execution and retain their original AppID,
+  actor, conversation, message ID and reply deadline. OneBot observations must
+  not execute the same command, consume quota or start a second menu session.
+- A shared identity-link service may supply a verified QQ account for business
+  state lookup. Keep that subject separate from the transport actor; never
+  replace an official ActorRef with a OneBot ActorRef in an incoming message.
+  Unknown associations continue using scoped official identity, not guessed QQs.
+- Links must preserve the full official identity key, including AppID, actor
+  kind and member scope. Group links are separate from user links. A group-member
+  association does not prove a C2C association or an association under another
+  AppID. Nicknames, avatars, timing and identical text are not identity proof.
+- Before implementing automatic correlation, inspect real events from both
+  transports for a documented, trustworthy shared identifier. If none exists,
+  use explicit account-control verification. A challenge must be single-use,
+  expiring and bound to the initiating official identity; copying a public code
+  must not be sufficient to claim another QQ account. Conflicts require explicit
+  resolution, not last-write-wins. Do not log raw identities or challenge secrets.
+- Prefer verified QQ-linked bindings and quota subjects through one shared
+  resolver. Define handling of pre-existing official state before rollout;
+  changing a link must not reset daily usage or silently discard subscriptions.
+  Identity linking does not automatically grant group roles or administrator
+  privileges. Role evidence has its own source, scope and freshness policy.
+- All OneBot sends must be denied at the adapter API boundary in observer mode,
+  including direct send APIs, startup/error notices, scheduled jobs and private
+  extensions. Suppressing normal command handlers or removing one messenger
+  from the platform router is insufficient. Query-only APIs remain available.
+- Official delivery failure must never fall back to OneBot. An observed ordinary
+  group message does not manufacture an official reply context or proactive quota.
+  Observer disconnection must not block unrelated official commands; stale role
+  evidence must not authorize privileged operations.
+
+Implementation order: verify dual-transport evidence; implement and test the
+opt-in observer/send-denial boundary; establish scoped verified identity links;
+integrate shared business-state resolution; run the real dual-transport matrix.
+Reuse existing QQ state storage and namespace migrations when persistence is
+needed. Do not add a database or platform-specific business branch per feature.
+
+Acceptance must cover zero OneBot sends across all entry paths, exactly one
+business execution, link conflicts/revocation, AppID/member/C2C isolation,
+unchanged official reply targets, no quota reset, observer outage, and unchanged
+standalone OneBot behavior. Mocked correlation is not proof of a real identity
+link. This target is separate from the existing passive Official release gate.
 
 ## Reusable Input And Command Contracts
 
