@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,6 +23,16 @@ from ironsbot.services.portable_query_sessions import (
 )
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
+
+
+def test_portable_menu_rejects_mismatched_labels() -> None:
+    with pytest.raises(PortableQuerySessionError, match="labels"):
+        PortableMenuSpec(
+            choices=("one", "two"),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("choose"),
+            labels=("one",),
+        )
 
 
 @dataclass(slots=True)
