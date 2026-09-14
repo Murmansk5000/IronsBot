@@ -22,6 +22,7 @@ def test_all_reference_urls_are_available_by_default() -> None:
         SeerInfoReference.WEEKLY_PREVIEW: "/preview",
         SeerInfoReference.BILIBILI_HISTORY: "/bilibili",
         SeerInfoReference.PEAK_POOL: "/peak/pvpban",
+        SeerInfoReference.PEAK_MASTER_POOL: "/peak/pvpcostmode",
         SeerInfoReference.PEAK_VOTE: "/peak/pvpvote",
     }
     for reference, suffix in expected.items():

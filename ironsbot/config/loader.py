@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import tomllib
 
+from ironsbot.config.models.ai import AI_ENDPOINT_NAME_PATTERN
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.seer_ids import is_valid_player_id
@@ -21,9 +22,12 @@ CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
 QQ_OFFICIAL_SECRET_ENV_PREFIX = "QQ_OFFICIAL_SECRET_"
+AI_ENDPOINT_KEY_SECRET_ERROR = (
+    "ai.endpoints[{index}].api_key is secret and must be set with "
+    "AI_KEY_<ENDPOINT_NAME>"
+)
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
-    ("AI_KEY", ("ai", "api_key")),
     ("SENDPIC_CNB_TOKEN", ("messaging", "sendpic", "cnb_token")),
     ("GITHUB_WORKFLOW_TOKEN", ("operations", "data_sync", "github_token")),
     (
@@ -35,6 +39,31 @@ _SECRET_ENV_PATHS = (
         ("operations", "docker_update", "registry_token"),
     ),
 )
+
+
+def _inject_ai_endpoint_keys(
+    data: dict[str, Any],
+    *,
+    env: Mapping[str, str],
+) -> None:
+    ai = data.get("ai")
+    if not isinstance(ai, dict):
+        return
+    endpoints = ai.get("endpoints", [])
+    if not isinstance(endpoints, list):
+        return
+
+    for index, endpoint in enumerate(endpoints):
+        if not isinstance(endpoint, dict):
+            continue
+        if "api_key" in endpoint:
+            raise ValueError(AI_ENDPOINT_KEY_SECRET_ERROR.format(index=index))
+        name = str(endpoint.get("name") or "").strip()
+        if not AI_ENDPOINT_NAME_PATTERN.fullmatch(name):
+            continue
+        env_name = f"AI_KEY_{name.upper()}"
+        if (value := env.get(env_name)) is not None:
+            endpoint["api_key"] = value
 
 
 def _inject_qq_official_secrets(
@@ -242,6 +271,7 @@ def load_settings(
             path=field_path,
             env=values,
         )
+    _inject_ai_endpoint_keys(data, env=values)
     _inject_qq_official_secrets(data, env=values)
     _inject_player_account_passwords(data, env=values)
     return Settings.model_validate(data)
