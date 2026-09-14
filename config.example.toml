@@ -90,8 +90,8 @@ app_id = ""
 #     the required platform permission. Team-resource subscriptions require it.
 # ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
 proactive_messages = false
-# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY.
-# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
+# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY_<ENDPOINT_NAME>.
+# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY_<端点名>。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 # EN: C2C user_openids with superuser bypass. These are not QQ numbers.
 # ZH: 私聊超级管理员的 user_openid；这里不是 QQ 号。
@@ -341,24 +341,6 @@ text = "火火手册链接：{url}"
 append_to_push = true
 
 [ai]
-# Default: "https://api.deepseek.com"
-# EN: OpenAI-compatible AI API base URL.
-# ZH: OpenAI 兼容 AI 接口地址。
-# Example: "https://api.openai.com/v1"
-base_url = "https://api.deepseek.com"
-
-# Default: "deepseek-v4-pro"
-# EN: AI chat model name.
-# ZH: AI 聊天模型名称。
-# Example: "deepseek-chat"
-model = "deepseek-v4-pro"
-
-# Default: []
-# EN: Backup models tried in order when the preferred model fails.
-# ZH: 首选模型失败时按顺序尝试的备用模型；全部失败后才向用户报错。
-# Example: ["deepseek-chat", "gpt-5.4"]
-fallback_models = []
-
 # Default: built-in IronsBot prompt.
 # EN: System prompt used for AI chat.
 # ZH: AI 聊天系统提示词。
@@ -443,6 +425,18 @@ admin_notice_cooldown_seconds = 600.0
 # ZH: 是否启用 AI 意图动作。
 # Example: false
 intent_actions_enabled = true
+
+# OpenAI-compatible endpoints are tried in TOML order. Keys must be set only
+# in the environment as AI_KEY_<UPPERCASE_ENDPOINT_NAME>, never in this file.
+# EN: Each endpoint tries models in list order before moving to the next endpoint.
+# ZH: 按端点和模型列表顺序回退；密钥只放环境变量。
+
+[[ai.endpoints]]
+# EN: Stable endpoint name; corresponds to AI_KEY_DEEPSEEK.
+# ZH: 稳定端点名，对应环境变量 AI_KEY_DEEPSEEK。
+name = "deepseek"
+base_url = "https://api.deepseek.com"
+models = ["deepseek-v4-pro"]
 
 # EN: Intent actions are configured by ID under [ai.intent_actions.<id>].
 # Omitted fields inherit built-in defaults for known actions.
@@ -1104,6 +1098,12 @@ sections = ["basic", "resource", "text"]
 merge_connected = true
 
 [seer.rank]
+# Default: omitted/null.
+# EN: Leave unset to follow the official peak season automatically.
+#     Set only as a temporary diagnostic override.
+# ZH: 留空时自动跟随官方巅峰赛季；仅在临时排查时手动覆盖。
+# peak_subkey = 20260717
+
 # 这里有三种“范围”不要混：
 # - limit：已知分数时，二分查找最多认为前多少名是可搜索范围。
 # - online_limit：不知道分数时，在线从前往后扫的最大范围。
@@ -1201,12 +1201,6 @@ total_timeout_seconds = 60
 # Default: 1; EN: Retries for a timed-out page after other boards get a turn.
 # ZH: 单页超时后让出轮次，其他榜轮完后最多重试次数。
 page_retry_count = 1
-# Default: omitted/null.
-# EN: Leave unset to follow the official peak season automatically.
-#     Set only as a temporary diagnostic override.
-# ZH: 留空时自动跟随官方巅峰赛季；仅在临时排查时手动覆盖。
-# peak_subkey = 20260717
-
 [seer.rank.page_refresh]
 # 后台刷榜只用于预热缓存，加快后续查询；不会把玩家计入“样本”。
 # 默认使用“带随机抖动的间隔任务”，避免固定整点高频访问。
@@ -1485,6 +1479,14 @@ url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-lates
 fingerprint_url = "https://github.com/Murmansk5000/IronsBot/releases/download/alias-db-latest/aliases-data.sqlite.sha256"
 interval_minutes = 60
 local_path = "data/aliases-data.sqlite"
+
+# EN: Optional ordinary server-status command override; example only, not defaults.
+# Uncomment both lines to replace the entire ordinary-command list.
+# Administrator commands and their permissions are unchanged.
+# ZH: 可选普通开服状态口令示例，并非默认列表；同时取消下方两行注释才生效，
+# 将整体替换普通口令列表，不改变管理员口令或权限。
+# [operations.server_status]
+# commands = ["开服了吗"]
 
 [operations.headless]
 # EN: Connection, heartbeat, timeout, and reconnect parameters for every public

@@ -226,7 +226,7 @@ def plugin_contribution(
 ) -> PluginContribution:
     """Declare AI-chat command visibility and OneBot matcher ownership."""
 
-    enabled = bool(settings.ai.api_key.strip())
+    enabled = settings.ai.ai_enabled
     return PluginContribution(
         id="ai_chat",
         features=frozenset({Feature.AI_CHAT, Feature.ADMIN_NOTICE}),
