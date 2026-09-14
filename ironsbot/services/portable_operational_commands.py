@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.messaging.meeting import build_meeting_reply
+from ironsbot.services.operations.docker_update import (
+    DOCKER_MAINTENANCE_OPTIONS,
+    DockerMaintenanceOption,
+    docker_maintenance_menu_text,
+)
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 
@@ -98,8 +103,9 @@ class _PortableDataSyncOperations:
 
 def build_portable_docker_operations(
     service: DockerUpdateService,
+    sessions: PortableQuerySessions,
 ) -> Mapping[str, PortableOperation]:
-    """Bind read-only Docker maintenance that is safe on every transport."""
+    """Bind Docker maintenance with restart work gated by reply delivery."""
 
     async def check_image(
         text: str,
@@ -112,7 +118,39 @@ def build_portable_docker_operations(
 
         return await progress_operation_reply(check)
 
-    return {"docker_update.image_check": check_image}
+    async def open_maintenance(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+
+        async def select(option: DockerMaintenanceOption) -> PortableReply:
+            message, action = await service.prepare_maintenance(option.choice)
+
+            async def execute() -> OutboundMessage:
+                await service.execute_restart(action)
+                return OutboundMessage.from_text("机器人维护操作已提交。")
+
+            return PortableReply(
+                OutboundMessage.from_text(message),
+                follow_up=execute,
+            )
+
+        return sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=DOCKER_MAINTENANCE_OPTIONS,
+                select=select,
+                prompt=OutboundMessage.from_text(docker_maintenance_menu_text()),
+                exit_message="已退出机器人维护。",
+            ),
+        )
+
+    return {
+        "docker_update.restart": open_maintenance,
+        "docker_update.image_update": open_maintenance,
+        "docker_update.image_check": check_image,
+    }
 
 
 def build_portable_server_status_operations(
