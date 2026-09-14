@@ -24,6 +24,7 @@ def team_resource_command_contracts(
 
     if not enabled:
         return ()
+    matches_query = normalized_command_input_matcher(query_commands)
     return (
         *commands_from_rows(
             "team_resource",
@@ -33,11 +34,12 @@ def team_resource_command_contracts(
                 (
                     "team_resource.query",
                     query_commands,
-                    "查看当前会话订阅战队的信息和资源",
+                    "查看绑定战队和当前会话订阅战队的概览，输入编号查看详情",
                     {
                         "show_in_poke": True,
-                        "routing_matcher": normalized_command_input_matcher(
-                            query_commands
+                        "routing_matcher": lambda text, context: (
+                            not context.has_member_mentions
+                            and matches_query(text, context)
                         ),
                     },
                 ),

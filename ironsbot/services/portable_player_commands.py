@@ -8,9 +8,11 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.semantic_requests import ActionDefinition, SemanticTarget
 from ironsbot.services.operations.request_feedback import request_feedback_scope
 from ironsbot.services.portable_query_sessions import PortableTextInputSpec
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
+from ironsbot.services.portable_seer_commands import query_portable_team_ids
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
@@ -44,16 +46,19 @@ if TYPE_CHECKING:
         PendingPlayerQuery,
         PlayerQueryResult,
     )
+    from ironsbot.services.seer.team import SeerTeamQueryService
 
 _INVALID_BINDING_CONFIRMATION = "binding session accepted an invalid confirmation"
 
 
-def build_portable_player_operations(
+def build_portable_player_operations(  # noqa: PLR0913 - explicit composition dependencies
     service: PlayerService,
     resolver: PlayerIdResolver,
     sessions: PortableQuerySessions,
     features: FeatureService | None = None,
     extensions: PlayerDetailExtensionRegistry | None = None,
+    *,
+    team_query: SeerTeamQueryService | None = None,
 ) -> dict[str, PortableOperation]:
     owner = _PortablePlayerOperations(
         service,
@@ -61,6 +66,7 @@ def build_portable_player_operations(
         sessions,
         features,
         extensions or PlayerDetailExtensionRegistry(),
+        team_query,
     )
     operations: dict[str, PortableOperation] = {
         "seer.player.query": owner.query,
@@ -84,6 +90,7 @@ class _PortablePlayerOperations:
     sessions: PortableQuerySessions
     features: FeatureService | None
     extensions: PlayerDetailExtensionRegistry
+    team_query: SeerTeamQueryService | None
 
     async def query(
         self,
@@ -333,8 +340,21 @@ def _prepare_player_menu(
     )
 
     async def select(
-        selection: PlayerShortcutCommand | PlayerDetailExtensionAction,
+        selection: PlayerShortcutCommand
+        | PlayerDetailExtensionAction
+        | _PlayerTeamSelection,
     ) -> PortableReply:
+        if isinstance(selection, _PlayerTeamSelection):
+            if owner.team_query is None or owner.features is None:
+                return _text_reply("该功能当前未对你开放。")
+            return PortableReply(
+                await query_portable_team_ids(
+                    owner.team_query,
+                    owner.features,
+                    context,
+                    (selection.team_id,),
+                )
+            )
         return await _execute_player_detail(
             owner.service,
             context,
@@ -342,7 +362,11 @@ def _prepare_player_menu(
             player_id=pending.player_id,
         )
 
-    choices: list[QueryChoice[PlayerShortcutCommand | PlayerDetailExtensionAction]] = [
+    choices: list[
+        QueryChoice[
+            PlayerShortcutCommand | PlayerDetailExtensionAction | _PlayerTeamSelection
+        ]
+    ] = [
         QueryChoice(
             name=f"【{request.menu_label}】",
             description="",
@@ -362,6 +386,34 @@ def _prepare_player_menu(
         )
         for action in visible_extensions
     )
+    snapshot = pending.base_snapshot
+    if (
+        snapshot is not None
+        and snapshot.team_id > 0
+        and owner.team_query is not None
+        and owner.features is not None
+        and owner.features.is_feature_allowed(
+            context.message.actor,
+            context.message.conversation,
+            "seer_team",
+        )
+    ):
+        choices.append(
+            QueryChoice(
+                name=(
+                    f"【战队】{snapshot.team_name.strip() or '未知战队'}"
+                    f"（战队ID：{snapshot.team_id}）"
+                ),
+                description="",
+                value=_PlayerTeamSelection(snapshot.team_id),
+                semantic_target=SemanticTarget(
+                    str(snapshot.team_id), f"战队 {snapshot.team_id}"
+                ),
+                semantic_action=ActionDefinition(
+                    "seer.team.query", "战队查询", cooldown_key="seer_team"
+                ),
+            )
+        )
     menu = owner.sessions.offer(
         context,
         QueryResult(choices=tuple(choices)),
@@ -380,6 +432,11 @@ def _prepare_player_menu(
         )
 
     return PortableReply(menu, on_delivered=delivered)
+
+
+@dataclass(frozen=True, slots=True)
+class _PlayerTeamSelection:
+    team_id: int
 
 
 async def _execute_player_detail(
