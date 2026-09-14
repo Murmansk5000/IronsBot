@@ -277,7 +277,7 @@ def _text_operation(action: MessageReplyAction) -> PortableOperation:
         context: MessageInputContext,
     ) -> OutboundMessage:
         del text, context
-        return OutboundMessage.from_text(action.message)
+        return OutboundMessage.from_text("\n".join(action.messages))
 
     return execute
 

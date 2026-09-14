@@ -12,6 +12,21 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 
 
+class CompactedDynamicContent(NamedTuple):
+    text: str | None
+    generated_by_ai: bool = False
+
+
+def format_compacted_dynamic_content(
+    compacted: CompactedDynamicContent,
+) -> str | None:
+    if compacted.text is None:
+        return None
+    if compacted.generated_by_ai:
+        return f"本条动态文本过长，AI总结如下：\n{compacted.text}"
+    return compacted.text
+
+
 class DynamicHistoryRecord(NamedTuple):
     dynamic_id: str
     uid: int

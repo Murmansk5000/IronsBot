@@ -2,8 +2,10 @@
 import asyncio
 import logging
 import struct
+import time
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from ironsbot.core.binary import BufferReader
 from ironsbot.core.tasks import OperationDeadline
@@ -74,6 +76,7 @@ class UnityPeakFetchResult:
     available_modes: frozenset[str]
     mode_errors: tuple[tuple[str, str], ...] = ()
     fetched_at: float | None = None
+    query_id: str = "-"
 
     def error_for(self, mode: str) -> str | None:
         return dict(self.mode_errors).get(mode)
@@ -130,16 +133,68 @@ async def fetch_unity_part_one(game: Any, player_id: int) -> UnityPartOneInfo:
 
 
 async def fetch_unity_peak(game: Any, player_id: int) -> UnityPeakInfo:
+    query_id = uuid4().hex[:16]
     chunks: list[bytes] = []
-    for param in PEAK_PARAMS:
-        _head, body = await game.send_and_wait(
-            USER_FOREVER_VALUE_CMD,
+    for mode, params in PEAK_PARAMS_BY_MODE:
+        for param in params:
+            chunks.append(
+                await _fetch_peak_value(
+                    game, player_id, param, query_id=query_id, mode=mode
+                )
+            )
+            await asyncio.sleep(PEAK_QUERY_DELAY_SECONDS)
+    info = parse_unity_peak(b"".join(chunks))
+    logger.info(
+        "peak base complete query=%s player_id=%s fields=%s", query_id, player_id, info
+    )
+    return info
+
+
+async def _fetch_peak_value(
+    game: Any,
+    player_id: int,
+    param: int,
+    *,
+    query_id: str,
+    mode: str,
+) -> bytes:
+    started = time.monotonic()
+    logger.info(
+        "peak field request query=%s player_id=%s mode=%s command=%s param=%s",
+        query_id,
+        player_id,
+        mode,
+        USER_FOREVER_VALUE_CMD,
+        param,
+    )
+    try:
+        head, body = await game.send_and_wait(USER_FOREVER_VALUE_CMD, player_id, param)
+        value = int(body.value) & 0xFFFFFFFF
+    except BaseException as error:
+        logger.exception(
+            "peak field failed query=%s player_id=%s mode=%s param=%s "
+            "elapsed=%.3fs error_type=%s",
+            query_id,
             player_id,
+            mode,
             param,
+            time.monotonic() - started,
+            type(error).__name__,
         )
-        chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
-        await asyncio.sleep(PEAK_QUERY_DELAY_SECONDS)
-    return parse_unity_peak(b"".join(chunks))
+        raise
+    logger.info(
+        "peak field response query=%s player_id=%s mode=%s param=%s "
+        "worker=%s elapsed=%.3fs value=%s hex=%08x",
+        query_id,
+        player_id,
+        mode,
+        param,
+        getattr(head, "user_id", None),
+        time.monotonic() - started,
+        value,
+        value,
+    )
+    return struct.pack("!I", value)
 
 
 async def fetch_unity_peak_partial(
@@ -151,6 +206,7 @@ async def fetch_unity_peak_partial(
     """Read peak data mode by mode without turning a partial timeout into zeros."""
 
     deadline = OperationDeadline.after(timeout_seconds)
+    query_id = uuid4().hex[:16]
     # Keep every mode in its protocol-defined slot. If an earlier mode times
     # out, compacting later values would reinterpret wild/expert fields as a
     # different mode when the complete structure is parsed below.
@@ -171,15 +227,19 @@ async def fetch_unity_peak_partial(
             for param in params:
                 failed_param = param
                 remaining = mode_deadline.remaining()
-                _head, body = await asyncio.wait_for(
+                chunk = await asyncio.wait_for(
                     mode_observation.observe(
-                        lambda param=param: game.send_and_wait(
-                            USER_FOREVER_VALUE_CMD, player_id, param
+                        lambda param=param, mode=mode: _fetch_peak_value(
+                            game,
+                            player_id,
+                            param,
+                            query_id=query_id,
+                            mode=mode,
                         )
                     ),
                     timeout=remaining,
                 )
-                mode_chunks.append(struct.pack("!I", int(body.value) & 0xFFFFFFFF))
+                mode_chunks.append(chunk)
                 if param != params[-1]:
                     await asyncio.sleep(
                         mode_deadline.remaining(PEAK_QUERY_DELAY_SECONDS)
@@ -210,4 +270,5 @@ async def fetch_unity_peak_partial(
         available_modes=frozenset(available_modes),
         mode_errors=tuple(mode_errors),
         fetched_at=observation.fetched_at,
+        query_id=query_id,
     )
