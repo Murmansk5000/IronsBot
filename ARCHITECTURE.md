@@ -18,11 +18,13 @@ one business core:
 2. QQ Official Bot only; and
 3. OneBot and QQ Official Bot together.
 
-QQ Official Bot now has a deliberately small production adapter for passive
-group/C2C commands. It uses `nonebot-adapter-qq` in the same process as OneBot,
-opaque OpenIDs, shared business services, and the platform-neutral outbound
-message model. This first slice is not permission to copy OneBot plugins or to
-pretend unsupported identity and proactive-delivery capabilities exist.
+QQ Official Bot now has a deliberately small production transport for passive
+group/C2C commands. It uses Tencent's `qqbot-agent-sdk` as an application-owned
+resource alongside, but not inside, the NoneBot OneBot host. Both transports
+share opaque platform identities, business services, and the platform-neutral
+outbound message model. This first slice is not permission to copy OneBot
+plugins or to pretend unsupported identity and proactive-delivery capabilities
+exist.
 
 Platform identity work follows capability-first scheduling. If a target API
 cannot faithfully express a QQ number, a direct mention, an account binding, or
@@ -593,10 +595,25 @@ each other's adapter/event types. A feature may be enabled for one platform,
 both, or neither; an adapter must not emulate an unavailable action by silently
 falling back to a OneBot-only operation.
 
-QQ Official Bot uses `nonebot-adapter-qq`; do not run a separate `botpy.Client`
-alongside NoneBot for the same official bot. Official-specific protocol and
-asset code belongs in `integrations.qq_official`. New commands must first expose
-a platform-neutral service operation and outbound result.
+QQ Official Bot uses Tencent's `qqbot-agent-sdk`; it is not a NoneBot adapter.
+NoneBot owns only the OneBot/NapCat transport. The application composition root
+starts and stops each official AppID as an independent SDK resource alongside
+the NoneBot host. Official-specific protocol and asset code belongs in
+`integrations.qq_official`. New commands must first expose a platform-neutral
+service operation and outbound result.
+
+Each official AppID has an independent lifecycle state. Starting a WebSocket
+thread is not readiness: only an authenticated `READY` or successful `RESUMED`
+dispatch makes the account healthy. Disconnects enter `reconnecting`; optional
+startup failures remain `degraded`, while required failures propagate through
+the application resource-startup boundary. Shutdown stops every SDK WebSocket
+before shared HTTP and database resources are closed.
+
+Inbound official message IDs are claimed in persistent SQLite before business
+dispatch. The claim key includes AppID and event type, so SDK replay, Resume,
+or process restart cannot execute the same command twice while unrelated bot
+accounts remain isolated. This integration concern must not be reimplemented
+inside command handlers or business services.
 
 ## QQ Official Capability And Safety Requirements
 
@@ -614,6 +631,7 @@ class DeliveryCapabilities:
     supports_group_context: bool
     supports_private_context: bool
     supports_images: bool
+    supports_interactive_prompts: bool = False
 ```
 
 - Check capabilities and official policy before scheduling or delivering a
@@ -622,11 +640,24 @@ class DeliveryCapabilities:
   never hide an expired official reply behind a generic retry loop.
 - Keep OneBot numeric QQ IDs separate from official open IDs. There is no
   implicit cross-platform identity mapping.
+- Cross-platform identity may only be linked after the same user explicitly
+  confirms control on both transports. The preferred flow is a short-lived,
+  single-use signed link or button issued from the OneBot side and confirmed on
+  the official side; a typed code is only a capability fallback. Nicknames,
+  avatars, message timing, `union_openid`, or any other heuristic must not be
+  used to infer a numeric QQ ID. Links must be revocable and scoped by AppID and
+  official identity kind.
 - Store official targets with their platform and scope. Never treat an official
   identifier as a QQ number or reuse a OneBot group alias for it.
 - Treat mentions, callbacks, message references, and media as adapter-specific
   capabilities. A command that needs an unavailable capability must degrade
   safely, not guess.
+- QQ Official URL images use the SDK's server-fetch upload and binary images use
+  its chunked local-file uploader through short-lived temporary files. The SDK
+  1.2.2 high-level API does not expose the returned TTL, so `file_info` is used
+  once immediately and is not cached with a guessed lifetime. Platform size and
+  daily-quota rejections degrade to explicit text while unexpected failures stay
+  observable as delivery errors.
 - Record a trace ID, platform, capability decision, and official error code for
   failed deliveries so platform restrictions can be distinguished from product
   bugs.
