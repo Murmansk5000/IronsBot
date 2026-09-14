@@ -424,6 +424,7 @@ class BotConfig(BaseModel):
     plugin_manifest: Literal["full", "core"] = "full"
     superusers: OneBotReferenceList = Field(default_factory=list)
     onebot_token: str = Field(default="", exclude=True, repr=False)
+    onebot_observer: bool = False
     qq_official: QQOfficialConfig = Field(default_factory=QQOfficialConfig)
     matcher_priority: MatcherPriorityConfig = Field(
         default_factory=MatcherPriorityConfig
