@@ -112,8 +112,9 @@ def build_common_components(
                     account.secret,
                     required=account.required,
                     custom_keyboards=account.custom_keyboards,
+                    label=alias,
                 )
-                for account in settings.bot.qq_official.enabled_accounts.values()
+                for alias, account in settings.bot.qq_official.enabled_accounts.items()
             ),
             http_client=http_client,
             session_root=cache_root / "qq_official",
