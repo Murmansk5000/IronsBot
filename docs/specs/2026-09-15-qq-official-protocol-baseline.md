@@ -101,6 +101,14 @@ Template keyboards cannot carry a dynamic per-session token, and custom
 keyboards are currently invite-only. The implementation must therefore support a
 reliable text fallback before claiming no-input confirmation as accepted.
 
+The shared runtime now exposes `PromptSession` and `PromptChoice`. Portable
+query menus bind a cryptographically random session ID to the initiating AppID,
+actor, conversation and message, and button action data and numeric text input
+resolve through the same selection callback. Non-persistent prompts are consumed
+exactly once. The Tencent keyboard
+renderer and interaction acknowledgement remain open, so this contract is not
+yet evidence that buttons are enabled for an application.
+
 ## Identity-Link Target
 
 Cross-platform linking is optional. Public QQ Official features continue to work
@@ -159,13 +167,14 @@ identity or ownership of the game account.
 | 2026-09-15 | Addressed-input routing | AI routing, command ownership, OneBot matcher, portable router and QQ Official tests | Both transports share command-first chat/intent policy; duplicate OneBot group matcher removed |
 | 2026-09-15 | Passive-reply policy | Reply allocator, official identity, outbound messenger and SDK runtime tests | Event timestamps define deadlines; group and C2C budgets are separate; active live keys cannot be evicted and reused |
 | 2026-09-15 | Structured API failures and mentions | 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | HTTP failures retain status/code/trace without parsing exception strings; transport failures remain typed; current mention markup is escaped |
+| 2026-09-15 | Shared prompt identity | 52 portable-command tests and 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | Numeric input and opaque button action data resolve through one actor/conversation-bound session; Tencent keyboard delivery remains open |
 
 ## Progress
 
 ```text
-Program  [███▌░░░░░░] 35%  fixed weights; typed failures and current mentions completed
+Program  [███▊░░░░░░] 38%  fixed weights; shared finite-prompt identity completed
 Phase    [██████████] 100%  protocol baseline documented
-Current  [██████░░░░] 60%  reply protocol; next: shared interactive prompt sessions
+Current  [███████▌░░] 75%  reply protocol; next: Tencent keyboard delivery and callback acknowledgement
 ```
 
 Only verified and committed work counts toward program progress.

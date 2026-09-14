@@ -105,6 +105,38 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_button_and_text_inputs_share_one_bound_prompt_session() -> None:
+    sessions = PortableQuerySessions()
+    owner = _context("member-openid")
+    other_member = _context("other-openid")
+    selected: list[str] = []
+
+    async def select(value: str) -> OutboundMessage:
+        selected.append(value)
+        return OutboundMessage.from_text(value)
+
+    sessions.offer_menu(
+        owner,
+        PortableMenuSpec(
+            choices=("yes", "no"),
+            select=select,
+            prompt=OutboundMessage.from_text("choose"),
+        ),
+    )
+    prompt = sessions.active_prompt(owner)
+    assert prompt is not None
+    action = prompt.action_data(prompt.choices[0])
+
+    assert await sessions.select_action(action, other_member) is None
+    result = await sessions.select_action(action, owner)
+    assert isinstance(result, OutboundMessage)
+    assert _text(result) == "yes"
+    assert selected == ["yes"]
+    assert await sessions.select_action(action, owner) is None
+    assert await sessions.select("1", owner) is None
+
+
+@pytest.mark.asyncio
 async def test_selection_can_exit_and_expires_without_persistence() -> None:
     clock = _Clock()
     sessions = PortableQuerySessions(ttl_seconds=10, now=clock)
