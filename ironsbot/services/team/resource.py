@@ -43,11 +43,20 @@ logger = logging.getLogger(__name__)
 TEAM_RESOURCE_FEATURE = "team_resource_subscription"
 TEAM_RESOURCE_JOB_PREFIX = "team_resource_scan_"
 
+
 class TeamResourceResult(NamedTuple):
     team_id: int
     team_name: str
     message: str
     resource: int
+    member_count: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TeamOverviewItem:
+    team_id: int
+    name: str
+    description: str
 
 
 class TeamResourceQueryError(RuntimeError):
@@ -286,16 +295,36 @@ class TeamResourceService:
             "还可以继续发送“订阅战队123456”添加更多战队。"
         )
 
-    async def query_target_messages(
+    async def query_overview(
         self,
         target: TeamResourceSubscriptionTarget,
-    ) -> list[str]:
-        return await self.query_messages(
-            (
-                subscription.team_id
-                for subscription in self._subscriptions_for_target(target)
-            ),
-        )
+        *,
+        first_team_id: int | None = None,
+    ) -> tuple[TeamOverviewItem, ...]:
+        names = {
+            item.team_id: item.team_name
+            for item in self._subscriptions_for_target(target)
+        }
+        team_ids = dict.fromkeys((*((first_team_id,) if first_team_id else ()), *names))
+        items = []
+        for team_id in team_ids:
+            try:
+                result = await self.query(team_id)
+            except TeamResourceQueryError as error:  # noqa: PERF203 - preserve each failed team
+                items.append(
+                    TeamOverviewItem(team_id, names.get(team_id, ""), str(error))
+                )
+            else:
+                members = result.member_count
+                items.append(
+                    TeamOverviewItem(
+                        team_id,
+                        result.team_name,
+                        f"人数：{members if members is not None else '暂未获取'}"
+                        f"｜资源：{result.resource}",
+                    )
+                )
+        return tuple(items)
 
     async def query_messages(
         self,
@@ -385,6 +414,7 @@ class TeamResourceService:
             info.name,
             format_team_info(info, {"basic", "resource"}),
             info.score,
+            info.member_count,
         )
 
     async def _query_message(
