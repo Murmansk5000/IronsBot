@@ -1028,6 +1028,34 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
 
 
 @pytest.mark.asyncio
+async def test_qq_official_delivery_sends_additional_messages_in_order() -> None:
+    event = _sdk_event()
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    reply = PortableReply(
+        OutboundMessage.from_text("first"),
+        additional_messages=(
+            OutboundMessage.from_text("second"),
+            OutboundMessage.from_text("third"),
+        ),
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(messenger, incoming, reply)
+
+    expected_calls = [
+        ("message-id", 1),
+        ("message-id", 2),
+        ("message-id", 3),
+    ]
+    assert bot.sent == len(expected_calls)
+    assert [call[3:] for call in bot.calls] == expected_calls
+
+
+@pytest.mark.asyncio
 async def test_qq_official_delivery_sends_deferred_result_after_ack() -> None:
     event = _sdk_event(content="/刷新样本")
     incoming = qq_official_incoming_message(event, account_id="example-app")

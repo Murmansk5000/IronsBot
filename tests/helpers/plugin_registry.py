@@ -331,6 +331,7 @@ def build_test_plugin_registry(
                 ),
             ),
             ai=object(),
+            ai_intent_actions=object(),
             ai_input_routing=AiInputRoutingService(runtime.features, commands),
             ai_startup_check=_noop_startup,
             data_sync=SimpleNamespace(startup=_noop_startup),
@@ -376,8 +377,7 @@ def build_test_plugin_registry(
             settings=config,
             service=resources.ai,
             features=runtime.features,
-            promotions=resources.promotions,
-            team_resource=resources.team_resource,
+            executor=resources.ai_intent_actions,
             input_routing=resources.ai_input_routing,
         ),
         server_status_plugin_contribution(

@@ -275,6 +275,11 @@ async def deliver_qq_official_reply(
         _log_delivery_failure(incoming, result, stage="initial")
         return
     reply.delivered()
+    for additional in reply.additional_messages:
+        additional_result = await messenger.reply(context, additional)
+        if not additional_result.delivered:
+            _log_delivery_failure(incoming, additional_result, stage="additional")
+            return
     if reply.follow_up is None:
         return
     try:

@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.services.ai.input_routing import AiInputDecision, AiInputRoutingService
+from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.ai.source_context import format_ai_source_context
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -64,6 +65,7 @@ if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.ai.actions import AiIntentActionExecutor
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
@@ -81,6 +83,12 @@ if TYPE_CHECKING:
     from ironsbot.services.team.resource import TeamResourceService
 
 
+class PortableCommandRouterError(ValueError):
+    @classmethod
+    def missing_ai_intent_executor(cls) -> PortableCommandRouterError:
+        return cls("portable AI intent commands require an action executor")
+
+
 class PortableCommandRouter:
     """Dispatch catalog-owned commands without importing a platform adapter."""
 
@@ -91,6 +99,7 @@ class PortableCommandRouter:
         features: FeatureService,
         *,
         ai: AiService,
+        ai_intent_actions: AiIntentActionExecutor | None = None,
         ai_input_routing: AiInputRoutingService,
         addressed_input_hints: AddressedInputHintService,
         query_sessions: PortableQuerySessions | None = None,
@@ -105,6 +114,11 @@ class PortableCommandRouter:
         self._operations = dict(operations)
         self._features = features
         self._ai = ai
+        if ai_intent_actions is None and any(
+            command_id.startswith("ai_intent.") for command_id in catalog.command_ids
+        ):
+            raise PortableCommandRouterError.missing_ai_intent_executor()
+        self._ai_intent_actions = ai_intent_actions
         self._ai_input_routing = ai_input_routing
         self._addressed_input_hints = addressed_input_hints
         self._query_sessions = query_sessions or PortableQuerySessions()
@@ -125,13 +139,11 @@ class PortableCommandRouter:
                 context=command_context,
             )
             is not None
-        ) or _portable_fallback_recognized(
-            self._ai_input_routing.decide(
-                context,
-                command_context,
-                normalized_text=command,
-            )
-        )
+        ) or self._ai_input_routing.decide(
+            context,
+            command_context,
+            normalized_text=command,
+        ).recognized
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
         self,
@@ -246,12 +258,28 @@ class PortableCommandRouter:
             command_context,
             normalized_text=prompt,
         )
+        message = context.message
+        if decision.try_intent and self._ai_intent_actions is not None:
+            source_context = format_ai_source_context(context)
+            action = await self._ai.classify_intent(
+                prompt,
+                actor=message.actor,
+                conversation=message.conversation,
+                source_context=source_context,
+            )
+            if action is not None:
+                messages = await self._ai_intent_actions.execute(
+                    action,
+                    prompt,
+                    source_context=source_context,
+                )
+                if messages:
+                    return PortableReply(messages[0], additional_messages=messages[1:])
         if decision.try_chat:
             if not prompt:
                 return PortableReply(
                     OutboundMessage.from_text("你想聊什么？可以直接写问题。")
                 )
-            message = context.message
             reply = await self._ai.chat_reply(
                 actor=message.actor,
                 conversation=message.conversation,
@@ -285,6 +313,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     player_id_resolver: PlayerIdResolver,
     features: FeatureService,
     ai: AiService,
+    ai_intent_actions: AiIntentActionExecutor | None = None,
     addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
     activity: ActivityService | None = None,
@@ -464,6 +493,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         operations,
         features,
         ai=ai,
+        ai_intent_actions=ai_intent_actions,
         ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=addressed_input_hints,
         query_sessions=sessions,
@@ -501,10 +531,6 @@ def _command_context(context: MessageInputContext) -> CommandContext:
         group_role=message.group_role,
         member_mentions=message.direct_mentions,
     )
-
-
-def _portable_fallback_recognized(decision: AiInputDecision) -> bool:
-    return decision.try_chat or decision.offer_help_hint
 
 
 def _command_text(text: str) -> str:
