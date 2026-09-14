@@ -65,12 +65,12 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
                 MessageCommandAction(
                     id="portable",
                     commands=["链接"],
-                    message="https://example.test",
+                    messages=["https://example.test"],
                 ),
                 MessageCommandAction(
                     id="onebot-only",
                     commands=["提醒"],
-                    message="提醒内容",
+                    messages=["提醒内容"],
                     at_user_ids=[123456],
                 ),
             ]
@@ -149,7 +149,7 @@ async def test_portable_push_time_updates_qq_official_conversation(
                 MessageScheduledAction(
                     id="daily",
                     name="每日消息",
-                    message="消息",
+                    messages=["消息"],
                     time="23:00",
                 )
             ]

@@ -83,11 +83,12 @@ def _install(
     server_status: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
+    normal_commands: tuple[str, ...],
 ) -> None:
     operations = build_portable_server_status_operations(server_status)
 
     normal_matcher = registry.on_fullmatch(
-        NORMAL_SERVER_STATUS_COMMANDS,
+        normal_commands,
         policy=CommandPolicy.command(
             "server_status_query",
             help_ids=("server_status.query",),
@@ -172,6 +173,7 @@ def plugin_contribution(
     service: ServerStatusService,
     features: FeatureService,
     commands: CommandCatalog,
+    normal_commands: tuple[str, ...] = NORMAL_SERVER_STATUS_COMMANDS,
 ) -> PluginContribution:
     """Declare server-status commands and feature ownership."""
 
@@ -187,12 +189,13 @@ def plugin_contribution(
                 "无头客户端已登录游戏服务器时判定为已开服；公告仅作为维护信息摘要。",
             ),
         ),
-        commands=server_status_command_contracts(),
+        commands=server_status_command_contracts(normal_commands),
         install=partial(
             _install,
             server_status=service,
             features=features,
             commands=commands,
+            normal_commands=normal_commands,
         ),
     )
 
@@ -204,5 +207,6 @@ if (context := active_plugin_install_context()) is not None:
             service=context.resources.server_status,
             features=context.resources.features,
             commands=context.resources.commands,
+            normal_commands=tuple(context.settings.operations.server_status.commands),
         ),
     )

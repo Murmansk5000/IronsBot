@@ -8,7 +8,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from ironsbot.config.models.ai import AiConfig
 from ironsbot.config.models.messaging import PushUnsubscribeConfig
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.messaging import AiIntentAction
@@ -28,12 +27,13 @@ from ironsbot.services.ai.service import REQUEST_FAILED_REPLY, AiService, _chat_
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
 from ironsbot.services.messaging.proactive_delivery import ProactiveMessageDelivery
-from tests.helpers.ai import FakeAiCompletionClient
+from tests.helpers.ai import FakeAiCompletionClient, ai_config
 from tests.helpers.fake_official_platform import FakeOfficialPlatform
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ironsbot.config.models.ai import AiConfig
     from ironsbot.services.ai.history import HistoryMessage
 
 NOW = datetime(2026, 9, 5, tzinfo=timezone.utc)
@@ -50,7 +50,7 @@ def _service(
     features: FeatureService | None = None,
     result: AiResponseResult | None = None,
 ) -> AiService:
-    config = AiConfig(api_key="test-only", memory=True, history_turns=3)
+    config = ai_config(memory=True, history_turns=3)
     policy = features or FeatureService({}, {}, frozenset())
     delivery = ProactiveMessageDelivery(
         transport or FakeOfficialPlatform(NOW),
