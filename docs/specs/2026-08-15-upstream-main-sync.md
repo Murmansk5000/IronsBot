@@ -63,8 +63,8 @@ semantic owner、真实的用户契约和针对性验证。
 | 新增技能根菜单预览 | 根预览只含新增项；技能排除本周新精灵自带技能，详情保留完整数据 | 无 | completed |
 | 队列推送加固 | 由 `ProactiveMessageDelivery` 限制并发并按通用失败类型重试；平台适配器只分类错误 | 真实平台 smoke | completed：通用策略已完成；真实传输验收延期 |
 | 群星牌觉醒卡合并 | 在 Autocard repository/view model 合并普通/觉醒事实，适配器只发送结果 | 发布数据契约审计 | completed |
-| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；仅在目标 API 能表达用户绑定与会话身份时接入 | QQ 绑定与身份能力 | deferred：排到 Phase 7 最后，不阻塞非 QQ 重构 |
-| 战队详情增强 | repository 产出类型化事实，service 决定展示段，不复制旧 matcher 格式化 | 无 | partial：直接战队号详情完成；QQ 玩家目标延期 |
+| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service、平台作用域身份 | 共享身份与会话服务 | completed：玩家菜单和群/私聊绑定战队概览均接入，真实平台测试留在发布门槛 |
+| 战队详情增强 | repository 产出类型化事实，service 决定展示段，不复制旧 matcher 格式化 | 无 | completed：战队号及统一玩家目标查询均接入；真实平台验证仍属最后验收 |
 | Docker 交接失败恢复 | 复用 operations 状态机并保留明确失败结果 | 可控 Docker client fixture | completed |
 | 旧生产模块拆分 | 不移植旧目录拆分；V5 已由职责边界和 800 行守卫独立完成 | 无 | completed |
 | 临时诊断类型排除 | 不移植；V5 类型检查不排除临时生产模块 | 无 | completed |
@@ -111,12 +111,146 @@ semantic owner、真实的用户契约和针对性验证。
 
 ## Progress
 
+### 2026-09-14 Merge Follow-up
+
+The user subsequently authorized fetching and merging main. Merge `1c2cadc7`
+contains `origin/main` `55a39fd1`; a fresh fetch on September 14 found no newer
+main commit. The earlier read-only entries above are historical evidence, not
+a description of the current Git ancestry. An ancestor relationship does not
+prove every old plugin behaviour is wired into the target architecture.
+
+- Bilibili adaptive images now use the existing collage service for both
+  portable history queries and scheduled delivery. The composition root owns
+  the HTTP/Pillow implementation; adapters receive binary outbound content.
+  The main `combine_images` default is restored, with original-image fallback.
+- Configured text replies share service-owned content assembly and the same
+  receipt-gated reply sequence. OneBot retains only identity resolution,
+  legacy final-text newline normalization, and transport adaptation.
+- Docker source diagnostics are now wired through the existing metadata/client
+  boundary. Remote labels are read at the digest already observed by the daemon,
+  not by resolving a mutable tag a second time. The GitHub repository comes
+  from image labels, preferring the target, without a deployment fallback.
+  Missing labels or GitHub failure preserve the successful digest comparison.
+  The shared formatter names the configured target and reference repository;
+  different SHAs do not imply that a preview branch is behind main or that a
+  build failed. Invalid revisions are explicitly unknown. Registry references
+  now preserve digest pins, including references with both a tag and digest.
+  Source acceptance: 69 Docker tests and full 3434 passed / 7 skipped, with Ruff,
+  BasedPyright and compile checks passing. The read-only tests reject Docker
+  mutation calls and cover optional metadata failure, fallback to the current
+  image's source label, missing labels, and exact-digest metadata reads. This
+  is source-level acceptance, not a claim of live Docker maintenance testing.
+
 ```text
 Program  [███████□] 7/8 verified phases; Phase 7 remains open
-Slice    [███████████████□□] 15/17 tracked outcomes resolved; 2 remain
-Current  [██████████] Bilibili portable history rendering verified
+Slice    [█████████████████] 17/17 tracked source outcomes resolved
+Current  [██████████] Shared team overview verified; live platform gate remains
 ```
 
 QQ-specific product work remains subject to the platform capability deferral rule.
 The remaining planned entries and real platform acceptance are not implicitly
 completed by this slice.
+
+### Player Team Menu Follow-up
+
+Target owner: the shared portable player menu, not the retired OneBot player
+conversation implementation. Current platform-scoped actors and the confirmed
+base-player snapshot are sufficient for this action: it does not need a numeric
+QQ identity or an OpenID-to-QQ map. The prior identity deferral therefore no
+longer applies to the team menu itself; private overview remains a separate gap.
+
+- Append one numbered team choice after existing detail/extension choices only
+  when the snapshot has a positive team ID, the team service is installed, and
+  `seer_team` is allowed. Preserve existing collection/peak/autocard/lineup numbers.
+- Reuse the same authorized team query function as a direct team-ID command;
+  pass the captured team ID rather than fetching base-player data again. Preserve
+  AppID-scoped actor and conversation, group-management checks, team formatting,
+  subscriptions and service error results. Recheck feature access on selection.
+- Use the team ID as semantic target and the team-query action/cooldown. Do not
+  charge player-detail quota or label this as another collection query.
+- Wire both the OneBot installer and platform-neutral router. Keep menu ownership,
+  numeric-only selection, exit and delivery callbacks in existing session code.
+- No new configuration, persistence, dependency, adapter-specific business branch,
+  or renderer. The base-profile formatter is unchanged; the team name and ID
+  appear in the newly restored menu choice.
+
+Acceptance covers both platforms and group/private contexts, regular/superuser
+policy, no team or snapshot, disabled/revoked permission, extension ordering,
+shared team query invocation and original player work-accounting callbacks.
+Source tests do not substitute for the real official message-matrix gate.
+
+Source verification: 51 focused player/team/session tests passed; the final
+full suite passed 3503 tests with 7 skips and 2879 existing dependency warnings.
+Ruff, BasedPyright, compileall and diff checks passed. Both production entry
+points inject the same team service into the same portable menu; no native
+message transport, live account, or real game-server result is claimed by these
+fixtures. The separate private-overview slice remains incomplete.
+
+### Direct Player-Team Query Follow-up
+
+Target owners: `PlayerIdResolver`, the Seer command grammar and the shared team
+service. Restore the main baseline without copying native plugin logic:
+
+- `战队123456` and space-separated numeric arguments remain team IDs, at most
+  three; `战队米米号700001`, an available player alias, or one direct member
+  mention resolve a player and query that player's team.
+- Catalog ownership and both production adapters use the same grammar. Unknown
+  aliases containing digits are not silently converted into team IDs. Bare
+  `战队` retains subscription ownership; a member target belongs only to the
+  player-team command. Mixed references and multiple mentions use resolver errors.
+- Recheck `seer_team` before game access. Preserve actor/conversation scope and
+  group management rights through the existing authorized team-query path.
+- Fetch player membership with the configured team-query timeout. No team,
+  timeout, disconnection and official error results remain distinct. Do not
+  create another binding, cache, quota or QQ-number mapping service.
+- No new TOML fields, files, dependencies or render resources. The group/private
+  overview combining subscriptions with the caller's bound team remains open;
+  this slice provides its shared player-to-team lookup prerequisite.
+
+Focused acceptance: 92 team-service, catalog, subscription and installed-rule
+tests passed. Full-suite/type checks and real platform acceptance are separate
+gates; mocked game responses are not live connection evidence.
+
+Final source verification: 3531 passed / 7 skipped; Ruff, BasedPyright,
+compileall and diff checks passed. The 2886 dependency warnings remain visible
+(including the added NoneBot rule tests). Fresh fetch/merge again reports main
+`55a39fd1` already contained, with no conflict. Overall verified phases remain
+7/8; the overview and real platform acceptance are not claimed complete.
+
+### Shared Team Overview
+
+Target owner: the existing portable team-resource operations and numeric session
+service. Restore main's bound-team/group/private overview without its native
+quoted-message cache or another menu engine.
+
+- Resolve only the caller's default binding, then reuse the shared membership
+  lookup. Put its positive team ID first; append current target subscriptions
+  in stored order, deduplicating by team ID before fetching.
+- Show name, team ID, member count and resource in a numbered overview. Keep
+  failed team entries with their stored name and explicit error; membership
+  failure does not suppress other subscribed teams. No binding is required.
+- Select by number through `PortableQuerySessions`, reuse full team details,
+  keep the menu open for another selection and support `0` exit. The semantic
+  target is the selected team, not the caller's player ID. Do not charge player
+  query quota or modify subscriptions during a query.
+- The overview and its selections require `team_resource_subscription`, including
+  a fresh check on selection. This preserves subscription-query access independently
+  of the arbitrary-ID `seer_team` feature. Actor/conversation scope remains typed.
+- Both adapters receive the same operation and sessions. Delete the native
+  query handler and unused `query_target_messages` method; AI's existing
+  explicit `query_messages` consumer remains unchanged.
+- No TOML changes, new file, dependency, database, image asset or runtime
+  compatibility path. A live QQ message matrix is still a separate release gate.
+
+Focused verification: 73 passed using an isolated temporary directory. An earlier
+invocation failed while cleaning the host's old pytest temporary directory and
+is not accepted evidence. The first full-suite collection exposed the test
+registry's outdated composition arguments; update that composition rather than
+adding optional production dependencies to accommodate it.
+
+Final full-suite verification: 3544 passed / 7 skipped in 280.76 seconds;
+Ruff, BasedPyright, compileall and diff checks passed. Existing dependency
+warnings remain visible (2889 with the updated installed-rule tests). Production
+code grows by 98 net lines, with no new file or packaged asset. This closes the
+17-item main-follow-up source checklist, not the overall 7/8 phase ledger or
+the exact-candidate real QQ connection/message matrix.
