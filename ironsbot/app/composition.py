@@ -55,6 +55,7 @@ from ironsbot.runtime.cache_paths import CachePaths
 from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.about import AboutService
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.service import AiService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
@@ -209,6 +210,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     }
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
+    ai_input_routing = AiInputRoutingService(features, command_catalog)
 
     def poke_hint_candidates(
         group_id: int | None,
@@ -252,6 +254,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         seer=seer,
         pet_config=pet_config,
         ai=ai,
+        ai_input_routing=ai_input_routing,
         ai_startup_check=partial(
             check_configured_ai_api,
             settings.ai,

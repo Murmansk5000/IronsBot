@@ -27,15 +27,14 @@ from ironsbot.integrations.onebot.message_rendering import (
 )
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_message_sequence
-from ironsbot.integrations.onebot.rules import natural_language
 from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
+    from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.team.resource import TeamResourceService
 
@@ -58,7 +57,7 @@ class AiIntentDependencies:
 
     service: AiService
     executor: AiIntentActionExecutor
-    commands: CommandCatalog
+    input_routing: AiInputRoutingService
 
 
 def _resolve_action_command_id(
@@ -84,13 +83,13 @@ def install(
         state: T_State,
     ) -> bool:
         text = event.get_plaintext().strip()
-        message = message_input_context(event).message
-        if dependencies.commands.recognizes_direct_input(
+        input_context = message_input_context(event)
+        if not dependencies.input_routing.decide(
+            input_context,
             command_context(event),
-            text,
-            ignored_plugins=("ai_chat", "ai_intent"),
-        ):
+        ).try_intent:
             return False
+        message = input_context.message
         source_context = await build_notice_source(
             event,
             text,
@@ -132,7 +131,7 @@ def install(
             _resolve_action_command_id,
             help_ids=command_help_ids,
         ),
-        rule=Rule(match_action) & natural_language(),
+        rule=Rule(match_action),
         priority=registry.priority("ai_intent"),
         block=True,
     )
@@ -146,7 +145,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin dependencies stay explicit
     features: FeatureService,
     promotions: PromotionCatalog,
     team_resource: TeamResourceService,
-    command_catalog: CommandCatalog,
+    input_routing: AiInputRoutingService,
 ) -> PluginContribution:
     """Declare configured intent actions and their natural-language matcher."""
 
@@ -183,7 +182,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin dependencies stay explicit
                     promotions,
                     team_resource,
                 ),
-                commands=command_catalog,
+                input_routing=input_routing,
             ),
             command_help_ids=tuple(command.id for command in command_contracts),
         ),
@@ -199,6 +198,6 @@ if (context := active_plugin_install_context()) is not None:
             features=context.resources.features,
             promotions=context.resources.promotions,
             team_resource=context.resources.team_resource,
-            command_catalog=context.resources.commands,
+            input_routing=context.resources.ai_input_routing,
         ),
     )

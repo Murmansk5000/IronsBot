@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.login import BilibiliLoginService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
@@ -70,6 +71,7 @@ class ApplicationResources:
     seer: SeerQueryResources
     pet_config: PetConfigQueryService
     ai: AiService
+    ai_input_routing: AiInputRoutingService
     ai_startup_check: Callable[[], Awaitable[None]]
     clock_startup_check: Callable[[], Awaitable[None]]
     data_sync: DataSyncService

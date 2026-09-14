@@ -16,6 +16,7 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_team_resource_commands import (
@@ -229,6 +230,7 @@ async def test_catalog_limits_subscribe_to_group_managers() -> None:
         ),
         features,
         ai=cast("AiService", object()),
+        ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=AddressedInputHintService(),
     )
 

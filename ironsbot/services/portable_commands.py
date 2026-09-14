@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.ai.input_routing import AiInputDecision, AiInputRoutingService
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -90,6 +91,7 @@ class PortableCommandRouter:
         features: FeatureService,
         *,
         ai: AiService,
+        ai_input_routing: AiInputRoutingService,
         addressed_input_hints: AddressedInputHintService,
         query_sessions: PortableQuerySessions | None = None,
     ) -> None:
@@ -103,6 +105,7 @@ class PortableCommandRouter:
         self._operations = dict(operations)
         self._features = features
         self._ai = ai
+        self._ai_input_routing = ai_input_routing
         self._addressed_input_hints = addressed_input_hints
         self._query_sessions = query_sessions or PortableQuerySessions()
 
@@ -122,7 +125,13 @@ class PortableCommandRouter:
                 context=command_context,
             )
             is not None
-        ) or self._can_chat(context, command_context) or self._is_group_mention(context)
+        ) or _portable_fallback_recognized(
+            self._ai_input_routing.decide(
+                context,
+                command_context,
+                normalized_text=command,
+            )
+        )
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
         self,
@@ -232,9 +241,12 @@ class PortableCommandRouter:
         command_context: CommandContext,
         prompt: str,
     ) -> PortableReply | None:
-        if self._recognizes_catalog_command(context, command_context, prompt):
-            return None
-        if self._can_chat(context, command_context):
+        decision = self._ai_input_routing.decide(
+            context,
+            command_context,
+            normalized_text=prompt,
+        )
+        if decision.try_chat:
             if not prompt:
                 return PortableReply(
                     OutboundMessage.from_text("你想聊什么？可以直接写问题。")
@@ -250,7 +262,7 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if self._is_group_mention(context) and self._addressed_input_hints.admit(
+        if decision.offer_help_hint and self._addressed_input_hints.admit(
             context
         ):
             return PortableReply(
@@ -258,56 +270,12 @@ class PortableCommandRouter:
             )
         return None
 
-    def _recognizes_catalog_command(
-        self,
-        context: MessageInputContext,
-        command_context: CommandContext,
-        normalized_text: str,
-    ) -> bool:
-        raw_text = context.text.strip()
-        return self._catalog.recognizes_direct_input(
-            command_context,
-            raw_text,
-            ignored_plugins=("ai_chat", "ai_intent"),
-        ) or (
-            raw_text != normalized_text
-            and self._catalog.recognizes_direct_input(
-                command_context,
-                normalized_text,
-                ignored_plugins=("ai_chat", "ai_intent"),
-            )
-        )
-
-    def _can_chat(
-        self,
-        context: MessageInputContext,
-        command_context: CommandContext,
-    ) -> bool:
-        command_id = (
-            "ai_chat.group"
-            if context.message.conversation.kind == "group"
-            else "ai_chat.private"
-        )
-        if command_id == "ai_chat.group" and not context.mentions_bot:
-            return False
-        return any(
-            contract.id == command_id
-            for contract in self._available_contracts(command_context)
-        )
-
     def _message_is_blocked(self, context: MessageInputContext) -> bool:
         message = context.message
         return self._features.is_message_blocked(
             message.actor,
             message.conversation,
         )
-
-    @staticmethod
-    def _is_group_mention(context: MessageInputContext) -> bool:
-        return (
-            context.message.conversation.kind == "group" and context.mentions_bot
-        )
-
 
 def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     *,
@@ -496,6 +464,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         operations,
         features,
         ai=ai,
+        ai_input_routing=AiInputRoutingService(features, catalog),
         addressed_input_hints=addressed_input_hints,
         query_sessions=sessions,
     )
@@ -532,6 +501,10 @@ def _command_context(context: MessageInputContext) -> CommandContext:
         group_role=message.group_role,
         member_mentions=message.direct_mentions,
     )
+
+
+def _portable_fallback_recognized(decision: AiInputDecision) -> bool:
+    return decision.try_chat or decision.offer_help_hint
 
 
 def _command_text(text: str) -> str:

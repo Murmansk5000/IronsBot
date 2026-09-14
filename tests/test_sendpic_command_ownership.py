@@ -18,6 +18,7 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.integrations.sendpic import LocalBackend
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.sendpic import (
     IndexedImageRequest,
     SendpicService,
@@ -176,7 +177,11 @@ async def test_indexed_inputs_match_installed_rules_and_catalog(
             if c.matches_direct_input(context, text)
         ] == matched
         if private:
-            assert not _capture_ai_prompt(event, {}, FEATURES, catalog)
+            assert not _capture_ai_prompt(
+                event,
+                {},
+                AiInputRoutingService(FEATURES, catalog),
+            )
     backend.count.assert_not_awaited()
     backend.get_file.assert_not_awaited()
 
@@ -273,7 +278,9 @@ def test_without_image_feature_known_image_command_does_not_fall_into_ai() -> No
         CommandContext(ACTOR, PRIVATE), "表情2"
     )
     assert not _capture_ai_prompt(
-        private_message_event("表情2", user_id=100), {}, disabled, catalog
+        private_message_event("表情2", user_id=100),
+        {},
+        AiInputRoutingService(disabled, catalog),
     )
 
 

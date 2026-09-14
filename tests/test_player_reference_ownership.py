@@ -28,6 +28,8 @@ from ironsbot.plugins.onebot.seer.query.commands import (
 )
 from ironsbot.plugins.onebot.seer.query.commands.player import _is_binding_command
 from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
+from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
@@ -196,8 +198,14 @@ def test_player_command_ownership_matches_resolution(
     )
     catalog = CommandCatalog()
     catalog.load(
-        (PluginContribution(id="seer_query", commands=commands),),
-        known_features={"seer_player"},
+        (
+            PluginContribution(id="seer_query", commands=commands),
+            PluginContribution(
+                id="ai_chat",
+                commands=ai_chat_command_contracts(enabled=True),
+            ),
+        ),
+        known_features={"seer_player", "ai_chat"},
     )
     event_factory = (
         partial(group_message_event, group_id=int(_GROUP.id))
@@ -214,7 +222,14 @@ def test_player_command_ownership_matches_resolution(
     )
     if not group:
         # Exercise the actual AI routing rule, without invoking a completion API.
-        assert _capture_ai_prompt(event, {}, features, catalog) is not expected
+        assert (
+            _capture_ai_prompt(
+                event,
+                {},
+                AiInputRoutingService(features, catalog),
+            )
+            is not expected
+        )
     binding.assert_not_called()
 
 
