@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -20,10 +21,11 @@ from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialPayload,
     QQOfficialTextPayload,
 )
+from ironsbot.integrations.qq_official.outbound_messenger import (
+    QQOfficialUncertainDeliveryError,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from qqbot_agent_sdk.api_client import QQApiClient
 
 
@@ -66,19 +68,29 @@ class TencentQQClient:
     ) -> QQOfficialSendReceipt:
         first_id: str | None = None
         for offset, payload in enumerate(payloads):
-            sequence = (
-                first_sequence + offset
-                if first_sequence is not None
-                else max(1, self.api.next_msg_seq())
-            )
-            response = await self._send_payload(
-                scope,
-                target_id,
-                payload,
-                message_id=message_id,
-                sequence=sequence,
-            )
-            sent_id = _response_id(response)
+            try:
+                sequence = (
+                    first_sequence + offset
+                    if first_sequence is not None
+                    else max(1, self.api.next_msg_seq())
+                )
+                response = await self._send_payload(
+                    scope,
+                    target_id,
+                    payload,
+                    message_id=message_id,
+                    sequence=sequence,
+                )
+                sent_id = _response_id(response)
+            except Exception as error:
+                if first_id is None:
+                    raise
+                msg = (
+                    f"QQ Official partial delivery: {offset}/{len(payloads)} "
+                    f"operations acknowledged; first message id={first_id}; "
+                    f"next operation failed: {type(error).__name__}: {error}"
+                )
+                raise QQOfficialUncertainDeliveryError(msg) from error
             if first_id is None:
                 first_id = sent_id
         if first_id is None:
@@ -113,9 +125,13 @@ class TencentQQClient:
         else:  # pragma: no cover - closed union guarded by renderer tests
             msg = f"Unsupported QQ Official payload: {type(payload).__name__}"
             raise TypeError(msg)
-        if scope == "group":
-            return await self.api.post_group_message(target_id, message)
-        return await self.api.post_c2c_message(target_id, message)
+        try:
+            if scope == "group":
+                return await self.api.post_group_message(target_id, message)
+            return await self.api.post_c2c_message(target_id, message)
+        except ValueError as error:
+            msg = "QQ Official send returned an invalid response"
+            raise QQOfficialUncertainDeliveryError(msg) from error
 
     async def _upload_image(
         self,
@@ -139,16 +155,18 @@ class TencentQQClient:
             if scope == "group"
             else await self.api.upload_c2c_file(target_id, upload)
         )
-        file_info = str(response.get("file_info", "")).strip()
+        value = response.get("file_info")
+        file_info = value.strip() if isinstance(value, str) else ""
         if not file_info:
             msg = "QQ Official image upload returned no file_info"
             raise RuntimeError(msg)
         return file_info
 
 
-def _response_id(response: Mapping[str, object]) -> str:
-    value = str(response.get("id", "")).strip()
+def _response_id(response: object) -> str:
+    raw = response.get("id") if isinstance(response, Mapping) else None
+    value = raw.strip() if isinstance(raw, str) else ""
     if not value:
         msg = "QQ Official send response returned no message id"
-        raise RuntimeError(msg)
+        raise QQOfficialUncertainDeliveryError(msg)
     return value

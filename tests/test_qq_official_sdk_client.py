@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock
 
 import pytest
 from qqbot_agent_sdk.dto import QQMessageType
 
+from ironsbot.core.outbound import DeliveryFailureKind, OutboundMessage
+from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
     QQOfficialTextPayload,
+)
+from ironsbot.integrations.qq_official.outbound_messenger import (
+    QQOfficialOutboundMessenger,
+    QQOfficialUncertainDeliveryError,
 )
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 
@@ -128,3 +136,141 @@ async def test_sdk_client_sends_multiple_payloads_with_consecutive_sequences() -
         "incoming-id",
     ]
     assert api.uploads[0][2].url == "https://example.invalid/image.png"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["group", "c2c"])
+@pytest.mark.parametrize("value", [None, "", "  ", 123, False, {}, []])
+async def test_invalid_send_receipt_is_uncertain(
+    scope: str,
+    value: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    post = AsyncMock(return_value={"id": value})
+    monkeypatch.setattr(_FakeApi, f"post_{scope}_message", post)
+    client = _client(_FakeApi())
+    send = client.send_to_group if scope == "group" else client.send_to_c2c
+
+    with pytest.raises(QQOfficialUncertainDeliveryError, match="no message id"):
+        await send("target", (QQOfficialTextPayload("result"),))
+
+    assert post.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["group", "c2c"])
+@pytest.mark.parametrize("value", [None, "", "  ", 123, False, {}, []])
+async def test_invalid_upload_receipt_does_not_send_media(
+    scope: str,
+    value: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upload = AsyncMock(return_value={"file_info": value})
+    monkeypatch.setattr(_FakeApi, f"upload_{scope}_file", upload)
+    api = _FakeApi()
+    client = _client(api)
+    send = client.send_to_group if scope == "group" else client.send_to_c2c
+
+    with pytest.raises(RuntimeError, match="no file_info"):
+        await send("target", (QQOfficialImagePayload(content=b"image"),))
+
+    assert api.messages == []
+    assert upload.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["group", "c2c"])
+@pytest.mark.parametrize("stage", ["upload", "post", "receipt"])
+async def test_partial_delivery_preserves_cause_and_stops_remaining_payloads(
+    scope: str,
+    stage: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error = RuntimeError("429 rate limit")
+    post = AsyncMock(
+        side_effect=[
+            {"id": "first"},
+            error if stage == "post" else {"id": None},
+        ]
+    )
+    monkeypatch.setattr(_FakeApi, f"post_{scope}_message", post)
+    if stage == "upload":
+        monkeypatch.setattr(
+            _FakeApi, f"upload_{scope}_file", AsyncMock(side_effect=error)
+        )
+    client = _client(_FakeApi())
+    send = client.send_to_group if scope == "group" else client.send_to_c2c
+
+    with pytest.raises(QQOfficialUncertainDeliveryError, match="1/3") as caught:
+        await send(
+            "target",
+            (
+                QQOfficialTextPayload("before"),
+                QQOfficialImagePayload(content=b"image"),
+                QQOfficialTextPayload("after"),
+            ),
+        )
+
+    assert post.await_count == (1 if stage == "upload" else 2)
+    assert caught.value.__cause__ is not None
+    if stage != "receipt":
+        assert caught.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+async def test_cancellation_after_partial_delivery_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    post = AsyncMock(side_effect=[{"id": "first"}, asyncio.CancelledError()])
+    monkeypatch.setattr(_FakeApi, "post_group_message", post)
+    payloads = (QQOfficialTextPayload("before"), QQOfficialTextPayload("after"))
+
+    with pytest.raises(asyncio.CancelledError):
+        await _client(_FakeApi()).send_to_group("target", payloads)
+
+    assert post.await_count == len(payloads)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["group", "c2c"])
+@pytest.mark.parametrize("response", [None, [], "invalid", ValueError("invalid JSON")])
+async def test_malformed_post_response_is_uncertain(
+    scope: str,
+    response: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    post = (
+        AsyncMock(side_effect=response)
+        if isinstance(response, Exception)
+        else AsyncMock(return_value=response)
+    )
+    monkeypatch.setattr(_FakeApi, f"post_{scope}_message", post)
+    client = _client(_FakeApi())
+    messenger = QQOfficialOutboundMessenger({"app": True}, lambda _: client)
+    target = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group" if scope == "group" else "private",
+        "openid",
+        account_id="app",
+    )
+
+    result = await messenger.send(target, OutboundMessage.from_text("result"))
+
+    assert result.failure_kind is DeliveryFailureKind.UNCERTAIN
+    assert post.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_first_post_rate_limit_remains_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    post = AsyncMock(side_effect=RuntimeError("QQ Bot API error [429]"))
+    monkeypatch.setattr(_FakeApi, "post_group_message", post)
+    client = _client(_FakeApi())
+    messenger = QQOfficialOutboundMessenger({"app": True}, lambda _: client)
+    target = ConversationRef(Platform.QQ_OFFICIAL, "group", "openid", account_id="app")
+
+    result = await messenger.send(target, OutboundMessage.from_text("result"))
+
+    assert result.failure_kind is DeliveryFailureKind.RETRYABLE
+    assert post.await_count == 1
