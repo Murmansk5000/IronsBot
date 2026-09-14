@@ -196,9 +196,20 @@ class _FakeDataSyncService:
 
 
 class _FakeDockerUpdateService:
+    def __init__(self) -> None:
+        self.prepared: list[object] = []
+        self.executed: list[object] = []
+
     async def check_image_update(self, *, progress: object) -> str:
         await cast("Callable[[str], Awaitable[None]]", progress)("image check start")
         return "image check done"
+
+    async def prepare_maintenance(self, choice: object) -> tuple[str, object]:
+        self.prepared.append(choice)
+        return "maintenance prepared", "process"
+
+    async def execute_restart(self, action: object) -> None:
+        self.executed.append(action)
 
 
 class _FakePlayerIdResolver:
@@ -1349,6 +1360,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
         (),
         qq_official=_qq_config(features=[], superusers=["opaque-admin"]),
     )
+    docker_update = _FakeDockerUpdateService()
     router = build_portable_command_router(
         catalog=_portable_catalog(maintenance=True),
         about=AboutService("test"),
@@ -1360,7 +1372,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
         addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         data_sync=cast("DataSyncService", _FakeDataSyncService()),
-        docker_update=cast("DockerUpdateService", _FakeDockerUpdateService()),
+        docker_update=cast("DockerUpdateService", docker_update),
     )
     member = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -1387,6 +1399,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
 
     assert await router.dispatch(context("/更新数据", member)) is None
     assert await router.dispatch(context("/检查更新镜像", member)) is None
+    assert await router.dispatch(context("/重启机器人", member)) is None
 
     check = await router.dispatch(context("/更新数据", admin))
     assert check is not None
@@ -1411,6 +1424,21 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
     assert image.follow_up is not None
     image_result = await image.follow_up()
     assert cast("TextPart", image_result.parts[0]).text == "image check done"
+
+    maintenance = await router.dispatch(context("/重启机器人", admin))
+    assert maintenance is not None
+    assert "选择机器人维护操作" in cast(
+        "TextPart", maintenance.message.parts[0]
+    ).text
+    prepared = await router.dispatch(context("1", admin))
+    assert prepared is not None
+    assert cast("TextPart", prepared.message.parts[0]).text == "maintenance prepared"
+    assert docker_update.executed == []
+    prepared.delivered()
+    assert prepared.follow_up is not None
+    restarted = await prepared.follow_up()
+    assert cast("TextPart", restarted.parts[0]).text == "机器人维护操作已提交。"
+    assert docker_update.executed == ["process"]
 
 
 @pytest.mark.asyncio
