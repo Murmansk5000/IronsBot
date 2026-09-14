@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.plugin import PluginMetadata
@@ -12,7 +11,6 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.features import Feature
-from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
@@ -22,23 +20,21 @@ from ironsbot.core.plugin_install import (
 from ironsbot.integrations.onebot.context import (
     build_notice_source,
     command_context,
-    mentions_bot,
 )
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
-from ironsbot.integrations.onebot.rules import bot_mention
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
-from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from nonebot.adapters.onebot.v11 import Bot, MessageEvent
+
     from ironsbot.config.models.settings import Settings
-    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.ai.service import AiService
 
 AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
@@ -46,9 +42,7 @@ AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 
 @dataclass(frozen=True, slots=True)
 class AiChatMatcherDependencies:
-    features: FeatureService
-    commands: CommandCatalog
-    bot_mention_block_service: BotMentionBlockService
+    input_routing: AiInputRoutingService
 
 
 __plugin_meta__ = PluginMetadata(
@@ -61,63 +55,17 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def _is_claimed_private_command(
-    commands: CommandCatalog,
-    features: FeatureService,
-    event: MessageEvent,
-    prompt: str,
-) -> bool:
-    return not isinstance(event, GroupMessageEvent) and commands.claims_direct_input(
-        command_context(event),
-        features,
-        prompt,
-        ignored_plugins=("ai_chat",),
-    )
-
-
-def _should_guard_non_ai_group_mention(
-    features: FeatureService,
-    event: MessageEvent,
-) -> bool:
-    return (
-        isinstance(event, GroupMessageEvent)
-        and mentions_bot(event)
-        and not event_is_feature_allowed(features, event, "ai_chat")
-    )
-
-
-def _build_guard_message(event: MessageEvent) -> str:
-    del event
-    return DIRECT_COMMAND_HELP_HINT_TEXT
-
-
 def _capture_ai_prompt(
     event: MessageEvent,
     state: T_State,
-    features: FeatureService,
-    commands: CommandCatalog,
+    input_routing: AiInputRoutingService,
 ) -> bool:
-    if (
-        getattr(event, "reply", None) is not None
-        or not event_is_feature_allowed(features, event, "ai_chat")
-        or (isinstance(event, GroupMessageEvent) and not mentions_bot(event))
-    ):
+    context = message_input_context(event)
+    if not input_routing.decide(context, command_context(event)).try_chat:
         return False
 
-    prompt = event.get_plaintext()
-    if _is_claimed_private_command(commands, features, event, prompt):
-        return False
-    state[AI_CHAT_PROMPT_KEY] = prompt.strip()
+    state[AI_CHAT_PROMPT_KEY] = context.text.strip()
     return True
-
-
-def _capture_group_ai_prompt(
-    event: GroupMessageEvent,
-    state: T_State,
-    features: FeatureService,
-    commands: CommandCatalog,
-) -> bool:
-    return _capture_ai_prompt(event, state, features, commands)
 
 
 def install(
@@ -158,12 +106,14 @@ def install(
         await finish_event_reply(matcher, event, reply)
 
     direct_matcher = registry.on_message(
-        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.private",)),
+        policy=CommandPolicy.command(
+            "ai_chat",
+            help_ids=("ai_chat.group", "ai_chat.private"),
+        ),
         rule=Rule(
             bind(
                 _capture_ai_prompt,
-                features=dependencies.features,
-                commands=dependencies.commands,
+                input_routing=dependencies.input_routing,
             )
         ),
         priority=registry.priority("ai_chat"),
@@ -171,57 +121,12 @@ def install(
     )
     direct_matcher.append_handler(run_ai_chat)
 
-    group_at_matcher = registry.on_message(
-        policy=CommandPolicy.command("ai_chat", help_ids=("ai_chat.group",)),
-        rule=bot_mention()
-        & Rule(
-            bind(
-                _capture_group_ai_prompt,
-                features=dependencies.features,
-                commands=dependencies.commands,
-            )
-        ),
-        priority=registry.pre_command_priority("ai_group_at"),
-        block=True,
-    )
-    group_at_matcher.append_handler(run_ai_chat)
-
-    async def handle_non_ai_group_at_bot(
-        matcher: Matcher,
-        event: GroupMessageEvent,
-    ) -> None:
-        decision = dependencies.bot_mention_block_service.admit(
-            message_input_context(event).message.actor
-        )
-        if decision.allowed:
-            message = _build_guard_message(event)
-        elif decision.feedback is not None:
-            message = decision.feedback
-        else:
-            raise FinishedException
-        await finish_event_reply(matcher, event, message)
-
-    bot_mention_block_matcher = registry.on_message(
-        policy=CommandPolicy.exempt("non-AI direct mention guard"),
-        rule=bot_mention()
-        & Rule(
-            lambda event: _should_guard_non_ai_group_mention(
-                dependencies.features,
-                event,
-            )
-        ),
-        priority=registry.pre_command_priority("bot_mention_block"),
-        block=True,
-    )
-    bot_mention_block_matcher.append_handler(handle_non_ai_group_at_bot)
-
-
 def plugin_contribution(
     *,
     settings: Settings,
     service: AiService,
     features: FeatureService,
-    commands: CommandCatalog,
+    input_routing: AiInputRoutingService,
     startup_check: Callable[[], Awaitable[None]],
 ) -> PluginContribution:
     """Declare AI-chat command visibility and OneBot matcher ownership."""
@@ -248,11 +153,7 @@ def plugin_contribution(
                 install,
                 service=service,
                 dependencies=AiChatMatcherDependencies(
-                    features=features,
-                    commands=commands,
-                    bot_mention_block_service=BotMentionBlockService(
-                        settings.messaging.command_cooldown
-                    ),
+                    input_routing=input_routing,
                 ),
             )
             if enabled
@@ -275,7 +176,7 @@ if (context := active_plugin_install_context()) is not None:
             settings=context.settings,
             service=context.resources.ai,
             features=context.resources.features,
-            commands=context.resources.commands,
+            input_routing=context.resources.ai_input_routing,
             startup_check=context.resources.ai_startup_check,
         ),
     )

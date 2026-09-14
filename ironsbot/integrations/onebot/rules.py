@@ -68,7 +68,9 @@ class _InputStrategy:
         if self.name == "natural_language":
             return context.kind is MessageInputKind.DIRECT
         if context.kind is MessageInputKind.BOT_MENTION:
-            return False
+            if context.has_member_mentions:
+                return self.allow_member_mentions
+            return self.name != "natural_language"
         if context.kind is MessageInputKind.MEMBER_MENTION:
             return self.allow_member_mentions
         if context.kind is MessageInputKind.REPLY:
@@ -77,7 +79,7 @@ class _InputStrategy:
 
 
 def explicit_command() -> Rule:
-    """Accept explicit commands, never direct or quoted ordinary-member @."""
+    """Accept explicit commands, including commands addressed to the bot."""
 
     return Rule(_InputStrategy("explicit_command"))
 
