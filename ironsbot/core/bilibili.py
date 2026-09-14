@@ -197,6 +197,7 @@ class BiliPushConfig(BaseModel):
         ge=1,
     )
     summary_use_ai: bool = True
+    combine_images: bool = True
     groups: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
     users: dict[str, BiliPushTargetConfig] = Field(default_factory=dict)
 
