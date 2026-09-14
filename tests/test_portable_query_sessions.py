@@ -12,6 +12,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.semantic_requests import ActionDefinition, SemanticTarget
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessionError,
@@ -38,11 +39,11 @@ def _context(
     group_id: str = "group-a",
 ) -> MessageInputContext:
     actor = ActorRef(
-            Platform.QQ_OFFICIAL,
-            actor_id,
-            "member",
-            group_id,
-        )
+        Platform.QQ_OFFICIAL,
+        actor_id,
+        "member",
+        group_id,
+    )
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", group_id)
     return MessageInputContext(
         IncomingMessageRef(
@@ -102,6 +103,61 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
     assert sessions.recognizes_response("2", owner)
     assert _text(await sessions.select("2", owner)) == "selected:202"
     assert not sessions.recognizes_response("2", owner)
+
+
+@pytest.mark.asyncio
+async def test_selection_exposes_semantic_identity_and_can_be_cancelled() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("member-openid")
+
+    async def search(_argument: str) -> QueryResult[int]:
+        return QueryResult(
+            choices=(
+                QueryChoice(
+                    "candidate",
+                    "details",
+                    101,
+                    semantic_target=SemanticTarget("pet:101", "candidate"),
+                ),
+            )
+        )
+
+    async def select(value: int) -> QueryResult[object]:
+        return QueryResult(reply=QueryReply(text=str(value)))
+
+    await sessions.begin(
+        context,
+        argument="query",
+        spec=QueryOperationSpec(
+            parser=lambda text: text,
+            search=search,
+            select=select,
+            prompt_title="choose",
+            not_found_message="missing",
+        ),
+    )
+
+    request = sessions.semantic_request(
+        "1",
+        context,
+        action=ActionDefinition("seer.pet.query", "精灵查询"),
+    )
+    assert request is not None
+    assert request.target == SemanticTarget("pet:101", "candidate")
+    assert (
+        sessions.semantic_request(
+            "0",
+            context,
+            action=request.action,
+        )
+        is None
+    )
+    assert sessions.has_pending(context)
+
+    sessions.cancel(context)
+
+    assert not sessions.has_pending(context)
+    assert not sessions.recognizes_response("1", context)
 
 
 @pytest.mark.asyncio
@@ -187,6 +243,31 @@ async def test_text_input_session_claims_next_response_and_supports_exit() -> No
         ),
     )
     assert _text(await sessions.select("0", context)) == "已退出查询。"
+
+
+@pytest.mark.asyncio
+async def test_text_input_session_only_claims_accepted_responses() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("member")
+
+    async def submit(text: str) -> OutboundMessage:
+        return OutboundMessage.from_text(f"confirmed:{text}")
+
+    sessions.offer_text_input(
+        context,
+        PortableTextInputSpec(
+            submit=submit,
+            prompt=OutboundMessage.from_text("confirm"),
+            accept=lambda text: text in {"yes", "no"},
+        ),
+    )
+
+    assert not sessions.recognizes_response("conversation", context)
+    assert await sessions.select("conversation", context) is None
+    assert sessions.recognizes_response("yes", context)
+    result = await sessions.select("yes", context)
+    assert isinstance(result, OutboundMessage)
+    assert _text(result) == "confirmed:yes"
 
 
 @pytest.mark.asyncio

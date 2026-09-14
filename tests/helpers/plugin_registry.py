@@ -96,6 +96,7 @@ from ironsbot.services.about import AboutService
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -185,6 +186,7 @@ def build_test_plugin_registry(
         "ApplicationResources",
         SimpleNamespace(
             about=AboutService("test"),
+            query_sessions=PortableQuerySessions(),
             features=runtime.features,
             promotions=PromotionCatalog(config.promotions),
             admin_notices=runtime.admin_notices,
@@ -423,6 +425,7 @@ def build_test_plugin_registry(
             service=resources.pet_config,
             features=runtime.features,
             config=config.pet_config,
+            query_sessions=resources.query_sessions,
         ),
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,

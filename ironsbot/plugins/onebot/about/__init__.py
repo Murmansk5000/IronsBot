@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT
-from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
@@ -9,13 +7,18 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.message_rendering import (
-    render_onebot_outbound_message,
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    MatcherFactory,
+    bind_async,
 )
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.replies import run_portable_operation
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.services.about import AboutService, about_command_contracts
+from ironsbot.services.about import (
+    AboutService,
+    about_command_contracts,
+    build_portable_about_operation,
+)
 
 __plugin_meta__ = PluginMetadata(
     name="关于",
@@ -27,13 +30,6 @@ __plugin_meta__ = PluginMetadata(
 )
 
 def install(registry: MatcherFactory, service: AboutService) -> None:
-    async def handle_about(matcher: Matcher, event: MessageEvent) -> None:
-        await finish_event_reply(
-            matcher,
-            event=event,
-            message=render_onebot_outbound_message(service.message()),
-        )
-
     matcher = registry.on_fullmatch(
         "关于",
         policy=CommandPolicy.command("about", help_ids=("about",)),
@@ -41,7 +37,12 @@ def install(registry: MatcherFactory, service: AboutService) -> None:
         priority=registry.priority("about"),
         block=True,
     )
-    matcher.append_handler(handle_about)
+    matcher.append_handler(
+        bind_async(
+            run_portable_operation,
+            operation=build_portable_about_operation(service),
+        )
+    )
 
 
 def plugin_contribution(service: AboutService) -> PluginContribution:

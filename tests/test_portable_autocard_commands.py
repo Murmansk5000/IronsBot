@@ -28,6 +28,8 @@ from ironsbot.services.seer.autocard_sanctuary import (
     AutocardSanctuaryRow,
     AutocardSanctuaryService,
 )
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.autocard import AutocardService
@@ -103,6 +105,12 @@ class _CountermarkRank:
         assert command.stat is not None
         self.stat_title = command.stat.title
         return "刻印榜结果"
+
+
+class _UnavailableCountermarkRank(_CountermarkRank):
+    def query(self, command: CountermarkStatRankCommand) -> str:
+        del command
+        raise DataUnavailableError
 
 
 def _entry(item_id: int, name: str) -> AutocardEntry:
@@ -195,3 +203,17 @@ async def test_countermark_rank_reuses_shared_parser_and_service() -> None:
 
     assert _text(result) == "刻印榜结果"
     assert service.stat_title == "双攻"
+
+
+@pytest.mark.asyncio
+async def test_countermark_rank_maps_unavailable_data_for_every_platform() -> None:
+    operation = build_portable_countermark_operations(
+        cast("CountermarkStatRankService", _UnavailableCountermarkRank())
+    )["seer.mintmark.rank"]
+
+    result = cast(
+        "OutboundMessage",
+        await operation("六角双攻榜", _context("六角双攻榜")),
+    )
+
+    assert _text(result) == DATABASE_UNAVAILABLE_MESSAGE

@@ -33,6 +33,8 @@ from ironsbot.services.operations.docker_preflight import (
     consume_docker_startup_preflight_notice,
 )
 from ironsbot.services.operations.docker_update import (
+    DOCKER_IMAGE_UPDATE_START_MESSAGE,
+    DockerMaintenanceChoice,
     docker_maintenance_menu_text,
     parse_docker_maintenance_choice,
 )
@@ -87,6 +89,12 @@ def _install(registry: MatcherFactory, service: DockerUpdateService) -> None:
         if choice is None:
             await finish_event_reply(matcher, event, "序号超出范围，输入 0 退出。")
             return
+        if choice is DockerMaintenanceChoice.UPDATE_AND_RESTART:
+            await send_event_reply(
+                matcher,
+                event,
+                DOCKER_IMAGE_UPDATE_START_MESSAGE,
+            )
         message, restart_action = await service.prepare_maintenance(choice)
         await send_event_reply(matcher, event, message)
         await service.execute_restart(restart_action)

@@ -1056,15 +1056,19 @@ time = "00:02"
 timezone = "Asia/Shanghai"
 # Default: 15.0; EN: Headless packet timeout seconds. ZH: 无头橱窗封包超时秒数。
 timeout_seconds = 15.0
-# Add one table per QQ user allowed to query and receive a configured account's
-# window. `user` accepts a [features.user_aliases] alias or QQ ID. `account`
+# Add one table per platform user allowed to query and receive a configured
+# account's window. `user` accepts a [features.user_aliases] OneBot alias/QQ ID
+# or a QQ Official account's `user_aliases` alias. Official accounts must set
+# `proactive_messages = true`. `account`
 # refers to a `seer.player_accounts` name, alias, or player ID; the user must
 # bind that same player ID. `watched_skin_ids` accepts either the skin table ID
 # or its 140xxxx resource ID and seeds the user's watch list only once. Users
 # can later manage that list with QQ commands. Watching only adds a ★ marker.
 # The user also needs lucky_skin_window in their user policy; group use
 # additionally needs it in the group policy.
-# ZH: 每个允许查询和接收提醒的 QQ 用户配置一张表。user 可填写用户别名或 QQ 号；
+# ZH: 每个允许查询和接收提醒的平台用户配置一张表。user 可填写 OneBot 用户别名/QQ
+# 号，或 QQ 官方机器人账号中 user_aliases 定义的别名；官方账号还必须启用
+# proactive_messages。不同 AppID 的 OpenID 不会混用。
 # account 引用 seer.player_accounts 中的 name、aliases 或米米号，用户必须绑定
 # 对应米米号。手动查询当天无缓存时会先请该用户确认登录。watched_skin_ids 可填写
 # 皮肤表 ID 或 140xxxx 资源 ID，仅在首次使用时初始化关注列表；之后可通过 QQ 指令

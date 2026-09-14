@@ -107,6 +107,7 @@ async def test_factory_registration_matches_catalog_and_runs_admission(
         features=features,
         commands=catalog,
         player_id_resolver=resolver,
+        query_sessions=Mock(),
         image_command_texts=frozenset(),
     )
     try:
@@ -305,18 +306,13 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
     state: dict[str, Any] = {}
     admitted = enabled and target != "bot"
     assert await rule(cast("Any", None), event, state) is admitted
-    if not admitted or prefix == "绑定米米号":
+    if not admitted or prefix in {"绑定米米号", "成就榜"}:
         return
     if prefix == "米米号":
         resolved = state[player.PLAYER_TARGET_RESOLUTION_KEY]
         player_id = resolved.player_id
     else:
-        key = (
-            rank_list.RANK_PLAYER_COMMAND_KEY
-            if prefix == "成就榜"
-            else player_shortcuts._SHORTCUT_COMMAND_KEY
-        )
-        resolved = state[key]
+        resolved = state[player_shortcuts._SHORTCUT_COMMAND_KEY]
         player_id = resolved.command.player_id if resolved.command is not None else None
     if target in {"mixed", "multiple", "unbound"}:
         assert player_id is None

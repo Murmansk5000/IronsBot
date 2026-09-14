@@ -1,42 +1,85 @@
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
-import asyncio
-from contextlib import suppress
 from types import SimpleNamespace
-from typing import Any, cast
-from unittest.mock import AsyncMock
+from typing import TYPE_CHECKING, cast
 
-import nonebot
-from nonebot.exception import FinishedException
+import pytest
 
-nonebot.init()
-
-from ironsbot.plugins.onebot.seer.query.commands import data_queries
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
+from ironsbot.services.portable_seer_commands import (
+    build_portable_data_query_operation,
+)
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
-from ironsbot.services.seer.external_references import SeerInfoReference
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+
+if TYPE_CHECKING:
+    from ironsbot.services.seer.data_queries import SeerDataQueryService
+    from ironsbot.services.seer.external_references import SeerInfoReferences
 
 
-def test_weekly_preview_image_output_includes_cache_notice_and_reference() -> None:
-    async def operation() -> DataQueryImageReply:
+def _context(text: str) -> MessageInputContext:
+    actor = ActorRef(Platform.ONEBOT, "1")
+    return MessageInputContext(
+        IncomingMessageRef(
+            platform=Platform.ONEBOT,
+            actor=actor,
+            conversation=ConversationRef(Platform.ONEBOT, "private", actor.id),
+            message_id="message-1",
+            text=text,
+        ),
+        mentions_bot=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_weekly_preview_output_includes_notice_and_reference() -> None:
+    async def weekly_preview() -> DataQueryImageReply:
         return DataQueryImageReply(b"image", "缓存时间：2026-08-10 11:00:00")
 
     references = SimpleNamespace(
         url_for=lambda _reference: "https://seerinfo.yuyuqaq.cn/preview"
     )
-    matcher = SimpleNamespace(finish=AsyncMock(side_effect=FinishedException))
-    with suppress(FinishedException):
-        asyncio.run(
-            data_queries._finish_query(
-                operation,
-                matcher=cast("Any", matcher),
-                references=cast("Any", references),
-                reference=SeerInfoReference.WEEKLY_PREVIEW,
-            )
-        )
-
-    message = matcher.finish.await_args.args[0]
-    assert message[0].type == "image"
-    assert message.extract_plain_text() == (
-        "\n缓存时间：2026-08-10 11:00:00\n相关查询：https://seerinfo.yuyuqaq.cn/preview"
+    service = SimpleNamespace(weekly_preview=weekly_preview)
+    operation = build_portable_data_query_operation(
+        cast("SeerDataQueryService", service),
+        cast("SeerInfoReferences", references),
     )
+
+    message = cast(
+        "OutboundMessage",
+        await operation("下周预告", _context("下周预告")),
+    )
+
+    assert message.parts == (
+        BinaryImagePart(b"image", "image/png"),
+        TextPart("\n缓存时间：2026-08-10 11:00:00"),
+        TextPart("\n相关查询：https://seerinfo.yuyuqaq.cn/preview"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_data_query_maps_unavailable_database_to_a_reply() -> None:
+    async def data_version() -> str:
+        raise DataUnavailableError
+
+    service = SimpleNamespace(data_version=data_version)
+    operation = build_portable_data_query_operation(
+        cast("SeerDataQueryService", service),
+        None,
+    )
+
+    message = cast(
+        "OutboundMessage",
+        await operation("数据版本", _context("数据版本")),
+    )
+
+    assert message.parts == (TextPart(DATABASE_UNAVAILABLE_MESSAGE),)

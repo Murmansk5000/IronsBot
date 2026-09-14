@@ -62,6 +62,10 @@ def test_platform_references_resolve_official_aliases_with_account_scope() -> No
         "official_user",
         location="test.user",
     )
+    actor = resolver.user_actor_ref(
+        "official_user",
+        location="test.user",
+    )
 
     assert group.platform is Platform.QQ_OFFICIAL
     assert group.kind == "group"
@@ -71,6 +75,11 @@ def test_platform_references_resolve_official_aliases_with_account_scope() -> No
     assert private.kind == "private"
     assert private.id == "user-openid"
     assert private.account_id == "app-a"
+    assert actor == ActorRef(
+        Platform.QQ_OFFICIAL,
+        "user-openid",
+        account_id="app-a",
+    )
 
 
 @pytest.mark.parametrize("kind", ["group", "user"])

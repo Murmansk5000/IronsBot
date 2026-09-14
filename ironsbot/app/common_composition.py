@@ -25,6 +25,7 @@ from ironsbot.services.messaging.proactive_delivery import (
     ProactiveDeliveryPolicy,
     ProactiveMessageDelivery,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,6 +44,7 @@ class CommonComponents:
     """Shared runtime dependencies constructed once per application process."""
 
     prompt_sessions: PromptSessionManager
+    query_sessions: PortableQuerySessions
     features: FeatureService
     promotions: PromotionCatalog
     outbound: GroupOutboundRateLimitService
@@ -144,6 +146,7 @@ def build_common_components(
     install_outbound_rate_limit_hooks(outbound)
     return CommonComponents(
         prompt_sessions=PromptSessionManager(),
+        query_sessions=PortableQuerySessions(),
         features=features,
         promotions=promotions,
         outbound=outbound,

@@ -4,8 +4,6 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import MessageEvent  # noqa: TC002
-from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
@@ -15,20 +13,21 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.context import command_context
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
     bind_async,
 )
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.replies import run_portable_operation
 from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.portable_seer_commands import (
+    build_portable_rank_help_operation,
+)
 from ironsbot.services.seer.rank_command_contracts import (
     RANK_HELP_COMMANDS,
     rank_help_command_contracts,
 )
-from ironsbot.services.seer.rank_help import format_rank_help
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog
@@ -43,25 +42,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-async def handle_rank_help_entry(
-    matcher: Matcher,
-    event: MessageEvent,
-    *,
-    commands: CommandCatalog,
-    features: FeatureService,
-) -> None:
-    command_help = commands.format_for_context(
-        command_context(event),
-        features,
-        plugin_id="rank_help",
-    )
-    await finish_event_reply(
-        matcher,
-        event,
-        f"📊【可用榜单】\n{format_rank_help(command_help)}",
-    )
 
 
 def install(
@@ -79,9 +59,8 @@ def install(
     )
     matcher.append_handler(
         bind_async(
-            handle_rank_help_entry,
-            commands=commands,
-            features=features,
+            run_portable_operation,
+            operation=build_portable_rank_help_operation(commands, features),
         )
     )
 

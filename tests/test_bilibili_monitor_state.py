@@ -232,15 +232,11 @@ def test_bili_push_mode_matcher_requires_the_push_feature() -> None:
     assert not is_bili_push_mode_command(
         _features(),
         group_message_event(command, group_id=987654321),
-        {},
     )
-    state: dict[str, object] = {}
     assert is_bili_push_mode_command(
         _features(user_policy={"123": ["bili_push"]}),
         private_message_event(command, user_id=123),
-        state,
     )
-    assert state
 
 
 def test_private_bili_push_mode_is_available_to_its_private_subscriber() -> None:

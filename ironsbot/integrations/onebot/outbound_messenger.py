@@ -181,7 +181,7 @@ class OneBotOutboundMessenger:
                 error_message=str(error),
                 failure_kind=_onebot_failure_kind(error),
             )
-        message_id = _result_message_id(result)
+        message_id = onebot_result_message_id(result)
         if message_id is None:
             return SendResult(
                 delivered=False,
@@ -216,7 +216,9 @@ async def _send_onebot_message(
     return await bot.send_group_msg(group_id=target_id, message=message)
 
 
-def _result_message_id(result: object) -> str | None:
+def onebot_result_message_id(result: object) -> str | None:
+    """Read the message identifier from a OneBot send response."""
+
     if isinstance(result, dict):
         value: Any = result.get("message_id")
     else:

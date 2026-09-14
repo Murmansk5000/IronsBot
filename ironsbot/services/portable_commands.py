@@ -5,9 +5,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ironsbot.core.command_catalog import CommandContext
+from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.about import build_portable_about_operation
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -19,6 +20,9 @@ from ironsbot.services.portable_bilibili_commands import (
 )
 from ironsbot.services.portable_countermark_commands import (
     build_portable_countermark_operations,
+)
+from ironsbot.services.portable_lucky_skin_commands import (
+    build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
@@ -46,19 +50,26 @@ from ironsbot.services.portable_rank_commands import (
     build_portable_rank_admin_operations,
     build_portable_rank_operations,
 )
-from ironsbot.services.portable_reply import PortableOperation, PortableReply
+from ironsbot.services.portable_reply import (
+    PortableOperation,
+    PortableReply,
+    as_portable_reply,
+)
 from ironsbot.services.portable_seer_commands import build_portable_seer_operations
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
 )
 from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
-    from ironsbot.core.command_catalog import CommandCatalog, CommandContract
+    from ironsbot.core.command_catalog import (
+        CommandCatalog,
+        CommandContext,
+        CommandContract,
+    )
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.about import AboutService
@@ -73,6 +84,7 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
+    from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -111,7 +123,7 @@ class PortableCommandRouter:
             return False
         raw_command = context.text.strip()
         command = _command_text(context.text)
-        command_context = _command_context(context)
+        command_context = command_context_from_input(context)
         return self._query_sessions.recognizes_response(command, context) or (
             self._matching_input_contract(
                 raw_command,
@@ -129,7 +141,7 @@ class PortableCommandRouter:
             return None
         raw_command = context.text.strip()
         command = _command_text(context.text)
-        command_context = _command_context(context)
+        command_context = command_context_from_input(context)
         try:
             selected = await self._query_sessions.select(
                 command,
@@ -161,13 +173,7 @@ class PortableCommandRouter:
             return PortableReply(
                 OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
             )
-        if isinstance(result, PortableReply):
-            return result
-        if isinstance(result, OutboundMessage):
-            return PortableReply(result)
-        if isinstance(result, DataQueryImageReply):
-            return PortableReply(result.to_outbound())
-        return PortableReply(OutboundMessage.from_text(result))
+        return as_portable_reply(result)
 
     def _matching_contract(
         self,
@@ -300,26 +306,22 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     server_status: ServerStatusService | None = None,
     data_sync: DataSyncService | None = None,
     docker_update: DockerUpdateService | None = None,
+    lucky_skin_window: LuckySkinWindowService | None = None,
     meeting_number: str = "",
     meeting_template: str = "{meeting_number}",
     pet_config: PetConfigQueryService | None = None,
     image_command_texts: frozenset[str] = frozenset(),
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
     new_content_preview_max_items: int = 5,
+    query_sessions: PortableQuerySessions | None = None,
 ) -> PortableCommandRouter:
-    async def about_message(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        del text, context
-        return about.message()
-
-    sessions = PortableQuerySessions()
+    sessions = query_sessions or PortableQuerySessions()
     seer_operations = build_portable_seer_operations(
         catalog,
         seer,
         sessions,
         features,
+        image_command_texts=image_command_texts,
     )
     player_operations = build_portable_player_operations(
         seer.player,
@@ -331,6 +333,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         build_portable_rank_operations(
             seer.rank_queries,
             player_id_resolver,
+            features,
         ),
     )
     rank_admin_operations = _catalog_operation_family(
@@ -398,6 +401,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             else build_portable_bilibili_operations(
                 bilibili,
                 sessions,
+                features,
                 notify_auth_invalid=bilibili_monitor.notify_auth_invalid,
                 refresh_now=bilibili_monitor.manual_refresh,
             )
@@ -424,7 +428,19 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         (
             {}
             if docker_update is None
-            else build_portable_docker_operations(docker_update)
+            else build_portable_docker_operations(docker_update, sessions)
+        ),
+    )
+    lucky_skin_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if lucky_skin_window is None
+            else build_portable_lucky_skin_operations(
+                lucky_skin_window,
+                seer.pet_query,
+                sessions,
+            )
         ),
     )
     meeting_operations = _catalog_operations(
@@ -444,7 +460,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     )
 
     operations: dict[str, PortableOperation] = {
-        "about": about_message,
+        "about": build_portable_about_operation(about),
         **seer_operations,
         **team_resource_operations,
         **activity_operations,
@@ -454,6 +470,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **server_status_operations,
         **data_sync_operations,
         **docker_operations,
+        **lucky_skin_operations,
         **meeting_operations,
         **pet_config_operations,
         **new_content_operations,
@@ -493,16 +510,6 @@ def _catalog_operation_family(
     if catalog.command_ids.isdisjoint(command_ids):
         return {}
     return _catalog_operations(catalog, factory())
-
-
-def _command_context(context: MessageInputContext) -> CommandContext:
-    message = context.message
-    return CommandContext(
-        actor=message.actor,
-        conversation=message.conversation,
-        group_role=message.group_role,
-        member_mentions=message.direct_mentions,
-    )
 
 
 def _command_text(text: str) -> str:

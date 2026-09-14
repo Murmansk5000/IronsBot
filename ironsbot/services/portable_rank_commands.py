@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.authorization import can_manage_group_actor
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_reply import (
     PortableReply,
@@ -28,6 +29,7 @@ from ironsbot.services.seer.rank_list_parsing import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from ironsbot.core.authorization import SuperuserPolicy
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -47,12 +49,56 @@ _PUBLIC_RANK_COMMAND_IDS = (
 def build_portable_rank_operations(
     service: RankQueryService,
     resolver: PlayerIdResolver,
+    features: SuperuserPolicy,
 ) -> dict[str, PortableOperation]:
-    owner = _PortableRankOperations(service, resolver)
+    query = build_portable_rank_query_operation(service, resolver)
     return {
-        **dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, owner.query),
-        "rank.display_limit": owner.set_display_limit,
+        **dict.fromkeys(_PUBLIC_RANK_COMMAND_IDS, query),
+        "rank.display_limit": build_portable_rank_display_operation(
+            service,
+            features,
+        ),
     }
+
+
+def build_portable_rank_query_operation(
+    service: RankQueryService,
+    resolver: PlayerIdResolver,
+) -> PortableOperation:
+    """Build the shared list, score, and player-rank query operation."""
+
+    return _PortableRankOperations(service, resolver).query
+
+
+def build_portable_rank_display_operation(
+    service: RankQueryService,
+    features: SuperuserPolicy,
+) -> PortableOperation:
+    """Build the shared group rank display-limit operation."""
+
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        limit = parse_rank_display_limit_command(_prefixed(text))
+        if limit is None:
+            msg = f"catalog accepted invalid rank display input: {text!r}"
+            raise ValueError(msg)
+        message = context.message
+        return OutboundMessage.from_text(
+            service.set_display_limit(
+                conversation=message.conversation,
+                actor=message.actor,
+                can_manage=can_manage_group_actor(
+                    features,
+                    message.actor,
+                    message.group_role,
+                ),
+                limit=limit,
+            )
+        )
+
+    return execute
 
 
 def build_portable_rank_admin_operations(
@@ -161,26 +207,6 @@ class _PortableRankOperations:
     service: RankQueryService
     resolver: PlayerIdResolver
 
-    async def set_display_limit(
-        self,
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        command_text = text if text.startswith("/") else f"/{text}"
-        limit = parse_rank_display_limit_command(command_text)
-        if limit is None:
-            msg = f"catalog accepted invalid rank display input: {text!r}"
-            raise ValueError(msg)
-        message = context.message
-        return OutboundMessage.from_text(
-            self.service.set_display_limit(
-                conversation=message.conversation,
-                actor=message.actor,
-                can_manage=True,
-                limit=limit,
-            )
-        )
-
     async def query(
         self,
         text: str,
@@ -188,7 +214,11 @@ class _PortableRankOperations:
     ) -> OutboundMessage | PortableReply:
         player_target = parse_rank_player_target_command(text)
         if context.has_member_mentions and player_target is not None:
-            return await self._player(player_target.rank_key, None, context)
+            return await self._player(
+                player_target.rank_key,
+                player_target.player_reference,
+                context,
+            )
 
         listed = parse_rank_list_command(
             text,

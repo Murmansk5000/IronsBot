@@ -5,6 +5,7 @@ from typing import Any, cast
 
 from ironsbot.core.command_catalog import CommandContract
 from ironsbot.plugins.onebot.help.menu import HelpMenuEntry, format_plugin_detail
+from tests.helpers.onebot_events import private_message_event
 
 
 def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> None:
@@ -19,11 +20,7 @@ def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> Non
     commands = SimpleNamespace(
         available_for_context=lambda *_args, **_kwargs: (automatic,)
     )
-    event = SimpleNamespace(
-        user_id=1,
-        group_id=None,
-        sender=SimpleNamespace(role=None),
-    )
+    event = private_message_event(user_id=1)
     entry = HelpMenuEntry(
         key="example",
         name="Example",

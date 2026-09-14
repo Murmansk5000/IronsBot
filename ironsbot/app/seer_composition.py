@@ -16,9 +16,6 @@ from ironsbot.integrations.headless_seer.rank import fetch_rank_page
 from ironsbot.integrations.http.weekly_preview_images import (
     CachedWeeklyPreviewImageSource,
 )
-from ironsbot.integrations.onebot.lucky_skin_window import (
-    build_onebot_lucky_skin_window_accounts,
-)
 from ironsbot.integrations.onebot.team_resource import (
     build_onebot_team_resource_default_mentions,
 )
@@ -82,7 +79,10 @@ from ironsbot.services.seer.data_queries import SeerDataQueryService
 from ironsbot.services.seer.equipment import EquipmentQueryService
 from ironsbot.services.seer.external_references import SeerInfoReferences
 from ironsbot.services.seer.local_rank import LocalRankService
-from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
+from ironsbot.services.seer.lucky_skin_window import (
+    LuckySkinWindowAccount,
+    LuckySkinWindowService,
+)
 from ironsbot.services.seer.lucky_skin_window_delivery import (
     LuckySkinWindowOutboundSender,
 )
@@ -337,10 +337,25 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
     )
     lucky_skin_window = LuckySkinWindowService(
         settings.seer.lucky_skin_window,
-        build_onebot_lucky_skin_window_accounts(
-            settings.seer.lucky_skin_window,
-            settings.onebot_references,
-            player_accounts,
+        tuple(
+            LuckySkinWindowAccount(
+                actor=settings.platform_references.user_actor_ref(
+                    configured.user,
+                    location=(
+                        f"seer.lucky_skin_window.accounts[{index}].user"
+                    ),
+                ),
+                player_account=player_accounts.resolve(
+                    configured.account,
+                    location=(
+                        f"seer.lucky_skin_window.accounts[{index}].account"
+                    ),
+                ),
+                watched_skin_ids=tuple(configured.watched_skin_ids),
+            )
+            for index, configured in enumerate(
+                settings.seer.lucky_skin_window.accounts
+            )
         ),
         features,
         headless_sessions,

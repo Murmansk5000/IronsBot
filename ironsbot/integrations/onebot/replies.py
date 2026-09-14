@@ -11,8 +11,24 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot.exception import FinishedException
+from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves this at runtime
 
+from ironsbot.core.outbound import (
+    DeliveryFailureKind,
+    OutboundMessage,
+    SendResult,
+)
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.message_rendering import (
+    render_onebot_outbound_message,
+)
+from ironsbot.integrations.onebot.outbound_messenger import onebot_result_message_id
+from ironsbot.services.portable_reply import (
+    PortableOperation,
+    as_portable_reply,
+    deliver_reply_stages,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -116,6 +132,54 @@ async def finish_event_reply(
         message,
         at_user_ids=event_sender_at_user_ids(event),
         event=event,
+    )
+
+
+async def send_portable_event_reply(
+    matcher: Any,
+    event: MessageEvent,
+    message: OutboundMessage,
+) -> SendResult:
+    if queued_conversation_is_cancelled(matcher):
+        return SendResult(
+            delivered=False,
+            error_code="conversation_cancelled",
+            failure_kind=DeliveryFailureKind.PERMANENT,
+        )
+    rendered = render_onebot_outbound_message(
+        message,
+        conversation=message_input_context(event).message.conversation,
+    )
+    result = await matcher.send(
+        build_message(
+            rendered,
+            at_user_ids=event_sender_at_user_ids(event),
+        )
+    )
+    message_id = onebot_result_message_id(result)
+    if message_id is None:
+        return SendResult(
+            delivered=False,
+            error_code="missing_message_id",
+            error_message="OneBot matcher send response omitted message_id",
+            failure_kind=DeliveryFailureKind.UNCERTAIN,
+        )
+    return SendResult(delivered=True, message_id=message_id)
+
+
+async def run_portable_operation(
+    matcher: Matcher,
+    event: MessageEvent,
+    operation: PortableOperation,
+) -> None:
+    """Run one shared command operation from a OneBot matcher."""
+
+    context = message_input_context(event)
+    result = await operation(context.text.strip(), context)
+    await deliver_reply_stages(
+        lambda message: send_portable_event_reply(matcher, event, message),
+        context.message,
+        as_portable_reply(result),
     )
 
 

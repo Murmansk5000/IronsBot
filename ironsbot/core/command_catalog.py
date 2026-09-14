@@ -5,11 +5,12 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
-from ironsbot.core.authorization import GROUP_MANAGER_ROLES
+from ironsbot.core.authorization import can_manage_group_actor
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.platform import is_supported_message_actor
 
 if TYPE_CHECKING:
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
 
 CommandScope = Literal["group", "private", "both"]
@@ -148,6 +149,18 @@ class CommandContext:
         return bool(self.member_mentions)
 
 
+def command_context_from_input(context: MessageInputContext) -> CommandContext:
+    """Project normalized message facts into the command-catalog contract."""
+
+    message = context.message
+    return CommandContext(
+        actor=message.actor,
+        conversation=message.conversation,
+        group_role=message.group_role,
+        member_mentions=message.direct_mentions,
+    )
+
+
 CommandInputMatcher = Callable[[str, CommandContext], bool]
 _Parsed = TypeVar("_Parsed")
 
@@ -211,9 +224,10 @@ class CommandAccess:
         ):
             return False
         if self.audience == "group_manager":
-            return context.is_group and (
-                context.group_role in GROUP_MANAGER_ROLES
-                or features.is_actor_superuser(context.actor)
+            return context.is_group and can_manage_group_actor(
+                features,
+                context.actor,
+                context.group_role,
             )
         return self.audience != "superuser" or features.is_actor_superuser(
             context.actor

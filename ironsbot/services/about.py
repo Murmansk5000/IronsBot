@@ -12,6 +12,9 @@ from ironsbot.core.outbound import OutboundMessage
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.services.portable_reply import PortableOperation
+
 ABOUT_MESSAGE = """
 🤖 IronsBot
 版本：{version}
@@ -48,6 +51,19 @@ class AboutService:
 
     def message(self) -> OutboundMessage:
         return OutboundMessage.from_text(ABOUT_MESSAGE.format(version=self.version))
+
+
+def build_portable_about_operation(service: AboutService) -> PortableOperation:
+    """Expose project information through the shared command operation contract."""
+
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text, context
+        return service.message()
+
+    return execute
 
 
 def about_command_contracts() -> tuple[CommandContract, ...]:

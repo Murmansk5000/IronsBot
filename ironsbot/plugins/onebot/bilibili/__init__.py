@@ -66,7 +66,6 @@ def plugin_contribution(
             service=service,
             features=features,
             monitor=monitor,
-            targets=service.targets,
         ),
         hooks=PluginHooks(
             startup=(

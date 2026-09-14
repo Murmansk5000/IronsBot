@@ -73,7 +73,7 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 - [x] 候选镜像在发布前与现有 `latest` 比较，超出 8192 KiB 时停止发布并保留证据。
 - [x] 在 Linux/amd64 Docker 引擎真实构建候选，执行离线启动、字体、依赖导入、
   字节码排除和三个目录预算检查。
-- [ ] 发布环境记录一次实际镜像层和总尺寸测量。
+- [x] 发布环境记录一次实际镜像层和总尺寸测量。
 
 ## Evidence
 
@@ -90,12 +90,14 @@ BuildKit 挂载使用 [Docker 官方 RUN --mount 契约](https://docs.docker.com
 | 2026-09-13 | 移除未使用的 Uvicorn standard extras | 锁文件依赖边界测试、完整宿主进程启动与正常关闭 | 入口固定使用 `asyncio`、`h11`、`websockets-sansio`；锁文件移除 `httptools`、`uvloop`、`watchfiles`。Docker 引擎随后不可用，精确 Linux 镜像差值留给发布候选任务测量。 |
 | 2026-09-13 | 精简后冻结依赖安全复核 | CI 同参数 `pip-audit==2.10.1 --require-hashes --disable-pip --strict` | 审计 53 个运行时发行包，0 个已知漏洞；临时本地报告未进入镜像，发布任务仍需上传自己的审计附件。 |
 | 2026-09-13 | 修复嵌套字节码进入构建上下文 | 首次真实候选 `/app` 9384 KiB；递归忽略规则后重建、容器内 `find` 与 smoke | 根级 `.dockerignore` 模式没有排除嵌套 `__pycache__`；改为 `**/__pycache__/` 与 `**/*.py[cod]` 后 `/app` 降至 4220 KiB，减少 5164 KiB，容器内无 `.pyc`。同时修复 Dockerfile 旧式 `ENV` 警告。 |
+| 2026-09-14 | 私有 QQ Official 预览镜像发布测量 | Actions run `34789728528`；commit `fff6f263`；离线 smoke、依赖审计、目录预算、相对增长门、发布 digest 和逐层 history 附件 | 已发布 digest `sha256:acd9fe98...`，Docker 报告 259,755,606 bytes；`/app` 4492 KiB、site-packages 105948 KiB、fonts 19452 KiB，均通过预算。相对前一预览 digest `sha256:afd905d1...` 仅增长 16,753 bytes（16 KiB）。58 个运行依赖无已知漏洞。 |
+| 2026-09-14 | 发布依赖减重复核 | `uv tree --invert`、容器 `du` 清单和调用点检索 | `cryptography`、`cffi`、`pycparser` 仅由腾讯 SDK 的 Onboard 链带入，但属于 SDK 声明的安装契约，不能在镜像中强删；`nonebot_plugin_htmlkit` 主体是约 16 MiB 的原生渲染核心，当前模板渲染仍直接依赖。未发现可删除且不破坏依赖契约的新增大包。 |
 
 ## Progress
 
 ```text
 Program  [███████░] 7/8 verified phases; real platform acceptance remains
-Phase    [█████████░] local Linux candidate verified; published CI artifact remains
+Phase    [██████████] published CI image, smoke, size and growth evidence verified
 Current  [██████████] bytecode exclusion, smoke, budgets and baseline comparison verified
 
 2026-09-14：最终镜像不再携带 `pygments` 与 `pymdown-extensions`。它们仅服务

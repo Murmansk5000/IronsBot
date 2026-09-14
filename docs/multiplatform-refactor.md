@@ -2400,6 +2400,14 @@ AccessToken、连接、Session 与 OpenID 命名空间，并实现心跳、Resum
 平台授权；替换应在现有命令覆盖完成并通过真实连接 smoke 后进行，避免同时改变协议和
 业务行为。
 
+进一步核对腾讯 Node SDK 源码后确认，`GROUP_MESSAGE_CREATE` 是私域机器人接收普通群
+消息的事件，公域机器人只有 `GROUP_AT_MESSAGE_CREATE`。当前 Python SDK 1.2.2 虽在
+Identify 中请求群消息 intent，但事件白名单和 `EventParser` 只接收群 @ 事件。因此
+OpenClaw 的 `requireMention=false` 不能直接移植为 IronsBot 配置开关；正确路径是先取得
+私域权限，再由 Python SDK 正式增加该事件，最后在现有 QQ Official 入站边界验收。
+项目不会通过修改 SDK 模块全局变量或引入 Node sidecar 伪造支持，标准镜像也不会因此
+增加第二套网关依赖。
+
 全服榜单维护命令随后复用同一 portable 延迟回复契约。`/刷新榜单` 与
 `/缓存榜单 …` 会先发送进度回执，平台确认送达后才开始无头客户端请求，完成后再发送
 最终统计；区间缓存的进度文案改为请求前可知的策略上限，实际写入数量只在最终结果中
@@ -2416,3 +2424,115 @@ progress-aware service API。覆盖提升到 67/75，剩余 8 条是两条需要
 执行重启”的维护命令及 6 条依赖数字 QQ 账户配置的幸运橱窗命令。该增量没有新增依赖、
 数据库、配置字段、二进制素材或镜像层。专项 `119 passed`，全量
 `3381 passed, 7 skipped`；Ruff、BasedPyright、compileall 和差异检查通过。
+
+容器维护的最后两条命令随后接入 portable router。`/重启机器人` 与 `/更新镜像`
+复用相同维护菜单；镜像更新在访问仓库前先发送进度回执。`PortableReply` 的跟进结果可以
+继续是 delivery-aware reply，因此每一阶段都由传输确认：最终维护提示发送失败时不会
+执行进程或容器重启，发送成功后才运行异步提交钩子。OneBot 保持相同的最终送达顺序，
+并补齐耗时镜像更新的前置回执。覆盖提升到 69/75，剩余 6 条均依赖数字 QQ 账户配置的
+幸运橱窗命令；没有新增依赖、数据库、配置字段、二进制素材或镜像层。
+
+最后 6 条幸运橱窗命令完成平台中立化。配置中的 `user` 现在统一经
+`PlatformReferenceResolver` 解析：OneBot 保留数字 QQ/别名，QQ Official 使用所属
+AppID 下的 `user_aliases` 得到 OpenID `ActorRef`，不做 QQ 号伪映射。查询、关注增删、
+清空、重置、登录确认和皮肤详情菜单均进入 portable router；无缓存查询仍在确认回复
+送达后才登录。业务 service、平台状态表、每日缓存和渲染链保持唯一实现。完整示例目录
+达到 75/75 portable 覆盖，没有新增依赖、数据库、二进制素材或镜像层。Phase 7 仍只差
+真实 AppID 的消息权限、主动消息额度和连接 smoke 验收。
+
+最终线上门禁现已固化为
+[QQ Official Live Acceptance](specs/2026-09-14-qq-official-live-acceptance.md)：只有同一候选
+digest 收到 `READY/RESUMED`，并通过 C2C 文本、共享 Seer 查询、图片、群直接 @、非 @
+策略与引用忽略矩阵，才可关闭 Phase 7；主动推送仅在部署需要时作为必测项。当前主机未配置
+QQ Official AppID/AppSecret，不能用离线测试或仅成功获取 Access Token 代替该证据。
+
+平台回复的分阶段交付状态机随后从 QQ Official runtime 移入既有 `portable_reply` 服务。
+初始消息送达门、失败取消、延迟任务结果、最终消息送达后提交以及逐阶段错误日志现在只有
+一份平台中立实现；QQ Official 适配器只负责事件转换和调用通用交付函数。这也是 OneBot
+以后改用 portable router 的前置收口。审计确认当前 OneBot matcher 仍是其实际入站适配器，
+不能因为 portable 覆盖达到 75/75 就直接删除。此次变更净减少 16 行，没有新增文件、运行
+依赖、配置、数据库、素材或镜像层；专项 `63 passed`，全量 `3400 passed, 7 skipped`，
+Ruff、BasedPyright、compileall、架构和差异检查通过。
+
+OneBot 随后开始复用同一 portable operation 与交付状态机。开服查询的普通、管理员、
+无头实例入口以及配置型会议回复不再维护独立业务 handler；现有 matcher 继续拥有规则、
+feature、权限、优先级、冷却和群内 @ 发言人语义。平台中立结果归一化也从主路由抽为单一
+函数，赛尔图片结果在赛尔 operation 边界先转换，避免通用回复层反向依赖赛尔领域。
+OneBot 发送只有返回真实 message ID 才提交回调；不确定回执不会启动后续动作。此次删除
+开服专用 handler 文件，未增加依赖、配置、数据库、素材或镜像层；这只是可验证的首批
+迁移，不代表其余 OneBot 会话 matcher 已可删除。专项 `107 passed`，全量
+`3402 passed, 7 skipped`；Ruff、BasedPyright、compileall、架构和差异检查通过。
+
+活动查询的 `/当前活动`、`快结束活动` 与 `新增活动` 随后迁入同一 OneBot portable
+执行入口，删除三个重复的 service 调用与回复 handler。SUPERUSER、feature、显式命令、
+优先级和群内 @ 发言人行为仍由原 matcher 控制，活动定时推送不受影响。赛尔图片查询仍
+保留原适配器，直到外链附加和数据库不可用语义也进入共享 operation，避免为了扩大迁移
+数量而改变现有回复。最终全量 `3403 passed, 7 skipped`，未新增运行依赖或镜像资源。
+
+“关于”和刻印数值榜随后复用同一个 portable operation。OneBot 不再保留项目介绍的
+渲染转发 handler，也不再把刻印榜解析结果暂存在 matcher state 后调用一套独立回复；
+数据库不可用映射进入共享刻印榜 operation，两个平台因此使用同一文案。原 matcher 仍
+负责 feature、显式命令、优先级和发送者提及。最终全量 `3404 passed, 7 skipped`，该
+切片净删除生产代码且未增加依赖、配置、数据库或资源。
+
+战队查询随后迁入同一个 portable operation，并删除 OneBot 的战队 ID matcher state、
+专用 handler 和重复权限组装。为使共享授权真实可用，OneBot 现在与 QQ 官方一样把群角色
+写入 `IncomingMessageRef`；命令目录、推送管理和战队查询共同调用核心群管理授权函数。
+普通成员、群管理员和超级管理员语义保持不变。最终全量 `3406 passed, 7 skipped`，未
+增加依赖、配置、数据库、资源或镜像层。
+
+榜单帮助随后复用 portable operation，并删除 OneBot 专用上下文转换与回复 handler。
+`MessageInputContext -> CommandContext` 现在只有命令目录的一处公开转换，portable router、
+榜单帮助和 OneBot 帮助菜单共同使用；群角色和直接提及不再由各调用方重复读取。角色可见性
+继续由命令目录决定。最终全量 `3405 passed, 7 skipped`，未增加运行依赖或镜像资源。
+
+公开榜单列表、分数和玩家排名查询随后共用同一个 portable operation。OneBot 只保留
+matcher 的 feature、输入类型、优先级和冷却适配，删除三套解析结果 state 与业务回复
+handler；玩家排名额度改为收到平台真实消息回执后才提交。数字、玩家别名和直接 @成员
+继续使用统一 `PlayerIdResolver`，别名与 @成员混用会由两个平台共同返回明确错误。管理
+缓存与群榜单显示条数仍保留现有适配器，等待各自权限和长任务边界独立收口。本次未增加
+依赖、配置、数据库、素材或镜像层；最终全量 `3406 passed, 7 skipped`，Ruff、
+BasedPyright、compileall 和差异检查通过。
+
+榜单缓存管理与群默认显示条数随后完成同样的 OneBot 收口。样本状态/刷新、页面状态/
+刷新、区间缓存和显示条数均直接执行既有 portable operation，删除剩余专用 handler、
+解析 state 和 `rank_list_context` 文件。显示条数操作不依赖路由层放行，仍用标准化群角色
+与超级管理员策略再次授权；维护长任务继续以首条进度消息送达作为执行门。榜单 OneBot
+模块因此只保留传输 matcher。该切片净减少生产代码，没有增加依赖、配置、数据库、素材
+或镜像层；最终全量 `3407 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异
+检查通过。
+
+赛尔数据查询随后收口到独立的 portable operation。数据版本、赛季倒计时和下周预告在
+OneBot 与 QQ Official 上共用调用、数据库不可用映射和图片结果；下周预告的缓存提示及
+SeerInfo 参考链接也不再由 OneBot 专用 handler 拼装。原 `_finish_query` 被删除，OneBot
+只保留三组精确命令 matcher。该切片净减少生产代码，没有新增文件、依赖、配置、数据库、
+素材或镜像层；最终全量 `3408 passed, 7 skipped`，Ruff、BasedPyright、compileall 和
+差异检查通过。
+
+巅峰查询随后完成相同收口。竞技池、专家池、大师池、巅峰投票、套装榜、称号榜和精灵榜
+删除七套 OneBot 业务 handler，统一执行两个 portable operation。需要渲染的查询通过共享
+交付状态机先发送“正在生成图片”，确认平台回执后才继续生成最终结果；不产生进度的套装榜
+和称号榜仍保持单阶段回复。数据库不可用文案也由共享 operation 统一映射。OneBot matcher
+只保留命令边界、feature、优先级和冷却，没有新增依赖、配置、数据库、素材或镜像层；最终
+全量 `3410 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过。
+
+B站账号列表、群/私聊推送模式和手动刷新随后复用同一组 portable operation，删除
+`account_commands` 与 `update_actions` 两个 OneBot 专用业务文件。群推送模式在共享操作
+边界再次校验群主、管理员或超级管理员；手动刷新改为首条进度消息成功送达后才执行，并
+统一成功、失败回复。动态历史数字菜单继续保留 OneBot 会话适配，等待通用会话桥接完成后
+再迁移。所有运行能力均延迟到命令执行时访问，插件组合仍无存储和网络副作用。该切片净
+减少生产代码，未新增依赖、配置、数据库、素材或镜像层；最终全量
+`3412 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过。
+
+精灵、立绘、刻印、宝石、装备、属性、异常和精灵配置查询随后共用同一份
+`PortableQuerySessions` 与 portable operation。新增的 OneBot 查询桥只负责把既有耐久
+输入队列接到平台中立会话：慢搜索开始前先保留快速数字回复，数字选择使用统一语义目标，
+引用忽略、取消和分阶段送达继续由公共适配边界处理。旧 `query_conversation` 及其测试被
+删除，OneBot 与 QQ Official 不再分别维护候选菜单状态。为补齐通用语义、取消和耐久队列
+桥，生产代码净增 156 行；没有新增运行依赖、配置、数据库、素材或镜像层。最终全量
+`3409 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过。
+
+2026-09-14 使用真实应用凭据完成了一次本机 QQ Official 连接探测。凭据仅注入进程环境，
+临时配置与会话缓存已清理；SDK 写出了包含会话标识且序列推进到 1 的恢复记录，证明网关
+会话已经建立。由于本次没有保留规范要求的 `READY/RESUMED` 可见日志，也没有完成 C2C、
+群直接 @、非 @、引用忽略和图片回复矩阵，这只能记作部分连接证据，不能关闭 Phase 7。

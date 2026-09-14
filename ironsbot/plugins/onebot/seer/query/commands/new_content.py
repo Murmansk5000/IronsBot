@@ -61,7 +61,6 @@ from ironsbot.services.seer.new_content_menu import (
 from ironsbot.services.seer.query_result import QueryReply
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from ..query_conversation import send_query_reply
 
 if TYPE_CHECKING:
     from ironsbot.services.seer.autocard_media import AutocardMediaService
@@ -305,7 +304,8 @@ async def _send_item_detail(
     if detail is None:
         return
     if isinstance(detail, QueryReply):
-        await send_query_reply(detail, event, finish=False)
+        message = render_onebot_outbound_message(detail.to_outbound())
+        await matcher.send(message, at_sender=isinstance(event, GroupMessageEvent))
         return
     if isinstance(detail, AutocardEntry):
         message = render_onebot_outbound_message(

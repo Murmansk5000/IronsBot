@@ -3,15 +3,23 @@
 
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import CommandPolicy
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import affix_command, explicit_command
+from ironsbot.services.portable_seer_commands import (
+    build_portable_pet_query_operations,
+)
 from ironsbot.services.seer.query_commands import pet_image_input, pet_query_input
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from ..query_conversation import make_query_handler
 
 
 def install(group: SeerMatcherGroup) -> None:
     service = group.resources.pet_query
+    operations = build_portable_pet_query_operations(
+        service,
+        group.query_sessions,
+        image_command_texts=group.image_command_texts,
+    )
     image_matcher = group.on_message(
         policy=CommandPolicy.command(
             "seer_pet_image",
@@ -23,10 +31,9 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_pet"),
     )
     image_matcher.append_handler(
-        make_query_handler(
-            service.search_image,
-            service.select_image,
-            "请问你想查询的立绘是……",
+        make_portable_query_handler(
+            operations["seer.pet.image"],
+            group.query_sessions,
             ActionDefinition("seer_pet_image", "精灵立绘查询"),
         )
     )
@@ -42,10 +49,9 @@ def install(group: SeerMatcherGroup) -> None:
         priority=group.matcher_priority("seer_pet"),
     )
     info_matcher.append_handler(
-        make_query_handler(
-            service.search_info,
-            service.select_info,
-            "请问你想查询的精灵是……",
+        make_portable_query_handler(
+            operations["seer.pet.query"],
+            group.query_sessions,
             ActionDefinition("seer_pet_info", "精灵信息查询"),
         )
     )

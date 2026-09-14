@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, cast
 
+from ironsbot.core.authorization import can_manage_group_actor
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.bilibili.commands import parse_bili_push_mode_command
 from ironsbot.services.bilibili.outbound_delivery import (
@@ -16,11 +17,17 @@ from ironsbot.services.portable_query_sessions import PortableMenuSpec
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
+    from ironsbot.core.authorization import SuperuserPolicy
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableOperation
+    from ironsbot.services.portable_reply import PortableOperation, PortableReply
+
+from ironsbot.services.portable_reply import (
+    ProgressReporter,
+    progress_operation_reply,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +35,7 @@ _LOGGER = logging.getLogger(__name__)
 def build_portable_bilibili_operations(
     service: BilibiliService,
     sessions: PortableQuerySessions,
+    features: SuperuserPolicy,
     *,
     notify_auth_invalid: Callable[[str], Awaitable[None]],
     refresh_now: Callable[[], Awaitable[str]],
@@ -72,6 +80,24 @@ def build_portable_bilibili_operations(
             ),
         )
 
+    return {
+        "bilibili.dynamic": dynamic,
+        **build_portable_bilibili_management_operations(
+            service,
+            features,
+            refresh_now=refresh_now,
+        ),
+    }
+
+
+def build_portable_bilibili_management_operations(
+    service: BilibiliService,
+    features: SuperuserPolicy,
+    *,
+    refresh_now: Callable[[], Awaitable[str]],
+) -> Mapping[str, PortableOperation]:
+    """Build stateless account, push-mode, and refresh operations."""
+
     async def accounts(
         text: str,
         context: MessageInputContext,
@@ -85,13 +111,22 @@ def build_portable_bilibili_operations(
         text: str,
         context: MessageInputContext,
     ) -> OutboundMessage:
+        message = context.message
+        if message.conversation.kind == "group" and not can_manage_group_actor(
+            features,
+            message.actor,
+            message.group_role,
+        ):
+            return OutboundMessage.from_text(
+                "❌ 仅群主、管理员或超级管理员可用。"
+            )
         parsed = parse_bili_push_mode_command(text)
         if parsed is None:
             return OutboundMessage.from_text("❌ B站推送模式指令格式错误。")
         account_ref, raw_mode = parsed
         return OutboundMessage.from_text(
             await service.targets.update_push_mode(
-                context.message.conversation,
+                message.conversation,
                 account_ref,
                 raw_mode,
             )
@@ -100,12 +135,25 @@ def build_portable_bilibili_operations(
     async def refresh(
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
-        del text, context
-        return OutboundMessage.from_text(await refresh_now())
+    ) -> PortableReply:
+        del text
+
+        async def run(progress: ProgressReporter) -> OutboundMessage:
+            await progress("⚡ 正在刷新动态...")
+            try:
+                _LOGGER.info(
+                    "superuser %s manually refreshed Bilibili",
+                    context.message.actor.id,
+                )
+                result = await refresh_now()
+            except Exception:
+                _LOGGER.exception("manual Bilibili dynamic refresh failed")
+                result = "❌ 动态刷新失败。"
+            return OutboundMessage.from_text(result)
+
+        return await progress_operation_reply(run)
 
     return {
-        "bilibili.dynamic": dynamic,
         "bilibili.accounts": accounts,
         "bilibili.push_mode": push_mode,
         "bilibili.private_push_mode": push_mode,
