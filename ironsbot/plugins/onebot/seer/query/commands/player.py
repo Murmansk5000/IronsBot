@@ -84,6 +84,7 @@ def install(group: SeerMatcherGroup) -> None:
         group.query_sessions,
         group.features,
         dependencies.detail_extensions,
+        team_query=group.resources.team_query,
     )
     feature_rule = seer_feature_rule(group.features, "seer_player")
     priority = group.matcher_priority("seer_player")

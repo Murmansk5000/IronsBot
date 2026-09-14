@@ -58,6 +58,7 @@ from ironsbot.services.portable_reply import (
 )
 from ironsbot.services.portable_seer_commands import build_portable_seer_operations
 from ironsbot.services.portable_team_resource_commands import (
+    build_portable_team_overview_operation,
     build_portable_team_resource_operations,
 )
 from ironsbot.services.seer.data import DataUnavailableError
@@ -316,6 +317,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer,
         sessions,
         features,
+        player_id_resolver,
         image_command_texts=image_command_texts,
     )
     player_operations = _catalog_operations(
@@ -326,6 +328,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
             sessions,
             features,
             getattr(seer, "player_detail_extensions", None),
+            team_query=seer.team_query,
         ),
     )
     rank_operations = _catalog_operations(
@@ -371,7 +374,12 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     )
     team_resource_operations = _catalog_operations(
         catalog,
-        build_portable_team_resource_operations(team_resource),
+        build_portable_team_resource_operations(
+            team_resource,
+            query=build_portable_team_overview_operation(
+                team_resource, seer.team_query, player_id_resolver, features, sessions
+            ),
+        ),
     )
     activity_operations = _catalog_operations(
         catalog,
