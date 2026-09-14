@@ -1916,6 +1916,7 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
+            "ENVIRONMENT": "prod",
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         }
     )
@@ -1927,6 +1928,8 @@ check_on_startup = false
                 "from ironsbot.app.bootstrap import bootstrap; "
                 "app = bootstrap(); "
                 "assert set(app.driver._adapters) == {'OneBot V11'}; "
+                "assert app.driver.env == 'test'; "
+                "assert __import__('os').environ['ENVIRONMENT'] == 'prod'; "
                 "assert app.resources.qq_official.account_ids == ('example-app',); "
                 "print('QQ_OFFICIAL_BOOTSTRAP_OK')"
             ),
