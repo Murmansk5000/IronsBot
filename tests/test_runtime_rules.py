@@ -15,7 +15,11 @@ from ironsbot.integrations.onebot.rules import (
     member_targets_command,
     natural_language,
 )
-from tests.helpers.onebot_events import group_message_event, private_message_event
+from tests.helpers.onebot_events import (
+    group_admin_message_event,
+    group_message_event,
+    private_message_event,
+)
 
 
 def _matches(rule: Rule, event: Event) -> bool:
@@ -72,6 +76,13 @@ def test_private_to_me_is_direct_input_not_a_bot_mention() -> None:
     assert message_input_context(event).kind is MessageInputKind.DIRECT
     assert _matches(explicit_command(), event)
     assert not _matches(bot_mention(), event)
+
+
+def test_message_input_context_preserves_onebot_group_role() -> None:
+    context = message_input_context(group_admin_message_event("战队1234567"))
+
+    assert context.message.group_role == "admin"
+    assert message_input_context(private_message_event()).message.group_role is None
 
 
 def test_explicit_commands_accept_replies_but_not_current_member_mentions() -> None:

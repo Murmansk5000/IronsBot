@@ -4,40 +4,51 @@ from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
     bind,
     bind_async,
 )
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
+from ironsbot.integrations.onebot.replies import run_portable_operation
 from ironsbot.integrations.onebot.rules import explicit_command
-
-from .account_commands import (
-    handle_bili_accounts_action,
-    handle_bili_push_mode_action,
+from ironsbot.services.portable_bilibili_commands import (
+    build_portable_bilibili_operations,
 )
+
 from .command_rules import (
     is_bili_account_command,
     is_bili_push_mode_command,
     is_dynamic_menu_command,
     is_update_dynamic_command,
 )
-from .dynamic_actions import handle_dynamic_menu_action
-from .update_actions import handle_update_dynamic_action
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
-    from ironsbot.services.bilibili.targets import BiliTargetService
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+
 
 def install(
     registry: MatcherFactory,
     service: BilibiliService,
     features: FeatureService,
     monitor: BilibiliMonitorService,
-    targets: BiliTargetService,
+    query_sessions: PortableQuerySessions,
 ) -> None:
+    async def refresh_now() -> str:
+        return await monitor.manual_refresh()
+
+    operations = build_portable_bilibili_operations(
+        service,
+        query_sessions,
+        features,
+        notify_auth_invalid=monitor.notify_auth_invalid,
+        refresh_now=refresh_now,
+    )
     dynamic_menu = registry.on_message(
         policy=CommandPolicy.command("bili_query", help_ids=("bilibili.dynamic",)),
         rule=Rule(bind(is_dynamic_menu_command, features)) & explicit_command(),
@@ -45,10 +56,10 @@ def install(
         block=True,
     )
     dynamic_menu.append_handler(
-        bind_async(
-            handle_dynamic_menu_action,
-            service=service,
-            monitor=monitor,
+        make_portable_query_handler(
+            operations["bilibili.dynamic"],
+            query_sessions,
+            ActionDefinition("bilibili.dynamic", "B站历史动态查询"),
         )
     )
 
@@ -60,9 +71,8 @@ def install(
     )
     update_dynamic.append_handler(
         bind_async(
-            handle_update_dynamic_action,
-            features=features,
-            monitor=monitor,
+            run_portable_operation,
+            operation=operations["bilibili.refresh"],
         )
     )
 
@@ -73,7 +83,10 @@ def install(
         block=True,
     )
     bili_account.append_handler(
-        bind_async(handle_bili_accounts_action, targets=targets)
+        bind_async(
+            run_portable_operation,
+            operation=operations["bilibili.accounts"],
+        )
     )
 
     push_mode = registry.on_message(
@@ -87,8 +100,7 @@ def install(
     )
     push_mode.append_handler(
         bind_async(
-            handle_bili_push_mode_action,
-            features=features,
-            targets=targets,
+            run_portable_operation,
+            operation=operations["bilibili.push_mode"],
         )
     )

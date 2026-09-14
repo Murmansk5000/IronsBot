@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -42,7 +43,7 @@ class Delivery:
         assert message.parts and action_name and subscription_key
         self.calls.extend(targets)
         return (
-            ProactiveDeliverySummary((), targets)
+            ProactiveDeliverySummary((), (), targets)
             if self.fail
             else ProactiveDeliverySummary(targets, ())
         )
@@ -104,11 +105,14 @@ async def test_permissions_are_checked_only_for_claimed_topic_input(
     )
     regular = build_topic_operations(topics)
     result = await regular["messaging.topic.subscribe"]("订阅公告", context)
+    assert isinstance(result, OutboundMessage)
     assert "仅群主和管理员" in str(result.parts)
-    allowed = build_topic_operations(topics, group_role="admin")
+    allowed = build_topic_operations(topics)
+    context = replace(context, message=replace(context.message, group_role="admin"))
     result = await allowed["messaging.topic.subscribe"]("订阅公告", context)
     assert GROUP in topics.store.subscribers("公告")
     denied = await allowed["messaging.topic.create"]("推送新建 测试 测试主题", context)
+    assert isinstance(denied, OutboundMessage)
     assert "仅限超级管理员" in str(denied.parts)
 
 

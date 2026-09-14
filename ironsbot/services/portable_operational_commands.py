@@ -19,7 +19,10 @@ if TYPE_CHECKING:
         DataSyncService,
         ManualDataSyncOption,
     )
-    from ironsbot.services.operations.docker_update import DockerUpdateService
+    from ironsbot.services.operations.docker_update import (
+        DockerMaintenanceOption,
+        DockerUpdateService,
+    )
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
@@ -98,8 +101,55 @@ class _PortableDataSyncOperations:
 
 def build_portable_docker_operations(
     service: DockerUpdateService,
+    sessions: PortableQuerySessions,
 ) -> Mapping[str, PortableOperation]:
-    """Bind read-only Docker maintenance that is safe on every transport."""
+    """Bind Docker maintenance with transport-confirmed progress and restart."""
+
+    from functools import partial
+
+    from ironsbot.services.operations.docker_update import (
+        DOCKER_IMAGE_UPDATE_START_MESSAGE,
+        DockerMaintenanceChoice,
+        docker_maintenance_menu_text,
+    )
+
+    async def select(option: DockerMaintenanceOption) -> PortableReply:
+        choice = option.choice
+        if choice is DockerMaintenanceChoice.RESTART_ONLY:
+            message, action = await service.prepare_maintenance(choice)
+            return PortableReply(
+                OutboundMessage.from_text(message),
+                after_delivered=partial(service.execute_restart, action),
+            )
+
+        async def prepare(progress: ProgressReporter) -> PortableReply:
+            await progress(DOCKER_IMAGE_UPDATE_START_MESSAGE)
+            message, action = await service.prepare_maintenance(choice)
+            return PortableReply(
+                OutboundMessage.from_text(message),
+                after_delivered=partial(service.execute_restart, action),
+            )
+
+        return await progress_operation_reply(prepare)
+
+    async def maintenance_menu(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        from ironsbot.services.operations.docker_update import (
+            DOCKER_MAINTENANCE_OPTIONS,
+        )
+
+        return sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=DOCKER_MAINTENANCE_OPTIONS,
+                select=select,
+                prompt=OutboundMessage.from_text(docker_maintenance_menu_text()),
+                exit_message="已退出机器人维护。",
+            ),
+        )
 
     async def check_image(
         text: str,
@@ -112,7 +162,11 @@ def build_portable_docker_operations(
 
         return await progress_operation_reply(check)
 
-    return {"docker_update.image_check": check_image}
+    return {
+        "docker_update.restart": maintenance_menu,
+        "docker_update.image_update": maintenance_menu,
+        "docker_update.image_check": check_image,
+    }
 
 
 def build_portable_server_status_operations(

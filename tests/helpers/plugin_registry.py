@@ -96,6 +96,7 @@ from ironsbot.services.about import AboutService
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -185,6 +186,7 @@ def build_test_plugin_registry(
         "ApplicationResources",
         SimpleNamespace(
             about=AboutService("test"),
+            query_sessions=PortableQuerySessions(),
             features=runtime.features,
             promotions=PromotionCatalog(config.promotions),
             admin_notices=runtime.admin_notices,
@@ -202,6 +204,7 @@ def build_test_plugin_registry(
             ),
             bilibili_monitor=SimpleNamespace(
                 check_on_connect=_noop_startup,
+                notify_auth_invalid=_noop_bili_login_notice,
                 register_job=_noop_startup,
             ),
             lucky_skin_window=SimpleNamespace(
@@ -212,6 +215,7 @@ def build_test_plugin_registry(
             messaging=SimpleNamespace(
                 topics=None,
                 stop_topics=_noop_startup,
+                portable_command_actions=(),
                 refresh_push_time_jobs=_noop_refresh_push_time,
                 start=_noop_startup,
             ),
@@ -353,6 +357,7 @@ def build_test_plugin_registry(
             features=runtime.features,
             monitor=resources.bilibili_monitor,
             scheduler=SchedulerFacade(),
+            query_sessions=resources.query_sessions,
         ),
         messaging_plugin_contribution(
             config=config.messaging,
@@ -361,6 +366,7 @@ def build_test_plugin_registry(
             service=resources.messaging,
             activity_service=resources.activity,
             scheduler=SchedulerFacade(),
+            query_sessions=resources.query_sessions,
         ),
         ai_chat_plugin_contribution(
             settings=config,
@@ -385,18 +391,21 @@ def build_test_plugin_registry(
             service=resources.docker_update,
             features=runtime.features,
             startup_notice=resources.startup_notice,
+            query_sessions=resources.query_sessions,
         ),
         db_sync_plugin_contribution(
             service=resources.data_sync,
             features=runtime.features,
             startup_notice=resources.startup_notice,
             scheduler=SchedulerFacade(),
+            query_sessions=resources.query_sessions,
         ),
         about_plugin_contribution(resources.about),
         help_plugin_contribution(
             contribution_catalog=resources.contribution_catalog,
             features=runtime.features,
             commands=resources.commands,
+            query_sessions=resources.query_sessions,
             ignored_plugins=tuple(config.features.help.ignored_plugins),
         ),
         sendpic_plugin_contribution(
@@ -425,12 +434,14 @@ def build_test_plugin_registry(
             service=resources.pet_config,
             features=runtime.features,
             config=config.pet_config,
+            query_sessions=resources.query_sessions,
         ),
         lucky_skin_window_plugin_contribution(
             resources.lucky_skin_window,
             resources.seer.pet_query,
             runtime.features,
             SchedulerFacade(),
+            resources.query_sessions,
         ),
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),

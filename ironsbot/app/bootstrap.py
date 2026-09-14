@@ -76,6 +76,7 @@ def bootstrap() -> Application:
         application.resources.qq_official.bind(
             build_portable_command_router(
                 catalog=application.resources.commands,
+                contribution_catalog=application.resources.contribution_catalog,
                 about=application.resources.about,
                 seer=application.resources.seer,
                 player_id_resolver=application.resources.player_id_resolver,
@@ -95,6 +96,7 @@ def bootstrap() -> Application:
                 server_status=application.resources.server_status,
                 data_sync=application.resources.data_sync,
                 docker_update=application.resources.docker_update,
+                lucky_skin_window=application.resources.lucky_skin_window,
                 meeting_number=settings.messaging.meeting.number,
                 meeting_template=settings.messaging.meeting.template,
                 pet_config=application.resources.pet_config,
@@ -106,6 +108,10 @@ def bootstrap() -> Application:
                 ),
                 new_content_preview_max_items=(
                     settings.seer.new_content.auto_expand_max_items
+                ),
+                query_sessions=application.resources.query_sessions,
+                ignored_help_plugins=tuple(
+                    settings.features.help.ignored_plugins
                 ),
             ),
             application.resources.outbound_messenger,

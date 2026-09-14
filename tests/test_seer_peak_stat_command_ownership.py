@@ -193,7 +193,7 @@ def test_new_rank_alias_is_excluded_without_editing_a_stat_keyword_list(
 
 @pytest.mark.parametrize("text", ["２角刻印攻击排行", "刻印双防体排行榜", "刻印攻榜"])
 @pytest.mark.asyncio
-async def test_stat_matcher_stores_the_shared_parser_result(
+async def test_stat_matcher_uses_the_shared_parser(
     catalog: CommandCatalog, text: str
 ) -> None:
     group = _group()
@@ -207,7 +207,7 @@ async def test_stat_matcher_stores_the_shared_parser_result(
     )
     parsed = parse_countermark_stat_rank_command(text)
     assert parsed is not None
-    assert state[countermark_stat_rank.COUNTERMARK_STAT_RANK_KEY] == parsed
+    assert state == {}
     assert catalog.claims_direct_input(
         CommandContext(_ACTOR, _PRIVATE), group.features, text
     )

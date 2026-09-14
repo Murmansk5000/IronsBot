@@ -15,10 +15,10 @@ from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.services.messaging.topics import TopicPublication
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.messaging.topics import PushTopicService
+    from ironsbot.services.portable_reply import PortableOperation
 
 
 def reference_digest(value: str) -> str:
@@ -117,9 +117,7 @@ def topic_command_contracts(
 
 def build_topic_operations(
     service: PushTopicService,
-    *,
-    group_role: str | None = None,
-) -> dict[str, Callable[[str, MessageInputContext], Awaitable[OutboundMessage]]]:
+) -> dict[str, PortableOperation]:
     async def execute(text: str, context: MessageInputContext) -> OutboundMessage:
         command = parse_topic_command(text, service.known_keys)
         if command is None:
@@ -138,7 +136,7 @@ def build_topic_operations(
         if command.action in {"subscribe", "unsubscribe"} and (
             message.conversation.kind == "group"
             and not is_admin
-            and group_role not in GROUP_MANAGER_ROLES
+            and message.group_role not in GROUP_MANAGER_ROLES
         ):
             return OutboundMessage((TextPart("仅群主和管理员可以修改本群订阅。"),))
         try:
@@ -225,7 +223,7 @@ async def _execute(  # noqa: C901, PLR0911 - explicit topic command dispatch
         key,
         TopicPublication(
             OutboundMessage((TextPart(content),)),
-            dedup_key=f"command:{target.platform.value}:{target.id}:"
+            dedup_key=f"command:{target.platform.value}:{target.account_id}:{target.id}:"
             f"{context.message.message_id}",
         ),
         targets=destinations,
