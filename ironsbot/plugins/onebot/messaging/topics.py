@@ -6,14 +6,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    MessageEvent,
-    PrivateMessageEvent,
+    GroupMessageEvent,  # noqa: TC002 - NoneBot resolves annotations
+    MessageEvent,  # noqa: TC002 - NoneBot resolves annotations
+    PrivateMessageEvent,  # noqa: TC002 - NoneBot resolves annotations
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves annotations
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves annotations
 
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.integrations.onebot.matchers import CommandPolicy
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
@@ -56,13 +57,9 @@ def install_topic_commands(
         matcher: Matcher, event: GroupMessageEvent | PrivateMessageEvent
     ) -> None:
         context = message_input_context(event)
-        operations = build_topic_operations(
-            service,
-            group_role=event.sender.role
-            if isinstance(event, GroupMessageEvent)
-            else None,
-        )
+        operations = build_topic_operations(service)
         result = await operations[command_id(event, {})](context.text, context)
+        assert isinstance(result, OutboundMessage)
         await finish_matcher_message(
             matcher, render_onebot_outbound_message(result), event=event
         )

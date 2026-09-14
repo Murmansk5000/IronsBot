@@ -211,11 +211,11 @@ def _initial_rows(
         category: [item for item in prepared_items if item.item.category == category]
         for category in display_categories
     }
-    for index, category in enumerate(display_categories):
-        code = chr(ord("a") + index)
+    next_code = 1
+    for category in display_categories:
         rows.append(
             NewContentMenuItem(
-                code=code,
+                code=str(next_code),
                 name=CATEGORY_NAMES[category],
                 description=format_new_content_category_count(snapshot.items_for(category)),
                 metadata="",
@@ -237,13 +237,11 @@ def _initial_rows(
                 friend_skill=None,
             )
         )
+        next_code += 1
         if category in expanded_categories:
-            rows.extend(
-                _content_row(f"{code}{item_index}", prepared)
-                for item_index, prepared in enumerate(
-                    prepared_by_category[category], start=1
-                )
-            )
+            for prepared in prepared_by_category[category]:
+                rows.append(_content_row(str(next_code), prepared))
+                next_code += 1
     return rows
 
 

@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.operations.startup import StartupNoticeService
     from ironsbot.services.pet_config import PetConfigQueryService
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.local_rank import LocalRankService
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class ApplicationResources:
     about: AboutService
+    query_sessions: PortableQuerySessions
     features: FeatureService
     promotions: PromotionCatalog
     admin_notices: AdminNoticeService

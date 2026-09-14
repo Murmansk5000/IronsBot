@@ -3,19 +3,11 @@ from pathlib import Path
 
 from ironsbot.config.models.features import FeatureConfig
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
-from ironsbot.integrations.storage.bilibili_history import (
-    SqliteBiliDynamicHistoryStore,
-)
 from ironsbot.services.bilibili.content import DynamicContentCompactor
 from ironsbot.services.bilibili.dynamic_history import (
     DynamicHistoryRecord,
 )
-from ironsbot.services.bilibili.menu import (
-    build_dynamic_detail_for_selection,
-    build_dynamic_menu_text,
-    dynamic_record_ids,
-    select_cached_dynamic_id,
-)
+from ironsbot.services.bilibili.menu import build_dynamic_menu_text, dynamic_record_ids
 from ironsbot.services.bilibili.push import DynamicHistorySnapshot
 from ironsbot.services.bilibili.service import BiliFeedResponse
 from tests.helpers.bilibili import build_test_bilibili_service
@@ -40,22 +32,6 @@ def _record(
     )
 
 
-def _save_record(
-    history: SqliteBiliDynamicHistoryStore,
-    record: DynamicHistoryRecord,
-) -> None:
-    history.save_item(
-        record.item,
-        pub_ts=record.pub_ts,
-        author_mid=record.uid,
-        author_name=record.author_name,
-        brief=record.brief,
-        pushed=record.pushed,
-        suppressed=record.suppressed,
-        suppression_reason=record.suppression_reason,
-    )
-
-
 def test_build_dynamic_menu_text_renders_records() -> None:
     text = build_dynamic_menu_text([_record("dynamic-1", suppressed=True)])
 
@@ -72,53 +48,6 @@ def test_dynamic_record_ids_returns_cached_ids() -> None:
         "dynamic-1",
         "dynamic-2",
     ]
-
-
-def test_select_cached_dynamic_id_handles_statuses() -> None:
-    ok = select_cached_dynamic_id(["a", "b"], "2")
-    assert ok.status == "ok"
-    assert ok.dynamic_id == "b"
-    expected_count = 2
-    assert ok.available_count == expected_count
-
-    assert select_cached_dynamic_id([], "1").status == "expired"
-    assert select_cached_dynamic_id(["a"], "x").status == "invalid"
-
-    out_of_range = select_cached_dynamic_id(["a"], "2")
-    assert out_of_range.status == "out_of_range"
-    assert out_of_range.available_count == 1
-
-
-def test_build_dynamic_detail_for_selection_renders_record(
-    tmp_path: Path,
-) -> None:
-    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
-    _save_record(history, _record("dynamic-1"))
-
-    result = build_dynamic_detail_for_selection(
-        history,
-        ["dynamic-1"],
-        "1",
-    )
-
-    assert result.status == "ok"
-    assert result.record is not None
-    assert result.available_count == 1
-    assert result.record.dynamic_id == "dynamic-1"
-
-
-def test_build_dynamic_detail_for_selection_handles_missing_record(
-    tmp_path: Path,
-) -> None:
-    history = SqliteBiliDynamicHistoryStore(tmp_path / "history.sqlite", 10)
-    result = build_dynamic_detail_for_selection(
-        history,
-        ["dynamic-1"],
-        "1",
-    )
-
-    assert result.status == "missing"
-    assert result.record is None
 
 
 def test_bilibili_service_owns_dynamic_query_and_history(
@@ -166,7 +95,8 @@ def test_bilibili_service_owns_dynamic_query_and_history(
     assert result.status == "ok"
     assert result.dynamic_ids == ("dynamic-1",)
     assert "赛尔号（UID：912345678）" in result.prompt
-    assert service.select_dynamic(list(result.dynamic_ids), "1").status == "ok"
+    assert service.get_dynamic("dynamic-1") is not None
+    assert service.get_dynamic("missing") is None
 
 
 def test_history_detail_generates_and_reuses_persisted_summary(
