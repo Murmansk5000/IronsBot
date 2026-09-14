@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
 from ironsbot.core.platform import (
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
 
 class _FakeBilibiliService:
     status = "ok"
+    image_collage = None
+    config = BiliConfig()
 
     def __init__(self) -> None:
         self.targets = _FakeBiliTargets()
