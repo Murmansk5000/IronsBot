@@ -205,9 +205,6 @@ def _assert_default_matcher_priorities(
     matcher_priority: MatcherPriorityConfig,
 ) -> None:
     assert matcher_priority.seer_query < matcher_priority.ai_chat
-    assert matcher_priority.ai_group_at < 0
-    assert matcher_priority.bot_mention_block < 0
-    assert matcher_priority.ai_group_at < matcher_priority.bot_mention_block
     assert matcher_priority.ai_chat == DEFAULT_AI_CHAT_PRIORITY
     assert matcher_priority.seer_player == DEFAULT_SEER_PLAYER_PRIORITY
     assert matcher_priority.sendpic < matcher_priority.seer_pet
@@ -572,6 +569,36 @@ unknown_command_field = true
         ("unknown_top_level",),
         ("seer", "player", "old_player_setting"),
         ("messaging", "commands", 0, "unknown_command_field"),
+    }
+
+
+def test_removed_pre_command_mention_settings_are_rejected(tmp_path: Path) -> None:
+    config_path = tmp_path / "ironsbot.toml"
+    config_path.write_text(
+        """
+[bot.matcher_priority]
+ai_group_at = -10
+bot_mention_block = -5
+
+[messaging.command_cooldown]
+mention_initial_window_seconds = 600.0
+mention_initial_max_responses = 3
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        load_settings(config_path)
+
+    assert {
+        error["loc"]
+        for error in exc_info.value.errors()
+        if error["type"] == "extra_forbidden"
+    } == {
+        ("bot", "matcher_priority", "ai_group_at"),
+        ("bot", "matcher_priority", "bot_mention_block"),
+        ("messaging", "command_cooldown", "mention_initial_window_seconds"),
+        ("messaging", "command_cooldown", "mention_initial_max_responses"),
     }
 
 
