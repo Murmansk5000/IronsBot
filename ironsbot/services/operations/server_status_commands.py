@@ -15,7 +15,9 @@ from ironsbot.services.operations.command_text import (
 )
 
 
-def server_status_command_contracts() -> tuple[CommandContract, ...]:
+def server_status_command_contracts(
+    normal_commands: tuple[str, ...] = NORMAL_SERVER_STATUS_COMMANDS,
+) -> tuple[CommandContract, ...]:
     """Describe server-status commands for the shared command catalog."""
 
     return (
@@ -26,7 +28,7 @@ def server_status_command_contracts() -> tuple[CommandContract, ...]:
             (
                 (
                     "server_status.query",
-                    NORMAL_SERVER_STATUS_COMMANDS,
+                    normal_commands,
                     "查询当前维护和开服状态",
                     {"show_in_poke": True},
                 ),
