@@ -142,7 +142,7 @@ identity or ownership of the game account.
 | Protocol baseline | Current docs identify the SDK path and dated official limits; historical adapter records are labeled | Official docs and installed SDK source | completed |
 | Addressed-input routing | Valid commands precede AI and mention hints on both transports | Shared input context and command catalog | completed; chat, intent, command suppression and hints share one decision service |
 | Reply protocol | Scene-specific deadline/budget, sequential `msg_seq`, current mention markup, structured failures | Tencent send APIs | completed; command keyboards are capability-gated and reuse ordinary inbound selection |
-| Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | planned |
+| Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | in progress; lifecycle policy and ordered SDK shutdown completed, integration-owned inbound deduplication remains |
 | Media and identity | SDK uploader, scoped TTL cache, explicit one-click identity linking | Platform permissions and identity repository | planned |
 | Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | planned |
 
@@ -172,13 +172,14 @@ identity or ownership of the game account.
 | 2026-09-15 | Structured API failures and mentions | 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | HTTP failures retain status/code/trace without parsing exception strings; transport failures remain typed; current mention markup is escaped |
 | 2026-09-15 | Shared prompt identity | 52 portable-command tests and 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | Numeric input and opaque button action data resolve through one actor/conversation-bound session; Tencent keyboard delivery remains open |
 | 2026-09-15 | Capability-gated command keyboards | 129 portable/QQ Official tests, 39 core capability tests and 37 admin-notice tests; Ruff; BasedPyright; static repository checks | Opt-in SDK sends current 5x5 keyboard schema; dynamic actions traverse the ordinary router; text fallback and strict admin targets remain intact; real AppID permission is external |
+| 2026-09-15 | Account lifecycle policy | 205 portable, QQ Official, lifecycle and config tests; Ruff; BasedPyright; compileall; static repository checks | Per-AppID READY/RESUMED startup gate, explicit states, required/optional failure policy and ordered WebSocket stop are application-owned; heartbeat and Resume remain SDK-owned |
 
 ## Progress
 
 ```text
-Program  [████▌░░░░░] 45%  fixed weights; reply and send protocol completed
+Program  [█████▌░░░░] 55%  fixed weights; account lifecycle policy completed
 Phase    [██████████] 100%  protocol baseline documented
-Current  [██████████] 100%  reply protocol completed; next: account lifecycle reliability
+Current  [██████▋░░░] 67%  account reliability; next: integration-owned inbound deduplication
 ```
 
 Only verified and committed work counts toward program progress.

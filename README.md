@@ -146,9 +146,11 @@ NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk
 [bot.qq_official]
 enabled = true
 sandbox = false
+startup_timeout_seconds = 15.0
 
 [bot.qq_official.accounts.example_bot]
 enabled = true
+required = false
 app_id = "你的 QQ 机器人 AppID"
 proactive_messages = false
 custom_keyboards = false
@@ -164,6 +166,9 @@ superusers = []
 
 每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
 数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
+账号只有在 SDK 收到 `READY` 或成功 `RESUMED` 后才视为健康。
+`startup_timeout_seconds` 控制启动等待时间；`required = true` 的账号未能及时就绪会
+阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
 目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启

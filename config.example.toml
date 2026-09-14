@@ -76,6 +76,9 @@ enabled = false
 # EN: Use the QQ Bot sandbox API.
 # ZH: 是否连接 QQ 官方沙箱环境。同一进程中的账号使用相同环境。
 sandbox = false
+# EN: Maximum time for each SDK account to reach READY or RESUMED during startup.
+# ZH: 启动时等待每个 SDK 账号进入 READY 或 RESUMED 的最长秒数。
+startup_timeout_seconds = 15.0
 
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
@@ -85,6 +88,10 @@ sandbox = false
 #     QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
 [bot.qq_official.accounts.example_bot]
 enabled = false
+# EN: A required account prevents application startup when it cannot become ready.
+#     Optional accounts remain observable as degraded and may recover later.
+# ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
+required = false
 app_id = ""
 # EN: Allow SDK-level proactive sends. Keep disabled until the application has
 #     the required platform permission. Team-resource subscriptions require it.

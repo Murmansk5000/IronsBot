@@ -71,6 +71,11 @@ Task     [██████████] completed only after code, tests, and 
   `custom_keyboards = true` 时才发送 type-2 指令按钮；默认配置及不支持按钮的客户端始终
   保留数字文字选择。真实 AppID 的按钮权限和客户端呈现仍须在 Phase 7 外部验收。
 
+- QQ Official 账号生命周期现区分 `starting`、`ready`、`reconnecting`、`degraded`、
+  `failed` 与 `stopped`。启动线程不再冒充健康；只有 SDK 收到 `READY` 或成功恢复会话后
+  才解除账号启动等待。TOML 可逐账号声明 `required`，必需账号失败通过资源生命周期阻止
+  应用启动，可选账号则保留为 degraded 并继续恢复；关闭会等待所有已启动 SDK WebSocket。
+
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
   AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
   feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID

@@ -110,12 +110,14 @@ def build_common_components(
                 QQOfficialRuntimeAccount(
                     account.app_id,
                     account.secret,
+                    required=account.required,
                     custom_keyboards=account.custom_keyboards,
                 )
                 for account in settings.bot.qq_official.enabled_accounts.values()
             ),
             http_client=http_client,
             session_root=cache_root / "qq_official",
+            startup_timeout_seconds=settings.bot.qq_official.startup_timeout_seconds,
         )
 
         platform_messengers[Platform.QQ_OFFICIAL] = QQOfficialOutboundMessenger(

@@ -288,6 +288,10 @@ GITHUB_WORKFLOW_TOKEN=
 QQ Official custom command keyboards are a TOML capability, not an environment
 variable. Keep `bot.qq_official.accounts.<alias>.custom_keyboards = false` unless
 Tencent has enabled the invite-only custom-button permission for that AppID.
+Account startup policy is also TOML: use `required = true` only when that account
+must become `READY`/`RESUMED` for the container to be considered started, and
+adjust `bot.qq_official.startup_timeout_seconds` when the default 15 seconds is
+not suitable. Neither setting contains a secret or belongs in Unraid variables.
 
 The QQ Official adapter is an optional runtime component so the standard
 OneBot image does not carry its cryptography dependency. Build an official-bot

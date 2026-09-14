@@ -602,6 +602,13 @@ the NoneBot host. Official-specific protocol and asset code belongs in
 `integrations.qq_official`. New commands must first expose a platform-neutral
 service operation and outbound result.
 
+Each official AppID has an independent lifecycle state. Starting a WebSocket
+thread is not readiness: only an authenticated `READY` or successful `RESUMED`
+dispatch makes the account healthy. Disconnects enter `reconnecting`; optional
+startup failures remain `degraded`, while required failures propagate through
+the application resource-startup boundary. Shutdown stops every SDK WebSocket
+before shared HTTP and database resources are closed.
+
 ## QQ Official Capability And Safety Requirements
 
 QQ Official Bot delivery is constrained by official permissions, intents,

@@ -620,14 +620,17 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
 def test_qq_official_config_loads_credentials_from_environment(
     tmp_path: Path,
 ) -> None:
+    startup_timeout_seconds = 20.0
     path = tmp_path / "ironsbot.toml"
     path.write_text(
         """
 [bot.qq_official]
 enabled = true
+startup_timeout_seconds = 20.0
 
 [bot.qq_official.accounts.example_bot]
 enabled = true
+required = true
 app_id = "example-app"
 custom_keyboards = true
 features = ["help", "about", "seer_data"]
@@ -644,8 +647,10 @@ superusers = ["opaque-admin"]
     )
 
     assert settings.bot.qq_official.enabled
+    assert settings.bot.qq_official.startup_timeout_seconds == startup_timeout_seconds
     account = settings.bot.qq_official.accounts["example_bot"]
     assert account.secret == "example-secret"
+    assert account.required
     assert account.custom_keyboards
     assert account.superusers == ["opaque-admin"]
 

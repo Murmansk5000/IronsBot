@@ -223,6 +223,7 @@ class QQOfficialAccountConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
+    required: bool = False
     app_id: str = ""
     secret: str = Field(default="", exclude=True, repr=False)
     proactive_messages: bool = False
@@ -332,6 +333,7 @@ class QQOfficialConfig(BaseModel):
 
     enabled: bool = False
     sandbox: bool = False
+    startup_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     accounts: dict[str, QQOfficialAccountConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")
