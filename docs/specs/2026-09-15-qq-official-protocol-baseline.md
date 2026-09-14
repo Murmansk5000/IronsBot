@@ -143,7 +143,7 @@ identity or ownership of the game account.
 | Addressed-input routing | Valid commands precede AI and mention hints on both transports | Shared input context and command catalog | completed; chat, intent, command suppression and hints share one decision service |
 | Reply protocol | Scene-specific deadline/budget, sequential `msg_seq`, current mention markup, structured failures | Tencent send APIs | completed; command keyboards are capability-gated and reuse ordinary inbound selection |
 | Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | completed; real disconnect/reconnect remains in the external acceptance matrix |
-| Media and identity | SDK uploader, safe `file_info` lifetime, explicit identity linking | Platform permissions and identity repository | in progress; media completed without guessed TTL cache, identity linking remains |
+| Media and identity | SDK uploader, safe `file_info` lifetime, explicit identity linking | Platform permissions and identity repository | completed; Lucky Skin Window consumes only exact links |
 | Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | planned |
 
 ## Migration And Rollback
@@ -175,13 +175,14 @@ identity or ownership of the game account.
 | 2026-09-15 | Account lifecycle policy | 205 portable, QQ Official, lifecycle and config tests; Ruff; BasedPyright; compileall; static repository checks | Per-AppID READY/RESUMED startup gate, explicit states, required/optional failure policy and ordered WebSocket stop are application-owned; heartbeat and Resume remain SDK-owned |
 | 2026-09-15 | Persistent inbound claims | 145 portable, QQ Official and lifecycle tests; Ruff; BasedPyright; compileall; static repository checks | Concurrent and cross-instance duplicate messages are rejected before portable business dispatch; claims are isolated by AppID and event type |
 | 2026-09-15 | SDK media upload | 143 portable and QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | URL uploads and binary chunked uploads preserve C2C/group scope; temporary files are deleted; known platform limits produce text fallback |
+| 2026-09-15 | Linked-account Lucky Skin Window | 94 identity, portable, QQ Official, lifecycle and existing Lucky Skin Window tests; Ruff; BasedPyright; compileall; static repository checks | All six commands reuse the OneBot-keyed account service through an exact AppID/kind/OpenID/scope link; uncached login and ambiguous skins use shared labeled prompts |
 
 ## Progress
 
 ```text
-Program  [██████▌░░░] 65%  fixed weights; official media completed
+Program  [████████▌░] 85%  fixed weights; feature and identity slice completed
 Phase    [██████████] 100%  protocol baseline documented
-Current  [█████░░░░░] 50%  media and identity; next: explicit cross-platform identity linking
+Current  [██████████] 100%  media and identity completed
 ```
 
 Only verified and committed work counts toward program progress.

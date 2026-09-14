@@ -25,6 +25,9 @@ from ironsbot.services.portable_bilibili_commands import (
 from ironsbot.services.portable_countermark_commands import (
     build_portable_countermark_operations,
 )
+from ironsbot.services.portable_lucky_skin_commands import (
+    build_portable_lucky_skin_operations,
+)
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
@@ -73,6 +76,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
+    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -81,6 +85,7 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
+    from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -321,6 +326,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     ai_intent_actions: AiIntentActionExecutor | None = None,
     addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
+    lucky_skin_window: LuckySkinWindowService | None = None,
+    identity_linking: IdentityLinkingService | None = None,
     activity: ActivityService | None = None,
     messaging: MessagingService | None = None,
     refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
@@ -359,6 +366,19 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     identity_link_operations = _catalog_operations(
         catalog,
         build_portable_identity_link_operations(identity_links),
+    )
+    lucky_skin_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if lucky_skin_window is None
+            else build_portable_lucky_skin_operations(
+                lucky_skin_window,
+                seer.pet_query,
+                identity_linking or identity_links.service,
+                sessions,
+            )
+        ),
     )
     rank_operations = _catalog_operations(
         catalog,
@@ -495,6 +515,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **countermark_operations,
         **player_operations,
         **identity_link_operations,
+        **lucky_skin_operations,
         **rank_operations,
         **rank_admin_operations,
     }

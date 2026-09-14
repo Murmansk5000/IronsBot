@@ -58,11 +58,13 @@ def bootstrap() -> Application:
                 seer=application.resources.seer,
                 player_id_resolver=application.resources.player_id_resolver,
                 identity_links=application.resources.identity_links,
+                identity_linking=application.resources.identity_linking,
                 features=application.resources.features,
                 ai=application.resources.ai,
                 ai_intent_actions=application.resources.ai_intent_actions,
                 addressed_input_hints=application.resources.addressed_input_hints,
                 team_resource=application.resources.team_resource,
+                lucky_skin_window=application.resources.lucky_skin_window,
                 activity=application.resources.activity,
                 messaging=application.resources.messaging,
                 refresh_push_time_jobs=partial(
