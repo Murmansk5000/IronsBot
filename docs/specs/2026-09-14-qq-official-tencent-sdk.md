@@ -34,6 +34,18 @@ ordinary application resources.
 
 ## Known Platform Boundary
 
+Optional inbound identity metadata must remain typed at the integration boundary.
+Member mentions, role metadata and message sequence strings accept only nonblank
+strings; nulls, numbers and containers must not become fabricated values such as
+`"None"`. Invalid direct sequence metadata may fall back to a valid SDK scene
+sequence. Ignore malformed scene elements and retain AppID/group scope for valid
+mentions. This does not replace the SDK parser or reinterpret numeric QQ IDs.
+
+Metadata regression evidence: 83 focused tests and 3552 full-suite tests passed,
+with 7 skips and 2889 existing dependency warnings. Ruff, BasedPyright,
+compileall and diff checks passed. The source change adds 3 net production lines
+without another module or dependency; real candidate delivery remains unverified.
+
 The SDK release supports C2C and `GROUP_AT_MESSAGE_CREATE`. Tencent's Node SDK
 classifies `GROUP_MESSAGE_CREATE` as a private-domain bot event while
 public-domain bots receive only `GROUP_AT_MESSAGE_CREATE`. Receiving ordinary

@@ -117,6 +117,9 @@ services:
 
 ### QQ 官方机器人调试版
 
+重构分支的当前版本、独立部署方法、剩余验收和下一位维护者的执行提示，统一见
+[重构交接与使用指南](docs/refactor-handoff.md)。不要将下方生产 main 镜像当作重构候选。
+
 真实 AppID 上线前按 [QQ 官方机器人线上验收清单](docs/specs/2026-09-14-qq-official-live-acceptance.md)
 验证连接、私聊、群 `@`、图片和所需的主动消息能力。只有取得 `READY/RESUMED`
 并完成对应消息矩阵，才算平台接入成功。
@@ -125,8 +128,8 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
 套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
 活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时直接发送数字选择，
-发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
-规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
+发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。官方传输当前忽略引用
+回复；这不是 OneBot 的全局引用规则。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
 查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
 同一个 AI 服务；已注册查询始终优先。没有配置对应的 `AI_KEY_<端点名>` 时不会开放 AI 聊天入口。
@@ -156,10 +159,10 @@ features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet"
 superusers = []
 
 [bot.qq_official.accounts.example_bot.group_policy]
-"EXAMPLE_OPENID_A" = ["seer_activity_push", "bili_push"]
+"群 OpenID" = ["seer_activity_push", "bili_push"]
 
 [bot.qq_official.accounts.example_bot.user_policy]
-"EXAMPLE_OPENID_B" = ["seer_activity_push", "bili_push"]
+"用户 OpenID" = ["seer_activity_push", "bili_push"]
 ```
 
 每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
@@ -658,7 +661,7 @@ image = "murmansk5000/ironsbot-private:latest"
 
 ```text
 DOCKER_REGISTRY_USERNAME=murmansk5000
-DOCKER_REGISTRY_TOKEN=YOUR_DOCKER_REGISTRY_TOKEN
+DOCKER_REGISTRY_TOKEN=private-image-pull-token
 ```
 
 私有扩展包在公开主镜像启动前通过已挂载的 Docker socket 拉取，因此 Unraid 的 Repository
