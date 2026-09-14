@@ -10,7 +10,19 @@ from nonebot.matcher import Matcher
 
 from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.onebot_references import OneBotReferenceResolver
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    DeliveryFailureKind,
+    OutboundMessage,
+    SendResult,
+    TextPart,
+)
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
 from ironsbot.integrations.onebot.matcher_support import bind_async
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
@@ -18,7 +30,7 @@ from ironsbot.integrations.onebot.replies import (
 )
 from ironsbot.plugins.onebot.messaging.matcher_rules import MESSAGE_ACTION_KEY
 from ironsbot.plugins.onebot.messaging.matchers import handle_message_command
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, deliver_reply_stages
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
 if TYPE_CHECKING:
@@ -230,7 +242,7 @@ async def test_portable_operation_uses_explicit_fallback_after_image_failure() -
 
 
 @pytest.mark.asyncio
-async def test_portable_operation_fails_only_after_fallback_also_fails() -> None:
+async def test_portable_operation_does_not_fallback_without_receipt() -> None:
     matcher = _NoReceiptMatcher()
     transitions: list[str] = []
 
@@ -249,4 +261,50 @@ async def test_portable_operation_fails_only_after_fallback_also_fails() -> None
     await run_portable_operation(cast("Matcher", matcher), _group_event(), operation)
 
     assert transitions == ["failed"]
-    assert len(matcher.sent) == len(("primary", "fallback"))
+    assert len(matcher.sent) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(Platform))
+@pytest.mark.parametrize("kind", [None, *DeliveryFailureKind])
+async def test_fallback_requires_known_failure_and_usable_transport(
+    platform: Platform, kind: DeliveryFailureKind | None,
+) -> None:
+    incoming = IncomingMessageRef(
+        platform=platform,
+        actor=ActorRef(platform, "user", account_id="app"),
+        conversation=ConversationRef(platform, "private", "user", account_id="app"),
+        message_id="incoming",
+        text="query",
+    )
+    sent: list[OutboundMessage] = []
+    transitions: list[str] = []
+
+    async def send(message: OutboundMessage) -> SendResult:
+        sent.append(message)
+        if len(sent) == 1:
+            return SendResult(
+                delivered=False, error_code="test_failure", failure_kind=kind,
+            )
+        return SendResult(delivered=True, message_id="confirmed")
+
+    async def follow_up() -> OutboundMessage:
+        transitions.append("follow_up")
+        return OutboundMessage.from_text("next")
+
+    await deliver_reply_stages(send, incoming, PortableReply(
+        OutboundMessage.from_text("original"),
+        fallback_message=OutboundMessage.from_text("fallback"),
+        on_delivered=lambda: transitions.append("delivered"),
+        on_delivery_failed=lambda: transitions.append("failed"),
+        follow_up=follow_up,
+    ))
+    if kind in {DeliveryFailureKind.PERMANENT, DeliveryFailureKind.RETRYABLE}:
+        assert sent == [
+            OutboundMessage.from_text(text)
+            for text in ("original", "fallback", "next")
+        ]
+        assert transitions == ["delivered", "follow_up"]
+    else:
+        assert len(sent) == 1
+        assert transitions == ["failed"]

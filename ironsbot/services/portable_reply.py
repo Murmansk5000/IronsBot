@@ -9,7 +9,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from ironsbot.core.outbound import OutboundMessage, OutboundMessageError, ReplyContext
+from ironsbot.core.outbound import (
+    DeliveryFailureKind,
+    OutboundMessage,
+    OutboundMessageError,
+    ReplyContext,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
@@ -158,7 +163,15 @@ async def deliver_reply_stages(
     while True:
         result = await send(current.message)
         stage_name = "initial" if stage == 0 else f"follow_up_{stage}"
-        if not result.delivered and current.fallback_message is not None:
+        # A missing or uncertain receipt must not cause another visible message.
+        if (
+            not result.delivered
+            and current.fallback_message is not None
+            and result.failure_kind in {
+                DeliveryFailureKind.PERMANENT,
+                DeliveryFailureKind.RETRYABLE,
+            }
+        ):
             _log_delivery_failure(
                 incoming,
                 result,

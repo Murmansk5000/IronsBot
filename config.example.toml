@@ -64,6 +64,12 @@ command_start = ["/", ""]
 #     帮助、帮助、关于和必要运行支撑；使用 core 时，权限策略只能启用该配置
 #     已加载插件提供的功能，否则启动会明确报错。
 plugin_manifest = "full"
+
+# Receive OneBot events without running commands; allow read-only APIs only.
+# This does not establish QQ/OpenID identity links. Restart after changing.
+# ZH: OneBot 只读模式，不执行指令、不发送消息；尚不提供 QQ/OpenID 关联。
+# 修改后重启生效。独立使用 NapCat 时保持 false。
+onebot_observer = false
 # Default: []
 # EN: NoneBot superuser QQ IDs or user aliases.
 # ZH: NoneBot 超级管理员 QQ 号或用户别名列表。

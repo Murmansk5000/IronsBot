@@ -6,9 +6,12 @@
 [engineering-workflow.md](engineering-workflow.md) 为准。
 
 本轮生产基线保持 NoneBot2、OneBot v11、NapCat 和 Docker/Unraid；Python 运行基线现已
-统一为 3.11+。QQ Official 已进入真实 MVP：同一 NoneBot 进程按配置注册
-`nonebot-adapter-qq`，被动群/C2C 查询按共享命令目录逐步开放。平台不能可靠表达的
+统一为 3.11+。QQ Official 当前使用应用生命周期托管的腾讯 `qqbot-agent-sdk`，
+NoneBot 继续托管 OneBot，被动群/C2C 查询进入共享命令目录。平台不能可靠表达的
 数字 QQ 继续按能力延期，不做伪映射；主动推送只使用明确配置的 OpenID 目标。
+
+当前交接快照和操作步骤见 [重构交接与使用指南](refactor-handoff.md)。本文后面的
+按日期记录包含早期适配器和已被后续实现替代的状态，不能作为当前接口说明。
 
 ## 总体约束
 
@@ -2793,3 +2796,43 @@ private 4dce691 对公共 ec2f98cf 验证 45 passed / 1 skipped，Ruff 和 diff
 检查通过。跳过项是原生渲染，本轮未把它计作通过。没有新增运行时代码、依赖、
 资源或 TOML 字段；保留私有工作区原有未跟踪 uv.lock。总阶段仍为 7/8，
 剩余 gate 是精确候选的真实官方连接和消息矩阵，不因文档或测试提交重建镜像。
+
+2026-09-14 用户补充目标：NapCat 只读辅助获取 QQ 身份，官方机器人唯一发送。
+已在 ARCHITECTURE.md 的 Read-Only OneBot Assistance 中登记为 target，未启用
+运行模式或身份映射。代码审计确认 common_composition 注册公共 OneBot 发送器，
+messaging_composition 的战队审核另行创建发送器；因此仅删除公共路由不足以
+保证零发送。后续需适配层拒绝发送、观察事件不执行业务、独立验证身份链接及
+共享业务状态解析，并保持原始官方投递上下文。双端真实关联证据尚未获取；
+不能靠昵称、文本或时间自动确认 QQ 号，也不因新目标调整既有 7/8 阶段计数。
+
+2026-09-14 observer 隔离切片实现：新增默认 false 的 bot.onebot_observer，
+显式开启时使用 OneBot 适配器 API 只读白名单，发送、写操作及未知 API 均在
+底层调用前拒绝；入站 OneBot 事件在业务 matcher 前停止。标准独立模式不变。
+普通 API 前置钩子的异常会被 NoneBot 捕获后继续调用，故不以该钩子充当拦截。
+拒绝使用类型化 ActionFailed 子类，公共投递判定为永久失败，不做推送重试。
+专项 32 passed；全量 3579 passed / 7 skipped，2889 条既有告警，187.78 秒。
+Ruff、BasedPyright、compileall、diff 检查通过。首轮专项的 Windows 旧临时目录
+权限错误未算通过，使用独立目录重跑。只新增一个运行边界模块及对应测试，
+没有新依赖、数据库或素材；未测量新镜像。身份关联与真实双端消息矩阵未实现，
+此开关不能视为完整协作模式；总阶段保持 7/8。
+
+2026-09-14 用户明确 NapCat 仅为可选增强，不是运行前提。官方机器人独立部署
+和原 Phase 7 消息验收不依赖 NapCat 地址、QQ 号映射或共同群；双端协作单独
+推进，不得将其未完成项追加为官方独立版本的发布阻塞条件。当前 AppSecret
+已通过源码真实连接测试，接下来优先核验官方群 @ 和私聊消息。
+
+2026-09-14 被动投递审计发现通用备用文本绕过不确定送达策略：OneBot 缺少
+message_id 时旧测试实际发送两条。先用单条断言复现失败，再在 portable reply
+阶段限定仅明确 permanent/retryable 失败允许 fallback；uncertain、未分类和
+transport_unavailable 立即调用失败回调，不提交成功状态或继续后续阶段。
+两平台矩阵覆盖同一规则，明确图片失败后的文字降级仍可用。专项 48 passed，
+全量 3589 passed / 7 skipped，2889 条既有告警，228.04 秒；Ruff、BasedPyright、
+compileall、diff 检查通过。没有新模块、依赖、配置或数据库。源码接收两条官方群
+消息及 handler 返回不能证明用户端显示，仍等待实际回复确认，不关闭 Phase 7。
+
+2026-09-14 e0aaeb12 已推送至私有预览分支，构建 34852716528 成功发布 GHCR
+候选；Docker Hub 登录跳过，公开 main 未修改。实际展开体积 259748177 字节，
+比固定基线增加 9324 字节，比上个候选增加 2825 字节；site-packages 与字体
+目录大小不变，完整 digest 见官方验收 spec。private 4dce691 对当前公共源码
+重跑 45 passed / 1 skipped 后推送私有分支，原未跟踪 uv.lock 未改动。
+此处只记录发布证据，不替代真实 QQ 消息验收；总进度保持 7/8。

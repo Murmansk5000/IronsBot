@@ -222,6 +222,13 @@ when the underlying failure (for example HTTP 429) would otherwise be retryable.
 Stop remaining operations and retain the original exception as the cause.
 Cancellation continues to propagate; this is not a new transport retry engine.
 
+The shared portable reply runner must enforce the same rule for text fallbacks:
+an uncertain or unclassified delivery cannot trigger a second visible reply.
+A transport-unavailable result also stops the sequence. Explicit fallback is
+permitted only for classified permanent/retryable failures; the successful
+fallback receipt gates callbacks and subsequent stages. This applies equally
+to OneBot and Official consumers, not just SDK-internal send retries.
+
 Official message IDs and upload handles must be nonblank strings. A missing or
 malformed post-message receipt is uncertain, since the recipient may already
 have received the message. This includes invalid JSON or a non-object response
@@ -316,3 +323,23 @@ session composition and shared player resolver for numeric and alias inputs,
 including feature filtering. It does not restore retired matcher state keys or
 prove live lineup delivery. These test-only changes require no replacement
 public candidate image.
+
+Workflow `34852716528` subsequently passed for
+`e0aaeb125b3d82a2bc17dd98772f5238898e7c71`. This is the current published candidate,
+including opt-in OneBot observer isolation and the shared uncertain-fallback fix:
+
+```text
+ghcr.io/murmansk5000/ironsbot-qq-official-preview@sha256:c950a5e02c901c5c0db560e0f6b2e8babc4a9cac5e2a967c754f478fe639fc52
+Docker local image size: 259748177 bytes
+Comparison against pinned afd905d13aa4...: +9324 bytes
+/app: 4480 KiB
+site-packages: 105948 KiB
+fonts: 19452 KiB
+```
+
+Build, dependency audit, network-isolated smoke, size budgets, growth comparison
+and GHCR publication passed; Docker Hub login was skipped. The private extension
+at `4dce691` was rerun against this public source: 45 passed, 1 native-render case
+skipped. Both branches were pushed only to their private repositories. No real
+message-matrix row is accepted by this build. NapCat is not a prerequisite for
+the standalone Official connection or message gates.
