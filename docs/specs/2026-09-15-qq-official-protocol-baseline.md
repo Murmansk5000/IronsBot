@@ -178,6 +178,7 @@ identity or ownership of the game account.
 | 2026-09-15 | Linked-account Lucky Skin Window | 94 identity, portable, QQ Official, lifecycle and existing Lucky Skin Window tests; Ruff; BasedPyright; compileall; static repository checks | All six commands reuse the OneBot-keyed account service through an exact AppID/kind/OpenID/scope link; uncached login and ambiguous skins use shared labeled prompts |
 | 2026-09-15 | Portable command coverage gate | QQ-enabled full bootstrap plus router failure test; 53 portable, QQ Official and bootstrap tests; Ruff; BasedPyright; compileall; static repository checks | The full catalog currently contains 78 QQ Official direct commands: the original 75-command portability target plus three official identity commands. Construction fails when any direct contract lacks an operation or explicit built-in handler |
 | 2026-09-15 | Automated closure run | Full suite `3449 passed, 7 skipped`; Ruff; production and test BasedPyright; compileall; static repository checks; clean worktree | All local gates pass. The manual Tencent account matrix below remains external and must not be reported as passed without captured platform evidence |
+| 2026-09-15 | Runtime log redaction | 60 runtime, lifecycle, portable and QQ-enabled bootstrap tests; Ruff; BasedPyright; compileall | Connection logs use the configured account alias. Message and conversation identifiers use irreversible short digests; original AppIDs and OpenIDs remain available only to routing and persistence code |
 
 ## Progress
 

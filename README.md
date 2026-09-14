@@ -199,6 +199,8 @@ AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量�
 
 多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
+运行日志只记录 TOML 账号别名；消息 ID、群 OpenID 和用户 OpenID 仅记录不可逆短摘要，
+便于关联同一次故障而不把平台原始标识写入日志。
 
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
 不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID

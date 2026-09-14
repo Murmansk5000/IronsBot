@@ -151,7 +151,10 @@ def test_runtime_keeps_clients_isolated_by_app_id(tmp_path: Path) -> None:
 def test_runtime_rejects_duplicate_app_ids(tmp_path: Path) -> None:
     async def run() -> None:
         async with httpx.AsyncClient() as client:
-            with pytest.raises(ValueError, match="duplicate QQ Official AppID"):
+            with pytest.raises(
+                ValueError,
+                match="duplicate official application identifier",
+            ):
                 QQOfficialRuntime(
                     (
                         QQOfficialRuntimeAccount("same-app", "secret-a"),
@@ -164,11 +167,20 @@ def test_runtime_rejects_duplicate_app_ids(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
-def test_runtime_claims_message_before_business_dispatch(tmp_path: Path) -> None:
+def test_runtime_claims_message_before_business_dispatch(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def run() -> None:
         async with httpx.AsyncClient() as client:
             runtime = QQOfficialRuntime(
-                (QQOfficialRuntimeAccount("app", "secret"),),
+                (
+                    QQOfficialRuntimeAccount(
+                        "private-app-id",
+                        "secret",
+                        label="preview",
+                    ),
+                ),
                 http_client=client,
                 session_root=tmp_path,
             )
@@ -185,10 +197,22 @@ def test_runtime_claims_message_before_business_dispatch(tmp_path: Path) -> None
                 "author": {"member_openid": "member-openid"},
             }
 
-            await runtime.handle_event("app", "GROUP_AT_MESSAGE_CREATE", raw)
-            await runtime.handle_event("app", "GROUP_AT_MESSAGE_CREATE", raw)
+            caplog.set_level("INFO", logger=runtime_module.__name__)
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_AT_MESSAGE_CREATE",
+                raw,
+            )
+            await runtime.handle_event(
+                "private-app-id",
+                "GROUP_AT_MESSAGE_CREATE",
+                raw,
+            )
 
             assert router.dispatch_count == 1
+            assert "account=preview" in caplog.text
+            assert "private-app-id" not in caplog.text
+            assert "message-id" not in caplog.text
 
     asyncio.run(run())
 
@@ -275,7 +299,7 @@ def test_required_account_timeout_stops_runtime_and_blocks_startup(
             with pytest.raises(QQOfficialStartupError) as caught:
                 await runtime.start()
 
-            assert caught.value.app_ids == ("required",)
+            assert caught.value.accounts == ("account-1",)
             assert runtime.account_health[0].state is QQOfficialConnectionState.STOPPED
             assert _FakeWebSocket.instances[0].stopped
 
