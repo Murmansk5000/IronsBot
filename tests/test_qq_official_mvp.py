@@ -86,6 +86,7 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
@@ -418,6 +419,24 @@ def _fake_seer(
 
 def _unused_team_resource() -> TeamResourceService:
     return cast("TeamResourceService", SimpleNamespace())
+
+
+async def _unused_identity_operation(
+    _text: str,
+    _context: MessageInputContext,
+) -> OutboundMessage:
+    return OutboundMessage.from_text("unused")
+
+
+def _identity_links() -> IdentityLinkCommands:
+    return cast(
+        "IdentityLinkCommands",
+        SimpleNamespace(
+            portable_confirm=_unused_identity_operation,
+            portable_status=_unused_identity_operation,
+            portable_revoke=_unused_identity_operation,
+        ),
+    )
 
 
 def _portable_catalog(  # noqa: PLR0913 - tests vary independent command families
@@ -1168,6 +1187,7 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1211,6 +1231,7 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1281,6 +1302,7 @@ async def test_portable_router_enforces_operational_query_access() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1332,6 +1354,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1403,6 +1426,7 @@ async def test_portable_router_limits_rank_display_setting_to_group_managers() -
         about=AboutService("test"),
         seer=_fake_seer(rank_queries=rank_queries),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1472,6 +1496,7 @@ async def test_portable_router_limits_bilibili_refresh_to_superusers() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1529,6 +1554,7 @@ async def test_portable_router_runs_pet_config_image_query() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1572,6 +1598,7 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
             rank_admin=cast("RankAdminService", _FakeRankAdminService())
         ),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1639,6 +1666,7 @@ async def test_portable_router_runs_scoped_query_selection(
         about=AboutService("test"),
         seer=_fake_seer(pet_query=_FakePetQuery(fail_selection=fail_selection)),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1688,6 +1716,7 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
         about=AboutService("test"),
         seer=_fake_seer(peak_query=_FakePeakQuery()),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1719,6 +1748,7 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
         about=AboutService("test"),
         seer=_fake_seer(team_query=_FakeTeamQuery()),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1758,6 +1788,7 @@ async def test_portable_router_runs_rank_query() -> None:
         about=AboutService("test"),
         seer=_fake_seer(rank_queries=_FakeRankQueries()),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),
@@ -1790,6 +1821,7 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", ai),
         addressed_input_hints=AddressedInputHintService(),
@@ -1828,6 +1860,7 @@ async def test_portable_router_does_not_send_unavailable_command_to_ai() -> None
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", ai),
         addressed_input_hints=AddressedInputHintService(),
@@ -1871,6 +1904,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=enabled_features,
         ai=cast("AiService", ai),
         addressed_input_hints=AddressedInputHintService(),
@@ -1897,6 +1931,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=disabled_features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=addressed_input_hints,
@@ -1930,6 +1965,7 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", ai),
         addressed_input_hints=AddressedInputHintService(),
@@ -1976,6 +2012,7 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", ai),
         addressed_input_hints=AddressedInputHintService(),
@@ -2093,6 +2130,7 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
         addressed_input_hints=AddressedInputHintService(),

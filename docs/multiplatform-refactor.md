@@ -2424,6 +2424,14 @@ AccessToken、连接、Session 与 OpenID 命名空间；SDK 负责心跳、Resu
 存在不能代替真实平台授权。尚未关闭的回复时限、连续 `msg_seq`、结构化错误、READY
 健康状态和媒体上传验收记录在协议基线 Spec 中。
 
+跨平台身份随后实现为显式令牌协议。OneBot 数字 QQ 生成绑定到目标 AppID 的短时单次
+令牌，QQ Official 事件中的用户或群成员 OpenID 再确认；SQLite 只保存令牌哈希，并审计
+签发、成功关联和撤销。C2C `user_openid` 与群 `member_openid` 继续作为两条独立身份，
+同一 QQ 可分别确认，但一个精确官方身份不能静默改绑到另一个 QQ。命令目录新增平台
+归属字段，因此官方专属确认命令不会被伪装成 OneBot matcher。实现没有昵称、头像、
+消息时间、发言记录或 `union_openid` 猜测路径，也没有新增 TOML、env 或 Unraid 字段。
+详见[显式跨平台身份关联 Spec](specs/2026-09-15-cross-platform-identity-linking.md)。
+
 全服榜单维护命令随后复用同一 portable 延迟回复契约。`/刷新榜单` 与
 `/缓存榜单 …` 会先发送进度回执，平台确认送达后才开始无头客户端请求，完成后再发送
 最终统计；区间缓存的进度文案改为请求前可知的策略上限，实际写入数量只在最终结果中
