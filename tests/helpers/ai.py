@@ -25,16 +25,18 @@ def ai_config(
 ) -> AiConfig:
     """Build the current endpoint-based AI configuration for tests."""
 
-    return AiConfig(
-        endpoints=[
-            AiEndpointConfig(
-                name="test",
-                base_url="https://example.test/v1",
-                models=list(models),
-                api_key=api_key,
-            )
-        ],
-        **kwargs,
+    return AiConfig.model_validate(
+        {
+            "endpoints": [
+                AiEndpointConfig(
+                    name="test",
+                    base_url="https://example.test/v1",
+                    models=list(models),
+                    api_key=api_key,
+                )
+            ],
+            **kwargs,
+        }
     )
 
 
