@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
+from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import (
     BinaryImagePart,
@@ -14,6 +15,9 @@ from ironsbot.core.outbound import (
     TextPart,
 )
 from ironsbot.core.platform import ConversationRef, Platform
+
+if TYPE_CHECKING:
+    from ironsbot.core.interactive_prompts import PromptSession
 
 
 class QQOfficialOutboundMessageError(ValueError):
@@ -25,10 +29,15 @@ class QQOfficialOutboundMessageError(ValueError):
     def unsupported_part(cls, part: object) -> QQOfficialOutboundMessageError:
         return cls(f"Unsupported outbound part: {type(part).__name__}")
 
+    @classmethod
+    def prompt_requires_text(cls) -> QQOfficialOutboundMessageError:
+        return cls("QQ Official interactive prompts require a text payload")
+
 
 @dataclass(frozen=True, slots=True)
 class QQOfficialTextPayload:
     content: str
+    prompt: PromptSession | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +87,21 @@ def render_qq_official_outbound_message(
         else:
             raise QQOfficialOutboundMessageError.unsupported_part(part)
     flush_text()
+    _attach_prompt(rendered, message.prompt)
     return tuple(rendered)
+
+
+def _attach_prompt(
+    rendered: list[QQOfficialPayload],
+    prompt: PromptSession | None,
+) -> None:
+    if prompt is None:
+        return
+    for index, payload in enumerate(rendered):
+        if isinstance(payload, QQOfficialTextPayload):
+            rendered[index] = QQOfficialTextPayload(payload.content, prompt=prompt)
+            return
+    raise QQOfficialOutboundMessageError.prompt_requires_text()
 
 
 def _supports_group_mention(

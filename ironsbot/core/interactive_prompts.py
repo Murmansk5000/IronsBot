@@ -21,7 +21,13 @@ class PromptChoice:
     text_inputs: frozenset[str]
 
     def __post_init__(self) -> None:
-        if not self.id or not self.label.strip() or not self.text_inputs:
+        normalized_inputs = frozenset(
+            normalized
+            for value in self.text_inputs
+            if (normalized := value.strip().casefold())
+        )
+        object.__setattr__(self, "text_inputs", normalized_inputs)
+        if not self.id or not self.label.strip() or not normalized_inputs:
             msg = "prompt choices require an id, label, and text input"
             raise ValueError(msg)
 

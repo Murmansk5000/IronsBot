@@ -122,8 +122,9 @@ NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk
 启动和关闭，不经过 `nonebot-adapter-qq`。预览版支持群聊
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
 套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
-活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时直接发送数字选择，
-发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
+活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时可发送数字选择，
+发送 `0` 退出；已开通并启用自定义按钮的账号还会显示同一组快捷按钮。其中
+`下周预告` 同时验证官方图片回复链路。引用回复会按全局
 规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
 查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
@@ -150,6 +151,7 @@ sandbox = false
 enabled = true
 app_id = "你的 QQ 机器人 AppID"
 proactive_messages = false
+custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 superusers = []
 
@@ -168,6 +170,10 @@ superusers = []
 `proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
+
+`custom_keyboards` 默认关闭。只有腾讯后台已为该应用开通内邀的“自定义按钮”能力时
+才能设为 `true`。启用后，有限选项会附加最多 5 行、每行 5 个的指令按钮；按钮发送的
+动态会话 action 与手输序号共用同一个用户和会话绑定，不支持按钮的客户端仍可输入数字。
 
 凭据只放环境变量：
 

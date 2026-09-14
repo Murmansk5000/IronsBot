@@ -97,6 +97,24 @@ async def test_proactive_delivery_is_explicitly_disabled_by_default() -> None:
     assert bot.calls == []
 
 
+def test_custom_keyboard_capability_is_account_scoped() -> None:
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: _Bot(),
+        account_custom_keyboards={"app": True},
+    )
+
+    assert messenger.capabilities_for(GROUP).supports_interactive_prompts
+    assert messenger.capabilities_for(PRIVATE).supports_interactive_prompts
+    other_account = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        GROUP.id,
+        account_id="other-app",
+    )
+    assert not messenger.capabilities_for(other_account).supports_interactive_prompts
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("conversation", "kind"),

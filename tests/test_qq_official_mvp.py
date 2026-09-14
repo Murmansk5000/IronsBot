@@ -629,6 +629,7 @@ enabled = true
 [bot.qq_official.accounts.example_bot]
 enabled = true
 app_id = "example-app"
+custom_keyboards = true
 features = ["help", "about", "seer_data"]
 superusers = ["opaque-admin"]
 """.strip(),
@@ -645,6 +646,7 @@ superusers = ["opaque-admin"]
     assert settings.bot.qq_official.enabled
     account = settings.bot.qq_official.accounts["example_bot"]
     assert account.secret == "example-secret"
+    assert account.custom_keyboards
     assert account.superusers == ["opaque-admin"]
 
 
@@ -1656,9 +1658,12 @@ async def test_portable_router_runs_scoped_query_selection(
     )
     assert choices is not None
     assert "1. 雷伊" in cast("TextPart", choices.message.parts[0]).text
-    assert router.recognizes(_portable_input("2", actor, conversation))
+    prompt = choices.message.prompt
+    assert prompt is not None
+    action = prompt.action_data(prompt.choices[1])
+    assert router.recognizes(_portable_input(action, actor, conversation))
 
-    selected = await router.dispatch(_portable_input("2", actor, conversation))
+    selected = await router.dispatch(_portable_input(action, actor, conversation))
     assert selected is not None
     selected_text = cast("TextPart", selected.message.parts[0]).text
     assert selected_text == (
@@ -2013,6 +2018,7 @@ enabled = true
 [bot.qq_official.accounts.example_bot]
 enabled = true
 app_id = "example-app"
+custom_keyboards = true
 
 [operations.data_sync]
 on_startup = false
@@ -2045,6 +2051,8 @@ check_on_startup = false
                 "app = bootstrap(); "
                 "assert set(app.driver._adapters) == {'OneBot V11'}; "
                 "assert app.resources.qq_official.account_ids == ('example-app',); "
+                "sender = app.resources.qq_official.sender('example-app'); "
+                "assert sender is not None and sender.custom_keyboards; "
                 "print('QQ_OFFICIAL_BOOTSTRAP_OK')"
             ),
         ],

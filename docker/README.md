@@ -285,6 +285,10 @@ GITHUB_WORKFLOW_TOKEN=
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
 
+QQ Official custom command keyboards are a TOML capability, not an environment
+variable. Keep `bot.qq_official.accounts.<alias>.custom_keyboards = false` unless
+Tencent has enabled the invite-only custom-button permission for that AppID.
+
 The QQ Official adapter is an optional runtime component so the standard
 OneBot image does not carry its cryptography dependency. Build an official-bot
 image with `--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`. A source checkout

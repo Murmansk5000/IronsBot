@@ -66,12 +66,14 @@ _PASSIVE_REPLY_LIMITS = {"group": 5, "private": 4}
 class QQOfficialOutboundMessenger:
     account_proactive: Mapping[str, bool]
     bot_provider: BotProvider
+    account_custom_keyboards: Mapping[str, bool] = field(default_factory=dict)
     reply_sequences: dict[str, QQOfficialReplySequenceAllocator] = field(
         default_factory=dict
     )
 
     def __post_init__(self) -> None:
         self.account_proactive = dict(self.account_proactive)
+        self.account_custom_keyboards = dict(self.account_custom_keyboards)
         self.reply_sequences = {
             account_id: self.reply_sequences.get(
                 account_id,
@@ -93,6 +95,10 @@ class QQOfficialOutboundMessenger:
             supports_group_context=True,
             supports_private_context=True,
             supports_images=True,
+            supports_interactive_prompts=self.account_custom_keyboards.get(
+                conversation.account_id or "",
+                False,
+            ),
         )
 
     async def send(

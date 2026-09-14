@@ -9,9 +9,9 @@ from secrets import token_urlsafe
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast, overload
 
+from ironsbot.core.interactive_prompts import PromptChoice, PromptSession
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
-from ironsbot.runtime.interactive_prompts import PromptChoice, PromptSession
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryResult
 
@@ -116,7 +116,8 @@ class PortableQuerySessions:
         return key in self._pending_text or (
             (pending := self._pending.get(key)) is not None
             and (
-                pending.session.choice_from_text(text) is not None
+                pending.session.choice_from_action(text) is not None
+                or pending.session.choice_from_text(text) is not None
                 or text.strip().isdigit()
             )
         )
@@ -199,7 +200,7 @@ class PortableQuerySessions:
             keep_open=spec.keep_open,
             exit_message=spec.exit_message,
         )
-        return spec.prompt
+        return replace(spec.prompt, prompt=session)
 
     def offer_text_input(
         self,
@@ -248,7 +249,9 @@ class PortableQuerySessions:
         pending = self._pending.get(key)
         if pending is None:
             return None
-        choice = pending.session.choice_from_text(text)
+        choice = pending.session.choice_from_action(text)
+        if choice is None:
+            choice = pending.session.choice_from_text(text)
         if choice is None:
             if text.strip().isdigit():
                 return OutboundMessage.from_text(
@@ -370,20 +373,23 @@ class PortableQuerySessions:
             not_found_message=not_found_message,
             expires_at=session.expires_at,
         )
-        return OutboundMessage.from_text(
-            format_selection_menu(
-                title=prompt_title,
-                items=tuple(
-                    SelectionMenuItem(
-                        label=choice.name,
-                        detail_lines=(choice.description,)
-                        if choice.description
-                        else (),
-                        is_sub_item=choice.is_sub_choice,
-                    )
-                    for choice in result.choices
-                ),
-            )
+        return replace(
+            OutboundMessage.from_text(
+                format_selection_menu(
+                    title=prompt_title,
+                    items=tuple(
+                        SelectionMenuItem(
+                            label=choice.name,
+                            detail_lines=(choice.description,)
+                            if choice.description
+                            else (),
+                            is_sub_item=choice.is_sub_choice,
+                        )
+                        for choice in result.choices
+                    ),
+                )
+            ),
+            prompt=session,
         )
 
     def _drop_expired(self, key: _SessionKey) -> None:

@@ -65,6 +65,12 @@ Task     [██████████] completed only after code, tests, and 
   portable router。SDK 当前覆盖 C2C 与 `GROUP_AT_MESSAGE_CREATE`，普通群消息事件不在
   该版本解析范围内；真实 AppID 登录、图片发送、主动额度和平台权限仍是 Phase 7 外部门。
 
+- QQ Official 的有限选项交互已收口到共享 `PromptSession`：数字回复和按钮 action 使用
+  同一份用户、会话、账号及消息绑定，并由同一个 portable router 消费，不存在独立的
+  callback 业务路径。只有腾讯后台已开通内邀自定义按钮权限、且对应账号显式设置
+  `custom_keyboards = true` 时才发送 type-2 指令按钮；默认配置及不支持按钮的客户端始终
+  保留数字文字选择。真实 AppID 的按钮权限和客户端呈现仍须在 Phase 7 外部验收。
+
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
   AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
   feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID

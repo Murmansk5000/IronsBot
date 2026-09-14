@@ -107,7 +107,11 @@ def build_common_components(
 
         qq_official = QQOfficialRuntime(
             tuple(
-                QQOfficialRuntimeAccount(account.app_id, account.secret)
+                QQOfficialRuntimeAccount(
+                    account.app_id,
+                    account.secret,
+                    custom_keyboards=account.custom_keyboards,
+                )
                 for account in settings.bot.qq_official.enabled_accounts.values()
             ),
             http_client=http_client,
@@ -120,6 +124,10 @@ def build_common_components(
                 for account in settings.bot.qq_official.enabled_accounts.values()
             },
             bot_provider=qq_official.sender,
+            account_custom_keyboards={
+                account.app_id: account.custom_keyboards
+                for account in settings.bot.qq_official.enabled_accounts.values()
+            },
         )
     outbound_messenger = PlatformOutboundMessenger(platform_messengers)
     proactive_delivery = ProactiveMessageDelivery(

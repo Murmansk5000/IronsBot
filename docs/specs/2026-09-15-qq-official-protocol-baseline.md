@@ -101,13 +101,16 @@ Template keyboards cannot carry a dynamic per-session token, and custom
 keyboards are currently invite-only. The implementation must therefore support a
 reliable text fallback before claiming no-input confirmation as accepted.
 
-The shared runtime now exposes `PromptSession` and `PromptChoice`. Portable
+The shared core now exposes `PromptSession` and `PromptChoice`. Portable
 query menus bind a cryptographically random session ID to the initiating AppID,
 actor, conversation and message, and button action data and numeric text input
 resolve through the same selection callback. Non-persistent prompts are consumed
-exactly once. The Tencent keyboard
-renderer and interaction acknowledgement remain open, so this contract is not
-yet evidence that buttons are enabled for an application.
+exactly once. Accounts with Tencent's invite-only custom-button permission may
+set `custom_keyboards = true`. The adapter then emits type-2 command buttons
+that automatically send the opaque session action as a regular addressed
+message; this deliberately avoids a second callback business path and does not
+require `INTERACTION_CREATE` acknowledgement. Unsupported clients and accounts
+without permission retain the same numeric text choices.
 
 ## Identity-Link Target
 
@@ -138,7 +141,7 @@ identity or ownership of the game account.
 | --- | --- | --- | --- |
 | Protocol baseline | Current docs identify the SDK path and dated official limits; historical adapter records are labeled | Official docs and installed SDK source | completed |
 | Addressed-input routing | Valid commands precede AI and mention hints on both transports | Shared input context and command catalog | completed; chat, intent, command suppression and hints share one decision service |
-| Reply protocol | Scene-specific deadline/budget, sequential `msg_seq`, current mention markup, structured failures | Tencent send APIs | in progress; deadline, budget and sequence ownership completed |
+| Reply protocol | Scene-specific deadline/budget, sequential `msg_seq`, current mention markup, structured failures | Tencent send APIs | completed; command keyboards are capability-gated and reuse ordinary inbound selection |
 | Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | planned |
 | Media and identity | SDK uploader, scoped TTL cache, explicit one-click identity linking | Platform permissions and identity repository | planned |
 | Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | planned |
@@ -168,13 +171,14 @@ identity or ownership of the game account.
 | 2026-09-15 | Passive-reply policy | Reply allocator, official identity, outbound messenger and SDK runtime tests | Event timestamps define deadlines; group and C2C budgets are separate; active live keys cannot be evicted and reused |
 | 2026-09-15 | Structured API failures and mentions | 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | HTTP failures retain status/code/trace without parsing exception strings; transport failures remain typed; current mention markup is escaped |
 | 2026-09-15 | Shared prompt identity | 52 portable-command tests and 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | Numeric input and opaque button action data resolve through one actor/conversation-bound session; Tencent keyboard delivery remains open |
+| 2026-09-15 | Capability-gated command keyboards | 129 portable/QQ Official tests, 39 core capability tests and 37 admin-notice tests; Ruff; BasedPyright; static repository checks | Opt-in SDK sends current 5x5 keyboard schema; dynamic actions traverse the ordinary router; text fallback and strict admin targets remain intact; real AppID permission is external |
 
 ## Progress
 
 ```text
-Program  [███▊░░░░░░] 38%  fixed weights; shared finite-prompt identity completed
+Program  [████▌░░░░░] 45%  fixed weights; reply and send protocol completed
 Phase    [██████████] 100%  protocol baseline documented
-Current  [███████▌░░] 75%  reply protocol; next: Tencent keyboard delivery and callback acknowledgement
+Current  [██████████] 100%  reply protocol completed; next: account lifecycle reliability
 ```
 
 Only verified and committed work counts toward program progress.

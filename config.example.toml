@@ -90,6 +90,10 @@ app_id = ""
 #     the required platform permission. Team-resource subscriptions require it.
 # ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
 proactive_messages = false
+# EN: Enable custom command keyboards only after Tencent grants the account's
+#     invite-only custom-button capability. Text choices always remain available.
+# ZH: 仅在腾讯后台已为该账号开通内邀的自定义按钮能力后启用；文字选择始终保留。
+custom_keyboards = false
 # EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY.
 # ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]

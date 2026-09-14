@@ -38,11 +38,11 @@ def _context(
     group_id: str = "group-a",
 ) -> MessageInputContext:
     actor = ActorRef(
-            Platform.QQ_OFFICIAL,
-            actor_id,
-            "member",
-            group_id,
-        )
+        Platform.QQ_OFFICIAL,
+        actor_id,
+        "member",
+        group_id,
+    )
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", group_id)
     return MessageInputContext(
         IncomingMessageRef(
@@ -115,7 +115,7 @@ async def test_button_and_text_inputs_share_one_bound_prompt_session() -> None:
         selected.append(value)
         return OutboundMessage.from_text(value)
 
-    sessions.offer_menu(
+    offered = sessions.offer_menu(
         owner,
         PortableMenuSpec(
             choices=("yes", "no"),
@@ -125,10 +125,13 @@ async def test_button_and_text_inputs_share_one_bound_prompt_session() -> None:
     )
     prompt = sessions.active_prompt(owner)
     assert prompt is not None
+    assert offered.prompt is prompt
     action = prompt.action_data(prompt.choices[0])
 
+    assert sessions.recognizes_response(action, owner)
+    assert not sessions.recognizes_response(action, other_member)
     assert await sessions.select_action(action, other_member) is None
-    result = await sessions.select_action(action, owner)
+    result = await sessions.select(action, owner)
     assert isinstance(result, OutboundMessage)
     assert _text(result) == "yes"
     assert selected == ["yes"]

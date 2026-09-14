@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 class QQOfficialRuntimeAccount:
     app_id: str
     secret: str
+    custom_keyboards: bool = False
 
 
 @dataclass(slots=True)
@@ -125,7 +126,10 @@ class QQOfficialRuntime:
             callbacks = self._callbacks(account.app_id, api, session)
             self._connections[account.app_id] = _Connection(
                 api=api,
-                sender=TencentQQClient(api),
+                sender=TencentQQClient(
+                    api,
+                    custom_keyboards=account.custom_keyboards,
+                ),
                 websocket=QQWebSocket(
                     callbacks=callbacks,
                     log_tag=f"IronsBot:{account.app_id}",

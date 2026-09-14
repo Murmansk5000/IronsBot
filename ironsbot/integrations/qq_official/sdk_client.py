@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from qqbot_agent_sdk.constants import MEDIA_TYPE_IMAGE
 from qqbot_agent_sdk.dto import (
@@ -25,6 +25,13 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from qqbot_agent_sdk.api_client import QQApiClient
+    from qqbot_agent_sdk.dto import InlineKeyboard
+
+    from ironsbot.core.interactive_prompts import PromptSession
+
+_MAX_KEYBOARD_ROWS = 5
+_MAX_BUTTONS_PER_ROW = 5
+_MAX_KEYBOARD_CHOICES = _MAX_KEYBOARD_ROWS * _MAX_BUTTONS_PER_ROW
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +44,7 @@ class TencentQQClient:
     """Convert rendered operations to the official SDK's REST DTOs."""
 
     api: QQApiClient
+    custom_keyboards: bool = False
 
     async def send_to_c2c(
         self,
@@ -95,6 +103,7 @@ class TencentQQClient:
         message_id: str | None,
         sequence: int,
     ) -> Mapping[str, object]:
+        keyboard: InlineKeyboard | None = None
         if isinstance(payload, QQOfficialTextPayload):
             message = MessageToCreate(
                 content=payload.content,
@@ -102,6 +111,8 @@ class TencentQQClient:
                 msg_id=message_id or "",
                 msg_seq=sequence,
             )
+            if self.custom_keyboards and payload.prompt is not None:
+                keyboard = _prompt_keyboard(payload.prompt)
         elif isinstance(payload, QQOfficialImagePayload):
             file_info = await self._upload_image(scope, target_id, payload)
             message = MessageToCreate(
@@ -114,8 +125,20 @@ class TencentQQClient:
             msg = f"Unsupported QQ Official payload: {type(payload).__name__}"
             raise TypeError(msg)
         if scope == "group":
-            return await self.api.post_group_message(target_id, message)
-        return await self.api.post_c2c_message(target_id, message)
+            if keyboard is None:
+                return await self.api.post_group_message(target_id, message)
+            return await self.api.post_group_message(
+                target_id,
+                message,
+                keyboard=keyboard,
+            )
+        if keyboard is None:
+            return await self.api.post_c2c_message(target_id, message)
+        return await self.api.post_c2c_message(
+            target_id,
+            message,
+            keyboard=keyboard,
+        )
 
     async def _upload_image(
         self,
@@ -152,3 +175,46 @@ def _response_id(response: Mapping[str, object]) -> str:
         msg = "QQ Official send response returned no message id"
         raise RuntimeError(msg)
     return value
+
+
+@dataclass(frozen=True, slots=True)
+class _PromptKeyboard:
+    prompt: PromptSession
+
+    def to_dict(self) -> dict[str, object]:
+        buttons = [
+            {
+                "id": choice.id,
+                "render_data": {
+                    "label": choice.label,
+                    "visited_label": choice.label,
+                    "style": 1,
+                },
+                "action": {
+                    "type": 2,
+                    "permission": {
+                        "type": 0,
+                        "specify_user_ids": [self.prompt.actor.id],
+                    },
+                    "data": self.prompt.action_data(choice),
+                    "reply": True,
+                    "enter": True,
+                    "unsupport_tips": "请发送对应序号",
+                },
+            }
+            for choice in self.prompt.choices
+        ]
+        return {
+            "content": {
+                "rows": [
+                    {"buttons": buttons[index : index + _MAX_BUTTONS_PER_ROW]}
+                    for index in range(0, len(buttons), _MAX_BUTTONS_PER_ROW)
+                ]
+            }
+        }
+
+
+def _prompt_keyboard(prompt: PromptSession) -> InlineKeyboard | None:
+    if len(prompt.choices) > _MAX_KEYBOARD_CHOICES:
+        return None
+    return cast("InlineKeyboard", _PromptKeyboard(prompt))

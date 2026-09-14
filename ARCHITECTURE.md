@@ -618,6 +618,7 @@ class DeliveryCapabilities:
     supports_group_context: bool
     supports_private_context: bool
     supports_images: bool
+    supports_interactive_prompts: bool = False
 ```
 
 - Check capabilities and official policy before scheduling or delivering a
