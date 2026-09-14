@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -30,6 +31,7 @@ from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service_models import (
     PendingPlayerQuery,
+    PlayerBaseSnapshot,
     PlayerQueryResult,
 )
 from ironsbot.services.seer.query_result import QueryReply
@@ -43,14 +45,18 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.player_shortcut_contracts import (
         PlayerShortcutCommand,
     )
+    from ironsbot.services.seer.team import SeerTeamQueryService
 
 
 class _PlayerService:
-    def __init__(self, *, replacement: bool = False) -> None:
+    def __init__(
+        self, *, replacement: bool = False, team_id: int | None = None
+    ) -> None:
         self.returned: list[tuple[ActorRef, int]] = []
         self.refreshed: list[int] = []
         self.bound: list[tuple[ActorRef, int]] = []
         self.replacement = replacement
+        self.team_id = team_id
         self.binding_choices: list[tuple[ActorRef, int, bool, bool]] = []
 
     async def query(
@@ -63,7 +69,7 @@ class _PlayerService:
     ) -> PlayerQueryResult:
         del actor, conversation
         return PlayerQueryResult(
-            pending=_pending(player_id),
+            pending=_pending(player_id, team_id=self.team_id),
             offer_binding=explicit,
         )
 
@@ -77,7 +83,7 @@ class _PlayerService:
         del conversation
         self.bound.append((actor, player_id))
         return PlayerQueryResult(
-            pending=_pending(player_id),
+            pending=_pending(player_id, team_id=self.team_id),
             offer_binding=self.replacement,
             binding_replacement=(
                 PlayerBindingState(
@@ -147,10 +153,11 @@ class _PlayerService:
         self.refreshed.append(pending.player_id)
 
 
-def _pending(player_id: int) -> PendingPlayerQuery:
+def _pending(player_id: int, *, team_id: int | None = None) -> PendingPlayerQuery:
+    user_info = SimpleNamespace(nick="tester", team_id=team_id or 0)
     return PendingPlayerQuery(
         player_id=player_id,
-        user_info=SimpleNamespace(nick="tester"),
+        user_info=user_info,
         more_info=SimpleNamespace(),
         player_message=f"player:{player_id}",
         section_plan=PlayerQuerySectionPlan(
@@ -160,6 +167,13 @@ def _pending(player_id: int) -> PendingPlayerQuery:
             has_autocard_rank=True,
             needs_online_info=False,
             local_rank_enabled=False,
+        ),
+        base_snapshot=(
+            PlayerBaseSnapshot(
+                player_id, user_info, SimpleNamespace(), None, "示例战队", 1.0
+            )
+            if team_id is not None
+            else None
         ),
     )
 
@@ -380,7 +394,7 @@ async def test_player_shortcut_progress_and_result_share_portable_delivery() -> 
 
 @pytest.mark.asyncio
 async def test_player_menu_filters_and_executes_extension_with_own_semantics() -> None:
-    service = _PlayerService()
+    service = _PlayerService(team_id=9001)
     sessions = PortableQuerySessions()
     context = _context(f"米米号{TARGET_PLAYER_ID}")
     extension_query = AsyncMock(
@@ -399,7 +413,9 @@ async def test_player_menu_filters_and_executes_extension_with_own_semantics() -
         )
     )
     features = FeatureService(
-        group_features={context.message.conversation: frozenset({"player_lineup"})},
+        group_features={
+            context.message.conversation: frozenset({"player_lineup", "seer_team"})
+        },
         actor_features={},
         superusers=frozenset(),
     )
@@ -409,6 +425,10 @@ async def test_player_menu_filters_and_executes_extension_with_own_semantics() -
         sessions,
         features,
         extensions,
+        team_query=cast(
+            "SeerTeamQueryService",
+            SimpleNamespace(query=AsyncMock(return_value="team")),
+        ),
     )
 
     await operations["seer.player.query"](context.text, context)
@@ -418,6 +438,7 @@ async def test_player_menu_filters_and_executes_extension_with_own_semantics() -
     )
 
     assert "4. 【阵容】" in _text(menu)
+    assert "5. 【战队】" in _text(menu)
     semantic = sessions.semantic_request(
         "4",
         context,
@@ -472,3 +493,154 @@ async def test_player_extension_direct_command_is_a_portable_operation() -> None
     extension_query.assert_awaited_once()
     assert extension_query.await_args is not None
     assert extension_query.await_args.args[0].player_id == ALIAS_PLAYER_ID
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("kind", ["group", "private"])
+@pytest.mark.parametrize("superuser", [True, False])
+async def test_player_team_menu_reuses_team_query_with_scoped_actor(
+    platform: Platform,
+    kind: Literal["group", "private"],
+    *,
+    superuser: bool,
+) -> None:
+    team_id = 9001
+    service = _PlayerService(team_id=team_id)
+    sessions = PortableQuerySessions()
+    context = _context(f"米米号{TARGET_PLAYER_ID}")
+    actor = (
+        ActorRef(Platform.ONEBOT, "123")
+        if platform is Platform.ONEBOT
+        else ActorRef(
+            platform,
+            "opaque-user",
+            "member" if kind == "group" else "user",
+            "opaque-group" if kind == "group" else None,
+            account_id="app",
+        )
+    )
+    conversation = ConversationRef(
+        platform,
+        kind,
+        actor.id
+        if kind == "private"
+        else ("456" if platform is Platform.ONEBOT else "opaque-group"),
+        account_id="app" if platform is Platform.QQ_OFFICIAL else None,
+    )
+    context = replace(
+        context,
+        message=replace(
+            context.message,
+            platform=platform,
+            actor=actor,
+            conversation=conversation,
+        ),
+    )
+    features = FeatureService(
+        {conversation: frozenset({"seer_team"})},
+        {actor: frozenset({"seer_team"})},
+        frozenset({actor}) if superuser else frozenset(),
+    )
+    query = AsyncMock(return_value="team result")
+    team = cast("SeerTeamQueryService", SimpleNamespace(query=query))
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        features,
+        team_query=team,
+    )
+
+    await operations["seer.player.query"](context.text, context)
+    menu = cast(
+        "PortableReply", await sessions.select("否", context, allow_deferred=True)
+    )
+    assert "4. 【战队】示例战队（战队ID：9001）" in _text(menu)
+    query.assert_not_awaited()
+    semantic = sessions.semantic_request(
+        "4", context, action=ActionDefinition("fallback", "fallback")
+    )
+    assert semantic is not None
+    assert semantic.action.id == "seer.team.query"
+    assert semantic.target.key == str(team_id)
+
+    result = cast(
+        "PortableReply", await sessions.select("4", context, allow_deferred=True)
+    )
+    assert _text(result) == "team result"
+    query.assert_awaited_once()
+    assert query.await_args is not None
+    assert query.await_args.args[0] == (team_id,)
+    request = query.await_args.args[1]
+    assert request.actor == actor
+    assert request.conversation == (conversation if kind == "group" else None)
+    assert request.can_manage is superuser
+    assert sessions.has_pending(context)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("team_id", "installed"), [(None, True), (0, True), (-1, True), (9001, False)]
+)
+async def test_player_menu_without_team_does_not_offer_team_query(
+    team_id: int | None,
+    *,
+    installed: bool,
+) -> None:
+    context = _context(f"米米号{TARGET_PLAYER_ID}")
+    service = _PlayerService(team_id=team_id)
+    sessions = PortableQuerySessions()
+    query = AsyncMock(return_value="team result")
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        FeatureService({}, {}, frozenset({context.message.actor})),
+        team_query=cast("SeerTeamQueryService", SimpleNamespace(query=query))
+        if installed
+        else None,
+    )
+
+    await operations["seer.player.query"](context.text, context)
+    menu = cast(
+        "PortableReply", await sessions.select("否", context, allow_deferred=True)
+    )
+
+    assert "【战队】" not in _text(menu)
+    query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_team_menu_rechecks_feature_after_opening() -> None:
+    context = _context(f"米米号{TARGET_PLAYER_ID}")
+    groups = {context.message.conversation: frozenset({"seer_team"})}
+    features = FeatureService(groups, {}, frozenset())
+    query = AsyncMock(return_value="team result")
+    service = _PlayerService(team_id=9001)
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        features,
+        team_query=cast("SeerTeamQueryService", SimpleNamespace(query=query)),
+    )
+    await operations["seer.player.query"](context.text, context)
+    menu = cast(
+        "PortableReply", await sessions.select("否", context, allow_deferred=True)
+    )
+    assert "【战队】" in _text(menu)
+
+    groups.clear()
+    result = cast(
+        "PortableReply", await sessions.select("4", context, allow_deferred=True)
+    )
+    assert _text(result) == "该功能当前未对你开放。"
+    query.assert_not_awaited()
+    await sessions.select("0", context)
+    await operations["seer.player.query"](context.text, context)
+    menu = cast(
+        "PortableReply", await sessions.select("否", context, allow_deferred=True)
+    )
+    assert "【战队】" not in _text(menu)
