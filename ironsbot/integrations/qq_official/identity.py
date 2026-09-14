@@ -101,7 +101,7 @@ def _direct_mentions(
             continue
         if bool(mention.get("is_you")) or bool(mention.get("bot")):
             continue
-        member_openid = str(mention.get("member_openid", "")).strip()
+        member_openid = _string_value(mention.get("member_openid"))
         if not member_openid:
             continue
         result.append(
@@ -120,8 +120,7 @@ def _author_value(raw: Mapping[str, object], key: str) -> str | None:
     author = raw.get("author")
     if not isinstance(author, Mapping):
         return None
-    value = str(author.get(key, "")).strip()
-    return value or None
+    return _string_value(author.get(key))
 
 
 def _reply_reference(
@@ -134,7 +133,7 @@ def _reply_reference(
 
 
 def _message_sequence(raw: Mapping[str, object]) -> str | None:
-    direct = str(raw.get("msg_idx", "")).strip()
+    direct = _string_value(raw.get("msg_idx"))
     return direct or _scene_value(raw, "msg_idx")
 
 
@@ -147,8 +146,12 @@ def _scene_value(raw: Mapping[str, object], key: str) -> str | None:
         return None
     prefix = f"{key}="
     for item in ext:
-        value = str(item)
-        if value.startswith(prefix):
+        value = _string_value(item)
+        if value is not None and value.startswith(prefix):
             normalized = value.removeprefix(prefix).strip()
             return normalized or None
     return None
+
+
+def _string_value(value: object) -> str | None:
+    return value.strip() or None if isinstance(value, str) else None
