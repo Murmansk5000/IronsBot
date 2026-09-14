@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
@@ -19,6 +20,10 @@ if TYPE_CHECKING:
     from qqbot_agent_sdk.event_parser import InboundEvent
 
 GROUP_AT_MESSAGE_CREATE = "GROUP_AT_MESSAGE_CREATE"
+_PASSIVE_REPLY_WINDOWS = {
+    "group": timedelta(minutes=5),
+    "private": timedelta(minutes=60),
+}
 
 
 def qq_official_incoming_message(
@@ -74,6 +79,7 @@ def qq_official_incoming_message(
         group_role=group_role,
         reply_to_id=_reply_reference(event, raw),
         sequence=_message_sequence(raw),
+        reply_deadline=_reply_deadline(event, conversation.kind),
     )
 
 
@@ -136,6 +142,23 @@ def _reply_reference(
 def _message_sequence(raw: Mapping[str, object]) -> str | None:
     direct = str(raw.get("msg_idx", "")).strip()
     return direct or _scene_value(raw, "msg_idx")
+
+
+def _reply_deadline(event: InboundEvent, conversation_kind: str) -> datetime | None:
+    value = getattr(event, "timestamp", None)
+    if isinstance(value, datetime):
+        timestamp = value
+    else:
+        normalized = str(value or "").strip().replace("Z", "+00:00")
+        if not normalized:
+            return None
+        try:
+            timestamp = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+    if timestamp.tzinfo is None:
+        return None
+    return timestamp + _PASSIVE_REPLY_WINDOWS[conversation_kind]
 
 
 def _scene_value(raw: Mapping[str, object], key: str) -> str | None:

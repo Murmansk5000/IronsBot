@@ -378,7 +378,7 @@ def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
         chat_scope=chat_scope,
         content=content,
         message_id="message-id",
-        timestamp="2026-09-13T00:00:00+08:00",
+        timestamp="2099-01-01T00:00:00+08:00",
         message_type=message_type,
         raw=raw or {},
     )
@@ -973,6 +973,8 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         ),
     )
     assert incoming.sequence == "sequence-1"
+    assert incoming.reply_deadline is not None
+    assert incoming.reply_deadline.isoformat() == "2099-01-01T00:05:00+08:00"
 
 
 def test_only_group_at_event_is_classified_as_bot_mention() -> None:
@@ -1961,6 +1963,8 @@ def test_c2c_identity_uses_user_openid() -> None:
         account_id="example-app",
     )
     assert incoming.group_role is None
+    assert incoming.reply_deadline is not None
+    assert incoming.reply_deadline.isoformat() == "2099-01-01T01:00:00+08:00"
 
 
 def test_bootstrap_constructs_qq_official_sdk_runtime(tmp_path: Path) -> None:

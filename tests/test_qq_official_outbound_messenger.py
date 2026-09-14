@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -64,6 +65,20 @@ PRIVATE = ConversationRef(
     account_id="app",
 )
 TEXT = OutboundMessage.from_text("result")
+FUTURE_DEADLINE = datetime(2099, 1, 1, tzinfo=UTC)
+
+
+def _reply(
+    conversation: ConversationRef,
+    message_id: str,
+    sequence: str | None = None,
+) -> ReplyContext:
+    return ReplyContext(
+        conversation,
+        message_id,
+        sequence,
+        reply_deadline=FUTURE_DEADLINE,
+    )
 
 
 @pytest.mark.asyncio
@@ -193,7 +208,7 @@ async def test_reply_sequences_are_isolated_by_bot_account() -> None:
             account_id=account_id,
         )
         result = await messenger.reply(
-            ReplyContext(conversation, "same-message-id"),
+            _reply(conversation, "same-message-id"),
             TEXT,
         )
         assert result.delivered
@@ -225,10 +240,61 @@ async def test_reply_uses_event_message_id_and_first_reply_sequence() -> None:
         bot_provider=lambda _app_id: bot,
     )
 
-    result = await messenger.reply(ReplyContext(GROUP, "event-id", "event-index"), TEXT)
+    result = await messenger.reply(_reply(GROUP, "event-id", "event-index"), TEXT)
 
     assert result.delivered
     assert bot.calls[0][3:] == ("event-id", 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("context", "error_code"),
+    [
+        (ReplyContext(GROUP, "event-id"), "passive_reply_deadline_missing"),
+        (
+            ReplyContext(
+                GROUP,
+                "event-id",
+                reply_deadline=datetime(2000, 1, 1, tzinfo=UTC),
+            ),
+            "passive_reply_expired",
+        ),
+    ],
+)
+async def test_invalid_passive_reply_window_fails_before_transport(
+    context: ReplyContext,
+    error_code: str,
+) -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    result = await messenger.reply(context, TEXT)
+
+    assert result.error_code == error_code
+    assert bot.calls == []
+
+
+@pytest.mark.asyncio
+async def test_same_message_id_is_isolated_by_conversation() -> None:
+    bot = _Bot()
+    messenger = QQOfficialOutboundMessenger(
+        {"app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    other_group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "other-group",
+        account_id="app",
+    )
+
+    assert (await messenger.reply(_reply(GROUP, "event-id"), TEXT)).delivered
+    assert (await messenger.reply(_reply(other_group, "event-id"), TEXT)).delivered
+
+    assert [call[4] for call in bot.calls] == [1, 1]
 
 
 @pytest.mark.asyncio
@@ -239,12 +305,12 @@ async def test_replies_allocate_unique_sequences_per_event() -> None:
         bot_provider=lambda _app_id: bot,
     )
 
-    for _ in range(4):
-        assert (await messenger.reply(ReplyContext(GROUP, "event-id"), TEXT)).delivered
-    exhausted = await messenger.reply(ReplyContext(GROUP, "event-id"), TEXT)
-    other = await messenger.reply(ReplyContext(GROUP, "other-event"), TEXT)
+    for _ in range(5):
+        assert (await messenger.reply(_reply(GROUP, "event-id"), TEXT)).delivered
+    exhausted = await messenger.reply(_reply(GROUP, "event-id"), TEXT)
+    other = await messenger.reply(_reply(GROUP, "other-event"), TEXT)
 
-    assert [call[4] for call in bot.calls] == [1, 2, 3, 4, 1]
+    assert [call[4] for call in bot.calls] == [1, 2, 3, 4, 5, 1]
     assert exhausted.error_code == "passive_reply_limit_exceeded"
     assert other.delivered
 
@@ -258,7 +324,7 @@ async def test_reply_limit_can_fall_back_to_explicitly_enabled_proactive_send() 
     )
 
     for _ in range(5):
-        result = await messenger.reply(ReplyContext(PRIVATE, "event-id"), TEXT)
+        result = await messenger.reply(_reply(PRIVATE, "event-id"), TEXT)
         assert result.delivered
 
     assert [call[3:] for call in bot.calls] == [

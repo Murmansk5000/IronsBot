@@ -20,6 +20,7 @@ from ironsbot.integrations.qq_official.message_rendering import (
 )
 from ironsbot.integrations.qq_official.reply_sequences import (
     QQOfficialReplySequenceAllocator,
+    ReplySequenceKey,
 )
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ _UNSUPPORTED = DeliveryCapabilities(
     supports_private_context=False,
     supports_images=False,
 )
+_PASSIVE_REPLY_LIMITS = {"group": 5, "private": 4}
 
 
 @dataclass(slots=True)
@@ -129,7 +131,7 @@ class QQOfficialOutboundMessenger:
         return await self._deliver(
             context.conversation,
             message,
-            message_id=context.message_id,
+            reply_context=context,
         )
 
     def _owns(self, conversation: ConversationRef) -> bool:
@@ -150,7 +152,7 @@ class QQOfficialOutboundMessenger:
         conversation: ConversationRef,
         message: OutboundMessage,
         *,
-        message_id: str | None = None,
+        reply_context: ReplyContext | None = None,
     ) -> SendResult:
         try:
             payloads = render_qq_official_outbound_message(
@@ -172,22 +174,36 @@ class QQOfficialOutboundMessenger:
                 "No connected QQ Official bot can deliver this message",
                 DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
+        message_id: str | None = None
         message_sequence: int | None = None
-        if message_id is not None:
-            allocation = self.reply_sequences[account_id].allocate(
-                message_id,
-                count=len(payloads),
-            )
-            if allocation.sequence is None:
+        if reply_context is not None:
+            message_id = reply_context.message_id
+            if reply_context.reply_deadline is None:
+                allocation_reason = "deadline_missing"
+                allocation_sequence = None
+            else:
+                allocation = self.reply_sequences[account_id].allocate(
+                    ReplySequenceKey(
+                        conversation.kind,
+                        conversation.id,
+                        message_id,
+                    ),
+                    expires_at=reply_context.reply_deadline,
+                    limit=_PASSIVE_REPLY_LIMITS[conversation.kind],
+                    count=len(payloads),
+                )
+                allocation_reason = allocation.reason
+                allocation_sequence = allocation.sequence
+            if allocation_sequence is None:
                 if not self._proactive_enabled(conversation):
                     return _failure(
-                        f"passive_reply_{allocation.reason}",
+                        f"passive_reply_{allocation_reason}",
                         "QQ Official passive reply window or limit was exhausted",
                         DeliveryFailureKind.PERMANENT,
                     )
                 message_id = None
             else:
-                message_sequence = allocation.sequence
+                message_sequence = allocation_sequence
         try:
             if conversation.kind == "group":
                 result = await bot.send_to_group(
