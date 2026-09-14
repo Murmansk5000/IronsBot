@@ -129,7 +129,7 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
 查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
-同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
+同一个 AI 服务；已注册查询始终优先。没有配置对应的 `AI_KEY_<端点名>` 时不会开放 AI 聊天入口。
 `[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
 `[[messaging.sendpic.configs]]` 图片口令，也会直接复用同一配置；需要把各文本口令的
 `feature` 或图片功能 `image` 加入对应账号的 `features`。本地图片继续从挂载目录
@@ -243,7 +243,7 @@ SDK 内部事件白名单，也不会用 NapCat 猜测或拼接 OpenID。
 行为与部署配置都写在 TOML 文件里，并通过 `APP_CONFIG_PATH` 指向它。环境变量只保留：
 
 - 配置位置：`APP_CONFIG_PATH`
-- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY`、按账号库配置的
+- 密钥：`ONEBOT_ACCESS_TOKEN`、`AI_KEY_<端点名>`、按账号库配置的
   `SEER_PASSWORD_<米米号>`、`SENDPIC_CNB_TOKEN`、`GITHUB_WORKFLOW_TOKEN`
 
 示例配置按用户可见功能和运行依赖排列，而不是按 Python 模块名排列。新增功能或配置项前，先参照
@@ -255,7 +255,7 @@ SDK 内部事件白名单，也不会用 NapCat 猜测或拼接 OpenID。
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-AI_KEY=
+AI_KEY_DEEPSEEK=
 # 为 [[seer.player_accounts]] 中需要登录的账号设置明文密码；机器人会在内存中转为 MD5。
 SEER_PASSWORD_123456789=
 SEER_PASSWORD_987654321=

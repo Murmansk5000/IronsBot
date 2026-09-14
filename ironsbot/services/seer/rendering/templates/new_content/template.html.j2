@@ -31,6 +31,57 @@
     .category-name { flex: 1; font-size: 20px; font-weight: 700; }
     .category-count { color: #a9cde8; font-size: 15px; }
     .arrow { margin-right: 8px; color: #86e6ff; }
+    .pool-preview {
+      margin-left: 16px; padding: 14px; background: #0b223c;
+      border-left: 3px solid #3d88c8;
+    }
+    .pool-title {
+      margin-bottom: 10px; color: #d9f4ff; font-size: 18px; font-weight: 800;
+    }
+    .pool-matrix {
+      width: 100%; border-collapse: collapse; table-layout: fixed;
+    }
+    .pool-cell {
+      min-width: 0; min-height: 52px; padding: 8px;
+      border: 1px solid #315f8a;
+      color: #d9ecf8; font-size: 13px; line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .pool-corner, .pool-row-label { width: 142px; }
+    .pool-corner, .pool-column, .pool-row-label {
+      text-align: center; vertical-align: middle;
+      background: #123b62; color: #9fe8ff; font-weight: 800;
+    }
+    .pool-corner { font-size: 12px; }
+    .pool-corner span { display: block; }
+    .pool-diagonal {
+      text-align: center; vertical-align: middle; color: #688aa5; font-size: 18px;
+    }
+    .pool-pets { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+    .pool-avatar {
+      width: 48px; height: 48px; object-fit: contain; padding: 2px;
+      background: #071426; border: 1px solid #315f8a; border-radius: 3px;
+    }
+    .pool-avatar-missing {
+      width: 48px; height: 48px; background: #102f50;
+      border: 1px dashed #426d91; border-radius: 3px;
+    }
+    .expert-transitions { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .expert-direction, .expert-names {
+      min-width: 0; min-height: 52px; padding: 10px 12px;
+      border: 1px solid #315f8a;
+    }
+    .expert-direction {
+      width: 150px; text-align: center; vertical-align: middle;
+      background: #123b62; color: #91e7ff; font-size: 15px; font-weight: 800;
+    }
+    .expert-direction .transition-arrow { color: #f4dc8f; }
+    .expert-names { background: #0e2d4d; }
+    .pool-empty { color: #688aa5; }
+    .pool-other { margin-top: 12px; }
+    .pool-other-title { margin-bottom: 6px; color: #f4dc8f; font-weight: 800; }
+    .pool-other-row { display: flex; gap: 12px; padding: 6px 0; }
+    .pool-other-direction { flex: 0 0 180px; color: #91e7ff; font-weight: 700; }
     .item {
       display: flex; align-items: stretch; min-height: 100px; margin-left: 16px;
       padding: 10px 14px; background: #0c2744; border-left: 3px solid #3d88c8;
@@ -118,10 +169,97 @@
         {% if item.is_category %}
           <div class="category">
             <div class="key">{{ item.code }}</div>
-            <div class="arrow">{{ '▼' if item.expanded else '▶' }}</div>
+            <div class="arrow">{{ '↗' if item.pool_preview else ('▼' if item.expanded else '▶') }}</div>
             <div class="category-name">{{ item.name }}</div>
             <div class="category-count">{{ item.description }}</div>
           </div>
+          {% if item.pool_preview %}
+            <div class="pool-preview">
+              <div class="pool-title">{{ item.pool_preview.title }}</div>
+              {% if item.pool_preview.kind == 'standard' %}
+                <table class="pool-matrix">
+                  <thead><tr>
+                    <th class="pool-cell pool-corner">
+                      <span>原限制 ↓</span><span>新限制 →</span>
+                    </th>
+                    {% for header in item.pool_preview.headers %}
+                      <th class="pool-cell pool-column">{{ header }}</th>
+                    {% endfor %}
+                  </tr></thead>
+                  <tbody>
+                  {% for row in item.pool_preview.matrix_rows %}
+                    {% set row_index = loop.index0 %}
+                    <tr>
+                      <th class="pool-cell pool-row-label">{{ row.label }}</th>
+                      {% for pets in row.cells %}
+                        <td class="pool-cell{% if loop.index0 == row_index %} pool-diagonal{% endif %}">
+                          {% if loop.index0 == row_index %}
+                            —
+                          {% elif pets %}
+                            <div class="pool-pets">
+                              {% for pet in pets %}
+                                {% if pet.image %}
+                                  <img class="pool-avatar" src="{{ pet.image }}" alt="">
+                                {% else %}
+                                  <span class="pool-avatar-missing"></span>
+                                {% endif %}
+                              {% endfor %}
+                            </div>
+                          {% endif %}
+                        </td>
+                      {% endfor %}
+                    </tr>
+                  {% endfor %}
+                  </tbody>
+                </table>
+              {% else %}
+                <table class="expert-transitions"><tbody>
+                  {% for row in item.pool_preview.direction_rows %}
+                    {% set direction_parts = row.direction.split(' → ') %}
+                    <tr>
+                      <th class="expert-direction">
+                        {{ direction_parts[0] }}&nbsp;<span class="transition-arrow">→</span>&nbsp;{{ direction_parts[1] }}
+                      </th>
+                      <td class="expert-names">
+                        {% if row.pets %}
+                          <div class="pool-pets">
+                            {% for pet in row.pets %}
+                              {% if pet.image %}
+                                <img class="pool-avatar" src="{{ pet.image }}" alt="">
+                              {% else %}
+                                <span class="pool-avatar-missing"></span>
+                              {% endif %}
+                            {% endfor %}
+                          </div>
+                        {% else %}
+                          <span class="pool-empty">—</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody></table>
+              {% endif %}
+              {% if item.pool_preview.other_rows %}
+                <div class="pool-other">
+                  <div class="pool-other-title">其他变化</div>
+                  {% for row in item.pool_preview.other_rows %}
+                    <div class="pool-other-row">
+                      <div class="pool-other-direction">{{ row.direction }}</div>
+                      <div class="pool-pets">
+                        {% for pet in row.pets %}
+                          {% if pet.image %}
+                            <img class="pool-avatar" src="{{ pet.image }}" alt="">
+                          {% else %}
+                            <span class="pool-avatar-missing"></span>
+                          {% endif %}
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
         {% else %}
           <div class="item{% if not item.image and not item.image_notice %} no-image{% endif %}{% if item.skill %} skill-item{% endif %}">
             <div class="key">{{ item.code }}</div>
@@ -198,7 +336,7 @@
       {% if focused_category %}
         发送数字查看详情，发送 <kbd>0</kbd> 退出
       {% else %}
-        发送字母展开分类，发送数字查看详情，发送 <kbd>0</kbd> 退出
+        发送字母查看分类或完整池图片，发送编号查看详情，发送 <kbd>0</kbd> 退出
       {% endif %}
     </footer>
   </main>

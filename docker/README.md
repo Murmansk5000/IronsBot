@@ -189,7 +189,7 @@ versions if Watchtower reports that client API version 1.25 is too old.
 
 Push notices are split into separate subscriptions, such as bot startup,
 Docker image check, startup data sync, AI chat errors, Bilibili login notices,
-headless Seer notices, render crash notices, red packet notices, Bilibili pushes, activity
+headless Seer notices, in-process pet render failure notices, red packet notices, Bilibili pushes, activity
 reminders, and open-server pushes. Private users can send `TD`; group owners
 or admins can send `TD` in a group to unsubscribe from each push category
 independently.
@@ -266,7 +266,7 @@ and `logs/` paths live under the current working directory.
 ```env
 APP_CONFIG_PATH=/config/ironsbot.toml
 ONEBOT_ACCESS_TOKEN=change-me
-AI_KEY=
+AI_KEY_DEEPSEEK=
 # Add the plain password for each [[seer.player_accounts]] player ID that logs in.
 # IronsBot converts it to MD5 in memory.
 SEER_PASSWORD_123456789=
@@ -280,7 +280,7 @@ GITHUB_WORKFLOW_TOKEN=
 | `APP_CONFIG_PATH` | Path to the mounted behavior config file, usually `/config/ironsbot.toml`. |
 | `ONEBOT_ACCESS_TOKEN` | Token used by NapCat / OneBot client to connect to IronsBot. |
 | `QQ_OFFICIAL_SECRET_<ACCOUNT_ALIAS>` | AppSecret for one enabled `[bot.qq_official.accounts.<alias>]`; the suffix is the uppercase account alias. Each account obtains and refreshes its own AccessToken. |
-| `AI_KEY` | AI chat API key. |
+| `AI_KEY_<UPPERCASE_ENDPOINT_NAME>` | AI chat API key for the named endpoint, for example `AI_KEY_DEEPSEEK`. |
 | `SEER_PASSWORD_<player_id>` | Plain password for a configured Seer account. IronsBot converts it to the login MD5 in memory. Query workers and isolated lucky-window sessions both use this name. |
 | `SENDPIC_CNB_TOKEN` | Optional CNB backend token for configured sendpic repositories. |
 | `GITHUB_WORKFLOW_TOKEN` | Optional GitHub token used to trigger configured data-build workflows. |
@@ -339,7 +339,7 @@ Feature names are used in `[features.group_policy]` and
 | `ai_intent_team_recommend` | Team recommendation / audit group info triggered by AI intent classification. |
 | `fire_manual_ad` | Fire manual link appended to proactive pushes. |
 | `ai_intent_fire_manual` | AI intent action for explicit Fire manual link requests. |
-| `admin_notice` | Target permission for admin notices, including startup, AI errors, Bilibili login, headless Seer, render crash, red packet, and similar notices. Concrete push categories can be unsubscribed separately through `TD`. |
+| `admin_notice` | Target permission for admin notices, including startup, AI errors, Bilibili login, headless Seer, in-process pet render failures, red packet, and similar notices. Concrete push categories can be unsubscribed separately through `TD`. |
 
 Message actions may also use feature names such as `web_activity_link`,
 `web_activity_push`, or `seerinfo`.

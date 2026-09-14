@@ -91,7 +91,7 @@ def _schedule(
 ) -> MessageScheduledAction:
     return MessageScheduledAction(
         id=schedule_id,
-        message=message,
+        messages=[message],
         at_user_ids=list(at_user_ids or []),
         time=time,
     )
@@ -484,14 +484,14 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
     config = MessageConfig(
         commands=[
             MessageCommandAction(
-                id="example", commands=["示例"], message="exact", enabled=enabled
+                id="example", commands=["示例"], messages=["exact"], enabled=enabled
             )
         ]
         if configured
         else [],
         keyword_replies=[
             MessageKeywordReplyAction(
-                id="example", keywords=["示例"], message="keyword", enabled=enabled
+                id="example", keywords=["示例"], messages=["keyword"], enabled=enabled
             )
         ]
         if keyword
@@ -532,7 +532,7 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
                     "MessageReplyAction", state[matcher_rules.MESSAGE_ACTION_KEY]
                 )
                 matches.append(
-                    (action.message, state.get(EXPLICIT_COMMAND_STATE_KEY, False))
+                    (action.messages[0], state.get(EXPLICIT_COMMAND_STATE_KEY, False))
                 )
         expected = (
             [("exact", True)]
@@ -556,7 +556,7 @@ def test_reply_selection_checks_each_action_permission_before_precedence(
             MessageCommandAction(
                 id="same",
                 commands=["示例"],
-                message="exact",
+                messages=["exact"],
                 feature="seerinfo",
                 enabled=exact_enabled,
             )
@@ -565,7 +565,7 @@ def test_reply_selection_checks_each_action_permission_before_precedence(
             MessageKeywordReplyAction(
                 id="same",
                 keywords=["示例"],
-                message="keyword",
+                messages=["keyword"],
                 feature="web_activity_link",
             )
         ],
@@ -598,7 +598,7 @@ def test_automatic_reply_does_not_become_a_direct_command_or_poke_hint() -> None
     config = MessageConfig(
         keyword_replies=[
             MessageKeywordReplyAction(
-                id="example", keywords=["示例"], message="keyword"
+                id="example", keywords=["示例"], messages=["keyword"]
             )
         ]
     )
@@ -616,7 +616,7 @@ def test_automatic_reply_does_not_become_a_direct_command_or_poke_hint() -> None
 def test_reply_cooldown_keys_distinguish_same_named_action_families() -> None:
     state = {
         matcher_rules.MESSAGE_ACTION_KEY: MessageKeywordReplyAction(
-            id="same", keywords=["示例"], message="keyword"
+            id="same", keywords=["示例"], messages=["keyword"]
         )
     }
     assert _action_command_id("message")(None, state) == "message.same"
@@ -635,7 +635,7 @@ def test_unified_command_action_uses_feature_policy_for_each_message_scope(
                 id="activity_link",
                 commands=["activity"],
                 feature="web_activity_link",
-                message="activity link",
+                messages=["activity link"],
                 at_user_ids=[3001],
             )
         ],
@@ -679,7 +679,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="exact_reply",
                 commands=["出出"],
                 feature="text",
-                message="精确回复",
+                messages=["精确回复"],
             )
         ],
         keyword_replies=[
@@ -687,7 +687,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="keyword_reply",
                 keywords=["出出"],
                 feature="text",
-                message="关键词回复",
+                messages=["关键词回复"],
             )
         ],
         group_policy={"1001": ["text"]},
@@ -872,7 +872,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
     )
     task = MessageScheduledAction(
-        message="group push",
+        messages=["group push"],
         at_user_ids=[],
         id="daily",
         time="23:00",

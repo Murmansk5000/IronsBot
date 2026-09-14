@@ -17,6 +17,7 @@ class SeerInfoReference(str, Enum):
     WEEKLY_PREVIEW = "weekly_preview"
     BILIBILI_HISTORY = "bilibili_history"
     PEAK_POOL = "peak_pool"
+    PEAK_MASTER_POOL = "peak_master_pool"
     PEAK_VOTE = "peak_vote"
     PEAK_STANDARD_PLAYER_RANK = "peak_standard_player_rank"
     PEAK_WILD_PLAYER_RANK = "peak_wild_player_rank"
@@ -40,6 +41,7 @@ _URLS: dict[SeerInfoReference, str] = {
     SeerInfoReference.WEEKLY_PREVIEW: f"{_BASE_URL}/preview",
     SeerInfoReference.BILIBILI_HISTORY: f"{_BASE_URL}/bilibili",
     SeerInfoReference.PEAK_POOL: f"{_BASE_URL}/peak/pvpban",
+    SeerInfoReference.PEAK_MASTER_POOL: f"{_BASE_URL}/peak/pvpcostmode",
     SeerInfoReference.PEAK_VOTE: f"{_BASE_URL}/peak/pvpvote",
 }
 
@@ -71,6 +73,7 @@ _CONFIG_FIELDS: dict[SeerInfoReference, str] = {
     SeerInfoReference.WEEKLY_PREVIEW: "weekly_preview",
     SeerInfoReference.BILIBILI_HISTORY: "bilibili_history",
     SeerInfoReference.PEAK_POOL: "peak_pool",
+    SeerInfoReference.PEAK_MASTER_POOL: "peak_master_pool",
     SeerInfoReference.PEAK_VOTE: "peak_vote",
     **dict.fromkeys(
         (
