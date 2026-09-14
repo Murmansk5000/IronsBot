@@ -50,6 +50,42 @@ Docker Hub 登录被跳过，未改公开生产镜像。
 `/app` 4480 KiB、site-packages 105948 KiB、字体 19452 KiB。
 这是展开体积，不是下载流量。后续瘦身不得靠删除正常功能、字体或错误处理伪造收益。
 
+### 换电脑恢复（2026-09-14 追加核验）
+
+IronsBot 和 private 的远端 V5 分支均已核验；seerapi 的远端没有该分支，
+不能只 clone main 后宣称恢复完毕。已在旧机器创建独立完整 Git bundle：
+`C:/Users/huime/Downloads/IronsBot-transfer-20260914/seerapi-v5.bundle`，
+包含 V5 分支及其可达历史，不依赖旧工作树。该目录另有
+`ironsbot-private.uv.lock`，是未跟踪文件的备份，不属于已提交版本。
+
+离开旧机器前把整个 `IronsBot-transfer-20260914` 目录转存到可信移动介质或私有存储。
+新机器安装 Git 并登录有权读取私有仓库的 GitHub 账号，在任意空开发目录执行：
+
+```text
+git clone --branch codex/multiplatform-architecture-v5 https://github.com/Murmansk5000/IronsBot-QQ-Official-Preview.git IronsBot
+git clone --branch codex/multiplatform-architecture-v5 https://github.com/Murmansk5000/ironsbot-private.git ironsbot-private
+git clone --branch codex/multiplatform-architecture-v5 /PATH/TO/seerapi-v5.bundle seerapi
+git -C seerapi remote set-url origin https://github.com/Murmansk5000/seerapi.git
+git -C IronsBot remote rename origin qq-official-preview
+git -C IronsBot remote add origin https://github.com/Murmansk5000/IronsBot.git
+git -C IronsBot branch --set-upstream-to=qq-official-preview/codex/multiplatform-architecture-v5
+```
+
+把 `/PATH/TO/seerapi-v5.bundle` 换成新机器上的实际路径，含空格时加引号。
+恢复后 seerapi HEAD 应为 `56878c3`，private 为 `4dce691`；公共分支应包含本交接文档。
+`ironsbot-private.uv.lock` 可还原为私有仓库根目录的 `uv.lock`，保持未提交。
+不要复制 `.venv`、WSL 磁盘、Docker 安装目录或旧 Codex worktree 元数据；重新安装依赖。
+
+Git 不会带走本地 TOML、密钥、数据库、未跟踪素材和测试日志。
+仅继续开发可按本文重建测试配置；需要原配置/状态时单独加密备份配置、所需 `data`
+及私有素材。数据库应在对应服务停机后备份，别只复制正在写入的 SQLite 主文件。
+旧会话已暴露的 AppSecret 应轮换后在新机器安全注入，不打包进 Git。
+无需搬迁可再生成的 render/cache；官方 Resume session 也可重新建立。
+若机器人仍运行在 Unraid，换开发电脑不需要搬走 Unraid 的生产挂载目录。
+
+新 AI 的工作目录选择新克隆的 `IronsBot`，将本文最后的 Prompt 交给它即可；
+本文中的旧机器绝对路径只用于定位备份，不是运行时要求。
+
 ## 3. 技术路线与边界
 
 权威材料按以下顺序阅读：
