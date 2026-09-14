@@ -13,6 +13,9 @@ from ironsbot.core.outbound import (
     SendResult,
 )
 from ironsbot.core.platform import Platform
+from ironsbot.integrations.qq_official.api_errors import (
+    qq_official_exception_result,
+)
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialOutboundMessageError,
     QQOfficialPayload,
@@ -20,6 +23,7 @@ from ironsbot.integrations.qq_official.message_rendering import (
 )
 from ironsbot.integrations.qq_official.reply_sequences import (
     QQOfficialReplySequenceAllocator,
+    ReplySequenceKey,
 )
 
 if TYPE_CHECKING:
@@ -55,18 +59,21 @@ _UNSUPPORTED = DeliveryCapabilities(
     supports_private_context=False,
     supports_images=False,
 )
+_PASSIVE_REPLY_LIMITS = {"group": 5, "private": 4}
 
 
 @dataclass(slots=True)
 class QQOfficialOutboundMessenger:
     account_proactive: Mapping[str, bool]
     bot_provider: BotProvider
+    account_custom_keyboards: Mapping[str, bool] = field(default_factory=dict)
     reply_sequences: dict[str, QQOfficialReplySequenceAllocator] = field(
         default_factory=dict
     )
 
     def __post_init__(self) -> None:
         self.account_proactive = dict(self.account_proactive)
+        self.account_custom_keyboards = dict(self.account_custom_keyboards)
         self.reply_sequences = {
             account_id: self.reply_sequences.get(
                 account_id,
@@ -88,6 +95,10 @@ class QQOfficialOutboundMessenger:
             supports_group_context=True,
             supports_private_context=True,
             supports_images=True,
+            supports_interactive_prompts=self.account_custom_keyboards.get(
+                conversation.account_id or "",
+                False,
+            ),
         )
 
     async def send(
@@ -129,7 +140,7 @@ class QQOfficialOutboundMessenger:
         return await self._deliver(
             context.conversation,
             message,
-            message_id=context.message_id,
+            reply_context=context,
         )
 
     def _owns(self, conversation: ConversationRef) -> bool:
@@ -150,7 +161,7 @@ class QQOfficialOutboundMessenger:
         conversation: ConversationRef,
         message: OutboundMessage,
         *,
-        message_id: str | None = None,
+        reply_context: ReplyContext | None = None,
     ) -> SendResult:
         try:
             payloads = render_qq_official_outbound_message(
@@ -172,22 +183,36 @@ class QQOfficialOutboundMessenger:
                 "No connected QQ Official bot can deliver this message",
                 DeliveryFailureKind.TRANSPORT_UNAVAILABLE,
             )
+        message_id: str | None = None
         message_sequence: int | None = None
-        if message_id is not None:
-            allocation = self.reply_sequences[account_id].allocate(
-                message_id,
-                count=len(payloads),
-            )
-            if allocation.sequence is None:
+        if reply_context is not None:
+            message_id = reply_context.message_id
+            if reply_context.reply_deadline is None:
+                allocation_reason = "deadline_missing"
+                allocation_sequence = None
+            else:
+                allocation = self.reply_sequences[account_id].allocate(
+                    ReplySequenceKey(
+                        conversation.kind,
+                        conversation.id,
+                        message_id,
+                    ),
+                    expires_at=reply_context.reply_deadline,
+                    limit=_PASSIVE_REPLY_LIMITS[conversation.kind],
+                    count=len(payloads),
+                )
+                allocation_reason = allocation.reason
+                allocation_sequence = allocation.sequence
+            if allocation_sequence is None:
                 if not self._proactive_enabled(conversation):
                     return _failure(
-                        f"passive_reply_{allocation.reason}",
+                        f"passive_reply_{allocation_reason}",
                         "QQ Official passive reply window or limit was exhausted",
                         DeliveryFailureKind.PERMANENT,
                     )
                 message_id = None
             else:
-                message_sequence = allocation.sequence
+                message_sequence = allocation_sequence
         try:
             if conversation.kind == "group":
                 result = await bot.send_to_group(
@@ -204,7 +229,7 @@ class QQOfficialOutboundMessenger:
                     msg_seq=message_sequence,
                 )
         except Exception as error:  # noqa: BLE001 - transport boundary
-            return _exception_result(error)
+            return qq_official_exception_result(error)
         result_id = _result_id(result)
         if result_id is None:
             return _failure(
@@ -229,31 +254,6 @@ def _result_id(result: object) -> str | None:
         value = getattr(result, "id", None)
     normalized = str(value).strip() if value is not None else ""
     return normalized or None
-
-
-def _exception_result(error: Exception) -> SendResult:
-    message = str(error)
-    lowered = message.lower()
-    if "429" in lowered or "rate limit" in lowered:
-        kind = DeliveryFailureKind.RETRYABLE
-    elif "timeout" in lowered or "network" in lowered:
-        kind = DeliveryFailureKind.UNCERTAIN
-    elif any(code in lowered for code in ("400", "401", "403")):
-        kind = DeliveryFailureKind.PERMANENT
-    else:
-        kind = DeliveryFailureKind.RETRYABLE
-    return SendResult(
-        delivered=False,
-        error_code=_error_code(error),
-        error_message=message,
-        trace_id=getattr(error, "trace_id", None),
-        failure_kind=kind,
-    )
-
-
-def _error_code(error: Exception) -> str:
-    code = getattr(error, "code", None)
-    return str(code) if code is not None else type(error).__name__
 
 
 def _failure(

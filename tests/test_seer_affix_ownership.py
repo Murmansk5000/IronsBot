@@ -29,6 +29,7 @@ from ironsbot.plugins.onebot.seer.query.commands import (
     type_queries,
 )
 from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -114,7 +115,9 @@ def test_affix_catalog_and_private_ai_ownership(
         if command.matches_direct_input(context, text)
     ] == [expected]
     assert not _capture_ai_prompt(
-        private_message_event(text, user_id=int(_ACTOR.id)), {}, features, catalog
+        private_message_event(text, user_id=int(_ACTOR.id)),
+        {},
+        AiInputRoutingService(features, catalog),
     )
     assert not catalog.claims_direct_input(
         context, FeatureService({}, {}, frozenset()), text

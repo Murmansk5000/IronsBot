@@ -260,6 +260,29 @@ def test_catalog_claims_available_direct_inputs_and_parameterized_inputs() -> No
     assert not catalog.claims_direct_input(context, features, "/帮助")
 
 
+def test_catalog_recognizes_command_syntax_before_feature_and_audience() -> None:
+    catalog = _catalog(
+        CommandContract(
+            id="manager",
+            plugin_id="example",
+            section="管理",
+            examples=("/刷新",),
+            description="刷新资料",
+            features_any=("example_feature",),
+            access=(CommandAccess("group", "group_manager"),),
+        )
+    )
+    member_context = _context(1, group_id=100, group_role="member")
+
+    assert catalog.recognizes_direct_input(member_context, "/刷新")
+    assert not catalog.recognizes_direct_input(_context(1), "/刷新")
+    assert not catalog.recognizes_direct_input(
+        member_context,
+        "/刷新",
+        ignored_plugins=("example",),
+    )
+
+
 def test_parser_adapter_accepts_falsy_values_but_not_none() -> None:
     def parser(text: str) -> int | None:
         return int(text) if text.isdecimal() else None

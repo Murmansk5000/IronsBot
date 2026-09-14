@@ -3,16 +3,18 @@
 
 from __future__ import annotations
 
-import base64
+import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from qqbot_agent_sdk.constants import MEDIA_TYPE_IMAGE
 from qqbot_agent_sdk.dto import (
     MediaInfo,
     MessageToCreate,
     QQMessageType,
-    RichMediaMessage,
+)
+from qqbot_agent_sdk.media_loader import (
+    UploadDailyLimitExceededError,
+    UploadFileTooLargeError,
 )
 
 from ironsbot.integrations.qq_official.message_rendering import (
@@ -23,8 +25,18 @@ from ironsbot.integrations.qq_official.message_rendering import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from typing import Literal
 
     from qqbot_agent_sdk.api_client import QQApiClient
+    from qqbot_agent_sdk.dto import InlineKeyboard
+
+    from ironsbot.core.interactive_prompts import PromptSession
+    from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
+
+_MAX_KEYBOARD_ROWS = 5
+_MAX_BUTTONS_PER_ROW = 5
+_MAX_KEYBOARD_CHOICES = _MAX_KEYBOARD_ROWS * _MAX_BUTTONS_PER_ROW
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +49,8 @@ class TencentQQClient:
     """Convert rendered operations to the official SDK's REST DTOs."""
 
     api: QQApiClient
+    media: QQOfficialMediaUpload
+    custom_keyboards: bool = False
 
     async def send_to_c2c(
         self,
@@ -58,7 +72,7 @@ class TencentQQClient:
 
     async def _send(
         self,
-        scope: str,
+        scope: Literal["c2c", "group"],
         target_id: str,
         payloads: tuple[QQOfficialPayload, ...],
         message_id: str | None,
@@ -88,13 +102,14 @@ class TencentQQClient:
 
     async def _send_payload(
         self,
-        scope: str,
+        scope: Literal["c2c", "group"],
         target_id: str,
         payload: QQOfficialPayload,
         *,
         message_id: str | None,
         sequence: int,
     ) -> Mapping[str, object]:
+        keyboard: InlineKeyboard | None = None
         if isinstance(payload, QQOfficialTextPayload):
             message = MessageToCreate(
                 content=payload.content,
@@ -102,49 +117,61 @@ class TencentQQClient:
                 msg_id=message_id or "",
                 msg_seq=sequence,
             )
+            if self.custom_keyboards and payload.prompt is not None:
+                keyboard = _prompt_keyboard(payload.prompt)
         elif isinstance(payload, QQOfficialImagePayload):
-            file_info = await self._upload_image(scope, target_id, payload)
-            message = MessageToCreate(
-                msg_type=QQMessageType.RICH_MEDIA,
-                msg_id=message_id or "",
-                msg_seq=sequence,
-                media=MediaInfo(file_info=file_info),
-            )
+            try:
+                file_info = await self.media.upload_image(scope, target_id, payload)
+            except UploadFileTooLargeError as error:
+                logger.warning(
+                    "QQ Official image exceeds platform limit: target_scope=%s "
+                    "file_size=%s limit=%s",
+                    scope,
+                    error.file_size,
+                    error.limit_bytes,
+                )
+                message = _media_fallback_message(
+                    "图片超过 QQ 官方平台大小限制，暂时无法发送。",
+                    message_id=message_id,
+                    sequence=sequence,
+                )
+            except UploadDailyLimitExceededError as error:
+                logger.warning(
+                    "QQ Official daily media quota exhausted: target_scope=%s "
+                    "file_size=%s",
+                    scope,
+                    error.file_size,
+                )
+                message = _media_fallback_message(
+                    "机器人今日图片上传额度已用完，请稍后再试。",
+                    message_id=message_id,
+                    sequence=sequence,
+                )
+            else:
+                message = MessageToCreate(
+                    msg_type=QQMessageType.RICH_MEDIA,
+                    msg_id=message_id or "",
+                    msg_seq=sequence,
+                    media=MediaInfo(file_info=file_info),
+                )
         else:  # pragma: no cover - closed union guarded by renderer tests
             msg = f"Unsupported QQ Official payload: {type(payload).__name__}"
             raise TypeError(msg)
         if scope == "group":
-            return await self.api.post_group_message(target_id, message)
-        return await self.api.post_c2c_message(target_id, message)
-
-    async def _upload_image(
-        self,
-        scope: str,
-        target_id: str,
-        payload: QQOfficialImagePayload,
-    ) -> str:
-        upload = RichMediaMessage(
-            file_type=MEDIA_TYPE_IMAGE,
-            url=payload.url or "",
-            file_data=(
-                base64.b64encode(payload.content).decode("ascii")
-                if payload.content is not None
-                else ""
-            ),
-            file_name=payload.filename,
-            srv_send_msg=False,
+            if keyboard is None:
+                return await self.api.post_group_message(target_id, message)
+            return await self.api.post_group_message(
+                target_id,
+                message,
+                keyboard=keyboard,
+            )
+        if keyboard is None:
+            return await self.api.post_c2c_message(target_id, message)
+        return await self.api.post_c2c_message(
+            target_id,
+            message,
+            keyboard=keyboard,
         )
-        response = (
-            await self.api.upload_group_file(target_id, upload)
-            if scope == "group"
-            else await self.api.upload_c2c_file(target_id, upload)
-        )
-        file_info = str(response.get("file_info", "")).strip()
-        if not file_info:
-            msg = "QQ Official image upload returned no file_info"
-            raise RuntimeError(msg)
-        return file_info
-
 
 def _response_id(response: Mapping[str, object]) -> str:
     value = str(response.get("id", "")).strip()
@@ -152,3 +179,60 @@ def _response_id(response: Mapping[str, object]) -> str:
         msg = "QQ Official send response returned no message id"
         raise RuntimeError(msg)
     return value
+
+
+def _media_fallback_message(
+    content: str,
+    *,
+    message_id: str | None,
+    sequence: int,
+) -> MessageToCreate:
+    return MessageToCreate(
+        content=content,
+        msg_type=QQMessageType.TEXT,
+        msg_id=message_id or "",
+        msg_seq=sequence,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _PromptKeyboard:
+    prompt: PromptSession
+
+    def to_dict(self) -> dict[str, object]:
+        buttons = [
+            {
+                "id": choice.id,
+                "render_data": {
+                    "label": choice.label,
+                    "visited_label": choice.label,
+                    "style": 1,
+                },
+                "action": {
+                    "type": 2,
+                    "permission": {
+                        "type": 0,
+                        "specify_user_ids": [self.prompt.actor.id],
+                    },
+                    "data": self.prompt.action_data(choice),
+                    "reply": True,
+                    "enter": True,
+                    "unsupport_tips": "请发送对应序号",
+                },
+            }
+            for choice in self.prompt.choices
+        ]
+        return {
+            "content": {
+                "rows": [
+                    {"buttons": buttons[index : index + _MAX_BUTTONS_PER_ROW]}
+                    for index in range(0, len(buttons), _MAX_BUTTONS_PER_ROW)
+                ]
+            }
+        }
+
+
+def _prompt_keyboard(prompt: PromptSession) -> InlineKeyboard | None:
+    if len(prompt.choices) > _MAX_KEYBOARD_CHOICES:
+        return None
+    return cast("InlineKeyboard", _PromptKeyboard(prompt))

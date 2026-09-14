@@ -536,6 +536,23 @@ class CommandCatalog:
             )
         )
 
+    def recognizes_direct_input(
+        self,
+        context: CommandContext,
+        text: str,
+        *,
+        ignored_plugins: Iterable[str] = (),
+    ) -> bool:
+        """Whether a command owns an input before feature or audience checks."""
+
+        ignored = set(ignored_plugins)
+        return any(
+            command.plugin_id not in ignored
+            and any(_scope_matches(context, access.scope) for access in command.access)
+            and command.matches_direct_input(context, text)
+            for command in self._commands
+        )
+
     def format_for_context(
         self,
         context: CommandContext,
