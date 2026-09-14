@@ -46,6 +46,7 @@ from ironsbot.integrations.onebot.identity import (
     onebot_conversation_ref,
 )
 from ironsbot.integrations.onebot.matchers import MatcherFactory
+from ironsbot.integrations.onebot.observer import install_observer_adapter
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
 from ironsbot.integrations.storage.player_bindings import (
@@ -64,7 +65,10 @@ if TYPE_CHECKING:
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     driver = nonebot.get_driver()
-    driver.register_adapter(OneBotV11Adapter)
+    if settings.bot.onebot_observer:
+        install_observer_adapter(driver)
+    else:
+        driver.register_adapter(OneBotV11Adapter)
     scheduler = SchedulerFacade()
     file_logging = FileLogging.create(settings.bot.logging, settings.paths)
     http_clients = HttpClients()
