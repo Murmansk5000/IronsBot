@@ -18,7 +18,7 @@ from ironsbot.config.models.settings import (
     QQOfficialAccountConfig,
     QQOfficialConfig,
 )
-from ironsbot.core.command_catalog import CommandCatalog
+from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputContext
@@ -52,6 +52,7 @@ from ironsbot.integrations.qq_official.runtime import (
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -67,7 +68,11 @@ from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
-from ironsbot.services.portable_commands import build_portable_command_router
+from ironsbot.services.portable_commands import (
+    PortableCommandRouter,
+    PortableCommandRouterError,
+    build_portable_command_router,
+)
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
@@ -1225,6 +1230,39 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
         await router.dispatch(_portable_input("数据版本", actor, conversation))
         is None
     )
+
+
+def test_portable_router_rejects_unimplemented_official_direct_command() -> None:
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="missing",
+                commands=(
+                    CommandContract(
+                        id="missing.command",
+                        plugin_id="missing",
+                        section="测试",
+                        examples=("缺失命令",),
+                        description="验证官方命令覆盖守护",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(PortableCommandRouterError, match=r"missing\.command"):
+        PortableCommandRouter(
+            catalog,
+            {},
+            build_onebot_feature_service(FeatureConfig(), ()),
+            ai=cast("AiService", _FakeAi()),
+            ai_input_routing=AiInputRoutingService(
+                build_onebot_feature_service(FeatureConfig(), ()),
+                catalog,
+            ),
+            addressed_input_hints=AddressedInputHintService(),
+        )
 
 
 @pytest.mark.asyncio

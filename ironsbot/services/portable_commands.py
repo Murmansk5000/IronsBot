@@ -97,6 +97,16 @@ class PortableCommandRouterError(ValueError):
     def missing_ai_intent_executor(cls) -> PortableCommandRouterError:
         return cls("portable AI intent commands require an action executor")
 
+    @classmethod
+    def missing_operations(
+        cls,
+        command_ids: set[str],
+    ) -> PortableCommandRouterError:
+        return cls(
+            "QQ Official direct commands have no portable operation: "
+            + ", ".join(sorted(command_ids))
+        )
+
 
 class PortableCommandRouter:
     """Dispatch catalog-owned commands without importing a platform adapter."""
@@ -119,6 +129,12 @@ class PortableCommandRouter:
                 sorted(unknown)
             )
             raise ValueError(msg)
+        built_in_ids = {"help", "ai_chat.group", "ai_chat.private"}
+        missing = set(catalog.qq_official_direct_command_ids) - (
+            set(operations) | built_in_ids
+        )
+        if missing:
+            raise PortableCommandRouterError.missing_operations(missing)
         self._catalog = catalog
         self._operations = dict(operations)
         self._features = features
