@@ -177,13 +177,36 @@ identity or ownership of the game account.
 | 2026-09-15 | SDK media upload | 143 portable and QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | URL uploads and binary chunked uploads preserve C2C/group scope; temporary files are deleted; known platform limits produce text fallback |
 | 2026-09-15 | Linked-account Lucky Skin Window | 94 identity, portable, QQ Official, lifecycle and existing Lucky Skin Window tests; Ruff; BasedPyright; compileall; static repository checks | All six commands reuse the OneBot-keyed account service through an exact AppID/kind/OpenID/scope link; uncached login and ambiguous skins use shared labeled prompts |
 | 2026-09-15 | Portable command coverage gate | QQ-enabled full bootstrap plus router failure test; 53 portable, QQ Official and bootstrap tests; Ruff; BasedPyright; compileall; static repository checks | The full catalog currently contains 78 QQ Official direct commands: the original 75-command portability target plus three official identity commands. Construction fails when any direct contract lacks an operation or explicit built-in handler |
+| 2026-09-15 | Automated closure run | Full suite `3449 passed, 7 skipped`; Ruff; production and test BasedPyright; compileall; static repository checks; clean worktree | All local gates pass. The manual Tencent account matrix below remains external and must not be reported as passed without captured platform evidence |
 
 ## Progress
 
 ```text
-Program  [█████████░] 90%  fixed weights; command coverage is guarded
+Program  [█████████▌] 95%  fixed weights; only external acceptance remains
 Phase    [██████████] 100%  protocol baseline documented
 Current  [██████████] 100%  media and identity completed
 ```
 
 Only verified and committed work counts toward program progress.
+
+## Real Tencent Acceptance Matrix
+
+Run this matrix only with a dedicated test application whose secret is supplied
+through the process environment. Never paste the secret into TOML, command-line
+arguments, logs, screenshots, or this evidence table.
+
+| Check | Operator action | Required evidence | Status |
+| --- | --- | --- | --- |
+| Access token and READY | Start one required test account | Redacted startup log reaches `ready` after SDK `READY` | pending operator window |
+| Group addressed command | In an authorized test group, address the bot and send `帮助` | One reply; no mention-guard interception or duplicate execution | pending operator message |
+| C2C command | Send `帮助` in the bot's private conversation | One private reply using the C2C reply budget | pending operator message |
+| Sequential replies | Run a command that opens a numeric menu and choose one item | Initial and selected replies use increasing sequence values | pending operator message |
+| Image upload | Run a query whose result contains an image | SDK media upload succeeds in the same group/C2C scope | pending operator message |
+| Resume and deduplication | Interrupt connectivity after READY, restore it, then retry one message | `reconnecting` to `ready`; replayed message ID causes no duplicate side effect | pending controlled interruption |
+| Proactive permission failure | With proactive sends disabled or ungranted, exercise one scheduled target in a test scope | Structured permission/error code is logged; no passive-reply fallback | pending authorized test |
+| Multi-account isolation | Enable two authorized test AppIDs and address each independently | Separate READY state, OpenID namespace, token and send route | external gate: second AppID required |
+| Ordered shutdown | Stop the local process after the checks | Accounts stop cleanly before shared resources; no surviving SDK task | pending operator window |
+
+Completion requires recording only redacted timestamps, result categories and trace
+IDs. App secrets, access tokens, full OpenIDs and numeric account identifiers are not
+acceptance evidence and must not be retained.
