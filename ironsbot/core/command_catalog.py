@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.commands import command_text_matches
-from ironsbot.core.platform import is_supported_message_actor
+from ironsbot.core.platform import Platform, is_supported_message_actor
 
 if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef, ConversationRef
@@ -103,6 +103,10 @@ class CommandCatalogError(ValueError):
     @classmethod
     def invalid_help_level(cls, command_id: str) -> CommandCatalogError:
         return cls(f"invalid command contract: {command_id!r} has invalid help level")
+
+    @classmethod
+    def empty_platforms(cls, command_id: str) -> CommandCatalogError:
+        return cls(f"invalid command contract: {command_id!r} has no platforms")
 
     @classmethod
     def unknown_registered_help_ids(
@@ -236,11 +240,14 @@ class CommandContract:
     access: tuple[CommandAccess, ...] = (CommandAccess(),)
     interaction: CommandInteraction = "direct"
     help_level: CommandHelpLevel = "full"
+    platforms: frozenset[Platform] = frozenset(
+        {Platform.ONEBOT, Platform.QQ_OFFICIAL}
+    )
     notes: tuple[str, ...] = ()
     show_in_poke: bool = False
     visible: CommandVisibility | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> None:  # noqa: C901 - one flat contract validator
         if not self.id.strip():
             raise CommandCatalogError.empty_id()
         if not self.plugin_id.strip():
@@ -262,12 +269,16 @@ class CommandContract:
             raise CommandCatalogError.invalid_interaction(self.id)
         if self.help_level not in {"brief", "full"}:
             raise CommandCatalogError.invalid_help_level(self.id)
+        if not self.platforms:
+            raise CommandCatalogError.empty_platforms(self.id)
 
     def is_available(
         self,
         context: CommandContext,
         features: CommandFeaturePolicy,
     ) -> bool:
+        if context.actor.platform not in self.platforms:
+            return False
         if not any(rule.is_available(context, features) for rule in self.access):
             return False
         if self.features_any and not any(
@@ -478,6 +489,15 @@ class CommandCatalog:
             command.id for command in self._commands if command.interaction == "direct"
         )
 
+    @property
+    def onebot_direct_command_ids(self) -> frozenset[str]:
+        return frozenset(
+            command.id
+            for command in self._commands
+            if command.interaction == "direct"
+            and Platform.ONEBOT in command.platforms
+        )
+
     def validate_matcher_registrations(
         self,
         *,
@@ -491,7 +511,7 @@ class CommandCatalog:
         unknown = registered_ids - self.command_ids
         if unknown:
             raise CommandCatalogError.unknown_registered_help_ids(unknown)
-        missing = self.direct_command_ids - registered_ids
+        missing = self.onebot_direct_command_ids - registered_ids
         if missing:
             raise CommandCatalogError.undocumented_direct_commands(missing)
 

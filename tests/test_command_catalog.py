@@ -425,6 +425,37 @@ def test_catalog_rejects_unknown_and_unregistered_direct_command_ids() -> None:
     catalog.validate_matcher_registrations(help_ids=("documented",))
 
 
+def test_platform_scoped_command_is_routed_only_on_its_transport() -> None:
+    command = CommandContract(
+        id="official",
+        plugin_id="example",
+        section="查询",
+        examples=("官方命令",),
+        description="只在官方机器人提供",
+        platforms=frozenset({Platform.QQ_OFFICIAL}),
+    )
+    catalog = _catalog(command)
+    features = FakeFeatures({}, {}, set())
+    official_actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "123",
+        account_id="app",
+    )
+    official_context = CommandContext(
+        official_actor,
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "private",
+            official_actor.id,
+            official_actor.account_id,
+        ),
+    )
+
+    assert catalog.available_for_context(_context(123), features) == ()
+    assert catalog.available_for_context(official_context, features) == (command,)
+    catalog.validate_matcher_registrations(help_ids=())
+
+
 def test_parser_rejection_cannot_be_bypassed_by_a_help_example_or_alias() -> None:
     command = CommandContract(
         id="parsed", plugin_id="example", section="query",

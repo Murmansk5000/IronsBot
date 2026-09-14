@@ -109,12 +109,13 @@ async def test_factory_registration_matches_catalog_and_runs_admission(
         features=features,
         commands=catalog,
         player_id_resolver=resolver,
+        identity_links=Mock(),
         image_command_texts=frozenset(),
     )
     try:
         player.install(group)
         basic = factory.message_matchers[-1]
-        binding = factory.message_matchers[0]
+        binding = factory.message_matchers[3]
         player_shortcuts.install(group)
         shortcut = factory.message_matchers[-1]
         rank_offset = len(factory.message_matchers)
@@ -256,8 +257,8 @@ def test_player_ownership_preserves_literal_command_prefix(
 @pytest.mark.parametrize(
     "prefix,index",
     [
-        ("绑定米米号", 0),
-        ("米米号", 1),
+        ("绑定米米号", 1),
+        ("米米号", 2),
         ("收集", 0),
         ("巅峰", 0),
         ("群星牌", 0),
@@ -290,6 +291,7 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
     group = Mock(spec=SeerMatcherGroup)
     group.features = features
     group.player_id_resolver = resolver
+    group.identity_links = Mock()
     group.resources = Mock()
     group.resources.player_detail_extensions = PlayerDetailExtensionRegistry()
     if prefix == "成就榜":
