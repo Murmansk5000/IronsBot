@@ -46,6 +46,7 @@ from ironsbot.plugins.onebot.messaging.push_management_runtime import (
     PUSH_TIME_FLOW,
     PromptFlow,
 )
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging import schedules as message_schedules
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.push_time import PushTimeOption
@@ -433,7 +434,11 @@ def test_push_menu_private_entry_is_claimed_and_not_captured_by_ai(
         messaging.feature_policy,
         text,
     )
-    assert not _capture_ai_prompt(event, {}, messaging.feature_policy, catalog)
+    assert not _capture_ai_prompt(
+        event,
+        {},
+        AiInputRoutingService(messaging.feature_policy, catalog),
+    )
 
 
 @pytest.mark.parametrize("text", ["TD", "推送时间"])
