@@ -7,6 +7,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
+import httpx
+
 from ironsbot.core.outbound import (
     DeliveryCapabilities,
     DeliveryFailureKind,
@@ -46,6 +48,11 @@ class QQOfficialMessageSender(Protocol):
 
 
 BotProvider = Callable[[str], QQOfficialMessageSender | None]
+
+
+class QQOfficialUncertainDeliveryError(RuntimeError):
+    """A send may have reached the recipient and must not be replayed."""
+
 
 _UNSUPPORTED = DeliveryCapabilities(
     can_reply_to_event=False,
@@ -227,14 +234,18 @@ def _result_id(result: object) -> str | None:
         value = result.get("id")
     else:
         value = getattr(result, "id", None)
-    normalized = str(value).strip() if value is not None else ""
+    normalized = value.strip() if isinstance(value, str) else ""
     return normalized or None
 
 
 def _exception_result(error: Exception) -> SendResult:
     message = str(error)
     lowered = message.lower()
-    if "429" in lowered or "rate limit" in lowered:
+    if isinstance(
+        error, (QQOfficialUncertainDeliveryError, httpx.TransportError, TimeoutError)
+    ):
+        kind = DeliveryFailureKind.UNCERTAIN
+    elif "429" in lowered or "rate limit" in lowered:
         kind = DeliveryFailureKind.RETRYABLE
     elif "timeout" in lowered or "network" in lowered:
         kind = DeliveryFailureKind.UNCERTAIN

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -12,11 +13,16 @@ from ironsbot.core.outbound import (
     DeliveryFailureKind,
     MentionPart,
     OutboundMessage,
+    RemoteImagePart,
     SendResult,
     TextPart,
 )
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
+from ironsbot.integrations.qq_official.outbound_messenger import (
+    QQOfficialOutboundMessenger,
+)
+from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 from ironsbot.services.activity.delivery import ActivityReminderDelivery
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.messaging.admin_notice_delivery import OutboundAdminNoticeSender
@@ -39,6 +45,8 @@ from ironsbot.services.team.resource_delivery import TeamResourceOutboundSender
 from ironsbot.services.team.resource_subscriptions import TeamResourceSubscriptionTarget
 
 if TYPE_CHECKING:
+    from qqbot_agent_sdk.api_client import QQApiClient
+
     from ironsbot.services.messaging.subscriptions import PushSubscriptionRepository
 
 GROUP = ConversationRef(Platform.ONEBOT, "group", "3003")
@@ -193,6 +201,37 @@ def _delivery(
 
 def _text(message: OutboundMessage) -> str:
     return "".join(part.text for part in message.parts if isinstance(part, TextPart))
+
+
+@pytest.mark.asyncio
+async def test_official_partial_image_send_is_not_replayed_by_shared_delivery() -> None:
+    api = Mock()
+    api.next_msg_seq.return_value = 1
+    api.post_group_message = AsyncMock(return_value={"id": "first-message"})
+    api.upload_group_file = AsyncMock(side_effect=RuntimeError("429 rate limit"))
+    client = TencentQQClient(cast("QQApiClient", api))
+    messenger = QQOfficialOutboundMessenger({"app": True}, lambda _: client)
+    delivery, _, _ = _delivery()
+    delivery = replace(delivery, messenger=messenger)
+    target = ConversationRef(Platform.QQ_OFFICIAL, "group", "openid", account_id="app")
+
+    summary = await delivery.send(
+        OutboundMessage(
+            (
+                TextPart("before"),
+                RemoteImagePart("https://example.test/image.png"),
+                TextPart("after"),
+            )
+        ),
+        [target],
+        action_name="test partial delivery",
+        interval_seconds=0,
+    )
+
+    assert summary.succeeded == ()
+    assert summary.uncertain == (target,)
+    assert api.post_group_message.await_count == 1
+    assert api.upload_group_file.await_count == 1
 
 
 @pytest.mark.asyncio
