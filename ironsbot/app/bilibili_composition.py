@@ -17,6 +17,10 @@ from ironsbot.integrations.http.bilibili import (
     poll_bili_login_qr,
     request_bili_login_qr,
 )
+from ironsbot.integrations.image_collage import (
+    fetch_collage_image,
+    render_adaptive_collage,
+)
 from ironsbot.integrations.onebot.bilibili_auth import send_bili_login_notice
 from ironsbot.integrations.storage.bilibili_cookie import FileBiliCookieStore
 from ironsbot.integrations.storage.bilibili_history import (
@@ -32,6 +36,7 @@ from ironsbot.services.bilibili.outbound_delivery import BilibiliDynamicOutbound
 from ironsbot.services.bilibili.runtime import BilibiliMonitorService
 from ironsbot.services.bilibili.service import BilibiliService
 from ironsbot.services.bilibili.targets import BiliTargetService
+from ironsbot.services.messaging.image_collage import ImageCollageService
 
 if TYPE_CHECKING:
     from ironsbot.app.lifecycle import TaskOwner
@@ -85,6 +90,10 @@ def build_onebot_bilibili_components(
         fetch_feed=partial(fetch_bili_feed, http_clients.origin),
         fetch_detail=partial(fetch_bili_dynamic_detail, http_clients.origin),
         spawn=task_owner.create,
+        image_collage=ImageCollageService(
+            partial(fetch_collage_image, http_clients.cache),
+            render_adaptive_collage,
+        ),
     )
     return BilibiliComponents(
         service=service,
@@ -130,6 +139,8 @@ def build_onebot_bilibili_monitor(  # noqa: PLR0913 - composition root
         history=service.history,
         can_query_history=service.targets.can_conversation_query_history,
         admin_notices=admin_notices,
+        image_collage=service.image_collage,
+        combine_images=config.push.combine_images,
         has_category_subscriptions=(
             lambda uid: service.targets.category_config_for_uid(uid) is not None
         ),
