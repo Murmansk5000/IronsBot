@@ -10,6 +10,7 @@ from nonebot.adapters.onebot.v11 import (
     MessageEvent,
     MessageSegment,
 )
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves this at runtime
 
@@ -150,12 +151,20 @@ async def send_portable_event_reply(
         message,
         conversation=message_input_context(event).message.conversation,
     )
-    result = await matcher.send(
-        build_message(
-            rendered,
-            at_user_ids=event_sender_at_user_ids(event),
+    try:
+        result = await matcher.send(
+            build_message(
+                rendered,
+                at_user_ids=event_sender_at_user_ids(event),
+            )
         )
-    )
+    except ActionFailed as error:
+        return SendResult(
+            delivered=False,
+            error_code="onebot_action_failed",
+            error_message=repr(error),
+            failure_kind=DeliveryFailureKind.RETRYABLE,
+        )
     message_id = onebot_result_message_id(result)
     if message_id is None:
         return SendResult(

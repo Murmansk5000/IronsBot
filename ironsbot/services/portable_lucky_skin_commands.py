@@ -16,6 +16,8 @@ from ironsbot.services.portable_query_sessions import (
     PortableTextInputSpec,
 )
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_LIST_COMMANDS,
     LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
@@ -143,7 +145,10 @@ class _PortableLuckySkinOperations:
         async def select(
             choice: QueryChoice[PetImageSelection],
         ) -> OutboundMessage:
-            selected = await self.pet.select_image(choice.value)
+            try:
+                selected = await self.pet.select_image(choice.value)
+            except DataUnavailableError:
+                return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
             if selected.reply is not None:
                 return selected.reply.to_outbound()
             return OutboundMessage.from_text(

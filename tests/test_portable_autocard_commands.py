@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -32,6 +32,7 @@ from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
+    from ironsbot.services.portable_reply import PortableReply
     from ironsbot.services.seer.autocard import AutocardService
     from ironsbot.services.seer.autocard_media import AutocardMediaService
     from ironsbot.services.seer.countermark_stat_rank import (
@@ -67,6 +68,17 @@ class _Media:
     ) -> OutboundMessage:
         del include_additional_images
         return entry.to_outbound()
+
+
+class _ImageMedia(_Media):
+    async def outbound(
+        self,
+        entry: AutocardEntry,
+        *,
+        include_additional_images: bool = True,
+    ) -> OutboundMessage:
+        del include_additional_images
+        return entry.to_outbound(image_contents=(b"image",))
 
 
 class _SanctuaryRows:
@@ -163,6 +175,28 @@ async def test_autocard_query_supports_direct_and_reusable_menu_results() -> Non
     assert _text(menu) == "群星牌候选菜单"
     assert _text(selected) == "卡牌详情:2"
     assert sessions.recognizes_response("1", context)
+
+
+@pytest.mark.asyncio
+async def test_autocard_image_reply_declares_text_fallback() -> None:
+    operations = build_portable_autocard_operations(
+        cast("AutocardService", _AutocardService()),
+        cast("AutocardMediaService", _ImageMedia()),
+        AutocardSanctuaryService(_SanctuaryRows()),
+        PortableQuerySessions(),
+    )
+
+    result = cast(
+        "PortableReply",
+        await operations["seer.autocard.query"](
+            "群星牌唯一",
+            _context("群星牌唯一"),
+        ),
+    )
+
+    assert isinstance(result.message.parts[0], BinaryImagePart)
+    assert result.fallback_message is not None
+    assert _text(result.fallback_message) == "卡牌详情:1"
 
 
 @pytest.mark.asyncio

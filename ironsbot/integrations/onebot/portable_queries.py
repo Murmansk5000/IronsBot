@@ -30,6 +30,7 @@ from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.outbound import OutboundMessage
     from ironsbot.core.semantic_requests import ActionDefinition, SemanticRequest
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
@@ -43,10 +44,17 @@ def make_portable_query_handler(
     operation: PortableOperation,
     sessions: PortableQuerySessions,
     action: ActionDefinition,
+    *,
+    reserve_session: bool = True,
 ) -> PortableQueryHandler:
     """Adapt one shared query operation without duplicating its menu state."""
 
-    return _OneBotPortableQueryAdapter(operation, sessions, action).handle
+    return _OneBotPortableQueryAdapter(
+        operation,
+        sessions,
+        action,
+        reserve_session,
+    ).handle
 
 
 @dataclass(slots=True)
@@ -54,6 +62,7 @@ class _OneBotPortableQueryAdapter:
     operation: PortableOperation
     sessions: PortableQuerySessions
     action: ActionDefinition
+    reserve_session: bool = True
 
     def semantic_request(
         self, event: MessageEvent, _state: T_State
@@ -87,15 +96,7 @@ class _OneBotPortableQueryAdapter:
         if result is None:
             raise FinishedException
         await _deliver(matcher, event, result)
-        if self.sessions.has_pending(context):
-            await enter_event_reply_conversation(
-                matcher,
-                event,
-                namespace=_PORTABLE_QUERY_NAMESPACE,
-                handlers=[self.resolve_selection],
-                reply_check=self.session_response,
-                queue_semantic_request_resolver=self.semantic_request,
-            )
+        await self._continue_pending_session(matcher, event, context)
 
     async def handle(
         self,
@@ -107,6 +108,14 @@ class _OneBotPortableQueryAdapter:
             raise FinishedException
         context = message_input_context(event)
         self.sessions.cancel(context)
+        if not self.reserve_session:
+            try:
+                result = await self.operation(context.text, context)
+            except DataUnavailableError:
+                await matcher.finish(DATABASE_UNAVAILABLE_MESSAGE)
+                return
+            await _deliver(matcher, event, result)
+            return
         await begin_event_reply_conversation(
             matcher,
             event,
@@ -126,6 +135,7 @@ class _OneBotPortableQueryAdapter:
             raise FinishedException
         if not self.sessions.has_pending(context):
             await _deliver(matcher, event, result)
+            await self._continue_pending_session(matcher, event, context)
             return
         reply = as_portable_reply(result)
         prompt = render_onebot_outbound_message(
@@ -139,6 +149,23 @@ class _OneBotPortableQueryAdapter:
             handlers=[self.resolve_selection],
             reply_check=self.session_response,
             prompt=prompt,
+            queue_semantic_request_resolver=self.semantic_request,
+        )
+
+    async def _continue_pending_session(
+        self,
+        matcher: Matcher,
+        event: MessageEvent,
+        context: MessageInputContext,
+    ) -> None:
+        if not self.sessions.has_pending(context):
+            return
+        await enter_event_reply_conversation(
+            matcher,
+            event,
+            namespace=_PORTABLE_QUERY_NAMESPACE,
+            handlers=[self.resolve_selection],
+            reply_check=self.session_response,
             queue_semantic_request_resolver=self.semantic_request,
         )
 

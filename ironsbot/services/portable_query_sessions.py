@@ -27,7 +27,10 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T")
 QuerySearch = Callable[[str], Awaitable[QueryResult[_T]]]
-QuerySelect = Callable[[_T], Awaitable[QueryResult[Any]]]
+QuerySelect = Callable[
+    [_T],
+    Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
+]
 QueryArgumentParser = Callable[[str], str | None]
 _SessionKey = tuple["ActorRef", "ConversationRef"]
 _UntypedMenuSelect = Callable[
@@ -89,6 +92,7 @@ class PortableTextInputSpec:
 class _PendingSelection:
     choices: tuple[object, ...]
     semantic_targets: tuple[SemanticTarget, ...]
+    semantic_actions: tuple[ActionDefinition | None, ...]
     select: _UntypedMenuSelect
     prompt_title: str
     not_found_message: str
@@ -162,7 +166,7 @@ class PortableQuerySessions:
         if index <= 0 or index > len(pending.semantic_targets):
             return None
         return SemanticRequest(
-            action=action,
+            action=pending.semantic_actions[index - 1] or action,
             target=pending.semantic_targets[index - 1],
             source=SemanticRequestSource.MENU,
         )
@@ -174,7 +178,9 @@ class PortableQuerySessions:
         argument: str,
         spec: QueryOperationSpec[_T],
     ) -> OutboundMessage:
-        async def select_untyped(value: object) -> QueryResult[Any]:
+        async def select_untyped(
+            value: object,
+        ) -> QueryResult[Any] | OutboundMessage | PortableReply:
             return await spec.select(cast("_T", value))
 
         result = await spec.search(argument)
@@ -186,7 +192,7 @@ class PortableQuerySessions:
             not_found_message=spec.not_found_message,
         )
 
-    def offer(
+    def offer(  # noqa: PLR0913 - explicit menu presentation and lifetime contract
         self,
         context: MessageInputContext,
         result: QueryResult[_T],
@@ -194,10 +200,14 @@ class PortableQuerySessions:
         select: QuerySelect[_T],
         prompt_title: str,
         not_found_message: str,
+        keep_open: bool = False,
+        exit_message: str = "已退出查询。",
     ) -> OutboundMessage:
         """Present choices produced outside the standard search operation."""
 
-        async def select_untyped(value: object) -> QueryResult[Any]:
+        async def select_untyped(
+            value: object,
+        ) -> QueryResult[Any] | OutboundMessage | PortableReply:
             return await select(cast("_T", value))
 
         return self._present(
@@ -206,6 +216,8 @@ class PortableQuerySessions:
             select=select_untyped,
             prompt_title=prompt_title,
             not_found_message=not_found_message,
+            keep_open=keep_open,
+            exit_message=exit_message,
         )
 
     def offer_menu(
@@ -227,6 +239,7 @@ class PortableQuerySessions:
             semantic_targets=tuple(
                 _choice_semantic_target(choice) for choice in spec.choices
             ),
+            semantic_actions=(None,) * len(spec.choices),
             select=select_untyped,
             prompt_title="",
             not_found_message="",
@@ -316,6 +329,8 @@ class PortableQuerySessions:
             select=pending.select,
             prompt_title=pending.prompt_title,
             not_found_message=pending.not_found_message,
+            keep_open=pending.keep_open,
+            exit_message=pending.exit_message,
         )
 
     async def _select_pending_text(
@@ -343,7 +358,7 @@ class PortableQuerySessions:
             return OutboundMessage.from_text(pending.exit_message)
         return await pending.submit(text.strip())
 
-    def _present(
+    def _present(  # noqa: PLR0913 - shared normalized menu construction
         self,
         context: MessageInputContext,
         result: QueryResult[Any],
@@ -351,6 +366,8 @@ class PortableQuerySessions:
         select: _UntypedMenuSelect,
         prompt_title: str,
         not_found_message: str,
+        keep_open: bool = False,
+        exit_message: str = "已退出查询。",
     ) -> OutboundMessage:
         key = self._key(context)
         if result.message:
@@ -369,10 +386,13 @@ class PortableQuerySessions:
                 choice.semantic_target or _choice_semantic_target(choice.value)
                 for choice in result.choices
             ),
+            semantic_actions=tuple(choice.semantic_action for choice in result.choices),
             select=select,
             prompt_title=prompt_title,
             not_found_message=not_found_message,
             expires_at=self._now() + self._ttl_seconds,
+            keep_open=keep_open,
+            exit_message=exit_message,
         )
         return OutboundMessage.from_text(
             format_selection_menu(

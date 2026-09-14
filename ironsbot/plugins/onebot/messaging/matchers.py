@@ -10,17 +10,22 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
     bind,
     bind_async,
 )
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.portable_messaging_commands import (
+    build_portable_messaging_operations,
+)
 
 from .matcher_rules import (
     MESSAGE_ACTION_KEY,
@@ -28,15 +33,15 @@ from .matcher_rules import (
     match_push_subscription_command,
     match_push_time_command,
 )
-from .push_subscription_handlers import handle_push_subscription_menu
-from .push_time_handlers import build_push_time_menu_handler
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from ironsbot.config.models.messaging import MessageReplyAction
     from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.service import MessagingService, ReplyInteraction
-
-    from .push_time_handlers import RefreshPushTimeJobs
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 
 def _message_subscription_priority(registry: MatcherFactory) -> int:
@@ -82,12 +87,18 @@ def _action_command_id(
 
 def install(  # noqa: PLR0913 - wiring receives both configured reply families
     registry: MatcherFactory,
-    refresh_push_time_jobs: RefreshPushTimeJobs,
+    refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]],
     messaging: MessagingService,
+    query_sessions: PortableQuerySessions,
     references: OneBotReferenceResolver,
     command_help_ids: tuple[str, ...],
     keyword_help_ids: tuple[str, ...],
 ) -> None:
+    portable_operations = build_portable_messaging_operations(
+        messaging,
+        query_sessions,
+        refresh_push_time_jobs=refresh_push_time_jobs,
+    )
     routes: tuple[tuple[ReplyInteraction, str, tuple[str, ...]], ...] = (
         ("direct", "message", command_help_ids),
         ("automatic", "message.keyword", keyword_help_ids),
@@ -137,15 +148,17 @@ def install(  # noqa: PLR0913 - wiring receives both configured reply families
         priority=_message_subscription_priority(registry),
         block=True,
     )
-    subscription_matcher.handle()(
-        bind_async(
-            handle_push_subscription_menu,
-            messaging=messaging,
+    subscription_matcher.append_handler(
+        make_portable_query_handler(
+            portable_operations["messaging.push_subscription"],
+            query_sessions,
+            ActionDefinition("messaging.push_subscription", "推送订阅管理"),
         )
     )
-    push_time_matcher.handle()(
-        build_push_time_menu_handler(
-            refresh_push_time_jobs,
-            messaging,
+    push_time_matcher.append_handler(
+        make_portable_query_handler(
+            portable_operations["messaging.push_time"],
+            query_sessions,
+            ActionDefinition("messaging.push_time", "推送时间管理"),
         )
     )

@@ -53,7 +53,7 @@ def test_plan_filters_unavailable_and_empty_categories() -> None:
     assert layout.display_categories == ("skill",)
     assert layout.focused_category is None
     menu = build_new_content_menu(snapshot, layout)
-    assert [choice.key for choice in menu.choices] == ["a", "a1"]
+    assert [choice.name for choice in menu.choices] == ["▶ 新增技能", "Item 2"]
     assert menu.choices[1].action.item == snapshot.items[1]
     with pytest.raises(ValueError, match="not available"):
         focus_new_content_category(layout, "pet")
@@ -77,7 +77,6 @@ def test_focus_preserves_item_order_and_uses_numeric_adapter_keys() -> None:
         snapshot.items[0],
         snapshot.items[2],
     ]
-    assert all(choice.key is None for choice in menu.choices)
 
 
 @pytest.mark.parametrize(("count", "expanded"), [(5, True), (6, False)])

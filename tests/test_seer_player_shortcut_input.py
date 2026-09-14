@@ -5,16 +5,15 @@ from typing import Any, cast
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from ironsbot.core.platform import ConversationRef, Platform
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.plugins.onebot.seer.query.commands.player import (
     PlayerCommandDependencies,
-)
-from ironsbot.plugins.onebot.seer.query.commands.player_shortcuts import (
-    _resolve_player_shortcut_command,
 )
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.portable_player_commands import resolve_portable_player_shortcut
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
@@ -73,41 +72,50 @@ def test_shortcut_parser_preserves_the_raw_player_reference() -> None:
 
 
 def test_shortcut_target_resolution_uses_the_scoped_alias_lookup() -> None:
-    resolved = _resolve_player_shortcut_command(
-        _dependencies(),
-        group_message_event("收集示例玩家", group_id=GROUP_ID),
-        PlayerShortcutTargetCommand("collection", "示例玩家"),
+    dependencies = _dependencies()
+    event = group_message_event("收集示例玩家", group_id=GROUP_ID)
+    resolved = resolve_portable_player_shortcut(
+        event.get_plaintext(),
+        message_input_context(event),
+        cast("PlayerIdResolver", dependencies.player_id_resolver),
     )
 
+    assert resolved is not None
     assert resolved.error is None
     assert resolved.command == PlayerShortcutCommand("collection", PLAYER_ID)
 
 
 def test_shortcut_target_resolution_uses_one_direct_member_mention() -> None:
-    resolved = _resolve_player_shortcut_command(
-        _dependencies(),
-        group_message_event(
-            message=Message([MessageSegment.text("巅峰"), MessageSegment.at(456)]),
-            group_id=GROUP_ID,
-        ),
-        PlayerShortcutTargetCommand("peak", None),
+    dependencies = _dependencies()
+    event = group_message_event(
+        message=Message([MessageSegment.text("巅峰"), MessageSegment.at(456)]),
+        group_id=GROUP_ID,
+    )
+    resolved = resolve_portable_player_shortcut(
+        event.get_plaintext(),
+        message_input_context(event),
+        cast("PlayerIdResolver", dependencies.player_id_resolver),
     )
 
+    assert resolved is not None
     assert resolved.error is None
     assert resolved.command == PlayerShortcutCommand("peak", PLAYER_ID)
 
 
 def test_shortcut_target_resolution_rejects_mixed_reference_and_mention() -> None:
-    resolved = _resolve_player_shortcut_command(
-        _dependencies(),
-        group_message_event(
-            message=Message(
-                [MessageSegment.text("群星牌105023264"), MessageSegment.at(456)]
-            ),
-            group_id=GROUP_ID,
+    dependencies = _dependencies()
+    event = group_message_event(
+        message=Message(
+            [MessageSegment.text("群星牌105023264"), MessageSegment.at(456)]
         ),
-        PlayerShortcutTargetCommand("autocard", "105023264"),
+        group_id=GROUP_ID,
+    )
+    resolved = resolve_portable_player_shortcut(
+        event.get_plaintext(),
+        message_input_context(event),
+        cast("PlayerIdResolver", dependencies.player_id_resolver),
     )
 
+    assert resolved is not None
     assert resolved.command is None
     assert resolved.error == "米米号或玩家别名和 @成员 不能同时使用，请保留其中一种。"

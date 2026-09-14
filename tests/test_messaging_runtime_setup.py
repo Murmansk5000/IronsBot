@@ -29,7 +29,6 @@ from ironsbot.config.models.messaging import (
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
-from ironsbot.integrations.onebot.conversations import event_conversation_session_id
 from ironsbot.integrations.onebot.matcher_support import EXPLICIT_COMMAND_STATE_KEY
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
@@ -41,11 +40,6 @@ from ironsbot.integrations.storage.push_subscriptions import (
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.messaging import matcher_rules, plugin_contribution
 from ironsbot.plugins.onebot.messaging.matchers import _action_command_id
-from ironsbot.plugins.onebot.messaging.push_management_runtime import (
-    PUSH_SUBSCRIPTION_FLOW,
-    PUSH_TIME_FLOW,
-    PromptFlow,
-)
 from ironsbot.services.messaging import schedules as message_schedules
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 from ironsbot.services.messaging.push_time import PushTimeOption
@@ -58,10 +52,10 @@ from ironsbot.services.messaging.subscriptions import (
     CRON_TIME_PREFERENCE,
     PushSubscriptionOption,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from tests.helpers.onebot_events import (
     GroupMemberRole,
     group_member_message_event,
-    group_message_event,
     private_message_event,
 )
 from tests.helpers.runtime import build_test_runtime
@@ -517,6 +511,7 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
         service=messaging,
         activity_service=cast("ActivityService", object()),
         scheduler=cast("Scheduler", FakeScheduler()),
+        query_sessions=PortableQuerySessions(),
     )
     assert contribution.install is not None
     contribution.install(registry)
@@ -547,29 +542,6 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
             else []
         )
         assert matches == expected
-
-
-@pytest.mark.parametrize("flow", [PUSH_SUBSCRIPTION_FLOW, PUSH_TIME_FLOW])
-def test_push_menu_reply_ownership_stays_local_to_its_session(flow: PromptFlow) -> None:
-    event = group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002)
-    session_id = event_conversation_session_id(flow.namespace, event)
-    check = flow.reply_check(session_id, "group")
-    for text in ("0", "1", "2"):
-        assert check(group_message_event(text, user_id=SUPERUSER_ID, group_id=2002))
-    assert not check(group_message_event("1", user_id=1003, group_id=2002))
-    assert not check(group_message_event("1", user_id=SUPERUSER_ID, group_id=2003))
-    assert not check(private_message_event("1", user_id=SUPERUSER_ID))
-    assert not check(group_message_event("TD", user_id=SUPERUSER_ID, group_id=2002))
-    assert not check(group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002))
-    assert not check(
-        group_message_event(
-            "1", user_id=SUPERUSER_ID, group_id=2002, reply_sender_user_id=1
-        )
-    )
-    value_check = flow.reply_check(session_id, "group", selection=False)
-    assert value_check(
-        group_message_event("23:00", user_id=SUPERUSER_ID, group_id=2002)
-    )
 
 
 @pytest.mark.parametrize("exact_enabled", [True, False])

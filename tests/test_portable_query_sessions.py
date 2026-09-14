@@ -109,6 +109,7 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
 async def test_selection_exposes_semantic_identity_and_can_be_cancelled() -> None:
     sessions = PortableQuerySessions()
     context = _context("member-openid")
+    choice_action = ActionDefinition("seer.pet.detail", "精灵详情")
 
     async def search(_argument: str) -> QueryResult[int]:
         return QueryResult(
@@ -118,6 +119,7 @@ async def test_selection_exposes_semantic_identity_and_can_be_cancelled() -> Non
                     "details",
                     101,
                     semantic_target=SemanticTarget("pet:101", "candidate"),
+                    semantic_action=choice_action,
                 ),
             )
         )
@@ -143,6 +145,7 @@ async def test_selection_exposes_semantic_identity_and_can_be_cancelled() -> Non
         action=ActionDefinition("seer.pet.query", "精灵查询"),
     )
     assert request is not None
+    assert request.action == choice_action
     assert request.target == SemanticTarget("pet:101", "candidate")
     assert (
         sessions.semantic_request(

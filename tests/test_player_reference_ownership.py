@@ -32,6 +32,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.portable_player_commands import resolve_portable_player_shortcut
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -309,10 +310,18 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
     if not admitted or prefix in {"绑定米米号", "成就榜"}:
         return
     if prefix == "米米号":
-        resolved = state[player.PLAYER_TARGET_RESOLUTION_KEY]
+        resolved = resolver.resolve(
+            message_input_context(event),
+            extract_player_query_arg(event.get_plaintext()) or None,
+        )
         player_id = resolved.player_id
     else:
-        resolved = state[player_shortcuts._SHORTCUT_COMMAND_KEY]
+        resolved = resolve_portable_player_shortcut(
+            event.get_plaintext(),
+            message_input_context(event),
+            resolver,
+        )
+        assert resolved is not None
         player_id = resolved.command.player_id if resolved.command is not None else None
     if target in {"mixed", "multiple", "unbound"}:
         assert player_id is None

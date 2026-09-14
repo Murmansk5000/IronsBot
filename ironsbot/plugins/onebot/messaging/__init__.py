@@ -6,7 +6,6 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
 
 from ironsbot.core.features import Feature
@@ -16,19 +15,19 @@ from ironsbot.core.plugin_install import (
     PluginHooks,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
+from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.messaging.command_contracts import messaging_command_contracts
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-
     from ironsbot.config.models.messaging import MessageConfig
     from ironsbot.config.onebot_references import OneBotReferenceResolver
+    from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.matchers import MatcherFactory
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
 
 __plugin_meta__ = PluginMetadata(
     name="文本发送",
@@ -41,17 +40,19 @@ __plugin_meta__ = PluginMetadata(
 
 
 def help_visible(
-    event: Event,
+    context: CommandContext,
     *,
     features: FeatureService,
     config: MessageConfig,
 ) -> bool:
-    if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
-        return False
     actions = [*config.commands, *config.keyword_replies, *config.schedules]
     return any(
         action.enabled
-        and event_is_feature_visible_in_help(features, event, action.feature)
+        and feature_help_visible(
+            context,
+            features=features,
+            feature=action.feature,
+        )
         for action in actions
     )
 
@@ -63,6 +64,7 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
     references: OneBotReferenceResolver,
     activity_service: ActivityService,
     scheduler: Scheduler,
+    query_sessions: PortableQuerySessions,
     command_help_ids: tuple[str, ...],
     keyword_help_ids: tuple[str, ...],
 ) -> None:
@@ -77,6 +79,7 @@ def _install(  # noqa: PLR0913 - plugin wiring receives explicit dependencies
         registry,
         refresh_push_time_jobs=refresh_push_time_jobs,
         messaging=messaging,
+        query_sessions=query_sessions,
         references=references,
         command_help_ids=command_help_ids,
         keyword_help_ids=keyword_help_ids,
@@ -91,6 +94,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
     service: MessagingService,
     activity_service: ActivityService,
     scheduler: Scheduler,
+    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     """Declare configured message commands and scheduled push lifecycle."""
 
@@ -120,6 +124,7 @@ def plugin_contribution(  # noqa: PLR0913 - plugin wiring receives explicit depe
             references=references,
             activity_service=activity_service,
             scheduler=scheduler,
+            query_sessions=query_sessions,
             command_help_ids=tuple(
                 f"messaging.{action.id}" for action in config.commands if action.enabled
             ),
@@ -145,5 +150,6 @@ if (context := active_plugin_install_context()) is not None:
             service=context.resources.messaging,
             activity_service=context.resources.activity,
             scheduler=context.scheduler,
+            query_sessions=context.resources.query_sessions,
         ),
     )

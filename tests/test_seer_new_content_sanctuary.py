@@ -4,25 +4,8 @@ from contextlib import contextmanager, nullcontext
 from typing import Literal
 from unittest.mock import AsyncMock, Mock
 
-import nonebot
 import pytest
-from nonebot.adapters.onebot.v11 import Message
 
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
-
-try:
-    nonebot.get_driver()
-except ValueError:
-    nonebot.init()
-
-from ironsbot.plugins.onebot.seer.query.commands.new_content import (
-    NEW_CONTENT_SERVICES_KEY,
-    NEW_CONTENT_SNAPSHOT_KEY,
-    _content_prompt,
-    _NewContentServices,
-    _render_content_prompt,
-    _send_item_detail,
-)
 from ironsbot.services.seer.autocard import AutocardEntry, AutocardPromptValue
 from ironsbot.services.seer.data import (
     DataPublicationChangedError,
@@ -43,11 +26,11 @@ from ironsbot.services.seer.new_content_details import (
 )
 from ironsbot.services.seer.new_content_menu import (
     NewContentMenuLayout,
+    build_new_content_menu,
     focus_new_content_category,
 )
 from ironsbot.services.seer.pet_query import PetImageSelection
 from ironsbot.services.seer.query_result import QueryReply, QueryResult
-from tests.helpers.onebot_events import group_message_event
 
 
 def _menu_snapshot(item: NewContentItem) -> NewContentSnapshot:
@@ -255,71 +238,6 @@ async def test_detail_rejects_item_from_another_menu_without_starting_scope() ->
     assert dependencies.mock_calls == []
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error", [NewContentSnapshotChangedError, DataPublicationChangedError]
-)
-async def test_changed_detail_finishes_menu_without_sending_result(
-    error: type[Exception],
-) -> None:
-    item = NewContentItem("pet", 9, "test", 9, {})
-    details = Mock(select=AsyncMock(side_effect=error))
-    matcher = Mock(
-        state={
-            NEW_CONTENT_SERVICES_KEY: _NewContentServices(
-                details, AsyncMock(), AsyncMock()
-            ),
-            NEW_CONTENT_SNAPSHOT_KEY: _menu_snapshot(item),
-        },
-        finish=AsyncMock(),
-    )
-    await _send_item_detail(item, matcher, group_message_event("1"))
-
-    matcher.finish.assert_awaited_once_with(
-        "数据已更新，当前新增内容菜单已失效，重新发送指令查看。"
-    )
-
-
-@pytest.mark.asyncio
-async def test_autocard_detail_uses_native_onebot_image_message() -> None:
-    item = NewContentItem("autocard_card", 9, "test", 9, {})
-    detail = AutocardEntry(
-        kind="card",
-        item_id=9,
-        name="test",
-        text="卡牌详情",
-        image_key="card_9",
-    )
-    details = Mock(select=AsyncMock(return_value=detail))
-    media = Mock(
-        outbound=AsyncMock(
-            return_value=OutboundMessage(
-                (BinaryImagePart(b"card", "image/png"), TextPart("卡牌详情"))
-            )
-        )
-    )
-    matcher = Mock(
-        state={
-            NEW_CONTENT_SERVICES_KEY: _NewContentServices(
-                details, AsyncMock(), media
-            ),
-            NEW_CONTENT_SNAPSHOT_KEY: _menu_snapshot(item),
-        },
-        send=AsyncMock(),
-    )
-
-    await _send_item_detail(item, matcher, group_message_event("1"))
-
-    message = matcher.send.await_args.args[0]
-    assert [segment.type for segment in message] == ["image", "text"]
-    assert message.extract_plain_text() == "卡牌详情"
-    assert matcher.send.await_args.kwargs == {"at_sender": True}
-    media.outbound.assert_awaited_once_with(
-        detail,
-        include_additional_images=False,
-    )
-
-
 def _effect(*, change_kind: Literal["added", "modified"] = "added") -> NewContentItem:
     return NewContentItem(
         category="autocard_sanctuary_effect",
@@ -403,14 +321,14 @@ def test_new_autocard_prompt_includes_sanctuary_effects() -> None:
         items=(card, role, _effect()),
     )
 
-    prompt = _content_prompt(
+    menu = build_new_content_menu(
         snapshot,
         NewContentMenuLayout(
             display_categories=AUTOCARD_NEW_CONTENT_CATEGORIES,
         ),
     )
 
-    assert [item.name for item in prompt.items] == [
+    assert [choice.name for choice in menu.choices] == [
         "▶ 新增群星牌",
         "▶ 新增群星牌角色",
         "▶ 新增群星牌圣域",
@@ -439,21 +357,17 @@ def test_new_content_root_menu_only_lists_categories() -> None:
         items=(pet, skill),
     )
 
-    prompt = _content_prompt(
+    menu = build_new_content_menu(
         snapshot,
         NewContentMenuLayout(
             display_categories=("pet", "skill"),
         ),
     )
 
-    assert [item.name for item in prompt.items if item.is_visible] == [
+    assert [choice.name for choice in menu.choices] == [
         "▶ 新增精灵",
         "▶ 新增技能",
     ]
-    assert prompt.get_item_by_input("a1") is None
-    assert prompt.get_item_by_input("b1") is None
-    assert "a1. 超级噗纽" not in prompt.build_message()
-    assert "a. ▶ 新增精灵（1 项）" in prompt.build_message()
 
 
 def test_new_content_category_selection_opens_a_numeric_menu() -> None:
@@ -489,14 +403,10 @@ def test_new_content_category_selection_opens_a_numeric_menu() -> None:
     )
     layout = focus_new_content_category(root_layout, "achievement")
 
-    prompt = _content_prompt(snapshot, layout)
+    menu = build_new_content_menu(snapshot, layout)
 
-    assert prompt.title == "🆕【新增成就】输入编号查看详情：\n"
-    assert "1. 深海之泪" in prompt.build_message()
-    assert "a. ▶ 新增精灵" not in prompt.build_message()
-    assert "b. ▶ 新增技能" not in prompt.build_message()
-    assert prompt.get_item_by_input("1") is not None
-    assert prompt.get_item_by_input("c1") is None
+    assert menu.title == "🆕【新增成就】输入编号查看详情："
+    assert [choice.name for choice in menu.choices] == ["深海之泪"]
 
 
 def test_new_pet_category_uses_plain_numeric_choices() -> None:
@@ -521,7 +431,7 @@ def test_new_pet_category_uses_plain_numeric_choices() -> None:
         items=(first, second),
     )
 
-    prompt = _content_prompt(
+    menu = build_new_content_menu(
         snapshot,
         NewContentMenuLayout(
             display_categories=("pet",),
@@ -529,94 +439,4 @@ def test_new_pet_category_uses_plain_numeric_choices() -> None:
         ),
     )
 
-    assert "1. 超级噗纽" in prompt.build_message()
-    assert "2. 维克佐斯" in prompt.build_message()
-    assert prompt.get_item_by_input("a1") is None
-
-
-def test_new_content_category_shortcut_uses_numeric_keys() -> None:
-    pet = NewContentItem(
-        category="pet",
-        entity_id=4927,
-        name="超级噗纽",
-        sort_value=4927,
-        payload={},
-    )
-    skill = NewContentItem(
-        category="skill",
-        entity_id=38474,
-        name="金属缠绕",
-        sort_value=38474,
-        payload={},
-    )
-    achievement = NewContentItem(
-        category="achievement",
-        entity_id=6171016,
-        name="深海之泪",
-        sort_value=6171016,
-        payload={"point": 10},
-    )
-    snapshot = NewContentSnapshot(
-        baseline_established=True,
-        config_version="20260731",
-        weekly_cycle="2026-07-31",
-        items=(pet, skill, achievement),
-    )
-    layout = NewContentMenuLayout(
-        display_categories=("achievement",),
-        focused_category="achievement",
-    )
-
-    prompt = _content_prompt(snapshot, layout)
-
-    assert "a. " not in prompt.build_message()
-    assert "b. " not in prompt.build_message()
-    assert "1. 深海之泪" in prompt.build_message()
-
-
-@pytest.mark.parametrize(
-    "render_error", [RuntimeError, NewContentSnapshotChangedError, None]
-)
-def test_menu_image_and_text_fallback_share_layout_and_sender(
-    render_error: type[Exception] | None,
-) -> None:
-    snapshot = NewContentSnapshot(
-        baseline_established=True,
-        config_version="20260904",
-        weekly_cycle="2026-09-04",
-        items=(_effect(),),
-    )
-    layout = NewContentMenuLayout(
-        display_categories=("autocard_sanctuary_effect",),
-        focused_category="autocard_sanctuary_effect",
-    )
-    event = group_message_event("新增群星牌圣域")
-    prompt = _content_prompt(snapshot, layout)
-    renderer_calls: list[tuple[object, ...]] = []
-
-    async def renderer(*args: object, **kwargs: object) -> bytes:
-        assert not kwargs
-        renderer_calls.append(args)
-        if render_error is not None:
-            raise render_error
-        return b"test image"
-
-    message = asyncio.run(
-        _render_content_prompt(prompt, snapshot, layout, renderer, event)
-    )
-
-    assert isinstance(message, Message)
-    assert message[0].type == "at"
-    assert message[0].data["qq"] == str(event.user_id)
-    assert renderer_calls[0][:3] == (
-        snapshot,
-        layout.display_categories,
-        layout.focused_category,
-    )
-    selection = prompt.get_item_by_input("1")
-    assert selection is not None and selection.value.item == snapshot.items[0]
-    if render_error is not None:
-        assert "1. 潮涌" in message.extract_plain_text()
-        assert "0.【退出】" in message.extract_plain_text()
-    else:
-        assert message[-1].type == "image"
+    assert [choice.name for choice in menu.choices] == ["超级噗纽", "维克佐斯"]

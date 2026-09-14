@@ -13,13 +13,11 @@ from ironsbot.core.plugin_install import (
     active_plugin_install_context,
 )
 from ironsbot.core.semantic_requests import ActionDefinition
-from ironsbot.integrations.onebot.feature_policy import (
-    event_is_feature_visible_in_help,
-    feature_rule,
-)
+from ironsbot.integrations.onebot.feature_policy import feature_rule
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.rules import affix_command, explicit_command
+from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.pet_config_commands import (
     pet_config_command_contracts,
     pet_config_input,
@@ -38,9 +36,8 @@ __plugin_meta__ = PluginMetadata(
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-
     from ironsbot.config.models.pet_config import PetConfigConfig
+    from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.pet_config import PetConfigQueryService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
@@ -83,15 +80,16 @@ def plugin_contribution(
 
 
 def _is_visible(
-    event: "Event",
+    context: CommandContext,
     *,
     features: FeatureService,
     enabled: bool,
 ) -> bool:
-    return enabled and event_is_feature_visible_in_help(
-        features,
-        event,
-        Feature.PET_CONFIG.value,
+    return feature_help_visible(
+        context,
+        features=features,
+        feature=Feature.PET_CONFIG.value,
+        enabled=enabled,
     )
 
 

@@ -4,10 +4,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.matcher import Matcher
 
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.integrations.onebot.matcher_support import bind_async
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
@@ -36,6 +37,14 @@ class _NoReceiptMatcher(_Matcher):
     async def send(self, message: Message) -> dict[str, int]:
         self.sent.append(message)
         return {}
+
+
+class _ImageFailMatcher(_Matcher):
+    async def send(self, message: Message) -> dict[str, int]:
+        self.sent.append(message)
+        if "[CQ:image" in str(message):
+            raise ActionFailed(retcode=100)
+        return {"message_id": len(self.sent)}
 
 
 def test_bound_portable_operation_preserves_nonebot_matcher_type() -> None:
@@ -146,3 +155,56 @@ async def test_portable_operation_does_not_commit_without_onebot_receipt() -> No
 
     assert transitions == ["failed"]
     assert len(matcher.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_portable_operation_uses_explicit_fallback_after_image_failure() -> None:
+    matcher = _ImageFailMatcher()
+    transitions: list[str] = []
+
+    async def operation(
+        text: str,
+        context: MessageInputContext,
+    ) -> PortableReply:
+        del text, context
+        return PortableReply(
+            OutboundMessage(
+                (
+                    BinaryImagePart(b"image", "image/png"),
+                    TextPart("图文结果"),
+                )
+            ),
+            on_delivered=lambda: transitions.append("delivered"),
+            on_delivery_failed=lambda: transitions.append("failed"),
+            fallback_message=OutboundMessage.from_text("纯文字结果"),
+        )
+
+    await run_portable_operation(cast("Matcher", matcher), _group_event(), operation)
+
+    assert transitions == ["delivered"]
+    assert len(matcher.sent) == len(("primary", "fallback"))
+    assert "[CQ:image" in str(matcher.sent[0])
+    assert str(matcher.sent[1]) == "[CQ:at,qq=2] 纯文字结果"
+
+
+@pytest.mark.asyncio
+async def test_portable_operation_fails_only_after_fallback_also_fails() -> None:
+    matcher = _NoReceiptMatcher()
+    transitions: list[str] = []
+
+    async def operation(
+        text: str,
+        context: MessageInputContext,
+    ) -> PortableReply:
+        del text, context
+        return PortableReply(
+            OutboundMessage.from_text("主消息"),
+            on_delivered=lambda: transitions.append("delivered"),
+            on_delivery_failed=lambda: transitions.append("failed"),
+            fallback_message=OutboundMessage.from_text("备用消息"),
+        )
+
+    await run_portable_operation(cast("Matcher", matcher), _group_event(), operation)
+
+    assert transitions == ["failed"]
+    assert len(matcher.sent) == len(("primary", "fallback"))

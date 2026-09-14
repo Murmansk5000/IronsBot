@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
+from unittest.mock import AsyncMock
 
 import pytest
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
@@ -18,7 +19,7 @@ from ironsbot.config.models.settings import (
     QQOfficialAccountConfig,
     QQOfficialConfig,
 )
-from ironsbot.core.command_catalog import CommandCatalog
+from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputContext
@@ -29,7 +30,9 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_reference_commands import player_reference_input_matcher
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
@@ -71,6 +74,10 @@ from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.peak import PeakQueryResult
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionAction,
+    PlayerDetailExtensionRegistry,
+)
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
@@ -97,6 +104,8 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.seer.team import TeamQueryActor
     from ironsbot.services.team.resource import TeamResourceService
+
+EXTENSION_PLAYER_ID = 700_001
 
 
 class _FakeDataQueries:
@@ -401,13 +410,15 @@ def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
     )
 
 
-def _fake_seer(
+def _fake_seer(  # noqa: PLR0913 - tests vary independent Seer service families
     *,
     pet_query: object | None = None,
     peak_query: object | None = None,
     team_query: object | None = None,
     rank_queries: object | None = None,
     rank_admin: object | None = None,
+    player: object | None = None,
+    player_detail_extensions: PlayerDetailExtensionRegistry | None = None,
 ) -> SeerQueryResources:
     unused = _UnusedQueryService()
     return cast(
@@ -421,7 +432,10 @@ def _fake_seer(
             type_query=unused,
             battle_effect=unused,
             peak_query=peak_query or unused,
-            player=unused,
+            player=player or unused,
+            player_detail_extensions=(
+                player_detail_extensions or PlayerDetailExtensionRegistry()
+            ),
             rank_queries=rank_queries or unused,
             rank_admin=rank_admin or unused,
         ),
@@ -442,6 +456,7 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
     pet_config: bool = False,
     rank_display: bool = False,
     rank_status: bool = False,
+    player_extension: bool = False,
 ) -> CommandCatalog:
     command_ids = {
         "seer.data.query",
@@ -547,6 +562,29 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
                 commands=pet_config_command_contracts(enabled=True),
             )
         )
+    if player_extension:
+        contributions.append(
+            PluginContribution(
+                id="private_player_lineup",
+                commands=(
+                    CommandContract(
+                        id="private_player_lineup.query",
+                        plugin_id="private_player_lineup",
+                        section="查询",
+                        examples=("阵容", "阵容123456"),
+                        description="查询公开阵容",
+                        features_any=("player_lineup_private",),
+                        routing_matcher=player_reference_input_matcher(
+                            ("阵容",),
+                            cast(
+                                "PlayerIdResolver",
+                                _FakePlayerIdResolver(),
+                            ).has_known_reference,
+                        ),
+                    ),
+                ),
+            )
+        )
     catalog.load(
         tuple(contributions),
         known_features=(
@@ -568,6 +606,7 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
             "server_status_query",
             "meeting",
             "pet_config",
+            "player_lineup_private",
         ),
     )
     return catalog
@@ -1287,6 +1326,58 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     assert (
         await router.dispatch(_portable_input("数据版本", actor, conversation)) is None
     )
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_registered_player_extension_command() -> None:
+    extension_query = AsyncMock(return_value=QueryReply(text="阵容结果"))
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="private_player_lineup",
+            feature="player_lineup_private",
+            label="阵容",
+            aliases=("阵容",),
+            command_help_id="private_player_lineup.query",
+            query=extension_query,
+            action=ActionDefinition("private_player_lineup", "阵容"),
+        )
+    )
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["player_lineup_private"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(player_extension=True),
+        about=AboutService("test"),
+        seer=_fake_seer(player_detail_extensions=extensions),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        team_resource=_unused_team_resource(),
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-user",
+        account_id="example-app",
+    )
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
+
+    reply = await router.dispatch(
+        _portable_input(f"阵容{EXTENSION_PLAYER_ID}", actor, conversation)
+    )
+
+    assert reply is not None
+    assert cast("TextPart", reply.message.parts[0]).text == "阵容结果"
+    extension_query.assert_awaited_once()
+    assert extension_query.await_args is not None
+    assert extension_query.await_args.args[0].player_id == EXTENSION_PLAYER_ID
 
 
 @pytest.mark.asyncio
@@ -2106,6 +2197,7 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
+            "ENVIRONMENT": "prod",
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         }
     )
@@ -2117,6 +2209,8 @@ check_on_startup = false
                 "from ironsbot.app.bootstrap import bootstrap; "
                 "app = bootstrap(); "
                 "assert set(app.driver._adapters) == {'OneBot V11'}; "
+                "assert app.driver.env == 'test'; "
+                "assert __import__('os').environ['ENVIRONMENT'] == 'prod'; "
                 "assert app.resources.qq_official.account_ids == ('example-app',); "
                 "print('QQ_OFFICIAL_BOOTSTRAP_OK')"
             ),

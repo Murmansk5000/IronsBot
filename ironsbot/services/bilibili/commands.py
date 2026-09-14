@@ -40,9 +40,3 @@ def parse_bili_push_mode_command(text: str) -> tuple[str, str] | None:
         mode_text = parts[1].strip() if len(parts) > 1 else ""
         return (account, mode_text)
     return None
-
-
-def is_dynamic_selection(text: str) -> bool:
-    """Return whether a reply is a numeric Bilibili dynamic menu selection."""
-
-    return text.strip().isdigit()

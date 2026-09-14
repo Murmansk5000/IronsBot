@@ -4,16 +4,18 @@ from typing import TYPE_CHECKING
 
 from nonebot.rule import Rule
 
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
     bind,
     bind_async,
 )
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import run_portable_operation
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.portable_bilibili_commands import (
-    build_portable_bilibili_management_operations,
+    build_portable_bilibili_operations,
 )
 
 from .command_rules import (
@@ -22,25 +24,29 @@ from .command_rules import (
     is_dynamic_menu_command,
     is_update_dynamic_command,
 )
-from .dynamic_actions import handle_dynamic_menu_action
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+
 
 def install(
     registry: MatcherFactory,
     service: BilibiliService,
     features: FeatureService,
     monitor: BilibiliMonitorService,
+    query_sessions: PortableQuerySessions,
 ) -> None:
     async def refresh_now() -> str:
         return await monitor.manual_refresh()
 
-    operations = build_portable_bilibili_management_operations(
+    operations = build_portable_bilibili_operations(
         service,
+        query_sessions,
         features,
+        notify_auth_invalid=monitor.notify_auth_invalid,
         refresh_now=refresh_now,
     )
     dynamic_menu = registry.on_message(
@@ -50,10 +56,10 @@ def install(
         block=True,
     )
     dynamic_menu.append_handler(
-        bind_async(
-            handle_dynamic_menu_action,
-            service=service,
-            monitor=monitor,
+        make_portable_query_handler(
+            operations["bilibili.dynamic"],
+            query_sessions,
+            ActionDefinition("bilibili.dynamic", "B站历史动态查询"),
         )
     )
 

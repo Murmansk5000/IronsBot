@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import can_manage_group_actor
 from ironsbot.core.outbound import OutboundMessage
@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
     from ironsbot.core.authorization import SuperuserPolicy
     from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.services.bilibili.dynamic_history import DynamicHistoryRecord
     from ironsbot.services.bilibili.service import BilibiliService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation, PortableReply
@@ -166,14 +165,12 @@ async def _dynamic_detail(
     dynamic_id: str,
 ) -> OutboundMessage:
     try:
-        selection = service.select_dynamic([dynamic_id], "1")
-        if selection.status != "ok" or selection.record is None:
+        record = service.get_dynamic(dynamic_id)
+        if record is None:
             return OutboundMessage.from_text(
                 "❌ 没找到这条历史动态，请重新发送“动态”。"
             )
-        detail = await service.prepare_dynamic_detail(
-            cast("DynamicHistoryRecord", selection.record)
-        )
+        detail = await service.prepare_dynamic_detail(record)
         return render_dynamic_content_message(
             detail.item,
             detail.content_override,

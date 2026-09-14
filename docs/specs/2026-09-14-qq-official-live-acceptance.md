@@ -1,6 +1,6 @@
 # QQ Official Live Acceptance
 
-Status: `blocked_by_external_credentials`
+Status: `blocked_by_candidate_message_matrix`
 
 Contract: `release_gate`
 
@@ -123,12 +123,43 @@ is insufficient.
 ## Partial Local Evidence
 
 On 2026-09-14 a local source checkout connected with AppID fingerprint `2026`.
-The SDK persisted a resumable session record with a non-empty session ID and
-sequence `1`. The process and listener were stopped after the probe, and the
-temporary configuration and session cache were removed. No credential was
-written to the repository.
+The first probe persisted a resumable session record with a non-empty session
+ID and sequence `1`. After adding the project logging bridge, a second probe
+started from an empty session directory and retained these redacted lifecycle
+events:
 
-This does not pass the connection gate: the run did not retain the required
-visible `READY/RESUMED` log line and was not an immutable candidate container.
-No passive-message or proactive-message matrix row is marked as passed from
-this probe.
+```text
+10:53:46 QQ Official connection starting
+10:53:47 QQ Official connected
+```
+
+Starting without a stored session means this callback followed the SDK's fresh
+READY path rather than Resume. Both probe processes and listeners were stopped,
+and their temporary configuration and session cache were removed. No credential
+was written to the repository.
+
+This evidence still does not close the connection gate because the run was not
+an immutable candidate container. No passive-message or proactive-message
+matrix row is marked as passed from these probes.
+
+On 2026-09-14 at 12:15 local time, the current source branch completed another
+fresh production-endpoint probe with AppID fingerprint `2026`. Configuration
+validation confirmed that only AppID and the process-environment AppSecret were
+used; the retired static Token was absent. The project log recorded connection
+start at `12:15:30` and `connected` at `12:15:31`, with no authentication error,
+fatal close, or reconnect storm before an orderly shutdown. The temporary
+session record was removed after inspection. This strengthens the source-level
+connection evidence, but it still cannot be attributed to a frozen image digest
+and does not replace the passive-message matrix.
+
+The private preview workflow now freezes commit `7fc19e17` as the current
+candidate image:
+
+```text
+ghcr.io/murmansk5000/ironsbot-qq-official-preview@sha256:6601faaea16b93d76cb39cf9d0ec5a110ff74375387a973039aa7f97bda40bb0
+```
+
+Workflow run `34803647246` passed dependency audit, Linux build, offline smoke,
+runtime size budgets, image growth comparison, and publication. This host had
+no available Docker Engine, so the candidate digest itself has not yet run the
+connection or passive-message matrix.

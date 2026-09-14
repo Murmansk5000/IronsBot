@@ -28,6 +28,7 @@ class PortableReply:
     on_delivery_failed: Callable[[], None] | None = None
     after_delivered: DeliveryCommit | None = None
     follow_up: PortableFollowUp | None = None
+    fallback_message: OutboundMessage | None = None
 
     def delivered(self) -> None:
         if self.on_delivered is not None:
@@ -140,6 +141,14 @@ async def deliver_reply_stages(
     while True:
         result = await send(current.message)
         stage_name = "initial" if stage == 0 else f"follow_up_{stage}"
+        if not result.delivered and current.fallback_message is not None:
+            _log_delivery_failure(
+                incoming,
+                result,
+                stage=f"{stage_name}_primary",
+            )
+            result = await send(current.fallback_message)
+            stage_name = f"{stage_name}_fallback"
         if not result.delivered:
             current.delivery_failed()
             _log_delivery_failure(incoming, result, stage=stage_name)

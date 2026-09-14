@@ -9,6 +9,7 @@ from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.about import build_portable_about_operation
+from ironsbot.services.help_menu import build_portable_help_operation
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -72,6 +73,7 @@ if TYPE_CHECKING:
     )
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.core.plugin_install import PluginContributionCatalog
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
     from ironsbot.services.ai.service import AiService
@@ -124,16 +126,21 @@ class PortableCommandRouter:
         raw_command = context.text.strip()
         command = _command_text(context.text)
         command_context = command_context_from_input(context)
-        return self._query_sessions.recognizes_response(command, context) or (
-            self._matching_input_contract(
-                raw_command,
-                command,
-                context=command_context,
+        return (
+            self._query_sessions.recognizes_response(command, context)
+            or (
+                self._matching_input_contract(
+                    raw_command,
+                    command,
+                    context=command_context,
+                )
+                is not None
             )
-            is not None
-        ) or self._can_chat(context, command_context) or self._is_group_mention(context)
+            or self._can_chat(context, command_context)
+            or self._is_group_mention(context)
+        )
 
-    async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
+    async def dispatch(
         self,
         context: MessageInputContext,
     ) -> PortableReply | None:
@@ -165,8 +172,6 @@ class PortableCommandRouter:
         )
         if contract is None:
             return await self._fallback_reply(context, command_context, command)
-        if contract.id == "help":
-            return PortableReply(self._help(command_context))
         try:
             result = await self._operations[contract.id](command, context)
         except DataUnavailableError:
@@ -218,16 +223,6 @@ class PortableCommandRouter:
             )
             if contract.id in executable_ids
         )
-
-    def _help(self, context: CommandContext) -> OutboundMessage:
-        contracts = self._available_contracts(context)
-        lines = ["【机器人调试功能】", "帮助 - 查看当前可用功能"]
-        lines.extend(
-            f"{contract.examples[0]} - {contract.description}"
-            for contract in contracts
-            if contract.id != "help"
-        )
-        return OutboundMessage.from_text("\n".join(lines))
 
     async def _fallback_reply(
         self,
@@ -283,14 +278,13 @@ class PortableCommandRouter:
 
     @staticmethod
     def _is_group_mention(context: MessageInputContext) -> bool:
-        return (
-            context.message.conversation.kind == "group" and context.mentions_bot
-        )
+        return context.message.conversation.kind == "group" and context.mentions_bot
 
 
 def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     *,
     catalog: CommandCatalog,
+    contribution_catalog: PluginContributionCatalog | None = None,
     about: AboutService,
     seer: SeerQueryResources,
     player_id_resolver: PlayerIdResolver,
@@ -314,6 +308,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset(),
     new_content_preview_max_items: int = 5,
     query_sessions: PortableQuerySessions | None = None,
+    ignored_help_plugins: tuple[str, ...] = (),
 ) -> PortableCommandRouter:
     sessions = query_sessions or PortableQuerySessions()
     seer_operations = build_portable_seer_operations(
@@ -323,10 +318,15 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         features,
         image_command_texts=image_command_texts,
     )
-    player_operations = build_portable_player_operations(
-        seer.player,
-        player_id_resolver,
-        sessions,
+    player_operations = _catalog_operations(
+        catalog,
+        build_portable_player_operations(
+            seer.player,
+            player_id_resolver,
+            sessions,
+            features,
+            getattr(seer, "player_detail_extensions", None),
+        ),
     )
     rank_operations = _catalog_operations(
         catalog,
@@ -480,6 +480,26 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **rank_operations,
         **rank_admin_operations,
     }
+    portable_command_ids = frozenset(
+        {
+            *operations,
+            "help",
+            "ai_chat.group",
+            "ai_chat.private",
+        }
+    )
+    operations["help"] = build_portable_help_operation(
+        (
+            ()
+            if contribution_catalog is None
+            else contribution_catalog.contributions
+        ),
+        catalog,
+        features,
+        sessions,
+        ignored_plugins=ignored_help_plugins,
+        command_ids=portable_command_ids,
+    )
     return PortableCommandRouter(
         catalog,
         operations,

@@ -18,6 +18,8 @@ from ironsbot.services.portable_lucky_skin_commands import (
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWatchItem,
     LuckySkinWindowOffer,
@@ -120,6 +122,14 @@ class _FakePet:
         return QueryResult(reply=QueryReply(text=f"skin:{selection.skin_id}"))
 
 
+class _UnavailablePet:
+    async def select_image(
+        self,
+        _selection: PetImageSelection,
+    ) -> QueryResult[object]:
+        raise DataUnavailableError
+
+
 def _context(text: str = "") -> MessageInputContext:
     actor = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -152,10 +162,11 @@ def _text(message: OutboundMessage) -> str:
 def _operations(
     service: _FakeLuckySkinWindow,
     sessions: PortableQuerySessions,
+    pet: object | None = None,
 ):
     return build_portable_lucky_skin_operations(
         cast("LuckySkinWindowService", service),
-        cast("PetQueryService", _FakePet()),
+        cast("PetQueryService", pet or _FakePet()),
         sessions,
     )
 
@@ -204,6 +215,22 @@ async def test_portable_lucky_window_cached_result_opens_detail_menu() -> None:
     assert _text(result) == "window result"
     assert isinstance(selected, OutboundMessage)
     assert _text(selected) == "skin:101"
+
+
+@pytest.mark.asyncio
+async def test_lucky_window_detail_reports_unavailable_database() -> None:
+    service = _FakeLuckySkinWindow(cached=True)
+    sessions = PortableQuerySessions()
+    context = _context("橱窗")
+    query = _operations(service, sessions, _UnavailablePet())[
+        "seer.lucky_skin_window.query"
+    ]
+
+    await query("橱窗", context)
+    selected = await sessions.select("1", context)
+
+    assert isinstance(selected, OutboundMessage)
+    assert _text(selected) == DATABASE_UNAVAILABLE_MESSAGE
 
 
 @pytest.mark.asyncio

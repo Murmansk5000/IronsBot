@@ -2532,7 +2532,128 @@ B站账号列表、群/私聊推送模式和手动刷新随后复用同一组 po
 桥，生产代码净增 156 行；没有新增运行依赖、配置、数据库、素材或镜像层。最终全量
 `3409 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过。
 
-2026-09-14 使用真实应用凭据完成了一次本机 QQ Official 连接探测。凭据仅注入进程环境，
-临时配置与会话缓存已清理；SDK 写出了包含会话标识且序列推进到 1 的恢复记录，证明网关
-会话已经建立。由于本次没有保留规范要求的 `READY/RESUMED` 可见日志，也没有完成 C2C、
-群直接 @、非 @、引用忽略和图片回复矩阵，这只能记作部分连接证据，不能关闭 Phase 7。
+2026-09-14 使用真实应用凭据完成了两次本机 QQ Official 连接探测。凭据仅注入进程环境，
+临时配置与会话缓存均已清理；首次探测写出了包含会话标识且序列推进到 1 的恢复记录。
+审计发现项目大量标准库日志没有接入 NoneBot/Loguru，随后新增幂等的 `ironsbot.*` 日志桥，
+不转发可能包含 SDK 会话标识的第三方原始日志。第二次从空会话目录启动后，可见日志在
+`connection starting` 后一秒出现 `connected`，证明 fresh READY 路径可观测。专项 `7 passed`，
+最终全量 `3410 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过。
+由于探测不是冻结 digest 的候选镜像，且尚未完成 C2C、群直接 @、非 @、引用忽略和图片
+回复矩阵，Phase 7 仍保持开放。
+
+同一可执行代码随后由私有 Preview 工作流 `34801070611` 构建为提交 `36153e36` 的固定候选
+镜像，digest 为 `sha256:513193c7634ff2282e6d1a459c3d65b74fa7adb099e1e4b6caa01260410ec4d6`。
+依赖审计、Linux 构建、离线 smoke、运行镜像体积预算、相对增长预算和 GHCR 发布全部通过。
+当前主机没有可用 Docker Engine，因此没有把源码连接结果错误记到该 digest 名下；下一步
+必须在可运行 Docker 的主机上用此 digest 完成同一套连接及被动消息矩阵。
+
+B站历史动态数字菜单随后接入同一 `PortableQuerySessions`。OneBot 不再保存动态 ID 到
+matcher state，也不再维护独立的输入校验、超时、退出和详情发送循环；它与 QQ Official
+现在执行同一个 `bilibili.dynamic` operation，菜单保持连续选择，`0` 退出、Cookie 失效
+通知和图文详情语义不变。业务服务只暴露按稳定动态 ID 读取历史记录的窄接口，旧数字选择
+DTO、解析器、OneBot `dynamic_actions` 文件及其重复测试一并删除。该切片生产代码净减少
+296 行，整体净减少 385 行，没有增加依赖、配置、数据库、素材或镜像层。最终全量
+`3406 passed, 7 skipped`，Ruff、BasedPyright、compileall、插件导入副作用和差异检查通过。
+
+真实 QQ Official 探测中发现的 NoneBot 环境标签偏差也已收口。NoneBot 会在读取
+`nonebot.init()` 普通参数之前从进程环境构造自身 `Env`，旧代码因此把 TOML 的 `dev/test`
+误显示为默认 `prod`。bootstrap 现在只在 NoneBot 初始化窗口内映射 TOML 标签到其识别的
+`ENVIRONMENT`，随后恢复调用进程原值；不会把该临时值泄漏给其余运行逻辑。冲突环境测试
+证明 driver 使用 TOML 的 `test`，初始化后外部 `prod` 原样保留。相关启动、生命周期、
+QQ Official 和导入副作用测试 `56 passed`，Ruff、BasedPyright、compileall 和差异检查通过。
+
+群星牌资料与场地/祝印查询随后也切换到同一 portable operation 和会话存储。OneBot 的
+候选值 state、数字校验、菜单续期、层级场地切换和服务错误转译全部删除，只保留统一的
+`install(group)` matcher 边界。原有“群星牌图片发送失败后回退纯文字”没有被适配迁移
+吞掉，而是升级为 `PortableReply.fallback_message`：只有业务显式声明等价回退时，通用
+交付状态机才会在主消息失败后尝试备用消息，任一平台均可复用；OneBot `ActionFailed`
+也统一转换为结构化发送失败。该切片生产代码净减少 276 行，整体净减少 277 行，没有
+新增依赖、配置、数据库、素材或镜像层。最终全量 `3407 passed, 7 skipped`，Ruff、
+BasedPyright、compileall、插件安装契约、导入副作用和差异检查通过。
+
+当前完整工作分支随后由私有 Preview 工作流 `34803647246` 冻结为提交 `7fc19e17` 的候选
+镜像，digest 为 `sha256:6601faaea16b93d76cb39cf9d0ec5a110ff74375387a973039aa7f97bda40bb0`。
+依赖审计、Linux 构建、离线 smoke、运行镜像体积预算、相对增长预算和 GHCR 发布全部通过。
+已知真实应用 AppID 指纹仍为 `2026`，连接方式仍为腾讯官方 WebSocket；AppSecret 只允许
+通过进程环境注入，弃用的静态 Token 不参与当前实现。该固定 digest 尚未完成 C2C 文本、
+Seer 查询、图片、群直接 @、群非 @ 和引用回复忽略矩阵，因此 Phase 7 继续保持 7/8。
+
+数据更新与镜像维护的 OneBot 会话随后复用已有 portable operation。`/更新数据`、
+`/强制更新数据`、`/重启机器人` 和 `/更新镜像` 不再各自保存 matcher 状态或实现数字菜单；
+检查、选择、进度、取消和送达后执行均由与 QQ Official 相同的 operation 和
+`PortableQuerySessions` 负责。通用 OneBot 会话桥补齐“分阶段任务完成后才创建菜单”的
+耐久输入接管，因此首条进度消息送达后生成的选择仍不会丢失。启动 hook、superuser 权限、
+命令优先级和 Docker 重启送达门保持不变。生产代码净减少 43 行，没有新增依赖、配置、
+数据库或素材；最终全量 `3408 passed, 7 skipped`，Ruff、BasedPyright、compileall、
+架构边界和差异检查通过。
+
+幸运橱窗随后完成 OneBot 会话收口。查询确认、四项结果选择、关注列表、增删候选、清空与
+重置六类命令全部执行既有 portable operation，并统一由 `PortableQuerySessions` 管理确认、
+数字菜单、退出和新命令取消旧会话。OneBot 插件仅保留命令识别、feature、优先级、身份转换
+及定时任务注册；原有登录确认、候选 DTO 转换、错误映射和五套业务 handler 已删除。皮肤
+详情读取主数据库失败时现在由共享 operation 返回统一不可用文案，QQ Official 同时获得该
+修复。该切片生产代码净减少 325 行，整体净减少 511 行，没有新增运行依赖、配置、数据库、
+素材或镜像层；专项与架构/QQ 回归 `165 passed`，最终全量 `3403 passed, 7 skipped`，Ruff、
+BasedPyright、compileall 和差异检查通过。
+
+同日当前源码再次使用真实应用完成正式 API WebSocket 探测。AppID 指纹为 `2026`，Secret
+只通过进程环境注入，弃用的静态 Token 未参与；项目日志在 `12:15:30` 记录连接开始，并在
+`12:15:31` 记录 `connected`，随后正常停机，没有认证失败、fatal close 或重连风暴。该探测
+不是冻结候选镜像，也尚未完成 C2C、群直接 @、非 @、引用忽略和图片回复矩阵，因此 Phase 7
+仍保持 7/8；当前外部门已从“缺少凭据”收窄为“固定 digest 的真实消息矩阵尚未验收”。
+
+每周新增内容菜单随后完成 OneBot 会话收口。根分类、分类展开和详情选择现在由两个平台共用
+`PortableQuerySessions` 与同一个 portable operation；OneBot 的快照 state、服务容器、Prompt
+转换、替换菜单和详情发送 handler 全部删除。共享 operation 直接调用既有图片渲染端口，图片
+生成失败时回退同序文字菜单；图片与文字的入口编号统一为连续数字，避免旧 OneBot 图片使用
+`a/a1`、QQ Official 会话却只接受数字的协议分叉。精灵、群星牌和普通文本详情仍调用同一领域
+选择服务。该切片生产代码净减少 237 行，整体净减少 356 行，没有新增依赖、配置、数据库、
+素材或镜像层；新增内容、渲染、插件与 QQ Official 专项 `178 passed`，架构回归 `91 passed`，
+最终全量 `3398 passed, 7 skipped`，Ruff、BasedPyright、compileall 和差异检查通过。
+
+玩家的“收集 / 巅峰 / 群星牌”直接快捷查询继续收口到同一 portable operation。玩家数字、
+别名、直接 @ 与默认绑定由共享解析函数一次定义；缓存命中直接返回，在线查询和排队提示通过
+`PortableReply` 的分阶段交付在两个平台保持一致。新增的无菜单 OneBot portable adapter 不会像
+候选菜单适配器一样预占数字输入。OneBot 删除了快捷查询的解析状态 DTO、重复目标解析和发送
+handler，保留的代码只负责 matcher 准入、语义请求与尚未迁移的扩展入口；相关专项回归
+`289 passed`。为防止无菜单命令在运行时误占数字输入，既有 OneBot portable adapter 增加显式
+`reserve_session` 模式，没有另建第二套适配类。最终全量 `3392 passed, 7 skipped`，Ruff、
+BasedPyright、compileall 和差异检查通过；整体代码净减少 160 行，没有新增依赖、配置、数据库
+或资源。
+
+玩家基础资料、首次绑定确认、已有绑定替换确认和详情数字菜单随后迁入同一 portable
+operation。详情中的收集、巅峰、群星牌及私有扩展动作现在由每个 `QueryChoice` 携带自己的
+语义动作、目标和 feature 过滤，两个平台共用准入、进度及送达回调；菜单保持连续选择，输入
+`0` 后退出。额度提交与后台刷新仍只在基础资料真实送达后发生。OneBot 删除玩家上下文常量、
+绑定会话和 518 行详情会话状态机，`player.py` 只保留命令归属与 portable 适配。该切片生产
+代码净减少 639 行，整体净减少 1,818 行，没有新增依赖、配置、数据库、素材或镜像层；玩家与
+架构专项 `457 passed`，最终全量 `3359 passed, 7 skipped`，Ruff、BasedPyright、compileall
+和差异检查通过。
+
+玩家详情扩展的直接命令随后也进入同一 portable operation 注册。扩展贡献的
+`command_help_id` 现在同时连接命令目录和可执行操作，因此私有“阵容”等扩展不再只能由
+OneBot 的 matcher state、专用目标 DTO 和回复 handler 执行，QQ Official 也可直接使用
+`阵容+米米号/别名/@成员`。OneBot 改为按扩展声明注册薄 matcher，feature、冷却和语义动作
+仍逐扩展隔离。该切片生产代码净减少 38 行，没有新增依赖、配置、数据库、素材或镜像层；
+架构专项 `96 passed`，最终全量 `3361 passed, 7 skipped`，Ruff、BasedPyright、compileall
+和差异检查通过。
+
+推送订阅和推送时间管理随后复用已经服务 QQ Official 的 portable operation。
+OneBot 的 `TD / 订阅 / 推送管理` 与 `推送时间 / 提醒时间` matcher 现在只保留准入和
+优先级，菜单、只读群成员权限、订阅切换、时间输入、任务刷新、退出与会话隔离统一由
+`PortableQuerySessions` 执行。旧 `PromptFlow`、订阅 handler 和推送时间 handler 三个
+OneBot 专用模块全部删除。该切片生产代码净减少 517 行，没有新增依赖、配置、数据库、
+素材或镜像层；portable/messaging 专项 `68 passed`，架构与 QQ Official 回归
+`120 passed`，最终全量 `3359 passed, 7 skipped`，Ruff、BasedPyright、compileall、
+插件安装副作用和差异检查通过。
+
+帮助目录与数字详情菜单随后迁入平台无关 service。OneBot 和 QQ Official 现在共用插件
+分组、feature/角色可见性、命令目录过滤、详情格式、连续数字选择与退出语义；官方端只展示
+已注册 portable operation，避免把仍属 OneBot 的入口错误宣传给用户。旧 OneBot help menu、
+事件型可见性模块和帮助专用 Prompt 循环已删除，插件只保留命令准入与 portable 适配。
+该切片生产代码净减少 43 行，没有新增依赖、配置、数据库、素材或镜像层。
+同一源码又在正式 API 上以 AppID 指纹 `2026` 于 `14:13:28` 收到 `connected`，扩展到
+`help/about/seer_data/seer_pet` 后重新连接也成功，进程随后正常关闭；Secret 仍只来自进程
+环境，静态 Token 未参与。专项回归 `170 passed`，最终全量 `3360 passed, 7 skipped`，
+Ruff、BasedPyright、compileall 和差异检查通过。冻结候选 digest 的真实被动消息矩阵仍未
+执行，因此 Phase 7 保持 7/8。

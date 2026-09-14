@@ -12,10 +12,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.services.bilibili.menu import (
-    DynamicDetailSelection,
-    DynamicMenuResult,
-)
+from ironsbot.services.bilibili.menu import DynamicMenuResult
 from ironsbot.services.bilibili.service import PreparedDynamicDetail
 from ironsbot.services.portable_bilibili_commands import (
     build_portable_bilibili_operations,
@@ -44,16 +41,8 @@ class _FakeBilibiliService:
             prompt="动态菜单",
         )
 
-    def select_dynamic(
-        self,
-        cached_ids: list[object],
-        raw_text: str,
-    ) -> DynamicDetailSelection:
-        assert raw_text == "1"
-        return DynamicDetailSelection(
-            status="ok",
-            record=cast("DynamicHistoryRecord", cached_ids[0]),
-        )
+    def get_dynamic(self, dynamic_id: str) -> DynamicHistoryRecord:
+        return cast("DynamicHistoryRecord", dynamic_id)
 
     async def prepare_dynamic_detail(
         self,
