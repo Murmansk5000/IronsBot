@@ -84,6 +84,9 @@ sandbox = false
 #     OpenID 命名空间、权限和发送路由；此示例的 AppSecret 使用
 #     QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
 [bot.qq_official.accounts.example_bot]
+# EN: custom_keyboards defaults to false; enabling requires the app to have the corresponding platform capability and does not grant permissions.
+# ZH: custom_keyboards 默认关闭；启用须应用具备平台相应能力，配置本身不会授予权限。
+# custom_keyboards = false
 enabled = false
 app_id = ""
 # EN: Allow SDK-level proactive sends. Keep disabled until the application has
@@ -127,8 +130,6 @@ superusers = []
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
 help_hint = 0
-ai_group_at = -10
-bot_mention_block = -5
 server_status = 1
 server_status_admin = 2
 bilibili = 3
@@ -928,8 +929,6 @@ duplicate_window_seconds = 60.0
 duplicate_message = "该指令重复发送；后续重复不再提醒。"
 # EN: Non-AI direct mentions use a per-user initial-response budget.
 # ZH: 未启用 AI 的群内直接 @ 机器人按用户使用首次提示额度。
-mention_initial_window_seconds = 600.0
-mention_initial_max_responses = 3
 
 [messaging.command_cooldown.commands]
 # EN: Optional per-command window overrides. An empty list disables limits for that command.
