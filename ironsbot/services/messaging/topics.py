@@ -175,7 +175,7 @@ class PushTopicService:
         if self.features.conversation_has_feature(target, "blacklist"):
             return False
         if target.kind == "private":
-            actor = ActorRef(target.platform, target.id)
+            actor = ActorRef(target.platform, target.id, account_id=target.account_id)
             return self.features.is_feature_allowed(actor, target, "push_topics")
         return target.kind == "group" and self.features.conversation_has_feature(
             target,
@@ -259,10 +259,10 @@ class PushTopicService:
             )
             if summary.succeeded:
                 status = "delivered"
-            elif summary.failed:
-                # This historical delivery contract does not expose receipts.
-                # Retain the claim until a definite delivery outcome is known.
+            elif summary.uncertain:
                 status = "uncertain"
+            elif summary.failed:
+                status = "failed"
             else:
                 status = "skipped"
         except Exception:

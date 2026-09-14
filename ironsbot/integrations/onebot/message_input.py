@@ -78,6 +78,7 @@ def message_input_context(event: Event) -> MessageInputContext:
             message_id=_message_id(event),
             text=text,
             direct_mentions=member_mentions,
+            group_role=_group_role(event),
             reply_to_id=event_reply_message_id(event),
         ),
         mentions_bot=mentions_bot,
@@ -128,6 +129,14 @@ def _event_user_id(event: Event) -> str:
     if value is None:
         raise OneBotMessageInputError.missing_user_id()
     return str(value)
+
+
+def _group_role(event: Event) -> str | None:
+    if not isinstance(event, GroupMessageEvent):
+        return None
+    role = getattr(getattr(event, "sender", None), "role", None)
+    normalized = str(role or "").strip()
+    return normalized or None
 
 
 def event_reply_message_id(event: Event) -> str | None:

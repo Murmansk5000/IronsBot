@@ -541,7 +541,7 @@ async def test_root_menu_expands_short_categories_with_plain_numeric_codes() -> 
         expanded_categories=frozenset({"autocard_sanctuary_effect"}),
     )
 
-    assert [row.code for row in captured["items"]] == ["a", "a1", "a2", "b"]
+    assert [row.code for row in captured["items"]] == ["1", "2", "3", "4"]
     assert [row.expanded for row in captured["items"] if row.is_category] == [
         True,
         False,

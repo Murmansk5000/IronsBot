@@ -11,6 +11,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
 
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
@@ -19,12 +20,16 @@ from ironsbot.core.plugin_install import (
     active_plugin_install_context,
 )
 from ironsbot.integrations.onebot.context import command_context
+from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
     bind_async,
 )
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.replies import (
+    finish_event_reply,
+    run_portable_operation,
+)
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.operations.command_text import (
     ADMIN_SERVER_STATUS_COMMAND,
@@ -35,8 +40,9 @@ from ironsbot.services.operations.command_text import (
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
-
-from .status.commands import handle_admin_status, handle_normal_status
+from ironsbot.services.portable_operational_commands import (
+    build_portable_server_status_operations,
+)
 
 if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog
@@ -78,36 +84,7 @@ def _install(
     features: FeatureService,
     commands: CommandCatalog,
 ) -> None:
-    async def handle_normal_server_status(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await handle_normal_status(
-            matcher,
-            event,
-            features,
-            server_status,
-        )
-
-    async def handle_admin_server_status(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await handle_admin_status(
-            matcher,
-            event,
-            server_status,
-        )
-
-    async def handle_headless_instance_status(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        await finish_event_reply(
-            matcher,
-            event,
-            (await server_status.query_headless_instances()).message,
-        )
+    operations = build_portable_server_status_operations(server_status)
 
     normal_matcher = registry.on_fullmatch(
         NORMAL_SERVER_STATUS_COMMANDS,
@@ -115,11 +92,25 @@ def _install(
             "server_status_query",
             help_ids=("server_status.query",),
         ),
-        rule=explicit_command(),
+        rule=(
+            Rule(
+                lambda event: event_is_feature_allowed(
+                    features,
+                    event,
+                    "server_status_query",
+                )
+            )
+            & explicit_command()
+        ),
         priority=registry.priority("server_status"),
         block=True,
     )
-    normal_matcher.append_handler(handle_normal_server_status)
+    normal_matcher.append_handler(
+        bind_async(
+            run_portable_operation,
+            operation=operations["server_status.query"],
+        )
+    )
 
     disabled_matcher = registry.on_fullmatch(
         DISABLED_BARE_ADMIN_COMMAND,
@@ -150,7 +141,12 @@ def _install(
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    admin_matcher.append_handler(handle_admin_server_status)
+    admin_matcher.append_handler(
+        bind_async(
+            run_portable_operation,
+            operation=operations["server_status.admin_query"],
+        )
+    )
 
     headless_status_matcher = registry.on_fullmatch(
         HEADLESS_INSTANCE_STATUS_COMMANDS,
@@ -163,7 +159,12 @@ def _install(
         priority=registry.priority("server_status_admin"),
         block=True,
     )
-    headless_status_matcher.append_handler(handle_headless_instance_status)
+    headless_status_matcher.append_handler(
+        bind_async(
+            run_portable_operation,
+            operation=operations["server_status.headless_instances"],
+        )
+    )
 
 
 def plugin_contribution(

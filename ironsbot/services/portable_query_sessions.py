@@ -10,6 +10,12 @@ from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar, cast, overloa
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    SemanticTarget,
+)
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryResult
 
@@ -21,7 +27,10 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T")
 QuerySearch = Callable[[str], Awaitable[QueryResult[_T]]]
-QuerySelect = Callable[[_T], Awaitable[QueryResult[Any]]]
+QuerySelect = Callable[
+    [_T],
+    Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
+]
 QueryArgumentParser = Callable[[str], str | None]
 _SessionKey = tuple["ActorRef", "ConversationRef"]
 _UntypedMenuSelect = Callable[
@@ -29,7 +38,12 @@ _UntypedMenuSelect = Callable[
     Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
 ]
 MenuSelect = Callable[[_T], Awaitable[OutboundMessage | PortableReply]]
-TextSubmit = Callable[[str], Awaitable[OutboundMessage]]
+TextSubmit = Callable[[str], Awaitable[OutboundMessage | PortableReply]]
+TextAccept = Callable[[str], bool]
+
+
+def _accept_any_text(_text: str) -> bool:
+    return True
 
 
 class PortableQueryOperation(Protocol):
@@ -71,11 +85,14 @@ class PortableTextInputSpec:
     submit: TextSubmit
     prompt: OutboundMessage
     exit_message: str = "已退出查询。"
+    accept: TextAccept = _accept_any_text
 
 
 @dataclass(frozen=True, slots=True)
 class _PendingSelection:
     choices: tuple[object, ...]
+    semantic_targets: tuple[SemanticTarget, ...]
+    semantic_actions: tuple[ActionDefinition | None, ...]
     select: _UntypedMenuSelect
     prompt_title: str
     not_found_message: str
@@ -89,6 +106,7 @@ class _PendingTextInput:
     submit: TextSubmit
     expires_at: float
     exit_message: str
+    accept: TextAccept
 
 
 class PortableQuerySessions:
@@ -110,8 +128,47 @@ class PortableQuerySessions:
     def recognizes_response(self, text: str, context: MessageInputContext) -> bool:
         key = self._key(context)
         self._drop_expired(key)
-        return key in self._pending_text or (
+        pending_text = self._pending_text.get(key)
+        return (pending_text is not None and pending_text.accept(text.strip())) or (
             key in self._pending and text.strip().isdigit()
+        )
+
+    def has_pending(self, context: MessageInputContext) -> bool:
+        """Return whether this actor still owns an active portable interaction."""
+
+        key = self._key(context)
+        self._drop_expired(key)
+        return key in self._pending or key in self._pending_text
+
+    def cancel(self, context: MessageInputContext) -> None:
+        """Discard every pending interaction owned by this actor and conversation."""
+
+        key = self._key(context)
+        self._pending.pop(key, None)
+        self._pending_text.pop(key, None)
+
+    def semantic_request(
+        self,
+        text: str,
+        context: MessageInputContext,
+        *,
+        action: ActionDefinition,
+    ) -> SemanticRequest | None:
+        """Describe a pending numeric choice for adapter-level admission control."""
+
+        key = self._key(context)
+        self._drop_expired(key)
+        pending = self._pending.get(key)
+        normalized = text.strip()
+        if pending is None or not normalized.isdigit():
+            return None
+        index = int(normalized)
+        if index <= 0 or index > len(pending.semantic_targets):
+            return None
+        return SemanticRequest(
+            action=pending.semantic_actions[index - 1] or action,
+            target=pending.semantic_targets[index - 1],
+            source=SemanticRequestSource.MENU,
         )
 
     async def begin(
@@ -121,7 +178,9 @@ class PortableQuerySessions:
         argument: str,
         spec: QueryOperationSpec[_T],
     ) -> OutboundMessage:
-        async def select_untyped(value: object) -> QueryResult[Any]:
+        async def select_untyped(
+            value: object,
+        ) -> QueryResult[Any] | OutboundMessage | PortableReply:
             return await spec.select(cast("_T", value))
 
         result = await spec.search(argument)
@@ -133,7 +192,7 @@ class PortableQuerySessions:
             not_found_message=spec.not_found_message,
         )
 
-    def offer(
+    def offer(  # noqa: PLR0913 - explicit menu presentation and lifetime contract
         self,
         context: MessageInputContext,
         result: QueryResult[_T],
@@ -141,10 +200,14 @@ class PortableQuerySessions:
         select: QuerySelect[_T],
         prompt_title: str,
         not_found_message: str,
+        keep_open: bool = False,
+        exit_message: str = "已退出查询。",
     ) -> OutboundMessage:
         """Present choices produced outside the standard search operation."""
 
-        async def select_untyped(value: object) -> QueryResult[Any]:
+        async def select_untyped(
+            value: object,
+        ) -> QueryResult[Any] | OutboundMessage | PortableReply:
             return await select(cast("_T", value))
 
         return self._present(
@@ -153,6 +216,8 @@ class PortableQuerySessions:
             select=select_untyped,
             prompt_title=prompt_title,
             not_found_message=not_found_message,
+            keep_open=keep_open,
+            exit_message=exit_message,
         )
 
     def offer_menu(
@@ -171,6 +236,10 @@ class PortableQuerySessions:
         self._pending_text.pop(key, None)
         self._pending[key] = _PendingSelection(
             choices=tuple(spec.choices),
+            semantic_targets=tuple(
+                _choice_semantic_target(choice) for choice in spec.choices
+            ),
+            semantic_actions=(None,) * len(spec.choices),
             select=select_untyped,
             prompt_title="",
             not_found_message="",
@@ -191,6 +260,7 @@ class PortableQuerySessions:
             submit=spec.submit,
             expires_at=self._now() + self._ttl_seconds,
             exit_message=spec.exit_message,
+            accept=spec.accept,
         )
         return spec.prompt
 
@@ -221,9 +291,14 @@ class PortableQuerySessions:
     ) -> OutboundMessage | PortableReply | None:
         key = self._key(context)
         self._drop_expired(key)
-        pending_text = self._pending_text.pop(key, None)
+        pending_text = self._pending_text.get(key)
         if pending_text is not None:
-            return await self._select_text(text, pending_text)
+            return await self._select_pending_text(
+                key,
+                text,
+                pending_text,
+                allow_deferred=allow_deferred,
+            )
         pending = self._pending.get(key)
         if pending is None or not text.strip().isdigit():
             return None
@@ -254,18 +329,36 @@ class PortableQuerySessions:
             select=pending.select,
             prompt_title=pending.prompt_title,
             not_found_message=pending.not_found_message,
+            keep_open=pending.keep_open,
+            exit_message=pending.exit_message,
         )
+
+    async def _select_pending_text(
+        self,
+        key: _SessionKey,
+        text: str,
+        pending: _PendingTextInput,
+        *,
+        allow_deferred: bool,
+    ) -> OutboundMessage | PortableReply | None:
+        if not pending.accept(text.strip()):
+            return None
+        self._pending_text.pop(key, None)
+        result = await self._select_text(text, pending)
+        if isinstance(result, PortableReply) and not allow_deferred:
+            raise PortableQuerySessionError.deferred_result_not_enabled()
+        return result
 
     @staticmethod
     async def _select_text(
         text: str,
         pending: _PendingTextInput,
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | PortableReply:
         if text.strip() == "0":
             return OutboundMessage.from_text(pending.exit_message)
         return await pending.submit(text.strip())
 
-    def _present(
+    def _present(  # noqa: PLR0913 - shared normalized menu construction
         self,
         context: MessageInputContext,
         result: QueryResult[Any],
@@ -273,6 +366,8 @@ class PortableQuerySessions:
         select: _UntypedMenuSelect,
         prompt_title: str,
         not_found_message: str,
+        keep_open: bool = False,
+        exit_message: str = "已退出查询。",
     ) -> OutboundMessage:
         key = self._key(context)
         if result.message:
@@ -287,10 +382,17 @@ class PortableQuerySessions:
 
         self._pending[key] = _PendingSelection(
             choices=tuple(choice.value for choice in result.choices),
+            semantic_targets=tuple(
+                choice.semantic_target or _choice_semantic_target(choice.value)
+                for choice in result.choices
+            ),
+            semantic_actions=tuple(choice.semantic_action for choice in result.choices),
             select=select,
             prompt_title=prompt_title,
             not_found_message=not_found_message,
             expires_at=self._now() + self._ttl_seconds,
+            keep_open=keep_open,
+            exit_message=exit_message,
         )
         return OutboundMessage.from_text(
             format_selection_menu(
@@ -319,6 +421,19 @@ class PortableQuerySessions:
     @staticmethod
     def _key(context: MessageInputContext) -> _SessionKey:
         return context.message.actor, context.message.conversation
+
+
+def _choice_semantic_target(value: object) -> SemanticTarget:
+    if isinstance(value, (str, int)):
+        text = str(value)
+        return SemanticTarget(key=text, display=text)
+    for attribute in ("id", "item_id", "pet_id", "resource_id"):
+        candidate = getattr(value, attribute, None)
+        if isinstance(candidate, (str, int)):
+            text = str(candidate)
+            return SemanticTarget(key=text, display=text)
+    text = str(value)
+    return SemanticTarget(key=text, display=text)
 
 
 def build_query_operation(

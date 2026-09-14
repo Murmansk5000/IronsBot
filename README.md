@@ -272,13 +272,16 @@ GITHUB_WORKFLOW_TOKEN=
 
 ### 幸运橱窗
 
-幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的 QQ 用户开放。需要：
+幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的平台用户开放。需要：
 
 1. 在 `[[seer.player_accounts]]` 创建账号，填写 `player_id`、`name` 和可选 `aliases`。
-2. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。
+2. 在 `[[seer.lucky_skin_window.accounts]]` 为该用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。OneBot 可使用 QQ 号或用户别名；QQ 官方机器人使用其 `user_aliases` 中的别名。
 3. 在容器环境变量设置 `SEER_PASSWORD_<player_id>`；填写明文密码，不写入 TOML。
 4. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
-5. QQ 用户将默认米米号绑定为该账号的 `player_id`。
+5. 该平台用户将默认米米号绑定为该账号的 `player_id`。
+
+QQ 官方机器人还需为所属账号设置 `proactive_messages = true`，并在该账号的 feature
+策略中启用 `lucky_skin_window`。OpenID 始终与 AppID 一起作为身份，不会转换成数字 QQ。
 
 每天配置的 `time` 到达时，机器人会逐个使用专用账号读取当天四个皮肤，并向未在 `TD` 退订的对应用户私聊通知。手动发送“橱窗”时，若该账号当天已有缓存会直接返回；没有缓存时，机器人会先说明将登录的绑定米米号，只有回复“是”或“y”后才会登录查询。回复“否”或“n”取消本次查询。
 
