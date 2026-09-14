@@ -9,6 +9,8 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -32,6 +34,10 @@ def build_portable_countermark_operations(
         if command is None:
             msg = f"catalog accepted invalid countermark rank command: {text!r}"
             raise ValueError(msg)
-        return OutboundMessage.from_text(service.query(command))
+        try:
+            result = service.query(command)
+        except DataUnavailableError:
+            result = DATABASE_UNAVAILABLE_MESSAGE
+        return OutboundMessage.from_text(result)
 
     return {"seer.mintmark.rank": query}

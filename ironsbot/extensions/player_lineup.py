@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.time import ObservationTime, remaining_observation_ttl
 from ironsbot.extensions.contracts import (
+    CommandContext,
     PlayerLineupCachedReply,
     PlayerLineupImageAssets,
     PlayerLineupPacketFetcher,
@@ -418,7 +419,7 @@ class PlayerLineupExtensionServices:
     lineup_render_session: PlayerLineupRenderSessionFactory
     lineup_query: PlayerLineupQueryPort
     lineup_cache: PlayerLineupCacheFactory
-    feature_visible: Callable[[object, str], bool]
+    feature_visible: Callable[[CommandContext, str], bool]
     _player_details: PlayerDetailExtensionRegistry
     player_id_resolver: PlayerIdResolver
     settings: Mapping[str, Any]
@@ -428,10 +429,10 @@ class PlayerLineupExtensionServices:
             return {}
         return self.settings
 
-    def is_feature_visible_in_help(self, event: object, feature: str) -> bool:
+    def is_feature_visible_in_help(self, context: CommandContext, feature: str) -> bool:
         """Expose feature visibility without leaking platform policy internals."""
 
-        return self.feature_visible(event, feature)
+        return self.feature_visible(context, feature)
 
     def register_player_detail_action(
         self, registration: PlayerDetailActionRegistration

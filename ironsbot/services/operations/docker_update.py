@@ -32,6 +32,7 @@ ProcessRestarter = Callable[[], Awaitable[None]]
 ProgressReporter = Callable[[str], Awaitable[None]]
 RESTART_DELAY_SECONDS = 1.0
 DOCKER_IMAGE_CHECK_START_MESSAGE = "🔄 正在检查 Docker 镜像更新，请稍等。"
+DOCKER_IMAGE_UPDATE_START_MESSAGE = "🔄 正在检查并更新 Docker 镜像，请稍等。"
 logger = logging.getLogger(__name__)
 
 

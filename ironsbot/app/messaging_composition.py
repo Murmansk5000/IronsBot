@@ -6,7 +6,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.onebot.group_probe import OneBotGroupProbe
 from ironsbot.integrations.onebot.messaging_config import (
     build_onebot_message_schedule_targets,
@@ -30,6 +29,7 @@ from ironsbot.services.team.audit import TeamAuditService
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.platform import ConversationRef
     from ironsbot.integrations.http.clients import HttpClients
     from ironsbot.integrations.onebot.outbound import GroupOutboundRateLimitService
     from ironsbot.integrations.onebot.router import BotRouter
@@ -68,26 +68,23 @@ def build_messaging_components(  # noqa: PLR0913 - application composition bound
         value: str, source: ConversationRef
     ) -> tuple[ConversationRef, ...]:
         kind, separator, reference = value.partition(":")
-        if (
-            not separator
-            or kind not in {"群", "私聊"}
-            or source.platform is not Platform.ONEBOT
-        ):
+        if not separator or kind not in {"群", "私聊"}:
             message = "直发目标格式为 群:群别名 或 私聊:用户别名。"
             raise ValueError(message)
-        target_id = (
-            settings.onebot_references.resolve_group(
+        target = (
+            settings.platform_references.group_conversation_ref(
                 reference, location="push_topics.direct"
             )
             if kind == "群"
-            else settings.onebot_references.resolve_user(
+            else settings.platform_references.private_conversation_ref(
                 reference, location="push_topics.direct"
             )
         )
         return (
-            ConversationRef(
-                Platform.ONEBOT, "group" if kind == "群" else "private", str(target_id)
-            ),
+            (target,)
+            if target.platform == source.platform
+            and target.account_id == source.account_id
+            else ()
         )
 
     topics = PushTopicService(

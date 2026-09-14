@@ -7,7 +7,7 @@ import pytest
 
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -22,6 +22,7 @@ from ironsbot.services.seer.new_content import (
     NewContentCategoryState,
     NewContentItem,
     NewContentSnapshot,
+    NewContentSnapshotChangedError,
 )
 from ironsbot.services.seer.query_result import QueryReply
 
@@ -51,6 +52,18 @@ class _Details:
 class _AutocardMedia:
     async def outbound(self, *_args: object, **_kwargs: object) -> OutboundMessage:
         raise AssertionError
+
+
+class _MenuRenderer:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[tuple[object, ...]] = []
+
+    async def __call__(self, *args: object) -> bytes:
+        self.calls.append(args)
+        if self.error is not None:
+            raise self.error
+        return b"menu-image"
 
 
 def _snapshot() -> NewContentSnapshot:
@@ -106,13 +119,18 @@ def _features(*features: str) -> FeatureService:
     )
 
 
-def _resources(snapshot: NewContentSnapshot) -> SeerQueryResources:
+def _resources(
+    snapshot: NewContentSnapshot,
+    renderer: _MenuRenderer | None = None,
+) -> SeerQueryResources:
     return cast(
         "SeerQueryResources",
         SimpleNamespace(
             data_queries=_DataQueries(snapshot),
             new_content_details=_Details(),
             autocard_media=_AutocardMedia(),
+            new_content_menu=renderer
+            or _MenuRenderer(NewContentSnapshotChangedError()),
         ),
     )
 
@@ -147,6 +165,50 @@ async def test_root_menu_replaces_category_session_with_numeric_item_menu() -> N
     assert "1. 超级噗纽" in _text(category)
     assert _text(detail) == "精灵详情:4927"
     assert sessions.recognizes_response("1", context)
+
+
+@pytest.mark.asyncio
+async def test_menu_renderer_is_shared_and_keeps_numeric_session_order() -> None:
+    renderer = _MenuRenderer()
+    sessions = PortableQuerySessions()
+    snapshot = _snapshot()
+    operations = build_portable_new_content_operations(
+        _resources(snapshot, renderer),
+        sessions,
+        _features("seer_data", "seer_pet"),
+        preview_max_items=0,
+    )
+    context = _context()
+
+    root = await operations["seer.data.new_content"]("新增内容", context)
+    category = await sessions.select("1", context)
+    detail = await sessions.select("1", context)
+
+    assert isinstance(root, OutboundMessage)
+    assert root.parts == (
+        BinaryImagePart(b"menu-image", "image/png", "new-content.png"),
+    )
+    assert isinstance(category, OutboundMessage)
+    assert category.parts == root.parts
+    assert _text(detail) == "精灵详情:4927"
+    assert [call[2] for call in renderer.calls] == [None, "pet"]
+
+
+@pytest.mark.asyncio
+async def test_menu_render_failure_falls_back_to_matching_text_menu() -> None:
+    renderer = _MenuRenderer(RuntimeError("render failed"))
+    operations = build_portable_new_content_operations(
+        _resources(_snapshot(), renderer),
+        PortableQuerySessions(),
+        _features("seer_data", "seer_pet"),
+        preview_max_items=0,
+    )
+
+    result = await operations["seer.data.new_content"]("新增内容", _context())
+
+    assert isinstance(result, OutboundMessage)
+    assert "1. ▶ 新增精灵" in _text(result)
+    assert "2. ▶ 新增成就" in _text(result)
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,6 @@
 from functools import partial
 
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.log import logger
-from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
@@ -15,12 +13,16 @@ from ironsbot.core.plugin_install import (
     active_plugin_install_context,
 )
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
-from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
-from ironsbot.integrations.onebot.replies import finish_event_reply
+from ironsbot.integrations.onebot.matchers import (
+    CommandPolicy,
+    MatcherFactory,
+    bind_async,
+)
+from ironsbot.integrations.onebot.replies import run_portable_operation
 from ironsbot.integrations.onebot.rules import explicit_command
-from ironsbot.services.messaging.meeting import (
-    build_meeting_reply,
-    meeting_command_contracts,
+from ironsbot.services.messaging.meeting import meeting_command_contracts
+from ironsbot.services.portable_operational_commands import (
+    build_portable_meeting_operations,
 )
 
 __plugin_meta__ = PluginMetadata(
@@ -40,28 +42,12 @@ def install(
     template: str,
     features: FeatureService,
 ) -> None:
+    operation = build_portable_meeting_operations(number, template)["meeting"]
+
     async def is_meeting_command(event: MessageEvent) -> bool:
         return event_is_feature_allowed(
             features, event, "meeting"
         ) and command_text_matches(event.get_plaintext(), commands)
-
-    async def handle_meeting_reply(
-        matcher: Matcher,
-        event: MessageEvent,
-    ) -> None:
-        reply = build_meeting_reply(number, template)
-        if not reply:
-            logger.warning(
-                "meeting command matched but messaging.meeting.number is empty"
-            )
-            await finish_event_reply(
-                matcher,
-                event,
-                "会议号还没有配置，请在 messaging.meeting.number 中填写腾讯会议号。",
-            )
-            return
-
-        await finish_event_reply(matcher, event, reply)
 
     matcher = registry.on_message(
         policy=CommandPolicy.command("meeting", help_ids=("meeting",)),
@@ -69,7 +55,9 @@ def install(
         priority=registry.priority("meeting"),
         block=True,
     )
-    matcher.append_handler(handle_meeting_reply)
+    matcher.append_handler(
+        bind_async(run_portable_operation, operation=operation)
+    )
 
 
 def plugin_contribution(

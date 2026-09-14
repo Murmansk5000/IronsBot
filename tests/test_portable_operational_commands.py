@@ -17,6 +17,7 @@ from ironsbot.services.operations.data_sync import (
     ManualDataSyncAction,
     ManualDataSyncOption,
 )
+from ironsbot.services.operations.docker_update import DockerMaintenanceChoice
 from ironsbot.services.operations.server_status import ServerStatusResult
 from ironsbot.services.portable_operational_commands import (
     build_portable_data_sync_operations,
@@ -104,6 +105,21 @@ class _FakeDockerUpdate:
         await cast("Callable[[str], Awaitable[None]]", progress)("checking image")
         self.events.append("checked")
         return "image current"
+
+    async def prepare_maintenance(
+        self,
+        choice: DockerMaintenanceChoice,
+    ) -> tuple[str, str]:
+        self.events.append(f"maintenance:{choice.value}")
+        action = (
+            "process"
+            if choice is DockerMaintenanceChoice.RESTART_ONLY
+            else "docker"
+        )
+        return f"prepared:{choice.value}", action
+
+    async def execute_restart(self, action: str) -> None:
+        self.events.append(f"restart:{action}")
 
 
 def _context() -> MessageInputContext:
@@ -231,7 +247,8 @@ async def test_portable_force_data_sync_preserves_force_choice() -> None:
 async def test_portable_docker_check_waits_for_initial_delivery() -> None:
     service = _FakeDockerUpdate()
     operation = build_portable_docker_operations(
-        cast("DockerUpdateService", service)
+        cast("DockerUpdateService", service),
+        PortableQuerySessions(),
     )["docker_update.image_check"]
 
     reply = cast(
@@ -247,3 +264,53 @@ async def test_portable_docker_check_waits_for_initial_delivery() -> None:
 
     assert _text(result) == "image current"
     assert service.events == ["prepare", "checked"]
+
+
+@pytest.mark.asyncio
+async def test_portable_restart_commits_only_after_final_delivery() -> None:
+    service = _FakeDockerUpdate()
+    sessions = PortableQuerySessions()
+    operation = build_portable_docker_operations(
+        cast("DockerUpdateService", service),
+        sessions,
+    )["docker_update.restart"]
+    context = _context()
+
+    menu = await operation("/重启机器人", context)
+    assert "选择机器人维护操作" in _text(menu)
+    selected = await sessions.select("1", context, allow_deferred=True)
+
+    assert isinstance(selected, PortableReply)
+    assert _text(selected.message) == "prepared:restart_only"
+    assert service.events == ["maintenance:restart_only"]
+    await selected.commit_delivery()
+    assert service.events == ["maintenance:restart_only", "restart:process"]
+
+
+@pytest.mark.asyncio
+async def test_portable_image_update_defers_work_and_restart_by_stage() -> None:
+    service = _FakeDockerUpdate()
+    sessions = PortableQuerySessions()
+    operation = build_portable_docker_operations(
+        cast("DockerUpdateService", service),
+        sessions,
+    )["docker_update.image_update"]
+    context = _context()
+
+    await operation("/更新镜像", context)
+    selected = await sessions.select("2", context, allow_deferred=True)
+
+    assert isinstance(selected, PortableReply)
+    assert "正在检查并更新" in _text(selected.message)
+    assert service.events == []
+    await selected.commit_delivery()
+    assert selected.follow_up is not None
+    final = await selected.follow_up()
+    assert isinstance(final, PortableReply)
+    assert _text(final.message) == "prepared:update_and_restart"
+    assert service.events == ["maintenance:update_and_restart"]
+    await final.commit_delivery()
+    assert service.events == [
+        "maintenance:update_and_restart",
+        "restart:docker",
+    ]

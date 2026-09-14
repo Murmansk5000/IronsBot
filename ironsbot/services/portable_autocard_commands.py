@@ -6,8 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    OutboundMessage,
+    RemoteImagePart,
+)
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
+from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.autocard_sanctuary import format_sanctuary_overview
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
@@ -19,6 +24,7 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.autocard import (
+        AutocardEntry,
         AutocardPromptValue,
         AutocardService,
     )
@@ -54,19 +60,21 @@ class _PortableAutocardOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | PortableReply:
         try:
             result = self.service.search(text)
         except (DataUnavailableError, RuntimeError) as error:
             return _service_error("群星牌公开配置", error)
         if result.entry is not None:
-            return await self.media.outbound(result.entry)
+            return await _autocard_reply(self.media, result.entry)
         if result.message:
             return OutboundMessage.from_text(result.message)
         if not result.prompt_values:
             return OutboundMessage.from_text("❌ 未找到对应群星牌资料。")
 
-        async def select(value: AutocardPromptValue) -> OutboundMessage:
+        async def select(
+            value: AutocardPromptValue,
+        ) -> OutboundMessage | PortableReply:
             try:
                 entry = self.service.select(value)
             except (DataUnavailableError, RuntimeError) as error:
@@ -75,7 +83,7 @@ class _PortableAutocardOperations:
                 return OutboundMessage.from_text(
                     "❌ 未找到该群星牌资料，这可能是数据库数据已更新或缺失。"
                 )
-            return await self.media.outbound(entry)
+            return await _autocard_reply(self.media, entry)
 
         return self.sessions.offer_menu(
             context,
@@ -149,4 +157,24 @@ def _service_error(label: str, error: Exception) -> OutboundMessage:
         DATABASE_UNAVAILABLE_MESSAGE
         if isinstance(error, DataUnavailableError)
         else f"❌ {label}获取失败：{error}"
+    )
+
+
+async def _autocard_reply(
+    media: AutocardMediaService,
+    entry: AutocardEntry,
+) -> OutboundMessage | PortableReply:
+    message = await media.outbound(entry)
+    fallback = (
+        entry.to_outbound()
+        if any(
+            isinstance(part, (BinaryImagePart, RemoteImagePart))
+            for part in message.parts
+        )
+        else None
+    )
+    return (
+        message
+        if fallback is None
+        else PortableReply(message, fallback_message=fallback)
     )

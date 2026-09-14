@@ -131,6 +131,12 @@ def player_shortcut_semantic_request(
 ) -> SemanticRequest:
     return SemanticRequest(
         action=PLAYER_SHORTCUT_ACTIONS[kind],
-        target=SemanticTarget(key=str(player_id), display=f"米米号 {player_id}"),
+        target=player_semantic_target(player_id),
         source=source,
     )
+
+
+def player_semantic_target(player_id: int) -> SemanticTarget:
+    """Return the shared semantic identity for one Seer player."""
+
+    return SemanticTarget(key=str(player_id), display=f"米米号 {player_id}")

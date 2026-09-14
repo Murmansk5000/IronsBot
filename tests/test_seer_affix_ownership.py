@@ -30,6 +30,7 @@ from ironsbot.plugins.onebot.seer.query.commands import (
 )
 from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import private_message_event
@@ -226,6 +227,7 @@ async def test_pet_config_actual_rule_shares_image_exclusion(
         Mock(),
         features,
         enabled=True,
+        query_sessions=PortableQuerySessions(),
         image_command_texts=frozenset({"雷伊配置"}),
     )
     rule = cast("Rule", registry.on_message.call_args.kwargs["rule"])

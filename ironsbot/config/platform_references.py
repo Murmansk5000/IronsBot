@@ -69,6 +69,19 @@ class PlatformReferenceResolver:
             location=location,
         )[0]
 
+    def user_actor_ref(
+        self,
+        reference: object,
+        *,
+        location: str,
+    ) -> ActorRef:
+        """Resolve one configured user without assuming an identifier format."""
+
+        value = str(reference).strip()
+        if value in self.qq_users:
+            return self.qq_users[value]
+        return self.onebot.actor_ref(reference, location=location)
+
 
 def build_platform_reference_resolver(
     onebot: OneBotReferenceResolver,

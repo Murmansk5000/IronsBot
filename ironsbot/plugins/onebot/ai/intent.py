@@ -25,11 +25,11 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
-from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_message_sequence
 from ironsbot.integrations.onebot.rules import natural_language
 from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
+from ironsbot.services.help_visibility import feature_help_visible
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
