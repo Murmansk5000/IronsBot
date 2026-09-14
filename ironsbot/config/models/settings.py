@@ -81,12 +81,6 @@ class SettingsReferenceError(ValueError):
         )
 
 
-class MatcherPriorityConfigError(ValueError):
-    @classmethod
-    def bot_mention_order(cls) -> MatcherPriorityConfigError:
-        return cls("bot.matcher_priority.ai_group_at must run before bot_mention_block")
-
-
 class QQOfficialConfigError(ValueError):
     @classmethod
     def no_enabled_accounts(cls) -> QQOfficialConfigError:
@@ -155,8 +149,6 @@ class MatcherPriorityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     help_hint: int = Field(default=0, ge=0)
-    ai_group_at: int = Field(default=-10, ge=-100)
-    bot_mention_block: int = Field(default=-5, ge=-100)
     server_status: int = Field(default=1, ge=0)
     server_status_admin: int = Field(default=2, ge=0)
     bilibili: int = Field(default=3, ge=0)
@@ -186,12 +178,6 @@ class MatcherPriorityConfig(BaseModel):
     seer_pet: int = Field(default=110, ge=0)
     seer_query: int = Field(default=120, ge=0)
     ai_chat: int = Field(default=200, ge=0)
-
-    @model_validator(mode="after")
-    def validate_bot_mention_order(self) -> MatcherPriorityConfig:
-        if self.ai_group_at >= self.bot_mention_block:
-            raise MatcherPriorityConfigError.bot_mention_order()
-        return self
 
 
 class LoggingConfig(BaseModel):
@@ -237,9 +223,11 @@ class QQOfficialAccountConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
+    required: bool = False
     app_id: str = ""
     secret: str = Field(default="", exclude=True, repr=False)
     proactive_messages: bool = False
+    custom_keyboards: bool = False
     features: list[str] = Field(
         default_factory=lambda: [
             "help",
@@ -345,6 +333,7 @@ class QQOfficialConfig(BaseModel):
 
     enabled: bool = False
     sandbox: bool = False
+    startup_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
     accounts: dict[str, QQOfficialAccountConfig] = Field(default_factory=dict)
 
     @model_validator(mode="after")

@@ -1,12 +1,23 @@
 # SPDX-License-Identifier: MIT
-"""Bounded reply sequence allocation for QQ Official messages."""
+"""Bounded passive-reply sequence allocation for QQ Official messages."""
 
 from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from threading import Lock
-from time import monotonic
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+@dataclass(frozen=True, slots=True)
+class ReplySequenceKey:
+    conversation_kind: str
+    conversation_id: str
+    message_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,55 +29,61 @@ class ReplySequenceAllocation:
 @dataclass(slots=True)
 class _TrackedReply:
     count: int
-    first_seen: float
+    expires_at: datetime
 
 
 class QQOfficialReplySequenceAllocator:
-    """Allocate each passive reply sequence once within the platform window."""
+    """Allocate unique ``msg_seq`` values without evicting live reply keys."""
 
     def __init__(
         self,
         *,
-        limit: int = 4,
-        ttl_seconds: float = 3600,
         max_tracked_messages: int = 10_000,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
-        if limit < 1 or ttl_seconds <= 0 or max_tracked_messages < 1:
-            msg = "QQ reply sequence limits must be positive"
+        if max_tracked_messages < 1:
+            msg = "QQ reply sequence tracking capacity must be positive"
             raise ValueError(msg)
-        self._limit = limit
-        self._ttl_seconds = ttl_seconds
         self._max_tracked_messages = max_tracked_messages
-        self._tracked: OrderedDict[str, _TrackedReply] = OrderedDict()
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._tracked: OrderedDict[ReplySequenceKey, _TrackedReply] = OrderedDict()
         self._lock = Lock()
 
     def allocate(
         self,
-        message_id: str,
+        key: ReplySequenceKey,
         *,
+        expires_at: datetime,
+        limit: int,
         count: int = 1,
     ) -> ReplySequenceAllocation:
-        if count < 1:
-            msg = "QQ reply sequence reservation must be positive"
+        if limit < 1 or count < 1:
+            msg = "QQ reply sequence reservation and limit must be positive"
             raise ValueError(msg)
-        now = monotonic()
+        now = self._clock()
         with self._lock:
-            tracked = self._tracked.get(message_id)
-            if tracked is not None and now - tracked.first_seen > self._ttl_seconds:
-                self._tracked.move_to_end(message_id)
+            self._prune_expired(now)
+            if now >= expires_at:
                 return ReplySequenceAllocation(None, "expired")
+
+            tracked = self._tracked.get(key)
             if tracked is not None:
-                if tracked.count + count > self._limit:
+                if tracked.count + count > limit:
                     return ReplySequenceAllocation(None, "limit_exceeded")
                 first_sequence = tracked.count + 1
                 tracked.count += count
-                self._tracked.move_to_end(message_id)
+                tracked.expires_at = min(tracked.expires_at, expires_at)
+                self._tracked.move_to_end(key)
                 return ReplySequenceAllocation(first_sequence)
 
-            if count > self._limit:
+            if count > limit:
                 return ReplySequenceAllocation(None, "limit_exceeded")
-
-            while len(self._tracked) >= self._max_tracked_messages:
-                self._tracked.popitem(last=False)
-            self._tracked[message_id] = _TrackedReply(count=count, first_seen=now)
+            if len(self._tracked) >= self._max_tracked_messages:
+                return ReplySequenceAllocation(None, "capacity_exceeded")
+            self._tracked[key] = _TrackedReply(count=count, expires_at=expires_at)
             return ReplySequenceAllocation(1)
+
+    def _prune_expired(self, now: datetime) -> None:
+        for key in tuple(self._tracked):
+            if self._tracked[key].expires_at <= now:
+                del self._tracked[key]

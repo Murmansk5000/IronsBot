@@ -18,11 +18,16 @@ from ironsbot.config.models.settings import (
     QQOfficialAccountConfig,
     QQOfficialConfig,
 )
-from ironsbot.core.command_catalog import CommandCatalog
+from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    MentionPart,
+    OutboundMessage,
+    TextPart,
+)
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -47,8 +52,10 @@ from ironsbot.integrations.qq_official.runtime import (
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.meeting import meeting_command_contracts
 from ironsbot.services.operations.data_sync import (
     ManualDataSyncAction,
@@ -61,7 +68,11 @@ from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
-from ironsbot.services.portable_commands import build_portable_command_router
+from ironsbot.services.portable_commands import (
+    PortableCommandRouter,
+    PortableCommandRouterError,
+    build_portable_command_router,
+)
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
@@ -80,6 +91,7 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.operations.data_sync import DataSyncService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
@@ -189,9 +201,20 @@ class _FakeDataSyncService:
 
 
 class _FakeDockerUpdateService:
+    def __init__(self) -> None:
+        self.prepared: list[object] = []
+        self.executed: list[object] = []
+
     async def check_image_update(self, *, progress: object) -> str:
         await cast("Callable[[str], Awaitable[None]]", progress)("image check start")
         return "image check done"
+
+    async def prepare_maintenance(self, choice: object) -> tuple[str, object]:
+        self.prepared.append(choice)
+        return "maintenance prepared", "process"
+
+    async def execute_restart(self, action: object) -> None:
+        self.executed.append(action)
 
 
 class _FakePlayerIdResolver:
@@ -377,7 +400,7 @@ def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
         chat_scope=chat_scope,
         content=content,
         message_id="message-id",
-        timestamp="2026-09-13T00:00:00+08:00",
+        timestamp="2099-01-01T00:00:00+08:00",
         message_type=message_type,
         raw=raw or {},
     )
@@ -412,6 +435,24 @@ def _fake_seer(
 
 def _unused_team_resource() -> TeamResourceService:
     return cast("TeamResourceService", SimpleNamespace())
+
+
+async def _unused_identity_operation(
+    _text: str,
+    _context: MessageInputContext,
+) -> OutboundMessage:
+    return OutboundMessage.from_text("unused")
+
+
+def _identity_links() -> IdentityLinkCommands:
+    return cast(
+        "IdentityLinkCommands",
+        SimpleNamespace(
+            portable_confirm=_unused_identity_operation,
+            portable_status=_unused_identity_operation,
+            portable_revoke=_unused_identity_operation,
+        ),
+    )
 
 
 def _portable_catalog(  # noqa: PLR0913 - tests vary independent command families
@@ -614,15 +655,19 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
 def test_qq_official_config_loads_credentials_from_environment(
     tmp_path: Path,
 ) -> None:
+    startup_timeout_seconds = 20.0
     path = tmp_path / "ironsbot.toml"
     path.write_text(
         """
 [bot.qq_official]
 enabled = true
+startup_timeout_seconds = 20.0
 
 [bot.qq_official.accounts.example_bot]
 enabled = true
+required = true
 app_id = "example-app"
+custom_keyboards = true
 features = ["help", "about", "seer_data"]
 superusers = ["opaque-admin"]
 """.strip(),
@@ -637,8 +682,11 @@ superusers = ["opaque-admin"]
     )
 
     assert settings.bot.qq_official.enabled
+    assert settings.bot.qq_official.startup_timeout_seconds == startup_timeout_seconds
     account = settings.bot.qq_official.accounts["example_bot"]
     assert account.secret == "example-secret"
+    assert account.required
+    assert account.custom_keyboards
     assert account.superusers == ["opaque-admin"]
 
 
@@ -972,6 +1020,8 @@ def test_qq_official_identity_keeps_openids_opaque() -> None:
         ),
     )
     assert incoming.sequence == "sequence-1"
+    assert incoming.reply_deadline is not None
+    assert incoming.reply_deadline.isoformat() == "2099-01-01T00:05:00+08:00"
 
 
 def test_only_group_at_event_is_classified_as_bot_mention() -> None:
@@ -1001,6 +1051,33 @@ def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
     )
 
 
+def test_qq_official_renderer_uses_current_member_mention_markup() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        'member-"openid',
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage((MentionPart(member), TextPart(" result"))),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-&quot;openid" /> result'
+        ),
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fail", [False, True])
 async def test_qq_official_delivery_commits_only_after_transport_success(
@@ -1024,6 +1101,34 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
     assert bot.sent == 1
     assert delivered == ([] if fail else [True])
     assert bot.calls[0][3:] == ("message-id", 1)
+
+
+@pytest.mark.asyncio
+async def test_qq_official_delivery_sends_additional_messages_in_order() -> None:
+    event = _sdk_event()
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+    reply = PortableReply(
+        OutboundMessage.from_text("first"),
+        additional_messages=(
+            OutboundMessage.from_text("second"),
+            OutboundMessage.from_text("third"),
+        ),
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+
+    await deliver_qq_official_reply(messenger, incoming, reply)
+
+    expected_calls = [
+        ("message-id", 1),
+        ("message-id", 2),
+        ("message-id", 3),
+    ]
+    assert bot.sent == len(expected_calls)
+    assert [call[3:] for call in bot.calls] == expected_calls
 
 
 @pytest.mark.asyncio
@@ -1098,8 +1203,10 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1125,6 +1232,39 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     )
 
 
+def test_portable_router_rejects_unimplemented_official_direct_command() -> None:
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="missing",
+                commands=(
+                    CommandContract(
+                        id="missing.command",
+                        plugin_id="missing",
+                        section="测试",
+                        examples=("缺失命令",),
+                        description="验证官方命令覆盖守护",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(PortableCommandRouterError, match=r"missing\.command"):
+        PortableCommandRouter(
+            catalog,
+            {},
+            build_onebot_feature_service(FeatureConfig(), ()),
+            ai=cast("AiService", _FakeAi()),
+            ai_input_routing=AiInputRoutingService(
+                build_onebot_feature_service(FeatureConfig(), ()),
+                catalog,
+            ),
+            addressed_input_hints=AddressedInputHintService(),
+        )
+
+
 @pytest.mark.asyncio
 async def test_portable_router_runs_activity_queries_with_catalog_access() -> None:
     features = build_onebot_feature_service(
@@ -1140,8 +1280,10 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         activity=cast("ActivityService", _FakeActivityService()),
     )
@@ -1209,8 +1351,10 @@ async def test_portable_router_enforces_operational_query_access() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         server_status=cast("ServerStatusService", _FakeServerStatusService()),
         meeting_number="6638682008",
@@ -1254,16 +1398,19 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
         (),
         qq_official=_qq_config(features=[], superusers=["opaque-admin"]),
     )
+    docker_update = _FakeDockerUpdateService()
     router = build_portable_command_router(
         catalog=_portable_catalog(maintenance=True),
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         data_sync=cast("DataSyncService", _FakeDataSyncService()),
-        docker_update=cast("DockerUpdateService", _FakeDockerUpdateService()),
+        docker_update=cast("DockerUpdateService", docker_update),
     )
     member = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -1290,6 +1437,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
 
     assert await router.dispatch(context("/更新数据", member)) is None
     assert await router.dispatch(context("/检查更新镜像", member)) is None
+    assert await router.dispatch(context("/重启机器人", member)) is None
 
     check = await router.dispatch(context("/更新数据", admin))
     assert check is not None
@@ -1315,6 +1463,21 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
     image_result = await image.follow_up()
     assert cast("TextPart", image_result.parts[0]).text == "image check done"
 
+    maintenance = await router.dispatch(context("/重启机器人", admin))
+    assert maintenance is not None
+    assert "选择机器人维护操作" in cast(
+        "TextPart", maintenance.message.parts[0]
+    ).text
+    prepared = await router.dispatch(context("1", admin))
+    assert prepared is not None
+    assert cast("TextPart", prepared.message.parts[0]).text == "maintenance prepared"
+    assert docker_update.executed == []
+    prepared.delivered()
+    assert prepared.follow_up is not None
+    restarted = await prepared.follow_up()
+    assert cast("TextPart", restarted.parts[0]).text == "机器人维护操作已提交。"
+    assert docker_update.executed == ["process"]
+
 
 @pytest.mark.asyncio
 async def test_portable_router_limits_rank_display_setting_to_group_managers() -> None:
@@ -1329,8 +1492,10 @@ async def test_portable_router_limits_rank_display_setting_to_group_managers() -
         about=AboutService("test"),
         seer=_fake_seer(rank_queries=rank_queries),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     conversation = ConversationRef(
@@ -1397,8 +1562,10 @@ async def test_portable_router_limits_bilibili_refresh_to_superusers() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         bilibili=cast("BilibiliService", SimpleNamespace()),
         bilibili_monitor=cast(
@@ -1453,8 +1620,10 @@ async def test_portable_router_runs_pet_config_image_query() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         pet_config=cast("PetConfigQueryService", _FakePetConfigService()),
     )
@@ -1495,8 +1664,10 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
             rank_admin=cast("RankAdminService", _FakeRankAdminService())
         ),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     member = ActorRef(
@@ -1561,8 +1732,10 @@ async def test_portable_router_runs_scoped_query_selection(
         about=AboutService("test"),
         seer=_fake_seer(pet_query=_FakePetQuery(fail_selection=fail_selection)),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1584,9 +1757,12 @@ async def test_portable_router_runs_scoped_query_selection(
     )
     assert choices is not None
     assert "1. 雷伊" in cast("TextPart", choices.message.parts[0]).text
-    assert router.recognizes(_portable_input("2", actor, conversation))
+    prompt = choices.message.prompt
+    assert prompt is not None
+    action = prompt.action_data(prompt.choices[1])
+    assert router.recognizes(_portable_input(action, actor, conversation))
 
-    selected = await router.dispatch(_portable_input("2", actor, conversation))
+    selected = await router.dispatch(_portable_input(action, actor, conversation))
     assert selected is not None
     selected_text = cast("TextPart", selected.message.parts[0]).text
     assert selected_text == (
@@ -1606,8 +1782,10 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
         about=AboutService("test"),
         seer=_fake_seer(peak_query=_FakePeakQuery()),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
@@ -1636,8 +1814,10 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
         about=AboutService("test"),
         seer=_fake_seer(team_query=_FakeTeamQuery()),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1674,8 +1854,10 @@ async def test_portable_router_runs_rank_query() -> None:
         about=AboutService("test"),
         seer=_fake_seer(rank_queries=_FakeRankQueries()),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
@@ -1705,8 +1887,10 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
@@ -1727,6 +1911,37 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
     assert about is not None
     assert "IronsBot" in cast("TextPart", about.message.parts[0]).text
     assert len(ai.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_portable_router_does_not_send_unavailable_command_to_ai() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["ai_chat"]),
+    )
+    ai = _FakeAi()
+    router = build_portable_command_router(
+        catalog=_portable_catalog(ai_chat=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
+
+    assert await router.dispatch(_portable_input("关于", actor, conversation)) is None
+    assert ai.calls == []
 
 
 @pytest.mark.asyncio
@@ -1755,8 +1970,10 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=enabled_features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
 
@@ -1774,13 +1991,16 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         (),
         qq_official=_qq_config(features=["help"]),
     )
+    addressed_input_hints = AddressedInputHintService(max_per_window=1)
     disabled = build_portable_command_router(
         catalog=_portable_catalog(ai_chat=True),
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=disabled_features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=addressed_input_hints,
         team_resource=_unused_team_resource(),
     )
 
@@ -1791,6 +2011,10 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
     assert guarded is not None
     assert cast("TextPart", guarded.message.parts[0]).text == (
         DIRECT_COMMAND_HELP_HINT_TEXT
+    )
+    assert (
+        await disabled.dispatch(_portable_input("还是不会处理", actor, conversation))
+        is None
     )
 
 
@@ -1807,8 +2031,10 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1852,8 +2078,10 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     incoming = _portable_input("关于", actor, conversation)
@@ -1880,6 +2108,8 @@ def test_c2c_identity_uses_user_openid() -> None:
         account_id="example-app",
     )
     assert incoming.group_role is None
+    assert incoming.reply_deadline is not None
+    assert incoming.reply_deadline.isoformat() == "2099-01-01T01:00:00+08:00"
 
 
 def test_bootstrap_constructs_qq_official_sdk_runtime(tmp_path: Path) -> None:
@@ -1896,6 +2126,7 @@ enabled = true
 [bot.qq_official.accounts.example_bot]
 enabled = true
 app_id = "example-app"
+custom_keyboards = true
 
 [operations.data_sync]
 on_startup = false
@@ -1928,6 +2159,8 @@ check_on_startup = false
                 "app = bootstrap(); "
                 "assert set(app.driver._adapters) == {'OneBot V11'}; "
                 "assert app.resources.qq_official.account_ids == ('example-app',); "
+                "sender = app.resources.qq_official.sender('example-app'); "
+                "assert sender is not None and sender.custom_keyboards; "
                 "print('QQ_OFFICIAL_BOOTSTRAP_OK')"
             ),
         ],
@@ -1963,8 +2196,10 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
 

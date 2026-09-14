@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -24,6 +25,16 @@ from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 
 
+def test_portable_menu_rejects_mismatched_labels() -> None:
+    with pytest.raises(PortableQuerySessionError, match="labels"):
+        PortableMenuSpec(
+            choices=("one", "two"),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("choose"),
+            labels=("one",),
+        )
+
+
 @dataclass(slots=True)
 class _Clock:
     value: float = 0.0
@@ -38,11 +49,11 @@ def _context(
     group_id: str = "group-a",
 ) -> MessageInputContext:
     actor = ActorRef(
-            Platform.QQ_OFFICIAL,
-            actor_id,
-            "member",
-            group_id,
-        )
+        Platform.QQ_OFFICIAL,
+        actor_id,
+        "member",
+        group_id,
+    )
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", group_id)
     return MessageInputContext(
         IncomingMessageRef(
@@ -102,6 +113,41 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
     assert sessions.recognizes_response("2", owner)
     assert _text(await sessions.select("2", owner)) == "selected:202"
     assert not sessions.recognizes_response("2", owner)
+
+
+@pytest.mark.asyncio
+async def test_button_and_text_inputs_share_one_bound_prompt_session() -> None:
+    sessions = PortableQuerySessions()
+    owner = _context("member-openid")
+    other_member = _context("other-openid")
+    selected: list[str] = []
+
+    async def select(value: str) -> OutboundMessage:
+        selected.append(value)
+        return OutboundMessage.from_text(value)
+
+    offered = sessions.offer_menu(
+        owner,
+        PortableMenuSpec(
+            choices=("yes", "no"),
+            select=select,
+            prompt=OutboundMessage.from_text("choose"),
+        ),
+    )
+    prompt = sessions.active_prompt(owner)
+    assert prompt is not None
+    assert offered.prompt is prompt
+    action = prompt.action_data(prompt.choices[0])
+
+    assert sessions.recognizes_response(action, owner)
+    assert not sessions.recognizes_response(action, other_member)
+    assert await sessions.select_action(action, other_member) is None
+    result = await sessions.select(action, owner)
+    assert isinstance(result, OutboundMessage)
+    assert _text(result) == "yes"
+    assert selected == ["yes"]
+    assert await sessions.select_action(action, owner) is None
+    assert await sessions.select("1", owner) is None
 
 
 @pytest.mark.asyncio

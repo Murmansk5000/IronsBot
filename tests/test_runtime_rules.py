@@ -79,7 +79,10 @@ def test_explicit_commands_accept_replies_but_not_current_member_mentions() -> N
     direct_member = group_message_event(
         message=Message([MessageSegment.at(456), MessageSegment.text("帮助")])
     )
-    direct_bot = group_message_event(message=_mentioned_message())
+    direct_bot = group_message_event(
+        message=Message([MessageSegment.at(1), MessageSegment.text("帮助")])
+    )
+    direct_bot_and_member = group_message_event(message=_mentioned_message())
     reply_with_bot = group_message_event(
         message=Message([MessageSegment.at(1), MessageSegment.text("帮助")]),
         reply_sender_user_id=789,
@@ -91,7 +94,8 @@ def test_explicit_commands_accept_replies_but_not_current_member_mentions() -> N
 
     assert _matches(explicit_command(), plain)
     assert not _matches(explicit_command(), direct_member)
-    assert not _matches(explicit_command(), direct_bot)
+    assert _matches(explicit_command(), direct_bot)
+    assert not _matches(explicit_command(), direct_bot_and_member)
     assert _matches(explicit_command(), reply_with_bot)
     assert not _matches(explicit_command(), reply_with_member)
 
@@ -118,8 +122,8 @@ def test_member_target_strategies_are_the_only_member_mention_opt_in() -> None:
     assert _matches(member_target_command(), direct_member)
     assert _matches(member_targets_command(), two_members)
     assert _matches(member_target_command(), reply_member)
-    assert not _matches(member_target_command(), direct_bot_and_member)
-    assert not _matches(member_targets_command(), direct_bot_and_member)
+    assert _matches(member_target_command(), direct_bot_and_member)
+    assert _matches(member_targets_command(), direct_bot_and_member)
 
 
 def test_bot_mentions_and_natural_language_have_disjoint_routes() -> None:

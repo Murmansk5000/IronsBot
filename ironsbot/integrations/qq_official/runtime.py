@@ -4,23 +4,31 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from dataclasses import dataclass, field
+from enum import Enum
 from threading import Lock
 from typing import TYPE_CHECKING
 
 from qqbot_agent_sdk.api_client import QQApiClient
 from qqbot_agent_sdk.event_parser import EventParser
+from qqbot_agent_sdk.media_loader import MediaUploader
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
     qq_official_event_mentions_bot,
     qq_official_incoming_message,
 )
+from ironsbot.integrations.qq_official.inbound_deduplication import (
+    QQOfficialInboundDeduplicator,
+)
+from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 
 if TYPE_CHECKING:
@@ -42,6 +50,117 @@ logger = logging.getLogger(__name__)
 class QQOfficialRuntimeAccount:
     app_id: str
     secret: str
+    required: bool = False
+    custom_keyboards: bool = False
+    label: str = ""
+
+
+class QQOfficialConnectionState(str, Enum):
+    STARTING = "starting"
+    READY = "ready"
+    DEGRADED = "degraded"
+    RECONNECTING = "reconnecting"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class QQOfficialAccountHealth:
+    account: str
+    required: bool
+    state: QQOfficialConnectionState
+    error: str | None = None
+
+
+class QQOfficialStartupError(RuntimeError):
+    def __init__(self, accounts: tuple[str, ...]) -> None:
+        self.accounts = accounts
+        super().__init__(
+            "Required official accounts failed to become ready: "
+            + ", ".join(accounts)
+        )
+
+
+@dataclass(slots=True)
+class _AccountLifecycle:
+    account: str
+    required: bool
+    state: QQOfficialConnectionState = QQOfficialConnectionState.STOPPED
+    error: str | None = None
+    _event: asyncio.Event | None = None
+    _loop: asyncio.AbstractEventLoop | None = None
+    _lock: Lock = field(default_factory=Lock)
+
+    def prepare(self, loop: asyncio.AbstractEventLoop) -> None:
+        with self._lock:
+            self.state = QQOfficialConnectionState.STARTING
+            self.error = None
+            self._loop = loop
+            self._event = asyncio.Event()
+
+    async def wait_until_settled(self, timeout_seconds: float) -> None:
+        with self._lock:
+            event = self._event
+        if event is None:
+            msg = f"official account was not prepared: {self.account}"
+            raise RuntimeError(msg)
+        await asyncio.wait_for(event.wait(), timeout=timeout_seconds)
+
+    def ready(self) -> None:
+        self._transition(QQOfficialConnectionState.READY, error=None, signal=True)
+
+    def disconnected(self) -> None:
+        with self._lock:
+            if self.state in {
+                QQOfficialConnectionState.STOPPED,
+                QQOfficialConnectionState.FAILED,
+                QQOfficialConnectionState.DEGRADED,
+            }:
+                return
+        self._transition(QQOfficialConnectionState.RECONNECTING)
+
+    def startup_failed(self, error: str) -> None:
+        state = (
+            QQOfficialConnectionState.FAILED
+            if self.required
+            else QQOfficialConnectionState.DEGRADED
+        )
+        self._transition(state, error=error, signal=True)
+
+    def fatal(self, code: str, message: str) -> None:
+        self.startup_failed(f"{code}: {message}")
+
+    def stopped(self) -> None:
+        self._transition(QQOfficialConnectionState.STOPPED, error=None, signal=True)
+
+    def snapshot(self) -> QQOfficialAccountHealth:
+        with self._lock:
+            return QQOfficialAccountHealth(
+                account=self.account,
+                required=self.required,
+                state=self.state,
+                error=self.error,
+            )
+
+    def _transition(
+        self,
+        state: QQOfficialConnectionState,
+        *,
+        error: str | None = None,
+        signal: bool = False,
+    ) -> None:
+        with self._lock:
+            if self.state is QQOfficialConnectionState.STOPPED and state not in {
+                QQOfficialConnectionState.STARTING,
+                QQOfficialConnectionState.STOPPED,
+            }:
+                return
+            self.state = state
+            self.error = error
+            loop = self._loop
+            event = self._event
+        if signal and loop is not None and event is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(event.set)
 
 
 @dataclass(slots=True)
@@ -94,6 +213,7 @@ class _Connection:
     sender: TencentQQClient
     websocket: QQWebSocket
     session: _SessionState
+    lifecycle: _AccountLifecycle
     started: bool = False
 
 
@@ -106,30 +226,58 @@ class QQOfficialRuntime:
         *,
         http_client: AsyncClient,
         session_root: Path,
+        startup_timeout_seconds: float = 15.0,
     ) -> None:
+        if startup_timeout_seconds <= 0:
+            msg = "QQ Official startup timeout must be positive"
+            raise ValueError(msg)
+        self._startup_timeout_seconds = startup_timeout_seconds
+        self._inbound_deduplicator = QQOfficialInboundDeduplicator(
+            session_root / "inbound.sqlite"
+        )
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
         self._connections: dict[str, _Connection] = {}
-        for account in accounts:
+        for index, account in enumerate(accounts, start=1):
             if account.app_id in self._connections:
-                msg = f"duplicate QQ Official AppID: {account.app_id}"
+                msg = "duplicate official application identifier"
                 raise ValueError(msg)
+            label = account.label.strip() or f"account-{index}"
             api = QQApiClient(
                 account.app_id,
                 account.secret,
-                f"IronsBot:{account.app_id}",
+                f"IronsBot:{label}",
             )
-            api.setup(http_client)
+            api.setup(QQOfficialHttpClient(http_client))
             session = _SessionState.load(account.app_id, session_root)
-            callbacks = self._callbacks(account.app_id, api, session)
+            lifecycle = _AccountLifecycle(label, account.required)
+            callbacks = self._callbacks(
+                account.app_id,
+                label,
+                api,
+                session,
+                lifecycle,
+            )
             self._connections[account.app_id] = _Connection(
                 api=api,
-                sender=TencentQQClient(api),
+                sender=TencentQQClient(
+                    api,
+                    QQOfficialMediaUpload(
+                        MediaUploader(
+                            api,
+                            http_client,
+                            log_tag=f"IronsBot:{label}",
+                        ),
+                        session_root / "media",
+                    ),
+                    custom_keyboards=account.custom_keyboards,
+                ),
                 websocket=QQWebSocket(
                     callbacks=callbacks,
-                    log_tag=f"IronsBot:{account.app_id}",
+                    log_tag=f"IronsBot:{label}",
                 ),
                 session=session,
+                lifecycle=lifecycle,
             )
 
     @property
@@ -139,6 +287,12 @@ class QQOfficialRuntime:
     def sender(self, app_id: str) -> TencentQQClient | None:
         connection = self._connections.get(app_id)
         return connection.sender if connection is not None else None
+
+    @property
+    def account_health(self) -> tuple[QQOfficialAccountHealth, ...]:
+        return tuple(
+            connection.lifecycle.snapshot() for connection in self._connections.values()
+        )
 
     def bind(
         self,
@@ -156,13 +310,25 @@ class QQOfficialRuntime:
             msg = "QQ Official runtime must be bound before startup"
             raise RuntimeError(msg)
         loop = asyncio.get_running_loop()
-        started = 0
-        for app_id, connection in self._connections.items():
-            if await _start_connection(app_id, connection, loop):
-                started += 1
-        if self._connections and started == 0:
-            msg = "No QQ Official account could start"
-            raise RuntimeError(msg)
+        await asyncio.gather(
+            *(
+                _start_connection(
+                    connection.lifecycle.account,
+                    connection,
+                    loop,
+                    timeout_seconds=self._startup_timeout_seconds,
+                )
+                for connection in self._connections.values()
+            )
+        )
+        failed_required = tuple(
+            health.account
+            for health in self.account_health
+            if health.required and health.state is not QQOfficialConnectionState.READY
+        )
+        if failed_required:
+            await self.stop()
+            raise QQOfficialStartupError(failed_required)
 
     async def stop(self) -> None:
         tasks = [
@@ -175,6 +341,7 @@ class QQOfficialRuntime:
         for connection in self._connections.values():
             connection.session.flush()
             connection.started = False
+            connection.lifecycle.stopped()
 
     async def handle_event(
         self,
@@ -191,6 +358,19 @@ class QQOfficialRuntime:
             logger.error("QQ Official event arrived before runtime binding")
             return
         incoming = qq_official_incoming_message(event, account_id=app_id)
+        if not await self._inbound_deduplicator.claim(
+            app_id=app_id,
+            event_type=event_type,
+            message_id=incoming.message_id,
+        ):
+            logger.info(
+                "QQ Official duplicate inbound message ignored: "
+                "account=%s event_type=%s message_ref=%s",
+                self._connections[app_id].lifecycle.account,
+                event_type,
+                _log_reference(incoming.message_id),
+            )
+            return
         context = MessageInputContext(
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),
@@ -199,13 +379,20 @@ class QQOfficialRuntime:
             return
         reply = await router.dispatch(context)
         if reply is not None:
-            await deliver_qq_official_reply(messenger, incoming, reply)
+            await deliver_qq_official_reply(
+                messenger,
+                incoming,
+                reply,
+                account_label=self._connections[app_id].lifecycle.account,
+            )
 
     def _callbacks(
         self,
         app_id: str,
+        account_label: str,
         api: QQApiClient,
         session: _SessionState,
+        lifecycle: _AccountLifecycle,
     ) -> WSCallbacks:
         async def on_message_event(
             event_type: str,
@@ -213,20 +400,28 @@ class QQOfficialRuntime:
         ) -> None:
             await self.handle_event(app_id, event_type, raw)
 
-        return WSCallbacks(
-            on_message_event=on_message_event,
-            on_connected=lambda: logger.info(
-                "QQ Official connected: app_id=%s", app_id
-            ),
-            on_disconnected=lambda: logger.warning(
-                "QQ Official disconnected: app_id=%s", app_id
-            ),
-            on_fatal_error=lambda code, message: logger.error(
-                "QQ Official fatal error: app_id=%s code=%s message=%s",
-                app_id,
+        def connected() -> None:
+            lifecycle.ready()
+            logger.info("QQ Official ready: account=%s", account_label)
+
+        def disconnected() -> None:
+            lifecycle.disconnected()
+            logger.warning("QQ Official disconnected: account=%s", account_label)
+
+        def fatal_error(code: str, message: str) -> None:
+            lifecycle.fatal(code, message)
+            logger.error(
+                "QQ Official fatal error: account=%s code=%s message=%s",
+                account_label,
                 code,
                 message,
-            ),
+            )
+
+        return WSCallbacks(
+            on_message_event=on_message_event,
+            on_connected=connected,
+            on_disconnected=disconnected,
+            on_fatal_error=fatal_error,
             get_token=api.ensure_token_sync,
             get_gateway_url=api.get_gateway_url_sync,
             get_session=session.get,
@@ -234,8 +429,8 @@ class QQOfficialRuntime:
             set_heartbeat_interval=lambda _interval: None,
             clear_token=api.clear_token,
             fail_pending=lambda reason: logger.warning(
-                "QQ Official pending operations failed: app_id=%s reason=%s",
-                app_id,
+                "QQ Official pending operations failed: account=%s reason=%s",
+                account_label,
                 reason,
             ),
             on_heartbeat_ack=session.flush,
@@ -243,26 +438,43 @@ class QQOfficialRuntime:
 
 
 async def _start_connection(
-    app_id: str,
+    account_label: str,
     connection: _Connection,
     loop: asyncio.AbstractEventLoop,
+    *,
+    timeout_seconds: float,
 ) -> bool:
+    connection.lifecycle.prepare(loop)
     try:
         await connection.api.ensure_token()
         gateway_url = await connection.api.get_gateway_url()
         connection.websocket.start(gateway_url, loop)
         connection.started = True
-        logger.info("QQ Official connection starting: app_id=%s", app_id)
-    except Exception:
-        logger.exception("QQ Official connection failed to start: app_id=%s", app_id)
+        logger.info("QQ Official connection starting: account=%s", account_label)
+        await connection.lifecycle.wait_until_settled(timeout_seconds)
+    except TimeoutError:
+        message = f"READY timeout after {timeout_seconds:g}s"
+        connection.lifecycle.startup_failed(message)
+        logger.warning("QQ Official %s: account=%s", message, account_label)
         return False
-    return True
+    except Exception as error:
+        connection.lifecycle.startup_failed(
+            f"{type(error).__name__}: {error}",
+        )
+        logger.exception(
+            "QQ Official connection failed to start: account=%s",
+            account_label,
+        )
+        return False
+    return connection.lifecycle.snapshot().state is QQOfficialConnectionState.READY
 
 
 async def deliver_qq_official_reply(
     messenger: OutboundMessenger,
     incoming: IncomingMessageRef,
     reply: PortableReply,
+    *,
+    account_label: str = "official-account",
 ) -> None:
     """Commit delivery-aware work only after the official API accepts a reply."""
 
@@ -272,9 +484,24 @@ async def deliver_qq_official_reply(
     result = await messenger.reply(context, reply.message)
     if not result.delivered:
         reply.delivery_failed()
-        _log_delivery_failure(incoming, result, stage="initial")
+        _log_delivery_failure(
+            incoming,
+            result,
+            stage="initial",
+            account_label=account_label,
+        )
         return
     reply.delivered()
+    for additional in reply.additional_messages:
+        additional_result = await messenger.reply(context, additional)
+        if not additional_result.delivered:
+            _log_delivery_failure(
+                incoming,
+                additional_result,
+                stage="additional",
+                account_label=account_label,
+            )
+            return
     if reply.follow_up is None:
         return
     try:
@@ -283,17 +510,22 @@ async def deliver_qq_official_reply(
         raise
     except Exception as error:
         logger.exception(
-            "QQ Official deferred operation failed: account=%s kind=%s id=%s",
-            incoming.conversation.account_id,
+            "QQ Official deferred operation failed: account=%s kind=%s ref=%s",
+            account_label,
             incoming.conversation.kind,
-            incoming.conversation.id,
+            _log_reference(incoming.conversation.id),
         )
         follow_up = OutboundMessage.from_text(
             f"❌ 操作执行失败：{type(error).__name__}"
         )
     follow_up_result = await messenger.reply(context, follow_up)
     if not follow_up_result.delivered:
-        _log_delivery_failure(incoming, follow_up_result, stage="follow_up")
+        _log_delivery_failure(
+            incoming,
+            follow_up_result,
+            stage="follow_up",
+            account_label=account_label,
+        )
 
 
 def qq_official_event_is_supported(
@@ -318,15 +550,20 @@ def _log_delivery_failure(
     result: SendResult,
     *,
     stage: str,
+    account_label: str = "official-account",
 ) -> None:
     logger.warning(
-        "QQ Official reply failed: stage=%s account=%s kind=%s id=%s "
+        "QQ Official reply failed: stage=%s account=%s kind=%s ref=%s "
         "code=%s message=%s trace_id=%s",
         stage,
-        incoming.conversation.account_id,
+        account_label,
         incoming.conversation.kind,
-        incoming.conversation.id,
+        _log_reference(incoming.conversation.id),
         result.error_code,
         result.error_message,
         result.trace_id,
     )
+
+
+def _log_reference(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]

@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING
 from ironsbot.core.command_catalog import CommandContext
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.ai.source_context import format_ai_source_context
+from ironsbot.services.identity_link_commands import (
+    build_portable_identity_link_operations,
+)
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -19,6 +24,9 @@ from ironsbot.services.portable_bilibili_commands import (
 )
 from ironsbot.services.portable_countermark_commands import (
     build_portable_countermark_operations,
+)
+from ironsbot.services.portable_lucky_skin_commands import (
+    build_portable_lucky_skin_operations,
 )
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
@@ -63,9 +71,13 @@ if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.ai.actions import AiIntentActionExecutor
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.identity_link_commands import IdentityLinkCommands
+    from ironsbot.services.identity_linking import IdentityLinkingService
+    from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
@@ -73,22 +85,42 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.server_status import ServerStatusService
     from ironsbot.services.pet_config import PetConfigQueryService
+    from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
     from ironsbot.services.team.resource import TeamResourceService
 
 
+class PortableCommandRouterError(ValueError):
+    @classmethod
+    def missing_ai_intent_executor(cls) -> PortableCommandRouterError:
+        return cls("portable AI intent commands require an action executor")
+
+    @classmethod
+    def missing_operations(
+        cls,
+        command_ids: set[str],
+    ) -> PortableCommandRouterError:
+        return cls(
+            "official-platform direct commands have no portable operation: "
+            + ", ".join(sorted(command_ids))
+        )
+
+
 class PortableCommandRouter:
     """Dispatch catalog-owned commands without importing a platform adapter."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - router dependencies stay explicit
         self,
         catalog: CommandCatalog,
         operations: Mapping[str, PortableOperation],
         features: FeatureService,
         *,
         ai: AiService,
+        ai_intent_actions: AiIntentActionExecutor | None = None,
+        ai_input_routing: AiInputRoutingService,
+        addressed_input_hints: AddressedInputHintService,
         query_sessions: PortableQuerySessions | None = None,
     ) -> None:
         unknown = set(operations) - catalog.command_ids
@@ -97,10 +129,23 @@ class PortableCommandRouter:
                 sorted(unknown)
             )
             raise ValueError(msg)
+        built_in_ids = {"help", "ai_chat.group", "ai_chat.private"}
+        missing = set(catalog.qq_official_direct_command_ids) - (
+            set(operations) | built_in_ids
+        )
+        if missing:
+            raise PortableCommandRouterError.missing_operations(missing)
         self._catalog = catalog
         self._operations = dict(operations)
         self._features = features
         self._ai = ai
+        if ai_intent_actions is None and any(
+            command_id.startswith("ai_intent.") for command_id in catalog.command_ids
+        ):
+            raise PortableCommandRouterError.missing_ai_intent_executor()
+        self._ai_intent_actions = ai_intent_actions
+        self._ai_input_routing = ai_input_routing
+        self._addressed_input_hints = addressed_input_hints
         self._query_sessions = query_sessions or PortableQuerySessions()
 
     def recognizes(
@@ -119,7 +164,11 @@ class PortableCommandRouter:
                 context=command_context,
             )
             is not None
-        ) or self._can_chat(context, command_context) or self._is_group_mention(context)
+        ) or self._ai_input_routing.decide(
+            context,
+            command_context,
+            normalized_text=command,
+        ).recognized
 
     async def dispatch(  # noqa: PLR0911 - normalize every supported result shape
         self,
@@ -229,12 +278,33 @@ class PortableCommandRouter:
         command_context: CommandContext,
         prompt: str,
     ) -> PortableReply | None:
-        if self._can_chat(context, command_context):
+        decision = self._ai_input_routing.decide(
+            context,
+            command_context,
+            normalized_text=prompt,
+        )
+        message = context.message
+        if decision.try_intent and self._ai_intent_actions is not None:
+            source_context = format_ai_source_context(context)
+            action = await self._ai.classify_intent(
+                prompt,
+                actor=message.actor,
+                conversation=message.conversation,
+                source_context=source_context,
+            )
+            if action is not None:
+                messages = await self._ai_intent_actions.execute(
+                    action,
+                    prompt,
+                    source_context=source_context,
+                )
+                if messages:
+                    return PortableReply(messages[0], additional_messages=messages[1:])
+        if decision.try_chat:
             if not prompt:
                 return PortableReply(
                     OutboundMessage.from_text("你想聊什么？可以直接写问题。")
                 )
-            message = context.message
             reply = await self._ai.chat_reply(
                 actor=message.actor,
                 conversation=message.conversation,
@@ -245,28 +315,13 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if self._is_group_mention(context):
+        if decision.offer_help_hint and self._addressed_input_hints.admit(
+            context
+        ):
             return PortableReply(
                 OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
             )
         return None
-
-    def _can_chat(
-        self,
-        context: MessageInputContext,
-        command_context: CommandContext,
-    ) -> bool:
-        command_id = (
-            "ai_chat.group"
-            if context.message.conversation.kind == "group"
-            else "ai_chat.private"
-        )
-        if command_id == "ai_chat.group" and not context.mentions_bot:
-            return False
-        return any(
-            contract.id == command_id
-            for contract in self._available_contracts(command_context)
-        )
 
     def _message_is_blocked(self, context: MessageInputContext) -> bool:
         message = context.message
@@ -275,22 +330,20 @@ class PortableCommandRouter:
             message.conversation,
         )
 
-    @staticmethod
-    def _is_group_mention(context: MessageInputContext) -> bool:
-        return (
-            context.message.conversation.kind == "group" and context.mentions_bot
-        )
-
-
 def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     *,
     catalog: CommandCatalog,
     about: AboutService,
     seer: SeerQueryResources,
     player_id_resolver: PlayerIdResolver,
+    identity_links: IdentityLinkCommands,
     features: FeatureService,
     ai: AiService,
+    ai_intent_actions: AiIntentActionExecutor | None = None,
+    addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
+    lucky_skin_window: LuckySkinWindowService | None = None,
+    identity_linking: IdentityLinkingService | None = None,
     activity: ActivityService | None = None,
     messaging: MessagingService | None = None,
     refresh_push_time_jobs: Callable[[PushTimeOption], Awaitable[None]] | None = None,
@@ -325,6 +378,23 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer.player,
         player_id_resolver,
         sessions,
+    )
+    identity_link_operations = _catalog_operations(
+        catalog,
+        build_portable_identity_link_operations(identity_links),
+    )
+    lucky_skin_operations = _catalog_operations(
+        catalog,
+        (
+            {}
+            if lucky_skin_window is None
+            else build_portable_lucky_skin_operations(
+                lucky_skin_window,
+                seer.pet_query,
+                identity_linking or identity_links.service,
+                sessions,
+            )
+        ),
     )
     rank_operations = _catalog_operations(
         catalog,
@@ -424,7 +494,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         (
             {}
             if docker_update is None
-            else build_portable_docker_operations(docker_update)
+            else build_portable_docker_operations(docker_update, sessions)
         ),
     )
     meeting_operations = _catalog_operations(
@@ -460,6 +530,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **autocard_operations,
         **countermark_operations,
         **player_operations,
+        **identity_link_operations,
+        **lucky_skin_operations,
         **rank_operations,
         **rank_admin_operations,
     }
@@ -468,6 +540,9 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         operations,
         features,
         ai=ai,
+        ai_intent_actions=ai_intent_actions,
+        ai_input_routing=AiInputRoutingService(features, catalog),
+        addressed_input_hints=addressed_input_hints,
         query_sessions=sessions,
     )
 

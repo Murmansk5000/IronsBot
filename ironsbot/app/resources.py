@@ -19,10 +19,15 @@ if TYPE_CHECKING:
     from ironsbot.integrations.storage.push_subscriptions import PushUnsubscribeStore
     from ironsbot.services.about import AboutService
     from ironsbot.services.activity.service import ActivityService
+    from ironsbot.services.ai.actions import AiIntentActionExecutor
+    from ironsbot.services.ai.input_routing import AiInputRoutingService
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.login import BilibiliLoginService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.identity_link_commands import IdentityLinkCommands
+    from ironsbot.services.identity_linking import IdentityLinkingService
+    from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -69,6 +74,8 @@ class ApplicationResources:
     seer: SeerQueryResources
     pet_config: PetConfigQueryService
     ai: AiService
+    ai_intent_actions: AiIntentActionExecutor
+    ai_input_routing: AiInputRoutingService
     ai_startup_check: Callable[[], Awaitable[None]]
     clock_startup_check: Callable[[], Awaitable[None]]
     data_sync: DataSyncService
@@ -78,4 +85,7 @@ class ApplicationResources:
     commands: CommandCatalog
     contribution_catalog: PluginContributionCatalog
     help_hint: OneBotHelpHintPort
+    addressed_input_hints: AddressedInputHintService
+    identity_links: IdentityLinkCommands
+    identity_linking: IdentityLinkingService
     private_extensions: PrivateExtensionCatalog

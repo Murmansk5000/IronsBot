@@ -120,8 +120,6 @@ class CommandCooldownConfig(BaseModel):
     in_progress_message: str = "该命令正在处理中，请等待当前操作完成。"
     duplicate_window_seconds: float = Field(default=60.0, gt=0)
     duplicate_message: str = "该指令重复发送；后续重复不再提醒。"
-    mention_initial_window_seconds: float = Field(default=600.0, gt=0)
-    mention_initial_max_responses: int = Field(default=3, ge=1)
     commands: dict[str, list[CommandCooldownWindowConfig]] = Field(default_factory=dict)
 
     @field_validator("cooldown_message")

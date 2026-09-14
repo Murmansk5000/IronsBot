@@ -93,6 +93,8 @@ from ironsbot.plugins.onebot.team_resource import (
     plugin_contribution as team_resource_plugin_contribution,
 )
 from ironsbot.services.about import AboutService
+from ironsbot.services.ai.input_routing import AiInputRoutingService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
@@ -181,6 +183,7 @@ def build_test_plugin_registry(
             reason="scheduled bot restart",
         ),
     )
+    commands = CommandCatalog()
     resources = cast(
         "ApplicationResources",
         SimpleNamespace(
@@ -328,14 +331,18 @@ def build_test_plugin_registry(
                 ),
             ),
             ai=object(),
+            ai_intent_actions=object(),
+            ai_input_routing=AiInputRoutingService(runtime.features, commands),
             ai_startup_check=_noop_startup,
             data_sync=SimpleNamespace(startup=_noop_startup),
             docker_update=docker_update,
             startup_notice=SimpleNamespace(add=_noop_startup_notice_add),
             scheduled_restart=scheduled_restart,
-            commands=CommandCatalog(),
+            commands=commands,
             contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),
+            addressed_input_hints=AddressedInputHintService(),
+            identity_links=object(),
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
@@ -364,15 +371,15 @@ def build_test_plugin_registry(
             settings=config,
             service=resources.ai,
             features=runtime.features,
-            commands=resources.commands,
+            input_routing=resources.ai_input_routing,
             startup_check=resources.ai_startup_check,
         ),
         ai_intent_plugin_contribution(
             settings=config,
             service=resources.ai,
             features=runtime.features,
-            promotions=resources.promotions,
-            team_resource=resources.team_resource,
+            executor=resources.ai_intent_actions,
+            input_routing=resources.ai_input_routing,
         ),
         server_status_plugin_contribution(
             service=resources.server_status,
@@ -413,7 +420,11 @@ def build_test_plugin_registry(
             admin_notices=runtime.admin_notices,
         ),
         fire_manual_ad_plugin_contribution(),
-        help_hint_plugin_contribution(service=resources.help_hint),
+        help_hint_plugin_contribution(
+            service=resources.help_hint,
+            input_routing=resources.ai_input_routing,
+            addressed_input_hints=resources.addressed_input_hints,
+        ),
         rank_help_plugin_contribution(
             features=runtime.features,
             commands=resources.commands,

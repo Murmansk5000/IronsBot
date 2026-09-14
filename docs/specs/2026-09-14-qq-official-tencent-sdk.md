@@ -63,5 +63,6 @@ commit `c66eec1b`; published digest:
 
 ## Rollback
 
-Revert the implementation commit and restore the previous optional adapter
-dependency. No TOML or SQLite migration is involved.
+Revert the implementation commit and its configuration/documentation changes as
+one unit. The removed NoneBot adapter is not a supported fallback and must not be
+restored as a second runtime path. No TOML or SQLite data migration is involved.

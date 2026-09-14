@@ -117,13 +117,17 @@ services:
 
 ### QQ 官方机器人调试版
 
-QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
+QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行，但它们是两条独立传输：
+NoneBot2 只托管 OneBot V11/NapCat，QQ 官方连接由腾讯 `qqbot-agent-sdk` 作为应用资源
+启动和关闭，不经过 `nonebot-adapter-qq`。预览版支持群聊
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
 套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
-活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时直接发送数字选择，
-发送 `0` 退出。其中 `下周预告` 同时验证官方图片回复链路。引用回复会按全局
+活动、本周新增内容和 B站历史动态查询。查询出现多个候选项时可发送数字选择，
+发送 `0` 退出；已开通并启用自定义按钮的账号还会显示同一组快捷按钮。其中
+`下周预告` 同时验证官方图片回复链路。引用回复会按全局
 规则忽略。米米号状态按 OpenID 隔离保存；群内直接 @ 一名已绑定成员可将其作为
-查询或绑定目标。跨平台账号关联和必须取得数字 QQ 号的功能暂未开放。
+查询或绑定目标。OneBot 与 QQ 官方身份可通过短时单次令牌显式关联；程序不会根据
+昵称、头像、发言时间或消息记录猜测身份。
 启用 `ai_chat` 后，私聊中的未注册文本和群内直接 `@机器人` 的未注册文本会进入
 同一个 AI 服务；已注册查询始终优先。没有配置 `AI_KEY` 时不会开放 AI 聊天入口。
 `[[messaging.commands]]` 中不含 OneBot `at_user_ids` 的文本口令，以及
@@ -143,11 +147,14 @@ QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览�
 [bot.qq_official]
 enabled = true
 sandbox = false
+startup_timeout_seconds = 15.0
 
 [bot.qq_official.accounts.example_bot]
 enabled = true
+required = false
 app_id = "你的 QQ 机器人 AppID"
 proactive_messages = false
+custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 superusers = []
 
@@ -160,12 +167,25 @@ superusers = []
 
 每个 `[bot.qq_official.accounts.<别名>]` 都是独立机器人账号；别名只能使用字母、
 数字和下划线。可继续增加 `example_bot_2` 等账号表，共用同一套 IronsBot 业务逻辑。
+账号只有在 SDK 收到 `READY` 或成功 `RESUMED` 后才视为健康。
+`startup_timeout_seconds` 控制启动等待时间；`required = true` 的账号未能及时就绪会
+阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
+官方入站消息 ID 会在业务执行前持久化到 `/app/data/qq_official/inbound.sqlite`，防止
+Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
 目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启
 `proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
+
+`custom_keyboards` 默认关闭。只有腾讯后台已为该应用开通内邀的“自定义按钮”能力时
+才能设为 `true`。启用后，有限选项会附加最多 5 行、每行 5 个的指令按钮；按钮发送的
+动态会话 action 与手输序号共用同一个用户和会话绑定，不支持按钮的客户端仍可输入数字。
+
+远程图片通过 SDK URL 上传，本地渲染结果通过 SDK 分片上传，不再整体 Base64 编码。
+SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不猜测并缓存有效期；平台
+拒绝超大图片或当日上传额度耗尽时，机器人会返回明确文字说明。
 
 凭据只放环境变量：
 
@@ -179,11 +199,24 @@ AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量�
 
 多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。
+运行日志只记录 TOML 账号别名；消息 ID、群 OpenID 和用户 OpenID 仅记录不可逆短摘要，
+便于关联同一次故障而不把平台原始标识写入日志。
 
 当前使用 WebSocket 连接，不要求部署额外的公网回调地址。平台下发的是 OpenID，
 不是普通 QQ 号。程序使用“平台 + OpenID + 作用域”识别用户；C2C 用户 OpenID
 与群成员 OpenID 不会被擅自视为同一身份。日志中的 OpenID 可用于配置官方平台
-超级管理员，跨平台身份关联必须由用户显式完成。
+超级管理员。跨平台关联由 NapCat/OneBot 侧已知的数字 QQ 显式发起：发送
+私聊发送 `关联官方账号`；启用多个官方账号时私聊发送
+`关联官方账号 <账号别名>`。机器人返回
+一个短时单次令牌，再由同一用户在目标官方机器人中发送 `关联账号 <令牌>` 完成确认。
+两端都可发送 `账号关联` 查询，并发送 `解除账号关联` 撤销。群成员 OpenID 与 C2C
+用户 OpenID 仍是不同身份，需要分别确认；链接按 AppID、身份类型和群作用域保存。
+令牌只以哈希写入 SQLite，原文不会落盘。程序不会使用昵称、头像、发言时间、消息记录
+或 `union_openid` 猜测数字 QQ。
+
+依赖数字 QQ 账号配置的幸运橱窗也使用这条显式关联。完成关联后，QQ 官方端可查询
+当天橱窗、查看皮肤详情以及管理关注列表；未关联身份不会尝试按昵称或其他资料猜测。
+现有 `[seer.lucky_skin_window]` 账号与米米号配置无需迁移。
 
 腾讯官方 `qqbot-agent-sdk` 是可选运行组件。直接运行源码时使用：
 
@@ -400,9 +433,10 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 成功、失败、超时和异常都会在命令结束后计入相同窗口，超级管理员绕过。玩家基础查询、收集、巅峰、群星牌分别使用
 `seer_player`、`seer_player_collection`、`seer_player_peak`、`seer_player_autocard`
 四个独立额度，可在 `commands` 中单独覆盖。
-同一 QQ、同一真实语义目标的重复响应和未启用 AI 时的群内 @ 提示同样使用
-`[messaging.command_cooldown]` 的 `duplicate_*` 与 `mention_initial_*` 配置，但不受
-`enabled` 影响。
+同一 QQ、同一真实语义目标的重复响应使用
+`[messaging.command_cooldown]` 的 `duplicate_*` 配置，但不受 `enabled` 影响。
+未启用 AI 时，群内未知 @ 提示复用 `[features.help]` 的提示窗口，并按用户与会话
+分别限流；有效的 `@机器人 + 指令` 不受提示限流影响。
 常用语义 ID 包括 `seer_player`、`seer_player_collection`、
 `seer_player_peak`、`seer_player_autocard`、`seer_team`、
 `seer_rank_list`、`seer_rank_player`、`seer_rank_score`、
