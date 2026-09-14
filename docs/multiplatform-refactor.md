@@ -6,9 +6,9 @@
 [engineering-workflow.md](engineering-workflow.md) 为准。
 
 本轮生产基线保持 NoneBot2、OneBot v11、NapCat 和 Docker/Unraid；Python 运行基线现已
-统一为 3.11+。QQ Official 已进入真实 MVP：同一 NoneBot 进程按配置注册
-`nonebot-adapter-qq`，被动群/C2C 查询按共享命令目录逐步开放。平台不能可靠表达的
-数字 QQ 继续按能力延期，不做伪映射；主动推送只使用明确配置的 OpenID 目标。
+统一为 3.11+。QQ Official 已进入真实 MVP：腾讯 `qqbot-agent-sdk` 作为独立应用资源
+运行，NoneBot 只托管 OneBot；被动群/C2C 查询按共享命令目录逐步开放。平台不能可靠
+表达的数字 QQ 继续按能力延期，不做伪映射；主动推送只使用明确配置的 OpenID 目标。
 
 ## 总体约束
 
@@ -55,11 +55,35 @@ Task     [██████████] completed only after code, tests, and 
 对应整体审计记录。Phase 7 继续进行，不按阶段数推算整体百分比。
 下方早期记录保留当时的测试与状态；跨仓库发布与真实平台仍未完成，暂无可靠总体 ETA。
 
-- QQ Official 传输正在从旧 NoneBot 适配器切换到腾讯官方
+阅读规则：下方在提交 `c66eec1b` 之前提到 `nonebot-adapter-qq` 的段落只是当时的历史
+快照，不描述当前受支持的运行路径。当前 QQ Official 传输只使用
+`qqbot-agent-sdk==1.2.2`；不得从历史记录恢复旧适配器、静态 token 或双轨发送路径。
+
+- QQ Official 传输已由提交 `c66eec1b` 切换到腾讯官方
   `qqbot-agent-sdk 1.2.2`。NoneBot 只继续托管 OneBot；腾讯 SDK 作为应用资源独立维护
   每 AppID 的 Token、WebSocket、Resume session 和发送客户端，入站仍只进入共享
   portable router。SDK 当前覆盖 C2C 与 `GROUP_AT_MESSAGE_CREATE`，普通群消息事件不在
   该版本解析范围内；真实 AppID 登录、图片发送、主动额度和平台权限仍是 Phase 7 外部门。
+
+- QQ Official 的有限选项交互已收口到共享 `PromptSession`：数字回复和按钮 action 使用
+  同一份用户、会话、账号及消息绑定，并由同一个 portable router 消费，不存在独立的
+  callback 业务路径。只有腾讯后台已开通内邀自定义按钮权限、且对应账号显式设置
+  `custom_keyboards = true` 时才发送 type-2 指令按钮；默认配置及不支持按钮的客户端始终
+  保留数字文字选择。真实 AppID 的按钮权限和客户端呈现仍须在 Phase 7 外部验收。
+
+- QQ Official 账号生命周期现区分 `starting`、`ready`、`reconnecting`、`degraded`、
+  `failed` 与 `stopped`。启动线程不再冒充健康；只有 SDK 收到 `READY` 或成功恢复会话后
+  才解除账号启动等待。TOML 可逐账号声明 `required`，必需账号失败通过资源生命周期阻止
+  应用启动，可选账号则保留为 degraded 并继续恢复；关闭会等待所有已启动 SDK WebSocket。
+
+- QQ Official 入站可靠性不再只依赖 SDK 的 5 分钟内存集合。IronsBot 在业务分发前通过
+  共享 SQLite 边界持久化占用 `AppID + event type + message ID`，跨 Resume、并发重投和
+  进程重启均只允许一个调用进入 portable router；记录按 24 小时窗口清理，不新增配置。
+
+- QQ Official 图片发送已改用 SDK 1.2.2 的正式 `MediaUploader`。URL 由腾讯服务端拉取，
+  二进制渲染结果通过短生命周期临时文件进入 SDK 分片上传，不再整体 Base64 编码；群聊
+  与 C2C scope 原样传给 SDK。高层 SDK 不返回 TTL，因此 `file_info` 只立即使用一次而不
+  猜测缓存；图片超限和每日额度耗尽会降级为文字，其他异常仍进入结构化投递失败路径。
 
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
   AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
@@ -2392,13 +2416,13 @@ ActorRef，不使用数字 QQ 映射或默认账号。专项 `55 passed`，全�
 专项 `695 passed`，全量 `3373 passed, 7 skipped`；Ruff、BasedPyright、compileall、
 架构和差异检查通过。
 
-对 `tencent-connect/qqbot-agent-sdk`、`qqbot-nodejs` 和 `openclaw-qqbot` 的后续审计确认，
-长期可将 QQ Official 传输从旧 NoneBot 适配器替换为腾讯的纯 Python SDK，而不改动
-portable command、身份、feature policy 和业务服务。目标传输必须保留每 AppID 独立的
-AccessToken、连接、Session 与 OpenID 命名空间，并实现心跳、Resume、消息去重及富媒体
-发送。`GROUP_MESSAGE_CREATE` 是否实际下发仍由腾讯应用权限决定，代码支持不能代替真实
-平台授权；替换应在现有命令覆盖完成并通过真实连接 smoke 后进行，避免同时改变协议和
-业务行为。
+对 `tencent-connect/qqbot-agent-sdk`、`qqbot-nodejs` 和 `openclaw-qqbot` 的历史审计最终由
+提交 `c66eec1b` 落地：QQ Official 传输已从旧 NoneBot 适配器替换为腾讯纯 Python SDK，
+portable command、身份、feature policy 和业务服务契约未改变。每个 AppID 独立维护
+AccessToken、连接、Session 与 OpenID 命名空间；SDK 负责心跳、Resume 和进程内消息 ID
+去重。`GROUP_MESSAGE_CREATE` 是否实际下发仍由腾讯应用权限和当前 SDK 支持决定，代码
+存在不能代替真实平台授权。尚未关闭的回复时限、连续 `msg_seq`、结构化错误、READY
+健康状态和媒体上传验收记录在协议基线 Spec 中。
 
 全服榜单维护命令随后复用同一 portable 延迟回复契约。`/刷新榜单` 与
 `/缓存榜单 …` 会先发送进度回执，平台确认送达后才开始无头客户端请求，完成后再发送
