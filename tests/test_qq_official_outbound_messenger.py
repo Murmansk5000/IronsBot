@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+import httpx
 import pytest
 
 from ironsbot.core.outbound import (
@@ -14,6 +15,9 @@ from ironsbot.core.outbound import (
 from ironsbot.core.platform import ConversationRef, Platform
 from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
+    QQOfficialUncertainDeliveryError,
+    _exception_result,
+    _result_id,
 )
 from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
 
@@ -64,6 +68,25 @@ PRIVATE = ConversationRef(
     account_id="app",
 )
 TEXT = OutboundMessage.from_text("result")
+
+
+@pytest.mark.parametrize("value", [None, "", "  ", 123, True, {}, []])
+def test_receipts_require_nonblank_string_ids(value: object) -> None:
+    assert _result_id({"id": value}) is None
+    assert _result_id(SimpleNamespace(id=value)) is None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        QQOfficialUncertainDeliveryError("partial delivery: 429 rate limit"),
+        httpx.ReadTimeout(""),
+        httpx.ReadError(""),
+        TimeoutError(),
+    ],
+)
+def test_uncertain_transport_errors_are_not_retryable(error: Exception) -> None:
+    assert _exception_result(error).failure_kind is DeliveryFailureKind.UNCERTAIN
 
 
 @pytest.mark.asyncio
