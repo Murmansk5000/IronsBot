@@ -230,6 +230,10 @@ def onebot_result_message_id(result: object) -> str | None:
 def _onebot_failure_kind(error: Exception) -> DeliveryFailureKind:
     """Classify OneBot-specific failures at the adapter boundary."""
 
+    from ironsbot.integrations.onebot.observer import ObserverApiRejected
+
+    if isinstance(error, ObserverApiRejected):
+        return DeliveryFailureKind.PERMANENT
     text = " ".join((type(error).__name__, str(error), repr(error))).casefold()
     if any(
         marker in text
