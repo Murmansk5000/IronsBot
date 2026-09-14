@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.authorization import GROUP_MANAGER_ROLES
+from ironsbot.core.authorization import can_manage_group_actor
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.messaging.push_time import (
     build_push_time_menu_prompt,
@@ -75,8 +75,11 @@ def _subscription_operation(
         del text
         message = context.message
         read_only = message.conversation.kind == "group" and not (
-            message.group_role in GROUP_MANAGER_ROLES
-            or messaging.feature_policy.is_actor_superuser(message.actor)
+            can_manage_group_actor(
+                messaging.feature_policy,
+                message.actor,
+                message.group_role,
+            )
         )
         return await _PortableSubscriptionMenus(
             messaging,
