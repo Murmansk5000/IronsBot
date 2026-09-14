@@ -49,6 +49,10 @@ class PortableQuerySessionError(ValueError):
     def deferred_result_not_enabled(cls) -> PortableQuerySessionError:
         return cls("portable deferred session result was not enabled by the caller")
 
+    @classmethod
+    def menu_label_count_mismatch(cls) -> PortableQuerySessionError:
+        return cls("portable menu labels must match the choice count")
+
 
 @dataclass(frozen=True, slots=True)
 class QueryOperationSpec(Generic[_T]):
@@ -64,8 +68,13 @@ class PortableMenuSpec(Generic[_T]):
     choices: tuple[_T, ...]
     select: MenuSelect[_T]
     prompt: OutboundMessage
+    labels: tuple[str, ...] = ()
     keep_open: bool = False
     exit_message: str = "已退出查询。"
+
+    def __post_init__(self) -> None:
+        if self.labels and len(self.labels) != len(self.choices):
+            raise PortableQuerySessionError.menu_label_count_mismatch()
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,7 +195,11 @@ class PortableQuerySessions:
         session = self._new_session(
             context,
             tuple(
-                PromptChoice(str(index), f"选项 {index}", frozenset({str(index)}))
+                PromptChoice(
+                    str(index),
+                    spec.labels[index - 1] if spec.labels else f"选项 {index}",
+                    frozenset({str(index)}),
+                )
                 for index in range(1, len(spec.choices) + 1)
             ),
         )

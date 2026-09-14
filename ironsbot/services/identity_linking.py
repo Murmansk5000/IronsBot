@@ -171,6 +171,19 @@ class IdentityLinkingService:
         link = await self.store.for_official(official)
         return () if link is None else (link,)
 
+    async def linked_onebot_actor(self, actor: ActorRef) -> ActorRef | None:
+        """Resolve an exact, explicitly linked identity to its OneBot actor."""
+
+        if actor.platform is Platform.ONEBOT:
+            _onebot_qq_id(actor)
+            return actor
+        link = await self.store.for_official(_official_identity(actor))
+        if link is None:
+            return None
+        from ironsbot.core.platform import ActorRef
+
+        return ActorRef(Platform.ONEBOT, link.onebot_qq_id)
+
     async def revoke(self, actor: ActorRef) -> int:
         now = self.clock()
         if actor.platform is Platform.ONEBOT:
