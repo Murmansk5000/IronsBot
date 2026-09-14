@@ -652,6 +652,12 @@ class DeliveryCapabilities:
 - Treat mentions, callbacks, message references, and media as adapter-specific
   capabilities. A command that needs an unavailable capability must degrade
   safely, not guess.
+- QQ Official URL images use the SDK's server-fetch upload and binary images use
+  its chunked local-file uploader through short-lived temporary files. The SDK
+  1.2.2 high-level API does not expose the returned TTL, so `file_info` is used
+  once immediately and is not cached with a guessed lifetime. Platform size and
+  daily-quota rejections degrade to explicit text while unexpected failures stay
+  observable as delivery errors.
 - Record a trace ID, platform, capability decision, and official error code for
   failed deliveries so platform restrictions can be distinguished from product
   bugs.

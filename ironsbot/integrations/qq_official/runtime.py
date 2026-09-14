@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from qqbot_agent_sdk.api_client import QQApiClient
 from qqbot_agent_sdk.event_parser import EventParser
+from qqbot_agent_sdk.media_loader import MediaUploader
 from qqbot_agent_sdk.session_store import WSSessionStore
 from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
@@ -26,6 +27,7 @@ from ironsbot.integrations.qq_official.identity import (
 from ironsbot.integrations.qq_official.inbound_deduplication import (
     QQOfficialInboundDeduplicator,
 )
+from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 
 if TYPE_CHECKING:
@@ -251,6 +253,14 @@ class QQOfficialRuntime:
                 api=api,
                 sender=TencentQQClient(
                     api,
+                    QQOfficialMediaUpload(
+                        MediaUploader(
+                            api,
+                            http_client,
+                            log_tag=f"IronsBot:{account.app_id}",
+                        ),
+                        session_root / "media",
+                    ),
                     custom_keyboards=account.custom_keyboards,
                 ),
                 websocket=QQWebSocket(

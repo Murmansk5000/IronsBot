@@ -80,6 +80,11 @@ Task     [██████████] completed only after code, tests, and 
   共享 SQLite 边界持久化占用 `AppID + event type + message ID`，跨 Resume、并发重投和
   进程重启均只允许一个调用进入 portable router；记录按 24 小时窗口清理，不新增配置。
 
+- QQ Official 图片发送已改用 SDK 1.2.2 的正式 `MediaUploader`。URL 由腾讯服务端拉取，
+  二进制渲染结果通过短生命周期临时文件进入 SDK 分片上传，不再整体 Base64 编码；群聊
+  与 C2C scope 原样传给 SDK。高层 SDK 不返回 TTL，因此 `file_info` 只立即使用一次而不
+  猜测缓存；图片超限和每日额度耗尽会降级为文字，其他异常仍进入结构化投递失败路径。
+
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
   AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
   feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID
