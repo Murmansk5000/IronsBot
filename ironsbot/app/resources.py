@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.login import BilibiliLoginService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
@@ -84,4 +85,5 @@ class ApplicationResources:
     contribution_catalog: PluginContributionCatalog
     help_hint: OneBotHelpHintPort
     addressed_input_hints: AddressedInputHintService
+    identity_links: IdentityLinkCommands
     private_extensions: PrivateExtensionCatalog

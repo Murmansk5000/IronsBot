@@ -10,6 +10,9 @@ from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.source_context import format_ai_source_context
+from ironsbot.services.identity_link_commands import (
+    build_portable_identity_link_operations,
+)
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -69,6 +72,7 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.identity_link_commands import IdentityLinkCommands
     from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -311,6 +315,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     about: AboutService,
     seer: SeerQueryResources,
     player_id_resolver: PlayerIdResolver,
+    identity_links: IdentityLinkCommands,
     features: FeatureService,
     ai: AiService,
     ai_intent_actions: AiIntentActionExecutor | None = None,
@@ -350,6 +355,10 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer.player,
         player_id_resolver,
         sessions,
+    )
+    identity_link_operations = _catalog_operations(
+        catalog,
+        build_portable_identity_link_operations(identity_links),
     )
     rank_operations = _catalog_operations(
         catalog,
@@ -485,6 +494,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **autocard_operations,
         **countermark_operations,
         **player_operations,
+        **identity_link_operations,
         **rank_operations,
         **rank_admin_operations,
     }

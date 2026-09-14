@@ -48,6 +48,7 @@ from ironsbot.integrations.onebot.identity import (
 from ironsbot.integrations.onebot.matchers import MatcherFactory
 from ironsbot.integrations.scheduler.facade import SchedulerFacade
 from ironsbot.integrations.storage.ai_memory import SqliteAiMemoryStore
+from ironsbot.integrations.storage.identity_links import SqliteIdentityLinkStore
 from ironsbot.integrations.storage.player_bindings import (
     SqlitePlayerBindingStore,
 )
@@ -58,6 +59,8 @@ from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundS
 from ironsbot.services.ai.actions import AiIntentActionExecutor
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.ai.service import AiService
+from ironsbot.services.identity_link_commands import IdentityLinkCommands
+from ironsbot.services.identity_linking import IdentityLinkingService, OfficialAccount
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
@@ -213,6 +216,15 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
     command_catalog = CommandCatalog()
     contribution_catalog = PluginContributionCatalog()
     ai_input_routing = AiInputRoutingService(features, command_catalog)
+    identity_links = IdentityLinkCommands(
+        IdentityLinkingService(
+            SqliteIdentityLinkStore(settings.paths.qq_state),
+            {
+                alias: OfficialAccount(alias, account.app_id)
+                for alias, account in settings.bot.qq_official.enabled_accounts.items()
+            },
+        )
+    )
 
     def poke_hint_candidates(
         group_id: int | None,
@@ -283,6 +295,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             window_seconds=settings.features.help.hint_window_seconds,
             max_per_window=settings.features.help.hint_max_per_window,
         ),
+        identity_links=identity_links,
         private_extensions=private_extensions,
     )
     matcher_factory = MatcherFactory(

@@ -313,6 +313,7 @@ def install(group: SeerMatcherGroup) -> None:
     dependencies = PlayerCommandDependencies(
         group.resources.player,
         group.features,
+        group.identity_links,
         group.resources.player_detail_extensions,
         group.player_id_resolver,
     )
