@@ -23,6 +23,9 @@ from ironsbot.integrations.qq_official.identity import (
     qq_official_event_mentions_bot,
     qq_official_incoming_message,
 )
+from ironsbot.integrations.qq_official.inbound_deduplication import (
+    QQOfficialInboundDeduplicator,
+)
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 
 if TYPE_CHECKING:
@@ -225,6 +228,9 @@ class QQOfficialRuntime:
             msg = "QQ Official startup timeout must be positive"
             raise ValueError(msg)
         self._startup_timeout_seconds = startup_timeout_seconds
+        self._inbound_deduplicator = QQOfficialInboundDeduplicator(
+            session_root / "inbound.sqlite"
+        )
         self._router: PortableCommandRouter | None = None
         self._messenger: OutboundMessenger | None = None
         self._connections: dict[str, _Connection] = {}
@@ -333,6 +339,19 @@ class QQOfficialRuntime:
             logger.error("QQ Official event arrived before runtime binding")
             return
         incoming = qq_official_incoming_message(event, account_id=app_id)
+        if not await self._inbound_deduplicator.claim(
+            app_id=app_id,
+            event_type=event_type,
+            message_id=incoming.message_id,
+        ):
+            logger.info(
+                "QQ Official duplicate inbound message ignored: "
+                "app_id=%s event_type=%s message_id=%s",
+                app_id,
+                event_type,
+                incoming.message_id,
+            )
+            return
         context = MessageInputContext(
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),

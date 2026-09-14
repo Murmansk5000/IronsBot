@@ -609,6 +609,12 @@ startup failures remain `degraded`, while required failures propagate through
 the application resource-startup boundary. Shutdown stops every SDK WebSocket
 before shared HTTP and database resources are closed.
 
+Inbound official message IDs are claimed in persistent SQLite before business
+dispatch. The claim key includes AppID and event type, so SDK replay, Resume,
+or process restart cannot execute the same command twice while unrelated bot
+accounts remain isolated. This integration concern must not be reimplemented
+inside command handlers or business services.
+
 ## QQ Official Capability And Safety Requirements
 
 QQ Official Bot delivery is constrained by official permissions, intents,

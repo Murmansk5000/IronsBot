@@ -71,6 +71,17 @@ class _FakeWebSocket:
         self.stopped = True
 
 
+class _CountingRouter:
+    def __init__(self) -> None:
+        self.dispatch_count = 0
+
+    def recognizes(self, _context: object) -> bool:
+        return True
+
+    async def dispatch(self, _context: object) -> None:
+        self.dispatch_count += 1
+
+
 def _install_fake_sdk(monkeypatch: pytest.MonkeyPatch, *, ready: bool) -> None:
     _FakeWebSocket.connect_on_start = ready
     _FakeWebSocket.instances.clear()
@@ -149,6 +160,35 @@ def test_runtime_rejects_duplicate_app_ids(tmp_path: Path) -> None:
                     http_client=client,
                     session_root=tmp_path,
                 )
+
+    asyncio.run(run())
+
+
+def test_runtime_claims_message_before_business_dispatch(tmp_path: Path) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("app", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+            )
+            raw = {
+                "id": "message-id",
+                "content": "@babyQ 帮助",
+                "timestamp": "2026-09-15T00:00:00+08:00",
+                "group_openid": "group-openid",
+                "author": {"member_openid": "member-openid"},
+            }
+
+            await runtime.handle_event("app", "GROUP_AT_MESSAGE_CREATE", raw)
+            await runtime.handle_event("app", "GROUP_AT_MESSAGE_CREATE", raw)
+
+            assert router.dispatch_count == 1
 
     asyncio.run(run())
 

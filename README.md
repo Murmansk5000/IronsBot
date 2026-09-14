@@ -169,6 +169,8 @@ superusers = []
 账号只有在 SDK 收到 `READY` 或成功 `RESUMED` 后才视为健康。
 `startup_timeout_seconds` 控制启动等待时间；`required = true` 的账号未能及时就绪会
 阻止应用启动，`required = false` 的账号则进入可观察的 degraded 状态并继续重连。
+官方入站消息 ID 会在业务执行前持久化到 `/app/data/qq_official/inbound.sqlite`，防止
+Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
 目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启

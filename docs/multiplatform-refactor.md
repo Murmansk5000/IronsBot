@@ -76,6 +76,10 @@ Task     [██████████] completed only after code, tests, and 
   才解除账号启动等待。TOML 可逐账号声明 `required`，必需账号失败通过资源生命周期阻止
   应用启动，可选账号则保留为 degraded 并继续恢复；关闭会等待所有已启动 SDK WebSocket。
 
+- QQ Official 入站可靠性不再只依赖 SDK 的 5 分钟内存集合。IronsBot 在业务分发前通过
+  共享 SQLite 边界持久化占用 `AppID + event type + message ID`，跨 Resume、并发重投和
+  进程重启均只允许一个调用进入 portable router；记录按 24 小时窗口清理，不新增配置。
+
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
   AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
   feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID
