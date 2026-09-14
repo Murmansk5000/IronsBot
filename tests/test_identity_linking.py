@@ -159,6 +159,23 @@ async def test_service_links_explicit_onebot_and_official_identities(
 
 
 @pytest.mark.asyncio
+async def test_service_resolves_only_the_exact_linked_official_identity(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path / "state.sqlite")
+    challenge = await service.begin(_onebot())
+    await service.confirm(_official_member(), challenge.token)
+
+    assert await service.linked_onebot_actor(_official_member()) == _onebot()
+    assert await service.linked_onebot_actor(_onebot()) == _onebot()
+    assert await service.linked_onebot_actor(_official_user()) is None
+    assert (
+        await service.linked_onebot_actor(_official_member(group_id="another-group"))
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_service_requires_explicit_account_when_multiple_are_enabled(
     tmp_path: Path,
 ) -> None:
