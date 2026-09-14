@@ -56,6 +56,7 @@ from ironsbot.runtime.in_flight_requests import InFlightRequestService
 from ironsbot.services.about import AboutService
 from ironsbot.services.activity.outbound_sender import ActivityReminderOutboundSender
 from ironsbot.services.ai.service import AiService
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
 if TYPE_CHECKING:
@@ -271,6 +272,10 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.features.help,
             settings.onebot_references,
             poke_hint_candidates,
+        ),
+        addressed_input_hints=AddressedInputHintService(
+            window_seconds=settings.features.help.hint_window_seconds,
+            max_per_window=settings.features.help.hint_max_per_window,
         ),
         private_extensions=private_extensions,
     )

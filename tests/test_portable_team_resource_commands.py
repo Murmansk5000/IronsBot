@@ -16,6 +16,7 @@ from ironsbot.core.platform import (
     Platform,
 )
 from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.portable_commands import PortableCommandRouter
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
@@ -228,6 +229,7 @@ async def test_catalog_limits_subscribe_to_group_managers() -> None:
         ),
         features,
         ai=cast("AiService", object()),
+        addressed_input_hints=AddressedInputHintService(),
     )
 
     member_reply = await router.dispatch(_context("订阅战队1234567"))

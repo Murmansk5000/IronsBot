@@ -262,14 +262,17 @@ async def test_single_images_keep_exact_fullmatch(
         )
 
 
-def test_without_image_feature_private_ai_is_not_suppressed() -> None:
+def test_without_image_feature_known_image_command_does_not_fall_into_ai() -> None:
     service, _ = _service()
     disabled = FeatureService({}, {ACTOR: frozenset({"ai_chat"})}, frozenset())
     catalog = _catalog(service)
     assert not catalog.claims_direct_input(
         CommandContext(ACTOR, PRIVATE), disabled, "表情2"
     )
-    assert _capture_ai_prompt(
+    assert catalog.recognizes_direct_input(
+        CommandContext(ACTOR, PRIVATE), "表情2"
+    )
+    assert not _capture_ai_prompt(
         private_message_event("表情2", user_id=100), {}, disabled, catalog
     )
 

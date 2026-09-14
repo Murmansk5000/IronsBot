@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.login import BilibiliLoginService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
     from ironsbot.services.messaging.outbound_routing import PlatformOutboundMessenger
     from ironsbot.services.messaging.sendpic import SendpicService
@@ -78,4 +79,5 @@ class ApplicationResources:
     commands: CommandCatalog
     contribution_catalog: PluginContributionCatalog
     help_hint: OneBotHelpHintPort
+    addressed_input_hints: AddressedInputHintService
     private_extensions: PrivateExtensionCatalog

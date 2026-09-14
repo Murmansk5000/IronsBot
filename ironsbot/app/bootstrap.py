@@ -59,6 +59,7 @@ def bootstrap() -> Application:
                 player_id_resolver=application.resources.player_id_resolver,
                 features=application.resources.features,
                 ai=application.resources.ai,
+                addressed_input_hints=application.resources.addressed_input_hints,
                 team_resource=application.resources.team_resource,
                 activity=application.resources.activity,
                 messaging=application.resources.messaging,

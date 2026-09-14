@@ -296,6 +296,7 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
             message += MessageSegment.at(789)
     event = group_message_event(
         message=message,
+        user_id=456 if target == "bot" else 123,
         group_id=int(_GROUP.id),
         reply_sender_user_id=456 if target == "reply" else None,
     )
@@ -303,7 +304,7 @@ async def test_installed_player_rules_admit_member_targets_and_enforce_feature( 
         event.reply.message = Message([MessageSegment.at(789)])
     rule = group.on_message.call_args_list[index].kwargs["rule"]
     state: dict[str, Any] = {}
-    admitted = enabled and target != "bot"
+    admitted = enabled and not (target == "bot" and prefix == "成就榜")
     assert await rule(cast("Any", None), event, state) is admitted
     if not admitted or prefix == "绑定米米号":
         return

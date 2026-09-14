@@ -405,9 +405,10 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 成功、失败、超时和异常都会在命令结束后计入相同窗口，超级管理员绕过。玩家基础查询、收集、巅峰、群星牌分别使用
 `seer_player`、`seer_player_collection`、`seer_player_peak`、`seer_player_autocard`
 四个独立额度，可在 `commands` 中单独覆盖。
-同一 QQ、同一真实语义目标的重复响应和未启用 AI 时的群内 @ 提示同样使用
-`[messaging.command_cooldown]` 的 `duplicate_*` 与 `mention_initial_*` 配置，但不受
-`enabled` 影响。
+同一 QQ、同一真实语义目标的重复响应使用
+`[messaging.command_cooldown]` 的 `duplicate_*` 配置，但不受 `enabled` 影响。
+未启用 AI 时，群内未知 @ 提示复用 `[features.help]` 的提示窗口，并按用户与会话
+分别限流；有效的 `@机器人 + 指令` 不受提示限流影响。
 常用语义 ID 包括 `seer_player`、`seer_player_collection`、
 `seer_player_peak`、`seer_player_autocard`、`seer_team`、
 `seer_rank_list`、`seer_rank_player`、`seer_rank_score`、

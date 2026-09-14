@@ -19,7 +19,7 @@ from ironsbot.core.plugin_install import (
     PluginContribution,
     active_plugin_install_context,
 )
-from ironsbot.integrations.onebot.context import build_notice_source
+from ironsbot.integrations.onebot.context import build_notice_source, command_context
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
@@ -33,6 +33,7 @@ from ironsbot.services.ai.command_contracts import ai_intent_command_contracts
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
+    from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.promotions import PromotionCatalog
     from ironsbot.services.ai.service import AiService
@@ -57,6 +58,7 @@ class AiIntentDependencies:
 
     service: AiService
     executor: AiIntentActionExecutor
+    commands: CommandCatalog
 
 
 def _resolve_action_command_id(
@@ -83,6 +85,12 @@ def install(
     ) -> bool:
         text = event.get_plaintext().strip()
         message = message_input_context(event).message
+        if dependencies.commands.recognizes_direct_input(
+            command_context(event),
+            text,
+            ignored_plugins=("ai_chat", "ai_intent"),
+        ):
+            return False
         source_context = await build_notice_source(
             event,
             text,
@@ -131,18 +139,19 @@ def install(
     matcher.append_handler(handle_action)
 
 
-def plugin_contribution(
+def plugin_contribution(  # noqa: PLR0913 - plugin dependencies stay explicit
     *,
     settings: Settings,
     service: AiService,
     features: FeatureService,
     promotions: PromotionCatalog,
     team_resource: TeamResourceService,
+    command_catalog: CommandCatalog,
 ) -> PluginContribution:
     """Declare configured intent actions and their natural-language matcher."""
 
     enabled = bool(settings.ai.api_key.strip()) and settings.ai.intent_actions_enabled
-    commands = ai_intent_command_contracts(settings)
+    command_contracts = ai_intent_command_contracts(settings)
     return PluginContribution(
         id="ai_intent",
         features=frozenset(
@@ -164,7 +173,7 @@ def plugin_contribution(
                 enabled=enabled,
             ),
         ),
-        commands=commands,
+        commands=command_contracts,
         install=partial(
             install,
             dependencies=AiIntentDependencies(
@@ -174,8 +183,9 @@ def plugin_contribution(
                     promotions,
                     team_resource,
                 ),
+                commands=command_catalog,
             ),
-            command_help_ids=tuple(command.id for command in commands),
+            command_help_ids=tuple(command.id for command in command_contracts),
         ),
     )
 
@@ -189,5 +199,6 @@ if (context := active_plugin_install_context()) is not None:
             features=context.resources.features,
             promotions=context.resources.promotions,
             team_resource=context.resources.team_resource,
+            command_catalog=context.resources.commands,
         ),
     )

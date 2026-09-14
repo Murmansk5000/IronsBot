@@ -127,8 +127,6 @@ superusers = []
 # EN: NoneBot matcher priority. Smaller numbers run first.
 # ZH: NoneBot 事件匹配优先级，数字越小越先处理；默认每个功能使用唯一优先级，避免同一消息被多个功能重复响应。
 help_hint = 0
-ai_group_at = -10
-bot_mention_block = -5
 server_status = 1
 server_status_admin = 2
 bilibili = 3
@@ -926,10 +924,6 @@ in_progress_message = "该命令正在处理中，请等待当前操作完成。
 # ZH: 同一语义动作和真实目标在此期间重复发送会被抑制；不受 enabled 开关影响。
 duplicate_window_seconds = 60.0
 duplicate_message = "该指令重复发送；后续重复不再提醒。"
-# EN: Non-AI direct mentions use a per-user initial-response budget.
-# ZH: 未启用 AI 的群内直接 @ 机器人按用户使用首次提示额度。
-mention_initial_window_seconds = 600.0
-mention_initial_max_responses = 3
 
 [messaging.command_cooldown.commands]
 # EN: Optional per-command window overrides. An empty list disables limits for that command.

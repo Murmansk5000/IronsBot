@@ -49,6 +49,7 @@ from ironsbot.services.activity.command_contracts import activity_command_contra
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
+from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.messaging.meeting import meeting_command_contracts
 from ironsbot.services.operations.data_sync import (
     ManualDataSyncAction,
@@ -1100,6 +1101,7 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1142,6 +1144,7 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         activity=cast("ActivityService", _FakeActivityService()),
     )
@@ -1211,6 +1214,7 @@ async def test_portable_router_enforces_operational_query_access() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         server_status=cast("ServerStatusService", _FakeServerStatusService()),
         meeting_number="6638682008",
@@ -1261,6 +1265,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         data_sync=cast("DataSyncService", _FakeDataSyncService()),
         docker_update=cast("DockerUpdateService", _FakeDockerUpdateService()),
@@ -1331,6 +1336,7 @@ async def test_portable_router_limits_rank_display_setting_to_group_managers() -
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     conversation = ConversationRef(
@@ -1399,6 +1405,7 @@ async def test_portable_router_limits_bilibili_refresh_to_superusers() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         bilibili=cast("BilibiliService", SimpleNamespace()),
         bilibili_monitor=cast(
@@ -1455,6 +1462,7 @@ async def test_portable_router_runs_pet_config_image_query() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
         pet_config=cast("PetConfigQueryService", _FakePetConfigService()),
     )
@@ -1497,6 +1505,7 @@ async def test_portable_router_restricts_rank_status_to_account_superuser() -> N
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     member = ActorRef(
@@ -1563,6 +1572,7 @@ async def test_portable_router_runs_scoped_query_selection(
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1608,6 +1618,7 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
@@ -1638,6 +1649,7 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1676,6 +1688,7 @@ async def test_portable_router_runs_rank_query() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
@@ -1707,6 +1720,7 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
@@ -1727,6 +1741,36 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
     assert about is not None
     assert "IronsBot" in cast("TextPart", about.message.parts[0]).text
     assert len(ai.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_portable_router_does_not_send_unavailable_command_to_ai() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["ai_chat"]),
+    )
+    ai = _FakeAi()
+    router = build_portable_command_router(
+        catalog=_portable_catalog(ai_chat=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        features=features,
+        ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
+
+    assert await router.dispatch(_portable_input("关于", actor, conversation)) is None
+    assert ai.calls == []
 
 
 @pytest.mark.asyncio
@@ -1757,6 +1801,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=enabled_features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
 
@@ -1774,6 +1819,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         (),
         qq_official=_qq_config(features=["help"]),
     )
+    addressed_input_hints = AddressedInputHintService(max_per_window=1)
     disabled = build_portable_command_router(
         catalog=_portable_catalog(ai_chat=True),
         about=AboutService("test"),
@@ -1781,6 +1827,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=disabled_features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=addressed_input_hints,
         team_resource=_unused_team_resource(),
     )
 
@@ -1791,6 +1838,10 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
     assert guarded is not None
     assert cast("TextPart", guarded.message.parts[0]).text == (
         DIRECT_COMMAND_HELP_HINT_TEXT
+    )
+    assert (
+        await disabled.dispatch(_portable_input("还是不会处理", actor, conversation))
+        is None
     )
 
 
@@ -1809,6 +1860,7 @@ async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     actor = ActorRef(
@@ -1854,6 +1906,7 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
     incoming = _portable_input("关于", actor, conversation)
@@ -1965,6 +2018,7 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
         features=features,
         ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
         team_resource=_unused_team_resource(),
     )
 

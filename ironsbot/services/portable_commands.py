@@ -66,6 +66,7 @@ if TYPE_CHECKING:
     from ironsbot.services.ai.service import AiService
     from ironsbot.services.bilibili.runtime import BilibiliMonitorService
     from ironsbot.services.bilibili.service import BilibiliService
+    from ironsbot.services.messaging.addressed_input import AddressedInputHintService
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
@@ -82,13 +83,14 @@ if TYPE_CHECKING:
 class PortableCommandRouter:
     """Dispatch catalog-owned commands without importing a platform adapter."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - router dependencies stay explicit
         self,
         catalog: CommandCatalog,
         operations: Mapping[str, PortableOperation],
         features: FeatureService,
         *,
         ai: AiService,
+        addressed_input_hints: AddressedInputHintService,
         query_sessions: PortableQuerySessions | None = None,
     ) -> None:
         unknown = set(operations) - catalog.command_ids
@@ -101,6 +103,7 @@ class PortableCommandRouter:
         self._operations = dict(operations)
         self._features = features
         self._ai = ai
+        self._addressed_input_hints = addressed_input_hints
         self._query_sessions = query_sessions or PortableQuerySessions()
 
     def recognizes(
@@ -229,6 +232,8 @@ class PortableCommandRouter:
         command_context: CommandContext,
         prompt: str,
     ) -> PortableReply | None:
+        if self._recognizes_catalog_command(context, command_context, prompt):
+            return None
         if self._can_chat(context, command_context):
             if not prompt:
                 return PortableReply(
@@ -245,11 +250,33 @@ class PortableCommandRouter:
                 if reply is None
                 else PortableReply(OutboundMessage.from_text(reply))
             )
-        if self._is_group_mention(context):
+        if self._is_group_mention(context) and self._addressed_input_hints.admit(
+            context
+        ):
             return PortableReply(
                 OutboundMessage.from_text(DIRECT_COMMAND_HELP_HINT_TEXT)
             )
         return None
+
+    def _recognizes_catalog_command(
+        self,
+        context: MessageInputContext,
+        command_context: CommandContext,
+        normalized_text: str,
+    ) -> bool:
+        raw_text = context.text.strip()
+        return self._catalog.recognizes_direct_input(
+            command_context,
+            raw_text,
+            ignored_plugins=("ai_chat", "ai_intent"),
+        ) or (
+            raw_text != normalized_text
+            and self._catalog.recognizes_direct_input(
+                command_context,
+                normalized_text,
+                ignored_plugins=("ai_chat", "ai_intent"),
+            )
+        )
 
     def _can_chat(
         self,
@@ -290,6 +317,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     player_id_resolver: PlayerIdResolver,
     features: FeatureService,
     ai: AiService,
+    addressed_input_hints: AddressedInputHintService,
     team_resource: TeamResourceService,
     activity: ActivityService | None = None,
     messaging: MessagingService | None = None,
@@ -468,6 +496,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         operations,
         features,
         ai=ai,
+        addressed_input_hints=addressed_input_hints,
         query_sessions=sessions,
     )
 

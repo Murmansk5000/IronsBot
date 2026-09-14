@@ -12,7 +12,6 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves it at runtime
 
 from ironsbot.core.features import Feature
-from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
@@ -31,7 +30,6 @@ from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import bot_mention
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
-from ironsbot.services.messaging.bot_mention_block import BotMentionBlockService
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -48,7 +46,6 @@ AI_CHAT_PROMPT_KEY = "_ai_chat_prompt"
 class AiChatMatcherDependencies:
     features: FeatureService
     commands: CommandCatalog
-    bot_mention_block_service: BotMentionBlockService
 
 
 __plugin_meta__ = PluginMetadata(
@@ -61,34 +58,14 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def _is_claimed_private_command(
+def _is_claimed_command(
     commands: CommandCatalog,
-    features: FeatureService,
     event: MessageEvent,
     prompt: str,
 ) -> bool:
-    return not isinstance(event, GroupMessageEvent) and commands.claims_direct_input(
-        command_context(event),
-        features,
-        prompt,
-        ignored_plugins=("ai_chat",),
+    return commands.recognizes_direct_input(
+        command_context(event), prompt, ignored_plugins=("ai_chat", "ai_intent")
     )
-
-
-def _should_guard_non_ai_group_mention(
-    features: FeatureService,
-    event: MessageEvent,
-) -> bool:
-    return (
-        isinstance(event, GroupMessageEvent)
-        and mentions_bot(event)
-        and not event_is_feature_allowed(features, event, "ai_chat")
-    )
-
-
-def _build_guard_message(event: MessageEvent) -> str:
-    del event
-    return DIRECT_COMMAND_HELP_HINT_TEXT
 
 
 def _capture_ai_prompt(
@@ -105,7 +82,7 @@ def _capture_ai_prompt(
         return False
 
     prompt = event.get_plaintext()
-    if _is_claimed_private_command(commands, features, event, prompt):
+    if _is_claimed_command(commands, event, prompt):
         return False
     state[AI_CHAT_PROMPT_KEY] = prompt.strip()
     return True
@@ -181,40 +158,10 @@ def install(
                 commands=dependencies.commands,
             )
         ),
-        priority=registry.pre_command_priority("ai_group_at"),
+        priority=registry.priority("ai_chat"),
         block=True,
     )
     group_at_matcher.append_handler(run_ai_chat)
-
-    async def handle_non_ai_group_at_bot(
-        matcher: Matcher,
-        event: GroupMessageEvent,
-    ) -> None:
-        decision = dependencies.bot_mention_block_service.admit(
-            message_input_context(event).message.actor
-        )
-        if decision.allowed:
-            message = _build_guard_message(event)
-        elif decision.feedback is not None:
-            message = decision.feedback
-        else:
-            raise FinishedException
-        await finish_event_reply(matcher, event, message)
-
-    bot_mention_block_matcher = registry.on_message(
-        policy=CommandPolicy.exempt("non-AI direct mention guard"),
-        rule=bot_mention()
-        & Rule(
-            lambda event: _should_guard_non_ai_group_mention(
-                dependencies.features,
-                event,
-            )
-        ),
-        priority=registry.pre_command_priority("bot_mention_block"),
-        block=True,
-    )
-    bot_mention_block_matcher.append_handler(handle_non_ai_group_at_bot)
-
 
 def plugin_contribution(
     *,
@@ -250,9 +197,6 @@ def plugin_contribution(
                 dependencies=AiChatMatcherDependencies(
                     features=features,
                     commands=commands,
-                    bot_mention_block_service=BotMentionBlockService(
-                        settings.messaging.command_cooldown
-                    ),
                 ),
             )
             if enabled
