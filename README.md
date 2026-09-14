@@ -502,6 +502,12 @@ TOML 对已识别字段严格加载：既非内置也未被消息动作声明的
 例如，在现有 `[seer.rank]` 表内添加 `lookup_limits = { "群星牌" = 10000 }`，只为群星牌设置范围；不添加该行则保持默认空映射。
 此项不设置全服榜展示行数，不调整后台 `page_refresh` 预热范围，也不改变群开关或权限。全服榜展示行数仍由 `display_limit`、`display_limits`、`max_display_limit` 等展示配置控制。
 
+### QQ 官方账号自定义按钮
+
+`bot.qq_official.accounts.<账号名>.custom_keyboards` 默认是 `false`。
+启用前须确认应用具备平台相应的自定义按钮能力，再在对应账号配置中显式设为 `true`。
+此配置不会授予平台权限，也不改变原有账号、群组或用户权限设置。
+
 ## 数据与缓存
 
 建议把 `/app/data` 持久化。这里会保存：
