@@ -57,6 +57,7 @@ def bootstrap() -> Application:
                 about=application.resources.about,
                 seer=application.resources.seer,
                 player_id_resolver=application.resources.player_id_resolver,
+                identity_links=application.resources.identity_links,
                 features=application.resources.features,
                 ai=application.resources.ai,
                 ai_intent_actions=application.resources.ai_intent_actions,

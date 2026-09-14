@@ -10,6 +10,10 @@ import pytest
 
 import ironsbot.platform_state_migration as migration
 from ironsbot.core.platform import ActorRef, Platform
+from ironsbot.integrations.storage.identity_links import (
+    OfficialIdentity,
+    SqliteIdentityLinkStore,
+)
 from ironsbot.integrations.storage.player_bindings import SqlitePlayerBindingStore
 from ironsbot.integrations.storage.sqlite import SqliteMigrationError
 from ironsbot.platform_state_migration import (
@@ -441,6 +445,32 @@ def test_platform_state_migration_converts_all_identity_shapes(tmp_path: Path) -
     repeated = migrate_platform_state_identities(data_root=data_root, apply=True)
     assert repeated.already_migrated
     assert not repeated.applied
+
+
+@pytest.mark.asyncio
+async def test_platform_migration_preserves_explicit_identity_links(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    _seed_legacy_platform_state(data_root)
+    store = SqliteIdentityLinkStore(data_root / "state/qq_state.sqlite")
+    official = OfficialIdentity("app-a", "member", "member-a", "group-a")
+    await store.issue(
+        token_hash="token-hash",
+        onebot_qq_id="1001",
+        official_app_id="app-a",
+        created_at=1.0,
+        expires_at=10.0,
+    )
+    await store.consume(token_hash="token-hash", official=official, now=2.0)
+
+    result = migrate_platform_state_identities(data_root=data_root, apply=True)
+
+    assert result.applied
+    migrated = SqliteIdentityLinkStore(data_root / "state/qq_state.sqlite")
+    links = await migrated.for_onebot("1001")
+    assert len(links) == 1
+    assert links[0].official == official
 
 
 def test_platform_state_migration_rejects_invalid_target_type(tmp_path: Path) -> None:
