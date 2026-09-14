@@ -15,6 +15,7 @@ DOCKER_TIMESTAMP_PATTERN = re.compile(
     r"(?P<tz>Z|[+-]\d{2}:\d{2})?$"
 )
 
+
 def format_docker_update_reply(
     *,
     container_name: str,
@@ -150,52 +151,33 @@ def _format_docker_revision_check(
     )
     lines = [
         (
-            f"Docker 镜像已是最新（相对 Docker Hub）：{container_name}"
+            f"Docker 镜像已是最新（与配置目标一致）：{container_name}"
             if result.up_to_date
-            else f"检测到新镜像：{container_name}"
+            else f"配置目标与本机镜像不同：{container_name}"
         ),
         f"目标镜像：{image}",
         f"本机当前镜像ID：{current}",
-        f"Docker Hub latest 镜像ID：{remote}",
+        f"配置目标镜像ID：{remote}",
     ]
     if current_commit := visible_image_commit_summary(result.current_image_commit):
         lines.append(f"本机代码：{current_commit}")
     if remote_commit := visible_image_commit_summary(result.remote_image_commit):
-        lines.append(f"Docker Hub 代码：{remote_commit}")
+        lines.append(f"目标代码：{remote_commit}")
 
+    if result.github_main_repository:
+        lines.append(f"GitHub 参考仓库：{result.github_main_repository}")
     if result.github_main_revision:
         lines.append(f"GitHub main：{_short_revision(result.github_main_revision)}")
-        if _revisions_match(result.remote_image_revision, result.github_main_revision):
-            lines.append("Docker Hub latest 已对齐 GitHub main。")
-        else:
+        for label, revision in (
+            ("目标代码", result.remote_image_revision),
+            ("本机代码", result.current_image_revision),
+        ):
             lines.append(
-                "Docker Hub latest 尚未对齐 GitHub main，"
-                "构建可能仍在进行或已失败。"
-            )
-        if _revisions_match(result.current_image_revision, result.github_main_revision):
-            lines.append("结论：本机运行镜像已对齐 GitHub main。")
-        elif result.up_to_date:
-            lines.append(
-                "结论：本机与 Docker Hub latest 一致，"
-                "但两者均落后 GitHub main。"
-            )
-        else:
-            lines.append(
-                "结论：本机落后 Docker Hub latest 和 GitHub main，"
-                "可选择更新镜像。"
+                _format_main_alignment(label, revision, result.github_main_revision)
             )
     else:
         lines.append(
-            "GitHub main 检查失败："
-            f"{result.github_main_error or '未知错误'}"
-        )
-        lines.append(
-            "结论："
-            + (
-                "本机与 Docker Hub latest 一致。"
-                if result.up_to_date
-                else "本机落后 Docker Hub latest，可选择更新镜像。"
-            )
+            f"GitHub main 未确认：{result.github_main_error or '缺少源码元数据'}"
         )
     if not result.up_to_date:
         lines.append("操作：等待确认后更新并重启。")
@@ -207,12 +189,20 @@ def _short_revision(revision: str) -> str:
     return revision.strip()[:12] or "未知"
 
 
+def _format_main_alignment(label: str, revision: str, main_revision: str) -> str:
+    if not GIT_REVISION_PATTERN.fullmatch(revision.strip()):
+        return f"{label}：缺少有效提交编号，无法比较 main。"
+    if _revisions_match(revision, main_revision):
+        return f"{label}已对齐 GitHub main。"
+    return f"{label}（{_short_revision(revision)}）与参考 main 不同；未判断提交先后。"
+
+
 def _revisions_match(left: str, right: str) -> bool:
     normalized_left = left.strip().lower()
     normalized_right = right.strip().lower()
     return bool(
-        normalized_left
-        and normalized_right
+        GIT_REVISION_PATTERN.fullmatch(normalized_left)
+        and GIT_REVISION_PATTERN.fullmatch(normalized_right)
         and (
             normalized_left == normalized_right
             or normalized_left.startswith(normalized_right)

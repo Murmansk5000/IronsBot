@@ -90,6 +90,7 @@ class DockerImageCheckResult:
     remote_image_created: str = ""
     remote_image_commit: str = ""
     remote_image_revision: str = ""
+    github_main_repository: str = ""
     github_main_revision: str = ""
     github_main_error: str = ""
     missing_socket: bool = False
