@@ -30,8 +30,12 @@ from .daemon import (
     remove_container_quietly,
 )
 from .http import raise_for_docker_status
-from .metadata import resolve_image_commit_summary
-from .registry import inspect_remote_image_info
+from .metadata import (
+    github_repo_from_image_labels,
+    resolve_github_branch_revision,
+    resolve_image_commit_summary,
+)
+from .registry import inspect_remote_image_info, split_docker_image
 
 RESTART_CONTAINER_STOP_TIMEOUT_SECONDS = 3
 logger = logging.getLogger(__name__)
@@ -230,8 +234,9 @@ class DockerClient:
                     current_image,
                 )
             try:
+                image_repository, _reference = split_docker_image(request.image)
                 remote_image = await inspect_remote_image_info(
-                    request.image,
+                    f"{image_repository}@{remote_digest}",
                     registry_credentials=request.registry_credentials,
                 )
                 remote_commit = await resolve_image_commit_summary(
@@ -249,6 +254,27 @@ class DockerClient:
             logger.exception("docker image check failed")
             return DockerImageCheckResult(ok=False, message=str(error))
 
+        repository = github_repo_from_image_labels(
+            remote_image.labels
+        ) or github_repo_from_image_labels(current_image.labels)
+        github_main_revision = ""
+        github_main_error = "镜像未声明可识别的 GitHub 源码仓库，已跳过。"
+        if repository is not None:
+            try:
+                github_main_revision = await resolve_github_branch_revision(repository)
+                github_main_error = ""
+            except Exception as error:  # noqa: BLE001 - optional diagnostics
+                github_main_error = (
+                    f"HTTP {error.response.status_code}"
+                    if isinstance(error, httpx.HTTPStatusError)
+                    else type(error).__name__
+                )
+                logger.warning(
+                    "GitHub main check failed: repo=%s/%s reason=%s",
+                    *repository,
+                    github_main_error,
+                )
+
         return DockerImageCheckResult(
             ok=True,
             up_to_date=remote_digest
@@ -260,10 +286,21 @@ class DockerClient:
             current_image_id=current_image.image_id,
             current_image_created=current_image.created,
             current_image_commit=current_commit,
+            current_image_revision=current_image.labels.get(
+                "org.opencontainers.image.revision",
+                "",
+            ).strip(),
             remote_digest=remote_digest,
             remote_image_id=remote_image.image_id,
             remote_image_created=remote_image.created,
             remote_image_commit=remote_commit,
+            remote_image_revision=remote_image.labels.get(
+                "org.opencontainers.image.revision",
+                "",
+            ).strip(),
+            github_main_repository="/".join(repository) if repository else "",
+            github_main_revision=github_main_revision,
+            github_main_error=github_main_error,
         )
 
     async def fetch_image_archive(
