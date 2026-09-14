@@ -34,6 +34,7 @@ from ironsbot.config.platform_references import (
 from ironsbot.core.bilibili import BiliConfig
 from ironsbot.core.commands import csv_items, json_array
 from ironsbot.core.features import FEATURE_KEYS
+from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog, PromotionConfig
 from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
@@ -42,7 +43,7 @@ from ironsbot.services.identity.player_accounts import (
 )
 
 if TYPE_CHECKING:
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
 
 VALID_LOG_LEVELS = {
     "TRACE",
@@ -68,6 +69,16 @@ class SettingsReferenceError(ValueError):
     @classmethod
     def duplicate_lucky_skin_window_account(cls) -> SettingsReferenceError:
         return cls("seer.lucky_skin_window.accounts must not repeat an account")
+
+    @classmethod
+    def lucky_skin_window_requires_proactive_messages(
+        cls,
+        account_id: str,
+    ) -> SettingsReferenceError:
+        return cls(
+            "seer.lucky_skin_window official user requires proactive_messages "
+            f"for QQ Official AppID {account_id}"
+        )
 
     @classmethod
     def missing_player_account_password(
@@ -607,16 +618,28 @@ class Settings(BaseModel):
             resolve=platform_references.private_conversation_ref,
             location="bilibili.push.users",
         )
-        lucky_users: set[int] = set()
+        lucky_users: set[ActorRef] = set()
         lucky_accounts: set[int] = set()
         for index, account in enumerate(self.seer.lucky_skin_window.accounts):
-            user_id = references.resolve_user(
+            user = platform_references.user_actor_ref(
                 account.user,
                 location=f"seer.lucky_skin_window.accounts[{index}].user",
             )
-            if user_id in lucky_users:
+            if user in lucky_users:
                 raise SettingsReferenceError.duplicate_lucky_skin_window_user()
-            lucky_users.add(user_id)
+            lucky_users.add(user)
+            if (
+                self.seer.lucky_skin_window.enabled
+                and user.platform is Platform.QQ_OFFICIAL
+                and not any(
+                    item.app_id == user.account_id and item.proactive_messages
+                    for item in self.bot.qq_official.enabled_accounts.values()
+                )
+            ):
+                error = (
+                    SettingsReferenceError.lucky_skin_window_requires_proactive_messages
+                )
+                raise error(user.account_id or "")
             configured_account = accounts.resolve(
                 account.account,
                 location=f"seer.lucky_skin_window.accounts[{index}].account",

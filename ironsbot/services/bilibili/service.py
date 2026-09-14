@@ -18,9 +18,7 @@ from ironsbot.services.bilibili.hydration import (
 )
 from ironsbot.services.bilibili.menu import (
     DYNAMIC_MENU_DEFAULT_LIMIT,
-    DynamicDetailSelection,
     DynamicMenuResult,
-    build_dynamic_detail_for_selection,
     build_dynamic_menu_text,
     dynamic_record_ids,
 )
@@ -239,16 +237,10 @@ class BilibiliService:
             prompt=build_dynamic_menu_text(records),
         )
 
-    def select_dynamic(
-        self,
-        cached_ids: list[object],
-        raw_text: str,
-    ) -> DynamicDetailSelection:
-        return build_dynamic_detail_for_selection(
-            self.history,
-            cached_ids,
-            raw_text,
-        )
+    def get_dynamic(self, dynamic_id: str) -> DynamicHistoryRecord | None:
+        """Return one persisted dynamic selected by its stable platform ID."""
+
+        return self.history.get(dynamic_id)
 
     async def prepare_dynamic_detail(
         self,

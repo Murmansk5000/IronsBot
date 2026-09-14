@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.authorization import GROUP_MANAGER_ROLES
+from ironsbot.core.authorization import can_manage_group_actor
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.messaging.push_time import (
     build_push_time_menu_prompt,
@@ -17,6 +17,7 @@ from ironsbot.services.messaging.sendpic import (
     ImageIndexOutOfRangeError,
     ImageNotFoundError,
 )
+from ironsbot.services.messaging.topic_commands import build_topic_operations
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableTextInputSpec,
@@ -51,6 +52,8 @@ def build_portable_messaging_operations(
         f"messaging.{action.id}": _text_operation(action)
         for action in messaging.portable_command_actions
     }
+    if messaging.topics is not None:
+        operations.update(build_topic_operations(messaging.topics))
     operations["messaging.push_subscription"] = _subscription_operation(
         messaging,
         sessions,
@@ -75,8 +78,11 @@ def _subscription_operation(
         del text
         message = context.message
         read_only = message.conversation.kind == "group" and not (
-            message.group_role in GROUP_MANAGER_ROLES
-            or messaging.feature_policy.is_actor_superuser(message.actor)
+            can_manage_group_actor(
+                messaging.feature_policy,
+                message.actor,
+                message.group_role,
+            )
         )
         return await _PortableSubscriptionMenus(
             messaging,

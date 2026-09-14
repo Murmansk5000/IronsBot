@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.seer.autocard import AutocardEntry
@@ -47,6 +48,8 @@ if TYPE_CHECKING:
         NewContentSnapshot,
     )
     from ironsbot.services.seer.resources import SeerQueryResources
+
+logger = logging.getLogger(__name__)
 
 
 def build_portable_new_content_operations(
@@ -91,7 +94,7 @@ class _PortableNewContentOperations:
         context: MessageInputContext,
     ) -> OutboundMessage:
         del text
-        return self._start(context, None)
+        return await self._start(context, None)
 
     async def focused(
         self,
@@ -109,9 +112,9 @@ class _PortableNewContentOperations:
         if spec is None:
             msg = f"catalog accepted unknown new-content command: {text!r}"
             raise ValueError(msg)
-        return self._start(context, spec.categories)
+        return await self._start(context, spec.categories)
 
-    def _start(
+    async def _start(
         self,
         context: MessageInputContext,
         categories: tuple[NewContentCategory, ...] | None,
@@ -140,9 +143,9 @@ class _PortableNewContentOperations:
         )
         if isinstance(layout, str):
             return OutboundMessage.from_text(layout)
-        return self._offer(context, snapshot, layout)
+        return await self._offer(context, snapshot, layout)
 
-    def _offer(
+    async def _offer(
         self,
         context: MessageInputContext,
         snapshot: NewContentSnapshot,
@@ -150,9 +153,27 @@ class _PortableNewContentOperations:
     ) -> OutboundMessage:
         menu = build_new_content_menu(snapshot, layout)
 
+        text_prompt = OutboundMessage.from_text(
+            format_selection_menu(
+                title=menu.title,
+                items=tuple(
+                    SelectionMenuItem(
+                        label=choice.name,
+                        detail_lines=(choice.description,)
+                        if choice.description
+                        else (),
+                        is_sub_item=choice.action.kind == "item"
+                        and layout.focused_category is None,
+                    )
+                    for choice in menu.choices
+                ),
+            )
+        )
+        prompt = await self._render_menu(snapshot, layout, text_prompt)
+
         async def select(action: NewContentAction) -> OutboundMessage:
             if action.kind == "category":
-                return self._offer(
+                return await self._offer(
                     context,
                     snapshot,
                     focus_new_content_category(layout, action.category),
@@ -166,26 +187,35 @@ class _PortableNewContentOperations:
             PortableMenuSpec(
                 choices=tuple(choice.action for choice in menu.choices),
                 select=select,
-                prompt=OutboundMessage.from_text(
-                    format_selection_menu(
-                        title=menu.title,
-                        items=tuple(
-                            SelectionMenuItem(
-                                label=choice.name,
-                                detail_lines=(choice.description,)
-                                if choice.description
-                                else (),
-                                is_sub_item=choice.action.kind == "item"
-                                and layout.focused_category is None,
-                            )
-                            for choice in menu.choices
-                        ),
-                    )
-                ),
+                prompt=prompt,
                 keep_open=True,
                 exit_message="已退出新增内容查询。",
             ),
         )
+
+    async def _render_menu(
+        self,
+        snapshot: NewContentSnapshot,
+        layout: NewContentMenuLayout,
+        fallback: OutboundMessage,
+    ) -> OutboundMessage:
+        try:
+            image = await self.resources.new_content_menu(
+                snapshot,
+                layout.display_categories,
+                layout.focused_category,
+                "新增内容",
+                layout.expanded_categories,
+                layout.preview_max_items,
+            )
+            return OutboundMessage(
+                (BinaryImagePart(image, "image/png", "new-content.png"),)
+            )
+        except NewContentSnapshotChangedError:
+            return fallback
+        except Exception:
+            logger.exception("new content menu rendering failed; falling back to text")
+            return fallback
 
     async def _detail(
         self,
