@@ -215,9 +215,9 @@ def test_format_docker_image_check_does_not_offer_side_effects() -> None:
         ),
     )
 
-    assert "检测到新镜像：ironsbot" in reply
+    assert "配置目标与本机镜像不同：ironsbot" in reply
     assert "当前镜像ID" in reply
-    assert "Docker Hub latest 镜像ID" in reply
+    assert "配置目标镜像ID" in reply
     assert "oldcommitabc old change" in reply
     assert "newcommitabc new change" in reply
     assert "2026-07-05 02:00:00" in reply
