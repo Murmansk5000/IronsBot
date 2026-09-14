@@ -105,6 +105,13 @@ class _FakeDockerUpdate:
         self.events.append("checked")
         return "image current"
 
+    async def prepare_maintenance(self, choice: object) -> tuple[str, str]:
+        self.events.append(f"prepare maintenance:{choice}")
+        return "restarting", "process"
+
+    async def execute_restart(self, action: object) -> None:
+        self.events.append(f"restart:{action}")
+
 
 def _context() -> MessageInputContext:
     actor = ActorRef(Platform.QQ_OFFICIAL, "user", account_id="bot")
@@ -231,7 +238,8 @@ async def test_portable_force_data_sync_preserves_force_choice() -> None:
 async def test_portable_docker_check_waits_for_initial_delivery() -> None:
     service = _FakeDockerUpdate()
     operation = build_portable_docker_operations(
-        cast("DockerUpdateService", service)
+        cast("DockerUpdateService", service),
+        PortableQuerySessions(),
     )["docker_update.image_check"]
 
     reply = cast(
@@ -247,3 +255,35 @@ async def test_portable_docker_check_waits_for_initial_delivery() -> None:
 
     assert _text(result) == "image current"
     assert service.events == ["prepare", "checked"]
+
+
+@pytest.mark.asyncio
+async def test_portable_docker_restart_runs_only_after_preparation_reply() -> None:
+    service = _FakeDockerUpdate()
+    sessions = PortableQuerySessions()
+    operation = build_portable_docker_operations(
+        cast("DockerUpdateService", service),
+        sessions,
+    )["docker_update.restart"]
+    context = _context()
+
+    menu = await operation("/重启机器人", context)
+    assert _text(menu) == (
+        "选择机器人维护操作：\n"
+        "1. 仅重启机器人\n"
+        "2. 检查并更新镜像后重启\n"
+        "0.【退出】\n\n"
+        "输入序号后会立即执行。"
+    )
+    prepared = await sessions.select("1", context, allow_deferred=True)
+    assert isinstance(prepared, PortableReply)
+    assert _text(prepared.message) == "restarting"
+    assert service.events == [
+        "prepare maintenance:DockerMaintenanceChoice.RESTART_ONLY"
+    ]
+
+    prepared.delivered()
+    assert prepared.follow_up is not None
+    completed = await prepared.follow_up()
+    assert _text(completed) == "机器人维护操作已提交。"
+    assert service.events[-1] == "restart:process"
