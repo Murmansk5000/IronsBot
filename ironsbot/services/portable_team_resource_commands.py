@@ -6,6 +6,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.semantic_requests import ActionDefinition, SemanticTarget
+from ironsbot.services.portable_seer_commands import team_query_actor
+from ironsbot.services.seer.query_result import QueryChoice, QueryResult
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourceSubscriptionTarget,
 )
@@ -13,25 +16,21 @@ from ironsbot.services.team.resource_subscriptions import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.team import SeerTeamQueryService
     from ironsbot.services.team.resource import TeamResourceService
 
 
 def build_portable_team_resource_operations(
     service: TeamResourceService,
+    *,
+    query: PortableOperation,
 ) -> Mapping[str, PortableOperation]:
     """Bind portable command IDs to the existing domain service."""
-
-    async def query(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        del text
-        target = _target(context)
-        messages = await service.query_target_messages(target)
-        text = "\n\n".join(messages) or service.subscriptions_message(target)
-        return OutboundMessage.from_text(text)
 
     async def manage(
         text: str,
@@ -79,6 +78,67 @@ def build_portable_team_resource_operations(
         "team_resource.unsubscribe": manage,
         "team_resource.list": manage,
     }
+
+
+def build_portable_team_overview_operation(
+    service: TeamResourceService,
+    teams: SeerTeamQueryService,
+    resolver: PlayerIdResolver,
+    features: FeatureService,
+    sessions: PortableQuerySessions,
+) -> PortableOperation:
+    async def query(text: str, context: MessageInputContext) -> OutboundMessage:
+        del text
+        target = _target(context)
+        if not service.allows_target(context.message.actor, target):
+            return OutboundMessage.from_text("该功能当前未对你开放。")
+        bound = resolver.resolve(context, None)
+        first_team_id = None
+        error = bound.error
+        if bound.player_id is not None:
+            lookup = await teams.lookup_player_team(
+                bound.player_id, team_query_actor(features, context)
+            )
+            first_team_id, error = lookup.team_id, lookup.error
+        items = await service.query_overview(target, first_team_id=first_team_id)
+        if not items:
+            return OutboundMessage.from_text(
+                error or service.subscriptions_message(target)
+            )
+
+        async def select(team_id: int) -> OutboundMessage:
+            if not service.allows_target(context.message.actor, target):
+                return OutboundMessage.from_text("该功能当前未对你开放。")
+            return OutboundMessage.from_text(
+                await teams.query((team_id,), team_query_actor(features, context))
+            )
+
+        result = QueryResult(
+            choices=tuple(
+                QueryChoice(
+                    name=f"【{item.team_id}】{item.name}",
+                    description=item.description,
+                    value=item.team_id,
+                    semantic_target=SemanticTarget(
+                        f"team:{item.team_id}", str(item.team_id)
+                    ),
+                    semantic_action=ActionDefinition(
+                        "team_resource.query", "战队查询", "team_resource_query"
+                    ),
+                )
+                for item in items
+            )
+        )
+        return sessions.offer(
+            context,
+            result,
+            select=select,
+            prompt_title="当前战队信息概览：" + (f"\n{error}" if error else ""),
+            not_found_message="没有可查询的战队。",
+            keep_open=True,
+        )
+
+    return query
 
 
 def _target(context: MessageInputContext) -> TeamResourceSubscriptionTarget:
