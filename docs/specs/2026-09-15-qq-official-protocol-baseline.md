@@ -71,9 +71,9 @@ in every event. IronsBot therefore must not infer a QQ number from that field.
 | Gateway | Heartbeat, reconnect, Resume, session persistence | Startup timeout, account health, required/optional policy, shutdown ordering | Runtime starts a connection but Phase 7 health acceptance is open |
 | Inbound deduplication | Bounded in-process message-ID cache | Side-effect idempotency and any recovery scope beyond the SDK cache | SDK source verified; business boundaries remain open |
 | Passive replies | HTTP calls and DTO encoding | Event-derived deadline, per-scene reply budget, sequential concurrent `msg_seq` | Group 5-minute/5-reply and C2C 60-minute/4-reply policies are enforced; live sequence keys are conversation-scoped and never evicted |
-| API failures | Logs status and trace ID, raises `RuntimeError` | Structured failure kind, code, trace ID, retry policy, redaction | Open; string classification remains in the adapter |
+| API failures | Logs status and trace ID, raises `RuntimeError` | Structured failure kind, code, trace ID, retry policy, redaction | HTTP boundary preserves status, business code and trace ID; delivery classification uses typed fields and transport exceptions |
 | Rich media | `MediaUploader` URL and chunked upload flows | Use uploader, scope cache by AppID/scene, honor TTL, expose delivery outcome | Current binary path still Base64-encodes whole content |
-| Mentions | Text payload transport | Render current official mention markup | Current renderer still uses deprecated markup |
+| Mentions | Text payload transport | Render current official mention markup | Renderer emits escaped `<qqbot-at-user id="" />` markup |
 | Identity | Preserves opaque event fields | AppID-scoped identity and explicit, revocable linking | No implicit mapping allowed |
 
 ## Interactive Confirmation Target
@@ -158,13 +158,14 @@ identity or ownership of the game account.
 | 2026-09-15 | Protocol and implementation audit | Official documents above; installed SDK 1.2.2 source; dependency lock; architecture text search | Baseline accepted; runtime gaps and real-platform gates remain open |
 | 2026-09-15 | Addressed-input routing | AI routing, command ownership, OneBot matcher, portable router and QQ Official tests | Both transports share command-first chat/intent policy; duplicate OneBot group matcher removed |
 | 2026-09-15 | Passive-reply policy | Reply allocator, official identity, outbound messenger and SDK runtime tests | Event timestamps define deadlines; group and C2C budgets are separate; active live keys cannot be evicted and reused |
+| 2026-09-15 | Structured API failures and mentions | 75 QQ Official tests; Ruff; BasedPyright; compileall; static repository checks | HTTP failures retain status/code/trace without parsing exception strings; transport failures remain typed; current mention markup is escaped |
 
 ## Progress
 
 ```text
-Program  [███░░░░░░░] 30%  fixed weights; reply deadline and sequence slice completed
+Program  [███▌░░░░░░] 35%  fixed weights; typed failures and current mentions completed
 Phase    [██████████] 100%  protocol baseline documented
-Current  [███░░░░░░░] 25%  reply protocol; next: typed API failures and mention markup
+Current  [██████░░░░] 60%  reply protocol; next: shared interactive prompt sessions
 ```
 
 Only verified and committed work counts toward program progress.

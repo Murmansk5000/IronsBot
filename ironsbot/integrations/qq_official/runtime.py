@@ -16,6 +16,7 @@ from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
     qq_official_event_mentions_bot,
@@ -119,7 +120,7 @@ class QQOfficialRuntime:
                 account.secret,
                 f"IronsBot:{account.app_id}",
             )
-            api.setup(http_client)
+            api.setup(QQOfficialHttpClient(http_client))
             session = _SessionState.load(account.app_id, session_root)
             callbacks = self._callbacks(account.app_id, api, session)
             self._connections[account.app_id] = _Connection(

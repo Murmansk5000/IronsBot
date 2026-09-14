@@ -13,6 +13,9 @@ from ironsbot.core.outbound import (
     SendResult,
 )
 from ironsbot.core.platform import Platform
+from ironsbot.integrations.qq_official.api_errors import (
+    qq_official_exception_result,
+)
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialOutboundMessageError,
     QQOfficialPayload,
@@ -220,7 +223,7 @@ class QQOfficialOutboundMessenger:
                     msg_seq=message_sequence,
                 )
         except Exception as error:  # noqa: BLE001 - transport boundary
-            return _exception_result(error)
+            return qq_official_exception_result(error)
         result_id = _result_id(result)
         if result_id is None:
             return _failure(
@@ -245,31 +248,6 @@ def _result_id(result: object) -> str | None:
         value = getattr(result, "id", None)
     normalized = str(value).strip() if value is not None else ""
     return normalized or None
-
-
-def _exception_result(error: Exception) -> SendResult:
-    message = str(error)
-    lowered = message.lower()
-    if "429" in lowered or "rate limit" in lowered:
-        kind = DeliveryFailureKind.RETRYABLE
-    elif "timeout" in lowered or "network" in lowered:
-        kind = DeliveryFailureKind.UNCERTAIN
-    elif any(code in lowered for code in ("400", "401", "403")):
-        kind = DeliveryFailureKind.PERMANENT
-    else:
-        kind = DeliveryFailureKind.RETRYABLE
-    return SendResult(
-        delivered=False,
-        error_code=_error_code(error),
-        error_message=message,
-        trace_id=getattr(error, "trace_id", None),
-        failure_kind=kind,
-    )
-
-
-def _error_code(error: Exception) -> str:
-    code = getattr(error, "code", None)
-    return str(code) if code is not None else type(error).__name__
 
 
 def _failure(

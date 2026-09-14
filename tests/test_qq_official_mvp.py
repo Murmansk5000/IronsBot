@@ -22,7 +22,12 @@ from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    MentionPart,
+    OutboundMessage,
+    TextPart,
+)
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -1001,6 +1006,33 @@ def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
     assert rendered[1] == QQOfficialImagePayload(
         content=b"image",
         filename="preview.png",
+    )
+
+
+def test_qq_official_renderer_uses_current_member_mention_markup() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        'member-"openid',
+        "member",
+        conversation.id,
+        account_id="example-app",
+    )
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage((MentionPart(member), TextPart(" result"))),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialTextPayload(
+            '<qqbot-at-user id="member-&quot;openid" /> result'
+        ),
     )
 
 

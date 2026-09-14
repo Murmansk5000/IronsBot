@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import escape
 
 from ironsbot.core.outbound import (
     BinaryImagePart,
@@ -62,7 +63,7 @@ def render_qq_official_outbound_message(
         elif isinstance(part, MentionPart):
             if not _supports_group_mention(conversation, part):
                 raise QQOfficialOutboundMessageError.unsupported_mention()
-            text.append(f"<@{part.actor.id}>")
+            text.append(f'<qqbot-at-user id="{escape(part.actor.id, quote=True)}" />')
         elif isinstance(part, BinaryImagePart):
             flush_text()
             rendered.append(
