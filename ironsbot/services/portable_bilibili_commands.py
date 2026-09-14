@@ -171,9 +171,11 @@ async def _dynamic_detail(
                 "❌ 没找到这条历史动态，请重新发送“动态”。"
             )
         detail = await service.prepare_dynamic_detail(record)
-        return render_dynamic_content_message(
+        return await render_dynamic_content_message(
             detail.item,
             detail.content_override,
+            image_collage=service.image_collage,
+            combine_images=service.config.push.combine_images,
         ) or OutboundMessage.from_text("❌ 动态详情解析失败。")
     except Exception:
         _LOGGER.exception("portable Bilibili dynamic detail failed")
