@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 def _encode(target: ConversationRef) -> str:
     return json.dumps(
-        [target.platform.value, target.kind, target.id],
+        [target.platform.value, target.kind, target.id, target.account_id],
         separators=(",", ":"),
     )
 
@@ -44,6 +44,7 @@ def _decode(raw: str) -> ConversationRef:
         Platform(values[0]),
         cast("ConversationKind", values[1]),
         cast("str", values[2]),
+        values[3],
     )
 
 

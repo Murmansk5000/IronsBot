@@ -1,33 +1,29 @@
 # SPDX-License-Identifier: MIT
+"""Platform-neutral interactive help menu."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.command_catalog import command_context_from_input
+from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import (
     HELP_SELECTION_FOOTER,
     SelectionMenuSection,
     format_selection_menu,
 )
-from ironsbot.integrations.onebot.context import command_context
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
+from ironsbot.services.portable_query_sessions import PortableMenuSpec
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-
-    from ironsbot.core.command_catalog import CommandCatalog
+    from ironsbot.core.command_catalog import CommandCatalog, CommandContext
     from ironsbot.core.feature_policy import FeatureService
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.plugin_install import PluginContribution
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.portable_reply import PortableOperation
 
-HELP_ENTRIES_KEY = "_help_entries"
-HELP_GROUP_ORDER = (
-    "core",
-    "seer",
-    "message",
-    "ai",
-    "admin",
-    "other",
-)
+HELP_GROUP_ORDER = ("core", "seer", "message", "ai", "admin", "other")
 HELP_GROUP_TITLES = {
     "core": "基础",
     "seer": "赛尔查询",
@@ -82,13 +78,14 @@ def entry_sort_key(entry: HelpMenuEntry) -> tuple[int, int, str]:
     return (group_index, entry.order, entry.name)
 
 
-def visible_help_entries(
+def visible_help_entries(  # noqa: PLR0913 - explicit directory dependencies
     definitions: tuple[PluginContribution, ...],
-    event: MessageEvent,
+    context: CommandContext,
     *,
     features: FeatureService,
     commands: CommandCatalog,
     ignored_plugins: tuple[str, ...],
+    command_ids: frozenset[str] | None = None,
 ) -> list[HelpMenuEntry]:
     entries: list[HelpMenuEntry] = []
     seen_names: set[str] = set()
@@ -106,18 +103,20 @@ def visible_help_entries(
             continue
         visible = help_entry.visible
         if visible is not None:
-            if not visible(event):
+            if not visible(context):
                 continue
         elif definition.commands:
-            if not commands.available_for_context(
-                command_context(event),
+            if not _available_commands(
+                commands,
+                context,
                 features,
                 plugin_id=definition.id,
                 ignored_plugins=ignored_plugins,
+                command_ids=command_ids,
             ):
                 continue
         elif not any(
-            event_is_feature_visible_in_help(features, event, feature.value)
+            _feature_is_visible(features, context, feature.value)
             for feature in definition.features
         ):
             continue
@@ -135,10 +134,8 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
     sections: list[SelectionMenuSection] = []
     current_group = ""
     current_items: list[str] = []
-
     for entry in entries:
-        group = entry.group
-        if group != current_group:
+        if entry.group != current_group:
             if current_items:
                 sections.append(
                     SelectionMenuSection(
@@ -146,7 +143,7 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
                         items=tuple(current_items),
                     )
                 )
-            current_group = group
+            current_group = entry.group
             current_items = []
         current_items.append(f"{entry.name} — {entry.description}")
 
@@ -157,7 +154,6 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
                 items=tuple(current_items),
             )
         )
-
     return format_selection_menu(
         title="📖 可用功能：",
         items=tuple(sections),
@@ -168,19 +164,22 @@ def format_plugin_list(entries: list[HelpMenuEntry]) -> str:
     )
 
 
-def format_plugin_detail(
+def format_plugin_detail(  # noqa: PLR0913 - explicit directory dependencies
     entry: HelpMenuEntry,
-    event: MessageEvent,
+    context: CommandContext,
     features: FeatureService,
     commands: CommandCatalog,
     *,
     ignored_plugins: tuple[str, ...],
+    command_ids: frozenset[str] | None = None,
 ) -> str:
-    available = commands.available_for_context(
-        command_context(event),
+    available = _available_commands(
+        commands,
+        context,
         features,
         plugin_id=entry.key,
         ignored_plugins=ignored_plugins,
+        command_ids=command_ids,
     )
     lines = [f"📖 {entry.name}"]
     if entry.notes:
@@ -190,18 +189,131 @@ def format_plugin_detail(
         return "\n".join(lines)
 
     for interaction in ("direct", "conversation", "passive", "automatic"):
-        commands_for_interaction = tuple(
+        matching = tuple(
             command for command in available if command.interaction == interaction
         )
-        if not commands_for_interaction:
+        if not matching:
             continue
         if interaction != "direct":
             lines.extend(("", f"【{HELP_INTERACTION_TITLES[interaction]}】"))
-
         current_section = ""
-        for command in commands_for_interaction:
+        for command in matching:
             if command.section != current_section:
                 lines.extend(("", f"【{command.section}】"))
                 current_section = command.section
             lines.append(f"{' / '.join(command.examples)} — {command.description}")
     return "\n".join(lines)
+
+
+def build_portable_help_operation(  # noqa: PLR0913 - composition boundary
+    definitions: tuple[PluginContribution, ...],
+    commands: CommandCatalog,
+    features: FeatureService,
+    sessions: PortableQuerySessions,
+    *,
+    ignored_plugins: tuple[str, ...] = (),
+    command_ids: frozenset[str] | None = None,
+) -> PortableOperation:
+    """Build one interactive help operation for every message platform."""
+
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        command_context = command_context_from_input(context)
+        entries = visible_help_entries(
+            definitions,
+            command_context,
+            features=features,
+            commands=commands,
+            ignored_plugins=ignored_plugins,
+            command_ids=command_ids,
+        )
+        if not definitions:
+            return _flat_help_message(
+                command_context,
+                commands,
+                features,
+                command_ids=command_ids,
+            )
+        if not entries:
+            return OutboundMessage.from_text("当前会话没有可用的功能。")
+
+        async def select(entry: HelpMenuEntry) -> OutboundMessage:
+            return OutboundMessage.from_text(
+                format_plugin_detail(
+                    entry,
+                    command_context,
+                    features,
+                    commands,
+                    ignored_plugins=ignored_plugins,
+                    command_ids=command_ids,
+                )
+            )
+
+        prompt = OutboundMessage.from_text(format_plugin_list(entries))
+        return sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=tuple(entries),
+                select=select,
+                prompt=prompt,
+                keep_open=True,
+                exit_message="✅ 已退出帮助。",
+            ),
+        )
+
+    return execute
+
+
+def _available_commands(  # noqa: PLR0913 - mirrors catalog filtering contract
+    commands: CommandCatalog,
+    context: CommandContext,
+    features: FeatureService,
+    *,
+    plugin_id: str | None = None,
+    ignored_plugins: tuple[str, ...] = (),
+    command_ids: frozenset[str] | None = None,
+):
+    available = commands.available_for_context(
+        context,
+        features,
+        plugin_id=plugin_id,
+        ignored_plugins=ignored_plugins,
+    )
+    if command_ids is None:
+        return available
+    return tuple(command for command in available if command.id in command_ids)
+
+
+def _flat_help_message(
+    context: CommandContext,
+    commands: CommandCatalog,
+    features: FeatureService,
+    *,
+    command_ids: frozenset[str] | None,
+) -> OutboundMessage:
+    available = _available_commands(
+        commands,
+        context,
+        features,
+        command_ids=command_ids,
+    )
+    lines = ["【机器人调试功能】", "帮助 - 查看当前可用功能"]
+    lines.extend(
+        f"{command.examples[0]} - {command.description}"
+        for command in available
+        if command.id != "help"
+    )
+    return OutboundMessage.from_text("\n".join(lines))
+
+
+def _feature_is_visible(
+    features: FeatureService,
+    context: CommandContext,
+    feature: str,
+) -> bool:
+    if context.is_group:
+        return features.conversation_has_feature(context.conversation, feature)
+    return features.is_feature_allowed(context.actor, context.conversation, feature)

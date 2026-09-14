@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import nonebot
-from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
 from ironsbot.app.activity_composition import build_activity_service
@@ -27,7 +26,11 @@ from ironsbot.app.private_extensions import (
 )
 from ironsbot.app.resources import ApplicationResources
 from ironsbot.app.seer_composition import build_seer_components
-from ironsbot.core.command_catalog import CommandCatalog, CommandContext
+from ironsbot.core.command_catalog import (
+    CommandCatalog,
+    CommandContext,
+    feature_is_visible_in_help,
+)
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import PluginContributionCatalog
 from ironsbot.extensions.player_lineup import (
@@ -39,7 +42,6 @@ from ironsbot.integrations.db_registry import DatabaseManager
 from ironsbot.integrations.http.activity_notice import UnityNoticeSource
 from ironsbot.integrations.http.ai import HttpAiCompletionClient
 from ironsbot.integrations.http.clients import HttpClients
-from ironsbot.integrations.onebot.feature_policy import event_is_feature_visible_in_help
 from ironsbot.integrations.onebot.help_hint import OneBotHelpHintService
 from ironsbot.integrations.onebot.identity import (
     onebot_actor_ref,
@@ -183,10 +185,8 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
         config=settings.bilibili,
     )
 
-    def feature_visible_for_extension(event: object, feature: str) -> bool:
-        return isinstance(event, Event) and event_is_feature_visible_in_help(
-            features, event, feature
-        )
+    def feature_visible_for_extension(context: CommandContext, feature: str) -> bool:
+        return feature_is_visible_in_help(features, context, feature)
 
     extension_contexts = {
         "player_lineup": PlayerLineupExtensionServices(
@@ -230,6 +230,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     resources = ApplicationResources(
         about=AboutService.from_version_file(Path("__version__")),
+        query_sessions=common.query_sessions,
         features=features,
         promotions=promotions,
         admin_notices=admin_notices,
