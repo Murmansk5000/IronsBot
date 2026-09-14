@@ -1,78 +1,51 @@
 import asyncio
+import json
 
+import httpx
 from pytest import MonkeyPatch
 
 from ironsbot.app.ai_health import check_configured_ai_api
-from ironsbot.config.models.ai import AiConfig
 from ironsbot.integrations.http.ai import (
     AiApiSettings,
     AiApiTestResult,
     HttpAiCompletionClient,
 )
-from ironsbot.services.ai.responses import AiResponseResult
+from ironsbot.services.operations.startup import StartupNoticeService
+from tests.helpers.ai import ai_config
+from tests.helpers.runtime import build_test_runtime
 
-
-class _Response:
-    def __init__(self, status_code: int, data: object) -> None:
-        self.status_code = status_code
-        self._data = data
-        self.text = str(data)
-
-    def json(self) -> object:
-        return self._data
-
-
-class _Client:
-    def __init__(self) -> None:
-        self.models: list[str] = []
-
-    async def post(
-        self,
-        *_: object,
-        json: dict[str, object],
-        **__: object,
-    ) -> _Response:
-        model = str(json["model"])
-        self.models.append(model)
-        if model == "primary":
-            return _Response(429, {"error": {"message": "limited"}})
-        return _Response(200, {"choices": [{"message": {"content": "OK"}}]})
+_SERVER_ERROR_STATUS = 500
 
 
 def test_ai_config_deduplicates_models_in_priority_order() -> None:
-    config = AiConfig(
-        model=" primary ",
-        fallback_models=["backup", "primary", "backup"],
-    )
+    config = ai_config(models=(" primary ", "backup", "primary", "backup"))
 
-    assert config.models == ("primary", "backup")
+    assert config.endpoints[0].models == ["primary", "backup"]
 
 
 def test_completion_tries_fallback_after_api_error() -> None:
-    config = AiConfig(model="primary", fallback_models=["backup"])
-    client = _Client()
+    config = ai_config(models=("primary", "backup"))
+    models: list[str] = []
 
-    result = asyncio.run(HttpAiCompletionClient(client, config).complete([]))
+    def respond(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        models.append(model)
+        if model == "primary":
+            return httpx.Response(400, json={"error": {"message": "bad model"}})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "OK"}}]})
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            return await HttpAiCompletionClient(client, config).complete([])
+
+    result = asyncio.run(run())
 
     assert result.ok
     assert result.reply == "OK"
-    assert client.models == ["primary", "backup"]
+    assert models == ["primary", "backup"]
 
 
 def test_startup_check_records_first_healthy_model(monkeypatch: MonkeyPatch) -> None:
-    class Notice:
-        def __init__(self) -> None:
-            self.parts: list[tuple[str, str, str]] = []
-
-        def add(
-            self,
-            subscription_key: str,
-            action_name: str,
-            message: str | None,
-        ) -> None:
-            assert message is not None
-            self.parts.append((subscription_key, action_name, message))
-
     calls: list[str] = []
 
     async def fake_check(settings: AiApiSettings) -> AiApiTestResult:
@@ -88,38 +61,30 @@ def test_startup_check_records_first_healthy_model(monkeypatch: MonkeyPatch) -> 
         "ironsbot.app.ai_health.check_ai_api",
         fake_check,
     )
-    notice = Notice()
-    config = AiConfig(api_key="secret", model="primary", fallback_models=["backup"])
+    notice = StartupNoticeService(build_test_runtime().admin_notices)
+    config = ai_config(models=("primary", "backup"), api_key="secret")
 
-    asyncio.run(
-        check_configured_ai_api(config, startup_notice=notice)
-    )
+    asyncio.run(check_configured_ai_api(config, startup_notice=notice))
 
     assert calls == ["primary", "backup"]
-    assert notice.parts == [
-        (
-            "startup_ai_api_check",
-            "AI API startup check",
-            "AI API 检查通过。\n模型：backup\nHTTP：200\n耗时：12 ms",
-        )
-    ]
+    assert "可用：test/backup（HTTP 200，12 ms）" in notice.parts[0].message
 
 
 def test_completion_returns_last_api_error_when_all_models_fail() -> None:
-    class FailingClient:
-        async def post(self, *_: object, **__: object) -> _Response:
-            return _Response(500, {"error": {"message": "nope"}})
+    def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": {"message": "nope"}})
 
-    result = asyncio.run(
-        HttpAiCompletionClient(
-            FailingClient(),
-            AiConfig(model="primary", fallback_models=["backup"]),
-        ).complete([])
-    )
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            return await HttpAiCompletionClient(
+                client,
+                ai_config(models=("primary", "backup")),
+            ).complete([])
 
-    assert result == AiResponseResult(
-        status_code=500,
-        error_kind="http",
-        error_title="接口返回异常",
-        error_detail="nope",
-    )
+    result = asyncio.run(run())
+
+    assert result.status_code == _SERVER_ERROR_STATUS
+    assert result.endpoint == "test"
+    assert result.model == "primary"
+    assert result.error_kind == "http"
+    assert result.error_detail == "nope"

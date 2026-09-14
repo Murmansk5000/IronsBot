@@ -215,14 +215,14 @@ def test_format_docker_image_check_does_not_offer_side_effects() -> None:
         ),
     )
 
-    assert "检测到新镜像：ironsbot" in reply
+    assert "配置目标与本机镜像不同：ironsbot" in reply
     assert "当前镜像ID" in reply
-    assert "最新镜像ID" in reply
+    assert "配置目标镜像ID" in reply
     assert "oldcommitabc old change" in reply
     assert "newcommitabc new change" in reply
     assert "2026-07-05 02:00:00" in reply
     assert "2026-07-05 03:00:00" in reply
-    assert "可发送 /更新镜像 更新并重启" in reply
+    assert "等待确认后更新并重启" in reply
     assert "未拉取镜像、未创建 Watchtower、未重启容器" in reply
 
 

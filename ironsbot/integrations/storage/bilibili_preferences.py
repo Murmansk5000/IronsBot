@@ -75,6 +75,19 @@ _MIGRATIONS = (
             {"conversation_account_id"},
         ),
     ),
+    # The original lottery category covered both prize draws and results.
+    # Preserve every target's existing choice when those become independent.
+    SqliteMigration(
+        4,
+        (
+            "INSERT OR IGNORE INTO bili_push_category_preferences "
+            "(conversation_platform, conversation_account_id, "
+            "conversation_kind, conversation_id, uid, category, muted, updated_at) "
+            "SELECT conversation_platform, conversation_account_id, "
+            "conversation_kind, conversation_id, uid, 'winning', muted, updated_at "
+            "FROM bili_push_category_preferences WHERE category = 'lottery'",
+        ),
+    ),
 )
 MIGRATION_NAMESPACE = "bilibili_preferences"
 

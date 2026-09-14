@@ -4,16 +4,21 @@
 from __future__ import annotations
 
 from functools import partial
+from typing import TYPE_CHECKING
 
 from ironsbot.core.affix_commands import AffixArgument, AffixCommand
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.player_reference_commands import is_player_reference_input
 from ironsbot.services.seer.autocard import (
     AUTOCARD_QUERY_PREFIXES,
     AUTOCARD_QUERY_SUFFIXES,
 )
 from ironsbot.services.seer.autocard_sanctuary import SANCTUARY_QUERY_PREFIXES
 from ironsbot.services.seer.query_guards import is_rank_query_text
-from ironsbot.services.seer.team import SeerTeamQueryService
+
+if TYPE_CHECKING:
+    from ironsbot.core.command_catalog import CommandContext, CommandInputMatcher
+    from ironsbot.core.player_reference_commands import PlayerReferenceRecognizer
 
 
 def is_reserved_query(text: str, *, image_commands: frozenset[str]) -> bool:
@@ -58,9 +63,30 @@ _TEAM_QUERY = AffixCommand(("战队", "查询战队信息"), ())
 
 
 def team_query_input(text: str) -> AffixArgument | None:
-    parsed = _TEAM_QUERY(text)
-    return (
-        parsed
-        if parsed is not None and SeerTeamQueryService.parse_team_ids(parsed.argument)
-        else None
-    )
+    parsed = _TEAM_QUERY(text.strip())
+    parts = parsed.argument.split() if parsed is not None else []
+    return parsed if parts and all(part.isdecimal() for part in parts) else None
+
+
+def team_player_query_reference(text: str) -> str | None:
+    parsed = _TEAM_QUERY(text.strip())
+    return parsed.argument.strip().removeprefix("米米号").strip() if parsed else None
+
+
+def team_query_input_matcher(
+    reference_is_known: PlayerReferenceRecognizer,
+) -> CommandInputMatcher:
+    """Keep numeric team IDs distinct from resolved player references."""
+
+    def matches(text: str, context: CommandContext) -> bool:
+        reference = team_player_query_reference(text)
+        if reference is None:
+            return False
+        if context.has_member_mentions:
+            return True
+        return team_query_input(text) is not None or (
+            bool(reference)
+            and is_player_reference_input(reference, context, reference_is_known)
+        )
+
+    return matches

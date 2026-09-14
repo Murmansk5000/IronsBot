@@ -60,16 +60,17 @@ async def send_private_schedule(
             if conversation in allowed
         )
 
-    await messaging._schedule_sender.send(
-        ScheduledMessageDelivery(
-            message=task.message,
-            private_conversations=recipients,
-            group_conversations=(),
-            group_mentions=(),
-            action_name=f"private scheduled message {task.id or '<unnamed>'}",
-            subscription_key=schedule_key(index, task),
+    for message in task.messages:
+        await messaging._schedule_sender.send(
+            ScheduledMessageDelivery(
+                message=message,
+                private_conversations=recipients,
+                group_conversations=(),
+                group_mentions=(),
+                action_name=f"private scheduled message {task.id or '<unnamed>'}",
+                subscription_key=schedule_key(index, task),
+            )
         )
-    )
 
 
 async def send_group_schedule(
@@ -97,16 +98,17 @@ async def send_group_schedule(
             if conversation in allowed
         )
 
-    await messaging._schedule_sender.send(
-        ScheduledMessageDelivery(
-            message=task.message,
-            private_conversations=(),
-            group_conversations=recipients,
-            group_mentions=messaging.schedule_mentions(index),
-            action_name=f"group scheduled message {task.id or '<unnamed>'}",
-            subscription_key=schedule_key(index, task),
+    for message in task.messages:
+        await messaging._schedule_sender.send(
+            ScheduledMessageDelivery(
+                message=message,
+                private_conversations=(),
+                group_conversations=recipients,
+                group_mentions=messaging.schedule_mentions(index),
+                action_name=f"group scheduled message {task.id or '<unnamed>'}",
+                subscription_key=schedule_key(index, task),
+            )
         )
-    )
 
 
 async def send_schedule(

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
-    Message,
     MessageEvent,
     PrivateMessageEvent,
 )
@@ -22,6 +21,7 @@ from ironsbot.core.plugin_install import (
     PluginHooks,
     active_plugin_install_context,
 )
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
@@ -29,12 +29,15 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.permissions import is_group_owner_or_admin_event
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import (
     finish_event_reply,
-    finish_message_sequence,
 )
 from ironsbot.integrations.onebot.rules import explicit_command, member_targets_command
 from ironsbot.services.help_visibility import feature_help_visible
+from ironsbot.services.portable_team_resource_commands import (
+    build_portable_team_overview_operation,
+)
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
 from ironsbot.services.team.resource_subscriptions import TeamResourceSubscriptionTarget
 
@@ -42,6 +45,8 @@ if TYPE_CHECKING:
     from ironsbot.config.models.seer import TeamResourceConfig
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.scheduler import Scheduler
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.team.resource import TeamResourceService
 
 __plugin_meta__ = PluginMetadata(
@@ -176,33 +181,12 @@ async def handle_team_resource_prompt_choice(
     await finish_event_reply(matcher, event, message)
 
 
-async def handle_team_resource(
-    matcher: Matcher,
-    event: MessageEvent,
-    service: TeamResourceService,
-) -> None:
-    target = _subscription_target(event)
-    if target is None:
-        await matcher.finish()
-
-    messages = await service.query_target_messages(target)
-    if not messages:
-        await finish_event_reply(
-            matcher,
-            event,
-            service.subscriptions_message(target),
-        )
-        return
-    await finish_message_sequence(
-        matcher,
-        [Message(message) for message in messages],
-        event=event,
-    )
-
-
 def install(
     registry: MatcherFactory,
     service: TeamResourceService,
+    *,
+    query: PortableOperation,
+    query_sessions: PortableQuerySessions,
 ) -> None:
     if not service.enabled:
         return
@@ -256,15 +240,23 @@ def install(
         priority=priority,
         block=True,
     )
-    query_matcher.append_handler(bind_async(handle_team_resource, service=service))
+    query_matcher.append_handler(
+        make_portable_query_handler(
+            query,
+            query_sessions,
+            ActionDefinition("team_resource.query", "战队概览", "team_resource_query"),
+        )
+    )
 
 
-def plugin_contribution(
+def plugin_contribution(  # noqa: PLR0913 - explicit composition dependencies
     *,
     config: TeamResourceConfig,
     features: FeatureService,
     scheduler: Scheduler,
     service: TeamResourceService,
+    query: PortableOperation,
+    query_sessions: PortableQuerySessions,
 ) -> PluginContribution:
     """Declare team resource commands, matchers, and scheduled scans."""
 
@@ -286,7 +278,9 @@ def plugin_contribution(
         commands=team_resource_command_contracts(
             enabled=config.enabled, query_commands=service.query_commands
         ),
-        install=partial(install, service=service),
+        install=partial(
+            install, service=service, query=query, query_sessions=query_sessions
+        ),
         hooks=PluginHooks(
             startup=(
                 (
@@ -330,5 +324,13 @@ if (context := active_plugin_install_context()) is not None:
             features=context.resources.features,
             scheduler=context.scheduler,
             service=context.resources.team_resource,
+            query=build_portable_team_overview_operation(
+                context.resources.team_resource,
+                context.resources.seer.team_query,
+                context.resources.player_id_resolver,
+                context.resources.features,
+                context.resources.query_sessions,
+            ),
+            query_sessions=context.resources.query_sessions,
         ),
     )

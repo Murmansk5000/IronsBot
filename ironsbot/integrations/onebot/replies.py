@@ -140,6 +140,8 @@ async def send_portable_event_reply(
     matcher: Any,
     event: MessageEvent,
     message: OutboundMessage,
+    *,
+    mention_sender: bool = True,
 ) -> SendResult:
     if queued_conversation_is_cancelled(matcher):
         return SendResult(
@@ -155,7 +157,7 @@ async def send_portable_event_reply(
         result = await matcher.send(
             build_message(
                 rendered,
-                at_user_ids=event_sender_at_user_ids(event),
+                at_user_ids=event_sender_at_user_ids(event) if mention_sender else (),
             )
         )
     except ActionFailed as error:

@@ -11,6 +11,7 @@ try:
 except ValueError:
     nonebot.init()
 
+from ironsbot.config.models.ai import AiEndpointConfig
 from ironsbot.config.models.features import (
     FeatureConfig,
     build_onebot_feature_service,
@@ -55,7 +56,14 @@ def _settings(
             superuser_bypass=False,
         )
     )
-    settings.ai.api_key = "test-key" if ai_key_configured else ""
+    settings.ai.endpoints = [
+        AiEndpointConfig(
+            name="test",
+            base_url="https://example.test/v1",
+            models=["test-model"],
+            api_key="test-key" if ai_key_configured else "",
+        )
+    ]
     settings.ai.intent_actions_enabled = ai_intent_enabled
     settings.seer.team_resource.enabled = team_resource_enabled
     if messaging_enabled:
@@ -64,7 +72,7 @@ def _settings(
                 id="test_message",
                 commands=["测试消息"],
                 feature="text",
-                message="测试回复",
+                messages=["测试回复"],
             )
         ]
     return settings

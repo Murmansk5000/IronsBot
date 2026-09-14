@@ -8,12 +8,16 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.dependencies.utils import get_typed_signature
 from nonebot.matcher import Matcher
 
+from ironsbot.config.models.messaging import MessageCommandAction
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.integrations.onebot.matcher_support import bind_async
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
     run_portable_operation,
 )
+from ironsbot.plugins.onebot.messaging.matcher_rules import MESSAGE_ACTION_KEY
+from ironsbot.plugins.onebot.messaging.matchers import handle_message_command
 from ironsbot.services.portable_reply import PortableReply
 from tests.helpers.onebot_events import group_message_event, private_message_event
 
@@ -45,6 +49,44 @@ class _ImageFailMatcher(_Matcher):
         if "[CQ:image" in str(message):
             raise ActionFailed(retcode=100)
         return {"message_id": len(self.sent)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group", [True, False])
+async def test_configured_reply_sequence_preserves_last_message_mentions(
+    *, group: bool,
+) -> None:
+    matcher = _Matcher()
+    event = _group_event() if group else _private_event()
+    action = MessageCommandAction(
+        id="sequence", commands=["sequence"],
+        messages=["first", "same", "same", "last"],
+        at_user_ids=[2, "target", "target"],
+    )
+    await handle_message_command(
+        cast("Matcher", matcher), event, {MESSAGE_ACTION_KEY: action},
+        references=OneBotReferenceResolver({}, {"target": 3}),
+    )
+    assert [
+        message.extract_plain_text().strip() for message in matcher.sent
+    ] == action.messages
+    assert all(not message["at"] for message in matcher.sent[:-1])
+    assert [str(part.data["qq"]) for part in matcher.sent[-1]["at"]] == (
+        ["2", "3"] if group else []
+    )
+
+
+@pytest.mark.asyncio
+async def test_configured_reply_sequence_stops_without_receipt() -> None:
+    matcher = _NoReceiptMatcher()
+    await handle_message_command(
+        cast("Matcher", matcher), _group_event(),
+        {MESSAGE_ACTION_KEY: MessageCommandAction(
+            id="sequence", commands=["sequence"], messages=["first", "last"],
+        )},
+        references=OneBotReferenceResolver({}, {}),
+    )
+    assert [str(message) for message in matcher.sent] == ["first"]
 
 
 def test_bound_portable_operation_preserves_nonebot_matcher_type() -> None:

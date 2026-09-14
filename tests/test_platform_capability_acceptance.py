@@ -170,7 +170,7 @@ async def test_bilibili_history_content_crosses_restricted_platform_port() -> No
             }
         },
     }
-    message = render_dynamic_content_message(item)
+    message = await render_dynamic_content_message(item)
     assert message is not None
     assert message.parts == (
         TextPart("动态正文"),

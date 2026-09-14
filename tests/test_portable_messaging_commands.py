@@ -18,7 +18,14 @@ from ironsbot.config.models.messaging import (
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
-from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
+from ironsbot.core.outbound import (
+    BinaryImagePart,
+    MentionPart,
+    OutboundMessage,
+    OutboundMessageError,
+    SendResult,
+    TextPart,
+)
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -30,8 +37,30 @@ from ironsbot.services.messaging.service import MessagingService
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
     build_portable_sendpic_operations,
+    configured_text_reply,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_reply import as_portable_reply, deliver_reply_stages
+
+
+def test_configured_text_mentions_preserve_scoped_actor_identity() -> None:
+    first = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="app-one")
+    second = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="app-two")
+    reply = configured_text_reply(("text",), final_mentions=(first, first, second))
+
+    assert isinstance(reply, OutboundMessage)
+    assert reply.parts == (
+        MentionPart(first),
+        TextPart(" "),
+        MentionPart(second),
+        TextPart(" "),
+        TextPart("text"),
+    )
+
+
+def test_configured_text_rejects_empty_sequence() -> None:
+    with pytest.raises(OutboundMessageError, match="reply sequence must not be empty"):
+        configured_text_reply(())
 
 
 class _MemoryImages:
@@ -65,12 +94,12 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
                 MessageCommandAction(
                     id="portable",
                     commands=["链接"],
-                    message="https://example.test",
+                    messages=["https://example.test"],
                 ),
                 MessageCommandAction(
                     id="onebot-only",
                     commands=["提醒"],
-                    message="提醒内容",
+                    messages=["提醒内容"],
                     at_user_ids=[123456],
                 ),
             ]
@@ -96,6 +125,47 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
         await operations["messaging.portable"]("链接", _context("链接")),
     )
     assert cast("TextPart", result.parts[0]).text == "https://example.test"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_stage", [None, 0, 1])
+async def test_configured_messages_keep_boundaries_and_stop_on_delivery_failure(
+    failed_stage: int | None,
+) -> None:
+    messages = ["first", "second", "second", "last"]
+    messaging = MessagingService(
+        MessageConfig(
+            commands=[
+                MessageCommandAction(
+                    id="sequence",
+                    commands=["sequence"],
+                    messages=messages,
+                )
+            ]
+        ),
+        ActivityConfig(),
+        cast("Any", object()),
+        cast("Any", object()),
+        cast("Any", object()),
+        cast("Any", object()),
+    )
+    context = _context("sequence")
+    operation = build_portable_messaging_operations(
+        messaging,
+        PortableQuerySessions(),
+    )["messaging.sequence"]
+    reply = as_portable_reply(await operation("sequence", context))
+    sent: list[str] = []
+
+    async def send(message: OutboundMessage) -> SendResult:
+        sent.append(cast("TextPart", message.parts[0]).text)
+        if len(sent) - 1 == failed_stage:
+            return SendResult(delivered=False, error_code="delivery-failed")
+        return SendResult(delivered=True, message_id=str(len(sent)))
+
+    await deliver_reply_stages(send, context.message, reply)
+    expected = messages if failed_stage is None else messages[: failed_stage + 1]
+    assert sent == expected
 
 
 @pytest.mark.asyncio
@@ -149,7 +219,7 @@ async def test_portable_push_time_updates_qq_official_conversation(
                 MessageScheduledAction(
                     id="daily",
                     name="每日消息",
-                    message="消息",
+                    messages=["消息"],
                     time="23:00",
                 )
             ]

@@ -19,9 +19,10 @@ one business core:
 3. OneBot and QQ Official Bot together.
 
 QQ Official Bot now has a deliberately small production adapter for passive
-group/C2C commands. It uses `nonebot-adapter-qq` in the same process as OneBot,
-opaque OpenIDs, shared business services, and the platform-neutral outbound
-message model. This first slice is not permission to copy OneBot plugins or to
+group/C2C commands. It uses Tencent's `qqbot-agent-sdk`, opaque OpenIDs, shared
+business services, and the platform-neutral outbound message model. The
+application lifecycle owns its transport; NoneBot continues to host OneBot.
+This first slice is not permission to copy OneBot plugins or to
 pretend unsupported identity and proactive-delivery capabilities exist.
 
 Platform identity work follows capability-first scheduling. If a target API
@@ -593,10 +594,14 @@ each other's adapter/event types. A feature may be enabled for one platform,
 both, or neither; an adapter must not emulate an unavailable action by silently
 falling back to a OneBot-only operation.
 
-QQ Official Bot uses `nonebot-adapter-qq`; do not run a separate `botpy.Client`
-alongside NoneBot for the same official bot. Official-specific protocol and
-asset code belongs in `integrations.qq_official`. New commands must first expose
-a platform-neutral service operation and outbound result.
+QQ Official Bot uses `qqbot-agent-sdk`, as specified in
+`docs/specs/2026-09-14-qq-official-tencent-sdk.md`. The composition root and
+application lifecycle own one official transport per AppID; do not additionally
+register `nonebot-adapter-qq` or run `botpy.Client` for that same account.
+Official-specific protocol and asset code belongs in `integrations.qq_official`.
+New commands must first expose a platform-neutral service operation and outbound
+result. The SDK owns short-lived access-token refresh; the retired static Token
+must not be restored as a configuration requirement.
 
 ## QQ Official Capability And Safety Requirements
 

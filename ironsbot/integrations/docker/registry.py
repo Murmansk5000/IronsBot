@@ -31,11 +31,12 @@ DOCKER_HUB_REGISTRIES = frozenset(
 
 
 def split_docker_image(image: str) -> tuple[str, str]:
-    last_segment = image.rsplit("/", maxsplit=1)[-1]
+    tagged_repository, separator, digest = image.partition("@")
+    last_segment = tagged_repository.rsplit("/", maxsplit=1)[-1]
     if ":" not in last_segment:
-        return image, "latest"
-    repository, tag = image.rsplit(":", maxsplit=1)
-    return repository, tag
+        return tagged_repository, digest if separator else "latest"
+    repository, tag = tagged_repository.rsplit(":", maxsplit=1)
+    return repository, digest if separator else tag
 
 
 def docker_registry_auth_headers(
@@ -142,9 +143,7 @@ def registry_image_reference(image: str) -> tuple[str, str, str]:
         message = f"Docker image does not include a repository path: {image}"
         raise ValueError(message)
     registry = (
-        "registry-1.docker.io"
-        if first.lower() in DOCKER_HUB_REGISTRIES
-        else first
+        "registry-1.docker.io" if first.lower() in DOCKER_HUB_REGISTRIES else first
     )
     return f"https://{registry}", registry_path, reference
 

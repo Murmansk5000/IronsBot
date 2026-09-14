@@ -142,6 +142,7 @@ class HeadlessWorkerSlot:
     user_id: int
     client: HeadlessPoolClient
     active: bool = False
+    active_label: str | None = None
     assignments: int = 0
     available_since: float = field(default_factory=monotonic)
 
@@ -201,6 +202,16 @@ class HeadlessRequestDispatcher:
         return sum(
             not worker.active and worker.game() is not None
             for worker in self._workers
+        )
+
+    @property
+    def active_request_summaries(self) -> tuple[str, ...]:
+        """Human-readable active packet labels for administrator diagnostics."""
+
+        return tuple(
+            f"{worker.name}: {worker.active_label}"
+            for worker in self._workers
+            if worker.active and worker.active_label
         )
 
     @property
@@ -274,6 +285,7 @@ class HeadlessRequestDispatcher:
                 self._pending.appendleft(request)
                 return
             worker.active = True
+            worker.active_label = request.label
             worker.assignments += 1
             request.active_worker = worker.name
             request.attempts += 1
@@ -408,6 +420,7 @@ class HeadlessRequestDispatcher:
                 )
         finally:
             worker.active = False
+            worker.active_label = None
             worker.available_since = monotonic()
             request.active_worker = None
             if retry and not request.future.done():
@@ -457,6 +470,12 @@ class PooledHeadlessGame:
     @property
     def is_logged_in(self) -> bool:
         return self._dispatcher.healthy_worker_count > 0
+
+    @property
+    def idle_worker_count(self) -> int:
+        """Current spare packet capacity, used to size one rank probe batch."""
+
+        return self._dispatcher.idle_worker_count
 
     @property
     def user_id(self) -> int:

@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import can_manage_group_actor
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import (
+    MentionPart,
+    OutboundMessage,
+    OutboundMessageError,
+    TextPart,
+)
 from ironsbot.services.messaging.push_time import (
     build_push_time_menu_prompt,
     normalize_push_time_input,
@@ -21,6 +26,7 @@ from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableTextInputSpec,
 )
+from ironsbot.services.portable_reply import PortableReply, message_sequence_reply
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -28,7 +34,7 @@ if TYPE_CHECKING:
     from ironsbot.config.models.messaging import MessageReplyAction
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.messaging import PicConfig
-    from ironsbot.core.platform import ConversationRef
+    from ironsbot.core.platform import ActorRef, ConversationRef
     from ironsbot.services.messaging.push_time import PushTimeOption
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
@@ -271,13 +277,34 @@ def build_portable_sendpic_operations(
     }
 
 
+def configured_text_reply(
+    texts: tuple[str, ...],
+    *,
+    final_mentions: tuple[ActorRef, ...] = (),
+) -> PortableReply | OutboundMessage:
+    """Build configured reply boundaries, with optional mentions on the last item."""
+    if not texts:
+        raise OutboundMessageError.empty_reply_sequence()
+    messages = [OutboundMessage.from_text(text) for text in texts]
+    if final_mentions:
+        mentions = tuple(
+            part
+            for actor in dict.fromkeys(final_mentions)
+            for part in (MentionPart(actor), TextPart(" "))
+        )
+        messages[-1] = OutboundMessage((*mentions, *messages[-1].parts))
+    return (
+        messages[0] if len(messages) == 1 else message_sequence_reply(tuple(messages))
+    )
+
+
 def _text_operation(action: MessageReplyAction) -> PortableOperation:
     async def execute(
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply | OutboundMessage:
         del text, context
-        return OutboundMessage.from_text(action.message)
+        return configured_text_reply(tuple(action.messages))
 
     return execute
 

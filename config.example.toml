@@ -90,8 +90,8 @@ app_id = ""
 #     the required platform permission. Team-resource subscriptions require it.
 # ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。
 proactive_messages = false
-# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY.
-# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY。
+# EN: Features exposed through the official SDK preview. ai_chat also requires AI_KEY_<ENDPOINT_NAME>.
+# ZH: QQ 官方机器人预览版开放的功能；查询候选项使用数字选择，0 退出；ai_chat 还需配置 AI_KEY_<端点名>。
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
 # EN: C2C user_openids with superuser bypass. These are not QQ numbers.
 # ZH: 私聊超级管理员的 user_openid；这里不是 QQ 号。
@@ -341,24 +341,6 @@ text = "火火手册链接：{url}"
 append_to_push = true
 
 [ai]
-# Default: "https://api.deepseek.com"
-# EN: OpenAI-compatible AI API base URL.
-# ZH: OpenAI 兼容 AI 接口地址。
-# Example: "https://api.openai.com/v1"
-base_url = "https://api.deepseek.com"
-
-# Default: "deepseek-v4-pro"
-# EN: AI chat model name.
-# ZH: AI 聊天模型名称。
-# Example: "deepseek-chat"
-model = "deepseek-v4-pro"
-
-# Default: []
-# EN: Backup models tried in order when the preferred model fails.
-# ZH: 首选模型失败时按顺序尝试的备用模型；全部失败后才向用户报错。
-# Example: ["deepseek-chat", "gpt-5.4"]
-fallback_models = []
-
 # Default: built-in IronsBot prompt.
 # EN: System prompt used for AI chat.
 # ZH: AI 聊天系统提示词。
@@ -443,6 +425,18 @@ admin_notice_cooldown_seconds = 600.0
 # ZH: 是否启用 AI 意图动作。
 # Example: false
 intent_actions_enabled = true
+
+# OpenAI-compatible endpoints are tried in TOML order. Keys must be set only
+# in the environment as AI_KEY_<UPPERCASE_ENDPOINT_NAME>, never in this file.
+# EN: Each endpoint tries models in list order before moving to the next endpoint.
+# ZH: 按端点和模型列表顺序回退；密钥只放环境变量。
+
+[[ai.endpoints]]
+# EN: Stable endpoint name; corresponds to AI_KEY_DEEPSEEK.
+# ZH: 稳定端点名，对应环境变量 AI_KEY_DEEPSEEK。
+name = "deepseek"
+base_url = "https://api.deepseek.com"
+models = ["deepseek-v4-pro"]
 
 # EN: Intent actions are configured by ID under [ai.intent_actions.<id>].
 # Omitted fields inherit built-in defaults for known actions.
@@ -615,6 +609,9 @@ summary_max_chars = 250
 # EN: Use AI to summarize long full-text dynamic pushes. When false, send an original text excerpt instead.
 # ZH: 长动态全文推送是否调用 AI 摘要；关闭后改为发送原文节选。
 summary_use_ai = true
+
+# Combine static images for Bilibili queries and pushes; retain originals on failure.
+combine_images = true
 
 # Default: {}
 # EN: Group targets keyed by a OneBot group alias/ID or an account-scoped QQ

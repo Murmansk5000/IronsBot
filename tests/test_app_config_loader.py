@@ -287,7 +287,7 @@ def test_example_config_parses() -> None:
         "qq_group_manager": 2854196310,
     }
     assert config.features.user_policy["qq_group_manager"] == ["blacklist"]
-    assert config.ai.model == "deepseek-v4-pro"
+    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
     assert "fire_manual" in config.ai.intent_actions
     assert config.ai.intent_actions["fire_manual"].promotion == "fire_manual"
     assert config.promotions["fire_manual"].append_to_push
@@ -373,14 +373,14 @@ def test_example_config_has_no_unknown_fields() -> None:
 def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
         MessageScheduledAction(
-            message="私聊定时推送",
+            messages=["私聊定时推送"],
             time="23:00",
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
         MessageScheduledAction(
             id="每日 提醒",
-            message="私聊定时推送",
+            messages=["私聊定时推送"],
             time="23:00",
         )
 
@@ -403,12 +403,12 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
             schedules=[
                 MessageScheduledAction(
                     id="daily",
-                    message="私聊定时推送",
+                    messages=["私聊定时推送"],
                     time="23:00",
                 ),
                 MessageScheduledAction(
                     id="daily",
-                    message="群聊定时推送",
+                    messages=["群聊定时推送"],
                     time="23:00",
                 ),
             ],
@@ -422,7 +422,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
     ):
         MessageCommandAction(
             commands=["hello"],
-            message="world",
+            messages=["world"],
         )
 
     with pytest.raises(
@@ -432,7 +432,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         MessageCommandAction(
             id="daily reminder",
             commands=["hello"],
-            message="world",
+            messages=["world"],
         )
 
 
@@ -539,7 +539,7 @@ def test_missing_app_config_error_explains_expected_path(tmp_path: Path) -> None
 
 def test_config_path_is_selected_by_single_environment_variable() -> None:
     config = load_settings(env={CONFIG_ENV: str(ROOT / "config.example.toml")})
-    assert config.ai.model == "deepseek-v4-pro"
+    assert config.ai.endpoints[0].models == ["deepseek-v4-pro"]
 
 
 def test_unknown_app_config_fields_are_rejected(tmp_path: Path) -> None:
@@ -554,7 +554,7 @@ old_player_setting = true
 [[messaging.commands]]
 id = "hello"
 commands = ["hello"]
-message = "world"
+messages = ["world"]
 feature = "text_push"
 unknown_command_field = true
 """.strip(),
@@ -601,7 +601,7 @@ def test_unified_message_actions_parse_as_toml_arrays_of_tables(
 [[messaging.commands]]
 id = "activity_link"
 commands = ["activity"]
-message = "activity link"
+messages = ["activity link"]
 feature = "web_activity_link"
 at_user_ids = [123456789]
 
@@ -609,7 +609,7 @@ at_user_ids = [123456789]
 id = "daily_reminder"
 name = "Daily reminder"
 time = "23:00"
-message = "daily message"
+messages = ["daily message"]
 feature = "text_push"
 at_user_ids = [123456789]
 """.strip(),
@@ -638,7 +638,7 @@ main = ["chuchu_reply"]
 [[messaging.keyword_replies]]
 id = "chuchu_reply"
 keywords = ["出出"]
-message = "出出是蛆"
+messages = ["出出是蛆"]
 feature = "chuchu_reply"
 """.strip(),
         encoding="utf-8",
@@ -668,7 +668,7 @@ main = ["standard"]
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym"]
-message = "https://seerinfo.yuyuqaq.cn/"
+messages = ["https://seerinfo.yuyuqaq.cn/"]
 feature = "seerinfo_link"
 """.strip(),
         encoding="utf-8",
@@ -705,7 +705,7 @@ owner = ["custom_reminder"]
 [[messaging.schedules]]
 id = "custom_reminder"
 time = "23:00"
-message = "remember"
+messages = ["remember"]
 feature = "custom_reminder"
 """.strip(),
         encoding="utf-8",
@@ -821,14 +821,14 @@ owner = "primary"
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-message = "custom reply"
+messages = ["custom reply"]
 feature = "private_extension"
 at_user_ids = ["at_user", "202"]
 
 [[messaging.schedules]]
 id = "custom_schedule"
 time = "12:00"
-message = "scheduled reply"
+messages = ["scheduled reply"]
 feature = "private_extension"
 at_user_ids = ["at_user", 202]
 
@@ -876,7 +876,7 @@ unknown_group = ["seer"]
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-message = "custom reply"
+messages = ["custom reply"]
 feature = "text"
 at_user_ids = ["unknown_user"]
 """,
@@ -1358,7 +1358,7 @@ def test_team_resource_config_accepts_runtime_subscription_defaults() -> None:
 def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     env = {
         "ONEBOT_ACCESS_TOKEN": "token",
-        "AI_KEY": "sk-test",
+        "AI_KEY_DEEPSEEK": "sk-test",
         "SENDPIC_CNB_TOKEN": "cnb-token",
         "GITHUB_WORKFLOW_TOKEN": "gh-token",
     }
@@ -1366,7 +1366,7 @@ def test_environment_secrets_are_injected_into_single_settings_tree() -> None:
     settings = load_settings(ROOT / "config.example.toml", env=env)
 
     assert settings.bot.onebot_token == "token"
-    assert settings.ai.api_key == "sk-test"
+    assert settings.ai.endpoints[0].api_key == "sk-test"
     assert settings.messaging.sendpic.cnb_token == "cnb-token"
     assert settings.operations.data_sync.github_token == "gh-token"
 
@@ -1721,7 +1721,7 @@ def test_docker_registry_credentials_read_from_environment(
 def test_app_config_defaults_cover_runtime_services() -> None:
     app_config = load_settings(ROOT / "config.example.toml")
 
-    assert app_config.ai.model == "deepseek-v4-pro"
+    assert app_config.ai.endpoints[0].models == ["deepseek-v4-pro"]
     assert app_config.ai.intent_actions
     assert app_config.seer.team_resource.commands == ["战队"]
     assert (

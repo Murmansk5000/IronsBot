@@ -203,7 +203,20 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
     )
     assert contribution.commands == ()
     assert not ai_intent_command_contracts(
-        Settings.model_validate({"ai": {"api_key": "test"}})
+        Settings.model_validate(
+            {
+                "ai": {
+                    "endpoints": [
+                        {
+                            "name": "test",
+                            "base_url": "https://example.test/v1",
+                            "models": ["test-model"],
+                            "api_key": "test",
+                        }
+                    ]
+                }
+            }
+        )
     )
     enabled_settings = Settings.model_validate(
         {
@@ -214,7 +227,14 @@ def test_manifest_ai_intent_owns_its_features_and_commands() -> None:
                 }
             },
             "ai": {
-                "api_key": "test",
+                "endpoints": [
+                    {
+                        "name": "test",
+                        "base_url": "https://example.test/v1",
+                        "models": ["test-model"],
+                        "api_key": "test",
+                    }
+                ],
                 "intent_actions": {
                     "manual": {
                         "feature": "ai_intent_fire_manual",

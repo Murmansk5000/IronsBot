@@ -19,6 +19,7 @@ from ironsbot.core.time import normalize_daily_time_with_seconds
 ENABLED_COMMANDS_REQUIRED_ERROR = "已启用的指令消息动作必须配置 commands"
 ENABLED_KEYWORDS_REQUIRED_ERROR = "已启用的关键词回复动作必须配置 keywords"
 COMMAND_ID_REQUIRED_ERROR = "command message action requires a non-empty id"
+COMMAND_MESSAGES_EMPTY_ERROR = "messages 中的消息内容不能为空"
 COMMAND_ID_FORMAT_ERROR = (
     "command message action id may only contain letters, numbers, dots, "
     "underscores, and hyphens"
@@ -246,14 +247,26 @@ class BotRoutingConfig(BaseModel):
         return None
 
 
-class BaseMessageAction(BaseModel):
+class MessageContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    messages: list[str] = Field(min_length=1)
+
+    @field_validator("messages")
+    @classmethod
+    def validate_messages(cls, value: list[str]) -> list[str]:
+        messages = [message.strip() for message in value]
+        if any(not message for message in messages):
+            raise ValueError(COMMAND_MESSAGES_EMPTY_ERROR)
+        return messages
+
+
+class BaseMessageAction(MessageContent):
 
     id: str = ""
     name: str = ""
     enabled: bool = True
     feature: str = "text"
-    message: str
 
     @field_validator("id", "name")
     @classmethod
@@ -265,15 +278,6 @@ class BaseMessageAction(BaseModel):
     def normalize_feature(cls, value: str) -> str:
         feature = value.strip()
         return feature or "text"
-
-    @field_validator("message")
-    @classmethod
-    def validate_message(cls, value: str) -> str:
-        message = value.strip()
-        if not message:
-            raise ValueError("消息内容不能为空")
-        return message
-
 
 class MessageReplyAction(BaseMessageAction):
     at_user_ids: OneBotReferenceList = Field(default_factory=list)

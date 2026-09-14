@@ -97,6 +97,9 @@ from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_team_resource_commands import (
+    build_portable_team_overview_operation,
+)
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -450,6 +453,14 @@ def build_test_plugin_registry(
             features=runtime.features,
             scheduler=SchedulerFacade(),
             service=resources.team_resource,
+            query=build_portable_team_overview_operation(
+                resources.team_resource,
+                resources.seer.team_query,
+                resources.player_id_resolver,
+                runtime.features,
+                resources.query_sessions,
+            ),
+            query_sessions=resources.query_sessions,
         ),
         activity_plugin_contribution(
             service=resources.activity,

@@ -28,6 +28,7 @@ class FakeHeadless:
             HeadlessRequestPriority.BASIC: 2,
             HeadlessRequestPriority.BACKGROUND: 1,
         }
+        self.active_request_summaries: tuple[str, ...] = ()
 
     def get_game(self) -> object:
         if not self.connected:
@@ -132,3 +133,15 @@ async def test_headless_instance_status_reports_public_and_dedicated_counts() ->
     assert "临时专用会话：2 在线" in result.message
     assert "当前合计：4 在线" in result.message
     assert "幸运橱窗 1" in result.message
+
+
+@pytest.mark.asyncio
+async def test_headless_instance_status_includes_active_page_summaries() -> None:
+    headless = FakeHeadless(connected=True)
+    headless.active_request_summaries = (
+        "worker_1: 群星牌榜 4901-5000名",
+    )
+
+    result = await service(headless, FakeNotices()).query_headless_instances()
+
+    assert "公共查询执行中：worker_1: 群星牌榜 4901-5000名" in result.message

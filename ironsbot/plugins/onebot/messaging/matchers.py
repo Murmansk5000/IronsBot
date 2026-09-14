@@ -10,6 +10,7 @@ from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves at runtime
 from nonebot.rule import Rule
 from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
@@ -17,14 +18,21 @@ from ironsbot.integrations.onebot.matchers import (
     bind,
     bind_async,
 )
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
-    finish_matcher_message,
+    render_text,
+    send_portable_event_reply,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
 from ironsbot.services.portable_messaging_commands import (
     build_portable_messaging_operations,
+    configured_text_reply,
+)
+from ironsbot.services.portable_reply import (
+    as_portable_reply,
+    deliver_reply_stages,
 )
 
 from .matcher_rules import (
@@ -67,11 +75,21 @@ async def handle_message_command(
         if isinstance(event, GroupMessageEvent)
         else []
     )
-    await finish_matcher_message(
-        matcher,
-        action.message,
-        at_user_ids=at_user_ids,
-        event=event,
+    reply = configured_text_reply(
+        (*action.messages[:-1], render_text(action.messages[-1])),
+        final_mentions=tuple(
+            ActorRef(Platform.ONEBOT, str(user_id)) for user_id in at_user_ids
+        ),
+    )
+    await deliver_reply_stages(
+        lambda message: send_portable_event_reply(
+            matcher,
+            event,
+            message,
+            mention_sender=False,
+        ),
+        message_input_context(event).message,
+        as_portable_reply(reply),
     )
 
 
