@@ -6,11 +6,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ironsbot.core.command_catalog import (
+    CommandAccess,
     CommandContract,
     commands_from_rows,
     parsed_command_input_matcher,
 )
+from ironsbot.core.platform import Platform
 from ironsbot.core.player_reference_commands import player_reference_input_matcher
+from ironsbot.services.identity_link_commands import (
+    IDENTITY_LINK_BEGIN,
+    IDENTITY_LINK_CONFIRM,
+)
 from ironsbot.services.seer.countermark_stat_rank_parsing import (
     parse_countermark_stat_rank_command,
 )
@@ -98,6 +104,42 @@ def seer_command_contracts(
                     "seer.player.unbind",
                     ("解绑米米号",),
                     "解除当前账号绑定的默认米米号",
+                    {},
+                ),
+                (
+                    "seer.player.identity.begin",
+                    ("关联官方账号", "关联官方账号 main"),
+                    "生成跨平台账号关联令牌",
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            IDENTITY_LINK_BEGIN
+                        ),
+                        "access": (CommandAccess("private"),),
+                        "platforms": frozenset({Platform.ONEBOT}),
+                    },
+                ),
+                (
+                    "seer.player.identity.confirm",
+                    ("关联账号 ABCD-EFGH",),
+                    "确认关联当前官方机器人身份",
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            IDENTITY_LINK_CONFIRM,
+                            accepts=lambda parsed: bool(parsed.argument.strip()),
+                        ),
+                        "platforms": frozenset({Platform.QQ_OFFICIAL}),
+                    },
+                ),
+                (
+                    "seer.player.identity.status",
+                    ("账号关联",),
+                    "查看当前跨平台账号关联",
+                    {},
+                ),
+                (
+                    "seer.player.identity.revoke",
+                    ("解除账号关联",),
+                    "解除当前跨平台账号关联",
                     {},
                 ),
             ),

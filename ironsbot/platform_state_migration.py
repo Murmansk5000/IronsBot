@@ -42,6 +42,7 @@ _META_TABLE = "ironsbot_schema_migrations"
 _QQ_NAMESPACES = frozenset(
     {
         "bilibili_preferences",
+        "cross_platform_identity_links",
         "lucky_skin_watch",
         "player_bindings",
         "player_query_limits",
@@ -51,7 +52,8 @@ _QQ_NAMESPACES = frozenset(
     }
 )
 _RUNTIME_NAMESPACES = frozenset({"activity_reminder", "skin_window", "team_audit"})
-_QQ_IDENTITY_NAMESPACES = _QQ_NAMESPACES
+_QQ_PASSTHROUGH_NAMESPACES = frozenset({"cross_platform_identity_links"})
+_QQ_IDENTITY_NAMESPACES = _QQ_NAMESPACES - _QQ_PASSTHROUGH_NAMESPACES
 _RUNTIME_IDENTITY_NAMESPACES = frozenset({"team_audit"})
 _AI_NAMESPACES = frozenset({"ai_memory"})
 _AI_IDENTITY_NAMESPACES = _AI_NAMESPACES
@@ -345,6 +347,7 @@ def _build_connections(
         qq_state,
         _QQ_NAMESPACES,
         _QQ_IDENTITY_NAMESPACES,
+        optional_namespaces=_QQ_PASSTHROUGH_NAMESPACES,
     )
     _mark_migrated(qq_state)
 
@@ -406,10 +409,14 @@ def _copy_namespaces(
     target: sqlite3.Connection,
     namespaces: frozenset[str],
     identity_namespaces: frozenset[str],
+    *,
+    optional_namespaces: frozenset[str] = frozenset(),
 ) -> None:
     source_versions = _namespace_versions(source)
     timestamp = datetime.now(timezone.utc).isoformat()
     for namespace in namespaces:
+        if namespace in optional_namespaces and namespace not in source_versions:
+            continue
         version = (
             _IDENTITY_NAMESPACE_VERSIONS[namespace]
             if namespace in identity_namespaces
