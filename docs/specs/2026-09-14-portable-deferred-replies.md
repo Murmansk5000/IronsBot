@@ -12,11 +12,12 @@ layer. The same contract must work for OneBot, QQ Official, and future transport
 - Delivery-aware callbacks run only after the transport confirms delivery.
 - A failed initial delivery invokes cleanup and prevents deferred work from
   continuing.
-- A deferred callback returns one platform-neutral `OutboundMessage`.
-- The runtime sends that message as a second reply to the same incoming event.
+- A deferred callback returns a platform-neutral `OutboundMessage` or another
+  `PortableReply` when the next stage also has delivery-aware work.
+- The runtime sends every stage in order to the same incoming event and commits
+  each stage only after its own transport receipt.
 - Unexpected deferred failures are logged with context and converted to a concise
   user-visible failure message.
-- Nested deferred replies are not supported.
 
 `progress_operation_reply()` adapts existing service methods that accept a progress
 callback. Such a method must report progress before starting expensive or externally
@@ -37,10 +38,19 @@ headless request starts. The final reply remains authoritative for the actual nu
 of cached entries. This ordering is shared by OneBot and QQ Official rather than
 implemented as a transport-specific workaround.
 
+OneBot server-status, meeting and activity-query matchers are the first passive
+commands to invoke their existing portable operations directly. The matcher still
+owns OneBot rule, priority, permission, cooldown and sender-mention behavior; result
+normalization, transport receipts, delivery callbacks and follow-up ordering use the
+same portable delivery state machine as QQ Official. A OneBot response without a
+message ID is an uncertain failure and cannot commit delivery-dependent state.
+
 ## Verification
 
 - Initial delivery succeeds before deferred work resumes.
 - Initial delivery failure cancels the paused operation.
 - Initial and final QQ Official replies use distinct passive reply sequences.
+- OneBot portable replies preserve the existing sender mention and require a real
+  send receipt before committing state.
 - Existing `on_delivered` callbacks continue to run exactly once.
 - Catalog feature and superuser filtering remains authoritative.
