@@ -62,6 +62,12 @@ Large Seer caches remain outside this migration because their keys are Seer
 player IDs, rankings, or payload hashes rather than delivery-platform
 identities.
 
+Explicit cross-platform links are stored in the same QQ state database under
+the `cross_platform_identity_links` migration namespace. Its challenge, link,
+and audit tables already use an AppID-scoped QQ Official identity plus the
+decimal OneBot QQ ID, so the offline platform migration copies them unchanged.
+Raw confirmation tokens are never persisted.
+
 ## Legacy Conversion Rules
 
 | Old field | Target conversion |
