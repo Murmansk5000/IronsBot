@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -38,7 +38,7 @@ class FakeSchedule:
     id: str
     feature: str
     name: str = ""
-    message: str = "消息"
+    messages: list[str] = field(default_factory=lambda: ["消息"])
     time: str = "23:00"
     day_of_week: str | None = None
     enabled: bool = True
@@ -67,7 +67,7 @@ def test_schedule_label_derives_name_from_message_before_internal_id() -> None:
     task = FakeSchedule(
         id="web_activity_daily_private",
         feature="web_activity_push",
-        message="周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign",
+        messages=["周年庆主题站签到活动：https://seerm.61.com/events/17years/#sign"],
     )
 
     assert schedule_label(1, task) == "周年庆主题站签到活动（23:00）"
@@ -77,7 +77,7 @@ def test_schedule_label_falls_back_to_feature_name_without_feature_leak() -> Non
     task = FakeSchedule(
         id="web_activity_daily_private",
         feature="web_activity_push",
-        message="https://seerm.61.com/events/17years/#sign",
+        messages=["https://seerm.61.com/events/17years/#sign"],
     )
 
     assert schedule_label(1, task) == "游戏外活动推送（23:00）"
@@ -93,7 +93,7 @@ def test_builtin_push_options_split_startup_admin_notices() -> None:
     assert labels["ai_chat_error_notice"] == "AI聊天异常通知"
     assert labels["bili_login_notice"] == "B站登录通知"
     assert labels["headless_seer_notice"] == "无头赛尔号通知"
-    assert labels["render_crash_notice"] == "精灵渲染崩溃通知"
+    assert labels["render_crash_notice"] == "精灵渲染异常通知"
     assert labels["red_packet_notice"] == "红包提醒"
     assert labels["admin_notice"] == "其他管理通知"
 
