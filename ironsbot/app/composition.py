@@ -228,6 +228,7 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
 
     resources = ApplicationResources(
         about=AboutService.from_version_file(Path("__version__")),
+        query_sessions=common.query_sessions,
         features=features,
         promotions=promotions,
         admin_notices=admin_notices,

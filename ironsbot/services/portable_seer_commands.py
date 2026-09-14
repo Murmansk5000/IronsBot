@@ -6,7 +6,8 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from ironsbot.core.command_catalog import CommandContext
+from ironsbot.core.authorization import can_manage_group_actor
+from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.commands import command_text_matches
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_query_sessions import (
@@ -14,11 +15,19 @@ from ironsbot.services.portable_query_sessions import (
     QueryOperationSpec,
     build_query_operation,
 )
+from ironsbot.services.portable_reply import (
+    ProgressReporter,
+    progress_operation_reply,
+)
+from ironsbot.services.seer.data import DataUnavailableError
+from ironsbot.services.seer.data_queries import DataQueryImageReply
 from ironsbot.services.seer.data_query_commands import (
     DATA_VERSION_COMMANDS,
     SEASON_COUNTDOWN_COMMANDS,
     WEEKLY_PREVIEW_COMMANDS,
 )
+from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.seer.external_references import SeerInfoReference
 from ironsbot.services.seer.peak import (
     PEAK_EXPERT_POOL_COMMANDS,
     PEAK_MASTER_POOL_COMMANDS,
@@ -48,11 +57,17 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandCatalog
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
-    from ironsbot.services.portable_reply import PortableOperation
-    from ironsbot.services.seer.data_queries import DataQueryReply
-    from ironsbot.services.seer.equipment import EquipmentKind
+    from ironsbot.services.portable_reply import PortableOperation, PortableReply
+    from ironsbot.services.seer.battle_effect import BattleEffectQueryService
+    from ironsbot.services.seer.data_queries import SeerDataQueryService
+    from ironsbot.services.seer.equipment import EquipmentKind, EquipmentQueryService
+    from ironsbot.services.seer.external_references import SeerInfoReferences
+    from ironsbot.services.seer.mintmark import MintmarkQueryService
     from ironsbot.services.seer.peak import PeakQueryService
+    from ironsbot.services.seer.pet_query import PetQueryService
     from ironsbot.services.seer.resources import SeerQueryResources
+    from ironsbot.services.seer.team import SeerTeamQueryService
+    from ironsbot.services.seer.type_query import TypeQueryService
 
 
 def build_portable_seer_operations(
@@ -60,69 +75,51 @@ def build_portable_seer_operations(
     seer: SeerQueryResources,
     sessions: PortableQuerySessions,
     features: FeatureService,
+    *,
+    image_command_texts: frozenset[str] = frozenset(),
 ) -> dict[str, PortableOperation]:
     """Build core Seer operations from existing parsers and domain services."""
 
-    async def data_query(
-        text: str,
-        context: MessageInputContext,
-    ) -> DataQueryReply:
-        del context
-        if command_text_matches(text, DATA_VERSION_COMMANDS):
-            return await seer.data_queries.data_version()
-        if command_text_matches(text, SEASON_COUNTDOWN_COMMANDS):
-            return await seer.data_queries.season_countdown()
-        if command_text_matches(text, WEEKLY_PREVIEW_COMMANDS):
-            return await seer.data_queries.weekly_preview()
-        msg = f"unsupported portable Seer data command: {text!r}"
-        raise ValueError(msg)
-
-    async def team_query(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        parsed = team_query_input(text)
-        if parsed is None:
-            msg = f"catalog accepted input that its team parser rejected: {text!r}"
-            raise ValueError(msg)
-        message = context.message
-        team_ids = seer.team_query.parse_team_ids(parsed.argument)
-        result = await seer.team_query.query(
-            team_ids,
-            TeamQueryActor(
-                actor=message.actor,
-                conversation=message.conversation,
-                can_manage=False,
-            ),
-        )
-        return OutboundMessage.from_text(result)
-
-    async def rank_help_message(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        del text
-        command_help = catalog.format_for_context(
-            _command_context(context),
-            features,
-            plugin_id="rank_help",
-        )
-        return OutboundMessage.from_text(
-            f"📊【可用榜单】\n{format_rank_help(command_help)}"
-        )
-
     return {
-        "seer.data.query": data_query,
-        "seer.team.query": team_query,
-        "rank.help": rank_help_message,
-        "seer.peak.query": _build_peak_query_operation(seer.peak_query),
-        "seer.peak.rank": _build_peak_rank_operation(seer.peak_query),
+        "seer.data.query": build_portable_data_query_operation(
+            seer.data_queries,
+            getattr(seer, "external_references", None),
+        ),
+        "seer.team.query": build_portable_team_query_operation(
+            seer.team_query,
+            features,
+        ),
+        "rank.help": build_portable_rank_help_operation(catalog, features),
+        "seer.peak.query": build_portable_peak_query_operation(seer.peak_query),
+        "seer.peak.rank": build_portable_peak_rank_operation(seer.peak_query),
+        **build_portable_pet_query_operations(
+            seer.pet_query,
+            sessions,
+            image_command_texts=image_command_texts,
+        ),
+        **build_portable_mintmark_query_operations(seer.mintmark, sessions),
+        **build_portable_equipment_query_operations(seer.equipment, sessions),
+        **build_portable_type_query_operations(
+            seer.type_query,
+            seer.battle_effect,
+            sessions,
+        ),
+    }
+
+
+def build_portable_pet_query_operations(
+    service: PetQueryService,
+    sessions: PortableQuerySessions,
+    *,
+    image_command_texts: frozenset[str] = frozenset(),
+) -> dict[str, PortableOperation]:
+    return {
         "seer.pet.query": build_query_operation(
             sessions,
             QueryOperationSpec(
-                parser=_affix_argument(pet_query_input()),
-                search=seer.pet_query.search_info,
-                select=seer.pet_query.select_info,
+                parser=_affix_argument(pet_query_input(image_command_texts)),
+                search=service.search_info,
+                select=service.select_info,
                 prompt_title="请问你想查询的精灵是……",
                 not_found_message="未找到对应精灵。",
             ),
@@ -130,13 +127,21 @@ def build_portable_seer_operations(
         "seer.pet.image": build_query_operation(
             sessions,
             QueryOperationSpec(
-                parser=_affix_argument(pet_image_input()),
-                search=seer.pet_query.search_image,
-                select=seer.pet_query.select_image,
+                parser=_affix_argument(pet_image_input(image_command_texts)),
+                search=service.search_image,
+                select=service.select_image,
                 prompt_title="请问你想查询的立绘是……",
                 not_found_message="未找到对应精灵或皮肤。",
             ),
         ),
+    }
+
+
+def build_portable_mintmark_query_operations(
+    service: MintmarkQueryService,
+    sessions: PortableQuerySessions,
+) -> dict[str, PortableOperation]:
+    return {
         "seer.mintmark.query": _first_matching_operation(
             (
                 (
@@ -145,8 +150,8 @@ def build_portable_seer_operations(
                         sessions,
                         QueryOperationSpec(
                             parser=_affix_argument(MINTMARK_QUERY),
-                            search=seer.mintmark.search_mintmark,
-                            select=seer.mintmark.select_mintmark,
+                            search=service.search_mintmark,
+                            select=service.select_mintmark,
                             prompt_title="请问你想查询的刻印是……",
                             not_found_message="未找到对应刻印。",
                         ),
@@ -158,15 +163,23 @@ def build_portable_seer_operations(
                         sessions,
                         QueryOperationSpec(
                             parser=_affix_argument(GEM_QUERY),
-                            search=seer.mintmark.search_gem,
-                            select=seer.mintmark.select_gem,
+                            search=service.search_gem,
+                            select=service.select_gem,
                             prompt_title="请问你想查询的宝石是……",
                             not_found_message="未找到对应宝石。",
                         ),
                     ),
                 ),
             )
-        ),
+        )
+    }
+
+
+def build_portable_equipment_query_operations(
+    service: EquipmentQueryService,
+    sessions: PortableQuerySessions,
+) -> dict[str, PortableOperation]:
+    return {
         "seer.equipment.query": _first_matching_operation(
             tuple(
                 (
@@ -175,8 +188,8 @@ def build_portable_seer_operations(
                         sessions,
                         QueryOperationSpec(
                             parser=_affix_argument(parser),
-                            search=partial(seer.equipment.search, kind),
-                            select=partial(seer.equipment.select, kind),
+                            search=partial(service.search, kind),
+                            select=partial(service.select, kind),
                             prompt_title=prompt_title,
                             not_found_message=not_found_message,
                         ),
@@ -186,7 +199,16 @@ def build_portable_seer_operations(
                     _equipment_queries()
                 )
             )
-        ),
+        )
+    }
+
+
+def build_portable_type_query_operations(
+    type_service: TypeQueryService,
+    battle_effect_service: BattleEffectQueryService,
+    sessions: PortableQuerySessions,
+) -> dict[str, PortableOperation]:
+    return {
         "seer.type.query": _first_matching_operation(
             (
                 (
@@ -195,8 +217,8 @@ def build_portable_seer_operations(
                         sessions,
                         QueryOperationSpec(
                             parser=_affix_argument(TYPE_QUERY),
-                            search=seer.type_query.search,
-                            select=seer.type_query.select,
+                            search=type_service.search,
+                            select=type_service.select,
                             prompt_title="请问你想查询的属性是……",
                             not_found_message="未找到对应属性。",
                         ),
@@ -208,16 +230,108 @@ def build_portable_seer_operations(
                         sessions,
                         QueryOperationSpec(
                             parser=_affix_argument(BATTLE_EFFECT_QUERY),
-                            search=seer.battle_effect.search,
-                            select=seer.battle_effect.select,
+                            search=battle_effect_service.search,
+                            select=battle_effect_service.select,
                             prompt_title="请问你想查询的异常状态是……",
                             not_found_message="未找到对应异常状态。",
                         ),
                     ),
                 ),
             )
-        ),
+        )
     }
+
+
+def build_portable_data_query_operation(
+    service: SeerDataQueryService,
+    references: SeerInfoReferences | None,
+) -> PortableOperation:
+    """Build shared data-version, season, and weekly-preview execution."""
+
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del context
+        reference: SeerInfoReference | None = None
+        try:
+            if command_text_matches(text, DATA_VERSION_COMMANDS):
+                result = await service.data_version()
+            elif command_text_matches(text, SEASON_COUNTDOWN_COMMANDS):
+                result = await service.season_countdown()
+            elif command_text_matches(text, WEEKLY_PREVIEW_COMMANDS):
+                result = await service.weekly_preview()
+                reference = SeerInfoReference.WEEKLY_PREVIEW
+            else:
+                msg = f"unsupported portable Seer data command: {text!r}"
+                raise ValueError(msg)
+        except DataUnavailableError:
+            return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+        if not isinstance(result, DataQueryImageReply):
+            return OutboundMessage.from_text(result)
+        reference_url = None if references is None else references.url_for(reference)
+        return result.to_outbound(reference_url=reference_url)
+
+    return execute
+
+
+def build_portable_team_query_operation(
+    service: SeerTeamQueryService,
+    features: FeatureService,
+) -> PortableOperation:
+    """Build the shared team query with normalized actor authorization."""
+
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        parsed = team_query_input(text)
+        if parsed is None:
+            msg = f"catalog accepted input that its team parser rejected: {text!r}"
+            raise ValueError(msg)
+        message = context.message
+        result = await service.query(
+            service.parse_team_ids(parsed.argument),
+            TeamQueryActor(
+                actor=message.actor,
+                conversation=(
+                    message.conversation
+                    if message.conversation.kind == "group"
+                    else None
+                ),
+                can_manage=can_manage_group_actor(
+                    features,
+                    message.actor,
+                    message.group_role,
+                ),
+            ),
+        )
+        return OutboundMessage.from_text(result)
+
+    return execute
+
+
+def build_portable_rank_help_operation(
+    catalog: CommandCatalog,
+    features: FeatureService,
+) -> PortableOperation:
+    """Build role-aware rank help from the shared command catalog."""
+
+    async def execute(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        command_help = catalog.format_for_context(
+            command_context_from_input(context),
+            features,
+            plugin_id="rank_help",
+        )
+        return OutboundMessage.from_text(
+            f"📊【可用榜单】\n{format_rank_help(command_help)}"
+        )
+
+    return execute
 
 
 def _affix_argument(parser: AffixParser):
@@ -228,9 +342,7 @@ def _affix_argument(parser: AffixParser):
     return parse
 
 
-def _equipment_queries() -> tuple[
-    tuple[EquipmentKind, AffixParser, str, str], ...
-]:
+def _equipment_queries() -> tuple[tuple[EquipmentKind, AffixParser, str, str], ...]:
     return (
         ("suit", SUIT_QUERY, "请问你想查询的套装是……", "未找到对应套装。"),
         (
@@ -264,57 +376,65 @@ def _first_matching_operation(
     return execute
 
 
-def _command_context(context: MessageInputContext) -> CommandContext:
-    message = context.message
-    return CommandContext(
-        actor=message.actor,
-        conversation=message.conversation,
-        group_role=message.group_role,
-        member_mentions=message.direct_mentions,
-    )
+def build_portable_peak_query_operation(
+    service: PeakQueryService,
+) -> PortableOperation:
+    """Build pool and vote queries with delivery-gated rendering progress."""
 
-
-async def _ignore_progress(_message: str) -> None:
-    """A passive platform sends only the final result for one command."""
-
-
-def _build_peak_query_operation(service: PeakQueryService) -> PortableOperation:
     async def execute(
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply:
         del context
-        if text in PEAK_POOL_COMMANDS:
-            result = await service.pool(expert=False, progress=_ignore_progress)
-        elif text in PEAK_EXPERT_POOL_COMMANDS:
-            result = await service.pool(expert=True, progress=_ignore_progress)
-        elif text in PEAK_MASTER_POOL_COMMANDS:
-            result = await service.master_pool(_ignore_progress)
-        elif text in PEAK_VOTE_COMMANDS:
-            result = await service.vote(_ignore_progress)
-        else:
-            msg = f"unsupported portable peak query command: {text!r}"
-            raise ValueError(msg)
-        return result.to_outbound()
+
+        async def query(progress: ProgressReporter) -> OutboundMessage:
+            try:
+                if text in PEAK_POOL_COMMANDS:
+                    result = await service.pool(expert=False, progress=progress)
+                elif text in PEAK_EXPERT_POOL_COMMANDS:
+                    result = await service.pool(expert=True, progress=progress)
+                elif text in PEAK_MASTER_POOL_COMMANDS:
+                    result = await service.master_pool(progress)
+                elif text in PEAK_VOTE_COMMANDS:
+                    result = await service.vote(progress)
+                else:
+                    msg = f"unsupported portable peak query command: {text!r}"
+                    raise ValueError(msg)
+            except DataUnavailableError:
+                return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+            return result.to_outbound()
+
+        return await progress_operation_reply(query)
 
     return execute
 
 
-def _build_peak_rank_operation(service: PeakQueryService) -> PortableOperation:
+def build_portable_peak_rank_operation(
+    service: PeakQueryService,
+) -> PortableOperation:
+    """Build item and pet ranks with delivery-gated rendering progress."""
+
     async def execute(
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply:
         del context
-        if text in PEAK_SUIT_RANK_COMMANDS:
-            result = await service.item_rank(text, kind="套装")
-        elif text in PEAK_TITLE_RANK_COMMANDS:
-            result = await service.item_rank(text, kind="称号")
-        elif text in PEAK_PET_RANK_COMMANDS:
-            result = await service.pet_rank(text, _ignore_progress)
-        else:
-            msg = f"unsupported portable peak rank command: {text!r}"
-            raise ValueError(msg)
-        return result.to_outbound()
+
+        async def query(progress: ProgressReporter) -> OutboundMessage:
+            try:
+                if text in PEAK_SUIT_RANK_COMMANDS:
+                    result = await service.item_rank(text, kind="套装")
+                elif text in PEAK_TITLE_RANK_COMMANDS:
+                    result = await service.item_rank(text, kind="称号")
+                elif text in PEAK_PET_RANK_COMMANDS:
+                    result = await service.pet_rank(text, progress)
+                else:
+                    msg = f"unsupported portable peak rank command: {text!r}"
+                    raise ValueError(msg)
+            except DataUnavailableError:
+                return OutboundMessage.from_text(DATABASE_UNAVAILABLE_MESSAGE)
+            return result.to_outbound()
+
+        return await progress_operation_reply(query)
 
     return execute
