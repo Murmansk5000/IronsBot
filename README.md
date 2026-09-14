@@ -117,6 +117,10 @@ services:
 
 ### QQ 官方机器人调试版
 
+真实 AppID 上线前按 [QQ 官方机器人线上验收清单](docs/specs/2026-09-14-qq-official-live-acceptance.md)
+验证连接、私聊、群 `@`、图片和所需的主动消息能力。只有取得 `READY/RESUMED`
+并完成对应消息矩阵，才算平台接入成功。
+
 QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
 套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
@@ -197,8 +201,10 @@ uv run --no-sync python -m ironsbot
 明确报错。
 
 当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
-`GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
-腾讯平台开放相应事件并由 SDK 支持；IronsBot 不会用 NapCat 猜测或拼接 OpenID。
+`GROUP_MESSAGE_CREATE`。腾讯 Node SDK 将后者明确视为私域机器人能力；公域机器人只会
+收到 `GROUP_AT_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”同时要求应用具备私域
+事件权限，并且 Python SDK 后续正式支持该事件，不能只靠配置实现。IronsBot 不会修改
+SDK 内部事件白名单，也不会用 NapCat 猜测或拼接 OpenID。
 
 ## 常用赛尔查询
 
