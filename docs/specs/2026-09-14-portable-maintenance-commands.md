@@ -27,15 +27,20 @@ Portable numeric menus may return either a plain `OutboundMessage` or a
 existing formatted result as its follow-up. It remains read-only: it does not pull an
 image or restart a process or container.
 
-## Deferred Commands
+## Restarting Commands
 
-`/重启机器人` and `/更新镜像` remain outside portable execution in this increment.
-They require a separate asynchronous delivery-commit contract: the final prepared
-message must be confirmed delivered before the service executes a restart that may
-terminate the current process. They must not be implemented by starting an untracked
-task or by sending a fake final reply.
+`/重启机器人` and `/更新镜像` open the shared maintenance menu on both transports.
+The image update path acknowledges the selection before contacting the registry or
+pulling an image. Its prepared final reply is itself delivery-aware: the process or
+container restart runs only after the transport confirms that final reply.
+
+`PortableReply.follow_up` may return another `PortableReply`. Transports commit each
+stage independently and stop the chain after a failed delivery. Asynchronous
+delivery commits are generic lifecycle hooks rather than Docker-specific transport
+branches; no untracked restart task is created.
 
 ## Footprint
 
 This increment adds no runtime dependency, database, configuration field, binary
-asset, or image layer.
+asset, or image layer. Portable command coverage is 69/75; the remaining six
+commands depend on numeric QQ-account configuration used by the lucky skin window.
