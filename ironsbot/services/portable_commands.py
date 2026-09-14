@@ -458,7 +458,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         (
             {}
             if docker_update is None
-            else build_portable_docker_operations(docker_update)
+            else build_portable_docker_operations(docker_update, sessions)
         ),
     )
     meeting_operations = _catalog_operations(
