@@ -342,6 +342,7 @@ def build_test_plugin_registry(
             contribution_catalog=PluginContributionCatalog(),
             help_hint=object(),
             addressed_input_hints=AddressedInputHintService(),
+            identity_links=object(),
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
