@@ -117,6 +117,10 @@ services:
 
 ### QQ 官方机器人调试版
 
+真实 AppID 上线前按 [QQ 官方机器人线上验收清单](docs/specs/2026-09-14-qq-official-live-acceptance.md)
+验证连接、私聊、群 `@`、图片和所需的主动消息能力。只有取得 `READY/RESUMED`
+并完成对应消息矩阵，才算平台接入成功。
+
 QQ 官方机器人与 OneBot 可在同一个 IronsBot 进程中运行。预览版支持群聊
 `@机器人` 与 C2C 被动消息，开放基础说明、米米号、赛尔数据、战队、精灵/立绘、刻印/宝石、
 套装/部件/称号、属性/异常状态、巅峰资料、榜单、刻印数值榜、群星牌资料、圣域/祝印、
@@ -197,8 +201,10 @@ uv run --no-sync python -m ironsbot
 明确报错。
 
 当前 SDK 1.2.2 接收 C2C 与群聊 `@机器人` 事件，不接收普通
-`GROUP_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”不能只靠配置实现，仍取决于
-腾讯平台开放相应事件并由 SDK 支持；IronsBot 不会用 NapCat 猜测或拼接 OpenID。
+`GROUP_MESSAGE_CREATE`。腾讯 Node SDK 将后者明确视为私域机器人能力；公域机器人只会
+收到 `GROUP_AT_MESSAGE_CREATE`。因此“不 @ 也读取全部群消息”同时要求应用具备私域
+事件权限，并且 Python SDK 后续正式支持该事件，不能只靠配置实现。IronsBot 不会修改
+SDK 内部事件白名单，也不会用 NapCat 猜测或拼接 OpenID。
 
 ## 常用赛尔查询
 
@@ -272,13 +278,16 @@ GITHUB_WORKFLOW_TOKEN=
 
 ### 幸运橱窗
 
-幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的 QQ 用户开放。需要：
+幸运橱窗是公开功能，但只向 TOML 明确配置、且已绑定对应米米号的平台用户开放。需要：
 
 1. 在 `[[seer.player_accounts]]` 创建账号，填写 `player_id`、`name` 和可选 `aliases`。
-2. 在 `[[seer.lucky_skin_window.accounts]]` 为该 QQ 用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。
+2. 在 `[[seer.lucky_skin_window.accounts]]` 为该用户填写 `user`、账号库 `account` 和可选 `watched_skin_ids`。OneBot 可使用 QQ 号或用户别名；QQ 官方机器人使用其 `user_aliases` 中的别名。
 3. 在容器环境变量设置 `SEER_PASSWORD_<player_id>`；填写明文密码，不写入 TOML。
 4. 为该用户开启 `lucky_skin_window` feature；群聊使用时，该群也需要开启此 feature。
-5. QQ 用户将默认米米号绑定为该账号的 `player_id`。
+5. 该平台用户将默认米米号绑定为该账号的 `player_id`。
+
+QQ 官方机器人还需为所属账号设置 `proactive_messages = true`，并在该账号的 feature
+策略中启用 `lucky_skin_window`。OpenID 始终与 AppID 一起作为身份，不会转换成数字 QQ。
 
 每天配置的 `time` 到达时，机器人会逐个使用专用账号读取当天四个皮肤，并向未在 `TD` 退订的对应用户私聊通知。手动发送“橱窗”时，若该账号当天已有缓存会直接返回；没有缓存时，机器人会先说明将登录的绑定米米号，只有回复“是”或“y”后才会登录查询。回复“否”或“n”取消本次查询。
 
