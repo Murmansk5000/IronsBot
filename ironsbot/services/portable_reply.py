@@ -27,6 +27,7 @@ class PortableReply:
     """One prepared reply with work committed only after transport success."""
 
     message: OutboundMessage
+    additional_messages: tuple[OutboundMessage, ...] = ()
     on_delivered: Callable[[], None] | None = None
     on_delivery_failed: Callable[[], None] | None = None
     follow_up: PortableFollowUp | None = None

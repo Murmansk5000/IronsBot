@@ -134,6 +134,7 @@ class ApplicationLifecycle:
         await self._run_lifecycle_hooks(
             "resource_startup",
             self.resource_startup_hooks,
+            propagate_errors=True,
         )
         await self._run_lifecycle_hooks("startup", self.startup_hooks)
 
@@ -183,9 +184,16 @@ class ApplicationLifecycle:
     async def _run_lifecycle_hooks(
         phase: str,
         hooks: tuple[NamedLifecycleHook, ...],
+        *,
+        propagate_errors: bool = False,
     ) -> None:
         for name, hook in hooks:
-            await ApplicationLifecycle._run_lifecycle_hook(phase, name, hook)
+            await ApplicationLifecycle._run_lifecycle_hook(
+                phase,
+                name,
+                hook,
+                propagate_errors=propagate_errors,
+            )
 
     @staticmethod
     async def _run_bot_hooks(
@@ -201,17 +209,21 @@ class ApplicationLifecycle:
         phase: str,
         name: str,
         hook: LifecycleHook,
+        *,
+        propagate_errors: bool = False,
     ) -> None:
         try:
             result = hook()
             if isawaitable(result):
                 await result
-        except Exception:  # noqa: BLE001 - one owner must not block later owners
+        except Exception:
             logger.opt(exception=True).error(
                 "lifecycle {} hook failed: {}",
                 phase,
                 name,
             )
+            if propagate_errors:
+                raise
 
     @staticmethod
     async def _run_bot_hook(
