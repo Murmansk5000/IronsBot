@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
     from ironsbot.services.identity_link_commands import IdentityLinkCommands
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.new_content import NewContentCategory
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
@@ -35,6 +36,7 @@ class SeerMatcherGroup:
     features: FeatureService
     commands: CommandCatalog
     player_id_resolver: PlayerIdResolver
+    query_sessions: PortableQuerySessions
     identity_links: IdentityLinkCommands
     image_command_texts: frozenset[str]
     new_content_expanded_categories: frozenset[NewContentCategory] = frozenset()

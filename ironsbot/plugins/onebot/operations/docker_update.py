@@ -7,7 +7,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
@@ -19,10 +19,10 @@ from ironsbot.core.plugin_install import (
     active_plugin_install_context,
 )
 from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
-from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.help_visibility import superuser_help_visible
 from ironsbot.services.operations.command_text import (
     BOT_RESTART_COMMANDS,
     DOCKER_CHECK_UPDATE_COMMANDS,
@@ -38,8 +38,6 @@ from ironsbot.services.operations.docker_update import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.startup import StartupNoticeService
@@ -52,15 +50,6 @@ __plugin_meta__ = PluginMetadata(
     homepage="https://github.com/Murmansk5000/IronsBot",
     supported_adapters={"~onebot.v11"},
 )
-
-
-def _help_visible(event: Event, *, features: FeatureService) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return False
-    user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_actor_superuser(
-        onebot_actor_ref(str(user_id))
-    )
 
 
 def _start_docker_update(*, startup_notice: StartupNoticeService) -> None:
@@ -168,7 +157,7 @@ def plugin_contribution(
             description="检查 Docker 镜像、更新镜像或重启机器人",
             group="admin",
             order=10,
-            visible=partial(_help_visible, features=features),
+            visible=partial(superuser_help_visible, features=features),
         ),
         commands=docker_command_contracts(),
         install=partial(_install, service=service),

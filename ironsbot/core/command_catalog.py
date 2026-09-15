@@ -10,6 +10,7 @@ from ironsbot.core.commands import command_text_matches
 from ironsbot.core.platform import Platform, is_supported_message_actor
 
 if TYPE_CHECKING:
+    from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
 
 CommandScope = Literal["group", "private", "both"]
@@ -90,15 +91,11 @@ class CommandCatalogError(ValueError):
 
     @classmethod
     def empty_features_any(cls, command_id: str) -> CommandCatalogError:
-        return cls(
-            f"invalid command contract: {command_id!r} has an empty feature id"
-        )
+        return cls(f"invalid command contract: {command_id!r} has an empty feature id")
 
     @classmethod
     def invalid_interaction(cls, command_id: str) -> CommandCatalogError:
-        return cls(
-            f"invalid command contract: {command_id!r} has invalid interaction"
-        )
+        return cls(f"invalid command contract: {command_id!r} has invalid interaction")
 
     @classmethod
     def invalid_help_level(cls, command_id: str) -> CommandCatalogError:
@@ -150,6 +147,16 @@ class CommandContext:
     @property
     def has_member_mentions(self) -> bool:
         return bool(self.member_mentions)
+
+
+def command_context_from_input(context: MessageInputContext) -> CommandContext:
+    message = context.message
+    return CommandContext(
+        actor=message.actor,
+        conversation=message.conversation,
+        group_role=message.group_role,
+        member_mentions=message.direct_mentions,
+    )
 
 
 CommandInputMatcher = Callable[[str, CommandContext], bool]
@@ -205,12 +212,12 @@ class CommandAccess:
         if not _scope_matches(context, self.scope):
             return False
         if self.features_any and not any(
-            _feature_is_allowed(features, context, feature)
+            feature_is_visible_in_help(features, context, feature)
             for feature in self.features_any
         ):
             return False
         if any(
-            not _feature_is_allowed(features, context, feature)
+            not feature_is_visible_in_help(features, context, feature)
             for feature in self.features_all
         ):
             return False
@@ -240,9 +247,7 @@ class CommandContract:
     access: tuple[CommandAccess, ...] = (CommandAccess(),)
     interaction: CommandInteraction = "direct"
     help_level: CommandHelpLevel = "full"
-    platforms: frozenset[Platform] = frozenset(
-        {Platform.ONEBOT, Platform.QQ_OFFICIAL}
-    )
+    platforms: frozenset[Platform] = frozenset({Platform.ONEBOT, Platform.QQ_OFFICIAL})
     notes: tuple[str, ...] = ()
     show_in_poke: bool = False
     visible: CommandVisibility | None = None
@@ -282,12 +287,12 @@ class CommandContract:
         if not any(rule.is_available(context, features) for rule in self.access):
             return False
         if self.features_any and not any(
-            _feature_is_allowed(features, context, feature)
+            feature_is_visible_in_help(features, context, feature)
             for feature in self.features_any
         ):
             return False
         if any(
-            not _feature_is_allowed(features, context, feature)
+            not feature_is_visible_in_help(features, context, feature)
             for feature in self.features_all
         ):
             return False
@@ -375,7 +380,7 @@ def _scope_matches(context: CommandContext, scope: CommandScope) -> bool:
     return context.conversation.kind == "private"
 
 
-def _feature_is_allowed(
+def feature_is_visible_in_help(
     features: CommandFeaturePolicy,
     context: CommandContext,
     feature: str,
@@ -494,8 +499,7 @@ class CommandCatalog:
         return frozenset(
             command.id
             for command in self._commands
-            if command.interaction == "direct"
-            and Platform.ONEBOT in command.platforms
+            if command.interaction == "direct" and Platform.ONEBOT in command.platforms
         )
 
     @property
