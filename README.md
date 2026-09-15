@@ -178,10 +178,16 @@ superusers = []
 Resume、平台重投或进程重启导致同一条指令执行两次；该状态无需额外配置。
 每个账号的 `group_policy` 与 `user_policy` 是该账号的主动推送目标清单，也为目标
 附加对应 feature。
-目标必须填写官方平台事件日志中的 OpenID，不能填写 QQ 号。开启
+目标可填写当前官方账号下声明的别名或事件中的 OpenID，不能把 QQ 号当作 OpenID。开启
 `proactive_messages` 且应用具备对应权限后，定时消息与活动/B站推送会复用同一套
 发送、重试和退订逻辑；用户可发送 `TD`、`退订` 或 `订阅` 管理当前会话，发送
 `推送时间` 管理当前会话可修改的定时推送时间。
+
+跨平台使用同一个真实群或用户时，可以在 `features.group_aliases` / `user_aliases`
+声明 OneBot 端点，再在官方账号的 `group_aliases` / `user_aliases` 复用同一个别名。
+一条全局 `features.group_policy` / `user_policy` 会展开到该逻辑目标的所有显式端点，
+不需要再起 `official_admin` 之类的平台专用名字。群事件里的 `member_openid` 必须在
+`group_member_aliases.<群别名>` 下声明，它只在对应群内有效，不能用于私聊发送。
 
 `custom_keyboards` 默认关闭。只有腾讯后台已为该应用开通内邀的“自定义按钮”能力时
 才能设为 `true`。启用后，有限选项会附加最多 5 行、每行 5 个的指令按钮；按钮发送的

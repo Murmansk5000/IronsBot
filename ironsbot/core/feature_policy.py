@@ -78,12 +78,12 @@ class FeatureService:
         conversation: ConversationRef,
         feature: str,
     ) -> bool:
-        return feature in self.group_features.get(
-            conversation,
-            self._default_features(
+        return feature in self.group_features.get(conversation, frozenset()) or (
+            feature
+            in self._default_features(
                 conversation.platform,
                 conversation.account_id,
-            ),
+            )
         )
 
     def _default_features(
@@ -108,8 +108,10 @@ class FeatureService:
         if not is_supported_message_actor(actor, conversation):
             return False
         if conversation.kind == "group":
-            return self.conversation_has_feature(conversation, feature) or (
-                self.superuser_bypass and self.is_actor_superuser(actor)
+            return (
+                self.conversation_has_feature(conversation, feature)
+                or self.actor_has_feature(actor, feature)
+                or (self.superuser_bypass and self.is_actor_superuser(actor))
             )
         if conversation.kind == "private":
             return self.is_actor_feature_allowed(actor, feature)

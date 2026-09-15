@@ -24,28 +24,24 @@ def build_bili_configured_targets(
     config: BiliConfig,
     references: PlatformReferenceResolver,
 ) -> BiliConfiguredTargets:
-    """Resolve each configured target to exactly one platform account."""
+    """Resolve each configured logical target into its platform endpoints."""
 
     group_rules: dict[ConversationRef, BiliTargetRule] = {}
     private_rules: dict[ConversationRef, BiliTargetRule] = {}
     for ref, target_config in config.push.groups.items():
-        _merge_rule(
-            group_rules,
-            references.group_conversation_ref(
-                ref,
-                location=f"bilibili.push.groups.{ref}",
-            ),
-            build_bili_target_rule(target_config, config),
-        )
+        rule = build_bili_target_rule(target_config, config)
+        for conversation in references.group_conversation_refs(
+            ref,
+            location=f"bilibili.push.groups.{ref}",
+        ):
+            _merge_rule(group_rules, conversation, rule)
     for ref, target_config in config.push.users.items():
-        _merge_rule(
-            private_rules,
-            references.private_conversation_ref(
-                ref,
-                location=f"bilibili.push.users.{ref}",
-            ),
-            build_bili_target_rule(target_config, config),
-        )
+        rule = build_bili_target_rule(target_config, config)
+        for conversation in references.private_conversation_refs(
+            ref,
+            location=f"bilibili.push.users.{ref}",
+        ):
+            _merge_rule(private_rules, conversation, rule)
     return BiliConfiguredTargets(group_rules, private_rules)
 
 

@@ -6,7 +6,7 @@ import pytest
 
 from ironsbot.config.models.features import (
     FeatureConfig,
-    build_onebot_feature_service,
+    build_feature_service,
 )
 from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.config.platform_references import build_platform_reference_resolver
@@ -74,7 +74,7 @@ def _features(
     user_policy: dict[str, list[str]] | None = None,
     superusers: tuple[int, ...] = (),
 ) -> FeatureService:
-    return build_onebot_feature_service(
+    return build_feature_service(
         FeatureConfig(
             group_policy=group_policy or {},
             user_policy=user_policy or {},

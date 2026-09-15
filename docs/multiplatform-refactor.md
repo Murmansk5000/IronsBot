@@ -2369,13 +2369,19 @@ QQ Official 入站使用实际连接的 AppID 建立身份，显式 OpenID polic
 跨平台配置目标随后按同一账户边界收口（`dc3d72d8`）。OneBot 别名继续位于
 `features.group_aliases` / `features.user_aliases`；QQ 官方群和用户 OpenID 别名改为
 位于各自 `bot.qq_official.accounts.<alias>` 下。统一解析器只产出带 platform、AppID
-和目标 ID 的类型化引用，跨平台或跨官方账号重名会在启动校验中失败，裸官方 OpenID
+和目标 ID 的类型化引用。当时跨平台或跨官方账号重名会在启动校验中失败，裸官方 OpenID
 不得进入无法表达所属 AppID 的全局推送目标。B站配置目标因此删除 OneBot 专用编译器，
 同一份 `bilibili.push` 可安全包含 OneBot 与官方 QQ 目标；`动态`、`B站账号` 和群/私聊
 `B站推送模式` 也共用便携执行注册表。该提交未增加依赖、SQLite、图片或镜像内容；
 Ruff、BasedPyright、compileall、差异检查通过，全量 `3362 passed, 7 skipped`。腾讯官方
 多账号实现明确要求每个账号独立连接和 Token 缓存，Bot A 收到的 OpenID 不能由 Bot B
 发送，本次结构遵守该限制；真实主动消息权限与平台额度仍留作最终实机验收。
+
+后续目标模型进一步收口：群和用户别名现在表示部署者显式声明的逻辑目标，可同时
+拥有 OneBot ID、各官方 AppID 下的 OpenID，以及按群作用域保存的 member_openid。
+同一条全局 Feature policy 会展开到这些类型化端点；member_openid 不会变成 C2C
+目标。旧的“跨平台别名必须全局唯一”限制因此删除，未声明同名别名时仍不会进行任何
+昵称、头像、时间或 ID 猜测。跨平台推送配置会为逻辑目标编译各个可发送端点。
 
 QQ 官方管理员身份随后按事件场景拆分（`a6425b9c`）。C2C `superusers` 只接受可作为
 私聊目标的 `user_openid`；新增账号级 `group_superusers` 以群别名/群 OpenID 显式绑定

@@ -121,20 +121,29 @@ superusers = []
 # example_official_user = ["seer_activity_push", "bili_push"]
 
 # EN: Group-scoped superusers. Keys are group aliases or raw group OpenIDs;
-#     values are member_openids observed in that group, not C2C user_openids.
+#     values are member aliases declared below or member_openids observed there.
 # ZH: 群聊超级管理员。键为群别名或群 OpenID，值为该群事件里的 member_openid，
-#     不能填写私聊 user_openid。
+#     也可写下方声明的成员别名；不能填写私聊 user_openid。
 [bot.qq_official.accounts.example_bot.group_superusers]
-# example_official_group = ["example-member-openid"]
+# group_a = ["owner"]
 
-# EN: Account-scoped aliases for opaque QQ Official OpenIDs. Each alias must be
-#     globally unique across OneBot and every enabled official account.
-# ZH: QQ 官方 OpenID 的账号级别名。别名必须在 OneBot 与所有启用的官方账号中全局唯一。
+# EN: Account-scoped endpoints for logical group/user aliases. Reusing a OneBot
+#     alias explicitly declares that both native IDs represent the same target.
+# ZH: 逻辑群/用户别名在当前官方账号下的端点。同名 OneBot 别名与官方 OpenID
+#     会被视为同一个目标，共用 [features.group_policy] / user_policy。
 [bot.qq_official.accounts.example_bot.group_aliases]
-# example_official_group = "example-group-openid"
+# group_a = "example-group-openid"
 
 [bot.qq_official.accounts.example_bot.user_aliases]
-# example_official_user = "example-user-openid"
+# owner = "example-c2c-user-openid"
+
+# EN: Group-scoped member endpoints. The first key is a group alias/OpenID;
+#     nested keys reuse logical user aliases. A member_openid is never treated
+#     as a C2C user_openid or a private-message destination.
+# ZH: 群成员端点。第一层是群别名/OpenID，第二层复用逻辑用户别名；member_openid
+#     只在该群内有效，绝不会当作私聊 user_openid 或私聊推送目标。
+[bot.qq_official.accounts.example_bot.group_member_aliases.group_a]
+# owner = "example-member-openid"
 
 [bot.matcher_priority]
 # EN: NoneBot matcher priority. Smaller numbers run first.
@@ -219,15 +228,15 @@ superuser_bypass = true
 
 [features.group_aliases]
 # Default: empty table
-# EN: Named QQ group IDs used by policies.
-# ZH: 群别名，把易读名称映射到 QQ 群号。
+# EN: Logical group aliases and their OneBot QQ group endpoints.
+# ZH: 逻辑群别名及其 OneBot QQ 群号端点；官方端点可复用同名别名。
 group_a = 987654321
 group_b = 876543210
 
 [features.user_aliases]
 # Default: empty table
-# EN: Named QQ user IDs used by policies.
-# ZH: 用户别名，把易读名称映射到 QQ 号。
+# EN: Logical user aliases and their OneBot QQ user endpoints.
+# ZH: 逻辑用户别名及其 OneBot QQ 号端点；官方私聊和群成员端点可复用同名别名。
 owner = 1234567890
 user_a = 2345678901
 # Example automated account. Add the same alias to user_policy with blacklist so
@@ -288,7 +297,7 @@ lite = [
 # defined above. Seer sub-features:
 # seer_player, seer_team, seer_pet, seer_mintmark, seer_equipment, seer_type,
 # seer_peak, seer_autocard, seer_rank, seer_data.
-# ZH: 群功能策略，控制每个群可用哪些功能。seer 是全部赛尔查询功能组合；
+# ZH: 群功能策略，控制逻辑群在所有已声明平台端点可用的功能。seer 是全部赛尔查询功能组合；
 # 也可只开放 seer_pet、seer_mintmark、seer_player 等子功能；pet_config 需单独开启。
 # 如果某个群不想开放精灵/刻印这类宽泛匹配功能，就不要写 seer，
 # 改写 seer_player、seer_rank、seer_autocard 等精细子功能。
@@ -308,8 +317,9 @@ lite = [
 
 [features.user_policy]
 # Default: empty table
-# EN: Private/user feature allowlist.
-# ZH: 私聊/用户功能策略，也用于私聊推送目标。
+# EN: Logical private/user feature allowlist across declared platform endpoints.
+# ZH: 逻辑私聊/用户功能策略，应用到该别名已声明的 QQ 号、user_openid 和群内
+# member_openid；私聊推送只使用 QQ 号和 user_openid，不会发送给 member_openid。
 # Example:
 # owner = ["all"]
 # blocked_user = ["blacklist"]
