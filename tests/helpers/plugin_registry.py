@@ -394,8 +394,6 @@ def build_test_plugin_registry(
         db_sync_plugin_contribution(
             service=resources.data_sync,
             features=runtime.features,
-            startup_notice=resources.startup_notice,
-            scheduler=SchedulerFacade(),
         ),
         about_plugin_contribution(resources.about),
         help_plugin_contribution(

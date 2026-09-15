@@ -30,6 +30,7 @@ from ironsbot.integrations.qq_official.inbound_deduplication import (
 )
 from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -41,7 +42,6 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.portable_commands import PortableCommandRouter
-    from ironsbot.services.portable_reply import PortableReply
 
 logger = logging.getLogger(__name__)
 
@@ -375,9 +375,33 @@ class QQOfficialRuntime:
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),
         )
-        if not router.recognizes(context):
+        recognized = router.recognizes(context)
+        logger.info(
+            "QQ Official inbound routed: account=%s event_type=%s "
+            "input_kind=%s recognized=%s",
+            self._connections[app_id].lifecycle.account,
+            event_type,
+            context.kind.value,
+            recognized,
+        )
+        if not recognized:
             return
-        reply = await router.dispatch(context)
+        try:
+            reply = await router.dispatch(context)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - platform boundary
+            logger.error(  # noqa: TRY400 - exception text may contain private data
+                "QQ Official command dispatch failed: account=%s event_type=%s "
+                "kind=%s error_type=%s",
+                self._connections[app_id].lifecycle.account,
+                event_type,
+                incoming.conversation.kind,
+                type(error).__name__,
+            )
+            reply = PortableReply(
+                OutboundMessage.from_text("❌ 命令执行失败，请稍后再试。")
+            )
         if reply is not None:
             await deliver_qq_official_reply(
                 messenger,
@@ -492,6 +516,7 @@ async def deliver_qq_official_reply(
         )
         return
     reply.delivered()
+    _log_delivery_success(incoming, stage="initial", account_label=account_label)
     for additional in reply.additional_messages:
         additional_result = await messenger.reply(context, additional)
         if not additional_result.delivered:
@@ -502,6 +527,11 @@ async def deliver_qq_official_reply(
                 account_label=account_label,
             )
             return
+        _log_delivery_success(
+            incoming,
+            stage="additional",
+            account_label=account_label,
+        )
     if reply.follow_up is None:
         return
     try:
@@ -526,6 +556,12 @@ async def deliver_qq_official_reply(
             stage="follow_up",
             account_label=account_label,
         )
+        return
+    _log_delivery_success(
+        incoming,
+        stage="follow_up",
+        account_label=account_label,
+    )
 
 
 def qq_official_event_is_supported(
@@ -562,6 +598,20 @@ def _log_delivery_failure(
         result.error_code,
         result.error_message,
         result.trace_id,
+    )
+
+
+def _log_delivery_success(
+    incoming: IncomingMessageRef,
+    *,
+    stage: str,
+    account_label: str,
+) -> None:
+    logger.info(
+        "QQ Official reply delivered: stage=%s account=%s kind=%s",
+        stage,
+        account_label,
+        incoming.conversation.kind,
     )
 
 

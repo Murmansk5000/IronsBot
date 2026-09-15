@@ -1,14 +1,11 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import httpx
 import nonebot
 import pytest
-
-if TYPE_CHECKING:
-    from nonebot.internal.driver import Driver
 
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["APP_CONFIG_PATH"] = str(ROOT / "config.example.toml")
@@ -18,7 +15,6 @@ try:
 except ValueError:
     nonebot.init()
 
-from ironsbot.app.lifecycle import ApplicationLifecycle, TaskOwner
 from ironsbot.config.models.operations import DockerUpdateConfig
 from ironsbot.integrations.docker.client import DockerClient
 from ironsbot.integrations.docker.daemon import (
@@ -52,7 +48,6 @@ from ironsbot.services.operations.docker_update import (
     docker_maintenance_menu_text,
     parse_docker_maintenance_choice,
 )
-from tests.helpers.plugin_registry import build_test_plugin_registry
 
 
 async def noop_restart_process() -> None:
@@ -707,17 +702,6 @@ def test_target_image_pull_retries_transient_registry_eof(
     assert result.image_id == "sha256:target-image"
     assert client.post_count == expected_attempts
     assert sleep_delays == [2.0]
-
-
-def test_docker_update_runtime_is_registered_before_data_sync() -> None:
-    lifecycle = ApplicationLifecycle.from_contributions(
-        cast("Driver", object()),
-        build_test_plugin_registry(),
-        task_owner=TaskOwner(),
-    )
-    names = [name for name, _hook in lifecycle.startup_hooks]
-
-    assert names.index("docker_update") < names.index("db_sync")
 
 
 def test_docker_restart_only_uses_process_without_socket() -> None:
