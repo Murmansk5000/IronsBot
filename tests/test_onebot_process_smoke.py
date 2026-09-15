@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -16,6 +17,7 @@ USER_ID = 123456789
 STARTUP_TIMEOUT_SECONDS = 30.0
 REPLY_TIMEOUT_SECONDS = 15.0
 ROOT = Path(__file__).resolve().parents[1]
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 class OneBotSocketStartupError(AssertionError):
@@ -117,6 +119,7 @@ def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
         filter(None, (str(ROOT), environment.get("PYTHONPATH", "")))
     )
 
+    reply_received = False
     with log_path.open("w", encoding="utf-8") as output:
         process = subprocess.Popen(
             [sys.executable, "-m", "ironsbot"],
@@ -151,7 +154,8 @@ def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
                             assert action["params"]["user_id"] == USER_ID
                             assert "IronsBot" in text
                             assert "版本：" in text
-                            return
+                            reply_received = True
+                            break
                         websocket.send(
                             json.dumps(
                                 {
@@ -164,7 +168,8 @@ def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
                         )
                 except TimeoutError:
                     pass
-                raise OneBotReplyMissingError
+                if not reply_received:
+                    raise OneBotReplyMissingError
         finally:
             process.terminate()
             try:
@@ -172,3 +177,7 @@ def test_full_process_handles_onebot_websocket_event(tmp_path: Path) -> None:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+
+    assert reply_received
+    log_text = ANSI_ESCAPE.sub("", log_path.read_text(encoding="utf-8"))
+    assert "Current Env: test" in log_text

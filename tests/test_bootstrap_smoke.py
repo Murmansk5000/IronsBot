@@ -37,6 +37,7 @@ def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
 
 def test_application_bootstrap_smoke(tmp_path: Path) -> None:
     config = (ROOT / "config.example.toml").read_text(encoding="utf-8")
+    config = config.replace('environment = "prod"', 'environment = "test"', 1)
     qq_start = config.index("[bot.qq_official]")
     account_start = config.index("[bot.qq_official.accounts.example_bot]")
     qq_section = config[qq_start:account_start].replace(
@@ -57,6 +58,7 @@ def test_application_bootstrap_smoke(tmp_path: Path) -> None:
     script = """
 import os
 import inspect
+import nonebot
 from copy import deepcopy
 from functools import partial
 from typing import ForwardRef
@@ -105,6 +107,8 @@ dependencies.get_typed_signature = checked_get_typed_signature
 from ironsbot.app.bootstrap import bootstrap
 
 state = bootstrap()
+assert nonebot.get_driver().env == "test"
+assert os.environ["ENVIRONMENT"] == "outer"
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
 assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
@@ -148,6 +152,7 @@ print("BOOTSTRAP_OK")
         timeout=30,
         env={
             **dict(os.environ),
+            "ENVIRONMENT": "outer",
             "APP_CONFIG_PATH": str(config_path),
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "test-secret",
         },
