@@ -35,6 +35,46 @@ def test_portable_menu_rejects_mismatched_labels() -> None:
         )
 
 
+def test_portable_menu_rejects_mismatched_text_inputs() -> None:
+    with pytest.raises(ValueError, match="text inputs"):
+        PortableMenuSpec(
+            choices=("one", "two"),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("choose"),
+            text_inputs=(frozenset({"one"}),),
+        )
+
+
+@pytest.mark.asyncio
+async def test_menu_text_aliases_are_explicit_and_share_button_selection() -> None:
+    sessions = PortableQuerySessions()
+    context = _context("owner")
+    select = AsyncMock(return_value=OutboundMessage.from_text("selected"))
+    menu = sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=("one",), select=select, prompt=OutboundMessage.from_text("choose"),
+            labels=("display label",), text_inputs=(frozenset({"accept", "是"}),),
+            keep_open=True,
+        ),
+    )
+    assert not sessions.recognizes_response("display label", context)
+    await sessions.select(" ACCEPT ", context)
+    await sessions.select("是", context)
+    assert menu.prompt is not None
+    await sessions.select(menu.prompt.action_data(menu.prompt.choices[0]), context)
+    assert select.await_count == len(("accept", "是", "button"))
+    for call in select.await_args_list:
+        assert call.args == ("one",)
+    empty = sessions.offer_menu(
+        context, PortableMenuSpec(
+            choices=(), select=select, prompt=OutboundMessage.from_text("no choices"),
+        ),
+    )
+    assert empty.prompt is None
+    assert sessions.active_prompt(context) is None
+
+
 @dataclass(slots=True)
 class _Clock:
     value: float = 0.0
