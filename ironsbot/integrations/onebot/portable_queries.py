@@ -94,7 +94,7 @@ class _OneBotPortableQueryAdapter:
         event: MessageEvent,
         context: MessageInputContext,
     ) -> None:
-        if self.sessions.active_prompt(context) is None:
+        if not self.sessions.has_active_session(context):
             return
         await enter_event_reply_conversation(
             matcher,
