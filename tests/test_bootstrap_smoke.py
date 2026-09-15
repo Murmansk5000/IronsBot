@@ -1,11 +1,38 @@
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_application_logging_routes_stdlib_records_to_nonebot() -> None:
+    from nonebot.log import logger
+
+    from ironsbot.app.bootstrap import configure_application_logging
+
+    application_logger = logging.getLogger("ironsbot")
+    previous_handlers = application_logger.handlers[:]
+    previous_level = application_logger.level
+    messages: list[str] = []
+    sink_id = logger.add(
+        lambda message: messages.append(str(message)),
+        format="{message}",
+        level="INFO",
+    )
+    try:
+        application_logger.handlers.clear()
+        configure_application_logging("INFO")
+        logging.getLogger("ironsbot.acceptance").info("stdlib bridge ready")
+    finally:
+        logger.remove(sink_id)
+        application_logger.handlers[:] = previous_handlers
+        application_logger.setLevel(previous_level)
+
+    assert any("stdlib bridge ready" in message for message in messages)
 
 
 def test_application_bootstrap_smoke(tmp_path: Path) -> None:

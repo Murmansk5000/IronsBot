@@ -6,6 +6,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 import nonebot
+from nonebot.log import LoguruHandler
 
 from ironsbot.app.composition import build_application
 from ironsbot.app.nonebot_manifest import nonebot_manifest_path
@@ -19,6 +20,18 @@ if TYPE_CHECKING:
 def configure_third_party_logging() -> None:
     for logger_name in ("httpx", "httpcore"):
         logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+
+def configure_application_logging(level: str) -> None:
+    """Route standard-library application logs through NoneBot's Loguru sink."""
+
+    application_logger = logging.getLogger("ironsbot")
+    if not any(
+        isinstance(handler, LoguruHandler)
+        for handler in application_logger.handlers
+    ):
+        application_logger.addHandler(LoguruHandler())
+    application_logger.setLevel(level.upper())
 
 
 def bootstrap() -> Application:
@@ -36,6 +49,7 @@ def bootstrap() -> Application:
         onebot_access_token=settings.bot.onebot_token or None,
         apscheduler_autostart=False,
     )
+    configure_application_logging(settings.bot.log_level)
     application = build_application(settings)
     with scoped_plugin_install_context(
         settings=settings,
