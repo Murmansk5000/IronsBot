@@ -245,6 +245,27 @@ def test_team_audit_welcome_sends_mention_and_schedules_followup() -> None:
     assert scheduler.jobs[0]["func"] == service.send_followup
 
 
+def test_team_audit_welcome_failure_redacts_transport_ids(caplog: Any) -> None:
+    scheduler = FakeScheduler()
+    service, _, _, _ = _service(
+        _config(),
+        conditions=_ServiceConditions(delivered=False),
+    )
+
+    asyncio.run(
+        service.welcome(
+            conversation=CONVERSATION,
+            actor=ACTOR,
+            joined_at=JOINED_AT,
+            scheduler=scheduler,
+        )
+    )
+
+    assert "team audit welcome send failed" in caplog.text
+    assert GROUP_ID not in caplog.text
+    assert USER_ID not in caplog.text
+
+
 def test_team_audit_followup_uses_platform_messenger() -> None:
     scheduler = FakeScheduler()
     service, store, messenger, _ = _service(_config(), _reminder())
