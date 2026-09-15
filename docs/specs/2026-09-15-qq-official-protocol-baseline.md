@@ -74,6 +74,7 @@ in every event. IronsBot therefore must not infer a QQ number from that field.
 | API failures | Logs status and trace ID, raises `RuntimeError` | Structured failure kind, code, trace ID, retry policy, redaction | HTTP boundary preserves status, business code and trace ID; delivery classification uses typed fields and transport exceptions |
 | Rich media | `MediaUploader` URL and chunked upload flows | Materialize binary payloads, preserve scene, and expose delivery outcome | Completed; URL and chunked paths use the SDK, and `file_info` is one-use because SDK 1.2.2 drops TTL |
 | Mentions | Text payload transport | Render current official mention markup | Renderer emits escaped `<qqbot-at-user id="" />` markup |
+| Quoted input | Parses `MSG_TYPE_QUOTE` and quoted elements | Route the user's new text while retaining the reference as metadata | Quoted commands now enter the same command/session router; live client selection remains pending |
 | Identity | Preserves opaque event fields | AppID-scoped identity and explicit, revocable linking | No implicit mapping allowed |
 
 ## Interactive Confirmation Target
@@ -221,6 +222,7 @@ second implementation.
 | 2026-09-15 | Real C2C image and sequential-reply acceptance | Operator sent a pet-art query and selected a menu item; redacted runtime logs recorded a successful binary image payload at passive sequence 1 followed by its text payload at sequence 2 | Tencent accepted the same-scope chunked PNG upload and both replies, and the operator confirmed that the QQ client displayed the image |
 | 2026-09-15 | Real reconnect and Resume acceptance | A dedicated no-dispatch acceptance process closed only its SDK WebSocket after READY; runtime health observed `ready` to `reconnecting` to `ready`, and a READY-only callback distinguished the second gateway dispatch | The gateway returned `RESUMED` rather than a fresh READY, pending operations were failed explicitly, and the process then stopped cleanly without exposing session or account identifiers |
 | 2026-09-15 | Real group-at command and image acceptance | Operator addressed the bot in an authorized group; redacted runtime logs recorded recognized `GROUP_AT_MESSAGE_CREATE` routes, successful passive text replies, and a successful group-scoped image payload | Group addressed-input routing produced one reply per recognized command, and the operator confirmed that the QQ client displayed the image |
+| 2026-09-15 | Quoted inbound routing | SDK 1.2.2 example behavior, identity conversion, runtime dispatch and portable router tests | `MSG_TYPE_QUOTE` is treated as user input instead of being discarded; quoted reference metadata is preserved, while a real client quote-selection check remains pending |
 
 ## Progress
 

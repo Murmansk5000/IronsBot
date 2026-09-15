@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, ClassVar, cast
 
 import httpx
 import pytest
-from qqbot_agent_sdk.event_parser import EventParser
+from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
+from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.qq_official import runtime as runtime_module
@@ -215,6 +216,50 @@ def test_runtime_claims_message_before_business_dispatch(
             assert "private-app-id" not in caplog.text
             assert "message-id" not in caplog.text
             assert "@babyQ 帮助" not in caplog.text
+
+    asyncio.run(run())
+
+
+def test_runtime_dispatches_user_quote_messages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        event = InboundEvent(
+            event_type="C2C_MESSAGE_CREATE",
+            chat_id="private-openid",
+            user_id="private-openid",
+            chat_scope="c2c",
+            content="帮助",
+            message_id="quote-message-id",
+            timestamp="2099-01-01T00:00:00+08:00",
+            message_type=MSG_TYPE_QUOTE,
+            raw={"message_scene": {"ext": ["ref_msg_idx=quoted-message"]}},
+        )
+        monkeypatch.setattr(
+            EventParser,
+            "parse",
+            staticmethod(lambda _event_type, _raw: event),
+        )
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (QQOfficialRuntimeAccount("private-app-id", "secret"),),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            router = _CountingRouter()
+            runtime.bind(
+                cast("PortableCommandRouter", router),
+                cast("OutboundMessenger", object()),
+            )
+
+            await runtime.handle_event(
+                "private-app-id",
+                "C2C_MESSAGE_CREATE",
+                {},
+            )
+
+            assert router.dispatch_count == 1
 
     asyncio.run(run())
 

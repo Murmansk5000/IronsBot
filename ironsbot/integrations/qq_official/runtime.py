@@ -21,7 +21,6 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.identity import (
-    is_qq_official_reply_event,
     qq_official_event_mentions_bot,
     qq_official_incoming_message,
 )
@@ -356,7 +355,7 @@ class QQOfficialRuntime:
         raw: Mapping[str, object],
     ) -> None:
         event = EventParser.parse(event_type, dict(raw))
-        if event is None or is_qq_official_reply_event(event):
+        if event is None:
             return
         router = self._router
         messenger = self._messenger
@@ -547,8 +546,6 @@ def qq_official_event_is_supported(
     account_id: str,
     router: PortableCommandRouter,
 ) -> bool:
-    if is_qq_official_reply_event(event):
-        return False
     incoming = qq_official_incoming_message(event, account_id=account_id)
     return router.recognizes(
         MessageInputContext(
