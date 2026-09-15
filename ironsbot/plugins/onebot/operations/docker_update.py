@@ -7,6 +7,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING
 
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
@@ -37,8 +38,6 @@ from ironsbot.services.operations.docker_update import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
-
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.docker_update import DockerUpdateService
     from ironsbot.services.operations.startup import StartupNoticeService

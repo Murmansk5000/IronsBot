@@ -5,6 +5,9 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
@@ -31,7 +34,6 @@ from ironsbot.services.operations.data_sync_commands import (
 )
 
 if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
     from nonebot.typing import T_State
 
     from ironsbot.core.feature_policy import FeatureService

@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+from nonebot.adapters.onebot.v11 import (
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
+)
 from nonebot.rule import Rule
 
 from ironsbot.core.command_catalog import command_context_from_input
@@ -14,9 +15,6 @@ from ironsbot.services.seer.query_commands import team_query_input_matcher
 from ironsbot.services.seer.team_commands import build_team_query_operation
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-
-if TYPE_CHECKING:
-    from nonebot.adapters.onebot.v11 import MessageEvent
 
 
 def install(group: SeerMatcherGroup) -> None:
