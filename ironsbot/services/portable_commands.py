@@ -387,6 +387,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
                 seer.pet_query,
                 identity_linking or identity_links.service,
                 sessions,
+                player_id_resolver,
             )
         ),
     )

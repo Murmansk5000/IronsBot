@@ -445,6 +445,7 @@ def build_test_plugin_registry(
             SchedulerFacade(),
             resources.identity_links.service,
             resources.query_sessions,
+            resources.player_id_resolver,
         ),
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),

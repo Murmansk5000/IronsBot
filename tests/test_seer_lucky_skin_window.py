@@ -45,6 +45,8 @@ from ironsbot.services.seer.lucky_skin_commands import (
 )
 from ironsbot.services.seer.lucky_skin_window import (
     LUCKY_SKIN_WINDOW_SUBSCRIPTION_KEY,
+    LuckySkinQuery,
+    LuckySkinWindowAccessError,
     LuckySkinWindowAccount,
     LuckySkinWindowBindingError,
     LuckySkinWindowOffer,
@@ -125,7 +127,14 @@ def _actor(user_id: int) -> ActorRef:
     return ActorRef(Platform.ONEBOT, str(user_id))
 
 
+def _request(user_id: int) -> LuckySkinQuery:
+    return LuckySkinQuery(_actor(user_id), _actor(user_id))
+
+
 class _Features:
+    def is_actor_superuser(self, actor: ActorRef) -> bool:
+        return actor.id == "9999"
+
     def actor_has_feature(self, _actor: ActorRef, _feature: str) -> bool:
         return True
 
@@ -344,6 +353,7 @@ def _service(
         SqliteLuckySkinWatchPreferenceStore(tmp_path / "qq_state.sqlite"),
         SqliteLuckySkinWindowCache(tmp_path / "runtime_state.sqlite"),
         notification_sender,
+        player_accounts=player_accounts,
         today=lambda: date(2026, 8, 3),
         renderer=cast("Any", renderer),
     )
@@ -354,7 +364,7 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
 
     async def check() -> None:
-        result = await service.check_for_actor(_actor(1001))
+        result = await service.query(_request(1001))
         assert [offer.skin_id for offer in result.offers] == [101, 102, 103, 104]
         owner_message = service.format_result(result, actor=_actor(1001))
         friend_message = service.format_result(result, actor=_actor(1002))
@@ -369,7 +379,7 @@ def test_query_requires_the_configured_player_binding(tmp_path: Path) -> None:
     asyncio.run(check())
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     with pytest.raises(LuckySkinWindowBindingError, match="90001"):
-        asyncio.run(service.check_for_actor(_actor(1001)))
+        asyncio.run(service.query(_request(1001)))
 
 
 def test_result_message_uses_the_configured_render_port(tmp_path: Path) -> None:
@@ -390,7 +400,7 @@ def test_result_message_uses_the_configured_render_port(tmp_path: Path) -> None:
     )
 
     async def check() -> None:
-        result = await service.check_for_actor(_actor(1001))
+        result = await service.query(_request(1001))
         assert (
             await service.result_message(result, actor=_actor(1001))
         ).parts == (
@@ -548,6 +558,7 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
         features=cast("FeatureService", _Features()),
         identity_links=cast("Any", object()),
         sessions=PortableQuerySessions(),
+        resolver=cast("Any", object()),
     )
 
     assert registry.message_matchers
@@ -654,10 +665,46 @@ def test_subscription_option_requires_the_matching_binding(tmp_path: Path) -> No
     )
 
 
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+def test_admin_queries_configured_account_without_own_subscription(
+    tmp_path: Path, platform: Platform,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    request = LuckySkinQuery(ActorRef(platform, "9999"), None, 90002)
+    assert service.cached_query(request) is None
+    assert sessions.opens == []
+    result = asyncio.run(service.query(request))
+    assert result.player_id == request.player_id
+    assert len(sessions.opens) == 1
+    assert "★" not in service.format_result(result, actor=None)
+    assert service.cached_query(request) is not None
+
+
+@pytest.mark.parametrize("player_id", [90002, 999999])
+def test_nonadmin_cannot_query_another_account(
+    tmp_path: Path, player_id: int,
+) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    request = LuckySkinQuery(_actor(1001), _actor(1001), player_id)
+    with pytest.raises(LuckySkinWindowAccessError, match="本人"):
+        service.cached_query(request)
+    with pytest.raises(LuckySkinWindowAccessError, match="本人"):
+        asyncio.run(service.query(request))
+    assert sessions.opens == []
+
+
+def test_unknown_admin_target_does_not_log_in(tmp_path: Path) -> None:
+    service, _game, _delivery, _bindings, sessions = _service(tmp_path)
+    request = LuckySkinQuery(_actor(9999), None, 999999)
+    with pytest.raises(LuckySkinWindowAccessError, match="未配置"):
+        asyncio.run(service.query(request))
+    assert sessions.opens == []
+
+
 def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    asyncio.run(service.check_for_actor(_actor(1001)))
+    asyncio.run(service.query(_request(1001)))
 
     assert sessions.opens == [(90001, "owner-secret", "幸运橱窗")]
     assert len(game.calls) == 1
@@ -666,8 +713,8 @@ def test_manual_query_uses_its_configured_isolated_account(tmp_path: Path) -> No
 def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    asyncio.run(service.check_for_actor(_actor(1001)))
-    cached = asyncio.run(service.check_for_actor(_actor(1001)))
+    asyncio.run(service.query(_request(1001)))
+    cached = asyncio.run(service.query(_request(1001)))
 
     assert cached.from_cache
     assert len(sessions.opens) == 1
@@ -676,11 +723,11 @@ def test_manual_query_uses_own_cached_result_without_logging_in(tmp_path: Path) 
 
 def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
     first, _game, _delivery, _bindings, first_sessions = _service(tmp_path)
-    asyncio.run(first.check_for_actor(_actor(1001)))
+    asyncio.run(first.query(_request(1001)))
     assert len(first_sessions.opens) == 1
 
     recreated, _game, _delivery, _bindings, recreated_sessions = _service(tmp_path)
-    cached = asyncio.run(recreated.check_for_actor(_actor(1001)))
+    cached = asyncio.run(recreated.query(_request(1001)))
 
     assert cached.from_cache
     assert recreated_sessions.opens == []
@@ -689,12 +736,12 @@ def test_daily_result_survives_service_recreation(tmp_path: Path) -> None:
 def test_cache_probe_never_opens_a_dedicated_session(tmp_path: Path) -> None:
     service, game, _delivery, _bindings, sessions = _service(tmp_path)
 
-    assert service.cached_for_actor(_actor(1001)) is None
+    assert service.cached_query(_request(1001)) is None
     assert sessions.opens == []
     assert game.calls == []
 
-    asyncio.run(service.check_for_actor(_actor(1001)))
-    cached = service.cached_for_actor(_actor(1001))
+    asyncio.run(service.query(_request(1001)))
+    cached = service.cached_query(_request(1001))
 
     assert cached is not None
     assert cached.from_cache
@@ -766,8 +813,8 @@ def test_different_accounts_never_open_dedicated_sessions_concurrently(
 
     async def check_both() -> None:
         await asyncio.gather(
-            service.check_for_actor(_actor(1001)),
-            service.check_for_actor(_actor(1002)),
+            service.query(_request(1001)),
+            service.query(_request(1002)),
         )
 
     asyncio.run(check_both())

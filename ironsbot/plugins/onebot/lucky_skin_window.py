@@ -31,10 +31,15 @@ from ironsbot.integrations.onebot.matchers import (
     MatcherFactory,
     bind_async,
 )
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
 from ironsbot.integrations.onebot.replies import finish_event_reply
-from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_command
+from ironsbot.integrations.onebot.rules import (
+    BOT_COMMAND_ARG_KEY,
+    explicit_command,
+    member_target_command,
+)
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.portable_lucky_skin_commands import (
@@ -54,6 +59,7 @@ from ironsbot.services.seer.lucky_skin_commands import (
     is_lucky_skin_query,
     is_lucky_skin_watch_exact,
     lucky_skin_window_command_contracts,
+    parse_lucky_skin_query,
     parse_lucky_skin_watch_target,
 )
 from ironsbot.services.seer.lucky_skin_window import (
@@ -73,6 +79,7 @@ if TYPE_CHECKING:
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.seer.pet_query import PetQueryService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 _JOB_PREFIX = "lucky_skin_window:"
 
@@ -93,6 +100,7 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
     scheduler: Scheduler,
     identity_links: IdentityLinkingService,
     sessions: PortableQuerySessions,
+    resolver: PlayerIdResolver,
 ) -> PluginContribution:
     return PluginContribution(
         id="lucky_skin_window",
@@ -110,7 +118,7 @@ def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
         commands=lucky_skin_window_command_contracts(),
         install=partial(
             _install, service=service, pet=pet, features=features,
-            identity_links=identity_links, sessions=sessions,
+            identity_links=identity_links, sessions=sessions, resolver=resolver,
         ),
         hooks=PluginHooks(
             startup=(
@@ -129,7 +137,9 @@ def _help_visible(
     service: LuckySkinWindowService,
     features: FeatureService,
 ) -> bool:
-    if not service.is_eligible_actor(context.actor):
+    if not service.is_eligible_actor(context.actor) and not features.is_actor_superuser(
+        context.actor
+    ):
         return False
     return feature_help_visible(
         context,
@@ -195,10 +205,18 @@ def _semantic_request(
     service: LuckySkinWindowService,
     event: MessageEvent,
     state: T_State,
+    *,
+    resolver: PlayerIdResolver,
 ) -> SemanticRequest:
     _ = state
     account = service.account_for_actor(_actor_from_event(event))
     target_key = str(account.player_id) if account is not None else str(event.user_id)
+    context = message_input_context(event)
+    reference = parse_lucky_skin_query(context.text)
+    if reference or context.has_member_mentions:
+        target = resolver.resolve(context, reference)
+        if target.player_id is not None:
+            target_key = str(target.player_id)
     return SemanticRequest(
         action=LUCKY_SKIN_QUERY_ACTION,
         target=SemanticTarget(target_key, f"{target_key} 幸运橱窗"),
@@ -348,22 +366,24 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     features: FeatureService,
     identity_links: IdentityLinkingService,
     sessions: PortableQuerySessions,
+    resolver: PlayerIdResolver,
 ) -> None:
     priority = registry.priority("lucky_skin_window")
     matcher = registry.on_message(
         policy=CommandPolicy.command(
             LUCKY_SKIN_QUERY_ACTION.id,
             help_ids=(LUCKY_SKIN_QUERY_ACTION.id,),
-            semantic_request=partial(_semantic_request, service),
+            semantic_request=partial(_semantic_request, service, resolver=resolver),
         ),
-        rule=Rule(bind_async(_matches_query, features=features)) & explicit_command(),
+        rule=Rule(bind_async(_matches_query, features=features))
+        & member_target_command(),
         priority=priority,
         block=True,
     )
     matcher.append_handler(
         make_portable_query_handler(
             build_portable_lucky_skin_operations(
-                service, pet, identity_links, sessions,
+                service, pet, identity_links, sessions, resolver,
             )[LUCKY_SKIN_QUERY_ACTION.id],
             sessions,
         )
@@ -501,5 +521,6 @@ if (context := active_plugin_install_context()) is not None:
             context.scheduler,
             context.resources.identity_links.service,
             context.resources.query_sessions,
+            context.resources.player_id_resolver,
         ),
     )
