@@ -35,6 +35,11 @@
 当前四份策略意图：owner 为 all + admin_notice；pjx 为 all_push + lucky_skin_window；admin 为 all；ouc 为 standard + meeting + lucky_skin_window + player_lineup_private + chuchu_3。
 官方身份尚待显式确认，开发配置尚未应用这些授权。
 
+为避免从日志、昵称或消息时间猜测身份，开发账号可临时显式启用
+`qq_official_identity_info`，再由目标用户私聊发送“官方身份”，或在目标群 @机器人
+发送“官方身份”。该命令只返回当前事件携带的官方标识，不写日志、不建立 QQ 号关联，
+也不会被 `all` 功能包隐式启用；四个身份仍须逐一从目标会话确认。
+
 审查原开发配置时确认配置消息序列曾在重构中从 `messages` 退回单条 `message`，会丢失 chuchu_3 等连续回复。
 现已恢复唯一的 `messages` 数组结构，覆盖命令、关键词回复和定时推送；不保留单数旧字段双读。
 
