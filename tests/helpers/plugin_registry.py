@@ -346,7 +346,7 @@ def build_test_plugin_registry(
             query_sessions=PortableQuerySessions(),
             help_hint=object(),
             addressed_input_hints=AddressedInputHintService(),
-            identity_links=object(),
+            identity_links=SimpleNamespace(service=object()),
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
@@ -443,6 +443,8 @@ def build_test_plugin_registry(
             resources.seer.pet_query,
             runtime.features,
             SchedulerFacade(),
+            resources.identity_links.service,
+            resources.query_sessions,
         ),
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),

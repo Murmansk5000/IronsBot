@@ -18,6 +18,19 @@ Docker 维护菜单、更新确认和玩家绑定限制等行为。V5 已将插�
 
 ## Goal
 
+### Shared Lucky Window Query (2026-09-15)
+
+OneBot 的橱窗查询现使用 `build_portable_lucky_skin_operations` 和通用
+`make_portable_query_handler`。删除该插件内重复的登录确认、登录异常处理、
+结果图片转换和皮肤详情选择流程。两端均先查缓存；未缓存时通过共享确认菜单
+发起查询，取消不会登录。数字选择和按钮由统一会话与平台能力适配。
+
+保留每日调度及关注管理的现有行为；关注管理尚有独立 OneBot handler，后续仍需
+收口。指定账号橱窗查询尚未恢复：主线允许超级管理员查询已有专用账号，目标版
+当前只支持本人配置。下一步应统一账号目标解析及授权，再由上述共享查询流程消费。
+本次无需调整 TOML、env、Docker 或 Unraid。测试覆盖两端共享查询、确认与取消、
+缓存、皮肤详情，以及 NoneBot 安装和命令目录；这不替代真实平台验收。
+
 ### Administrator Binding Parity (2026-09-15)
 
 原版 `plugins/seer/query/commands/player.py` 的绑定命令把直接 @ 作为绑定收件人，

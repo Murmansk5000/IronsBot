@@ -2,17 +2,15 @@
 # ruff: noqa: TC002
 from __future__ import annotations
 
-import logging
 from functools import partial
 from typing import TYPE_CHECKING
 
-from nonebot.adapters.onebot.v11 import Message, MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from ironsbot.core.commands import parse_confirmation
 from ironsbot.core.features import Feature
 from ironsbot.core.plugin_install import (
     HelpEntry,
@@ -26,7 +24,6 @@ from ironsbot.core.semantic_requests import (
     SemanticTarget,
 )
 from ironsbot.core.time import scheduled_clock_time
-from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
 from ironsbot.integrations.onebot.feature_policy import event_is_feature_allowed
 from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import (
@@ -34,16 +31,15 @@ from ironsbot.integrations.onebot.matchers import (
     MatcherFactory,
     bind_async,
 )
-from ironsbot.integrations.onebot.message_rendering import (
-    render_onebot_outbound_message,
-)
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
-from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
+from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import BOT_COMMAND_ARG_KEY, explicit_command
 from ironsbot.services.help_visibility import feature_help_visible
 from ironsbot.services.operations.scheduler import JobRegistry
-from ironsbot.services.seer.data import DataUnavailableError
-from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
+from ironsbot.services.portable_lucky_skin_commands import (
+    build_portable_lucky_skin_operations,
+)
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_QUERY_ACTION,
     LUCKY_SKIN_WATCH_ADD_ACTION,
@@ -63,9 +59,7 @@ from ironsbot.services.seer.lucky_skin_commands import (
 from ironsbot.services.seer.lucky_skin_window import (
     LuckySkinWatchItem,
     LuckySkinWindowBindingError,
-    LuckySkinWindowError,
     LuckySkinWindowNotConfiguredError,
-    LuckySkinWindowResult,
     LuckySkinWindowService,
 )
 
@@ -75,12 +69,12 @@ if TYPE_CHECKING:
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
+    from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.operations.scheduler import Scheduler
-    from ironsbot.services.seer.pet_query import PetImageSelection, PetQueryService
+    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.seer.pet_query import PetQueryService
 
 _JOB_PREFIX = "lucky_skin_window:"
-_LOGIN_CONFIRMATION_NAMESPACE = "lucky_skin_window_login"
-logger = logging.getLogger(__name__)
 
 __plugin_meta__ = PluginMetadata(
     name="幸运橱窗",
@@ -92,11 +86,13 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-def plugin_contribution(
+def plugin_contribution(  # noqa: PLR0913 - explicit plugin resources
     service: LuckySkinWindowService,
     pet: PetQueryService,
     features: FeatureService,
     scheduler: Scheduler,
+    identity_links: IdentityLinkingService,
+    sessions: PortableQuerySessions,
 ) -> PluginContribution:
     return PluginContribution(
         id="lucky_skin_window",
@@ -112,7 +108,10 @@ def plugin_contribution(
             ),
         ),
         commands=lucky_skin_window_command_contracts(),
-        install=partial(_install, service=service, pet=pet, features=features),
+        install=partial(
+            _install, service=service, pet=pet, features=features,
+            identity_links=identity_links, sessions=sessions,
+        ),
         hooks=PluginHooks(
             startup=(
                 (
@@ -222,169 +221,6 @@ async def _finish_watch_access_error(
     )
 
 
-async def _handle_query(
-    service: LuckySkinWindowService,
-    pet: PetQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    try:
-        actor = _actor_from_event(event)
-        cached = service.cached_for_actor(actor)
-    except LuckySkinWindowNotConfiguredError:
-        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
-        return
-    except LuckySkinWindowBindingError as error:
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再查询。",
-        )
-        return
-
-    if cached is not None:
-        await _enter_result_prompt(service, pet, matcher, event, cached)
-        return
-
-    account = service.account_for_actor(actor)
-    if account is None:
-        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
-        return
-
-    await enter_event_reply_conversation(
-        matcher,
-        event,
-        namespace=_LOGIN_CONFIRMATION_NAMESPACE,
-        handlers=[bind_async(_handle_login_confirmation, service, pet)],
-        reply_check=lambda reply_event: (
-            parse_confirmation(reply_event.get_plaintext()) is not None
-        ),
-        prompt=(
-            "今日幸运橱窗尚未获取，需要登录查询。\n"
-            "是否继续？\n"
-            "回复“是”或“y”确认，回复“否”或“n”取消。"
-        ),
-    )
-
-
-async def _handle_login_confirmation(
-    service: LuckySkinWindowService,
-    pet: PetQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    confirmed = parse_confirmation(event.get_plaintext())
-    if confirmed is not True:
-        await finish_event_reply(matcher, event, "已取消幸运橱窗查询。")
-        return
-    await _query_and_reply(service, pet, matcher, event)
-
-
-async def _query_and_reply(
-    service: LuckySkinWindowService,
-    pet: PetQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    actor = _actor_from_event(event)
-    try:
-        result = await service.check_for_actor(actor)
-    except LuckySkinWindowNotConfiguredError:
-        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
-        return
-    except LuckySkinWindowBindingError as error:
-        await finish_event_reply(
-            matcher,
-            event,
-            f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再查询。",
-        )
-        return
-    except TimeoutError:
-        await finish_event_reply(matcher, event, "❌ 幸运橱窗查询超时，请稍后再试。")
-        return
-    except LuckySkinWindowError as error:
-        logger.warning(
-            "lucky skin window query unavailable: actor=%s error=%s",
-            actor,
-            error,
-        )
-        await finish_event_reply(
-            matcher,
-            event,
-            "❌ 幸运橱窗数据暂时不可用，请稍后再试。",
-        )
-        return
-    except Exception:  # noqa: BLE001 - the game protocol must not leak errors
-        await finish_event_reply(matcher, event, "❌ 幸运橱窗查询失败，请稍后再试。")
-        return
-    await _enter_result_prompt(service, pet, matcher, event, result)
-
-
-async def _enter_result_prompt(
-    service: LuckySkinWindowService,
-    pet: PetQueryService,
-    matcher: Matcher,
-    event: MessageEvent,
-    result: LuckySkinWindowResult,
-) -> None:
-    choices = service.detail_choices(result)
-    await enter_prompt(
-        matcher,
-        event,
-        matcher.state,
-        Prompt(
-            title="幸运橱窗",
-            action=LUCKY_SKIN_QUERY_ACTION,
-            items=[
-                PromptItem(
-                    choice.name,
-                    choice.description,
-                    choice.value,
-                    semantic_target=choice.semantic_target,
-                )
-                for choice in choices
-            ],
-        ),
-        partial(_handle_result_selection, pet),
-        prompt_message=_render_result_message(
-            service,
-            result,
-            _actor_from_event(event),
-        ),
-    )
-
-
-async def _render_result_message(
-    service: LuckySkinWindowService,
-    result: LuckySkinWindowResult,
-    actor: ActorRef,
-) -> Message:
-    return render_onebot_outbound_message(
-        await service.result_message(result, actor=actor)
-    )
-
-
-async def _handle_result_selection(
-    pet: PetQueryService,
-    item: PromptItem[PetImageSelection],
-    matcher: Matcher,
-    event: Event,
-) -> None:
-    if not isinstance(event, MessageEvent):
-        return
-    try:
-        selected = await pet.select_image(item.value)
-    except DataUnavailableError:
-        await send_event_reply(matcher, event, DATABASE_UNAVAILABLE_MESSAGE)
-        return
-    if selected.message:
-        await send_event_reply(matcher, event, selected.message)
-    elif selected.reply is not None:
-        await send_event_reply(
-            matcher,
-            event,
-            render_onebot_outbound_message(selected.reply.to_outbound()),
-        )
 
 
 async def _handle_watch_list(
@@ -504,12 +340,14 @@ async def _handle_watch_reset(
         message,
     )
 
-def _install(
+def _install(  # noqa: PLR0913 - explicit plugin resources
     registry: MatcherFactory,
     *,
     service: LuckySkinWindowService,
     pet: PetQueryService,
     features: FeatureService,
+    identity_links: IdentityLinkingService,
+    sessions: PortableQuerySessions,
 ) -> None:
     priority = registry.priority("lucky_skin_window")
     matcher = registry.on_message(
@@ -522,7 +360,14 @@ def _install(
         priority=priority,
         block=True,
     )
-    matcher.append_handler(bind_async(_handle_query, service, pet))
+    matcher.append_handler(
+        make_portable_query_handler(
+            build_portable_lucky_skin_operations(
+                service, pet, identity_links, sessions,
+            )[LUCKY_SKIN_QUERY_ACTION.id],
+            sessions,
+        )
+    )
 
     watch_list = registry.on_message(
         policy=CommandPolicy.command(
@@ -654,5 +499,7 @@ if (context := active_plugin_install_context()) is not None:
             context.resources.seer.pet_query,
             context.resources.features,
             context.scheduler,
+            context.resources.identity_links.service,
+            context.resources.query_sessions,
         ),
     )
