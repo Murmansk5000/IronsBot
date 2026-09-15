@@ -43,6 +43,7 @@ if TYPE_CHECKING:
 
 class _PlayerService:
     def __init__(self, *, replacement: bool = False) -> None:
+        self.queried: list[int] = []
         self.returned: list[tuple[ActorRef, int]] = []
         self.refreshed: list[int] = []
         self.bound: list[tuple[ActorRef, int]] = []
@@ -58,6 +59,7 @@ class _PlayerService:
         conversation: ConversationRef | None,
     ) -> PlayerQueryResult:
         del actor, conversation
+        self.queried.append(player_id)
         return PlayerQueryResult(
             pending=_pending(player_id),
             offer_binding=explicit,
@@ -97,7 +99,11 @@ class _PlayerService:
         accepted: bool,
         replacing_existing: bool = False,
     ) -> str:
-        assert replacing_existing
+        if not replacing_existing:
+            if accepted:
+                self.bound.append((actor, pending.player_id))
+            pending.player_message = f"choice:{accepted}\n{pending.player_message}"
+            return "choice saved"
         if accepted:
             self.replacement_choices.append((actor, pending.player_id))
         pending.player_message = (
@@ -303,6 +309,46 @@ async def test_player_query_menu_commits_work_only_after_delivery() -> None:
     part = selected.parts[0]
     assert isinstance(part, TextPart)
     assert part.text == "caller-openid:collection:700002"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("selection", ["y", "n", "4", "5", "button", "0"])
+async def test_first_binding_confirmation_reuses_query_and_delivery(
+    platform: Platform, selection: str,
+) -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), sessions,
+    )
+    context = _context("米米号700002", platform=platform)
+    reply = cast(
+        "PortableReply", await operations["seer.player.query"](context.text, context),
+    )
+    assert not service.bound
+    reply.delivered()
+    prompt = reply.message.prompt
+    assert prompt is not None
+    action = prompt.action_data(prompt.choices[3])
+    selected = await sessions.select(
+        action if selection == "button" else selection, context,
+    )
+    assert isinstance(selected, OutboundMessage)
+    assert service.bound == (
+        [(context.message.actor, 700002)]
+        if selection in {"y", "4", "button"} else []
+    )
+    assert service.queried == [700002]
+    assert service.returned == [(context.message.actor, 700002)]
+    assert service.refreshed == [700002]
+    assert not sessions.recognizes_response("y", context)
+    assert await sessions.select_action(action, context) is None
+    if selection == "0":
+        assert sessions.active_prompt(context) is None
+    else:
+        assert sessions.recognizes_response("收集", context)
+        assert await sessions.select("收集", context) is not None
 
 
 @pytest.mark.asyncio

@@ -246,8 +246,27 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
     )
 
     async def select(
-        command: PlayerShortcutCommand | PlayerDetailExtensionAction,
+        command: (
+            PlayerShortcutCommand
+            | PlayerDetailExtensionAction
+            | Literal["bind", "decline"]
+        ),
     ) -> OutboundMessage:
+        if isinstance(command, str):
+            service.save_binding_choice(
+                context.message.actor,
+                pending,
+                accepted=command == "bind",
+                replacing_existing=result.binding_replacement is not None,
+            )
+            return _prepare_player_query_reply(
+                service,
+                sessions,
+                context,
+                replace(result, offer_binding=False, binding_replacement=None),
+                features,
+                extensions,
+            ).message
         if isinstance(command, PlayerDetailExtensionAction):
             reply = await command.query(
                 PlayerDetailActionRequest(
@@ -272,7 +291,12 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             )
         return reply.to_outbound()
 
-    choices: tuple[PlayerShortcutCommand | PlayerDetailExtensionAction, ...] = (
+    choices: tuple[
+        PlayerShortcutCommand
+        | PlayerDetailExtensionAction
+        | Literal["bind", "decline"],
+        ...,
+    ] = (
         *(
             PlayerShortcutCommand(
                 request.kind, pending.player_id, pending.base_snapshot
@@ -280,33 +304,42 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             for request in requests
         ),
         *extension_actions,
+        *(("bind", "decline") if result.offer_binding else ()),
     )
     labels = (
         *(f"【{request.menu_label}】" for request in requests),
         *(f"【{action.label}】" for action in extension_actions),
+        *(("【设为默认米米号】", "【暂不绑定】") if result.offer_binding else ()),
     )
-    menu = (
-        sessions.offer_menu(
-            context,
-            PortableMenuSpec(
-                choices=choices,
-                select=select,
-                labels=labels,
-                text_inputs=(
-                    *(frozenset({request.menu_label}) for request in requests),
-                    *(frozenset(action.aliases) for action in extension_actions),
-                ),
-                keep_open=True,
-                exit_message="已退出米米号详情查询。",
-                prompt=OutboundMessage.from_text(
-                    format_selection_menu(
-                        title=f"{player_message}\n回复数字或栏目名称查看详情：",
-                        items=labels,
+    menu = sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=choices,
+            select=select,
+            labels=labels,
+            text_inputs=(
+                *(frozenset({request.menu_label}) for request in requests),
+                *(frozenset(action.aliases) for action in extension_actions),
+                *(
+                    (
+                        frozenset({"y", "yes", "是", "设为默认米米号"}),
+                        frozenset({"n", "no", "否", "暂不绑定"}),
                     )
-                    if choices else player_message
+                    if result.offer_binding
+                    else ()
                 ),
             ),
-        )
+            keep_open=True,
+            exit_message="已退出米米号详情查询。",
+            prompt=OutboundMessage.from_text(
+                format_selection_menu(
+                    title=f"{player_message}\n回复数字或栏目名称查看详情：",
+                    items=labels,
+                )
+                if choices
+                else player_message
+            ),
+        ),
     )
 
     def delivered() -> None:
