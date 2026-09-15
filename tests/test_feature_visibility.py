@@ -19,7 +19,8 @@ from ironsbot.config.models.messaging import MessageCommandAction
 from ironsbot.config.models.settings import Settings
 from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
-from ironsbot.plugins.onebot.help.menu import visible_help_entries
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.services.help_menu import visible_help_entries
 from tests.helpers.onebot_events import group_message_event, private_message_event
 from tests.helpers.plugin_registry import build_test_plugin_registry
 
@@ -93,7 +94,7 @@ def _visible(
     )
     entries = visible_help_entries(
         definitions,
-        _group_event(user_id=user_id, role=role),
+        command_context(_group_event(user_id=user_id, role=role)),
         features=features,
         commands=commands,
         ignored_plugins=tuple(settings.features.help.ignored_plugins),
@@ -123,7 +124,7 @@ def _private_visible(
     )
     entries = visible_help_entries(
         definitions,
-        private_message_event(user_id=user_id),
+        command_context(private_message_event(user_id=user_id)),
         features=features,
         commands=commands,
         ignored_plugins=tuple(settings.features.help.ignored_plugins),

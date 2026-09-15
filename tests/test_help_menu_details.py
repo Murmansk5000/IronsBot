@@ -4,7 +4,9 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from ironsbot.core.command_catalog import CommandContract
-from ironsbot.plugins.onebot.help.menu import HelpMenuEntry, format_plugin_detail
+from ironsbot.integrations.onebot.context import command_context
+from ironsbot.services.help_menu import HelpMenuEntry, format_plugin_detail
+from tests.helpers.onebot_events import private_message_event
 
 
 def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> None:
@@ -19,11 +21,6 @@ def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> Non
     commands = SimpleNamespace(
         available_for_context=lambda *_args, **_kwargs: (automatic,)
     )
-    event = SimpleNamespace(
-        user_id=1,
-        group_id=None,
-        sender=SimpleNamespace(role=None),
-    )
     entry = HelpMenuEntry(
         key="example",
         name="Example",
@@ -35,7 +32,7 @@ def test_detail_labels_automatic_behaviour_without_claiming_no_commands() -> Non
 
     detail = format_plugin_detail(
         entry,
-        cast("Any", event),
+        command_context(private_message_event(user_id=1)),
         cast("Any", object()),
         cast("Any", commands),
         ignored_plugins=(),

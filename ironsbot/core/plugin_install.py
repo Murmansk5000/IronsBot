@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 from ironsbot.core.features import Feature
 
 if TYPE_CHECKING:
-    from ironsbot.core.command_catalog import CommandContract
+    from ironsbot.core.command_catalog import CommandContext, CommandContract
 
 HookResult: TypeAlias = Awaitable[None] | None
 LifecycleHook: TypeAlias = Callable[[], HookResult]
@@ -20,9 +20,10 @@ LifecycleHook: TypeAlias = Callable[[], HookResult]
 BotLifecycleHook: TypeAlias = Callable[[Any], HookResult]
 NamedLifecycleHook: TypeAlias = tuple[str, LifecycleHook]
 NamedBotLifecycleHook: TypeAlias = tuple[str, BotLifecycleHook]
-# Plugin installation is a core contract.  The platform adapter owns the event
-# type, so core deliberately keeps callback values opaque here.
-HelpVisibility: TypeAlias = Callable[[Any], bool]
+# Help visibility consumes normalized identity and conversation facts so every
+# adapter presents the same feature directory.
+HelpVisibility: TypeAlias = Callable[["CommandContext"], bool]
+# Plugin installation is a core contract. The adapter keeps its matcher opaque.
 PluginInstall: TypeAlias = Callable[[Any], None]
 
 

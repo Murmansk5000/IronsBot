@@ -68,6 +68,9 @@ def bootstrap() -> Application:
         application.resources.qq_official.bind(
             build_portable_command_router(
                 catalog=application.resources.commands,
+                contribution_catalog=application.resources.contribution_catalog,
+                query_sessions=application.resources.query_sessions,
+                ignored_help_plugins=tuple(settings.features.help.ignored_plugins),
                 about=application.resources.about,
                 seer=application.resources.seer,
                 player_id_resolver=application.resources.player_id_resolver,
