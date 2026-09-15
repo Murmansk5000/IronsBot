@@ -45,7 +45,25 @@ def _logger_calls(path: Path) -> list[ast.Call]:
     ]
 
 
-def _is_direct_reference(node: ast.AST, names: frozenset[str]) -> bool:
+def _is_direct_reference(  # noqa: PLR0911 - explicit AST node semantics
+    node: ast.AST,
+    names: frozenset[str],
+) -> bool:
+    if isinstance(node, ast.Call) and _is_reference_sanitizer(node.func):
+        return False
+    if isinstance(node, ast.Call):
+        return any(
+            _is_direct_reference(argument, names) for argument in node.args
+        ) or any(
+            _is_direct_reference(keyword.value, names)
+            for keyword in node.keywords
+        )
+    if isinstance(node, ast.IfExp):
+        return _is_direct_reference(node.body, names) or _is_direct_reference(
+            node.orelse, names
+        )
+    if isinstance(node, (ast.GeneratorExp, ast.ListComp, ast.SetComp)):
+        return _is_direct_reference(node.elt, names)
     if isinstance(node, ast.Name):
         return node.id in names
     if isinstance(node, ast.Attribute):
@@ -58,7 +76,18 @@ def _is_direct_reference(node: ast.AST, names: frozenset[str]) -> bool:
         return _is_direct_reference(node.value, names)
     if isinstance(node, ast.JoinedStr):
         return any(_is_direct_reference(value, names) for value in node.values)
-    return False
+    return any(
+        _is_direct_reference(child, names) for child in ast.iter_child_nodes(node)
+    )
+
+
+def _is_reference_sanitizer(node: ast.AST) -> bool:
+    sanitizer_names = frozenset({"reference_digest", "_actor_log_label"})
+    return (
+        isinstance(node, ast.Name) and node.id in sanitizer_names
+    ) or (
+        isinstance(node, ast.Attribute) and node.attr in sanitizer_names
+    )
 
 
 def _violations(root: Path, names: frozenset[str]) -> list[str]:

@@ -272,7 +272,7 @@ class HeadlessService:
         try:
             worker.client.get_client()
         except Exception as error:  # noqa: BLE001
-            return f"{worker.name}({worker.user_id}): {error}"
+            return f"{worker.name}: {error}"
         return None
 
     def get_game(self) -> HeadlessGame:
@@ -310,10 +310,10 @@ class HeadlessService:
             raise RuntimeError(errors or "无头工作账号均未登录成功")
         self._dispatcher.dispatch()
         logger.info(
-            "headless worker pool ready: healthy=%s configured=%s accounts=%s",
+            "headless worker pool ready: healthy=%s configured=%s account_refs=%s",
             self.healthy_worker_count,
             self.configured_worker_count,
-            ",".join(str(user_id) for user_id in successful),
+            ",".join(reference_digest(str(user_id)) for user_id in successful),
         )
         return successful[0]
 
@@ -349,7 +349,7 @@ class HeadlessService:
             )
         )
         if not game.is_logged_in:
-            message = f"{worker.name}({worker.user_id}) 登录未完成，已进入自动重连"
+            message = f"{worker.name} 登录未完成，已进入自动重连"
             raise RuntimeError(message)
         await self._record_worker_state(
             worker,
