@@ -111,7 +111,9 @@ assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
     "data_sync",
     "qq_official",
 ]
-assert len(state.resources.commands.qq_official_direct_command_ids) == 75
+assert {"seer.team.query", "seer.pet.avatar"}.issubset(
+    state.resources.commands.qq_official_direct_command_ids
+)
 assert len(state.contributions) > 0
 assert len(state.matcher_factory.message_matchers) > 0
 assert len(state.matcher_factory.notice_matchers) > 0

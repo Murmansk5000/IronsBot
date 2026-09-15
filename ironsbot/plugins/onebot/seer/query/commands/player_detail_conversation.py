@@ -10,6 +10,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher  # noqa: TC002
 from nonebot.typing import T_State  # noqa: TC002
 
+from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.feature_policy import FeatureService  # noqa: TC001
 from ironsbot.core.semantic_requests import (
     SemanticRequest,
@@ -176,6 +177,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
     if extension_action is not None:
         reply = await _query_extension_action(
             extension_action,
+            features,
             matcher,
             event,
             player_id=player_id,
@@ -230,6 +232,7 @@ async def handle_player_detail_reply(  # noqa: PLR0913
 
 async def _query_extension_action(
     action: PlayerDetailExtensionAction,
+    features: FeatureService,
     matcher: Matcher,
     event: MessageEvent,
     *,
@@ -249,6 +252,10 @@ async def _query_extension_action(
                 player_id=player_id,
                 actor=message.actor,
                 conversation=message.conversation,
+                can_manage=(
+                    message.group_role in GROUP_MANAGER_ROLES
+                    or features.is_actor_superuser(message.actor)
+                ),
             )
         )
 

@@ -11,7 +11,7 @@ from ironsbot.core.command_catalog import CommandCatalog
 from ironsbot.core.features import Feature
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.context import command_context
-from ironsbot.plugins.onebot.help.menu import (
+from ironsbot.services.help_menu import (
     entry_from_definition,
     format_plugin_detail,
 )
@@ -114,7 +114,9 @@ def test_rank_help_group_manager_detail_only_shows_group_setting() -> None:
 
     detail = format_plugin_detail(
         entry,
-        group_message_event(user_id=2, group_id=4, sender={"role": "admin"}),
+        command_context(
+            group_message_event(user_id=2, group_id=4, sender={"role": "admin"})
+        ),
         features,
         catalog,
         ignored_plugins=(),
