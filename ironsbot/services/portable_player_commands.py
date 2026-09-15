@@ -6,14 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
-from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
+from ironsbot.services.player_extension_commands import query_player_extension
 from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.player_detail_extensions import (
-    PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
 )
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
@@ -281,23 +280,12 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 extensions,
             ).message
         if isinstance(command, PlayerDetailExtensionAction):
-            reply = await command.query(
-                PlayerDetailActionRequest(
-                    player_id=pending.player_id,
-                    actor=context.message.actor,
-                    conversation=context.message.conversation,
-                    can_manage=(
-                        context.message.group_role in GROUP_MANAGER_ROLES
-                        or (
-                            features is not None
-                            and features.is_actor_superuser(context.message.actor)
-                        )
-                    ),
-                )
+            if features is None:
+                raise ValueError("player extension requires a feature policy")  # noqa: TRY003
+            return await query_player_extension(
+                command, pending.player_id, context, features,
             )
-        else:
-            return await _player_shortcut_reply(service, command, context)
-        return reply.to_outbound()
+        return await _player_shortcut_reply(service, command, context)
 
     choices: tuple[
         PlayerShortcutCommand

@@ -13,6 +13,7 @@ from ironsbot.services.ai.source_context import format_ai_source_context
 from ironsbot.services.identity_link_commands import (
     build_portable_identity_link_operations,
 )
+from ironsbot.services.player_extension_commands import build_player_extension_operation
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
 )
@@ -535,6 +536,13 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **rank_operations,
         **rank_admin_operations,
     }
+    extension_operation = build_player_extension_operation(
+        seer.player_detail_extensions, player_id_resolver, features,
+    )
+    for action in seer.player_detail_extensions.actions():
+        # A detail action may link to an existing, broader direct command (team).
+        if action.command_help_id not in operations:
+            operations[action.command_help_id] = extension_operation
     from ironsbot.services.help_menu import build_portable_help_operation
 
     operations["help"] = build_portable_help_operation(

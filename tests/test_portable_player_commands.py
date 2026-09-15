@@ -356,8 +356,10 @@ async def test_first_binding_confirmation_reuses_query_and_delivery(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("selection", ["4", "战队"])
+@pytest.mark.parametrize("revoke", [False, True])
 async def test_player_query_menu_includes_available_shared_extension(
     selection: str,
+    *, revoke: bool,
 ) -> None:
     service = _PlayerService()
     sessions = PortableQuerySessions()
@@ -377,10 +379,11 @@ async def test_player_query_menu_includes_available_shared_extension(
             action=ActionDefinition("player_team", "玩家所属战队"),
         )
     )
+    allowed = True
     features = cast(
         "Any",
         SimpleNamespace(
-            is_feature_allowed=lambda *_args: True,
+            is_feature_allowed=lambda *_args: allowed,
             is_actor_superuser=lambda _actor: False,
         ),
     )
@@ -399,11 +402,12 @@ async def test_player_query_menu_includes_available_shared_extension(
     )
 
     assert "4. 【战队】" in _text(reply)
-    selected = await sessions.select(selection, context)
-    assert selected is not None
-    part = selected.parts[0]
+    allowed = not revoke
+    selected = await sessions.select(selection, context, allow_deferred=True)
+    assert isinstance(selected, PortableReply)
+    part = selected.message.parts[0]
     assert isinstance(part, TextPart)
-    assert part.text == "team detail"
+    assert part.text == ("该功能当前未对你开放。" if revoke else "team detail")
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from ironsbot.core.outbound import OutboundMessage, SendResult
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot import portable_queries
 from ironsbot.plugins.onebot.seer.query.commands import player_shortcuts
 from ironsbot.services.operations.request_feedback import send_request_feedback
@@ -17,6 +18,7 @@ from ironsbot.services.portable_query_sessions import (
 )
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionAction,
     PlayerDetailExtensionRegistry,
 )
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -157,7 +159,7 @@ async def test_onebot_adapter_continues_menu_to_text_input_without_command_branc
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("text", ["收集", "巅峰", "群星牌"])
+@pytest.mark.parametrize("text", ["收集", "巅峰", "群星牌", "档案"])
 async def test_registered_onebot_player_shortcut_runs_shared_delivery(
     monkeypatch: pytest.MonkeyPatch, text: str,
 ) -> None:
@@ -166,10 +168,16 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
         return QueryReply(text="result", image=b"image-bytes")
 
     service = SimpleNamespace(shortcut=AsyncMock(side_effect=query))
+    extensions = PlayerDetailExtensionRegistry()
+    extensions.register(PlayerDetailExtensionAction(
+        id="sample_detail", feature="seer_player", label="档案", aliases=("档案",),
+        command_help_id="sample.detail", query=service.shortcut,
+        action=ActionDefinition("sample_detail", "档案"),
+    ))
     matcher = Mock()
     group = SimpleNamespace(
         resources=SimpleNamespace(
-            player=service, player_detail_extensions=PlayerDetailExtensionRegistry(),
+            player=service, player_detail_extensions=extensions,
         ),
         features=Mock(),
         player_id_resolver=PlayerIdResolver(lambda *_: None, lambda _: 700001),
@@ -178,7 +186,7 @@ async def test_registered_onebot_player_shortcut_runs_shared_delivery(
         matcher_priority=lambda _: 5,
     )
     player_shortcuts.install(cast("SeerMatcherGroup", group))
-    handler = matcher.append_handler.call_args.args[0]
+    handler = matcher.append_handler.call_args_list[int(text == "档案")].args[0]
     send = AsyncMock(return_value=SendResult(delivered=True, message_id="sent-1"))
     monkeypatch.setattr(portable_queries, "send_portable_event_reply", send)
     monkeypatch.setattr(
