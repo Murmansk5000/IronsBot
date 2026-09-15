@@ -22,9 +22,11 @@ from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.message_rendering import (
     render_onebot_outbound_message,
 )
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import member_target_command
 from ironsbot.services.operations.request_feedback import request_feedback_scope
+from ironsbot.services.portable_player_commands import build_portable_player_operations
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
 )
@@ -32,7 +34,6 @@ from ironsbot.services.seer.player_messages import unbound_player_shortcut_messa
 from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     PlayerShortcutTargetCommand,
-    execute_player_shortcut,
     parse_player_shortcut_command,
     player_request_admission_message,
     player_shortcut_semantic_request,
@@ -172,40 +173,6 @@ def _resolve_extension_shortcut_command(
     )
 
 
-async def handle_player_shortcut(
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    service = dependencies.player
-    resolved = state.get(_SHORTCUT_COMMAND_KEY)
-    if not isinstance(resolved, _ResolvedShortcutCommand):
-        return
-    if resolved.error is not None:
-        await finish_event_reply(matcher, event, resolved.error)
-        return
-    command = resolved.command
-    if command is None:
-        return
-
-    async def send_status(message: str) -> None:
-        await send_event_reply(matcher, event, message)
-
-    reply = await execute_player_shortcut(
-        service,
-        command,
-        message_input_context(event).message.actor,
-        conversation=message_input_context(event).message.conversation,
-        send_status=send_status,
-    )
-    await finish_event_reply(
-        matcher,
-        event,
-        render_onebot_outbound_message(reply.to_outbound()),
-    )
-
-
 async def handle_player_extension_shortcut(
     _dependencies: PlayerCommandDependencies,
     matcher: Matcher,
@@ -333,9 +300,15 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     matcher.append_handler(
-        bind_async(
-            handle_player_shortcut,
-            dependencies,
+        make_portable_query_handler(
+            build_portable_player_operations(
+                group.resources.player,
+                group.player_id_resolver,
+                group.query_sessions,
+                group.features,
+                group.resources.player_detail_extensions,
+            )["seer.player.default"],
+            group.query_sessions,
         )
     )
 

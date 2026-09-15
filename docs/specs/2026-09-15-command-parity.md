@@ -30,6 +30,7 @@
 | 橱窗关注 | 五种操作统一到 shared portable operations | 07ba27ac；两平台选择及身份拒绝测试 |
 | 通用菜单送达 | OneBot 首次菜单也执行 PortableReply 的送达回调、附加消息和后续结果；发送失败不进入等待会话 | tests/test_onebot_portable_queries.py；移除首次菜单绕过 delivery 的发送分支，不修改业务命令 |
 | 通用交互状态 | 菜单和文字输入共享唯一会话状态、过期与所有者隔离；OneBot 两种模板均续接 | tests/test_portable_query_sessions.py、tests/test_onebot_portable_queries.py；覆盖菜单转文字输入、查询替换旧输入状态和送达失败 |
+| 玩家内置快捷查询 | OneBot 收集、巅峰、群星牌改用共享操作；共享菜单栏目复用送达感知进度模板 | 删除 handle_player_shortcut；tests/test_portable_player_commands.py 和 test_onebot_portable_queries.py 验证两端、菜单、排队/查询提示、缓存及提示失败取消 |
 | 帮助 | 已接入共享二级菜单 | aa31d30e；仍需不同 Feature 配置下的完整可见性验收 |
 | 竞技池/专家池/大师池 | 共享图片功能已恢复，需继续逐项核对呈现 | 命令声明本身不能证明箭头、资源和图片投递正确 |
 
@@ -154,9 +155,9 @@
 - 旧详情会话支持引用群菜单，使用当前回复者的 Feature 重建可见项并检查原序号
   仍对应同一动作。共享菜单目前只允许所有者操作。迁移不得通过放宽绑定确认
   或按钮所有者校验解决；需明确区分可共享的只读动作与所有者专属操作。
-- 旧栏目查询通过 `request_feedback_scope` 发送首次网络请求/排队反馈，缓存命中
-  不发提示；共享栏目调用尚未接入已存在的 `progress_operation_reply`。应复用
-  这个送达感知机制，不能在每个适配器复制查询逻辑。
+- 内置栏目已通过 `progress_operation_reply` 复用首次网络请求/排队反馈和送达
+  控制，缓存命中不发提示，OneBot 独立快捷处理器已删除。扩展栏目反馈及旧详情
+  会话入口仍需迁移，不能把内置栏目验证推及所有扩展。
 - 旧菜单为栏目和扩展提供 `SemanticRequest`，用于动作归属和队列管理。
   替换时需保留动作及玩家目标信息，而不只是发送相同的最终文字。
 
@@ -168,9 +169,9 @@
 
 ### 当前验证与待办
 
-共享交互状态收口后的本地验证：3553 passed、7 skipped；Ruff、生产与测试
+玩家内置快捷查询共享操作接入后的本地验证：3584 passed、7 skipped；Ruff、生产与测试
 BasedPyright、compileall、check_repo --static、diff check 通过。
-8328 条警告来自 NoneBot ForwardRef 弃用提示和 SQLAlchemy 关系映射。
+8346 条警告来自 NoneBot ForwardRef 弃用提示和 SQLAlchemy 关系映射。
 这些结果不证明官方实机验收，也不代表下列剩余项目完成。
 
 1. 将已有的部分账号别名候选及通用选择模板继续接入玩家查询、快捷查询和其他适用目标入口；绑定、橱窗及战队玩家目标入口已完成。

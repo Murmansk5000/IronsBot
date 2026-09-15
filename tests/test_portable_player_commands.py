@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -15,10 +17,12 @@ from ironsbot.core.platform import (
 )
 from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
+from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
+from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
@@ -34,7 +38,6 @@ from ironsbot.services.seer.player_service_models import (
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
-    from ironsbot.services.portable_reply import PortableReply
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_shortcut_contracts import (
         PlayerShortcutCommand,
@@ -304,9 +307,9 @@ async def test_player_query_menu_commits_work_only_after_delivery() -> None:
     assert service.returned == [(context.message.actor, 700002)]
     assert service.refreshed == [700002]
 
-    selected = await sessions.select("1", context)
-    assert selected is not None
-    part = selected.parts[0]
+    selected = await sessions.select("1", context, allow_deferred=True)
+    assert isinstance(selected, PortableReply)
+    part = selected.message.parts[0]
     assert isinstance(part, TextPart)
     assert part.text == "caller-openid:collection:700002"
 
@@ -348,7 +351,7 @@ async def test_first_binding_confirmation_reuses_query_and_delivery(
         assert sessions.active_prompt(context) is None
     else:
         assert sessions.recognizes_response("收集", context)
-        assert await sessions.select("收集", context) is not None
+        assert await sessions.select("收集", context, allow_deferred=True) is not None
 
 
 @pytest.mark.asyncio
@@ -418,9 +421,9 @@ async def test_player_detail_template_supports_repeated_named_and_numeric_choice
     await operations["seer.player.query"](context.text, context)
     for text, kind in zip(inputs, ("collection", "peak", "autocard"), strict=True):
         assert sessions.recognizes_response(text, context)
-        reply = await sessions.select(text, context)
-        assert isinstance(reply, OutboundMessage)
-        assert f":{kind}:700002" in cast("TextPart", reply.parts[0]).text
+        reply = await sessions.select(text, context, allow_deferred=True)
+        assert isinstance(reply, PortableReply)
+        assert f":{kind}:700002" in _text(reply)
         assert sessions.active_prompt(context) is not None
     assert not sessions.recognizes_response("随便聊天", context)
     await sessions.select("0", context)
@@ -566,10 +569,117 @@ async def test_default_shortcut_uses_callers_openid_binding() -> None:
     context = _context("收集")
 
     reply = cast(
-        "OutboundMessage",
+        "PortableReply",
         await operations["seer.player.default"](context.text, context),
     )
 
-    part = reply.parts[0]
+    part = reply.message.parts[0]
     assert isinstance(part, TextPart)
     assert part.text == "caller-openid:collection:600001"
+    assert reply.follow_up is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("entry", ["direct", "menu"])
+@pytest.mark.parametrize("queued", [False, True])
+@pytest.mark.parametrize("result", [
+    QueryReply(text="result"),
+    QueryReply(leading_text="player", image_error="image failed", complete=False),
+    QueryReply(text="partial result", image_error="image failed", complete=False),
+    QueryReply(leading_text="player", image=b"image-bytes", text="result"),
+])
+async def test_player_shortcut_feedback_uses_shared_delivery_template(
+    monkeypatch: pytest.MonkeyPatch,
+    platform: Platform,
+    entry: str,
+    result: QueryReply,
+    *, queued: bool,
+) -> None:
+    service = _PlayerService()
+    completed: list[bool] = []
+
+    async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
+        await send_request_feedback(queued=queued)
+        completed.append(True)
+        return result
+
+    query = AsyncMock(side_effect=shortcut)
+    monkeypatch.setattr(service, "shortcut", query)
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), sessions,
+    )
+    context = _context("巅峰700002", platform=platform)
+    if entry == "direct":
+        reply = await operations["seer.player.default"](context.text, context)
+    else:
+        await operations["seer.player.query"]("米米号700002", context)
+        reply = await sessions.select("巅峰", context, allow_deferred=True)
+    assert isinstance(reply, PortableReply)
+    expected_feedback = "已加入队列" if queued else "巅峰之战正在查询"
+    assert expected_feedback in _text(reply)
+    assert not completed
+    query.assert_awaited_once()
+    assert query.await_args is not None
+    command, actor = query.await_args.args
+    assert (command.kind, command.player_id, actor) == (
+        "peak", 700002, context.message.actor,
+    )
+    assert query.await_args.kwargs["conversation"] == context.message.conversation
+    assert reply.follow_up is not None
+    reply.delivered()
+    assert await reply.follow_up() == result.to_outbound()
+    assert completed == [True]
+    if entry == "menu":
+        assert sessions.has_active_session(context)
+
+
+@pytest.mark.asyncio
+async def test_shared_shortcut_without_binding_does_not_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _PlayerService()
+    query = AsyncMock()
+    monkeypatch.setattr(service, "shortcut", query)
+    resolver = PlayerIdResolver(lambda *_: None, lambda _: None)
+    operation = build_portable_player_operations(
+        cast("PlayerService", service), resolver, PortableQuerySessions(),
+    )["seer.player.default"]
+    context = _context("收集")
+    reply = await operation(context.text, context)
+    assert isinstance(reply, PortableReply)
+    assert "尚未绑定米米号" in _text(reply)
+    query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["direct", "menu"])
+async def test_failed_player_progress_delivery_cancels_pending_query(
+    monkeypatch: pytest.MonkeyPatch, entry: str,
+) -> None:
+    service = _PlayerService()
+    completed: list[bool] = []
+
+    async def shortcut(*_args: object, **_kwargs: object) -> QueryReply:
+        await send_request_feedback(queued=True)
+        completed.append(True)
+        return QueryReply(text="must not finish")
+
+    monkeypatch.setattr(service, "shortcut", AsyncMock(side_effect=shortcut))
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), sessions,
+    )
+    context = _context("收集700002")
+    if entry == "direct":
+        reply = await operations["seer.player.default"](context.text, context)
+    else:
+        await operations["seer.player.query"]("米米号700002", context)
+        reply = await sessions.select("收集", context, allow_deferred=True)
+    assert isinstance(reply, PortableReply)
+    assert reply.follow_up is not None
+    reply.delivery_failed()
+    with pytest.raises(asyncio.CancelledError):
+        await reply.follow_up()
+    assert not completed

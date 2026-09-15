@@ -11,7 +11,7 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
 from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
     PlayerDetailExtensionAction,
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableOperation
+    from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionRegistry,
     )
@@ -187,23 +187,36 @@ class _PortablePlayerOperations:
         self,
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply:
         parsed = parse_player_shortcut_command(text)
         if parsed is None:
             msg = f"catalog accepted input that its shortcut parser rejected: {text!r}"
             raise ValueError(msg)
         resolution = self.resolver.resolve(context, parsed.player_reference)
         if resolution.error is not None:
-            return OutboundMessage.from_text(resolution.error)
+            return _text_reply(resolution.error)
         if resolution.player_id is None:
-            return OutboundMessage.from_text(unbound_player_shortcut_message())
-        reply = await execute_player_shortcut(
+            return _text_reply(unbound_player_shortcut_message())
+        return await _player_shortcut_reply(
             self.service,
             PlayerShortcutCommand(parsed.kind, resolution.player_id),
-            context.message.actor,
-            conversation=context.message.conversation,
+            context,
+        )
+
+
+async def _player_shortcut_reply(
+    service: PlayerService,
+    command: PlayerShortcutCommand,
+    context: MessageInputContext,
+) -> PortableReply:
+    async def execute(send_status: ProgressReporter) -> OutboundMessage:
+        reply = await execute_player_shortcut(
+            service, command, context.message.actor,
+            conversation=context.message.conversation, send_status=send_status,
         )
         return reply.to_outbound()
+
+    return await progress_operation_reply(execute)
 
 
 def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
@@ -251,7 +264,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             | PlayerDetailExtensionAction
             | Literal["bind", "decline"]
         ),
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | PortableReply:
         if isinstance(command, str):
             service.save_binding_choice(
                 context.message.actor,
@@ -283,12 +296,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 )
             )
         else:
-            reply = await execute_player_shortcut(
-                service,
-                command,
-                context.message.actor,
-                conversation=context.message.conversation,
-            )
+            return await _player_shortcut_reply(service, command, context)
         return reply.to_outbound()
 
     choices: tuple[
