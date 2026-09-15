@@ -15,6 +15,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.services.portable_lucky_skin_commands import (
     build_portable_lucky_skin_operations,
 )
@@ -231,6 +232,50 @@ async def test_target_query_preserves_account_through_confirmation(
     service.query.assert_not_awaited()
     await sessions.select("1", context)
     service.query.assert_awaited_once_with(expected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("selection", ["2", "0"])
+async def test_partial_account_menu_precedes_lucky_window_login_confirmation(
+    platform: Platform, selection: str,
+) -> None:
+    service, pet, identity, sessions, onebot = _dependencies()
+    service.cached_query.return_value = None
+    service.query = AsyncMock(
+        return_value=LuckySkinWindowResult("2026-09-15", 90002, (), from_cache=False),
+    )
+    service.detail_choices.return_value = ()
+    service.result_message = AsyncMock(return_value=OutboundMessage.from_text("result"))
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        reference_search=lambda _reference, _actor, _conversation: (
+            PlayerReferenceChoice(90001, "示例甲"),
+            PlayerReferenceChoice(90002, "示例乙"),
+        ),
+    )
+    operations = build_portable_lucky_skin_operations(
+        cast("LuckySkinWindowService", service),
+        cast("PetQueryService", pet),
+        cast("IdentityLinkingService", identity), sessions, resolver,
+    )
+    context = _context("橱窗示例", platform=platform)
+    menu = await operations["seer.lucky_skin_window.query"](context.text, context)
+    assert isinstance(menu, OutboundMessage)
+    assert "示例甲" in _text(menu) and "示例乙" in _text(menu)
+    service.cached_query.assert_not_called()
+    service.query.assert_not_awaited()
+    await sessions.select(selection, context)
+    if selection == "0":
+        service.cached_query.assert_not_called()
+        assert sessions.active_prompt(context) is None
+    else:
+        expected = LuckySkinQuery(context.message.actor, onebot, 90002)
+        service.cached_query.assert_called_once_with(expected)
+        service.query.assert_not_awaited()
+        await sessions.select("1", context)
+        service.query.assert_awaited_once_with(expected)
 
 
 @pytest.mark.asyncio

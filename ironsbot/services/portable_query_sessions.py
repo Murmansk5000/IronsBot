@@ -70,12 +70,15 @@ class PortableMenuSpec(Generic[_T]):
     select: MenuSelect[_T]
     prompt: OutboundMessage
     labels: tuple[str, ...] = ()
+    text_inputs: tuple[frozenset[str], ...] = ()
     keep_open: bool = False
     exit_message: str = "已退出查询。"
 
     def __post_init__(self) -> None:
         if self.labels and len(self.labels) != len(self.choices):
             raise PortableQuerySessionError.menu_label_count_mismatch()
+        if self.text_inputs and len(self.text_inputs) != len(self.choices):
+            raise ValueError("menu text inputs must match the choice count")  # noqa: TRY003
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,13 +197,18 @@ class PortableQuerySessions:
 
         key = self._key(context)
         self._pending_text.pop(key, None)
+        if not spec.choices:
+            self._pending.pop(key, None)
+            return spec.prompt
         session = self._new_session(
             context,
             tuple(
                 PromptChoice(
                     str(index),
                     spec.labels[index - 1] if spec.labels else f"选项 {index}",
-                    frozenset({str(index)}),
+                    frozenset({str(index)}) | (
+                        spec.text_inputs[index - 1] if spec.text_inputs else frozenset()
+                    ),
                 )
                 for index in range(1, len(spec.choices) + 1)
             ),

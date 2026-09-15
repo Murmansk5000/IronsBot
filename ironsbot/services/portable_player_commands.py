@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
+from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_detail_extensions import (
@@ -26,13 +27,11 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     execute_player_shortcut,
     parse_player_shortcut_command,
 )
-from ironsbot.services.seer.query_result import QueryChoice, QueryResult
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
-    from ironsbot.core.player_references import PlayerReferenceChoice
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_detail_extensions import (
@@ -116,36 +115,14 @@ class _PortablePlayerOperations:
             if len(context.member_mentions) != 1:
                 return _text_reply("请一次只 @ 一名成员绑定米米号。")
             target = context.member_mentions[0]
-        choices = self.resolver.reference_choices(
-            reference,
-            context.message.actor,
-            context.message.conversation,
-        )
-        if not choices:
-            return _text_reply("未找到该米米号或已开放的玩家别名。")
-        if len(choices) == 1:
-            return await self._bind_player(choices[0].player_id, context, target)
+        async def execute(player_id: int) -> PortableReply:
+            return await self._bind_player(player_id, context, target)
 
-        async def select(choice: PlayerReferenceChoice) -> PortableReply:
-            current = self.resolver.reference_choices(
-                reference, context.message.actor, context.message.conversation,
-            )
-            if choice not in current:
-                return _text_reply("该玩家别名已不可用，请重新发送绑定命令。")
-            return await self._bind_player(choice.player_id, context, target)
-
-        prompt = format_selection_menu(
+        reply = await select_player_reference(
+            reference, context, self.resolver, self.sessions, execute,
             title="请选择要绑定的玩家：",
-            items=tuple(f"{choice.label}（{choice.player_id}）" for choice in choices),
         )
-        return PortableReply(self.sessions.offer_menu(
-            context,
-            PortableMenuSpec(
-                choices=choices, select=select,
-                prompt=OutboundMessage.from_text(prompt),
-                labels=tuple(choice.label for choice in choices),
-            ),
-        ))
+        return reply if isinstance(reply, PortableReply) else PortableReply(reply)
 
     async def _bind_player(
         self, player_id: int, context: MessageInputContext, target: ActorRef | None,
@@ -270,7 +247,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
 
     async def select(
         command: PlayerShortcutCommand | PlayerDetailExtensionAction,
-    ) -> QueryResult[object]:
+    ) -> OutboundMessage:
         if isinstance(command, PlayerDetailExtensionAction):
             reply = await command.query(
                 PlayerDetailActionRequest(
@@ -293,37 +270,43 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 context.message.actor,
                 conversation=context.message.conversation,
             )
-        return QueryResult(reply=reply)
+        return reply.to_outbound()
 
-    menu = sessions.offer(
-        context,
-        QueryResult(
-            choices=(
-                *(
-                QueryChoice[PlayerShortcutCommand | PlayerDetailExtensionAction](
-                    name=f"【{request.menu_label}】",
-                    description="",
-                    value=PlayerShortcutCommand(
-                        request.kind,
-                        pending.player_id,
-                        pending.base_snapshot,
-                    ),
-                )
-                for request in requests
-                ),
-                *(
-                    QueryChoice[PlayerShortcutCommand | PlayerDetailExtensionAction](
-                        name=f"【{action.label}】",
-                        description="",
-                        value=action,
-                    )
-                    for action in extension_actions
-                ),
+    choices: tuple[PlayerShortcutCommand | PlayerDetailExtensionAction, ...] = (
+        *(
+            PlayerShortcutCommand(
+                request.kind, pending.player_id, pending.base_snapshot
             )
+            for request in requests
         ),
-        select=select,
-        prompt_title=f"{player_message}\n回复数字查看详情：",
-        not_found_message=player_message,
+        *extension_actions,
+    )
+    labels = (
+        *(f"【{request.menu_label}】" for request in requests),
+        *(f"【{action.label}】" for action in extension_actions),
+    )
+    menu = (
+        sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=choices,
+                select=select,
+                labels=labels,
+                text_inputs=(
+                    *(frozenset({request.menu_label}) for request in requests),
+                    *(frozenset(action.aliases) for action in extension_actions),
+                ),
+                keep_open=True,
+                exit_message="已退出米米号详情查询。",
+                prompt=OutboundMessage.from_text(
+                    format_selection_menu(
+                        title=f"{player_message}\n回复数字或栏目名称查看详情：",
+                        items=labels,
+                    )
+                    if choices else player_message
+                ),
+            ),
+        )
     )
 
     def delivered() -> None:
