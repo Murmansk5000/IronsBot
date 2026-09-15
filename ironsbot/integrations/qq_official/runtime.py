@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -19,6 +18,7 @@ from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
@@ -368,7 +368,7 @@ class QQOfficialRuntime:
                 "account=%s event_type=%s message_ref=%s",
                 self._connections[app_id].lifecycle.account,
                 event_type,
-                _log_reference(incoming.message_id),
+                reference_digest(incoming.message_id),
             )
             return
         context = MessageInputContext(
@@ -543,7 +543,7 @@ async def deliver_qq_official_reply(
             "QQ Official deferred operation failed: account=%s kind=%s ref=%s",
             account_label,
             incoming.conversation.kind,
-            _log_reference(incoming.conversation.id),
+            reference_digest(incoming.conversation.id),
         )
         follow_up = OutboundMessage.from_text(
             f"❌ 操作执行失败：{type(error).__name__}"
@@ -594,7 +594,7 @@ def _log_delivery_failure(
         stage,
         account_label,
         incoming.conversation.kind,
-        _log_reference(incoming.conversation.id),
+        reference_digest(incoming.conversation.id),
         result.error_code,
         result.error_message,
         result.trace_id,
@@ -613,7 +613,3 @@ def _log_delivery_success(
         account_label,
         incoming.conversation.kind,
     )
-
-
-def _log_reference(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]

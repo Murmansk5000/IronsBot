@@ -8,6 +8,7 @@ from math import ceil
 from time import monotonic
 from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeVar, cast
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.semantic_requests import SemanticRequest, semantic_request_scope
 from ironsbot.services.operations.headless_pool import (
     HeadlessRequestPriority,
@@ -470,7 +471,7 @@ def _semantic_request_key(
 def _actor_log_label(actor: ActorRef | None) -> str:
     if actor is None:
         return "background"
-    return f"{actor.platform.value}:{actor.id}"
+    return f"{actor.platform.value}:{reference_digest(actor.id)}"
 
 
 def player_request_protection_message(error: Exception) -> str:
