@@ -19,7 +19,7 @@ from ..group import SeerMatcherGroup, seer_feature_rule
 
 def install(group: SeerMatcherGroup) -> None:
     input_matches = team_query_input_matcher(
-        group.player_id_resolver.has_known_reference
+        group.player_id_resolver.has_reference_choices
     )
 
     def is_team_query(event: MessageEvent) -> bool:
@@ -39,6 +39,7 @@ def install(group: SeerMatcherGroup) -> None:
                 group.resources.team_query,
                 group.player_id_resolver,
                 group.features,
+                group.query_sessions,
             ),
             group.query_sessions,
         )
