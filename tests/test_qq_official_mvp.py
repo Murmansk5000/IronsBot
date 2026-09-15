@@ -9,8 +9,9 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from httpx import AsyncClient
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
-from qqbot_agent_sdk.event_parser import InboundEvent
+from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
 from ironsbot.config.loader import load_settings
 from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
@@ -45,6 +46,8 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
 )
 from ironsbot.integrations.qq_official.runtime import (
+    QQOfficialRuntime,
+    QQOfficialRuntimeAccount,
     deliver_qq_official_reply,
     qq_official_event_is_supported,
     qq_official_event_mentions_bot,
@@ -383,6 +386,14 @@ class _TransportError(RuntimeError):
     pass
 
 
+class _FailingPortableRouter:
+    def recognizes(self, _context: MessageInputContext) -> bool:
+        return True
+
+    async def dispatch(self, _context: MessageInputContext) -> PortableReply:
+        raise RuntimeError("sensitive-event-detail")
+
+
 def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
     *,
     event_type: str = "C2C_MESSAGE_CREATE",
@@ -404,6 +415,52 @@ def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
         message_type=message_type,
         raw=raw or {},
     )
+
+
+@pytest.mark.asyncio
+async def test_runtime_reports_unexpected_command_failure_without_event_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event = _sdk_event(content="private command body")
+    monkeypatch.setattr(
+        EventParser,
+        "parse",
+        staticmethod(lambda _event_type, _raw: event),
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    async with AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (
+                QQOfficialRuntimeAccount(
+                    "example-app",
+                    "example-secret",
+                    label="safe-alias",
+                ),
+            ),
+            http_client=client,
+            session_root=tmp_path,
+        )
+        runtime.bind(cast("PortableCommandRouter", _FailingPortableRouter()), messenger)
+        caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
+
+        await runtime.handle_event("example-app", event.event_type, {})
+
+    payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
+    assert payloads == (QQOfficialTextPayload("❌ 命令执行失败，请稍后再试。"),)
+    assert bot.sent == 1
+    assert "account=safe-alias" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "sensitive-event-detail" not in caplog.text
+    assert "private command body" not in caplog.text
+    assert "opaque-user" not in caplog.text
+    assert "example-app" not in caplog.text
+    assert "example-secret" not in caplog.text
 
 
 def _fake_seer(

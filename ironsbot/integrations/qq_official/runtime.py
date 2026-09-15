@@ -30,6 +30,7 @@ from ironsbot.integrations.qq_official.inbound_deduplication import (
 )
 from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -41,7 +42,6 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.portable_commands import PortableCommandRouter
-    from ironsbot.services.portable_reply import PortableReply
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +386,22 @@ class QQOfficialRuntime:
         )
         if not recognized:
             return
-        reply = await router.dispatch(context)
+        try:
+            reply = await router.dispatch(context)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - platform boundary
+            logger.error(  # noqa: TRY400 - exception text may contain private data
+                "QQ Official command dispatch failed: account=%s event_type=%s "
+                "kind=%s error_type=%s",
+                self._connections[app_id].lifecycle.account,
+                event_type,
+                incoming.conversation.kind,
+                type(error).__name__,
+            )
+            reply = PortableReply(
+                OutboundMessage.from_text("❌ 命令执行失败，请稍后再试。")
+            )
         if reply is not None:
             await deliver_qq_official_reply(
                 messenger,
