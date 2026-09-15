@@ -267,6 +267,7 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
                     inputs.images,
                     render_coordinator.render,
                 ),
+                NewContentService(PublishedNewContentRepository(inputs.data)),
             )
 
     async def render_window(

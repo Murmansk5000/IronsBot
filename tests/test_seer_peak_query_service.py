@@ -22,6 +22,12 @@ from ironsbot.integrations.seer_data.peak_repository import (
 from ironsbot.services.operations.headless_errors import DisconnectedError
 from ironsbot.services.seer import peak
 from ironsbot.services.seer.images import ImageSourceError
+from ironsbot.services.seer.new_content import (
+    NewContentCategoryState,
+    NewContentIndexUnavailableError,
+    NewContentItem,
+    NewContentSnapshot,
+)
 from ironsbot.services.seer.peak import (
     PeakItemData,
     PeakPeriodTimes,
@@ -93,6 +99,21 @@ class FakeHeadless:
         if self.error is not None:
             raise self.error
         return self.game
+
+
+class FakeNewContent:
+    def __init__(
+        self,
+        snapshot: NewContentSnapshot | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self._snapshot = snapshot
+        self._error = error or NewContentIndexUnavailableError()
+
+    def snapshot(self) -> NewContentSnapshot:
+        if self._snapshot is None:
+            raise self._error
+        return self._snapshot
 
 
 def _pool_snapshot() -> PeakPoolSnapshot:
@@ -331,12 +352,21 @@ def _render_session(
     pool: PeakPoolRenderer,
     vote: PeakVoteRenderer,
     pet: PeakPetRenderer,
+    new_content: FakeNewContent | None = None,
 ) -> PeakRenderSessionFactory:
+    content_source = new_content or FakeNewContent()
+
     @contextmanager
     def session() -> Iterator[PeakRenderSession]:
         data.render_open = True
         try:
-            yield PeakRenderSession(_repository(data), pool, vote, pet)
+            yield PeakRenderSession(
+                _repository(data),
+                pool,
+                vote,
+                pet,
+                cast("peak.PeakNewContentSource", content_source),
+            )
         finally:
             data.render_open = False
 
@@ -353,6 +383,7 @@ def _service(
     rendered: dict[str, Any],
     *,
     global_data: FakeData | None = None,
+    new_content: FakeNewContent | None = None,
 ) -> PeakQueryService:
     async def render_pool(pools: Any, title: str) -> bytes:
         assert data.render_open
@@ -376,7 +407,13 @@ def _service(
     return PeakQueryService(
         _repository(global_data if global_data is not None else data),
         cast("HeadlessService", headless),
-        _render_session(data, render_pool, render_vote, render_pet),
+        _render_session(
+            data,
+            render_pool,
+            render_vote,
+            render_pet,
+            new_content or FakeNewContent(),
+        ),
     )
 
 
@@ -407,15 +444,8 @@ async def test_peak_pool_query_renders_with_progress(
     assert progress == ["正在生成图片..."]
     assert rendered["pool_session_open"] is False
     assert rendered["pool"][1] == f"{label} / 有效期：2026-07-01 ~ 2026-07-31"
-    assert rendered["pool"][0] == (
-        PeakPoolSnapshot(
-            id=1,
-            count=2,
-            start_time=datetime(2026, 7, 1, tzinfo=time.TZ_CN),
-            end_time=datetime(2026, 7, 31, tzinfo=time.TZ_CN),
-            pets=(),
-        ),
-    )
+    assert rendered["pool"][0].pools == (_pool_snapshot(),)
+    assert rendered["pool"][0].change_state == "unavailable"
 
 
 @pytest.mark.asyncio
@@ -435,6 +465,72 @@ async def test_master_pool_query_reuses_pool_renderer() -> None:
     assert rendered["pool_session_open"] is False
     assert rendered["pool"][1] == (
         "大师池 / 精灵竞技点 / 有效期：2026-07-01 ~ 2026-07-31 00:00"
+    )
+
+
+@pytest.mark.asyncio
+async def test_peak_pool_query_combines_current_and_previous_positions() -> None:
+    data = FakeData()
+    current_pet = PeakPetSnapshot(1, "当前精灵", 1001, 4)
+    removed_pet = PeakPetSnapshot(2, "移出精灵", 1002, 5)
+    data.query_results = [
+        (
+            PeakPoolSnapshot(
+                1,
+                0,
+                datetime(2026, 8, 1, tzinfo=time.TZ_CN),
+                datetime(2026, 8, 31, tzinfo=time.TZ_CN),
+                (current_pet,),
+            ),
+        ),
+        {2: removed_pet},
+    ]
+    weekly = NewContentSnapshot(
+        baseline_established=True,
+        config_version="20260814",
+        weekly_cycle="2026-08-14",
+        items=(
+            NewContentItem(
+                "peak_pool",
+                1,
+                "当前精灵",
+                1,
+                {"previous_limit": 2, "current_limit": 0},
+                "modified",
+            ),
+            NewContentItem(
+                "peak_pool",
+                2,
+                "移出精灵",
+                2,
+                {"previous_limit": 3, "current_limit": None},
+                "modified",
+            ),
+        ),
+        category_states=(
+            NewContentCategoryState(
+                category="peak_pool",
+                comparison_ready=True,
+                reason="",
+            ),
+        ),
+    )
+    rendered: dict[str, Any] = {}
+
+    async def report(_message: str) -> None:
+        return None
+
+    result = await _service(
+        data,
+        FakeHeadless(),
+        rendered,
+        new_content=FakeNewContent(weekly),
+    ).pool(expert=False, progress=report)
+
+    assert result.image == b"pool"
+    assert rendered["pool"][0].transitions == (
+        peak.PeakPoolTransitionSnapshot(current_pet, 2, 0),
+        peak.PeakPoolTransitionSnapshot(removed_pet, 3, None),
     )
 
 
