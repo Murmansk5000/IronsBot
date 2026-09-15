@@ -23,7 +23,7 @@ def load_weekly_preview_metadata(session: Any) -> dict[str, str]:
             text(
                 """
                 SELECT key, value
-                FROM ironsbot_metadata
+                FROM seerapi_metadata
                 WHERE key IN (:image_url_key, :source_url_key)
                 """
             ),
