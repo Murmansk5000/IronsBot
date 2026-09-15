@@ -29,8 +29,17 @@ from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import QQOfficialConfig
 
+_PROTECTED_FEATURES: Final[frozenset[str]] = frozenset(
+    {
+        Feature.ADMIN_NOTICE.value,
+        Feature.BLACKLIST.value,
+        Feature.QQ_OFFICIAL_IDENTITY_INFO.value,
+        Feature.SEER.value,
+    }
+)
+
 FEATURE_BUNDLES: Final[dict[str, frozenset[str]]] = {
-    "all": (FEATURE_KEYS - {"admin_notice", "blacklist", "seer"}) | SEER_FEATURES,
+    "all": (FEATURE_KEYS - _PROTECTED_FEATURES) | SEER_FEATURES,
     "seer": SEER_FEATURES,
     "query": frozenset(
         {
@@ -299,10 +308,7 @@ def _resolve_custom_all_features(
         entry = raw_entry.strip()
         if not entry:
             raise FeatureBundleConfigError.all_empty_item(index)
-        if entry in {
-            Feature.ADMIN_NOTICE.value,
-            Feature.BLACKLIST.value,
-        }:
+        if entry in _PROTECTED_FEATURES:
             raise FeatureBundleConfigError.all_disallowed_item(index, entry)
         if entry in FEATURE_BUNDLES or entry in custom_bundle_names:
             raise FeatureBundleConfigError.all_bundle_item(index, entry)
