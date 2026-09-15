@@ -451,6 +451,9 @@ def build_test_plugin_registry(
             features=runtime.features,
             scheduler=SchedulerFacade(),
             service=resources.team_resource,
+            player_id_resolver=resources.player_id_resolver,
+            team_query=resources.seer.team_query,
+            query_sessions=resources.query_sessions,
         ),
         activity_plugin_contribution(
             service=resources.activity,

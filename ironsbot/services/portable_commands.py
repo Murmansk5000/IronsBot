@@ -431,7 +431,12 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
     )
     team_resource_operations = _catalog_operations(
         catalog,
-        build_portable_team_resource_operations(team_resource),
+        build_portable_team_resource_operations(
+            team_resource,
+            player_id_resolver,
+            seer.team_query,
+            sessions,
+        ),
     )
     activity_operations = _catalog_operations(
         catalog,
