@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -19,9 +19,13 @@ from ironsbot.core.plugin_install import PluginContribution
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
 from ironsbot.services.portable_commands import PortableCommandRouter
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_team_resource_commands import (
     build_portable_team_resource_operations,
 )
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
+from ironsbot.services.seer.team import PlayerTeamLookup
+from ironsbot.services.team.overview import TeamOverviewItem
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourceManageCommand,
@@ -43,14 +47,27 @@ class _Service:
     removals: list[tuple[TeamResourceSubscriptionTarget, int]] = field(
         default_factory=list
     )
-    query_messages: list[str] = field(default_factory=lambda: ["战队一", "战队二"])
+    query_items: tuple[TeamOverviewItem, ...] = field(
+        default_factory=lambda: (
+            TeamOverviewItem(1111111, "战队一", 10, 100),
+            TeamOverviewItem(2222222, "战队二", 20, 200),
+        )
+    )
+    first_team_ids: list[int | None] = field(default_factory=list)
 
-    async def query_target_messages(
+    @staticmethod
+    def is_superuser(_actor: ActorRef) -> bool:
+        return False
+
+    async def query_overview(
         self,
         target: TeamResourceSubscriptionTarget,
-    ) -> list[str]:
+        *,
+        first_team_id: int | None = None,
+    ) -> tuple[TeamOverviewItem, ...]:
         self.targets.append(target)
-        return self.query_messages
+        self.first_team_ids.append(first_team_id)
+        return self.query_items
 
     def subscriptions_message(self, target: TeamResourceSubscriptionTarget) -> str:
         self.targets.append(target)
@@ -79,6 +96,46 @@ class _Service:
     ) -> str:
         self.removals.append((target, team_id))
         return "取消成功"
+
+
+@dataclass
+class _PlayerResolver:
+    player_id: int | None = None
+
+    def resolve(
+        self,
+        _context: MessageInputContext,
+        _reference: str | None,
+    ) -> PlayerIdResolution:
+        return PlayerIdResolution(self.player_id, offer_binding=False)
+
+
+@dataclass
+class _TeamQuery:
+    team_id: int | None = None
+    detail_queries: list[tuple[int, ...]] = field(default_factory=list)
+
+    async def lookup_player_team(self, _player_id: int) -> PlayerTeamLookup:
+        return PlayerTeamLookup(team_id=self.team_id)
+
+    async def query(self, team_ids: tuple[int, ...], _actor: object) -> str:
+        self.detail_queries.append(team_ids)
+        return f"战队详情：{team_ids[0]}"
+
+
+def _operations(
+    service: _Service,
+    *,
+    player_id: int | None = None,
+    team_id: int | None = None,
+    sessions: PortableQuerySessions | None = None,
+):
+    return build_portable_team_resource_operations(
+        cast("TeamResourceService", service),
+        cast("Any", _PlayerResolver(player_id)),
+        cast("Any", _TeamQuery(team_id)),
+        sessions or PortableQuerySessions(),
+    )
 
 
 GROUP = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-openid")
@@ -123,22 +180,45 @@ def _text(message: object) -> str:
 @pytest.mark.asyncio
 async def test_group_query_reuses_subscribed_team_service() -> None:
     service = _Service()
-    operations = build_portable_team_resource_operations(
-        cast("TeamResourceService", service)
-    )
+    operations = _operations(service)
 
     result = await operations["team_resource.query"]("战队", _context("战队"))
 
-    assert _text(result) == "战队一\n\n战队二"
+    assert "1. 【1111111】战队一" in _text(result)
+    assert "2. 【2222222】战队二" in _text(result)
     assert service.targets == [TeamResourceSubscriptionTarget(GROUP)]
+    assert service.first_team_ids == [None]
+
+
+@pytest.mark.asyncio
+async def test_query_places_bound_player_team_first_and_opens_details() -> None:
+    service = _Service()
+    resolver = _PlayerResolver(148758762)
+    team_query = _TeamQuery(9260775)
+    sessions = PortableQuerySessions()
+    operations = build_portable_team_resource_operations(
+        cast("TeamResourceService", service),
+        cast("Any", resolver),
+        cast("Any", team_query),
+        sessions,
+    )
+    context = _context("战队")
+
+    prompt = await operations["team_resource.query"]("战队", context)
+    detail = await sessions.select("1", context)
+
+    assert isinstance(prompt, OutboundMessage)
+    assert prompt.prompt is not None
+    assert service.first_team_ids == [9260775]
+    assert detail is not None
+    assert _text(detail) == "战队详情：1111111"
+    assert team_query.detail_queries == [(1111111,)]
 
 
 @pytest.mark.asyncio
 async def test_group_subscription_keeps_typed_platform_mentions() -> None:
     service = _Service()
-    operations = build_portable_team_resource_operations(
-        cast("TeamResourceService", service)
-    )
+    operations = _operations(service)
     context = _context(
         "订阅战队1234567 2000",
         mentions=(MENTIONED,),
@@ -160,9 +240,7 @@ async def test_group_subscription_keeps_typed_platform_mentions() -> None:
 @pytest.mark.asyncio
 async def test_manual_at_text_is_not_treated_as_a_structured_identity() -> None:
     service = _Service()
-    operations = build_portable_team_resource_operations(
-        cast("TeamResourceService", service)
-    )
+    operations = _operations(service)
     context = _context("订阅战队1234567 @123456")
 
     result = await operations["team_resource.subscribe"](context.text, context)
@@ -174,9 +252,7 @@ async def test_manual_at_text_is_not_treated_as_a_structured_identity() -> None:
 @pytest.mark.asyncio
 async def test_private_subscription_is_owned_by_the_actor() -> None:
     service = _Service()
-    operations = build_portable_team_resource_operations(
-        cast("TeamResourceService", service)
-    )
+    operations = _operations(service)
     context = _context("订阅战队1234567", private=True)
 
     await operations["team_resource.subscribe"](context.text, context)
@@ -188,10 +264,8 @@ async def test_private_subscription_is_owned_by_the_actor() -> None:
 
 @pytest.mark.asyncio
 async def test_remove_and_empty_query_reuse_subscription_state() -> None:
-    service = _Service(query_messages=[])
-    operations = build_portable_team_resource_operations(
-        cast("TeamResourceService", service)
-    )
+    service = _Service(query_items=())
+    operations = _operations(service)
     context = _context("取消订阅战队1234567")
 
     removed = await operations["team_resource.unsubscribe"](context.text, context)
@@ -225,9 +299,7 @@ async def test_catalog_limits_subscribe_to_group_managers() -> None:
     )
     router = PortableCommandRouter(
         catalog,
-        build_portable_team_resource_operations(
-            cast("TeamResourceService", service)
-        ),
+        _operations(service),
         features,
         ai=cast("AiService", object()),
         ai_input_routing=AiInputRoutingService(features, catalog),

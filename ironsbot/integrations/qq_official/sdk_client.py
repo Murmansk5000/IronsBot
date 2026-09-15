@@ -32,6 +32,9 @@ if TYPE_CHECKING:
 
     from ironsbot.core.interactive_prompts import PromptSession
     from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
+    from ironsbot.integrations.qq_official.token_lifecycle import (
+        QQOfficialTokenObserver,
+    )
 
 _MAX_KEYBOARD_ROWS = 5
 _MAX_BUTTONS_PER_ROW = 5
@@ -51,6 +54,7 @@ class TencentQQClient:
     api: QQApiClient
     media: QQOfficialMediaUpload
     custom_keyboards: bool = False
+    token_observer: QQOfficialTokenObserver | None = None
 
     async def send_to_c2c(
         self,
@@ -85,13 +89,17 @@ class TencentQQClient:
                 if first_sequence is not None
                 else max(1, self.api.next_msg_seq())
             )
-            response = await self._send_payload(
-                scope,
-                target_id,
-                payload,
-                message_id=message_id,
-                sequence=sequence,
-            )
+            try:
+                response = await self._send_payload(
+                    scope,
+                    target_id,
+                    payload,
+                    message_id=message_id,
+                    sequence=sequence,
+                )
+            finally:
+                if self.token_observer is not None:
+                    self.token_observer.observe(self.api.access_token)
             sent_id = _response_id(response)
             logger.info(
                 "QQ Official payload delivered: scope=%s mode=%s sequence=%s "

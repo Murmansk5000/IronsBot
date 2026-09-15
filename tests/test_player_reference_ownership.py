@@ -34,6 +34,7 @@ from ironsbot.services.identity.player_accounts import (
     PlayerAccount,
     PlayerAccountRegistry,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
@@ -109,6 +110,7 @@ async def test_factory_registration_matches_catalog_and_runs_admission(
         features=features,
         commands=catalog,
         player_id_resolver=resolver,
+        query_sessions=PortableQuerySessions(),
         identity_links=Mock(),
         image_command_texts=frozenset(),
     )

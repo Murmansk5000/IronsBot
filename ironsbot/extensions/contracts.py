@@ -8,9 +8,39 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.core.command_catalog import CommandContext
 from ironsbot.services.seer.render_cache import (
-    RenderCacheEntry as RenderCacheEntry,  # noqa: PLC0414, TC001 - public extension export
+    RenderCacheEntry,
 )
+
+__all__ = [
+    "TYPE_CHECKING",
+    "AbstractContextManager",
+    "Any",
+    "Callable",
+    "CommandContext",
+    "PlayerDetailActionRegistration",
+    "PlayerDetailActionRequest",
+    "PlayerLineupCacheFactory",
+    "PlayerLineupCachePort",
+    "PlayerLineupCachedReply",
+    "PlayerLineupEntryResolver",
+    "PlayerLineupExtensionContext",
+    "PlayerLineupImageAssets",
+    "PlayerLineupPacketClient",
+    "PlayerLineupPacketFetcher",
+    "PlayerLineupPetSnapshot",
+    "PlayerLineupQueryPort",
+    "PlayerLineupQueryResult",
+    "PlayerLineupRenderPort",
+    "PlayerLineupRenderSession",
+    "PlayerLineupRenderSessionFactory",
+    "PlayerLineupSlot",
+    "Protocol",
+    "RenderCacheEntry",
+    "annotations",
+    "dataclass",
+]
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -230,7 +260,9 @@ class PlayerLineupExtensionContext(Protocol):
 
     def settings_for(self, extension_id: str) -> Mapping[str, Any]: ...
 
-    def is_feature_visible_in_help(self, event: object, feature: str) -> bool: ...
+    def is_feature_visible_in_help(
+        self, context: CommandContext, feature: str
+    ) -> bool: ...
 
     def register_player_detail_action(
         self, registration: PlayerDetailActionRegistration

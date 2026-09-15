@@ -6,7 +6,7 @@ from __future__ import annotations
 from functools import partial
 
 from ironsbot.core.command_catalog import CommandContract, parsed_command_input_matcher
-from ironsbot.core.commands import command_text_matches
+from ironsbot.core.commands import normalize_command_text
 from ironsbot.core.semantic_requests import ActionDefinition
 
 LUCKY_SKIN_QUERY_COMMANDS = ("幸运橱窗", "橱窗")
@@ -61,7 +61,25 @@ LUCKY_SKIN_WATCH_RESET_ACTION = ActionDefinition(
 
 
 def is_lucky_skin_query(text: str) -> bool:
-    return command_text_matches(text, LUCKY_SKIN_QUERY_COMMANDS)
+    return parse_lucky_skin_query(text) is not None
+
+
+def parse_lucky_skin_query(text: str) -> str | None:
+    text = normalize_command_text(text)
+    prefixes = {
+        *LUCKY_SKIN_QUERY_COMMANDS,
+        *LUCKY_SKIN_WATCH_LIST_COMMANDS,
+        *LUCKY_SKIN_WATCH_REMOVE_COMMANDS,
+        *LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
+        *LUCKY_SKIN_WATCH_RESET_COMMANDS,
+    }
+    for command in sorted(prefixes, key=len, reverse=True):
+        if text.startswith(command):
+            return (
+                text[len(command):].strip()
+                if command in LUCKY_SKIN_QUERY_COMMANDS else None
+            )
+    return None
 
 
 def is_lucky_skin_watch_exact(text: str, *, commands: tuple[str, ...]) -> bool:
@@ -88,7 +106,7 @@ def lucky_skin_window_command_contracts() -> tuple[CommandContract, ...]:
             section="幸运橱窗",
             examples=("橱窗",),
             routing_matcher=lambda text, _context: is_lucky_skin_query(text),
-            description="查看绑定米米号当天刷新出的四个皮肤",
+            description="查看每日橱窗；超级管理员可附加米米号、账号别名或 @成员查询",
             features_any=("lucky_skin_window",),
             show_in_poke=True,
         ),
