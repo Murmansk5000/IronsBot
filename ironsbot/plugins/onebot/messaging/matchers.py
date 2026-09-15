@@ -19,6 +19,7 @@ from ironsbot.integrations.onebot.matchers import (
 from ironsbot.integrations.onebot.replies import (
     event_sender_at_user_ids,
     finish_matcher_message,
+    send_matcher_message,
 )
 from ironsbot.integrations.onebot.rules import explicit_command
 
@@ -62,11 +63,15 @@ async def handle_message_command(
         if isinstance(event, GroupMessageEvent)
         else []
     )
+    for message in action.messages[:-1]:
+        await send_matcher_message(
+            matcher,
+            message,
+            at_user_ids=at_user_ids,
+            event=event,
+        )
     await finish_matcher_message(
-        matcher,
-        action.message,
-        at_user_ids=at_user_ids,
-        event=event,
+        matcher, action.messages[-1], at_user_ids=at_user_ids, event=event,
     )
 
 
