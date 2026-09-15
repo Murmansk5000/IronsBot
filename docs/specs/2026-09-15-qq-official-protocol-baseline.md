@@ -149,8 +149,10 @@ identity or ownership of the game account.
 ## Feature And Command Matrix
 
 The command catalog, rather than a second platform-specific inventory, is the
-source of truth. The complete application profile currently has 75 direct
-commands shared by OneBot and QQ Official. Router construction fails when an
+source of truth. The earlier coverage-gate checkpoint contained 75 official direct
+command contracts; that historical count is not a current parity claim. The
+[command parity audit](2026-09-15-command-parity.md) tracks subsequent additions
+and outstanding behavior differences. Router construction fails when an
 official direct command has no portable operation, so a catalog entry cannot be
 silently advertised without an implementation.
 
@@ -223,7 +225,7 @@ second implementation.
 ## Progress
 
 ```text
-Program  [█████████▊] 98%  fixed weights; remaining work is external acceptance
+Program  [█████████▊] 98%  fixed weights; command parity and external acceptance remain
 Phase    [██████████] 100%  protocol baseline documented
 Current  [██████████] 100%  media and identity completed
 ```
@@ -239,7 +241,7 @@ arguments, logs, screenshots, or this evidence table.
 | Check | Operator action | Required evidence | Status |
 | --- | --- | --- | --- |
 | Access token acquisition and READY | Start one required test account | Redacted startup log reaches `ready` after SDK `READY` | passed 2026-09-15 |
-| Access token refresh | Keep the account active through natural expiry, then perform an authenticated API call | Redacted `access token refreshed` lifecycle event followed by a successful API operation | Forced cache invalidation, reacquisition and an authenticated gateway call passed; Tencent returned the same token value, so natural-expiry rotation remains pending |
+| Access token refresh | Keep the account active, then perform authenticated work after token rotation | Redacted `access token refreshed` lifecycle event followed by authenticated gateway use | Automatic token-value rotation and authenticated reconnect observed at 13:52 and 15:52 on 2026-09-15; exact expiry-versus-gateway-invalidation trigger is not exposed by these logs |
 | Group addressed command | In an authorized test group, address the bot and send `帮助` | One reply; no mention-guard interception or duplicate execution | passed 2026-09-15; repeated recognized group-at routes delivered one passive reply each |
 | C2C command | Send `帮助` in the bot's private conversation | One private reply using the C2C reply budget | passed 2026-09-15; repeated three times without duplicate execution |
 | Sequential replies | Run a command whose one inbound message produces several outbound payloads | Payloads referencing that same inbound message use increasing sequence values | passed 2026-09-15; C2C image sequence 1 followed by text sequence 2 |
@@ -252,3 +254,34 @@ arguments, logs, screenshots, or this evidence table.
 Completion requires recording only redacted timestamps, result categories and trace
 IDs. App secrets, access tokens, full OpenIDs and numeric account identifiers are not
 acceptance evidence and must not be retained.
+
+### Running-Process Refresh Evidence
+
+Read-only inspection on 2026-09-15 found the local `python -m ironsbot` process
+still running since 12:52:06. No restart, forced invalidation, token request or
+outbound message was initiated during this inspection. Redacted lifecycle events:
+
+| Time | Event |
+| --- | --- |
+| 12:52:10.389 | access token acquired |
+| 12:52:10.983 | ready |
+| 13:52:16.090 | access token refreshed |
+| 13:52:16.184 | ready |
+| 15:52:26.070 | access token refreshed |
+| 15:52:26.184 | ready |
+
+The observer emits refreshed only when the token value changes, not on every
+ensure-token call. SDK 1.2.2 reconnect obtains an authenticated gateway URL and
+authenticates the WebSocket with its token; the subsequent connected callback
+requires a successful READY/RESUMED dispatch. This is evidence of automatic
+credential rotation followed by usable authentication, rather than the earlier
+forced clear/reacquire experiment that returned the same value.
+
+The logs do not identify whether expiry or a gateway invalidation triggered each
+rotation, and do not distinguish READY from RESUMED in the application ready line.
+They therefore do not prove every refresh cause or a duplicate-message replay.
+The long-running process also predates later command commits: these events do not
+validate the latest command changes in a live QQ client. Runtime/token observer
+source was last changed in `e5b64dd3`; current command parity work remains open.
+Multi-account acceptance still needs a second authorized AppID. Proactive error
+acceptance still needs an explicitly authorized test target; no messages were sent.
