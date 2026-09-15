@@ -101,10 +101,21 @@ class _PortablePlayerOperations:
         if reference is None:
             msg = f"catalog accepted input that its binding parser rejected: {text!r}"
             raise ValueError(msg)
-        resolution = self.resolver.resolve(
-            context,
-            reference or None,
-            allow_default_binding=False,
+        target = None
+        if context.has_member_mentions:
+            if context.message.conversation.kind != "group":
+                return _text_reply("仅群聊可为成员绑定米米号。")
+            if self.features is None or not self.features.is_actor_superuser(
+                context.message.actor
+            ):
+                return _text_reply("仅超级管理员可为其他成员绑定米米号。")
+            if len(context.member_mentions) != 1:
+                return _text_reply("请一次只 @ 一名成员绑定米米号。")
+            target = context.member_mentions[0]
+        resolution = self.resolver.resolve_reference(
+            reference,
+            context.message.actor,
+            context.message.conversation,
         )
         if resolution.error is not None:
             return _text_reply(resolution.error)
@@ -114,6 +125,7 @@ class _PortablePlayerOperations:
             resolution.player_id,
             actor=context.message.actor,
             conversation=context.message.conversation,
+            target=target,
         )
         if result.pending is not None and result.binding_replacement is not None:
             self.service.save_binding_choice(

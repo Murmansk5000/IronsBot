@@ -68,9 +68,10 @@ class _PlayerService:
         *,
         actor: ActorRef,
         conversation: ConversationRef | None,
+        target: ActorRef | None = None,
     ) -> PlayerQueryResult:
         del conversation
-        self.bound.append((actor, player_id))
+        self.bound.append((target or actor, player_id))
         return PlayerQueryResult(
             pending=_pending(player_id),
             offer_binding=self.replacement,
@@ -155,17 +156,18 @@ def _context(
     *,
     actor_id: str = "caller-openid",
     mentions: tuple[ActorRef, ...] = (),
+    platform: Platform = Platform.QQ_OFFICIAL,
 ) -> MessageInputContext:
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-openid")
+    conversation = ConversationRef(platform, "group", "group-openid")
     actor = ActorRef(
-        Platform.QQ_OFFICIAL,
+        platform,
         actor_id,
         "member",
         conversation.id,
     )
     return MessageInputContext(
         IncomingMessageRef(
-            platform=Platform.QQ_OFFICIAL,
+            platform=platform,
             actor=actor,
             conversation=conversation,
             message_id=f"message-{text}",
@@ -282,7 +284,7 @@ async def test_player_query_menu_includes_available_shared_extension() -> None:
 
 
 @pytest.mark.asyncio
-async def test_binding_accepts_one_mentioned_openid_binding() -> None:
+async def test_binding_does_not_copy_a_mentioned_members_binding() -> None:
     service = _PlayerService()
     operations = build_portable_player_operations(
         cast("PlayerService", service),
@@ -302,8 +304,34 @@ async def test_binding_accepts_one_mentioned_openid_binding() -> None:
         await operations["seer.player.bind"](context.text, context),
     )
 
-    assert "player:800001" in _text(reply)
-    assert service.bound == [(context.message.actor, 800001)]
+    assert "仅超级管理员" in _text(reply)
+    assert service.bound == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reference", ["700001", "别名"])
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_superuser_binds_explicit_player_to_mentioned_member(
+    reference: str, platform: Platform,
+) -> None:
+    service = _PlayerService()
+    features = cast("Any", SimpleNamespace(
+        is_actor_superuser=lambda _actor: True,
+    ))
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), PortableQuerySessions(), features,
+    )
+    target = ActorRef(platform, "target-openid", "member", "group-openid")
+    context = _context(
+        f"绑定米米号{reference}", mentions=(target,), platform=platform,
+    )
+    reply = cast(
+        "PortableReply", await operations["seer.player.bind"](context.text, context),
+    )
+    assert "player:700001" in _text(reply)
+    assert service.bound == [(target, 700001)]
+    reply.delivered()
+    assert service.returned == [(context.message.actor, 700001)]
 
 
 @pytest.mark.asyncio
@@ -323,6 +351,30 @@ async def test_explicit_binding_confirms_an_existing_binding_replacement() -> No
 
     assert "replaced:700001" in _text(reply)
     assert service.replacement_choices == [(context.message.actor, 700001)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("reference", "count", "expected"), [
+    ("", 1, "未找到该米米号"),
+    ("700001", 2, "请一次只 @ 一名成员"),
+])
+async def test_admin_binding_rejects_missing_account_or_multiple_recipients(
+    reference: str, count: int, expected: str,
+) -> None:
+    service = _PlayerService()
+    features = cast("Any", SimpleNamespace(is_actor_superuser=lambda _actor: True))
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), PortableQuerySessions(), features,
+    )
+    mentions = tuple(
+        ActorRef(Platform.QQ_OFFICIAL, f"member-{i}") for i in range(count)
+    )
+    context = _context(f"绑定米米号{reference}", mentions=mentions)
+    reply = cast(
+        "PortableReply", await operations["seer.player.bind"](context.text, context),
+    )
+    assert expected in _text(reply)
+    assert service.bound == []
 
 
 @pytest.mark.asyncio

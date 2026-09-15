@@ -98,7 +98,7 @@ def seer_command_contracts(
                 (
                     "seer.player.bind",
                     ("绑定米米号123456",),
-                    "查询并绑定默认米米号，之后可使用快捷查询",
+                    "查询并绑定默认米米号；超级管理员可在群聊附带 @成员为其绑定",
                     {"routing_matcher": player_binding_input},
                 ),
                 (

@@ -18,6 +18,24 @@ Docker 维护菜单、更新确认和玩家绑定限制等行为。V5 已将插�
 
 ## Goal
 
+### Administrator Binding Parity (2026-09-15)
+
+原版 `plugins/seer/query/commands/player.py` 的绑定命令把直接 @ 作为绑定收件人，
+仅允许超级管理员在群聊中为单个成员绑定。目标版现由共享
+`build_portable_player_operations` 实现同一行为：`绑定米米号123456 @成员` 或
+`绑定米米号别名 @成员`。OneBot 通过通用 portable query adapter 执行该操作，
+删除独立绑定 handler；QQ Official 使用同一操作和结构化 ActorRef。
+
+玩家引用和收件人分别解析。缺少米米号、多个收件人、私聊 @ 或非超级管理员请求
+明确拒绝；不会读取被 @ 成员的米米号再绑定给操作者。管理员替成员绑定沿用原版
+免换绑冷却行为，但查询仍归操作者，普通自助绑定仍检查冷却。此操作只设置游戏
+账号偏好，不建立 OpenID 与 QQ 号的身份关联。
+
+验证包括官方共享命令权限与目标解析、OneBot 安装、两平台身份的 SQLite 持久化
+和查询归属。真实官方消息中的成员提及能力仍以平台事件及实机验收为准。
+无需迁移 TOML、env、Docker 或 Unraid。指定账号橱窗查询及全量参数化命令
+对照仍待完成，不能据此宣称原版所有命令已等价迁移。
+
 在不恢复已退役 `command_directory`、旧 `plugins/*`、旧 runtime registry 或 renderer
 数据访问的前提下，逐项把仍有产品价值的主线行为迁入 V5。每一项在 V5 内拥有唯一
 semantic owner、真实的用户契约和针对性验证。

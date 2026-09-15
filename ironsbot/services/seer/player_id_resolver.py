@@ -58,19 +58,10 @@ class PlayerIdResolver:
         if context.has_member_mentions:
             return self._resolve_member_mentions(context, normalized_reference)
         if normalized_reference:
-            player_id = self._lookup_reference(
+            return self.resolve_reference(
                 normalized_reference,
                 context.message.actor,
                 context.message.conversation,
-            )
-            return PlayerIdResolution(
-                player_id,
-                offer_binding=player_id is not None,
-                error=(
-                    "未找到该米米号或已开放的玩家别名。"
-                    if player_id is None
-                    else None
-                ),
             )
         if allow_default_binding:
             return PlayerIdResolution(
@@ -81,6 +72,20 @@ class PlayerIdResolver:
             None,
             offer_binding=False,
             error="请填写米米号、已开放的玩家别名，或直接 @ 一名已绑定成员。",
+        )
+
+    def resolve_reference(
+        self,
+        reference: str,
+        actor: ActorRef,
+        conversation: ConversationRef,
+    ) -> PlayerIdResolution:
+        """Resolve the game account independently of the message's recipient."""
+        player_id = self._lookup_reference(reference, actor, conversation)
+        return PlayerIdResolution(
+            player_id,
+            offer_binding=player_id is not None,
+            error="未找到该米米号或已开放的玩家别名。" if player_id is None else None,
         )
 
     def has_known_reference(
