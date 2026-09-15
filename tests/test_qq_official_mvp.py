@@ -9,8 +9,9 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from httpx import AsyncClient
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
-from qqbot_agent_sdk.event_parser import InboundEvent
+from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
 from ironsbot.config.loader import load_settings
 from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
@@ -45,6 +46,8 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
 )
 from ironsbot.integrations.qq_official.runtime import (
+    QQOfficialRuntime,
+    QQOfficialRuntimeAccount,
     deliver_qq_official_reply,
     qq_official_event_is_supported,
     qq_official_event_mentions_bot,
@@ -278,7 +281,14 @@ class _FakePeakQuery(_UnusedQueryService):
         progress: Callable[[str], Awaitable[None]],
     ) -> PeakQueryResult:
         await progress("rendering")
-        return PeakQueryResult(text="专家池" if expert else "竞技池")
+        return PeakQueryResult(image=b"expert-pool" if expert else b"peak-pool")
+
+    async def master_pool(
+        self,
+        progress: Callable[[str], Awaitable[None]],
+    ) -> PeakQueryResult:
+        await progress("rendering")
+        return PeakQueryResult(image=b"master-pool")
 
 
 class _FakeTeamQuery:
@@ -383,6 +393,14 @@ class _TransportError(RuntimeError):
     pass
 
 
+class _FailingPortableRouter:
+    def recognizes(self, _context: MessageInputContext) -> bool:
+        return True
+
+    async def dispatch(self, _context: MessageInputContext) -> PortableReply:
+        raise RuntimeError("sensitive-event-detail")
+
+
 def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
     *,
     event_type: str = "C2C_MESSAGE_CREATE",
@@ -404,6 +422,52 @@ def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
         message_type=message_type,
         raw=raw or {},
     )
+
+
+@pytest.mark.asyncio
+async def test_runtime_reports_unexpected_command_failure_without_event_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event = _sdk_event(content="private command body")
+    monkeypatch.setattr(
+        EventParser,
+        "parse",
+        staticmethod(lambda _event_type, _raw: event),
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    async with AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (
+                QQOfficialRuntimeAccount(
+                    "example-app",
+                    "example-secret",
+                    label="safe-alias",
+                ),
+            ),
+            http_client=client,
+            session_root=tmp_path,
+        )
+        runtime.bind(cast("PortableCommandRouter", _FailingPortableRouter()), messenger)
+        caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
+
+        await runtime.handle_event("example-app", event.event_type, {})
+
+    payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
+    assert payloads == (QQOfficialTextPayload("❌ 命令执行失败，请稍后再试。"),)
+    assert bot.sent == 1
+    assert "account=safe-alias" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "sensitive-event-detail" not in caplog.text
+    assert "private command body" not in caplog.text
+    assert "opaque-user" not in caplog.text
+    assert "example-app" not in caplog.text
+    assert "example-secret" not in caplog.text
 
 
 def _fake_seer(
@@ -1081,6 +1145,7 @@ def test_qq_official_renderer_uses_current_member_mention_markup() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fail", [False, True])
 async def test_qq_official_delivery_commits_only_after_transport_success(
+    caplog: pytest.LogCaptureFixture,
     *,
     fail: bool,
 ) -> None:
@@ -1096,11 +1161,15 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
         {"example-app": False},
         bot_provider=lambda _app_id: bot,
     )
+    caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
     await deliver_qq_official_reply(messenger, incoming, reply)
 
     assert bot.sent == 1
     assert delivered == ([] if fail else [True])
     assert bot.calls[0][3:] == ("message-id", 1)
+    assert ("reply delivered" in caplog.text) is not fail
+    assert "example-app" not in caplog.text
+    assert "message-id" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1771,7 +1840,21 @@ async def test_portable_router_runs_scoped_query_selection(
 
 
 @pytest.mark.asyncio
-async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        ("竞技池", b"peak-pool"),
+        ("竞技池变化", b"peak-pool"),
+        ("专家池", b"expert-pool"),
+        ("专家池变化", b"expert-pool"),
+        ("大师池", b"master-pool"),
+        ("大师池变化", b"master-pool"),
+    ),
+)
+async def test_portable_router_runs_pool_aliases_through_the_same_image_query(
+    command: str,
+    expected: bytes,
+) -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
@@ -1796,10 +1879,10 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
         account_id="example-app",
     )
 
-    result = await router.dispatch(_portable_input("竞技池", actor, conversation))
+    result = await router.dispatch(_portable_input(command, actor, conversation))
 
     assert result is not None
-    assert cast("TextPart", result.message.parts[0]).text == "竞技池"
+    assert result.message.parts == (BinaryImagePart(expected, "image/png"),)
 
 
 @pytest.mark.asyncio

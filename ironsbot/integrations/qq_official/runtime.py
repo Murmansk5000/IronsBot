@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -19,6 +18,7 @@ from qqbot_agent_sdk.websocket import QQWebSocket, WSCallbacks
 
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.identity import (
     is_qq_official_reply_event,
@@ -30,6 +30,8 @@ from ironsbot.integrations.qq_official.inbound_deduplication import (
 )
 from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
+from ironsbot.integrations.qq_official.token_lifecycle import QQOfficialTokenObserver
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -41,7 +43,6 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.portable_commands import PortableCommandRouter
-    from ironsbot.services.portable_reply import PortableReply
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +211,7 @@ class _SessionState:
 @dataclass(slots=True)
 class _Connection:
     api: QQApiClient
+    tokens: QQOfficialTokenObserver
     sender: TencentQQClient
     websocket: QQWebSocket
     session: _SessionState
@@ -249,17 +251,19 @@ class QQOfficialRuntime:
                 f"IronsBot:{label}",
             )
             api.setup(QQOfficialHttpClient(http_client))
+            tokens = QQOfficialTokenObserver(label)
             session = _SessionState.load(account.app_id, session_root)
             lifecycle = _AccountLifecycle(label, account.required)
             callbacks = self._callbacks(
                 account.app_id,
-                label,
                 api,
+                tokens,
                 session,
                 lifecycle,
             )
             self._connections[account.app_id] = _Connection(
                 api=api,
+                tokens=tokens,
                 sender=TencentQQClient(
                     api,
                     QQOfficialMediaUpload(
@@ -271,6 +275,7 @@ class QQOfficialRuntime:
                         session_root / "media",
                     ),
                     custom_keyboards=account.custom_keyboards,
+                    token_observer=tokens,
                 ),
                 websocket=QQWebSocket(
                     callbacks=callbacks,
@@ -368,16 +373,40 @@ class QQOfficialRuntime:
                 "account=%s event_type=%s message_ref=%s",
                 self._connections[app_id].lifecycle.account,
                 event_type,
-                _log_reference(incoming.message_id),
+                reference_digest(incoming.message_id),
             )
             return
         context = MessageInputContext(
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),
         )
-        if not router.recognizes(context):
+        recognized = router.recognizes(context)
+        logger.info(
+            "QQ Official inbound routed: account=%s event_type=%s "
+            "input_kind=%s recognized=%s",
+            self._connections[app_id].lifecycle.account,
+            event_type,
+            context.kind.value,
+            recognized,
+        )
+        if not recognized:
             return
-        reply = await router.dispatch(context)
+        try:
+            reply = await router.dispatch(context)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - platform boundary
+            logger.error(  # noqa: TRY400 - exception text may contain private data
+                "QQ Official command dispatch failed: account=%s event_type=%s "
+                "kind=%s error_type=%s",
+                self._connections[app_id].lifecycle.account,
+                event_type,
+                incoming.conversation.kind,
+                type(error).__name__,
+            )
+            reply = PortableReply(
+                OutboundMessage.from_text("❌ 命令执行失败，请稍后再试。")
+            )
         if reply is not None:
             await deliver_qq_official_reply(
                 messenger,
@@ -389,11 +418,13 @@ class QQOfficialRuntime:
     def _callbacks(
         self,
         app_id: str,
-        account_label: str,
         api: QQApiClient,
+        tokens: QQOfficialTokenObserver,
         session: _SessionState,
         lifecycle: _AccountLifecycle,
     ) -> WSCallbacks:
+        account_label = lifecycle.account
+
         async def on_message_event(
             event_type: str,
             raw: dict[str, object],
@@ -422,7 +453,7 @@ class QQOfficialRuntime:
             on_connected=connected,
             on_disconnected=disconnected,
             on_fatal_error=fatal_error,
-            get_token=api.ensure_token_sync,
+            get_token=lambda: tokens.ensure_sync(api),
             get_gateway_url=api.get_gateway_url_sync,
             get_session=session.get,
             set_session=session.set,
@@ -446,7 +477,7 @@ async def _start_connection(
 ) -> bool:
     connection.lifecycle.prepare(loop)
     try:
-        await connection.api.ensure_token()
+        await connection.tokens.ensure(connection.api)
         gateway_url = await connection.api.get_gateway_url()
         connection.websocket.start(gateway_url, loop)
         connection.started = True
@@ -492,6 +523,7 @@ async def deliver_qq_official_reply(
         )
         return
     reply.delivered()
+    _log_delivery_success(incoming, stage="initial", account_label=account_label)
     for additional in reply.additional_messages:
         additional_result = await messenger.reply(context, additional)
         if not additional_result.delivered:
@@ -502,6 +534,11 @@ async def deliver_qq_official_reply(
                 account_label=account_label,
             )
             return
+        _log_delivery_success(
+            incoming,
+            stage="additional",
+            account_label=account_label,
+        )
     if reply.follow_up is None:
         return
     try:
@@ -513,7 +550,7 @@ async def deliver_qq_official_reply(
             "QQ Official deferred operation failed: account=%s kind=%s ref=%s",
             account_label,
             incoming.conversation.kind,
-            _log_reference(incoming.conversation.id),
+            reference_digest(incoming.conversation.id),
         )
         follow_up = OutboundMessage.from_text(
             f"❌ 操作执行失败：{type(error).__name__}"
@@ -526,6 +563,12 @@ async def deliver_qq_official_reply(
             stage="follow_up",
             account_label=account_label,
         )
+        return
+    _log_delivery_success(
+        incoming,
+        stage="follow_up",
+        account_label=account_label,
+    )
 
 
 def qq_official_event_is_supported(
@@ -558,12 +601,22 @@ def _log_delivery_failure(
         stage,
         account_label,
         incoming.conversation.kind,
-        _log_reference(incoming.conversation.id),
+        reference_digest(incoming.conversation.id),
         result.error_code,
         result.error_message,
         result.trace_id,
     )
 
 
-def _log_reference(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+def _log_delivery_success(
+    incoming: IncomingMessageRef,
+    *,
+    stage: str,
+    account_label: str,
+) -> None:
+    logger.info(
+        "QQ Official reply delivered: stage=%s account=%s kind=%s",
+        stage,
+        account_label,
+        incoming.conversation.kind,
+    )
