@@ -224,13 +224,12 @@ second implementation.
 
 ## Progress
 
-```text
-Program  [█████████▊] 98%  fixed weights; command parity and external acceptance remain
-Phase    [██████████] 100%  protocol baseline documented
-Current  [██████████] 100%  media and identity completed
-```
-
-Only verified and committed work counts toward program progress.
+The former fixed 98% is withdrawn following the user's 2026-09-15 priority
+clarification: the immediate target is a usable QQ Official bot, not completion
+of internal refactoring. Track the explicit live acceptance milestones in
+[Official usability acceptance](2026-09-15-official-usability-acceptance.md).
+Local tests and historical connection checks do not prove current-release
+business acceptance. The broader protocol and multi-account gates below remain.
 
 ## Real Tencent Acceptance Matrix
 
