@@ -30,7 +30,7 @@ slice must have a named owner and observable acceptance evidence.
 
 - This slice does not change runtime behavior.
 - This document records only the real acceptance evidence listed below; quota,
-  reconnect, group-message, and multi-account gates remain open until exercised.
+  group-message, and multi-account gates remain open until exercised.
 - This slice does not implement cross-platform identity linking.
 
 ## Ownership And Reuse
@@ -68,7 +68,7 @@ in every event. IronsBot therefore must not infer a QQ number from that field.
 | Concern | SDK responsibility | IronsBot responsibility | Current evidence |
 | --- | --- | --- | --- |
 | Authentication | Token acquisition and refresh | Secret injection and per-AppID lifecycle | One real account passed token acquisition and READY; refresh remains covered by SDK ownership rather than a controlled expiry test |
-| Gateway | Heartbeat, reconnect, Resume, session persistence | Startup timeout, account health, required/optional policy, shutdown ordering | Runtime starts a connection but Phase 7 health acceptance is open |
+| Gateway | Heartbeat, reconnect, Resume, session persistence | Startup timeout, account health, required/optional policy, shutdown ordering | A real isolated WebSocket interruption reached `reconnecting`, received `RESUMED`, and returned to `ready` |
 | Inbound deduplication | Bounded in-process message-ID cache | Persistent pre-dispatch message claims beyond the SDK cache | Completed with AppID/event/message isolation and 24-hour retention |
 | Passive replies | HTTP calls and DTO encoding | Event-derived deadline, per-scene reply budget, sequential concurrent `msg_seq` | Group 5-minute/5-reply and C2C 60-minute/4-reply policies are enforced; live sequence keys are conversation-scoped and never evicted |
 | API failures | Logs status and trace ID, raises `RuntimeError` | Structured failure kind, code, trace ID, retry policy, redaction | HTTP boundary preserves status, business code and trace ID; delivery classification uses typed fields and transport exceptions |
@@ -142,7 +142,7 @@ identity or ownership of the game account.
 | Protocol baseline | Current docs identify the SDK path and dated official limits; historical adapter records are labeled | Official docs and installed SDK source | completed |
 | Addressed-input routing | Valid commands precede AI and mention hints on both transports | Shared input context and command catalog | completed; chat, intent, command suppression and hints share one decision service |
 | Reply protocol | Scene-specific deadline/budget, sequential `msg_seq`, current mention markup, structured failures | Tencent send APIs | completed; command keyboards are capability-gated and reuse ordinary inbound selection |
-| Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | completed; real disconnect/reconnect remains in the external acceptance matrix |
+| Account reliability | READY health, startup timeout, state transitions, side-effect idempotency, ordered shutdown | SDK callbacks and session store | completed; real reconnect and Resume passed, while a Tencent-emitted duplicate replay remains unavailable for external observation |
 | Media and identity | SDK uploader, safe `file_info` lifetime, explicit identity linking | Platform permissions and identity repository | completed; Lucky Skin Window consumes only exact links |
 | Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | partial; one-account READY, C2C command, sequential media reply, Resume, and ordered shutdown passed |
 
