@@ -50,7 +50,7 @@ from ironsbot.services.seer.query_commands import (
     pet_avatar_input,
     pet_image_input,
     pet_query_input,
-    team_query_input,
+    team_query_input_matcher,
 )
 
 if TYPE_CHECKING:
@@ -152,12 +152,17 @@ def seer_command_contracts(
             (
                 (
                     "seer.team.query",
-                    ("战队123456", "战队123456 654321"),
-                    "查询指定战队信息；一次最多查询 3 个战队",
+                    (
+                        "战队123456",
+                        "战队玩家别名",
+                        "战队米米号123456",
+                        "战队@成员",
+                    ),
+                    "按战队号、玩家或已绑定成员查询战队信息",
                     {
                         "show_in_poke": True,
-                        "routing_matcher": parsed_command_input_matcher(
-                            team_query_input
+                        "routing_matcher": team_query_input_matcher(
+                            player_id_resolver.has_known_reference
                         ),
                     },
                 ),

@@ -90,6 +90,7 @@ from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
+from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -111,7 +112,6 @@ if TYPE_CHECKING:
         RankPageCacheStatusCommand,
     )
     from ironsbot.services.seer.resources import SeerQueryResources
-    from ironsbot.services.seer.team import TeamQueryActor
     from ironsbot.services.team.resource import TeamResourceService
 
 
@@ -317,6 +317,23 @@ class _FakeTeamQuery:
         assert actor.conversation.id == "group-a"
         assert not actor.can_manage
         return "战队:" + ",".join(str(value) for value in team_ids)
+
+    async def query_input(
+        self,
+        text: str,
+        context: MessageInputContext,
+        _resolver: object,
+        *,
+        can_manage: bool,
+    ) -> str:
+        return await self.query(
+            self.parse_team_ids(text.removeprefix("战队")),
+            TeamQueryActor(
+                context.message.actor,
+                context.message.conversation,
+                can_manage,
+            ),
+        )
 
 
 class _FakeRankQueries:

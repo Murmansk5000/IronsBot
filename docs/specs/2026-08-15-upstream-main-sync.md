@@ -102,6 +102,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | 战队详情增强（非 QQ 部分） | team service、配置与订阅简版回归 | 直接战队号查询补标语、公告与 Boss 剩余能量；订阅提醒保持简版。按 QQ 玩家目标查询延期。 |
 | 2026-09-15 | 玩家所属战队详情 | team service、共享玩家菜单、OneBot 会话和 QQ Official portable 路由专项 | 显式身份关联完成后，玩家详情菜单共用 `player_team` action；米米号解析、战队查询与权限上下文不复制到平台适配器。 |
 | 2026-09-15 | 当前玩家战队概览 | team resource service、共享查询会话、OneBot 与 QQ Official 入口专项 | “战队”展示绑定玩家战队优先的去重概览；选项复用完整战队查询，单项失败不阻断其余订阅。 |
+| 2026-09-15 | 原版用户口令全目录复核 | 本地 `main` 81 项 command descriptor 与目标分支 CommandCatalog、配置型消息动作及 matcher grammar 对照 | 恢复精灵头像、玩家所属战队查询和遗漏口语；大师池/圣域已有统一语法；固定图片保留配置能力但不恢复私有内置素材；官方账号关联与镜像预检是目标分支新增能力。 |
 | 2026-09-13 | 竞技池、专家池与大师池变化 | seerapi 317 tests；机器人 focused 327 tests、full 3189 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3`、`dadfe83` 直接使用既有池表和精灵外键发布变化及真实有效期；机器人统一分类、详情、图片与大师池直接查询，不复制旧专用 renderer。 |
 | 2026-09-13 | Docker 维护菜单 | operations service、命令所有权、配置与 OneBot 适配专项 143 项；Ruff、BasedPyright、compileall | 两个维护动作具有唯一 service 契约；所有维护入口打开同一菜单，删除 `check_on_restart` 和旧确认双轨。QQ/目标平台管理员身份只在最终平台阶段验收。 |
 | 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |

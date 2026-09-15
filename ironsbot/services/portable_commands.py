@@ -364,6 +364,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         seer,
         sessions,
         features,
+        player_id_resolver,
     )
     player_operations = build_portable_player_operations(
         seer.player,

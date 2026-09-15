@@ -66,10 +66,14 @@ def _is_team_resource_query(
 ) -> bool:
     context = message_input_context(event)
     target = _subscription_target(event)
-    return target is not None and service.matches_target_query(
-        event.get_plaintext(),
-        actor=context.message.actor,
-        target=target,
+    return (
+        not context.has_member_mentions
+        and target is not None
+        and service.matches_target_query(
+            event.get_plaintext(),
+            actor=context.message.actor,
+            target=target,
+        )
     )
 
 

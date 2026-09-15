@@ -31,6 +31,7 @@ from ironsbot.plugins.onebot.seer.query.commands import (
 from ironsbot.plugins.onebot.seer.query.group import SeerMatcherGroup
 from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from tests.helpers.onebot_events import private_message_event
@@ -139,7 +140,7 @@ def test_affix_catalog_and_private_ai_ownership(
         (equipment_queries.install, 2, "称号测试", "测试", "seer.equipment.query"),
         (type_queries.install, 0, "水属性", "水", "seer.type.query"),
         (type_queries.install, 1, "异常冻伤", "冻伤", "seer.type.query"),
-        (team.install, 0, "战队7654321", "7654321", "seer.team.query"),
+        (team.install, 0, "战队7654321", None, "seer.team.query"),
         (autocard.install, 0, "卡牌盖亚", "盖亚", "seer.autocard.query"),
         (autocard_sanctuary.install, 0, "祝印测试", "测试", "seer.autocard.sanctuary"),
     ],
@@ -149,13 +150,14 @@ async def test_actual_installed_query_rule_uses_catalog_grammar(
     install: Callable[[SeerMatcherGroup], None],
     index: int,
     text: str,
-    argument: str,
+    argument: str | None,
     command_id: str,
 ) -> None:
     features = FeatureService({}, {_ACTOR: _QUERY_FEATURES}, frozenset())
     group = Mock(spec=SeerMatcherGroup)
     group.resources = Mock()
     group.features = features
+    group.query_sessions = PortableQuerySessions()
     group.image_command_texts = frozenset()
     install(group)
     rule = cast("Rule", group.on_message.call_args_list[index].kwargs["rule"])
@@ -163,7 +165,8 @@ async def test_actual_installed_query_rule_uses_catalog_grammar(
     assert await rule(
         cast("Bot", None), private_message_event(text, user_id=100), state
     )
-    assert state[BOT_COMMAND_ARG_KEY] == argument
+    if argument is not None:
+        assert state[BOT_COMMAND_ARG_KEY] == argument
     context = CommandContext(_ACTOR, _PRIVATE)
     command = next(
         c

@@ -7,7 +7,14 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.config.models.seer import TeamQueryConfig
-from ironsbot.core.platform import ActorRef, ConversationRef, Platform
+from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.platform import (
+    ActorRef,
+    ConversationRef,
+    IncomingMessageRef,
+    Platform,
+)
+from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
     TeamBossActivityStatus,
@@ -30,6 +37,24 @@ def _actor(user_id: int = 1) -> ActorRef:
 
 def _group(group_id: int = 456) -> ConversationRef:
     return ConversationRef(Platform.ONEBOT, "group", str(group_id))
+
+
+def _context(
+    text: str,
+    *,
+    mentions: tuple[ActorRef, ...] = (),
+) -> MessageInputContext:
+    return MessageInputContext(
+        IncomingMessageRef(
+            Platform.ONEBOT,
+            _actor(),
+            _group(),
+            "message-id",
+            text,
+            direct_mentions=mentions,
+        ),
+        mentions_bot=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -165,6 +190,38 @@ async def test_player_team_query_reuses_team_detail_service() -> None:
     assert "【战队信息：测试战队】" in message
     assert "战队ID：123456" in message
     assert headless.available
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "mentions"),
+    [
+        ("战队玩家一", ()),
+        ("战队米米号148758762", ()),
+        ("战队", (_actor(2),)),
+    ],
+)
+async def test_team_command_resolves_player_references_and_structured_mentions(
+    text: str,
+    mentions: tuple[ActorRef, ...],
+) -> None:
+    service, _headless, _resource = _service()
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: (
+            148758762 if reference in {"玩家一", "148758762"} else None
+        ),
+        lambda actor: 148758762 if actor == _actor(2) else None,
+    )
+
+    message = await service.query_input(
+        text,
+        _context(text, mentions=mentions),
+        resolver,
+        can_manage=False,
+    )
+
+    assert "【战队信息：测试战队】" in message
+    assert "战队ID：123456" in message
 
 
 @pytest.mark.parametrize(

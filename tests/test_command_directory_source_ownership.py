@@ -157,6 +157,32 @@ def test_team_resource_contract_is_owned_by_its_domain_service() -> None:
     )
 
 
+def test_plain_team_overview_and_member_team_query_are_disambiguated() -> None:
+    resolver = PlayerIdResolver(
+        lambda reference, _conversation: 148758762 if reference == "玩家一" else None,
+        lambda _actor: None,
+    )
+    seer = _by_id(seer_command_contracts(resolver))["seer.team.query"]
+    resource = _by_id(
+        team_resource_command_contracts(enabled=True, query_commands=("战队",))
+    )["team_resource.query"]
+    actor = ActorRef(Platform.ONEBOT, "100")
+    conversation = ConversationRef(Platform.ONEBOT, "group", "200")
+    plain = CommandContext(actor, conversation)
+    mentioned = CommandContext(
+        actor,
+        conversation,
+        member_mentions=(ActorRef(Platform.ONEBOT, "300"),),
+    )
+
+    assert resource.matches_direct_input(plain, "战队")
+    assert not seer.matches_direct_input(plain, "战队")
+    assert not resource.matches_direct_input(mentioned, "战队")
+    assert seer.matches_direct_input(mentioned, "战队")
+    assert seer.matches_direct_input(plain, "战队玩家一")
+    assert seer.matches_direct_input(plain, "战队米米号148758762")
+
+
 def test_lucky_skin_window_contract_is_owned_by_its_domain_service() -> None:
     commands = _by_id(lucky_skin_window_command_contracts())
 
