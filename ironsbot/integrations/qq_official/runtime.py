@@ -501,6 +501,7 @@ async def deliver_qq_official_reply(
         )
         return
     reply.delivered()
+    _log_delivery_success(incoming, stage="initial", account_label=account_label)
     for additional in reply.additional_messages:
         additional_result = await messenger.reply(context, additional)
         if not additional_result.delivered:
@@ -511,6 +512,11 @@ async def deliver_qq_official_reply(
                 account_label=account_label,
             )
             return
+        _log_delivery_success(
+            incoming,
+            stage="additional",
+            account_label=account_label,
+        )
     if reply.follow_up is None:
         return
     try:
@@ -535,6 +541,12 @@ async def deliver_qq_official_reply(
             stage="follow_up",
             account_label=account_label,
         )
+        return
+    _log_delivery_success(
+        incoming,
+        stage="follow_up",
+        account_label=account_label,
+    )
 
 
 def qq_official_event_is_supported(
@@ -571,6 +583,20 @@ def _log_delivery_failure(
         result.error_code,
         result.error_message,
         result.trace_id,
+    )
+
+
+def _log_delivery_success(
+    incoming: IncomingMessageRef,
+    *,
+    stage: str,
+    account_label: str,
+) -> None:
+    logger.info(
+        "QQ Official reply delivered: stage=%s account=%s kind=%s",
+        stage,
+        account_label,
+        incoming.conversation.kind,
     )
 
 

@@ -1081,6 +1081,7 @@ def test_qq_official_renderer_uses_current_member_mention_markup() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fail", [False, True])
 async def test_qq_official_delivery_commits_only_after_transport_success(
+    caplog: pytest.LogCaptureFixture,
     *,
     fail: bool,
 ) -> None:
@@ -1096,11 +1097,15 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
         {"example-app": False},
         bot_provider=lambda _app_id: bot,
     )
+    caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
     await deliver_qq_official_reply(messenger, incoming, reply)
 
     assert bot.sent == 1
     assert delivered == ([] if fail else [True])
     assert bot.calls[0][3:] == ("message-id", 1)
+    assert ("reply delivered" in caplog.text) is not fail
+    assert "example-app" not in caplog.text
+    assert "message-id" not in caplog.text
 
 
 @pytest.mark.asyncio
