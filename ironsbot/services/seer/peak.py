@@ -16,13 +16,19 @@ from ironsbot.services.operations.headless_errors import (
     DisconnectedError,
     NotLoggedInError,
 )
+from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.images import ImageSourceError
+from ironsbot.services.seer.new_content import NewContentIndexUnavailableError
 from ironsbot.services.seer.rank_peak import datetime_to_sub_key
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from ironsbot.services.operations.headless import HeadlessService
+    from ironsbot.services.seer.new_content import (
+        NewContentCategory,
+        NewContentSnapshot,
+    )
     from ironsbot.services.seer.rank_models import RankEntry
 
 
@@ -73,6 +79,26 @@ class PeakPoolSnapshot:
     pets: tuple[PeakPetSnapshot, ...]
 
 
+PeakPoolChangeState = Literal["changed", "unchanged", "unavailable"]
+
+
+@dataclass(frozen=True, slots=True)
+class PeakPoolTransitionSnapshot:
+    pet: PeakPetSnapshot
+    previous_limit: int | None
+    current_limit: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class PeakPoolRenderSnapshot:
+    pools: tuple[PeakPoolSnapshot, ...]
+    transitions: tuple[PeakPoolTransitionSnapshot, ...]
+    change_state: PeakPoolChangeState
+    content_version: str
+    expert: bool
+    master: bool = False
+
+
 @dataclass(frozen=True, slots=True)
 class PeakVoteSnapshot:
     id: int
@@ -107,6 +133,10 @@ class PeakRepository(Protocol):
     ) -> dict[int, str]: ...
 
 
+class PeakNewContentSource(Protocol):
+    def snapshot(self) -> NewContentSnapshot: ...
+
+
 def active_peak_pool_limits(
     pools: Iterable[PeakPoolSnapshot],
     *,
@@ -131,6 +161,48 @@ def active_peak_pool_limits(
             if previous_limit is None or pool.count < previous_limit:
                 limits[pet.id] = pool.count
     return limits
+
+
+def _current_peak_pool_limits(
+    pools: Iterable[PeakPoolSnapshot],
+    *,
+    expert: bool,
+) -> dict[int, int]:
+    limits: dict[int, int] = {}
+    for pool in pools:
+        limit = 0 if expert else pool.count
+        for pet in pool.pets:
+            previous = limits.get(pet.id)
+            if previous is None or limit < previous:
+                limits[pet.id] = limit
+    return limits
+
+
+def _new_content_pool_limit(value: object, *, expert: bool) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        return None
+    return 0 if expert else limit
+
+
+def _pool_limit_sort_key(
+    value: int | None,
+    *,
+    expert: bool,
+    master: bool,
+) -> tuple[int, int]:
+    if master:
+        return (value is None, -(value or 0))
+    order = (0, None) if expert else (0, 2, 3, None)
+    try:
+        return (0, order.index(value))
+    except ValueError:
+        return (1, value or 0)
 
 
 def peak_pet_period(
@@ -179,9 +251,29 @@ PEAK_TYPE_NAME_MAP = {
     PeakType.EXPERT: "专家",
 }
 
-PEAK_POOL_COMMANDS = ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池")
-PEAK_EXPERT_POOL_COMMANDS = ("专家池", "巅峰专家池", "专家禁用池")
-PEAK_MASTER_POOL_COMMANDS = ("大师池", "巅峰大师池")
+PEAK_POOL_COMMANDS = (
+    "竞技池",
+    "竞技池变化",
+    "巅峰竞技池",
+    "竞技精灵池",
+    "限制池",
+)
+PEAK_EXPERT_POOL_COMMANDS = (
+    "专家池",
+    "专家池变化",
+    "巅峰专家池",
+    "专家禁用池",
+)
+PEAK_MASTER_POOL_COMMANDS = (
+    "大师池",
+    "大师池变化",
+    "巅峰大师池",
+    "大师精灵池",
+    "新增大师池",
+    "每周大师池",
+    "本周大师池",
+    "更新大师池",
+)
 PEAK_VOTE_COMMANDS = ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选")
 PEAK_SUIT_RANK_COMMANDS = tuple(f"{name}套装榜" for name in PEAK_TYPE_NAME_MAP.values())
 PEAK_TITLE_RANK_COMMANDS = tuple(
@@ -226,7 +318,7 @@ LIMIT_POOL_VOTE_COUNT = 2
 SEMI_LIMIT_POOL_VOTE_COUNT = 3
 ProgressReporter = Callable[[str], Awaitable[None]]
 PeakPoolRenderer = Callable[
-    [tuple[PeakPoolSnapshot, ...], str],
+    [PeakPoolRenderSnapshot, str],
     Awaitable[bytes],
 ]
 
@@ -290,6 +382,7 @@ class PeakRenderSession:
     pool: PeakPoolRenderer
     vote: PeakVoteRenderer
     pet: PeakPetRenderer
+    new_content: PeakNewContentSource
 
 
 PeakRenderSessionFactory = Callable[[], AbstractContextManager[PeakRenderSession]]
@@ -387,7 +480,11 @@ class PeakQueryService:
             end_time = pools[0].end_time.strftime("%Y-%m-%d")
             return await _render_peak_result(
                 rendering.pool(
-                    pools,
+                    self._pool_render_snapshot(
+                        rendering,
+                        pools,
+                        expert=expert,
+                    ),
                     f"{label} / 有效期：{start_time} ~ {end_time}",
                 ),
                 label,
@@ -403,11 +500,129 @@ class PeakQueryService:
             end_time = pools[0].end_time.strftime("%Y-%m-%d %H:%M")
             return await _render_peak_result(
                 rendering.pool(
-                    pools,
+                    self._pool_render_snapshot(
+                        rendering,
+                        pools,
+                        expert=False,
+                        master=True,
+                    ),
                     f"大师池 / 精灵竞技点 / 有效期：{start_time} ~ {end_time}",
                 ),
                 "大师池",
             )
+
+    @staticmethod
+    def _pool_render_snapshot(
+        rendering: PeakRenderSession,
+        pools: tuple[PeakPoolSnapshot, ...],
+        *,
+        expert: bool,
+        master: bool = False,
+    ) -> PeakPoolRenderSnapshot:
+        category: NewContentCategory = (
+            "peak_master_pool"
+            if master
+            else ("peak_expert_pool" if expert else "peak_pool")
+        )
+        try:
+            snapshot = rendering.new_content.snapshot()
+        except (DataUnavailableError, NewContentIndexUnavailableError) as error:
+            logger.warning(
+                "peak pool weekly changes unavailable: category=%s error=%s",
+                category,
+                type(error).__name__,
+            )
+            return PeakPoolRenderSnapshot(
+                pools,
+                (),
+                "unavailable",
+                "",
+                expert,
+                master,
+            )
+        content_version = f"{snapshot.config_version}:{snapshot.weekly_cycle}"
+        if not snapshot.is_category_comparable(category):
+            logger.info(
+                "peak pool weekly changes not comparable: category=%s reason=%s",
+                category,
+                snapshot.category_state(category).reason,
+            )
+            return PeakPoolRenderSnapshot(
+                pools,
+                (),
+                "unavailable",
+                content_version,
+                expert,
+                master,
+            )
+
+        items = snapshot.items_for(category)
+        current_pets = {pet.id: pet for pool in pools for pet in pool.pets}
+        changed_pets = rendering.repository.pets(
+            {item.entity_id for item in items} - set(current_pets)
+        )
+        current_limits = _current_peak_pool_limits(pools, expert=expert)
+        transitions: list[PeakPoolTransitionSnapshot] = []
+        for item in items:
+            previous_limit = _new_content_pool_limit(
+                item.payload.get("previous_limit"),
+                expert=expert,
+            )
+            declared_current = _new_content_pool_limit(
+                item.payload.get("current_limit"),
+                expert=expert,
+            )
+            current_limit = current_limits.get(item.entity_id)
+            if declared_current != current_limit:
+                logger.warning(
+                    "peak pool change target differs from current pool: "
+                    "category=%s pet_id=%s declared=%s current=%s",
+                    category,
+                    item.entity_id,
+                    declared_current,
+                    current_limit,
+                )
+            if previous_limit == current_limit:
+                continue
+            pet = current_pets.get(item.entity_id) or changed_pets.get(item.entity_id)
+            if pet is None:
+                logger.warning(
+                    "peak pool change pet metadata missing: category=%s pet_id=%s",
+                    category,
+                    item.entity_id,
+                )
+                pet = PeakPetSnapshot(
+                    item.entity_id,
+                    item.name,
+                    item.entity_id,
+                    0,
+                )
+            transitions.append(
+                PeakPoolTransitionSnapshot(pet, previous_limit, current_limit)
+            )
+        transitions.sort(
+            key=lambda item: (
+                _pool_limit_sort_key(
+                    item.previous_limit,
+                    expert=expert,
+                    master=master,
+                ),
+                _pool_limit_sort_key(
+                    item.current_limit,
+                    expert=expert,
+                    master=master,
+                ),
+                item.pet.id,
+            )
+        )
+        return PeakPoolRenderSnapshot(
+            pools,
+            tuple(transitions),
+            "changed" if transitions else "unchanged",
+            content_version,
+            expert,
+            master,
+        )
 
     async def vote(
         self,
