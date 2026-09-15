@@ -32,6 +32,7 @@ _UntypedMenuSelect = Callable[
 ]
 MenuSelect = Callable[[_T], Awaitable[OutboundMessage | PortableReply]]
 TextSubmit = Callable[[str], Awaitable[OutboundMessage]]
+_SESSION_EXPIRED_MESSAGE = "查询会话已超时，请重新发送原指令。"
 
 
 class PortableQueryOperation(Protocol):
@@ -121,14 +122,15 @@ class PortableQuerySessions:
 
     def recognizes_response(self, text: str, context: MessageInputContext) -> bool:
         key = self._key(context)
+        pending = self._pending.get(key)
+        if pending is not None and pending.expires_at <= self._now():
+            if self._matches_selection_response(pending, text):
+                return True
+            self._pending.pop(key, None)
         self._drop_expired(key)
         return key in self._pending_text or (
             (pending := self._pending.get(key)) is not None
-            and (
-                pending.session.choice_from_action(text) is not None
-                or pending.session.choice_from_text(text) is not None
-                or text.strip().isdigit()
-            )
+            and self._matches_selection_response(pending, text)
         )
 
     def active_prompt(self, context: MessageInputContext) -> PromptSession | None:
@@ -255,6 +257,11 @@ class PortableQuerySessions:
         allow_deferred: bool = False,
     ) -> OutboundMessage | PortableReply | None:
         key = self._key(context)
+        expired = self._pending.get(key)
+        if expired is not None and expired.expires_at <= self._now():
+            self._pending.pop(key, None)
+            if self._matches_selection_response(expired, text):
+                return OutboundMessage.from_text(_SESSION_EXPIRED_MESSAGE)
         self._drop_expired(key)
         pending_text = self._pending_text.pop(key, None)
         if pending_text is not None:
@@ -287,6 +294,11 @@ class PortableQuerySessions:
         allow_deferred: bool = False,
     ) -> OutboundMessage | PortableReply | None:
         key = self._key(context)
+        expired = self._pending.get(key)
+        if expired is not None and expired.expires_at <= self._now():
+            self._pending.pop(key, None)
+            if expired.session.choice_from_action(action_data) is not None:
+                return OutboundMessage.from_text(_SESSION_EXPIRED_MESSAGE)
         self._drop_expired(key)
         pending = self._pending.get(key)
         if pending is None:
@@ -412,6 +424,17 @@ class PortableQuerySessions:
         pending_text = self._pending_text.get(key)
         if pending_text is not None and pending_text.expires_at <= self._now():
             self._pending_text.pop(key, None)
+
+    @staticmethod
+    def _matches_selection_response(
+        pending: _PendingSelection,
+        text: str,
+    ) -> bool:
+        return (
+            pending.session.choice_from_action(text) is not None
+            or pending.session.choice_from_text(text) is not None
+            or text.strip().isdigit()
+        )
 
     @staticmethod
     def _key(context: MessageInputContext) -> _SessionKey:
