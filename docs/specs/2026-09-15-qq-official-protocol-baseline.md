@@ -207,7 +207,7 @@ arguments, logs, screenshots, or this evidence table.
 | Access token and READY | Start one required test account | Redacted startup log reaches `ready` after SDK `READY` | passed 2026-09-15 |
 | Group addressed command | In an authorized test group, address the bot and send `帮助` | One reply; no mention-guard interception or duplicate execution | pending operator message |
 | C2C command | Send `帮助` in the bot's private conversation | One private reply using the C2C reply budget | passed 2026-09-15; repeated three times without duplicate execution |
-| Sequential replies | Run a command that opens a numeric menu and choose one item | Initial and selected replies use increasing sequence values | pending operator message |
+| Sequential replies | Run a command whose one inbound message produces several outbound payloads | Payloads referencing that same inbound message use increasing sequence values | pending operator message |
 | Image upload | Run a query whose result contains an image | SDK media upload succeeds in the same group/C2C scope | pending operator message |
 | Resume and deduplication | Interrupt connectivity after READY, restore it, then retry one message | `reconnecting` to `ready`; replayed message ID causes no duplicate side effect | pending controlled interruption |
 | Proactive permission failure | With proactive sends disabled or ungranted, exercise one scheduled target in a test scope | Structured permission/error code is logged; no passive-reply fallback | pending authorized test |
