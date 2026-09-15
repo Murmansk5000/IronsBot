@@ -220,6 +220,47 @@ def test_runtime_claims_message_before_business_dispatch(
     asyncio.run(run())
 
 
+def test_runtime_reports_parser_rejection_without_event_details(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (
+                    QQOfficialRuntimeAccount(
+                        "private-app-id",
+                        "secret",
+                        label="preview",
+                    ),
+                ),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            _bind(runtime)
+            caplog.set_level("INFO", logger=runtime_module.__name__)
+
+            await runtime.handle_event(
+                "private-app-id",
+                "C2C_MESSAGE_CREATE",
+                {
+                    "id": "private-message-id",
+                    "content": "private command body",
+                    "author": {"username": "private-openid"},
+                },
+            )
+
+            assert "inbound event rejected by parser" in caplog.text
+            assert "account=preview" in caplog.text
+            assert "event_type=C2C_MESSAGE_CREATE" in caplog.text
+            assert "private-app-id" not in caplog.text
+            assert "private-message-id" not in caplog.text
+            assert "private command body" not in caplog.text
+            assert "private-openid" not in caplog.text
+
+    asyncio.run(run())
+
+
 def test_runtime_dispatches_user_quote_messages(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

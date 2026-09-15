@@ -356,6 +356,12 @@ class QQOfficialRuntime:
     ) -> None:
         event = EventParser.parse(event_type, dict(raw))
         if event is None:
+            logger.warning(
+                "QQ Official inbound event rejected by parser: "
+                "account=%s event_type=%s",
+                self._connections[app_id].lifecycle.account,
+                event_type,
+            )
             return
         router = self._router
         messenger = self._messenger
