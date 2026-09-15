@@ -18,9 +18,6 @@ from ironsbot.integrations.onebot.conversations import (
 )
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.message_rendering import (
-    render_onebot_outbound_message,
-)
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.data import DataUnavailableError
@@ -69,8 +66,8 @@ class _OneBotPortableQueryAdapter:
             raise FinishedException
         if result is None:
             raise FinishedException
-        await _deliver(matcher, event, result)
-        await self._continue_pending_session(matcher, event, context)
+        if await _deliver(matcher, event, result):
+            await self._continue_pending_session(matcher, event, context)
 
     async def handle(
         self,
@@ -88,22 +85,8 @@ class _OneBotPortableQueryAdapter:
             return
         if queued_conversation_is_cancelled(matcher):
             raise FinishedException
-        if self.sessions.active_prompt(context) is None:
-            await _deliver(matcher, event, result)
-            return
-        reply = _as_portable_reply(result)
-        prompt = render_onebot_outbound_message(
-            reply.message,
-            conversation=context.message.conversation,
-        )
-        await enter_event_reply_conversation(
-            matcher,
-            event,
-            namespace=_PORTABLE_QUERY_NAMESPACE,
-            handlers=[self.resolve_selection],
-            reply_check=self.session_response,
-            prompt=prompt,
-        )
+        if await _deliver(matcher, event, result):
+            await self._continue_pending_session(matcher, event, context)
 
     async def _continue_pending_session(
         self,
@@ -126,19 +109,20 @@ async def _deliver(
     matcher: Matcher,
     event: MessageEvent,
     result: OutboundMessage | PortableReply | DataQueryImageReply | str,
-) -> None:
+) -> bool:
     reply = _as_portable_reply(result)
     receipt = await send_portable_event_reply(matcher, event, reply.message)
     if not receipt.delivered:
         reply.delivery_failed()
-        return
+        return False
     reply.delivered()
     for message in reply.additional_messages:
         receipt = await send_portable_event_reply(matcher, event, message)
         if not receipt.delivered:
-            return
+            return False
     if reply.follow_up is not None:
-        await _deliver(matcher, event, await reply.follow_up())
+        return await _deliver(matcher, event, await reply.follow_up())
+    return True
 
 
 def _as_portable_reply(

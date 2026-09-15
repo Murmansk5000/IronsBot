@@ -27,6 +27,7 @@
 | 部分账号别名 | 尚未达到原版候选选择能力 | 原版 player_target.py 的 allow_partial_reference/choices；目标 PlayerIdResolver 仅返回单个 ID 或错误 |
 | 指定账号橱窗 | 已补共享账号授权与确认查询 | a3eb0997；无配置凭据不登录，普通用户仅可查本人 |
 | 橱窗关注 | 五种操作统一到 shared portable operations | 07ba27ac；两平台选择及身份拒绝测试 |
+| 通用菜单送达 | OneBot 首次菜单也执行 PortableReply 的送达回调、附加消息和后续结果；发送失败不进入等待会话 | tests/test_onebot_portable_queries.py；移除首次菜单绕过 delivery 的发送分支，不修改业务命令 |
 | 帮助 | 已接入共享二级菜单 | aa31d30e；仍需不同 Feature 配置下的完整可见性验收 |
 | 竞技池/专家池/大师池 | 共享图片功能已恢复，需继续逐项核对呈现 | 命令声明本身不能证明箭头、资源和图片投递正确 |
 
@@ -139,6 +140,11 @@
 | 私有扩展 | 用户自行安装的业务扩展与玩家详情按钮 | 当前公共目录不包含；以实际可用扩展契约验收 |
 
 ## 下一步
+
+通用菜单送达收口后的本地验证：3509 passed、7 skipped；Ruff、生产与测试
+BasedPyright、compileall、check_repo --static、diff check 通过。
+8328 条警告来自 NoneBot ForwardRef 弃用提示和 SQLAlchemy 关系映射。
+这些结果不证明官方实机验收，也不代表下列剩余项目完成。
 
 1. 补齐部分账号别名的有类型候选结果，并由通用选择模板消费。
 2. 按固定图片部署片段安装资源并验收实际发送；配置及资源对应清单已补齐，不恢复旧内置镜像资源。
