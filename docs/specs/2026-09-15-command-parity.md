@@ -73,7 +73,7 @@
 | `seer.pet.query` | 精灵雷伊；雷伊技能；雷伊魂印 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `seer.pet.avatar` | 头像雷伊；谱尼头像；头像70 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `seer.pet.image` | 雷伊立绘；雷伊皮肤；皮肤雷伊 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
-| `seer.mintmark.query` | 刻印V8；精灵王刻印；宝石绝命 | 两平台共用 operation 和选择会话 | 本机真实缓存中“刻印V8”返回 12 个候选；官方客户端图片和菜单选择仍需实测 |
+| `seer.mintmark.query` | 刻印V8；精灵王刻印；宝石绝命 | 两平台共用 operation 和选择会话 | 官方群实测候选选择及图片上传成功；实测发现官方协议把原版单气泡图文拆成三条，`f05afd75` 已在传输边界压缩为图片加完整说明两条，待最新版客户端复验 |
 | `seer.mintmark.rank` | 刻印攻击榜；六角双攻榜；特攻双防刻印榜 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `seer.equipment.query` | 典狱套装；部件漫游者；称号神话 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `seer.type.query` | 属性圣灵；火战斗属性；异常中毒 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
@@ -98,14 +98,14 @@
 | `seer.data.new_autocard_sanctuary_effect` | 新增群星牌圣域；新增圣域；每周群星牌圣域；每周圣域；本周群星牌圣域；本周圣域；更新群星牌圣域；更新圣域 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `about` | 关于 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `help` | 帮助 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
-| `sendpic.fixed.学习力` | 学习力 | 配置驱动 sendpic | 待提供等价部署配置 |
-| `sendpic.fixed.学习力表` | 学习力表 | 配置驱动 sendpic | 待提供等价部署配置 |
-| `sendpic.fixed.学习力表格` | 学习力表格 | 配置驱动 sendpic | 待提供等价部署配置 |
-| `sendpic.fixed.巅峰姬` | 巅峰姬 | 配置驱动 sendpic | 待提供等价部署配置 |
-| `sendpic.fixed.必先` | 必先 | 配置驱动 sendpic | 待提供等价部署配置 |
-| `sendpic.fixed.技能石` | 技能石 | 配置驱动 sendpic | 待提供等价部署配置 |
-| `sendpic.fixed.周年庆伪随机表` | 周年庆伪随机表 | 配置驱动 sendpic | 待提供等价部署配置 |
-| `sendpic.fixed.伪随机表` | 伪随机表 | 配置驱动 sendpic | 待提供等价部署配置 |
+| `sendpic.fixed.学习力` | 学习力 | 配置驱动 sendpic | `docs/examples/fixed-images.toml` 已提供等价配置；本机开发资源已安装，官方客户端待实测 |
+| `sendpic.fixed.学习力表` | 学习力表 | 配置驱动 sendpic | 同上，共用学习力图片配置 |
+| `sendpic.fixed.学习力表格` | 学习力表格 | 配置驱动 sendpic | 同上，共用学习力图片配置 |
+| `sendpic.fixed.巅峰姬` | 巅峰姬 | 配置驱动 sendpic | 配置片段及本机资源已就绪，官方客户端待实测 |
+| `sendpic.fixed.必先` | 必先 | 配置驱动 sendpic | 配置片段及本机资源已就绪，官方客户端待实测 |
+| `sendpic.fixed.技能石` | 技能石 | 配置驱动 sendpic | 配置片段及本机资源已就绪，官方客户端待实测 |
+| `sendpic.fixed.周年庆伪随机表` | 周年庆伪随机表 | 配置驱动 sendpic | 配置片段及本机资源已就绪，官方客户端待实测 |
+| `sendpic.fixed.伪随机表` | 伪随机表 | 配置驱动 sendpic | 同上，共用周年庆伪随机表图片配置 |
 | `meeting` | 开播；会议 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `rank.help` | 榜单；排行榜；榜单帮助 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
 | `rank.global_collection` | 图鉴积分榜；成就点数榜；精灵图鉴榜；皮肤图鉴榜；套装图鉴榜；部件图鉴榜；座驾图鉴榜；刻印图鉴榜；群星之巅榜 | 同 ID 已声明 | 参数与交互需结合差异表核对 |
