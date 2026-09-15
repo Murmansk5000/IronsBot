@@ -234,7 +234,10 @@ async def test_target_query_preserves_account_through_confirmation(
 
 
 @pytest.mark.asyncio
-async def test_watch_operations_reuse_linked_onebot_preferences() -> None:
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_watch_operations_reuse_linked_onebot_preferences(
+    platform: Platform,
+) -> None:
     service, pet, identity, sessions, onebot = _dependencies()
     item = LuckySkinWatchItem(101, 1400101, "测试皮肤")
     service.watch_list_message.return_value = "关注列表"
@@ -250,19 +253,19 @@ async def test_watch_operations_reuse_linked_onebot_preferences() -> None:
 
     replies = (
         await operations["seer.lucky_skin_window.watch.list"](
-            "关注橱窗", _context("关注橱窗")
+            "关注橱窗", _context("关注橱窗", platform=platform)
         ),
         await operations["seer.lucky_skin_window.watch.add"](
-            "关注橱窗测试", _context("关注橱窗测试")
+            "关注橱窗测试", _context("关注橱窗测试", platform=platform)
         ),
         await operations["seer.lucky_skin_window.watch.remove"](
-            "取消关注橱窗测试", _context("取消关注橱窗测试")
+            "取消关注橱窗测试", _context("取消关注橱窗测试", platform=platform)
         ),
         await operations["seer.lucky_skin_window.watch.clear"](
-            "清空关注橱窗", _context("清空关注橱窗")
+            "清空关注橱窗", _context("清空关注橱窗", platform=platform)
         ),
         await operations["seer.lucky_skin_window.watch.reset"](
-            "重置关注橱窗", _context("重置关注橱窗")
+            "重置关注橱窗", _context("重置关注橱窗", platform=platform)
         ),
     )
 
@@ -280,7 +283,10 @@ async def test_watch_operations_reuse_linked_onebot_preferences() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ambiguous_watch_change_uses_named_selection_buttons() -> None:
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_ambiguous_watch_change_uses_named_selection_buttons(
+    platform: Platform,
+) -> None:
     service, pet, identity, sessions, onebot = _dependencies()
     candidates = (
         LuckySkinWatchItem(101, 1400101, "皮肤甲"),
@@ -289,7 +295,7 @@ async def test_ambiguous_watch_change_uses_named_selection_buttons() -> None:
     service.resolve_watch_candidates.return_value = candidates
     service.watch_change_message.return_value = "已关注：皮肤乙"
     operations = _operations(service, pet, identity, sessions)
-    context = _context("关注橱窗皮肤")
+    context = _context("关注橱窗皮肤", platform=platform)
 
     menu = await operations["seer.lucky_skin_window.watch.add"](
         "关注橱窗皮肤", context
@@ -309,3 +315,22 @@ async def test_ambiguous_watch_change_uses_named_selection_buttons() -> None:
     )
     assert selected is not None
     assert _text(selected) == "已关注：皮肤乙"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("action", "text"), [
+    ("list", "关注橱窗"),
+    ("add", "关注橱窗测试"),
+    ("remove", "取消关注橱窗测试"),
+    ("clear", "清空关注橱窗"),
+    ("reset", "重置关注橱窗"),
+])
+async def test_unlinked_identity_cannot_read_or_change_watch_preferences(
+    action: str, text: str,
+) -> None:
+    service, pet, identity, sessions, _ = _dependencies(linked=False)
+    reply = await _operations(service, pet, identity, sessions)[
+        f"seer.lucky_skin_window.watch.{action}"
+    ](text, _context(text))
+    assert "关联官方账号" in _text(reply)
+    assert service.mock_calls == []

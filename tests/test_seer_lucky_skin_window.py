@@ -8,6 +8,7 @@ from datetime import date
 from struct import pack
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -16,11 +17,12 @@ from ironsbot.config.models.seer_lucky import (
     LuckySkinWindowAccountConfig,
     LuckySkinWindowConfig,
 )
-from ironsbot.core.outbound import BinaryImagePart, TextPart
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.integrations.onebot.lucky_skin_window import (
     OneBotLuckySkinWindowSubscriptionOptions,
 )
+from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.seer_data.skin_price_repository import (
     load_active_skin_store_prices,
 )
@@ -36,6 +38,9 @@ from ironsbot.plugins.onebot import lucky_skin_window as lucky_skin_window_plugi
 from ironsbot.services.identity.player_accounts import build_player_account_registry
 from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
+from ironsbot.services.portable_lucky_skin_commands import (
+    build_portable_lucky_skin_operations,
+)
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
@@ -522,10 +527,6 @@ def test_watch_command_rules_distinguish_list_and_change(tmp_path: Path) -> None
                     commands=commands,
                     features=features,
                 )
-                assert (
-                    change_state[lucky_skin_window_plugin.BOT_COMMAND_ARG_KEY]
-                    == "1400103"
-                )
 
         assert not await lucky_skin_window_plugin._matches_watch_change(
             private_message_event("关注橱窗", user_id=1001),
@@ -573,22 +574,18 @@ def test_lucky_skin_commands_run_before_fuzzy_pet_skin_queries(
 
 
 def test_watch_list_matches_before_binding_and_replies_with_the_problem(
-    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     service, _game, _delivery, bindings, _headless = _service(tmp_path)
     bindings.bind(actor=_actor(1001), player_id=90003, player_nick="其他")
     event = private_message_event("订阅橱窗", user_id=1001)
-    replies: list[str] = []
-
-    async def capture_reply(
-        _matcher: object,
-        _event: object,
-        message: str,
-    ) -> None:
-        replies.append(message)
-
-    monkeypatch.setattr(lucky_skin_window_plugin, "finish_event_reply", capture_reply)
+    operations = build_portable_lucky_skin_operations(
+        service, cast("Any", _PluginPet()),
+        cast("Any", SimpleNamespace(linked_onebot_actor=AsyncMock(
+            return_value=_actor(1001),
+        ))),
+        PortableQuerySessions(), cast("Any", object()),
+    )
 
     async def check() -> None:
         assert await lucky_skin_window_plugin._matches_watch_exact(
@@ -597,15 +594,16 @@ def test_watch_list_matches_before_binding_and_replies_with_the_problem(
             commands=LUCKY_SKIN_WATCH_LIST_COMMANDS,
             features=cast("FeatureService", _Features()),
         )
-        await lucky_skin_window_plugin._handle_watch_list(
-            service,
-            cast("Any", object()),
-            event,
+        reply = await operations["seer.lucky_skin_window.watch.list"](
+            event.get_plaintext(), message_input_context(event),
         )
+        assert isinstance(reply, OutboundMessage)
+        assert reply.parts == (TextPart(
+            "❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"
+        ),)
 
     asyncio.run(check())
 
-    assert replies == ["❌ 请先绑定 TOML 指定的米米号 90001 后再管理橱窗关注。"]
 
 
 def test_watch_list_displays_both_skin_ids(tmp_path: Path) -> None:

@@ -6,7 +6,6 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import MessageEvent
-from nonebot.matcher import Matcher
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
@@ -33,10 +32,7 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
-from ironsbot.integrations.onebot.prompts import Prompt, PromptItem, enter_prompt
-from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import (
-    BOT_COMMAND_ARG_KEY,
     explicit_command,
     member_target_command,
 )
@@ -62,22 +58,15 @@ from ironsbot.services.seer.lucky_skin_commands import (
     parse_lucky_skin_query,
     parse_lucky_skin_watch_target,
 )
-from ironsbot.services.seer.lucky_skin_window import (
-    LuckySkinWatchItem,
-    LuckySkinWindowBindingError,
-    LuckySkinWindowNotConfiguredError,
-    LuckySkinWindowService,
-)
 
 if TYPE_CHECKING:
-    from nonebot.adapters import Event
-
     from ironsbot.core.command_catalog import CommandContext
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.operations.scheduler import Scheduler
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
@@ -194,11 +183,9 @@ async def _matches_watch_change(
     commands: tuple[str, ...],
     features: FeatureService,
 ) -> bool:
+    del state
     arg = parse_lucky_skin_watch_target(event.get_plaintext(), commands=commands)
-    if arg is None or not _watch_feature_allowed(event, features=features):
-        return False
-    state[BOT_COMMAND_ARG_KEY] = arg
-    return True
+    return arg is not None and _watch_feature_allowed(event, features=features)
 
 
 def _semantic_request(
@@ -224,139 +211,6 @@ def _semantic_request(
     )
 
 
-async def _finish_watch_access_error(
-    matcher: Matcher,
-    event: MessageEvent,
-    error: LuckySkinWindowNotConfiguredError | LuckySkinWindowBindingError,
-) -> None:
-    if isinstance(error, LuckySkinWindowNotConfiguredError):
-        await finish_event_reply(matcher, event, "❌ 当前 QQ 未配置幸运橱窗账号。")
-        return
-    await finish_event_reply(
-        matcher,
-        event,
-        f"❌ 请先绑定 TOML 指定的米米号 {error.args[0]} 后再管理橱窗关注。",
-    )
-
-
-
-
-async def _handle_watch_list(
-    service: LuckySkinWindowService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    try:
-        message = service.watch_list_message(_actor_from_event(event))
-    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
-        await _finish_watch_access_error(matcher, event, error)
-        return
-    await finish_event_reply(
-        matcher,
-        event,
-        message,
-    )
-
-
-async def _handle_watch_change(
-    service: LuckySkinWindowService,
-    operation: str,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    arg = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    try:
-        candidates = service.resolve_watch_candidates(_actor_from_event(event), arg)
-    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
-        await _finish_watch_access_error(matcher, event, error)
-        return
-    if not candidates:
-        await finish_event_reply(matcher, event, f"❌ 未找到皮肤：{arg}")
-        return
-    if len(candidates) == 1:
-        await finish_event_reply(
-            matcher,
-            event,
-            service.watch_change_message(
-                _actor_from_event(event),
-                candidates[0],
-                watched=operation == "add",
-            ),
-        )
-        return
-    await enter_prompt(
-        matcher,
-        event,
-        state,
-        Prompt(
-            title="请问你想管理的皮肤是……",
-            action=(
-                LUCKY_SKIN_WATCH_ADD_ACTION
-                if operation == "add"
-                else LUCKY_SKIN_WATCH_REMOVE_ACTION
-            ),
-            items=[
-                PromptItem(
-                    item.name,
-                    item.identifiers,
-                    item,
-                )
-                for item in candidates
-            ],
-        ),
-        partial(_handle_watch_selection, service, operation),
-    )
-
-
-async def _handle_watch_selection(
-    service: LuckySkinWindowService,
-    operation: str,
-    item: PromptItem[LuckySkinWatchItem],
-    matcher: Matcher,
-    event: Event,
-) -> None:
-    if not isinstance(event, MessageEvent):
-        return
-    await finish_event_reply(
-        matcher,
-        event,
-        service.watch_change_message(
-            _actor_from_event(event),
-            item.value,
-            watched=operation == "add",
-        ),
-    )
-
-
-async def _handle_watch_clear(
-    service: LuckySkinWindowService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    try:
-        message = service.watch_clear_message(_actor_from_event(event))
-    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
-        await _finish_watch_access_error(matcher, event, error)
-        return
-    await finish_event_reply(matcher, event, message)
-
-
-async def _handle_watch_reset(
-    service: LuckySkinWindowService,
-    matcher: Matcher,
-    event: MessageEvent,
-) -> None:
-    try:
-        message = service.watch_reset_message(_actor_from_event(event))
-    except (LuckySkinWindowNotConfiguredError, LuckySkinWindowBindingError) as error:
-        await _finish_watch_access_error(matcher, event, error)
-        return
-    await finish_event_reply(
-        matcher,
-        event,
-        message,
-    )
 
 def _install(  # noqa: PLR0913 - explicit plugin resources
     registry: MatcherFactory,
@@ -369,6 +223,9 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     resolver: PlayerIdResolver,
 ) -> None:
     priority = registry.priority("lucky_skin_window")
+    operations = build_portable_lucky_skin_operations(
+        service, pet, identity_links, sessions, resolver,
+    )
     matcher = registry.on_message(
         policy=CommandPolicy.command(
             LUCKY_SKIN_QUERY_ACTION.id,
@@ -382,9 +239,7 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
     )
     matcher.append_handler(
         make_portable_query_handler(
-            build_portable_lucky_skin_operations(
-                service, pet, identity_links, sessions, resolver,
-            )[LUCKY_SKIN_QUERY_ACTION.id],
+            operations[LUCKY_SKIN_QUERY_ACTION.id],
             sessions,
         )
     )
@@ -405,7 +260,9 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
         priority=priority,
         block=True,
     )
-    watch_list.append_handler(bind_async(_handle_watch_list, service))
+    watch_list.append_handler(make_portable_query_handler(
+        operations[LUCKY_SKIN_WATCH_LIST_ACTION.id], sessions,
+    ))
 
     watch_add = registry.on_message(
         policy=CommandPolicy.command(
@@ -424,10 +281,8 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
         block=True,
     )
     watch_add.append_handler(
-        bind_async(
-            _handle_watch_change,
-            service,
-            "add",
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_WATCH_ADD_ACTION.id], sessions,
         )
     )
 
@@ -448,23 +303,19 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
         block=True,
     )
     watch_remove.append_handler(
-        bind_async(
-            _handle_watch_change,
-            service,
-            "remove",
+        make_portable_query_handler(
+            operations[LUCKY_SKIN_WATCH_REMOVE_ACTION.id], sessions,
         )
     )
 
-    for action, commands, handler in (
+    for action, commands in (
         (
             LUCKY_SKIN_WATCH_CLEAR_ACTION,
             LUCKY_SKIN_WATCH_CLEAR_COMMANDS,
-            _handle_watch_clear,
         ),
         (
             LUCKY_SKIN_WATCH_RESET_ACTION,
             LUCKY_SKIN_WATCH_RESET_COMMANDS,
-            _handle_watch_reset,
         ),
     ):
         watch_action = registry.on_message(
@@ -480,7 +331,9 @@ def _install(  # noqa: PLR0913 - explicit plugin resources
             priority=priority,
             block=True,
         )
-        watch_action.append_handler(bind_async(handler, service))
+        watch_action.append_handler(make_portable_query_handler(
+            operations[action.id], sessions,
+        ))
 
 
 def _register_schedule(
