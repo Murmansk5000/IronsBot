@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ from ironsbot.core.plugin_install import scoped_plugin_install_context
 
 if TYPE_CHECKING:
     from ironsbot.app.application import Application
+    from ironsbot.config.models.settings import Settings
 
 
 def configure_third_party_logging() -> None:
@@ -34,21 +36,36 @@ def configure_application_logging(level: str) -> None:
     application_logger.setLevel(level.upper())
 
 
+def initialize_nonebot(settings: Settings) -> None:
+    """Initialize NoneBot with the environment selected by the TOML root."""
+
+    variable = "ENVIRONMENT"
+    previous = os.environ.get(variable)
+    os.environ[variable] = settings.bot.environment
+    try:
+        nonebot.init(
+            _env_file=(),
+            environment=settings.bot.environment,
+            driver=settings.bot.driver,
+            host=settings.bot.host,
+            port=settings.bot.port,
+            log_level=settings.bot.log_level,
+            command_start=set(settings.bot.command_start),
+            superusers={str(value) for value in settings.superuser_ids},
+            onebot_access_token=settings.bot.onebot_token or None,
+            apscheduler_autostart=False,
+        )
+    finally:
+        if previous is None:
+            os.environ.pop(variable, None)
+        else:
+            os.environ[variable] = previous
+
+
 def bootstrap() -> Application:
     configure_third_party_logging()
     settings = load_settings()
-    nonebot.init(
-        _env_file=(),
-        environment=settings.bot.environment,
-        driver=settings.bot.driver,
-        host=settings.bot.host,
-        port=settings.bot.port,
-        log_level=settings.bot.log_level,
-        command_start=set(settings.bot.command_start),
-        superusers={str(value) for value in settings.superuser_ids},
-        onebot_access_token=settings.bot.onebot_token or None,
-        apscheduler_autostart=False,
-    )
+    initialize_nonebot(settings)
     configure_application_logging(settings.bot.log_level)
     application = build_application(settings)
     with scoped_plugin_install_context(
