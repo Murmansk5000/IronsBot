@@ -7,13 +7,16 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ironsbot.config.models.seer import TeamQueryConfig
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
+from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.team import (
     SeerTeamQueryService,
@@ -21,6 +24,7 @@ from ironsbot.services.seer.team import (
     TeamQueryActor,
     format_team_info,
 )
+from ironsbot.services.seer.team_commands import build_team_query_operation
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -213,12 +217,12 @@ async def test_team_command_resolves_player_references_and_structured_mentions(
         lambda actor: 148758762 if actor == _actor(2) else None,
     )
 
-    message = await service.query_input(
-        text,
-        _context(text, mentions=mentions),
-        resolver,
-        can_manage=False,
+    operation = build_team_query_operation(
+        service, resolver, FeatureService({}, {}, frozenset()), PortableQuerySessions(),
     )
+    reply = await operation(text, _context(text, mentions=mentions))
+    assert isinstance(reply, OutboundMessage)
+    message = cast("TextPart", reply.parts[0]).text
 
     assert "【战队信息：测试战队】" in message
     assert "战队ID：123456" in message
