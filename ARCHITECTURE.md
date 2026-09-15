@@ -331,6 +331,9 @@ The following rules are mandatory:
   scope, while each native endpoint belongs to exactly one logical alias.
   Group-member endpoints retain their AppID and group scope and must never be
   enumerated as private-message targets.
+- Transport diagnostics log only stable one-way reference digests for native
+  user, group and bot identifiers. Raw OneBot IDs and QQ Official OpenIDs stay
+  at the integration boundary and must not appear in operational logs.
 - Services own cohesive use cases and depend on explicit ports, never on
   NoneBot, OneBot event classes, matchers, or global application state.
 - Renderers receive view models and assets. They do not execute raw SQL,
