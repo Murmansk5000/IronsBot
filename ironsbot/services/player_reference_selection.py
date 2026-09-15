@@ -9,17 +9,50 @@ from typing import TYPE_CHECKING
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
+from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.player_references import PlayerReferenceChoice
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableReply
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
 PlayerReferenceAction = Callable[
     [int, "MessageInputContext"], Awaitable["OutboundMessage | PortableReply"]
 ]
+
+
+async def select_player_target(  # noqa: PLR0913 - explicit session and domain ports
+    reference: str | None,
+    context: MessageInputContext,
+    resolver: PlayerIdResolver,
+    sessions: PortableQuerySessions,
+    execute: PlayerReferenceAction,
+    *,
+    title: str,
+) -> PortableReply:
+    """Select an explicit reference or resolve a direct mention/default binding."""
+    reference = (reference or "").strip()
+    if reference and not context.has_member_mentions:
+        result = await select_player_reference(
+            reference,
+            context,
+            resolver,
+            sessions,
+            execute,
+            title=title,
+        )
+    else:
+        resolution = resolver.resolve(context, reference)
+        if resolution.error is not None:
+            return PortableReply(OutboundMessage.from_text(resolution.error))
+        if resolution.player_id is None:
+            return PortableReply(
+                OutboundMessage.from_text(unbound_player_shortcut_message())
+            )
+        result = await execute(resolution.player_id, context)
+    return result if isinstance(result, PortableReply) else PortableReply(result)
 
 
 async def select_player_reference(  # noqa: PLR0913 - explicit session and domain ports

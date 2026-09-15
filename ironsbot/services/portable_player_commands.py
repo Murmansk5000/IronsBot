@@ -9,13 +9,15 @@ from typing import TYPE_CHECKING, Literal
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
 from ironsbot.services.player_extension_commands import query_player_extension
-from ironsbot.services.player_reference_selection import select_player_reference
+from ironsbot.services.player_reference_selection import (
+    select_player_reference,
+    select_player_target,
+)
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionAction,
 )
-from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import (
     available_player_detail_requests,
     extract_player_binding_arg,
@@ -74,24 +76,30 @@ class _PortablePlayerOperations:
         if reference is None:
             msg = f"catalog accepted input that its player parser rejected: {text!r}"
             raise ValueError(msg)
-        resolution = self.resolver.resolve(context, reference or None)
-        if resolution.error is not None:
-            return _text_reply(resolution.error)
-        if resolution.player_id is None:
-            return _text_reply(unbound_player_shortcut_message())
-        result = await self.service.query(
-            resolution.player_id,
-            actor=context.message.actor,
-            explicit=resolution.offer_binding,
-            conversation=context.message.conversation,
-        )
-        return _prepare_player_query_reply(
-            self.service,
-            self.sessions,
+
+        async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+            result = await self.service.query(
+                player_id,
+                actor=context.message.actor,
+                explicit=bool(reference.strip()),
+                conversation=context.message.conversation,
+            )
+            return _prepare_player_query_reply(
+                self.service,
+                self.sessions,
+                context,
+                result,
+                self.features,
+                self.extensions,
+            )
+
+        return await select_player_target(
+            reference,
             context,
-            result,
-            self.features,
-            self.extensions,
+            self.resolver,
+            self.sessions,
+            query,
+            title="请选择要查询的玩家：",
         )
 
     async def bind(
@@ -196,15 +204,14 @@ class _PortablePlayerOperations:
         if parsed is None:
             msg = f"catalog accepted input that its shortcut parser rejected: {text!r}"
             raise ValueError(msg)
-        resolution = self.resolver.resolve(context, parsed.player_reference)
-        if resolution.error is not None:
-            return _text_reply(resolution.error)
-        if resolution.player_id is None:
-            return _text_reply(unbound_player_shortcut_message())
-        return await _player_shortcut_reply(
-            self.service,
-            PlayerShortcutCommand(parsed.kind, resolution.player_id),
-            context,
+        async def query(player_id: int, context: MessageInputContext) -> PortableReply:
+            return await _player_shortcut_reply(
+                self.service, PlayerShortcutCommand(parsed.kind, player_id), context,
+            )
+
+        return await select_player_target(
+            parsed.player_reference, context, self.resolver, self.sessions, query,
+            title="请选择要查询的玩家：",
         )
 
 

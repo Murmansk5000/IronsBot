@@ -537,7 +537,7 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **rank_admin_operations,
     }
     extension_operation = build_player_extension_operation(
-        seer.player_detail_extensions, player_id_resolver, features,
+        seer.player_detail_extensions, player_id_resolver, features, sessions,
     )
     for action in seer.player_detail_extensions.actions():
         # A detail action may link to an existing, broader direct command (team).

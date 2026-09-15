@@ -64,11 +64,11 @@ def seer_command_contracts(
 ) -> tuple[CommandContract, ...]:
     player_query_input = player_reference_input_matcher(
         ("米米号", "查询玩家信息"),
-        player_id_resolver.has_known_reference,
+        player_id_resolver.has_reference_choices,
     )
     player_shortcut_input = player_reference_input_matcher(
         ("收集", "巅峰", "群星牌"),
-        player_id_resolver.has_known_reference,
+        player_id_resolver.has_reference_choices,
     )
     player_binding_input = player_reference_input_matcher(
         ("绑定米米号",),

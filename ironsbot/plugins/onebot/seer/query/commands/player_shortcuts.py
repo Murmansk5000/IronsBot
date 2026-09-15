@@ -295,6 +295,7 @@ def install(group: SeerMatcherGroup) -> None:
                 group.resources.player_detail_extensions,
                 group.player_id_resolver,
                 group.features,
+                group.query_sessions,
             ),
             group.query_sessions,
         )

@@ -512,6 +512,13 @@ their value-only service contract; they do not own message authorization.
 This contract does not itself authorize shared group menus or replace command
 admission policy.
 
+`services.player_reference_selection.select_player_target` owns message-level
+target selection for shared player queries and contributed shortcuts: explicit
+references use visible candidates, while direct mentions and default bindings
+use the player resolver. The selected action receives the current input context.
+Binding and account-login operations retain their distinct authorization rules;
+candidate selection does not grant permission to mutate or log in to an account.
+
 Separately distributed extensions import their permitted dependencies from an
 explicit public contract in `ironsbot.extensions.contracts`, never from
 `ironsbot.app.composition`, `ironsbot.app.private_extensions`, or a public

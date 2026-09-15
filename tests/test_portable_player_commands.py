@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ironsbot.core.command_catalog import command_context_from_input
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import (
@@ -24,6 +25,7 @@ from ironsbot.services.portable_player_commands import (
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.player_binding import PlayerBindingState
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
@@ -251,7 +253,18 @@ async def test_partial_binding_uses_shared_menu_before_business_work(
 
 
 @pytest.mark.asyncio
-async def test_binding_selection_rechecks_reference_visibility() -> None:
+@pytest.mark.parametrize(
+    ("prefix", "operation_id"),
+    [
+        ("绑定米米号", "seer.player.bind"),
+        ("米米号", "seer.player.query"),
+        ("收集", "seer.player.default"),
+    ],
+)
+async def test_player_selection_rechecks_reference_visibility(
+    prefix: str,
+    operation_id: str,
+) -> None:
     service = _PlayerService()
     sessions = PortableQuerySessions()
     choices = (
@@ -268,13 +281,85 @@ async def test_binding_selection_rechecks_reference_visibility() -> None:
         resolver,
         sessions,
     )
-    context = _context("绑定米米号玩家")
-    await operations["seer.player.bind"](context.text, context)
+    context = _context(f"{prefix}玩家")
+    await operations[operation_id](context.text, context)
     choices = ()
     reply = await sessions.select("1", context, allow_deferred=True)
     assert isinstance(reply, OutboundMessage)
     assert "已不可用" in cast("TextPart", reply.parts[0]).text
     assert not service.bound
+    assert not service.queried
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("prefix", ["米米号", "查询玩家信息", "收集", "巅峰", "群星牌"])
+@pytest.mark.parametrize("selection", ["2", "button", "0"])
+async def test_player_queries_use_declared_reference_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    platform: Platform,
+    prefix: str,
+    selection: str,
+) -> None:
+    service = _PlayerService()
+    query = AsyncMock(wraps=service.query)
+    shortcut = AsyncMock(wraps=service.shortcut)
+    monkeypatch.setattr(service, "query", query)
+    monkeypatch.setattr(service, "shortcut", shortcut)
+    sessions = PortableQuerySessions()
+    resolver = PlayerIdResolver(
+        lambda *_: None,
+        lambda _: None,
+        reference_search=lambda *_: (
+            PlayerReferenceChoice(700001, "玩家甲"),
+            PlayerReferenceChoice(700002, "玩家乙"),
+        ),
+    )
+    context = _context(f"{prefix}玩家", platform=platform)
+    operation_id = (
+        "seer.player.query"
+        if prefix in {"米米号", "查询玩家信息"}
+        else "seer.player.default"
+    )
+    contract = next(
+        item for item in seer_command_contracts(resolver) if item.id == operation_id
+    )
+    assert contract.routing_matcher is not None
+    assert contract.routing_matcher(context.text, command_context_from_input(context))
+    operation = build_portable_player_operations(
+        cast("PlayerService", service),
+        resolver,
+        sessions,
+    )[operation_id]
+    reply = await operation(context.text, context)
+    assert isinstance(reply, PortableReply)
+    prompt = reply.message.prompt
+    assert prompt is not None
+    query.assert_not_awaited()
+    shortcut.assert_not_awaited()
+    if selection == "button":
+        selection = prompt.action_data(prompt.choices[1])
+    selected = await sessions.select(selection, context, allow_deferred=True)
+    if selection == "0":
+        query.assert_not_awaited()
+        shortcut.assert_not_awaited()
+        assert not sessions.has_active_session(context)
+        return
+    assert isinstance(selected, PortableReply)
+    assert "700002" in _text(selected)
+    if operation_id == "seer.player.query":
+        query.assert_awaited_once_with(
+            700002,
+            actor=context.message.actor,
+            explicit=True,
+            conversation=context.message.conversation,
+        )
+        assert sessions.active_prompt(context) is not None
+        assert not service.returned
+        selected.delivered()
+        assert service.returned == [(context.message.actor, 700002)]
+    else:
+        shortcut.assert_awaited_once()
 
 
 def _text(reply: PortableReply) -> str:

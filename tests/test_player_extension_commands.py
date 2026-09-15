@@ -13,12 +13,14 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.player_extension_commands import (
     build_player_extension_operation,
     query_player_extension,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
@@ -35,7 +37,7 @@ if TYPE_CHECKING:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
 @pytest.mark.parametrize("role", ["member", "admin", "owner"])
-@pytest.mark.parametrize("reference", ["", "700001", "别名"])
+@pytest.mark.parametrize("reference", ["", "700001", "别名", "部分"])
 @pytest.mark.parametrize("queued", [None, False, True])
 async def test_extensions_use_one_typed_request_and_delivery_template(
     platform: Platform,
@@ -83,9 +85,24 @@ async def test_extensions_use_one_typed_request_and_delivery_template(
             is_actor_superuser=lambda _: False,
         ),
     )
-    resolver = PlayerIdResolver(lambda *_: 700001, lambda _: 700001)
-    operation = build_player_extension_operation(extensions, resolver, features)
+    resolver = PlayerIdResolver(
+        lambda ref, _: None if ref == "部分" else 700001,
+        lambda _: 700001,
+        reference_search=lambda *_: (
+            PlayerReferenceChoice(700001, "部分甲"),
+            PlayerReferenceChoice(700002, "部分乙"),
+        ),
+    )
+    sessions = PortableQuerySessions()
+    operation = build_player_extension_operation(
+        extensions, resolver, features, sessions
+    )
     reply = await operation(context.text, context)
+    if reference == "部分":
+        assert isinstance(reply, PortableReply)
+        assert reply.message.prompt is not None
+        query_mock.assert_not_awaited()
+        reply = await sessions.select("1", context, allow_deferred=True)
     assert isinstance(reply, PortableReply)
     query_mock.assert_awaited_once_with(
         PlayerDetailActionRequest(
