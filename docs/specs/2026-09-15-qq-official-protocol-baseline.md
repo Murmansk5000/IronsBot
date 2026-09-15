@@ -236,9 +236,9 @@ business acceptance. The broader protocol and multi-account gates below remain.
 
 ## Real Tencent Acceptance Matrix
 
-Run this matrix only with a dedicated test application whose secret is supplied
-through the process environment. Never paste the secret into TOML, command-line
-arguments, logs, screenshots, or this evidence table.
+Run this matrix only with a dedicated test application whose AppID and AppSecret
+are supplied through the process environment. Never paste either credential into
+TOML, command-line arguments, logs, screenshots, or this evidence table.
 
 | Check | Operator action | Required evidence | Status |
 | --- | --- | --- | --- |
