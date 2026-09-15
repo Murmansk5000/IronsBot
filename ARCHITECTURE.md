@@ -290,7 +290,7 @@ feature, persistence schema, or policy decision.
 | Player-detail extension actions | target | `PlayerDetailActionRequest(player_id, actor, conversation)` | Public and private extensions receive one validated request; they must not accept separate QQ user IDs, group IDs, or adapter events. |
 | Headless-operation actor/conversation diagnostics | target | `HeadlessOperationTracker` stores typed `ActorRef` / `ConversationRef` in operation traces | New requests pass opaque platform references through services; adapters own native IDs and platform-specific notification rendering. |
 | AI chat, intent, and memory identity | target | `AiService` and `AiMemoryStore` accept typed `ActorRef` / `ConversationRef` | OneBot adapters convert events once; session isolation, feature checks, and persisted memory never receive native QQ IDs. Derived session keys use structural encoding of all identity fields, never delimiter concatenation of opaque IDs. |
-| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Existing OneBot TOML alias maps are read only at the target-configuration boundary. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery adapter is defined in the next row. |
+| Bilibili interactive query identity | target with configuration bridge | `BilibiliService` and `BiliTargetService` accept typed `ActorRef` / `ConversationRef` | Configured targets are compiled to account-scoped platform references before entering the service. Bilibili accounts and push targets have no built-in source: every monitored account must be declared in TOML. The separate rich-media delivery boundary is defined in the next row. |
 | Bilibili rich-media push delivery | target reference | `BilibiliMonitorService` invokes its `DynamicPushSender` port; `services.bilibili.outbound_delivery.BilibiliDynamicOutboundSender` creates portable parts and delegates routing, retries, rate limits and subscription hints to the shared outbound path | Keep future platform-specific media rendering in platform adapters, never in the Bilibili service. |
 | Configured Seer account aliases | target | `services.identity.PlayerAccountRegistry` resolves configured account names and scoped aliases | Configuration constructs the registry; plugins and Seer services depend on the identity service, never on a `config.*` registry module. |
 | Renderer-owned data lookup and association guessing | transition | Existing renderer code only for correctness fixes | Move data preparation to repositories/build facts, then make renderers consume view models. Raw-package omissions that change display use a SeerAPI `pet_soulmark_display_addition` fact with provenance; no presenter may branch on a pet ID. |
@@ -511,6 +511,21 @@ group-role decision made when the menu opened. Stateless data selectors keep
 their value-only service contract; they do not own message authorization.
 This contract does not itself authorize shared group menus or replace command
 admission policy.
+
+`services.portable_reply.deliver_portable_reply` owns initial acknowledgement,
+ordered additional/follow-up delivery, and abort notification on transport
+rejection, exception, or cancellation. OneBot and QQ Official supply the send
+function; transport logging and the explicit follow-up error presentation policy
+remain at the adapter edge. An initial acknowledgement is not rolled back by a
+later failure. Cancelling preparation before the first progress value cancels
+and joins the owned operation instead of leaving it waiting in the background.
+
+`services.player_reference_selection.select_player_target` owns message-level
+target selection for shared player queries and contributed shortcuts: explicit
+references use visible candidates, while direct mentions and default bindings
+use the player resolver. The selected action receives the current input context.
+Binding and account-login operations retain their distinct authorization rules;
+candidate selection does not grant permission to mutate or log in to an account.
 
 Separately distributed extensions import their permitted dependencies from an
 explicit public contract in `ironsbot.extensions.contracts`, never from
@@ -1175,11 +1190,13 @@ identity and recipient values before a service is constructed. Notifications
 already cross the platform-neutral outbound port rather than leaking platform
 objects back into plugins or individual Seer services.
 
-`app.bilibili_composition.BilibiliComponents` compiles configured OneBot
+`app.bilibili_composition.BilibiliComponents` compiles configured platform
 targets and creates Bilibili query, history, and login services before the
 messaging builder consumes its subscription options. This keeps the composition
 root as an ordering coordinator instead of a second place that knows Bilibili
-storage and HTTP construction details.
+storage and HTTP construction details. Login QR notices are portable outbound
+messages delivered through `AdminNoticeService`; their availability is not
+inferred from a connected OneBot instance.
 
 The `Application` object owns all process-wide mutable resources. In
 particular, it owns:

@@ -2483,3 +2483,12 @@ env、Docker 和 Unraid 配置无需迁移，真实 AppID 的联机验收仍留�
 传给同一个 `SeerTeamQueryService`，由它先读取玩家所属战队，再复用完整战队详情查询。
 没有复制旧 OneBot matcher、按昵称猜测身份或平台专用格式化；未加入战队、超时及
 无头连接异常都有明确结果。本项不增加配置、数据库、素材或依赖。
+
+B站登录二维码通知随后移出 OneBot 集成目录。登录服务不再通过
+`BotRouter.default_bot()` 猜测通知是否可送达；二维码和文字统一构造成
+`OutboundMessage`，交给 `AdminNoticeService` 与共享主动投递路径处理。组合函数同步
+去掉误导性的 `onebot` 命名，旧 `integrations.onebot.bilibili_auth` 文件直接删除，
+不保留兼容导入。这样只连接 QQ 官方 SDK 的进程不会再被错误判定为“没有机器人”，
+而没有管理员目标或主动发送权限时仍由统一投递层返回明确失败。官方单账号开发进程
+随后重新进入 `READY`；登录失效检查只报告“没有管理通知目标”，未再查找 OneBot
+实例，也没有向普通会话发送二维码。

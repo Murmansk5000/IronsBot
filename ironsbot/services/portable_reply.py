@@ -6,9 +6,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
-from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.outbound import OutboundMessage, SendResult
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
@@ -20,6 +20,7 @@ ProgressOperation = Callable[
     [ProgressReporter],
     Awaitable[OutboundMessage | str],
 ]
+DeliveryStage = Literal["initial", "additional", "follow_up"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,44 @@ class PortableReply:
             self.on_delivery_failed()
 
 
+async def deliver_portable_reply(
+    reply: PortableReply,
+    send: Callable[[OutboundMessage], Awaitable[SendResult]],
+    *,
+    on_sent: Callable[[DeliveryStage, SendResult], None] | None = None,
+    on_follow_up_error: Callable[[Exception], OutboundMessage] | None = None,
+) -> bool:
+    """Own ordered delivery and abort unfinished work on every interrupted path."""
+    async def transmit(message: OutboundMessage, stage: DeliveryStage) -> bool:
+        receipt = await send(message)
+        if on_sent is not None:
+            on_sent(stage, receipt)
+        return receipt.delivered
+
+    completed = False
+    try:
+        if not await transmit(reply.message, "initial"):
+            return False
+        reply.delivered()
+        for message in reply.additional_messages:
+            if not await transmit(message, "additional"):
+                return False
+        if reply.follow_up is not None:
+            try:
+                message = await reply.follow_up()
+            except Exception as error:
+                if on_follow_up_error is None:
+                    raise
+                message = on_follow_up_error(error)
+            completed = await transmit(message, "follow_up")
+        else:
+            completed = True
+        return completed
+    finally:
+        if not completed:
+            reply.delivery_failed()
+
+
 async def progress_operation_reply(
     operation: ProgressOperation,
 ) -> PortableReply:
@@ -57,10 +96,16 @@ async def progress_operation_reply(
         await delivery_gate.wait()
 
     task = asyncio.ensure_future(operation(report))
-    done, _pending = await asyncio.wait(
-        (task, first_progress),
-        return_when=asyncio.FIRST_COMPLETED,
-    )
+    try:
+        done, _pending = await asyncio.wait(
+            (task, first_progress),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    except BaseException:
+        task.cancel()
+        first_progress.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise
     if task in done:
         if not first_progress.done():
             first_progress.cancel()

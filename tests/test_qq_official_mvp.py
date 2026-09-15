@@ -2352,8 +2352,9 @@ check_on_startup = false
     assert "QQ_OFFICIAL_BOOTSTRAP_OK" in result.stdout
 
 
-def test_qq_official_quoted_reply_is_not_dispatched() -> None:
+def test_qq_official_quoted_command_is_dispatched() -> None:
     event = _sdk_event(
+        content="帮助",
         message_type=MSG_TYPE_QUOTE,
         raw={"message_scene": {"ext": ["ref_msg_idx=quoted-sequence"]}},
     )
@@ -2377,7 +2378,10 @@ def test_qq_official_quoted_reply_is_not_dispatched() -> None:
         team_resource=_unused_team_resource(),
     )
 
-    assert not qq_official_event_is_supported(
+    incoming = qq_official_incoming_message(event, account_id="example-app")
+
+    assert incoming.reply_to_id == "quoted-sequence"
+    assert qq_official_event_is_supported(
         event,
         account_id="example-app",
         router=router,

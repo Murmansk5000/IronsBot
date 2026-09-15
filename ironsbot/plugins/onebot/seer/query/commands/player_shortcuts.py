@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
@@ -21,6 +21,9 @@ from ironsbot.integrations.onebot.portable_queries import make_portable_query_ha
 from ironsbot.integrations.onebot.rules import member_target_command
 from ironsbot.services.player_extension_commands import build_player_extension_operation
 from ironsbot.services.portable_player_commands import build_portable_player_operations
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailExtensionRegistry,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
@@ -30,16 +33,28 @@ from ironsbot.services.seer.player_shortcut_contracts import (
 )
 
 from ..group import SeerMatcherGroup, seer_feature_rule
-from .player import PlayerCommandDependencies
 from .player_target import resolve_player_target
 
 if TYPE_CHECKING:
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionAction,
     )
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
+    from ironsbot.services.seer.player_service import PlayerService
 
 _SHORTCUT_COMMAND_KEY = "_player_shortcut_command"
 _EXTENSION_SHORTCUT_COMMAND_KEY = "_player_extension_shortcut_command"
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerCommandDependencies:
+    player: PlayerService
+    features: FeatureService
+    detail_extensions: PlayerDetailExtensionRegistry = field(
+        default_factory=PlayerDetailExtensionRegistry
+    )
+    player_id_resolver: PlayerIdResolver | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +310,7 @@ def install(group: SeerMatcherGroup) -> None:
                 group.resources.player_detail_extensions,
                 group.player_id_resolver,
                 group.features,
+                group.query_sessions,
             ),
             group.query_sessions,
         )

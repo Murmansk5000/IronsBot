@@ -369,14 +369,14 @@ def test_example_config_has_no_unknown_fields() -> None:
 def test_scheduled_push_requires_stable_id() -> None:
     with pytest.raises(ValidationError, match="定时推送必须配置非空 id"):
         MessageScheduledAction(
-            message="私聊定时推送",
+            messages=["私聊定时推送"],
             time="23:00",
         )
 
     with pytest.raises(ValidationError, match="只能包含英文字母"):
         MessageScheduledAction(
             id="每日 提醒",
-            message="私聊定时推送",
+            messages=["私聊定时推送"],
             time="23:00",
         )
 
@@ -386,7 +386,7 @@ def test_scheduled_push_rejects_legacy_hour_and_minute() -> None:
         MessageScheduledAction.model_validate(
             {
                 "id": "daily",
-                "message": "私聊定时推送",
+                "messages": ["私聊定时推送"],
                 "hour": 23,
                 "minute": 5,
             }
@@ -399,12 +399,12 @@ def test_scheduled_push_ids_are_globally_unique() -> None:
             schedules=[
                 MessageScheduledAction(
                     id="daily",
-                    message="私聊定时推送",
+                    messages=["私聊定时推送"],
                     time="23:00",
                 ),
                 MessageScheduledAction(
                     id="daily",
-                    message="群聊定时推送",
+                    messages=["群聊定时推送"],
                     time="23:00",
                 ),
             ],
@@ -418,7 +418,7 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
     ):
         MessageCommandAction(
             commands=["hello"],
-            message="world",
+            messages=["world"],
         )
 
     with pytest.raises(
@@ -428,7 +428,14 @@ def test_dynamic_message_commands_require_stable_ids() -> None:
         MessageCommandAction(
             id="daily reminder",
             commands=["hello"],
-            message="world",
+            messages=["world"],
+        )
+
+
+def test_message_actions_reject_removed_singular_message_field() -> None:
+    with pytest.raises(ValidationError, match="message"):
+        MessageCommandAction.model_validate(
+            {"id": "hello", "commands": ["hello"], "message": "world"}
         )
 
 
@@ -550,7 +557,7 @@ old_player_setting = true
 [[messaging.commands]]
 id = "hello"
 commands = ["hello"]
-message = "world"
+messages = ["world"]
 feature = "text_push"
 unknown_command_field = true
 """.strip(),
@@ -627,7 +634,7 @@ def test_unified_message_actions_parse_as_toml_arrays_of_tables(
 [[messaging.commands]]
 id = "activity_link"
 commands = ["activity"]
-message = "activity link"
+messages = ["activity link"]
 feature = "web_activity_link"
 at_user_ids = [123456789]
 
@@ -635,7 +642,7 @@ at_user_ids = [123456789]
 id = "daily_reminder"
 name = "Daily reminder"
 time = "23:00"
-message = "daily message"
+messages = ["daily message"]
 feature = "text_push"
 at_user_ids = [123456789]
 """.strip(),
@@ -664,7 +671,7 @@ main = ["chuchu_reply"]
 [[messaging.keyword_replies]]
 id = "chuchu_reply"
 keywords = ["出出"]
-message = "出出是蛆"
+messages = ["出出是蛆"]
 feature = "chuchu_reply"
 """.strip(),
         encoding="utf-8",
@@ -694,7 +701,7 @@ main = ["standard"]
 [[messaging.commands]]
 id = "seerinfo_page"
 commands = ["xm", "xrym"]
-message = "https://seerinfo.yuyuqaq.cn/"
+messages = ["https://seerinfo.yuyuqaq.cn/"]
 feature = "seerinfo_link"
 """.strip(),
         encoding="utf-8",
@@ -731,7 +738,7 @@ owner = ["custom_reminder"]
 [[messaging.schedules]]
 id = "custom_reminder"
 time = "23:00"
-message = "remember"
+messages = ["remember"]
 feature = "custom_reminder"
 """.strip(),
         encoding="utf-8",
@@ -847,14 +854,14 @@ owner = "primary"
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-message = "custom reply"
+messages = ["custom reply"]
 feature = "private_extension"
 at_user_ids = ["at_user", "202"]
 
 [[messaging.schedules]]
 id = "custom_schedule"
 time = "12:00"
-message = "scheduled reply"
+messages = ["scheduled reply"]
 feature = "private_extension"
 at_user_ids = ["at_user", 202]
 
@@ -902,7 +909,7 @@ unknown_group = ["seer"]
 [[messaging.commands]]
 id = "custom_command"
 commands = ["custom"]
-message = "custom reply"
+messages = ["custom reply"]
 feature = "text"
 at_user_ids = ["unknown_user"]
 """,

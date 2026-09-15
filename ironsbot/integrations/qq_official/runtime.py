@@ -21,7 +21,6 @@ from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.integrations.qq_official.api_errors import QQOfficialHttpClient
 from ironsbot.integrations.qq_official.identity import (
-    is_qq_official_reply_event,
     qq_official_event_mentions_bot,
     qq_official_incoming_message,
 )
@@ -31,7 +30,7 @@ from ironsbot.integrations.qq_official.inbound_deduplication import (
 from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
 from ironsbot.integrations.qq_official.token_lifecycle import QQOfficialTokenObserver
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -43,6 +42,7 @@ if TYPE_CHECKING:
     from ironsbot.core.outbound import OutboundMessenger, SendResult
     from ironsbot.core.platform import IncomingMessageRef
     from ironsbot.services.portable_commands import PortableCommandRouter
+    from ironsbot.services.portable_reply import DeliveryStage
 
 logger = logging.getLogger(__name__)
 
@@ -355,7 +355,13 @@ class QQOfficialRuntime:
         raw: Mapping[str, object],
     ) -> None:
         event = EventParser.parse(event_type, dict(raw))
-        if event is None or is_qq_official_reply_event(event):
+        if event is None:
+            logger.warning(
+                "QQ Official inbound event rejected by parser: "
+                "account=%s event_type=%s",
+                self._connections[app_id].lifecycle.account,
+                event_type,
+            )
             return
         router = self._router
         messenger = self._messenger
@@ -429,7 +435,18 @@ class QQOfficialRuntime:
             event_type: str,
             raw: dict[str, object],
         ) -> None:
-            await self.handle_event(app_id, event_type, raw)
+            try:
+                await self.handle_event(app_id, event_type, raw)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - SDK callback boundary
+                logger.error(  # noqa: TRY400 - exception text may contain private data
+                    "QQ Official inbound handling failed: "
+                    "account=%s event_type=%s error_type=%s",
+                    account_label,
+                    event_type,
+                    type(error).__name__,
+                )
 
         def connected() -> None:
             lifecycle.ready()
@@ -512,62 +529,31 @@ async def deliver_qq_official_reply(
     from ironsbot.core.outbound import ReplyContext
 
     context = ReplyContext.from_message(incoming)
-    result = await messenger.reply(context, reply.message)
-    if not result.delivered:
-        reply.delivery_failed()
-        _log_delivery_failure(
-            incoming,
-            result,
-            stage="initial",
-            account_label=account_label,
-        )
-        return
-    reply.delivered()
-    _log_delivery_success(incoming, stage="initial", account_label=account_label)
-    for additional in reply.additional_messages:
-        additional_result = await messenger.reply(context, additional)
-        if not additional_result.delivered:
+
+    def on_sent(stage: DeliveryStage, result: SendResult) -> None:
+        if result.delivered:
+            _log_delivery_success(incoming, stage=stage, account_label=account_label)
+        else:
             _log_delivery_failure(
-                incoming,
-                additional_result,
-                stage="additional",
-                account_label=account_label,
+                incoming, result, stage=stage, account_label=account_label,
             )
-            return
-        _log_delivery_success(
-            incoming,
-            stage="additional",
-            account_label=account_label,
-        )
-    if reply.follow_up is None:
-        return
-    try:
-        follow_up = await reply.follow_up()
-    except asyncio.CancelledError:
-        raise
-    except Exception as error:
+
+    def on_follow_up_error(error: Exception) -> OutboundMessage:
         logger.exception(
             "QQ Official deferred operation failed: account=%s kind=%s ref=%s",
             account_label,
             incoming.conversation.kind,
             reference_digest(incoming.conversation.id),
         )
-        follow_up = OutboundMessage.from_text(
+        return OutboundMessage.from_text(
             f"❌ 操作执行失败：{type(error).__name__}"
         )
-    follow_up_result = await messenger.reply(context, follow_up)
-    if not follow_up_result.delivered:
-        _log_delivery_failure(
-            incoming,
-            follow_up_result,
-            stage="follow_up",
-            account_label=account_label,
-        )
-        return
-    _log_delivery_success(
-        incoming,
-        stage="follow_up",
-        account_label=account_label,
+
+    await deliver_portable_reply(
+        reply,
+        lambda message: messenger.reply(context, message),
+        on_sent=on_sent,
+        on_follow_up_error=on_follow_up_error,
     )
 
 
@@ -577,8 +563,6 @@ def qq_official_event_is_supported(
     account_id: str,
     router: PortableCommandRouter,
 ) -> bool:
-    if is_qq_official_reply_event(event):
-        return False
     incoming = qq_official_incoming_message(event, account_id=account_id)
     return router.recognizes(
         MessageInputContext(
