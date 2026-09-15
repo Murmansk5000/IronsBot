@@ -233,11 +233,13 @@ def build_portable_help_operation(  # noqa: PLR0913 - composition boundary
         if not entries:
             return OutboundMessage.from_text("当前会话没有可用的功能。")
 
-        async def select(entry: HelpMenuEntry) -> OutboundMessage:
+        async def select(
+            entry: HelpMenuEntry, context: MessageInputContext,
+        ) -> OutboundMessage:
             return OutboundMessage.from_text(
                 format_plugin_detail(
                     entry,
-                    command_context,
+                    command_context_from_input(context),
                     features,
                     commands,
                     ignored_plugins=ignored_plugins,
