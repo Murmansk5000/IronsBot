@@ -211,8 +211,10 @@ def test_runtime_claims_message_before_business_dispatch(
 
             assert router.dispatch_count == 1
             assert "account=preview" in caplog.text
+            assert "input_kind=bot_mention recognized=True" in caplog.text
             assert "private-app-id" not in caplog.text
             assert "message-id" not in caplog.text
+            assert "@babyQ 帮助" not in caplog.text
 
     asyncio.run(run())
 

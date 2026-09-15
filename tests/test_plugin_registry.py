@@ -144,12 +144,12 @@ def test_manifest_activity_owns_its_commands_and_schedule() -> None:
     ]
 
 
-def test_manifest_data_sync_owns_its_commands_and_schedule() -> None:
+def test_manifest_data_sync_owns_only_its_onebot_commands() -> None:
     contribution = DEFINITIONS_BY_ID["db_sync"]
 
     assert contribution.commands
     assert {command.plugin_id for command in contribution.commands} == {"db_sync"}
-    assert [name for name, _hook in contribution.hooks.startup] == ["db_sync"]
+    assert contribution.hooks.startup == ()
 
 
 def test_manifest_bilibili_owns_its_commands_and_lifecycle() -> None:
@@ -335,7 +335,6 @@ def test_contributions_define_the_lifecycle_order() -> None:
         "bilibili_monitor_jobs",
         "messaging",
         "docker_update",
-        "db_sync",
         "lucky_skin_window_schedule",
         "team_resource_jobs",
         "activity_reminder_jobs",
