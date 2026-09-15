@@ -9,6 +9,7 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.time import scheduled_clock_time
 from ironsbot.services.operations.headless_activity import HeadlessOperationTracker
 from ironsbot.services.operations.headless_errors import (
@@ -489,7 +490,10 @@ class HeadlessService:
     ) -> None:
         worker = self._worker_for_user_id(user_id)
         if worker is None:
-            logger.warning("unknown headless worker state update: user_id=%s", user_id)
+            logger.warning(
+                "unknown headless worker state update: worker_ref=%s",
+                reference_digest(str(user_id)),
+            )
             return
         await self._record_worker_state(
             worker,

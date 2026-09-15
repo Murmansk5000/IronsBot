@@ -11,6 +11,10 @@ TRANSPORT_ROOTS = (
     PACKAGE / "plugins" / "onebot",
 )
 BUSINESS_ROOTS = (PACKAGE / "services", PACKAGE / "extensions")
+HEADLESS_ROOTS = (
+    PACKAGE / "integrations" / "headless_seer",
+    PACKAGE / "services" / "operations",
+)
 LOGGER_METHODS = frozenset({"debug", "info", "warning", "error", "exception"})
 TRANSPORT_REFERENCE_NAMES = frozenset(
     {
@@ -24,7 +28,8 @@ TRANSPORT_REFERENCE_NAMES = frozenset(
         "user_id",
     }
 )
-BUSINESS_REFERENCE_NAMES = frozenset({"actor", "conversation"})
+BUSINESS_REFERENCE_NAMES = frozenset({"actor", "conversation", "worker_id"})
+HEADLESS_REFERENCE_NAMES = frozenset({"user_id", "worker_id"})
 
 
 def _logger_calls(path: Path) -> list[ast.Call]:
@@ -78,6 +83,11 @@ def test_transport_ids_are_not_logged_directly() -> None:
             violation
             for root in BUSINESS_ROOTS
             for violation in _violations(root, BUSINESS_REFERENCE_NAMES)
+        ),
+        *(
+            violation
+            for root in HEADLESS_ROOTS
+            for violation in _violations(root, HEADLESS_REFERENCE_NAMES)
         ),
     ]
 

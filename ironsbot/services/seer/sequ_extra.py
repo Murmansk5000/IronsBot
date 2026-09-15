@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ironsbot.core.binary import BufferReader
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.tasks import OperationDeadline
 from ironsbot.core.time import ObservationTime
 
@@ -191,11 +192,11 @@ async def fetch_unity_peak_partial(
                 error_text = str(error) or type(error).__name__
             logger.warning(
                 "peak base mode failed: player_id=%s mode=%s param=%s "
-                "worker=%s error=%s",
+                "worker_ref=%s error=%s",
                 player_id,
                 mode,
                 failed_param,
-                getattr(game, "user_id", None),
+                reference_digest(str(getattr(game, "user_id", "unknown"))),
                 error_text,
             )
             mode_errors.append((mode, error_text))
