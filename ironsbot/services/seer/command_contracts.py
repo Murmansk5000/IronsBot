@@ -72,7 +72,7 @@ def seer_command_contracts(
     )
     player_binding_input = player_reference_input_matcher(
         ("绑定米米号",),
-        player_id_resolver.has_known_reference,
+        player_id_resolver.has_reference_choices,
     )
     return (
         *commands_from_rows(

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from ironsbot.core.aliases import AliasIndex
 from ironsbot.core.commands import normalize_command_text
+from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.seer_ids import is_valid_player_id
 
 if TYPE_CHECKING:
@@ -164,6 +165,40 @@ class PlayerAccountRegistry:
 
     def account_for_player_id(self, player_id: int) -> PlayerAccount | None:
         return self._by_player_id.get(player_id)
+
+    def find_references(
+        self,
+        reference: str,
+        *,
+        conversation: ConversationRef,
+        include_private: bool = False,
+    ) -> tuple[PlayerReferenceChoice, ...]:
+        """Offer one label per visible account, never account credentials."""
+        normalized = normalize_command_text(reference)
+        if not normalized or normalized.isdecimal():
+            return ()
+        choices = []
+        for account in self.accounts:
+            if (
+                self.resolve_player_id(
+                    account.name,
+                    conversation=conversation,
+                    include_private=include_private,
+                )
+                is None
+            ):
+                continue
+            label = next(
+                (
+                    value
+                    for value in (account.name, *account.aliases)
+                    if normalized in normalize_command_text(value)
+                ),
+                None,
+            )
+            if label is not None:
+                choices.append(PlayerReferenceChoice(account.player_id, label))
+        return tuple(choices)
 
     def _build_private_alias_groups(
         self,

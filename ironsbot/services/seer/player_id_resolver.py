@@ -8,11 +8,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ironsbot.core.platform import ActorRef
+from ironsbot.core.player_references import PlayerReferenceChoice
 
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ConversationRef
-    from ironsbot.core.player_references import PlayerReferenceLookup
+    from ironsbot.core.player_references import (
+        PlayerReferenceLookup,
+        PlayerReferenceSearch,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,11 +43,13 @@ class PlayerIdResolver:
         *,
         privileged_reference_lookup: PlayerReferenceLookup | None = None,
         is_privileged_actor: ActorPrivilegeLookup | None = None,
+        reference_search: PlayerReferenceSearch | None = None,
     ) -> None:
         self._reference_lookup = reference_lookup
         self._binding_lookup = binding_lookup
         self._privileged_reference_lookup = privileged_reference_lookup
         self._is_privileged_actor = is_privileged_actor or (lambda _actor: False)
+        self._reference_search = reference_search
 
     def resolve(
         self,
@@ -102,6 +108,22 @@ class PlayerIdResolver:
         """
 
         return self._lookup_reference(reference, actor, conversation) is not None
+
+    def reference_choices(
+        self, reference: str, actor: ActorRef, conversation: ConversationRef,
+    ) -> tuple[PlayerReferenceChoice, ...]:
+        """Exact references take precedence over visible substring candidates."""
+        player_id = self._lookup_reference(reference, actor, conversation)
+        if player_id is not None:
+            return (PlayerReferenceChoice(player_id, reference.strip()),)
+        if self._reference_search is None:
+            return ()
+        return self._reference_search(reference, actor, conversation)
+
+    def has_reference_choices(
+        self, reference: str, actor: ActorRef, conversation: ConversationRef,
+    ) -> bool:
+        return bool(self.reference_choices(reference, actor, conversation))
 
     def _lookup_reference(
         self,

@@ -13,6 +13,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
@@ -195,6 +196,74 @@ def _resolver() -> PlayerIdResolver:
             "target-openid": 800001,
         }.get(actor.id),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("selection", ["1", "0"])
+async def test_partial_binding_uses_shared_menu_before_business_work(
+    platform: Platform,
+    selection: str,
+) -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    choices = (
+        PlayerReferenceChoice(700001, "玩家甲"),
+        PlayerReferenceChoice(700002, "玩家乙"),
+    )
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        reference_search=lambda _reference, _actor, _conversation: choices,
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        resolver,
+        sessions,
+    )
+    context = _context("绑定米米号玩家", platform=platform)
+    reply = cast(
+        "PortableReply", await operations["seer.player.bind"](context.text, context)
+    )
+    assert "玩家甲" in _text(reply) and "玩家乙" in _text(reply)
+    assert not service.bound
+    stranger = _context(context.text, platform=platform, actor_id="stranger")
+    assert await sessions.select("1", stranger, allow_deferred=True) is None
+    selected = await sessions.select(selection, context, allow_deferred=True)
+    assert selected is not None
+    assert service.bound == (
+        [(context.message.actor, 700001)] if selection == "1" else []
+    )
+    assert not service.returned
+    if selection == "1":
+        cast("PortableReply", selected).delivered()
+        assert service.returned == [(context.message.actor, 700001)]
+
+
+@pytest.mark.asyncio
+async def test_binding_selection_rechecks_reference_visibility() -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    choices = (
+        PlayerReferenceChoice(700001, "玩家甲"),
+        PlayerReferenceChoice(700002, "玩家乙"),
+    )
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        reference_search=lambda _reference, _actor, _conversation: choices,
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        resolver,
+        sessions,
+    )
+    context = _context("绑定米米号玩家")
+    await operations["seer.player.bind"](context.text, context)
+    choices = ()
+    reply = await sessions.select("1", context, allow_deferred=True)
+    assert "已不可用" in _text(cast("PortableReply", reply))
+    assert not service.bound
 
 
 def _text(reply: PortableReply) -> str:
