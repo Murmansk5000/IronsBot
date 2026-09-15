@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
-from ironsbot.integrations.onebot import bilibili_auth as auth
+from ironsbot.services.bilibili import login_notice as auth
 from ironsbot.services.bilibili.auth import LoginQrMessageParts
 from ironsbot.services.bilibili.login import BiliLoginNotice
 from ironsbot.services.messaging.admin_notice import AdminNoticeService
