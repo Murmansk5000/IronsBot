@@ -30,27 +30,6 @@ NEW_CONTENT_COMMANDS = (
 )
 NEW_ACHIEVEMENTS_COMMANDS = ("新增成就", "每周成就", "本周成就", "更新成就")
 NEW_PETS_COMMANDS = ("新增精灵", "每周精灵", "本周精灵", "更新精灵")
-NEW_PEAK_POOL_COMMANDS = (
-    "竞技池变化",
-    "竞技池修改",
-    "每周竞技池",
-    "本周竞技池",
-    "更新竞技池",
-)
-NEW_PEAK_EXPERT_POOL_COMMANDS = (
-    "专家池变化",
-    "专家池修改",
-    "每周专家池",
-    "本周专家池",
-    "更新专家池",
-)
-NEW_PEAK_MASTER_POOL_COMMANDS = (
-    "大师池变化",
-    "每周大师池",
-    "本周大师池",
-    "更新大师池",
-    "新增大师池",
-)
 PEAK_ENVIRONMENT_CHANGES_COMMANDS = ("巅峰环境变化", "巅峰变化")
 NEW_SKINS_COMMANDS = ("新增皮肤", "每周皮肤", "本周皮肤", "更新皮肤")
 NEW_SKILLS_COMMANDS = ("新增技能", "每周技能", "本周技能", "更新技能")
@@ -116,27 +95,6 @@ NEW_CONTENT_COMMAND_SPECS = (
         ("pet",),
         "查看本周新增精灵",
         ("seer_pet",),
-    ),
-    NewContentCommandSpec(
-        "seer.data.new_peak_pool",
-        NEW_PEAK_POOL_COMMANDS,
-        ("peak_pool",),
-        "查看本周竞技池限制变化",
-        ("seer_pet",),
-    ),
-    NewContentCommandSpec(
-        "seer.data.new_peak_expert_pool",
-        NEW_PEAK_EXPERT_POOL_COMMANDS,
-        ("peak_expert_pool",),
-        "查看本周专家池限制变化",
-        ("seer_pet",),
-    ),
-    NewContentCommandSpec(
-        "seer.data.new_peak_master_pool",
-        NEW_PEAK_MASTER_POOL_COMMANDS,
-        ("peak_master_pool",),
-        "查看本周大师池竞技点变化",
-        ("seer_peak", "seer_pet"),
     ),
     NewContentCommandSpec(
         "seer.data.peak_environment_changes",

@@ -179,9 +179,29 @@ PEAK_TYPE_NAME_MAP = {
     PeakType.EXPERT: "专家",
 }
 
-PEAK_POOL_COMMANDS = ("竞技池", "巅峰竞技池", "竞技精灵池", "限制池")
-PEAK_EXPERT_POOL_COMMANDS = ("专家池", "巅峰专家池", "专家禁用池")
-PEAK_MASTER_POOL_COMMANDS = ("大师池", "巅峰大师池")
+PEAK_POOL_COMMANDS = (
+    "竞技池",
+    "竞技池变化",
+    "巅峰竞技池",
+    "竞技精灵池",
+    "限制池",
+)
+PEAK_EXPERT_POOL_COMMANDS = (
+    "专家池",
+    "专家池变化",
+    "巅峰专家池",
+    "专家禁用池",
+)
+PEAK_MASTER_POOL_COMMANDS = (
+    "大师池",
+    "大师池变化",
+    "巅峰大师池",
+    "大师精灵池",
+    "新增大师池",
+    "每周大师池",
+    "本周大师池",
+    "更新大师池",
+)
 PEAK_VOTE_COMMANDS = ("巅峰投票", "巅峰票选", "巅峰池票选", "竞技池票选", "限制池票选")
 PEAK_SUIT_RANK_COMMANDS = tuple(f"{name}套装榜" for name in PEAK_TYPE_NAME_MAP.values())
 PEAK_TITLE_RANK_COMMANDS = tuple(

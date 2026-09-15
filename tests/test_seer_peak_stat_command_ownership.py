@@ -98,9 +98,9 @@ def catalog() -> CommandCatalog:
         ("刻印攻榜", "seer.mintmark.rank"),
         ("赛季时间", "seer.data.query"),
         ("新增内容", "seer.data.new_content"),
-        ("竞技池变化", "seer.data.new_peak_pool"),
-        ("专家池变化", "seer.data.new_peak_expert_pool"),
-        ("大师池变化", "seer.data.new_peak_master_pool"),
+        ("竞技池变化", "seer.peak.query"),
+        ("专家池变化", "seer.peak.query"),
+        ("大师池变化", "seer.peak.query"),
         ("巅峰环境变化", "seer.data.peak_environment_changes"),
     ],
 )
