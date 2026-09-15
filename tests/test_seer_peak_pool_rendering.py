@@ -15,7 +15,9 @@ from ironsbot.integrations.seer_data.peak_pool_vote_renderer import (
 from ironsbot.services.seer.images import to_data_uri
 from ironsbot.services.seer.peak import (
     PeakPetSnapshot,
+    PeakPoolRenderSnapshot,
     PeakPoolSnapshot,
+    PeakPoolTransitionSnapshot,
     PeakVoteItemSnapshot,
     PeakVotePoolInput,
 )
@@ -25,6 +27,7 @@ from ironsbot.services.seer.rendering.cache_key import (
     render_request_cache_key,
 )
 from ironsbot.services.seer.rendering.peak_pool import (
+    PeakPoolImageAssets,
     present_peak_pool,
 )
 from ironsbot.services.seer.rendering.peak_pool_vote import (
@@ -105,19 +108,37 @@ def _pools() -> tuple[PeakPoolSnapshot, ...]:
     )
 
 
+def _pool_render_snapshot(
+    pools: tuple[PeakPoolSnapshot, ...] | None = None,
+    *,
+    transitions: tuple[PeakPoolTransitionSnapshot, ...] = (),
+    change_state: str = "unavailable",
+) -> PeakPoolRenderSnapshot:
+    return PeakPoolRenderSnapshot(
+        pools=_pools() if pools is None else pools,
+        transitions=transitions,
+        change_state=cast("Any", change_state),
+        content_version="test",
+        expert=False,
+    )
+
+
 def test_peak_pool_presentation_uses_preloaded_assets() -> None:
     document = present_peak_pool(
-        _pools(),
+        _pool_render_snapshot(),
         "竞技池",
-        PetImageAssets(
-            pet_heads=((70, "rei"), (71, "gaiya")),
+        PeakPoolImageAssets(
+            heads=((70, "rei"), (71, "gaiya")),
+            historical_heads=((70, "old-rei"), (71, "old-gaiya")),
             type_icons=((1, "electric"), (2, "fight")),
         ),
     )
 
     assert document.pool_type == "竞技池"
-    assert document.pools[0].pets[0].head_img == "rei"
-    assert document.pools[0].pets[1].type_icon == "fight"
+    limit_two = next(pool for pool in document.pools if pool.label == "限2")
+    pets = tuple(pet for pet in limit_two.slots if pet is not None)
+    assert pets[0].head_img == "rei"
+    assert pets[1].type_icon == "fight"
     assert document.max_width > 0
 
 
@@ -134,13 +155,16 @@ def test_peak_pool_document_key_changes_with_rendered_snapshot_fields() -> None:
         original[1],
     )
 
-    assets = PetImageAssets(
-        pet_heads=((70, "rei"), (71, "gaiya")),
+    assets = PeakPoolImageAssets(
+        heads=((70, "rei"), (71, "gaiya")),
+        historical_heads=((70, "old-rei"), (71, "old-gaiya")),
         type_icons=((1, "electric"), (2, "fight")),
     )
     assert render_document_cache_key(
-        present_peak_pool(original, "竞技池", assets)
-    ) != render_document_cache_key(present_peak_pool(changed, "竞技池", assets))
+        present_peak_pool(_pool_render_snapshot(original), "竞技池", assets)
+    ) != render_document_cache_key(
+        present_peak_pool(_pool_render_snapshot(changed), "竞技池", assets)
+    )
 
 
 @pytest.mark.asyncio
@@ -152,7 +176,7 @@ async def test_peak_pool_adapter_checks_final_cache_before_loading_assets() -> N
         cast("RenderCache", cache),
         cast("SeerImageSource", images),
         cast("HtmlTemplateRenderer", _unexpected_render),
-        _pools(),
+        _pool_render_snapshot(),
         "竞技池",
     )
 
@@ -174,7 +198,7 @@ async def test_peak_pool_adapter_deduplicates_assets_and_writes_final_cache() ->
         cast("RenderCache", cache),
         cast("SeerImageSource", images),
         cast("HtmlTemplateRenderer", render_html),
-        _pools(),
+        _pool_render_snapshot(),
         "竞技池",
     )
 
@@ -189,10 +213,39 @@ async def test_peak_pool_adapter_deduplicates_assets_and_writes_final_cache() ->
     assert cache.writes == [
         (
             "peak_pool",
-            render_request_cache_key("peak_pool", ("竞技池", _pools())),
+            render_request_cache_key(
+                "peak_pool", ("竞技池", _pool_render_snapshot())
+            ),
             b"rendered",
         )
     ]
+
+
+def test_peak_pool_presentation_draws_weekly_transition_arrow() -> None:
+    pet = _pools()[0].pets[0]
+    snapshot = _pool_render_snapshot(
+        transitions=(PeakPoolTransitionSnapshot(pet, 3, 2),),
+        change_state="changed",
+    )
+    document = present_peak_pool(
+        snapshot,
+        "竞技池",
+        PeakPoolImageAssets(
+            heads=((pet.resource_id, "current"),),
+            historical_heads=((pet.resource_id, "historical"),),
+            type_icons=((pet.type_id, "type"),),
+        ),
+    )
+
+    rendered_pets = tuple(
+        item
+        for pool in document.pools
+        for item in pool.slots
+        if item is not None and item.id == pet.id
+    )
+    assert {item.head_img for item in rendered_pets} == {"current", "historical"}
+    assert len(document.transition_arrows) == 1
+    assert document.transition_overlay.startswith("data:image/png;base64,")
 
 
 async def _unexpected_render(**_kwargs: object) -> bytes:
@@ -407,7 +460,11 @@ async def test_peak_adapters_recover_without_caching_failed_images(  # noqa: C90
             async def request_image() -> bytes:
                 if mode == "pool":
                     return await render_peak_pool(
-                        cache, images, coordinator.render, _pools(), "竞技池"
+                        cache,
+                        images,
+                        coordinator.render,
+                        _pool_render_snapshot(),
+                        "竞技池",
                     )
                 if mode == "vote":
                     return await render_peak_pool_vote(

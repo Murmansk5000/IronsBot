@@ -281,7 +281,14 @@ class _FakePeakQuery(_UnusedQueryService):
         progress: Callable[[str], Awaitable[None]],
     ) -> PeakQueryResult:
         await progress("rendering")
-        return PeakQueryResult(text="专家池" if expert else "竞技池")
+        return PeakQueryResult(image=b"expert-pool" if expert else b"peak-pool")
+
+    async def master_pool(
+        self,
+        progress: Callable[[str], Awaitable[None]],
+    ) -> PeakQueryResult:
+        await progress("rendering")
+        return PeakQueryResult(image=b"master-pool")
 
 
 class _FakeTeamQuery:
@@ -1833,7 +1840,21 @@ async def test_portable_router_runs_scoped_query_selection(
 
 
 @pytest.mark.asyncio
-async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        ("竞技池", b"peak-pool"),
+        ("竞技池变化", b"peak-pool"),
+        ("专家池", b"expert-pool"),
+        ("专家池变化", b"expert-pool"),
+        ("大师池", b"master-pool"),
+        ("大师池变化", b"master-pool"),
+    ),
+)
+async def test_portable_router_runs_pool_aliases_through_the_same_image_query(
+    command: str,
+    expected: bytes,
+) -> None:
     features = build_onebot_feature_service(
         FeatureConfig(),
         (),
@@ -1858,10 +1879,10 @@ async def test_portable_router_runs_peak_query_without_adapter_logic() -> None:
         account_id="example-app",
     )
 
-    result = await router.dispatch(_portable_input("竞技池", actor, conversation))
+    result = await router.dispatch(_portable_input(command, actor, conversation))
 
     assert result is not None
-    assert cast("TextPart", result.message.parts[0]).text == "竞技池"
+    assert result.message.parts == (BinaryImagePart(expected, "image/png"),)
 
 
 @pytest.mark.asyncio
