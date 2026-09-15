@@ -2457,8 +2457,9 @@ progress-aware service API。覆盖提升到 67/75，剩余 8 条是两条需要
 portable 执行路径；新增的平台专属身份命令按各自 `platforms` 归属单独计算。现有 TOML、
 env、Docker 和 Unraid 配置无需迁移，真实 AppID 的联机验收仍留在最终外部验收门。
 
-命令覆盖不再依赖人工维护的数字。完整 QQ-enabled bootstrap 会构造 portable router，
+命令覆盖不只依赖人工维护的数字。完整 QQ-enabled bootstrap 会构造 portable router，
 并校验目录中的每条 QQ Official `direct` 契约都有执行器或明确的内建处理；缺失项会在
-构造时列出命令 ID 并失败。当前目录为 78 条官方直达命令，即原 75 条迁移目标加上
-3 条官方身份命令；OneBot 专属的令牌签发命令不计入。平台专属归属和自动/被动行为
+构造时列出命令 ID 并失败。当前目录为 75 条官方直达命令，即 72 条共享业务命令加上
+3 条官方身份命令；同一业务命令的文本别名不重复计数，OneBot 专属的令牌签发命令
+不计入。平台专属归属和自动/被动行为
 由 `CommandContract` 自身声明，不用另一份容易漂移的手写矩阵。
