@@ -34,6 +34,7 @@ from ironsbot.services.operations.docker_commands import docker_command_contract
 from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
 from ironsbot.services.team.resource_commands import team_resource_command_contracts
@@ -120,7 +121,14 @@ async def test_help_about_installed_rules_and_ai_use_original_text() -> None:
         known_features={"help", "about", "ai_chat"},
     )
     about.install(registry, AboutService("test"))
-    help_plugin.install(registry, Mock(), FEATURES, catalog, ignored_plugins=())
+    help_plugin.install(
+        registry,
+        Mock(),
+        FEATURES,
+        catalog,
+        PortableQuerySessions(),
+        ignored_plugins=(),
+    )
     for call in registry.on_fullmatch.call_args_list:
         name = call.args[0]
         rule = fullmatch(name) & cast("Rule", call.kwargs["rule"])

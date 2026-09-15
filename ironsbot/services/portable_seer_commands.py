@@ -39,10 +39,9 @@ from ironsbot.services.seer.query_commands import (
     pet_avatar_input,
     pet_image_input,
     pet_query_input,
-    team_query_input,
 )
 from ironsbot.services.seer.rank_help import format_rank_help
-from ironsbot.services.seer.team import TeamQueryActor
+from ironsbot.services.seer.team_commands import build_team_query_operation
 
 if TYPE_CHECKING:
     from ironsbot.core.affix_commands import AffixParser
@@ -53,6 +52,7 @@ if TYPE_CHECKING:
     from ironsbot.services.seer.data_queries import DataQueryReply
     from ironsbot.services.seer.equipment import EquipmentKind
     from ironsbot.services.seer.peak import PeakQueryService
+    from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.resources import SeerQueryResources
 
 
@@ -61,6 +61,7 @@ def build_portable_seer_operations(
     seer: SeerQueryResources,
     sessions: PortableQuerySessions,
     features: FeatureService,
+    player_id_resolver: PlayerIdResolver,
 ) -> dict[str, PortableOperation]:
     """Build core Seer operations from existing parsers and domain services."""
 
@@ -78,26 +79,6 @@ def build_portable_seer_operations(
         msg = f"unsupported portable Seer data command: {text!r}"
         raise ValueError(msg)
 
-    async def team_query(
-        text: str,
-        context: MessageInputContext,
-    ) -> OutboundMessage:
-        parsed = team_query_input(text)
-        if parsed is None:
-            msg = f"catalog accepted input that its team parser rejected: {text!r}"
-            raise ValueError(msg)
-        message = context.message
-        team_ids = seer.team_query.parse_team_ids(parsed.argument)
-        result = await seer.team_query.query(
-            team_ids,
-            TeamQueryActor(
-                actor=message.actor,
-                conversation=message.conversation,
-                can_manage=False,
-            ),
-        )
-        return OutboundMessage.from_text(result)
-
     async def rank_help_message(
         text: str,
         context: MessageInputContext,
@@ -114,7 +95,11 @@ def build_portable_seer_operations(
 
     operations: dict[str, PortableOperation] = {
         "seer.data.query": data_query,
-        "seer.team.query": team_query,
+        "seer.team.query": build_team_query_operation(
+            seer.team_query,
+            player_id_resolver,
+            features,
+        ),
         "rank.help": rank_help_message,
         "seer.peak.query": _build_peak_query_operation(seer.peak_query),
         "seer.peak.rank": _build_peak_rank_operation(seer.peak_query),

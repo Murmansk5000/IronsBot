@@ -17,6 +17,7 @@ from ironsbot.services.operations.headless_errors import (
 from ironsbot.services.operations.scheduler import JobRegistry
 from ironsbot.services.seer.ids import TEAM_ID_ERROR_MESSAGE, is_valid_team_id
 from ironsbot.services.seer.team import format_team_info
+from ironsbot.services.team.overview import TeamOverviewItem
 from ironsbot.services.team.resource_subscriptions import (
     TeamResourceManageCommand,
     TeamResourcePrivateSubscription,
@@ -48,6 +49,7 @@ class TeamResourceResult(NamedTuple):
     team_name: str
     message: str
     resource: int
+    member_count: int | None = None
 
 
 class TeamResourceQueryError(RuntimeError):
@@ -286,16 +288,36 @@ class TeamResourceService:
             "还可以继续发送“订阅战队123456”添加更多战队。"
         )
 
-    async def query_target_messages(
+    async def query_overview(
         self,
         target: TeamResourceSubscriptionTarget,
-    ) -> list[str]:
-        return await self.query_messages(
-            (
-                subscription.team_id
-                for subscription in self._subscriptions_for_target(target)
-            ),
+        *,
+        first_team_id: int | None = None,
+    ) -> tuple[TeamOverviewItem, ...]:
+        subscriptions = self._subscriptions_for_target(target)
+        names = {item.team_id: item.team_name for item in subscriptions}
+        team_ids = list(names)
+        if first_team_id is not None:
+            team_ids = [
+                first_team_id,
+                *(team_id for team_id in team_ids if team_id != first_team_id),
+            ]
+        return tuple(
+            [
+                await self._overview_item(team_id, names.get(team_id, ""))
+                for team_id in team_ids
+            ]
         )
+
+    async def _overview_item(
+        self,
+        team_id: int,
+        fallback_name: str,
+    ) -> TeamOverviewItem:
+        try:
+            return TeamOverviewItem.from_result(await self.query(team_id))
+        except TeamResourceQueryError as error:
+            return TeamOverviewItem(team_id, fallback_name, error=str(error))
 
     async def query_messages(
         self,
@@ -385,6 +407,7 @@ class TeamResourceService:
             info.name,
             format_team_info(info, {"basic", "resource"}),
             info.score,
+            info.member_count,
         )
 
     async def _query_message(

@@ -35,7 +35,11 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
-from ironsbot.core.plugin_install import PluginContribution
+from ironsbot.core.plugin_install import (
+    HelpEntry,
+    PluginContribution,
+    PluginContributionCatalog,
+)
 from ironsbot.integrations.qq_official.identity import qq_official_incoming_message
 from ironsbot.integrations.qq_official.message_rendering import (
     QQOfficialImagePayload,
@@ -76,6 +80,7 @@ from ironsbot.services.portable_commands import (
     PortableCommandRouterError,
     build_portable_command_router,
 )
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
@@ -85,6 +90,7 @@ from ironsbot.services.seer.peak import PeakQueryResult
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolution
 from ironsbot.services.seer.query_result import QueryChoice, QueryReply, QueryResult
 from ironsbot.services.seer.rank_command_contracts import rank_help_command_contracts
+from ironsbot.services.seer.team import TeamQueryActor
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -106,7 +112,6 @@ if TYPE_CHECKING:
         RankPageCacheStatusCommand,
     )
     from ironsbot.services.seer.resources import SeerQueryResources
-    from ironsbot.services.seer.team import TeamQueryActor
     from ironsbot.services.team.resource import TeamResourceService
 
 
@@ -313,6 +318,23 @@ class _FakeTeamQuery:
         assert not actor.can_manage
         return "战队:" + ",".join(str(value) for value in team_ids)
 
+    async def query_input(
+        self,
+        text: str,
+        context: MessageInputContext,
+        _resolver: object,
+        *,
+        can_manage: bool,
+    ) -> str:
+        return await self.query(
+            self.parse_team_ids(text.removeprefix("战队")),
+            TeamQueryActor(
+                context.message.actor,
+                context.message.conversation,
+                can_manage,
+            ),
+        )
+
 
 class _FakeRankQueries:
     def default_limit(self, _conversation: ConversationRef | None) -> int:
@@ -497,6 +519,7 @@ def _fake_seer(
             battle_effect=unused,
             peak_query=peak_query or unused,
             player=unused,
+            player_detail_extensions=SimpleNamespace(actions=lambda: ()),
             rank_queries=rank_queries or unused,
             rank_admin=rank_admin or unused,
         ),
@@ -662,6 +685,25 @@ def _portable_catalog(  # noqa: PLR0913 - tests vary independent command familie
             "meeting",
             "pet_config",
         ),
+    )
+    return catalog
+
+
+def _portable_help_catalog() -> PluginContributionCatalog:
+    catalog = PluginContributionCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="help",
+                help=HelpEntry("帮助", "查看当前可用功能", "core", 10),
+                commands=help_command_contracts(),
+            ),
+            PluginContribution(
+                id="about",
+                help=HelpEntry("关于", "查看项目与版本信息", "core", 20),
+                commands=about_command_contracts(),
+            ),
+        )
     )
     return catalog
 
@@ -1273,8 +1315,11 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
             superusers=[],
         ),
     )
+    query_sessions = PortableQuerySessions()
     router = build_portable_command_router(
         catalog=_portable_catalog(),
+        contribution_catalog=_portable_help_catalog(),
+        query_sessions=query_sessions,
         about=AboutService("test"),
         seer=_fake_seer(),
         player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
@@ -1301,6 +1346,13 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
     assert isinstance(help_message.message.parts[0], TextPart)
     assert "关于" in help_message.message.parts[0].text
     assert "数据版本" not in help_message.message.parts[0].text
+
+    detail = await router.dispatch(_portable_input("2", actor, conversation))
+    assert detail is not None
+    assert isinstance(detail.message.parts[0], TextPart)
+    assert "关于" in detail.message.parts[0].text
+    assert router.recognizes(_portable_input("1", actor, conversation))
+
     assert (
         await router.dispatch(_portable_input("数据版本", actor, conversation))
         is None

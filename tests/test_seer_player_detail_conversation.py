@@ -455,7 +455,10 @@ def test_player_detail_delegates_a_registered_private_action(
         player_detail_conversation.handle_player_detail_reply(
             cast("Any", object()),
             extensions,
-            cast("Any", object()),
+            cast(
+                "Any",
+                SimpleNamespace(is_actor_superuser=lambda _actor: False),
+            ),
             cast("Any", object()),
             event,
             cast("Any", state),
