@@ -93,6 +93,14 @@ class TencentQQClient:
                 sequence=sequence,
             )
             sent_id = _response_id(response)
+            logger.info(
+                "QQ Official payload delivered: scope=%s mode=%s sequence=%s "
+                "payload=%s",
+                scope,
+                "passive" if message_id is not None else "proactive",
+                sequence,
+                type(payload).__name__,
+            )
             if first_id is None:
                 first_id = sent_id
         if first_id is None:
