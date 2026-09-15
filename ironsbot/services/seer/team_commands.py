@@ -55,7 +55,15 @@ def build_team_query_operation(
             )
         reference = reference.removeprefix("米米号").strip()
 
-        async def query_player(player_id: int) -> OutboundMessage:
+        async def query_player(
+            player_id: int, context: MessageInputContext,
+        ) -> OutboundMessage:
+            message = context.message
+            actor = TeamQueryActor(
+                message.actor, message.conversation,
+                message.group_role in GROUP_MANAGER_ROLES
+                or features.is_actor_superuser(message.actor),
+            )
             return OutboundMessage.from_text(
                 await service.query_player_team(player_id, actor)
             )
@@ -76,6 +84,6 @@ def build_team_query_operation(
             return OutboundMessage.from_text(
                 "请填写战队号、米米号、玩家别名，或直接 @ 一名已绑定成员。",
             )
-        return await query_player(resolution.player_id)
+        return await query_player(resolution.player_id, context)
 
     return execute

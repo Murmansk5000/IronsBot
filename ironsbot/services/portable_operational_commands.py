@@ -78,7 +78,9 @@ class _PortableDataSyncOperations:
             if not should_run:
                 return message
 
-            async def select(option: ManualDataSyncOption) -> PortableReply:
+            async def select(
+                option: ManualDataSyncOption, _context: MessageInputContext,
+            ) -> PortableReply:
                 async def run(action_progress: ProgressReporter) -> str:
                     return await self.service.run_manual(
                         action=option.action,
@@ -124,7 +126,9 @@ def build_portable_docker_operations(
     ) -> OutboundMessage:
         del text
 
-        async def select(option: DockerMaintenanceOption) -> PortableReply:
+        async def select(
+            option: DockerMaintenanceOption, _context: MessageInputContext,
+        ) -> PortableReply:
             message, action = await service.prepare_maintenance(option.choice)
 
             async def execute() -> OutboundMessage:
