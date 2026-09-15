@@ -281,9 +281,8 @@ def test_example_config_parses() -> None:
     assert config.features.user_aliases == {
         "owner": 1234567890,
         "user_a": 2345678901,
-        "qq_group_manager": 2854196310,
     }
-    assert config.features.user_policy["qq_group_manager"] == ["blacklist"]
+    assert config.features.user_policy == {}
     assert config.ai.model == "deepseek-v4-pro"
     assert "fire_manual" in config.ai.intent_actions
     assert config.ai.intent_actions["fire_manual"].promotion == "fire_manual"

@@ -230,9 +230,9 @@ group_b = 876543210
 # ZH: 用户别名，把易读名称映射到 QQ 号。
 owner = 1234567890
 user_a = 2345678901
-# Official QQ group-management bot. Blacklisted below so its automated messages
-# never trigger bot commands or AI handling.
-qq_group_manager = 2854196310
+# Example automated account. Add the same alias to user_policy with blacklist so
+# its messages never trigger commands or AI handling.
+# blocked_bot = 3456789012
 
 [features.bundles]
 # Default: empty table
@@ -313,7 +313,7 @@ lite = [
 # Example:
 # owner = ["all"]
 # blocked_user = ["blacklist"]
-qq_group_manager = ["blacklist"]
+# blocked_bot = ["blacklist"]
 
 [features.help]
 # Default: []; EN: Plugin names hidden from help. ZH: 帮助菜单隐藏的插件名称。
