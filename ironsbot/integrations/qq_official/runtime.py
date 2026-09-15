@@ -375,7 +375,16 @@ class QQOfficialRuntime:
             incoming,
             mentions_bot=qq_official_event_mentions_bot(event),
         )
-        if not router.recognizes(context):
+        recognized = router.recognizes(context)
+        logger.info(
+            "QQ Official inbound routed: account=%s event_type=%s "
+            "input_kind=%s recognized=%s",
+            self._connections[app_id].lifecycle.account,
+            event_type,
+            context.kind.value,
+            recognized,
+        )
+        if not recognized:
             return
         reply = await router.dispatch(context)
         if reply is not None:
