@@ -42,7 +42,7 @@ def _logger_calls(path: Path) -> list[ast.Call]:
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "logger"
+        and node.func.value.id.lower().endswith("logger")
         and node.func.attr in LOGGER_METHODS
     ]
 
