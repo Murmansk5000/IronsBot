@@ -246,6 +246,12 @@ uv sync --extra qq-official
 uv run --no-sync python -m ironsbot
 ```
 
+源码启动会先读取项目根目录的 `.env`，再读取
+`.env.<ENVIRONMENT>`（未设置时为 `.env.prod`）。系统、终端或容器中已经存在的环境变量
+优先级最高；环境专用文件覆盖基础 `.env`。例如本机开发可在终端设置
+`ENVIRONMENT=dev`，由应用自动读取被 Git 忽略的 `.env.dev`，无需逐项导入 Secret。
+行为配置仍由 `APP_CONFIG_PATH` 指向 TOML，所有密钥仍只放环境变量。
+
 默认安装和标准 OneBot 镜像不携带该 SDK 及其依赖。构建 QQ 官方镜像时传入
 `--build-arg IRONSBOT_RUNTIME_EXTRA=qq-official`；启用配置但未安装该组件会在启动时
 明确报错。
@@ -737,7 +743,7 @@ AI 聊天异常、B站登录、无头赛尔号、精灵渲染崩溃、红包提�
 私聊发送 `TD`，或群主/管理员在群里发送 `TD`，可以分别退订/恢复
 这些推送；发送 `推送时间` 可修改可编辑推送的提醒时间。
 
-`.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
+`.env`、`.env.dev`、`.env.prod` 和真实运行数据不应提交到 Git。
 
 ## 鸣谢
 
