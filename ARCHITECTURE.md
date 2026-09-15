@@ -494,6 +494,39 @@ request scheduling and operation tracing then use the request's typed actor
 and conversation. An extension that needs a platform-native value must expose
 a narrow platform integration port rather than widening this callback.
 
+`services.player_extension_commands` executes contributed detail actions for
+direct OneBot commands and shared portable menus, including feature checks,
+typed management context, and delivery-aware progress. The portable router
+builds missing direct operations from the action's command declaration; an
+existing broader domain operation, such as querying team IDs, retains ownership.
+This does not expand the platforms or access rules in the command contract.
+The old OneBot detail conversation remains a tracked migration item, not an
+alternative extension API to preserve.
+
+Portable menu and text-input callbacks receive the selected value and the
+current `MessageInputContext`. Session ownership still checks the scoped actor
+and conversation before invoking a callback. Nested menus propagate this current
+context; operations evaluate authorization when invoked, rather than storing a
+group-role decision made when the menu opened. Stateless data selectors keep
+their value-only service contract; they do not own message authorization.
+This contract does not itself authorize shared group menus or replace command
+admission policy.
+
+`services.portable_reply.deliver_portable_reply` owns initial acknowledgement,
+ordered additional/follow-up delivery, and abort notification on transport
+rejection, exception, or cancellation. OneBot and QQ Official supply the send
+function; transport logging and the explicit follow-up error presentation policy
+remain at the adapter edge. An initial acknowledgement is not rolled back by a
+later failure. Cancelling preparation before the first progress value cancels
+and joins the owned operation instead of leaving it waiting in the background.
+
+`services.player_reference_selection.select_player_target` owns message-level
+target selection for shared player queries and contributed shortcuts: explicit
+references use visible candidates, while direct mentions and default bindings
+use the player resolver. The selected action receives the current input context.
+Binding and account-login operations retain their distinct authorization rules;
+candidate selection does not grant permission to mutate or log in to an account.
+
 Separately distributed extensions import their permitted dependencies from an
 explicit public contract in `ironsbot.extensions.contracts`, never from
 `ironsbot.app.composition`, `ironsbot.app.private_extensions`, or a public
