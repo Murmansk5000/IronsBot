@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.selection import format_selection_menu
 from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply
@@ -26,7 +27,6 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     execute_player_shortcut,
     parse_player_shortcut_command,
 )
-from ironsbot.services.seer.query_result import QueryChoice, QueryResult
 
 if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
@@ -247,7 +247,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
 
     async def select(
         command: PlayerShortcutCommand | PlayerDetailExtensionAction,
-    ) -> QueryResult[object]:
+    ) -> OutboundMessage:
         if isinstance(command, PlayerDetailExtensionAction):
             reply = await command.query(
                 PlayerDetailActionRequest(
@@ -270,37 +270,43 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 context.message.actor,
                 conversation=context.message.conversation,
             )
-        return QueryResult(reply=reply)
+        return reply.to_outbound()
 
-    menu = sessions.offer(
-        context,
-        QueryResult(
-            choices=(
-                *(
-                QueryChoice[PlayerShortcutCommand | PlayerDetailExtensionAction](
-                    name=f"【{request.menu_label}】",
-                    description="",
-                    value=PlayerShortcutCommand(
-                        request.kind,
-                        pending.player_id,
-                        pending.base_snapshot,
-                    ),
-                )
-                for request in requests
-                ),
-                *(
-                    QueryChoice[PlayerShortcutCommand | PlayerDetailExtensionAction](
-                        name=f"【{action.label}】",
-                        description="",
-                        value=action,
-                    )
-                    for action in extension_actions
-                ),
+    choices: tuple[PlayerShortcutCommand | PlayerDetailExtensionAction, ...] = (
+        *(
+            PlayerShortcutCommand(
+                request.kind, pending.player_id, pending.base_snapshot
             )
+            for request in requests
         ),
-        select=select,
-        prompt_title=f"{player_message}\n回复数字查看详情：",
-        not_found_message=player_message,
+        *extension_actions,
+    )
+    labels = (
+        *(f"【{request.menu_label}】" for request in requests),
+        *(f"【{action.label}】" for action in extension_actions),
+    )
+    menu = (
+        sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=choices,
+                select=select,
+                labels=labels,
+                text_inputs=(
+                    *(frozenset({request.menu_label}) for request in requests),
+                    *(frozenset(action.aliases) for action in extension_actions),
+                ),
+                keep_open=True,
+                exit_message="已退出米米号详情查询。",
+                prompt=OutboundMessage.from_text(
+                    format_selection_menu(
+                        title=f"{player_message}\n回复数字或栏目名称查看详情：",
+                        items=labels,
+                    )
+                    if choices else player_message
+                ),
+            ),
+        )
     )
 
     def delivered() -> None:

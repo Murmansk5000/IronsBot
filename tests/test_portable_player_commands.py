@@ -306,7 +306,10 @@ async def test_player_query_menu_commits_work_only_after_delivery() -> None:
 
 
 @pytest.mark.asyncio
-async def test_player_query_menu_includes_available_shared_extension() -> None:
+@pytest.mark.parametrize("selection", ["4", "战队"])
+async def test_player_query_menu_includes_available_shared_extension(
+    selection: str,
+) -> None:
     service = _PlayerService()
     sessions = PortableQuerySessions()
     extensions = PlayerDetailExtensionRegistry()
@@ -347,11 +350,35 @@ async def test_player_query_menu_includes_available_shared_extension() -> None:
     )
 
     assert "4. 【战队】" in _text(reply)
-    selected = await sessions.select("4", context)
+    selected = await sessions.select(selection, context)
     assert selected is not None
     part = selected.parts[0]
     assert isinstance(part, TextPart)
     assert part.text == "team detail"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("inputs", [("收集", "巅峰", "群星牌"), ("1", "2", "3")])
+async def test_player_detail_template_supports_repeated_named_and_numeric_choices(
+    platform: Platform, inputs: tuple[str, str, str],
+) -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), sessions,
+    )
+    context = _context("米米号700002", platform=platform)
+    await operations["seer.player.query"](context.text, context)
+    for text, kind in zip(inputs, ("collection", "peak", "autocard"), strict=True):
+        assert sessions.recognizes_response(text, context)
+        reply = await sessions.select(text, context)
+        assert isinstance(reply, OutboundMessage)
+        assert f":{kind}:700002" in cast("TextPart", reply.parts[0]).text
+        assert sessions.active_prompt(context) is not None
+    assert not sessions.recognizes_response("随便聊天", context)
+    await sessions.select("0", context)
+    assert sessions.active_prompt(context) is None
 
 
 @pytest.mark.asyncio
