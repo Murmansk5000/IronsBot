@@ -281,6 +281,26 @@ class _FakePetQuery:
         return QueryResult()
 
 
+class _FakeMintmarkQuery:
+    async def search_mintmark(self, argument: str) -> QueryResult[int]:
+        assert argument == "V8"
+        return QueryResult(
+            choices=(
+                QueryChoice("V8-1", "40001", 40001),
+                QueryChoice("V8-2", "40002", 40002),
+            )
+        )
+
+    async def select_mintmark(self, mintmark_id: int) -> QueryResult[object]:
+        return QueryResult(reply=QueryReply(text=f"刻印:{mintmark_id}"))
+
+    async def search_gem(self, _argument: str) -> QueryResult[int]:
+        return QueryResult()
+
+    async def select_gem(self, _category_id: int) -> QueryResult[object]:
+        return QueryResult()
+
+
 class _FakePeakQuery(_UnusedQueryService):
     async def pool(
         self,
@@ -480,6 +500,7 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
 def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
     *,
     pet_query: object | None = None,
+    mintmark: object | None = None,
     peak_query: object | None = None,
     team_query: object | None = None,
     rank_queries: object | None = None,
@@ -493,7 +514,7 @@ def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
             data_queries=_FakeDataQueries(),
             team_query=team_query or unused,
             pet_query=pet_query or unused,
-            mintmark=unused,
+            mintmark=mintmark or unused,
             equipment=unused,
             type_query=unused,
             battle_effect=unused,
@@ -1878,6 +1899,48 @@ async def test_portable_router_runs_scoped_query_selection(
     assert selected_text == (
         DATABASE_UNAVAILABLE_MESSAGE if fail_selection else "精灵:2394"
     )
+
+
+@pytest.mark.asyncio
+async def test_portable_router_runs_mintmark_query_and_selection() -> None:
+    features = build_onebot_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["seer_mintmark"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(mintmark=_FakeMintmarkQuery()),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
+
+    choices = await router.dispatch(
+        _portable_input("刻印V8", actor, conversation)
+    )
+    assert choices is not None
+    assert "1. V8-1" in cast("TextPart", choices.message.parts[0]).text
+    prompt = choices.message.prompt
+    assert prompt is not None
+
+    selected = await router.dispatch(
+        _portable_input(prompt.action_data(prompt.choices[1]), actor, conversation)
+    )
+
+    assert selected is not None
+    assert cast("TextPart", selected.message.parts[0]).text == "刻印:40002"
 
 
 @pytest.mark.asyncio

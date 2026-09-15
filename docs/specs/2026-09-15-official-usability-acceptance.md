@@ -12,7 +12,7 @@
 启动仍有 Fontconfig 和 SQLAlchemy 关系警告；图片是否正常需要官方客户端复验。
 最近全量本地结果为 3728 passed、7 skipped；这不是 QQ 客户端功能验收结果。
 
-本地测试配置严格加载通过，但当前只启用 about、help、seer_data、seer_peak、seer_pet。
+本地测试配置严格加载通过；开发账号最初只启用 about、help、seer_data、seer_peak、seer_pet。
 玩家账号和无头登录账号均为 0，private_extensions 未启用，自定义键盘未启用。
 因此完整玩家查询、榜单和阵容等能力不能算作已部署验收；需确认完整配置来源和依赖，不能仅打开开关就宣称可用。
 已请用户测试“帮助”“新增内容”“赵云立绘”及回复序号“1”，并提供完整配置的本地文件路径，无需粘贴凭据。
@@ -110,6 +110,13 @@ OneBot 玩家主查询、绑定和解绑随后全部改为执行同一组 portab
 运行日志也没有 routed、parser rejected 或 callback failure，因此这两条消息没有
 到达本机 SDK 连接，不属于命令解析失败。需从同一官方机器人私聊，或在已配置测试
 群内 @机器人重新发送后继续定位平台投递范围；不得把本次未投递记为命令通过。
+
+21:40 以当前开发数据库直接调用共享刻印服务，“V8”返回 12 个候选，证明数据与
+解析链可用；此前 portable 冒烟无回复是因为开发账号未启用 `seer_mintmark`，不是
+官方适配器或刻印解析缺陷。本机忽略的开发配置随后改为
+`help + about + standard + qq_official_identity_info`，严格解析确认帮助、图片、精灵、
+刻印和榜单均已授权。21:43 新进程取得 Access Token、进入 READY 并完成启动。
+该本地配置不提交、不影响生产、Docker 或 Unraid；客户端仍需重新发送命令验收。
 
 ## 验收进度
 
