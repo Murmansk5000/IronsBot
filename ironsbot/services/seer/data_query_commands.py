@@ -30,7 +30,15 @@ NEW_CONTENT_COMMANDS = (
 )
 NEW_ACHIEVEMENTS_COMMANDS = ("新增成就", "每周成就", "本周成就", "更新成就")
 NEW_PETS_COMMANDS = ("新增精灵", "每周精灵", "本周精灵", "更新精灵")
-PEAK_ENVIRONMENT_CHANGES_COMMANDS = ("巅峰环境变化", "巅峰变化")
+PEAK_ENVIRONMENT_CHANGES_COMMANDS = (
+    "巅峰环境变化",
+    "巅峰变化",
+    "巅峰修改",
+    "巅峰池改变",
+    "巅峰池变化",
+    "池子修改",
+    "池子改变",
+)
 NEW_SKINS_COMMANDS = ("新增皮肤", "每周皮肤", "本周皮肤", "更新皮肤")
 NEW_SKILLS_COMMANDS = ("新增技能", "每周技能", "本周技能", "更新技能")
 NEW_MINTMARKS_COMMANDS = ("新增刻印", "每周刻印", "本周刻印", "更新刻印")

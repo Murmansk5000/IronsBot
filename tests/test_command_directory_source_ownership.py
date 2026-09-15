@@ -100,6 +100,9 @@ def test_operation_examples_use_matcher_command_sources() -> None:
     sync = _by_id(data_sync_command_contracts())
 
     assert status["server_status.query"].examples == NORMAL_SERVER_STATUS_COMMANDS
+    assert {"开服了嘛", "关服了吗", "关了吗"} <= set(
+        status["server_status.query"].examples
+    )
     assert status["server_status.admin_query"].examples == (
         ADMIN_SERVER_STATUS_COMMAND,
     )
