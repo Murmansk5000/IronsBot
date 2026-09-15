@@ -2424,6 +2424,48 @@ async def test_portable_router_ignores_blacklisted_official_actor() -> None:
     assert ai.calls == []
 
 
+@pytest.mark.asyncio
+async def test_portable_router_ignores_blacklisted_official_group() -> None:
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "blocked-group",
+        account_id="example-app",
+    )
+    actor = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "ordinary-member",
+        "member",
+        conversation.id,
+        conversation.account_id,
+    )
+    features = FeatureService(
+        group_features={conversation: frozenset({"blacklist"})},
+        actor_features={},
+        superusers=frozenset(),
+        platform_default_features={
+            Platform.QQ_OFFICIAL: frozenset({"about", "ai_chat"})
+        },
+    )
+    ai = _FakeAi()
+    router = build_portable_command_router(
+        catalog=_portable_catalog(ai_chat=True),
+        about=AboutService("test"),
+        seer=_fake_seer(),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", ai),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    incoming = _portable_input("关于", actor, conversation)
+
+    assert not router.recognizes(incoming)
+    assert await router.dispatch(incoming) is None
+    assert ai.calls == []
+
+
 def test_c2c_identity_uses_user_openid() -> None:
     event = _sdk_event()
 
