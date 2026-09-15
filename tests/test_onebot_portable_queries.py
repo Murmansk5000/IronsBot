@@ -174,6 +174,7 @@ async def test_onebot_adapter_routes_quoted_shared_menu_to_replying_member(
     sent = AsyncMock(return_value=SendResult(delivered=True, message_id="sent-1"))
     entered = AsyncMock()
     selected = AsyncMock(return_value=OutboundMessage.from_text("selected"))
+    semantic_request = Mock(return_value=None)
     prompt_manager = SimpleNamespace(detach_queued_conversation=Mock())
     monkeypatch.setattr(portable_queries, "send_portable_event_reply", sent)
     monkeypatch.setattr(portable_queries, "enter_event_reply_conversation", entered)
@@ -195,6 +196,7 @@ async def test_onebot_adapter_routes_quoted_shared_menu_to_replying_member(
                 choices=("read-only", "owner-only"),
                 select=selected,
                 shared_select=selected,
+                semantic_request=semantic_request,
                 shared_choice_indexes=frozenset({1}),
                 prompt=OutboundMessage.from_text("choose"),
                 keep_open=True,
@@ -219,6 +221,8 @@ async def test_onebot_adapter_routes_quoted_shared_menu_to_replying_member(
     assert shared_check(responder_event)
     resolve = first_enter.kwargs["handlers"][0]
     state = {QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY: True}
+    semantic_resolver = first_enter.kwargs["queue_semantic_request_resolver"]
+    assert semantic_resolver(responder_event, state) is None
     await resolve(matcher, responder_event, state)
 
     prompt_manager.detach_queued_conversation.assert_called_once_with(state)
@@ -226,6 +230,8 @@ async def test_onebot_adapter_routes_quoted_shared_menu_to_replying_member(
     assert selected.await_args is not None
     assert selected.await_args.args[0] == "read-only"
     assert selected.await_args.args[1].message.actor.id == "1002"
+    semantic_request.assert_called_once()
+    assert semantic_request.call_args.args[1].message.actor.id == "1002"
     assert sessions.has_active_session(message_input_context(owner_event))
     assert sessions.has_active_session(message_input_context(responder_event))
 

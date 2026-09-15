@@ -14,6 +14,12 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.semantic_requests import (
+    ActionDefinition,
+    SemanticRequest,
+    SemanticRequestSource,
+    singleton_target,
+)
 from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableQuerySessionError,
@@ -299,6 +305,45 @@ async def test_shared_group_exit_does_not_close_owner_menu() -> None:
     assert _text(result) == "responder exited"
     assert sessions.has_active_session(owner)
     assert not sessions.has_active_session(responder)
+
+
+def test_menu_semantic_request_uses_responder_without_consuming_choice() -> None:
+    sessions = PortableQuerySessions()
+    owner = _context("owner")
+    responder = _context("responder", reply_to_id="current-menu")
+    observed: list[MessageInputContext] = []
+
+    def semantic_request(
+        value: str,
+        context: MessageInputContext,
+    ) -> SemanticRequest:
+        observed.append(context)
+        return SemanticRequest(
+            ActionDefinition(value, "read only"),
+            singleton_target("player", "player"),
+            SemanticRequestSource.MENU,
+        )
+
+    sessions.offer_menu(
+        owner,
+        PortableMenuSpec(
+            choices=("read-only", "owner-only"),
+            select=AsyncMock(),
+            shared_select=AsyncMock(),
+            semantic_request=semantic_request,
+            shared_choice_indexes=frozenset({1}),
+            prompt=OutboundMessage.from_text("menu"),
+        ),
+    )
+
+    owner_request = sessions.resolve_semantic_request("2", owner)
+    shared_request = sessions.resolve_semantic_request("1", owner, responder)
+
+    assert owner_request is not None and owner_request.action.id == "owner-only"
+    assert shared_request is not None and shared_request.action.id == "read-only"
+    assert sessions.resolve_semantic_request("2", owner, responder) is None
+    assert observed == [owner, responder]
+    assert sessions.has_active_session(owner)
 
 
 @pytest.mark.asyncio

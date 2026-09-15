@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.selection import format_selection_menu
+from ironsbot.core.semantic_requests import SemanticRequest, SemanticRequestSource
 from ironsbot.services.player_extension_commands import query_player_extension
 from ironsbot.services.player_reference_selection import (
     select_player_reference,
@@ -27,6 +28,7 @@ from ironsbot.services.seer.player_shortcut_contracts import (
     PlayerShortcutCommand,
     execute_player_shortcut,
     parse_player_shortcut_command,
+    player_shortcut_semantic_request,
 )
 
 if TYPE_CHECKING:
@@ -322,6 +324,16 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             select=select,
         )
 
+    def semantic_request(
+        command: (
+            PlayerShortcutCommand
+            | PlayerDetailExtensionAction
+            | Literal["bind", "decline"]
+        ),
+        _context: MessageInputContext,
+    ) -> SemanticRequest | None:
+        return _player_detail_semantic_request(command, pending.player_id)
+
     choices: tuple[
         PlayerShortcutCommand
         | PlayerDetailExtensionAction
@@ -361,6 +373,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 ),
             ),
             shared_select=shared_select,
+            semantic_request=semantic_request,
             shared_choice_indexes=frozenset(
                 range(1, len(requests) + len(extension_actions) + 1)
             ),
@@ -419,6 +432,34 @@ async def _select_shared_player_detail(
         sessions.discard(context)
         return OutboundMessage.from_text("该功能当前未对你开放。")
     return await select(command, context)
+
+
+def _player_detail_semantic_request(
+    command: (
+        PlayerShortcutCommand
+        | PlayerDetailExtensionAction
+        | Literal["bind", "decline"]
+    ),
+    player_id: int,
+) -> SemanticRequest | None:
+    if isinstance(command, str):
+        return None
+    request = player_shortcut_semantic_request(
+        kind=(
+            command.kind
+            if isinstance(command, PlayerShortcutCommand)
+            else "collection"
+        ),
+        player_id=player_id,
+        source=SemanticRequestSource.MENU,
+    )
+    if isinstance(command, PlayerDetailExtensionAction):
+        return SemanticRequest(
+            action=command.action,
+            target=request.target,
+            source=SemanticRequestSource.EXTENSION,
+        )
+    return request
 
 
 def _text_reply(message: str) -> PortableReply:

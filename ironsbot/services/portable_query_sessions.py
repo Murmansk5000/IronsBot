@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef, ConversationRef
+    from ironsbot.core.semantic_requests import SemanticRequest
 
 _T = TypeVar("_T")
 QuerySearch = Callable[[str], Awaitable[QueryResult[_T]]]
@@ -34,6 +35,7 @@ _UntypedMenuSelect = Callable[
 MenuSelect = Callable[
     [_T, "MessageInputContext"], Awaitable[OutboundMessage | PortableReply]
 ]
+MenuSemanticRequest = Callable[[_T, "MessageInputContext"], "SemanticRequest | None"]
 TextSubmit = Callable[[str, "MessageInputContext"], Awaitable[OutboundMessage]]
 PendingResponseCheck = Callable[[str], bool]
 _SESSION_EXPIRED_MESSAGE = "查询会话已超时，请重新发送原指令。"
@@ -80,6 +82,7 @@ class PortableMenuSpec(Generic[_T]):
     labels: tuple[str, ...] = ()
     text_inputs: tuple[frozenset[str], ...] = ()
     shared_select: MenuSelect[_T] | None = None
+    semantic_request: MenuSemanticRequest[_T] | None = None
     shared_choice_indexes: frozenset[int] = frozenset()
     keep_open: bool = False
     exit_message: str = "已退出查询。"
@@ -114,6 +117,9 @@ class _PendingSelection:
     not_found_message: str
     expires_at: float
     shared_select: _UntypedMenuSelect | None = None
+    semantic_request: (
+        Callable[[object, "MessageInputContext"], "SemanticRequest | None"] | None
+    ) = None
     shared_choice_ids: frozenset[str] = frozenset()
     keep_open: bool = False
     exit_message: str = "已退出查询。"
@@ -308,6 +314,14 @@ class PortableQuerySessions:
                 raise PortableQuerySessionError.invalid_shared_choice()
             return await spec.shared_select(cast("_T", value), selection_context)
 
+        def semantic_request_untyped(
+            value: object,
+            selection_context: MessageInputContext,
+        ) -> SemanticRequest | None:
+            if spec.semantic_request is None:
+                return None
+            return spec.semantic_request(cast("_T", value), selection_context)
+
         key = self._key(context)
         if not spec.choices:
             self._pending.pop(key, None)
@@ -334,6 +348,11 @@ class PortableQuerySessions:
             expires_at=session.expires_at,
             shared_select=(
                 shared_select_untyped if spec.shared_select is not None else None
+            ),
+            semantic_request=(
+                semantic_request_untyped
+                if spec.semantic_request is not None
+                else None
             ),
             shared_choice_ids=frozenset(
                 str(index) for index in spec.shared_choice_indexes
@@ -502,6 +521,36 @@ class PortableQuerySessions:
             choice=choice,
             allow_deferred=allow_deferred,
         )
+
+    def resolve_semantic_request(
+        self,
+        text: str,
+        owner: MessageInputContext,
+        responder: MessageInputContext | None = None,
+    ) -> SemanticRequest | None:
+        """Resolve business identity without consuming the pending choice."""
+
+        context = responder or owner
+        if responder is None or responder.message.actor == owner.message.actor:
+            key = self._key(owner)
+            self._drop_expired(key)
+            pending = self._pending.get(key)
+            if not isinstance(pending, _PendingSelection):
+                return None
+        else:
+            pending = self._shared_pending(owner, responder)
+            if pending is None:
+                return None
+        choice = self._selection_choice(pending, text)
+        if choice is None or choice.id == "0" or pending.semantic_request is None:
+            return None
+        if (
+            responder is not None
+            and responder.message.actor != owner.message.actor
+            and choice.id not in pending.shared_choice_ids
+        ):
+            return None
+        return pending.semantic_request(pending.choices[int(choice.id) - 1], context)
 
     async def _select_choice(
         self,

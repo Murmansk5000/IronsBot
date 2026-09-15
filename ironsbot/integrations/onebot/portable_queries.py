@@ -17,6 +17,7 @@ from ironsbot.integrations.onebot.conversations import (
     enter_event_reply_conversation,
 )
 from ironsbot.integrations.onebot.matcher_support import (
+    bind,
     bind_async,
     get_prompt_session_manager,
 )
@@ -33,6 +34,7 @@ from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 if TYPE_CHECKING:
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.outbound import OutboundMessage
+    from ironsbot.core.semantic_requests import SemanticRequest
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.data_queries import DataQueryImageReply
@@ -98,6 +100,21 @@ class _OneBotPortableQueryAdapter:
             context,
         )
 
+    def menu_semantic_request(
+        self,
+        owner_context: MessageInputContext,
+        event: MessageEvent,
+        state: T_State,
+    ) -> SemanticRequest | None:
+        context = message_input_context(event)
+        return self.sessions.resolve_semantic_request(
+            context.text,
+            owner_context,
+            context
+            if state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY)
+            else None,
+        )
+
     async def handle(
         self,
         matcher: Matcher,
@@ -135,6 +152,10 @@ class _OneBotPortableQueryAdapter:
                 context, reply
             ),
             allow_group_reply_exit=True,
+            queue_semantic_request_resolver=bind(
+                self.menu_semantic_request,
+                context,
+            ),
         )
 
 
