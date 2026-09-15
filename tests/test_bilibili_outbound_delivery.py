@@ -253,6 +253,29 @@ async def test_content_failure_after_shared_policy_notifies_admins(
 
 
 @pytest.mark.asyncio
+async def test_content_failure_without_admin_notices_redacts_target_ids(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    delivery = _RecordingDelivery(content_failures=1)
+    sender = BilibiliDynamicOutboundSender(
+        delivery,  # type: ignore[arg-type]
+        PushUnsubscribeStore(tmp_path / "push_subscriptions.sqlite"),
+    )
+
+    await sender.send(
+        _item(include_image=False),
+        PUB_TS,
+        1310714247,
+        _targets(full_groups=(1001,), full_users=(2001,)),
+    )
+
+    assert "Bilibili dynamic content push failed" in caplog.text
+    assert "1001" not in caplog.text
+    assert "2001" not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_full_dynamic_uses_summary_only_for_long_content(
     tmp_path: Path,
 ) -> None:
