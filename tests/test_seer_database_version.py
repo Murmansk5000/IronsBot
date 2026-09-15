@@ -65,7 +65,7 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
         session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
         session.execute(
             text(
-                "CREATE TABLE ironsbot_metadata "
+                "CREATE TABLE seerapi_metadata "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
         )
@@ -91,10 +91,10 @@ def _create_release(source: Path, scopes: tuple[str, ...]) -> tuple[Engine, date
         )
         session.execute(
             text(
-                "INSERT INTO ironsbot_metadata (key, value) VALUES "
-                "('ironsbot_schema_contract_version', '1'), "
-                "('ironsbot_schema_tables', :schema_tables), "
-                "('ironsbot_schema_fingerprint', :schema_fingerprint), "
+                "INSERT INTO seerapi_metadata (key, value) VALUES "
+                "('seerapi_schema_contract_version', '2'), "
+                "('seerapi_schema_tables', :schema_tables), "
+                "('seerapi_schema_fingerprint', :schema_fingerprint), "
                 "('render_asset_manifest_revision', 'assets-v1'), "
                 "('render_asset_manifest_contract_version', '3'), "
                 "('render_asset_manifest_complete_scopes', :scopes), "
@@ -264,8 +264,8 @@ def test_publication_lifetime_and_cached_reads(tmp_path: Path) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "UPDATE ironsbot_metadata SET value='invalid' "
-                "WHERE key='ironsbot_schema_contract_version'"
+                "UPDATE seerapi_metadata SET value='invalid' "
+                "WHERE key='seerapi_schema_contract_version'"
             )
         )
     with pytest.raises(SeerApiReleaseContractError):
@@ -277,13 +277,13 @@ def test_publication_lifetime_and_cached_reads(tmp_path: Path) -> None:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "UPDATE ironsbot_metadata SET value='1' "
-                "WHERE key='ironsbot_schema_contract_version'"
+                "UPDATE seerapi_metadata SET value='2' "
+                "WHERE key='seerapi_schema_contract_version'"
             )
         )
         connection.execute(
             text(
-                "UPDATE ironsbot_metadata SET value='assets-v2' "
+                "UPDATE seerapi_metadata SET value='assets-v2' "
                 "WHERE key='render_asset_manifest_revision'"
             )
         )
@@ -341,7 +341,7 @@ async def test_read_snapshot_keeps_publication_and_data_across_await(
         return str(
             session.execute(
                 text(
-                    "SELECT value FROM ironsbot_metadata "
+                    "SELECT value FROM seerapi_metadata "
                     "WHERE key='render_asset_manifest_revision'"
                 )
             ).scalar_one()
@@ -356,7 +356,7 @@ async def test_read_snapshot_keeps_publication_and_data_across_await(
             with engine.begin() as connection:
                 connection.execute(
                     text(
-                        "UPDATE ironsbot_metadata SET value='assets-v2' "
+                        "UPDATE seerapi_metadata SET value='assets-v2' "
                         "WHERE key='render_asset_manifest_revision'"
                     )
                 )
@@ -401,7 +401,7 @@ def test_seer_database_rejects_release_without_schema_contract(
         session.execute(text("ALTER TABLE pet ADD COLUMN peak_cost_pool_id INTEGER"))
         session.execute(
             text(
-                "CREATE TABLE ironsbot_metadata "
+                "CREATE TABLE seerapi_metadata "
                 "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
         )
@@ -440,12 +440,12 @@ def test_seer_database_rejects_release_without_schema_contract(
             "render asset manifest",
         ),
         (
-            "ironsbot_schema_tables",
+            "seerapi_schema_tables",
             "not-json",
             "schema table manifest",
         ),
         (
-            "ironsbot_schema_fingerprint",
+            "seerapi_schema_fingerprint",
             "0" * 64,
             "schema table manifest",
         ),
@@ -468,7 +468,7 @@ def test_seer_database_rejects_invalid_publication_metadata(
 
     with engine.begin() as connection:
         connection.execute(
-            text("UPDATE ironsbot_metadata SET value=:value WHERE key=:key"),
+            text("UPDATE seerapi_metadata SET value=:value WHERE key=:key"),
             {"key": metadata_key, "value": metadata_value},
         )
 
@@ -503,7 +503,7 @@ def test_seer_database_rejects_a_declared_table_removed_from_release(
 def _update_asset_release(engine: Engine, revision: str, manifest: str) -> None:
     with engine.begin() as connection:
         connection.execute(
-            text("UPDATE ironsbot_metadata SET value=:value WHERE key=:key"),
+            text("UPDATE seerapi_metadata SET value=:value WHERE key=:key"),
             [
                 {
                     "key": "render_asset_manifest_repositories",

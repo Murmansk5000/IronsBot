@@ -311,7 +311,7 @@ def _read_publication(engine: Engine) -> SeerPublication:
                 text(
                     "SELECT name FROM sqlite_master "
                     "WHERE type = 'table' AND name IN "
-                    "('api_metadata', 'ironsbot_metadata')"
+                    "('api_metadata', 'seerapi_metadata')"
                 )
             ).scalars()
         )
@@ -324,7 +324,7 @@ def _read_publication(engine: Engine) -> SeerPublication:
             raise SeerApiReleaseContractError.missing_api_metadata()
         rows = session.execute(
             text(
-                "SELECT key, value FROM ironsbot_metadata WHERE key IN "
+                "SELECT key, value FROM seerapi_metadata WHERE key IN "
                 "(:revision, :contract, :scopes, :repositories)"
             ),
             {
