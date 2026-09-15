@@ -86,7 +86,9 @@ class PortableLuckySkinCommands:
             msg = "invalid lucky window command"
             raise ValueError(msg)
         if reference and not context.has_member_mentions:
-            async def execute(player_id: int) -> OutboundMessage:
+            async def execute(
+                player_id: int, context: MessageInputContext,
+            ) -> OutboundMessage:
                 return await self._query_target(context, player_id)
 
             return await select_player_reference(
@@ -168,7 +170,9 @@ class PortableLuckySkinCommands:
         request: LuckySkinQuery,
     ) -> OutboundMessage:
         target_label = f"（米米号 {request.player_id}）" if request.player_id else ""
-        async def select(choice: _Confirmation) -> OutboundMessage:
+        async def select(
+            choice: _Confirmation, context: MessageInputContext,
+        ) -> OutboundMessage:
             if choice == "cancel":
                 return OutboundMessage.from_text("已取消幸运橱窗查询。")
             return await self._query_now(context, request)
@@ -277,7 +281,9 @@ class PortableLuckySkinCommands:
         *,
         watched: bool,
     ) -> OutboundMessage:
-        async def select(item: LuckySkinWatchItem) -> OutboundMessage:
+        async def select(
+            item: LuckySkinWatchItem, _context: MessageInputContext,
+        ) -> OutboundMessage:
             return OutboundMessage.from_text(
                 self.service.watch_change_message(actor, item, watched=watched)
             )
@@ -312,6 +318,7 @@ class PortableLuckySkinCommands:
 
         async def select(
             choice: QueryChoice[PetImageSelection],
+            _context: MessageInputContext,
         ) -> OutboundMessage:
             selected = await self.pet.select_image(choice.value)
             if selected.reply is not None:
