@@ -80,6 +80,9 @@ class FakeData:
 
 
 class FakeImages:
+    def __init__(self) -> None:
+        self.requests: list[tuple[object, str]] = []
+
     async def fetch(
         self,
         kind: object,
@@ -87,7 +90,7 @@ class FakeImages:
         *,
         fallback: bool = True,
     ) -> bytes:
-        assert kind == "pet_body"
+        self.requests.append((kind, key))
         assert fallback is False
         return f"image:{key}".encode()
 
@@ -137,6 +140,26 @@ def _service(
         cast("SeerImageSource", FakeImages()),
         render,
     )
+
+
+@pytest.mark.asyncio
+async def test_avatar_uses_pet_head_resource_without_holding_data_session() -> None:
+    data = FakeData()
+    data.pets = (_pet(70, "雷伊"),)
+    images = FakeImages()
+    service = PetQueryService(
+        cast("SeerDataAccess", data),
+        cast("SeerImageSource", images),
+        cast("Any", object()),
+    )
+
+    result = await service.search_avatar("雷伊")
+
+    assert result.reply is not None
+    assert result.reply.image == b"image:70"
+    assert result.reply.leading_text == "【雷伊】（70）"
+    assert images.requests == [("pet_head", "70")]
+    assert not data.session_active
 
 
 @pytest.mark.asyncio

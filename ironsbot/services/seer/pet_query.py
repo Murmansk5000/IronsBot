@@ -38,6 +38,13 @@ class PetImageSelection:
     skin_id: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class PetSelection:
+    pet_id: int
+    name: str
+    resource_id: int
+
+
 class PetQueryService:
     def __init__(
         self,
@@ -80,19 +87,32 @@ class PetQueryService:
         return QueryResult(reply=await self._build_image_reply(selection))
 
     async def search_info(self, arg: str) -> QueryResult[int]:
+        return await self._search_pet(arg, self._build_info_reply)
+
+    async def search_avatar(self, arg: str) -> QueryResult[int]:
+        return await self._search_pet(arg, self._build_avatar_reply)
+
+    async def _search_pet(
+        self,
+        arg: str,
+        build_reply: Callable[[PetSelection], Awaitable[QueryReply]],
+    ) -> QueryResult[int]:
         with self._data.resolve(self._data.pet, arg) as values:
-            pets = tuple(values)
+            pets = tuple(
+                PetSelection(int(pet.id), str(pet.name), int(pet.resource_id))
+                for pet in values
+            )
             if not arg.strip() or not pets:
                 return QueryResult()
             if len(pets) == 1:
-                selected = (int(pets[0].id), str(pets[0].name))
+                selected = pets[0]
             elif len(pets) > PET_PROMPT_MAX_ITEMS:
                 exact = next(
                     (pet for pet in pets if len(arg) == 1 and pet.name == arg),
                     None,
                 )
                 if exact is not None:
-                    selected = (int(exact.id), str(exact.name))
+                    selected = exact
                 else:
                     return QueryResult(
                         message=(
@@ -102,11 +122,11 @@ class PetQueryService:
             else:
                 return QueryResult(
                     choices=tuple(
-                        QueryChoice(str(pet.name), str(pet.id), int(pet.id))
+                        QueryChoice(pet.name, str(pet.pet_id), pet.pet_id)
                         for pet in pets
                     )
                 )
-        return QueryResult(reply=await self._build_info_reply(*selected))
+        return QueryResult(reply=await build_reply(selected))
 
     async def select_info(self, pet_id: int) -> QueryResult[object]:
         with self._data.get(self._data.pet, pet_id) as pet:
@@ -114,8 +134,36 @@ class PetQueryService:
                 return QueryResult(
                     message=(f"❌未找到精灵 {pet_id}（这是一个bug，请反馈给开发者）")
                 )
-            selected = (int(pet.id), str(pet.name))
-        return QueryResult(reply=await self._build_info_reply(*selected))
+            selected = PetSelection(
+                int(pet.id),
+                str(pet.name),
+                int(pet.resource_id),
+            )
+        return QueryResult(reply=await self._build_info_reply(selected))
+
+    async def select_avatar(self, pet_id: int) -> QueryResult[object]:
+        with self._data.get(self._data.pet, pet_id) as pet:
+            if pet is None:
+                return QueryResult(message=f"未找到精灵 {pet_id}。")
+            selected = PetSelection(
+                int(pet.id),
+                str(pet.name),
+                int(pet.resource_id),
+            )
+        return QueryResult(reply=await self._build_avatar_reply(selected))
+
+    async def _build_avatar_reply(self, pet: PetSelection) -> QueryReply:
+        image = await fetch_optional_image(
+            self._images,
+            "pet_head",
+            str(pet.resource_id),
+        )
+        return QueryReply(
+            leading_text=f"【{pet.name}】（{pet.pet_id}）",
+            image=image.data,
+            image_error=image.error,
+            complete=image.data is not None,
+        )
 
     async def _build_image_reply(
         self,
@@ -177,7 +225,9 @@ class PetQueryService:
             image_error=image_error,
         )
 
-    async def _build_info_reply(self, pet_id: int, pet_name: str) -> QueryReply:
+    async def _build_info_reply(self, pet: PetSelection) -> QueryReply:
+        pet_id = pet.pet_id
+        pet_name = pet.name
         logger.info(
             "rendering pet info image: pet_id=%s pet_name=%s",
             pet_id,

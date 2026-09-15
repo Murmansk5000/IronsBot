@@ -134,6 +134,16 @@ def test_pet_config_contract_is_owned_by_its_domain_service() -> None:
     assert pet_config_command_contracts(enabled=False) == ()
 
 
+def test_pet_avatar_contract_is_owned_by_the_seer_catalog() -> None:
+    commands = _by_id(seer_command_contracts(_empty_player_id_resolver()))
+
+    assert commands["seer.pet.avatar"].examples == (
+        "头像雷伊",
+        "谱尼头像",
+        "头像70",
+    )
+
+
 def test_team_resource_contract_is_owned_by_its_domain_service() -> None:
     commands = _by_id(
         team_resource_command_contracts(enabled=True, query_commands=("战队",))

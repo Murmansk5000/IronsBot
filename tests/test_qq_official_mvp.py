@@ -277,6 +277,12 @@ class _FakePetQuery:
     async def select_image(self, _pet_id: int) -> QueryResult[object]:
         return QueryResult()
 
+    async def search_avatar(self, _argument: str) -> QueryResult[int]:
+        return QueryResult()
+
+    async def select_avatar(self, _pet_id: int) -> QueryResult[object]:
+        return QueryResult()
+
 
 class _FakePeakQuery(_UnusedQueryService):
     async def pool(

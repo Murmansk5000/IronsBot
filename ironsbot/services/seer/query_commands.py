@@ -37,6 +37,14 @@ def pet_image_input(image_commands: frozenset[str] = frozenset()) -> AffixComman
     )
 
 
+def pet_avatar_input(image_commands: frozenset[str] = frozenset()) -> AffixCommand:
+    return AffixCommand(
+        ("头像",),
+        ("头像",),
+        reject=partial(is_reserved_query, image_commands=image_commands),
+    )
+
+
 MINTMARK_QUERY = AffixCommand(("刻印",), ("刻印",), reject=is_rank_query_text)
 GEM_QUERY = AffixCommand(("宝石",), ("宝石",))
 SUIT_QUERY = AffixCommand(

@@ -36,6 +36,7 @@ from ironsbot.services.seer.query_commands import (
     SUIT_QUERY,
     TITLE_QUERY,
     TYPE_QUERY,
+    pet_avatar_input,
     pet_image_input,
     pet_query_input,
     team_query_input,
@@ -111,7 +112,7 @@ def build_portable_seer_operations(
             f"📊【可用榜单】\n{format_rank_help(command_help)}"
         )
 
-    return {
+    operations: dict[str, PortableOperation] = {
         "seer.data.query": data_query,
         "seer.team.query": team_query,
         "rank.help": rank_help_message,
@@ -218,6 +219,18 @@ def build_portable_seer_operations(
             )
         ),
     }
+    if "seer.pet.avatar" in catalog.command_ids:
+        operations["seer.pet.avatar"] = build_query_operation(
+            sessions,
+            QueryOperationSpec(
+                parser=_affix_argument(pet_avatar_input()),
+                search=seer.pet_query.search_avatar,
+                select=seer.pet_query.select_avatar,
+                prompt_title="请选择要查询头像的精灵：",
+                not_found_message="未找到对应精灵。",
+            ),
+        )
+    return operations
 
 
 def _affix_argument(parser: AffixParser):
