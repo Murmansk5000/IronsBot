@@ -152,7 +152,6 @@ startup_timeout_seconds = 15.0
 [bot.qq_official.accounts.example_bot]
 enabled = true
 required = false
-app_id = "你的 QQ 机器人 AppID"
 proactive_messages = false
 custom_keyboards = false
 features = ["help", "about", "seer_data", "seer_player", "seer_team", "seer_pet", "seer_mintmark", "seer_equipment", "seer_type", "seer_peak", "seer_rank", "seer_activity_query", "bili_query", "ai_chat"]
@@ -190,12 +189,14 @@ SDK 未公开 `file_info` 的有效期，因此令牌只立即使用一次，不
 凭据只放环境变量：
 
 ```text
+QQ_OFFICIAL_APP_ID_EXAMPLE_BOT=你的 AppID
 QQ_OFFICIAL_SECRET_EXAMPLE_BOT=你的 AppSecret
 ```
 
 腾讯旧版静态 Token 已弃用，不要把 AccessToken 写入配置。程序使用 AppID 与
 AppSecret 获取短期 AccessToken，并在内存中自动刷新。环境变量后缀取账号别名的
-大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。
+大写形式，例如 `example_bot_2` 对应 `QQ_OFFICIAL_APP_ID_EXAMPLE_BOT_2`
+和 `QQ_OFFICIAL_SECRET_EXAMPLE_BOT_2`。
 
 多个账号的连接、AccessToken、OpenID、权限和主动消息路由按 AppID 隔离。同一个
 OpenID 不能跨机器人账号复用，所有官方平台目标都必须携带其原始 AppID。

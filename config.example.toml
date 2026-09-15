@@ -83,18 +83,18 @@ startup_timeout_seconds = 15.0
 # EN: Account aliases use letters, digits, and underscores. Each account gets an
 #     isolated connection, AccessToken, OpenID namespace, policy, and send route.
 #     The same alias selects the target in `关联官方账号 <alias>`. Set its
-#     AppSecret through QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
+#     AppID and AppSecret through QQ_OFFICIAL_APP_ID_EXAMPLE_BOT and
+#     QQ_OFFICIAL_SECRET_EXAMPLE_BOT.
 # ZH: 账号别名只能包含字母、数字和下划线。每个账号独立维护连接、AccessToken、
 #     OpenID 命名空间、权限和发送路由；`关联官方账号 <账号别名>` 也使用此别名；
-#     此示例的 AppSecret 使用
-#     QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
+#     此示例的 AppID 和 AppSecret 分别使用
+#     QQ_OFFICIAL_APP_ID_EXAMPLE_BOT 和 QQ_OFFICIAL_SECRET_EXAMPLE_BOT 环境变量。
 [bot.qq_official.accounts.example_bot]
 enabled = false
 # EN: A required account prevents application startup when it cannot become ready.
 #     Optional accounts remain observable as degraded and may recover later.
 # ZH: 必需账号无法就绪时阻止应用启动；可选账号会进入 degraded 并可在稍后恢复。
 required = false
-app_id = ""
 # EN: Allow SDK-level proactive sends. Keep disabled until the application has
 #     the required platform permission. Team-resource subscriptions require it.
 # ZH: 允许 SDK 主动发送消息。确认机器人具备平台权限后再开启；战队资源订阅依赖此项。

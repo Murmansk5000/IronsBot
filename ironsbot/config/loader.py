@@ -20,6 +20,7 @@ TOMLDecodeError = tomllib.TOMLDecodeError
 CONFIG_ENV = "APP_CONFIG_PATH"
 DEFAULT_CONFIG_PATH = Path("config/ironsbot.toml")
 SEER_PASSWORD_ENV_PREFIX = "SEER_PASSWORD_"
+QQ_OFFICIAL_APP_ID_ENV_PREFIX = "QQ_OFFICIAL_APP_ID_"
 QQ_OFFICIAL_SECRET_ENV_PREFIX = "QQ_OFFICIAL_SECRET_"
 _SECRET_ENV_PATHS = (
     ("ONEBOT_ACCESS_TOKEN", ("bot", "onebot_token")),
@@ -37,7 +38,7 @@ _SECRET_ENV_PATHS = (
 )
 
 
-def _inject_qq_official_secrets(
+def _inject_qq_official_credentials(
     data: dict[str, Any],
     *,
     env: Mapping[str, str],
@@ -53,15 +54,20 @@ def _inject_qq_official_secrets(
         if not isinstance(raw_account, dict):
             continue
         name = str(raw_name)
-        env_name = QQ_OFFICIAL_SECRET_ENV_PREFIX + name.upper()
-        if "secret" in raw_account:
-            msg = (
-                f"bot.qq_official.accounts.{name}.secret is secret and must "
-                f"be set with {env_name}"
-            )
-            raise ValueError(msg)
-        if (value := env.get(env_name)) is not None:
-            raw_account["secret"] = value
+        suffix = name.upper()
+        for field, prefix in (
+            ("app_id", QQ_OFFICIAL_APP_ID_ENV_PREFIX),
+            ("secret", QQ_OFFICIAL_SECRET_ENV_PREFIX),
+        ):
+            env_name = prefix + suffix
+            if field in raw_account:
+                msg = (
+                    f"bot.qq_official.accounts.{name}.{field} is a deployment "
+                    f"credential and must be set with {env_name}"
+                )
+                raise ValueError(msg)
+            if (value := env.get(env_name)) is not None:
+                raw_account[field] = value
 class ConfigFileNotFoundError(FileNotFoundError):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -242,6 +248,6 @@ def load_settings(
             path=field_path,
             env=values,
         )
-    _inject_qq_official_secrets(data, env=values)
+    _inject_qq_official_credentials(data, env=values)
     _inject_player_account_passwords(data, env=values)
     return Settings.model_validate(data)

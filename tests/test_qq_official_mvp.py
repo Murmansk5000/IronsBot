@@ -666,7 +666,6 @@ startup_timeout_seconds = 20.0
 [bot.qq_official.accounts.example_bot]
 enabled = true
 required = true
-app_id = "example-app"
 custom_keyboards = true
 features = ["help", "about", "seer_data"]
 superusers = ["opaque-admin"]
@@ -677,6 +676,7 @@ superusers = ["opaque-admin"]
     settings = load_settings(
         path,
         env={
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         },
     )
@@ -701,12 +701,10 @@ enabled = true
 
 [bot.qq_official.accounts.example_a]
 enabled = true
-app_id = "app-a"
 features = ["help"]
 
 [bot.qq_official.accounts.example_b]
 enabled = true
-app_id = "app-b"
 features = ["about"]
 """.strip(),
         encoding="utf-8",
@@ -715,7 +713,9 @@ features = ["about"]
     settings = load_settings(
         path,
         env={
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_A": "app-a",
             "QQ_OFFICIAL_SECRET_EXAMPLE_A": "secret-a",
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_B": "app-b",
             "QQ_OFFICIAL_SECRET_EXAMPLE_B": "secret-b",
         },
     )
@@ -830,6 +830,34 @@ def test_qq_official_config_rejects_old_single_account_fields() -> None:
             enabled=True,
             app_id="old-app",  # type: ignore[call-arg]
             secret="old-secret",  # type: ignore[call-arg]
+        )
+
+
+@pytest.mark.parametrize("field", ["app_id", "secret"])
+def test_qq_official_config_rejects_credentials_in_toml(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    path = tmp_path / "ironsbot.toml"
+    path.write_text(
+        f"""
+[bot.qq_official]
+enabled = true
+
+[bot.qq_official.accounts.example_bot]
+enabled = true
+{field} = "must-not-be-in-toml"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=field):
+        load_settings(
+            path,
+            env={
+                "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
+                "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
+            },
         )
 
 
@@ -2125,7 +2153,6 @@ enabled = true
 
 [bot.qq_official.accounts.example_bot]
 enabled = true
-app_id = "example-app"
 custom_keyboards = true
 
 [operations.data_sync]
@@ -2147,6 +2174,7 @@ check_on_startup = false
     environment.update(
         {
             "APP_CONFIG_PATH": str(config_path),
+            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "example-secret",
         }
     )

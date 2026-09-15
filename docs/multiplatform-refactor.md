@@ -86,7 +86,7 @@ Task     [██████████] completed only after code, tests, and 
   猜测缓存；图片超限和每日额度耗尽会降级为文字，其他异常仍进入结构化投递失败路径。
 
 - QQ Official 多账号运行面由提交 `4de228dd` 完成：TOML 以账号别名声明多个
-  AppID，每个账号从独立环境变量读取 AppSecret；bootstrap 为每个启用账号注册连接，
+  账号，每个账号从独立环境变量读取 AppID 和 AppSecret；bootstrap 为每个启用账号注册连接，
   feature 默认值、超级管理员、OpenID policy、主动消息资格和回复序号均按 AppID
   隔离。出站目标缺少或携带未知 AppID 时明确拒绝，不保留默认账号回退。审计安装的
   `nonebot-adapter-qq 1.7.2` 后确认 AccessToken、过期时间、会话和事件序号均为 Bot
