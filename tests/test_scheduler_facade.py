@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -25,6 +26,7 @@ class FakeScheduler:
         self.jobs: list[FakeJob] = []
         self.start_calls = 0
         self.shutdown_calls = 0
+        self.last_func: Any = None
 
     def start(self) -> None:
         self.running = True
@@ -34,7 +36,8 @@ class FakeScheduler:
         self.running = False
         self.shutdown_calls += 1
 
-    def add_job(self, _func: object, _trigger: str, **kwargs: Any) -> FakeJob:
+    def add_job(self, func: object, _trigger: str, **kwargs: Any) -> FakeJob:
+        self.last_func = func
         job = FakeJob(str(kwargs["id"]))
         self.jobs.append(job)
         return job
@@ -71,3 +74,34 @@ def test_scheduler_facade_owns_backend_lifecycle_and_jobs() -> None:
 
     assert facade.get_jobs() == []
     assert backend.shutdown_calls == 1
+
+
+def test_scheduler_only_suppresses_job_cancellation_during_shutdown() -> None:
+    async def run() -> None:
+        started = asyncio.Event()
+
+        async def job() -> None:
+            started.set()
+            await asyncio.Event().wait()
+
+        backend = FakeScheduler()
+        facade = SchedulerFacade()
+        facade.bind(cast("AsyncIOScheduler", backend))
+        facade.start()
+        facade.add_job(job, "interval", id="job")
+        wrapped = cast("Any", backend.last_func)
+
+        running = asyncio.create_task(wrapped())
+        await started.wait()
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+
+        started.clear()
+        facade.shutdown()
+        stopping = asyncio.create_task(wrapped())
+        await started.wait()
+        stopping.cancel()
+        assert await stopping is None
+
+    asyncio.run(run())
