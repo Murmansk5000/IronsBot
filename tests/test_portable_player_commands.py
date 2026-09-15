@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ironsbot.core.command_catalog import command_context_from_input
+from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
 from ironsbot.core.outbound import OutboundMessage, TextPart
 from ironsbot.core.platform import (
@@ -21,7 +22,7 @@ from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.portable_player_commands import (
-    build_portable_player_operations,
+    build_portable_player_operations as _build_player_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.portable_reply import PortableReply
@@ -41,6 +42,7 @@ from ironsbot.services.seer.player_service_models import (
 from ironsbot.services.seer.query_result import QueryReply
 
 if TYPE_CHECKING:
+    from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_shortcut_contracts import (
         PlayerShortcutCommand,
@@ -207,6 +209,22 @@ def _resolver() -> PlayerIdResolver:
             "caller-openid": 600001,
             "target-openid": 800001,
         }.get(actor.id),
+    )
+
+
+def build_portable_player_operations(
+    service: PlayerService,
+    resolver: PlayerIdResolver,
+    sessions: PortableQuerySessions,
+    features: FeatureService | None = None,
+    extensions: PlayerDetailExtensionRegistry | None = None,
+) -> dict[str, PortableOperation]:
+    return _build_player_operations(
+        service,
+        resolver,
+        sessions,
+        features or FeatureService({}, {}, frozenset()),
+        extensions or PlayerDetailExtensionRegistry(),
     )
 
 

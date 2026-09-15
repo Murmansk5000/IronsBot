@@ -47,8 +47,8 @@ def build_portable_player_operations(
     service: PlayerService,
     resolver: PlayerIdResolver,
     sessions: PortableQuerySessions,
-    features: FeatureService | None = None,
-    extensions: PlayerDetailExtensionRegistry | None = None,
+    features: FeatureService,
+    extensions: PlayerDetailExtensionRegistry,
 ) -> dict[str, PortableOperation]:
     owner = _PortablePlayerOperations(service, resolver, sessions, features, extensions)
     return {
@@ -64,8 +64,8 @@ class _PortablePlayerOperations:
     service: PlayerService
     resolver: PlayerIdResolver
     sessions: PortableQuerySessions
-    features: FeatureService | None
-    extensions: PlayerDetailExtensionRegistry | None
+    features: FeatureService
+    extensions: PlayerDetailExtensionRegistry
 
     async def query(
         self,
@@ -115,9 +115,7 @@ class _PortablePlayerOperations:
         if context.has_member_mentions:
             if context.message.conversation.kind != "group":
                 return _text_reply("仅群聊可为成员绑定米米号。")
-            if self.features is None or not self.features.is_actor_superuser(
-                context.message.actor
-            ):
+            if not self.features.is_actor_superuser(context.message.actor):
                 return _text_reply("仅超级管理员可为其他成员绑定米米号。")
             if len(context.member_mentions) != 1:
                 return _text_reply("请一次只 @ 一名成员绑定米米号。")
@@ -137,9 +135,8 @@ class _PortablePlayerOperations:
     async def _bind_player(
         self, player_id: int, context: MessageInputContext, target: ActorRef | None,
     ) -> PortableReply:
-        if target is not None and (
-            self.features is None
-            or not self.features.is_actor_superuser(context.message.actor)
+        if target is not None and not self.features.is_actor_superuser(
+            context.message.actor
         ):
             return _text_reply("仅超级管理员可为其他成员绑定米米号。")
         result = await self.service.bind_player(
@@ -235,8 +232,8 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
     sessions: PortableQuerySessions,
     context: MessageInputContext,
     result: PlayerQueryResult,
-    features: FeatureService | None,
-    extensions: PlayerDetailExtensionRegistry | None,
+    features: FeatureService,
+    extensions: PlayerDetailExtensionRegistry,
 ) -> PortableReply:
     if result.message:
         return _text_reply(result.message)
@@ -255,17 +252,13 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
         has_peak=pending.section_plan.needs_peak_section,
         has_autocard=pending.section_plan.has_autocard_rank,
     )
-    extension_actions = (
-        ()
-        if features is None or extensions is None
-        else tuple(
-            action
-            for action in extensions.actions()
-            if features.is_feature_allowed(
-                context.message.actor,
-                context.message.conversation,
-                action.feature,
-            )
+    extension_actions = tuple(
+        action
+        for action in extensions.actions()
+        if features.is_feature_allowed(
+            context.message.actor,
+            context.message.conversation,
+            action.feature,
         )
     )
 
@@ -293,8 +286,6 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                 extensions,
             ).message
         if isinstance(command, PlayerDetailExtensionAction):
-            if features is None:
-                raise ValueError("player extension requires a feature policy")  # noqa: TRY003
             return await query_player_extension(
                 command, pending.player_id, context, features,
             )
