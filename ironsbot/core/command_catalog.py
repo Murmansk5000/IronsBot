@@ -498,6 +498,15 @@ class CommandCatalog:
             and Platform.ONEBOT in command.platforms
         )
 
+    @property
+    def qq_official_direct_command_ids(self) -> frozenset[str]:
+        return frozenset(
+            command.id
+            for command in self._commands
+            if command.interaction == "direct"
+            and Platform.QQ_OFFICIAL in command.platforms
+        )
+
     def validate_matcher_registrations(
         self,
         *,

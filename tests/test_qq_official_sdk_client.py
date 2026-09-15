@@ -227,6 +227,32 @@ async def test_sdk_client_sends_multiple_payloads_with_consecutive_sequences() -
 
 
 @pytest.mark.asyncio
+async def test_sdk_client_logs_sequence_without_delivery_identifiers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    api = _FakeApi()
+    caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.sdk_client")
+
+    await _client(api).send_to_c2c(
+        "private-openid",
+        (QQOfficialTextPayload("first"), QQOfficialTextPayload("second")),
+        msg_id="incoming-message-id",
+        msg_seq=2,
+    )
+
+    assert (
+        "scope=c2c mode=passive sequence=2 payload=QQOfficialTextPayload"
+        in caplog.text
+    )
+    assert (
+        "scope=c2c mode=passive sequence=3 payload=QQOfficialTextPayload"
+        in caplog.text
+    )
+    assert "private-openid" not in caplog.text
+    assert "incoming-message-id" not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_sdk_client_degrades_oversized_image_to_text() -> None:
     api = _FakeApi()
     media = _FakeMedia(

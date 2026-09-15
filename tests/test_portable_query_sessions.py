@@ -176,8 +176,34 @@ async def test_selection_can_exit_and_expires_without_persistence() -> None:
 
     await sessions.begin(second, argument="query", spec=spec)
     clock.value = 10
+    assert sessions.recognizes_response("1", second)
+    assert _text(await sessions.select("1", second)) == (
+        "查询会话已超时，请重新发送原指令。"
+    )
     assert not sessions.recognizes_response("1", second)
-    assert await sessions.select("1", second) is None
+
+
+@pytest.mark.asyncio
+async def test_expired_selection_does_not_claim_an_unrelated_command() -> None:
+    clock = _Clock()
+    sessions = PortableQuerySessions(ttl_seconds=10, now=clock)
+    context = _context("member")
+
+    async def select(_value: str) -> OutboundMessage:
+        raise AssertionError
+
+    sessions.offer_menu(
+        context,
+        PortableMenuSpec(
+            choices=("value",),
+            select=select,
+            prompt=OutboundMessage.from_text("menu"),
+        ),
+    )
+    clock.value = 10
+
+    assert not sessions.recognizes_response("帮助", context)
+    assert await sessions.select("帮助", context) is None
 
 
 @pytest.mark.asyncio
