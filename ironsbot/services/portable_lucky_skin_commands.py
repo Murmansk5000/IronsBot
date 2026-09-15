@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.seer.lucky_skin_commands import (
@@ -167,15 +168,20 @@ class PortableLuckySkinCommands:
             return OutboundMessage.from_text("❌ 幸运橱窗查询超时，请稍后再试。")
         except LuckySkinWindowError as error:
             logger.warning(
-                "lucky skin window query unavailable: actor=%s error=%s",
-                actor,
+                "lucky skin window query unavailable: platform=%s actor=%s error=%s",
+                actor.platform.value,
+                reference_digest(actor.id),
                 error,
             )
             return OutboundMessage.from_text(
                 "❌ 幸运橱窗数据暂时不可用，请稍后再试。"
             )
         except Exception:
-            logger.exception("lucky skin window query failed: actor=%s", actor)
+            logger.exception(
+                "lucky skin window query failed: platform=%s actor=%s",
+                actor.platform.value,
+                reference_digest(actor.id),
+            )
             return OutboundMessage.from_text("❌ 幸运橱窗查询失败，请稍后再试。")
         return await self._result_menu(context, actor, result)
 

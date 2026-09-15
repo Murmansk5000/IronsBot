@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from ironsbot.core.outbound import OutboundMessage, RemoteImagePart, TextPart
-from ironsbot.core.platform import ConversationRef
+from ironsbot.core.platform import ConversationRef, reference_digest
 from ironsbot.services.bilibili.parser import (
     dynamic_content,
     dynamic_image_urls,
@@ -214,7 +214,14 @@ class BilibiliDynamicOutboundSender:
                 FULL_DYNAMIC_PUSH_ACTION,
                 author_mid,
                 item.get("id_str", "unknown"),
-                conversations,
+                tuple(
+                    (
+                        conversation.platform.value,
+                        conversation.kind,
+                        reference_digest(conversation.id),
+                    )
+                    for conversation in conversations
+                ),
             )
             return
         target_lines = [
