@@ -25,6 +25,7 @@ from ironsbot.services.identity_link_store import (
 from ironsbot.services.identity_linking import (
     IdentityLinkingAccountError,
     IdentityLinkingConflictError,
+    IdentityLinkingError,
     IdentityLinkingPlatformError,
     IdentityLinkingService,
     IdentityLinkingTokenError,
@@ -192,6 +193,19 @@ async def test_service_requires_explicit_account_when_multiple_are_enabled(
 
     challenge = await service.begin(_onebot(), "TEST")
     assert challenge.account == OfficialAccount("test", "app-test")
+
+
+def test_service_rejects_app_ids_that_collide_after_normalization(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(IdentityLinkingError, match="AppIDs must be unique"):
+        _service(
+            tmp_path / "state.sqlite",
+            accounts={
+                "main": OfficialAccount("main", "official-app"),
+                "duplicate": OfficialAccount("duplicate", " official-app "),
+            },
+        )
 
 
 @pytest.mark.asyncio

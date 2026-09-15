@@ -115,10 +115,11 @@ class IdentityLinkingService:
             alias = raw_alias.strip().casefold()
             if not alias or alias != account.alias.strip().casefold():
                 raise IdentityLinkingError.invalid_account_alias()
-            if not account.app_id.strip() or account.app_id in app_ids:
+            app_id = account.app_id.strip()
+            if not app_id or app_id in app_ids:
                 raise IdentityLinkingError.invalid_account_app_id()
-            normalized[alias] = OfficialAccount(alias, account.app_id.strip())
-            app_ids.add(account.app_id)
+            normalized[alias] = OfficialAccount(alias, app_id)
+            app_ids.add(app_id)
         object.__setattr__(self, "accounts", normalized)
 
     async def begin(
