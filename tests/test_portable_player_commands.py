@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -13,11 +13,17 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_binding import PlayerBindingState
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
+    PlayerDetailExtensionAction,
+    PlayerDetailExtensionRegistry,
+)
 from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 from ironsbot.services.seer.player_query import PlayerQuerySectionPlan
 from ironsbot.services.seer.player_service_models import (
@@ -224,6 +230,55 @@ async def test_player_query_menu_commits_work_only_after_delivery() -> None:
     part = selected.parts[0]
     assert isinstance(part, TextPart)
     assert part.text == "caller-openid:collection:700002"
+
+
+@pytest.mark.asyncio
+async def test_player_query_menu_includes_available_shared_extension() -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    extensions = PlayerDetailExtensionRegistry()
+
+    async def query(_request: PlayerDetailActionRequest) -> QueryReply:
+        return QueryReply(text="team detail")
+
+    extensions.register(
+        PlayerDetailExtensionAction(
+            id="player_team",
+            feature="seer_team",
+            label="战队",
+            aliases=("战队",),
+            command_help_id="seer.team.query",
+            query=query,
+            action=ActionDefinition("player_team", "玩家所属战队"),
+        )
+    )
+    features = cast(
+        "Any",
+        SimpleNamespace(
+            is_feature_allowed=lambda *_args: True,
+            is_actor_superuser=lambda _actor: False,
+        ),
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        features,
+        extensions,
+    )
+    context = _context("米米号700002")
+
+    reply = cast(
+        "PortableReply",
+        await operations["seer.player.query"](context.text, context),
+    )
+
+    assert "4. 【战队】" in _text(reply)
+    selected = await sessions.select("4", context)
+    assert selected is not None
+    part = selected.parts[0]
+    assert isinstance(part, TextPart)
+    assert part.text == "team detail"
 
 
 @pytest.mark.asyncio

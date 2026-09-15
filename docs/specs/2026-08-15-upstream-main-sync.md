@@ -63,7 +63,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 新增技能根菜单预览 | 根预览只含新增项；技能排除本周新精灵自带技能，详情保留完整数据 | 无 | completed |
 | 队列推送加固 | 由 `ProactiveMessageDelivery` 限制并发并按通用失败类型重试；平台适配器只分类错误 | 真实平台 smoke | completed：通用策略已完成；真实传输验收延期 |
 | 群星牌觉醒卡合并 | 在 Autocard repository/view model 合并普通/觉醒事实，适配器只发送结果 | 发布数据契约审计 | completed |
-| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；仅在目标 API 能表达用户绑定与会话身份时接入 | QQ 绑定与身份能力 | deferred：排到 Phase 7 最后，不阻塞非 QQ 重构 |
+| 玩家战队菜单与私聊概览 | 复用玩家详情 action 与 team service；仅在目标 API 能表达用户绑定与会话身份时接入 | 显式跨平台身份关联 | completed：玩家详情菜单已在两个平台共用战队 action；战队资源概览仍按目标会话订阅展示 |
 | 战队详情增强 | repository 产出类型化事实，service 决定展示段，不复制旧 matcher 格式化 | 无 | partial：直接战队号详情完成；QQ 玩家目标延期 |
 | Docker 交接失败恢复 | 复用 operations 状态机并保留明确失败结果 | 可控 Docker client fixture | completed |
 | 旧生产模块拆分 | 不移植旧目录拆分；V5 已由职责边界和 800 行守卫独立完成 | 无 | completed |
@@ -100,6 +100,7 @@ semantic owner、真实的用户契约和针对性验证。
 | 2026-09-13 | Docker 交接失败恢复 | preflight 状态机、入口脚本、Docker gateway 与配置回归 | 默认等待 90 秒后清理失败更新器并启动当前镜像；可配置为严格等待。真实 Docker 交接仍留待 Linux 镜像验收。 |
 | 2026-09-13 | 群星牌觉醒卡合并 | Autocard repository、service、菜单与图片回复回归 | `compose/composeTo` 形成只读变体索引；任一名称或 ID 返回同一组事实，异常关系不合并。 |
 | 2026-09-13 | 战队详情增强（非 QQ 部分） | team service、配置与订阅简版回归 | 直接战队号查询补标语、公告与 Boss 剩余能量；订阅提醒保持简版。按 QQ 玩家目标查询延期。 |
+| 2026-09-15 | 玩家所属战队详情 | team service、共享玩家菜单、OneBot 会话和 QQ Official portable 路由专项 | 显式身份关联完成后，玩家详情菜单共用 `player_team` action；米米号解析、战队查询与权限上下文不复制到平台适配器。 |
 | 2026-09-13 | 竞技池、专家池与大师池变化 | seerapi 317 tests；机器人 focused 327 tests、full 3189 passed/7 skipped、Ruff、BasedPyright、compileall | seerapi `c608ac3`、`dadfe83` 直接使用既有池表和精灵外键发布变化及真实有效期；机器人统一分类、详情、图片与大师池直接查询，不复制旧专用 renderer。 |
 | 2026-09-13 | Docker 维护菜单 | operations service、命令所有权、配置与 OneBot 适配专项 143 项；Ruff、BasedPyright、compileall | 两个维护动作具有唯一 service 契约；所有维护入口打开同一菜单，删除 `check_on_restart` 和旧确认双轨。QQ/目标平台管理员身份只在最终平台阶段验收。 |
 | 2026-09-13 | 主动推送加固 | outbound core、通用 proactive service、OneBot adapter、目标平台能力与调用方专项 172 项；Ruff、BasedPyright | 有限并发、缩批重试、不确定结果防重发和传输中断止损均由平台无关 service 实现；OneBot 仅分类自身错误。真实 OneBot/官方平台发送仍留到最终验收。 |

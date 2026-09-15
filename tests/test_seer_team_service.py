@@ -76,6 +76,11 @@ class FakeGame:
             raise self._result
         return self._result
 
+    async def get_user_info(self, _player_id: int) -> object:
+        if isinstance(self._result, Exception):
+            raise self._result
+        return type("PlayerInfo", (), {"team_id": TEAM_ID})()
+
 
 class FakeHeadless:
     def __init__(self, result: TeamInfo | Exception) -> None:
@@ -146,6 +151,20 @@ async def test_team_service_queries_and_formats_enabled_sections() -> None:
     assert "【设施等级】" not in message
     assert headless.available
     assert not resource.offered
+
+
+@pytest.mark.asyncio
+async def test_player_team_query_reuses_team_detail_service() -> None:
+    service, headless, _resource = _service()
+
+    message = await service.query_player_team(
+        148758762,
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+    )
+
+    assert "【战队信息：测试战队】" in message
+    assert "战队ID：123456" in message
+    assert headless.available
 
 
 @pytest.mark.parametrize(
@@ -239,6 +258,16 @@ async def test_team_service_formats_timeout() -> None:
         )
         == "❌ 战队 123456 查询超时，请稍后再试。"
     )
+
+
+@pytest.mark.asyncio
+async def test_player_team_service_formats_timeout_as_player_query() -> None:
+    service, _headless, _resource = _service(TimeoutError())
+
+    assert await service.query_player_team(
+        148758762,
+        TeamQueryActor(actor=_actor(), conversation=None, can_manage=False),
+    ) == "米米号 148758762 的所属战队查询超时，请稍后再试。"
 
 
 @pytest.mark.asyncio

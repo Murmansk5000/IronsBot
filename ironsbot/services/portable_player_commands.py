@@ -6,8 +6,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.seer.player_detail_extensions import (
+    PlayerDetailActionRequest,
+    PlayerDetailExtensionAction,
+)
 from ironsbot.services.seer.player_messages import unbound_player_shortcut_message
 from ironsbot.services.seer.player_query import (
     available_player_detail_requests,
@@ -22,9 +27,13 @@ from ironsbot.services.seer.player_shortcut_contracts import (
 from ironsbot.services.seer.query_result import QueryChoice, QueryResult
 
 if TYPE_CHECKING:
+    from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
+    from ironsbot.services.seer.player_detail_extensions import (
+        PlayerDetailExtensionRegistry,
+    )
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
     from ironsbot.services.seer.player_service import PlayerService
     from ironsbot.services.seer.player_service_models import PlayerQueryResult
@@ -34,8 +43,10 @@ def build_portable_player_operations(
     service: PlayerService,
     resolver: PlayerIdResolver,
     sessions: PortableQuerySessions,
+    features: FeatureService | None = None,
+    extensions: PlayerDetailExtensionRegistry | None = None,
 ) -> dict[str, PortableOperation]:
-    owner = _PortablePlayerOperations(service, resolver, sessions)
+    owner = _PortablePlayerOperations(service, resolver, sessions, features, extensions)
     return {
         "seer.player.query": owner.query,
         "seer.player.default": owner.shortcut,
@@ -49,6 +60,8 @@ class _PortablePlayerOperations:
     service: PlayerService
     resolver: PlayerIdResolver
     sessions: PortableQuerySessions
+    features: FeatureService | None
+    extensions: PlayerDetailExtensionRegistry | None
 
     async def query(
         self,
@@ -75,6 +88,8 @@ class _PortablePlayerOperations:
             self.sessions,
             context,
             result,
+            self.features,
+            self.extensions,
         )
 
     async def bind(
@@ -112,6 +127,8 @@ class _PortablePlayerOperations:
             self.sessions,
             context,
             result,
+            self.features,
+            self.extensions,
         )
 
     async def unbind(
@@ -147,11 +164,13 @@ class _PortablePlayerOperations:
         return reply.to_outbound()
 
 
-def _prepare_player_query_reply(
+def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
     service: PlayerService,
     sessions: PortableQuerySessions,
     context: MessageInputContext,
     result: PlayerQueryResult,
+    features: FeatureService | None,
+    extensions: PlayerDetailExtensionRegistry | None,
 ) -> PortableReply:
     if result.message:
         return _text_reply(result.message)
@@ -170,21 +189,53 @@ def _prepare_player_query_reply(
         has_peak=pending.section_plan.needs_peak_section,
         has_autocard=pending.section_plan.has_autocard_rank,
     )
-
-    async def select(command: PlayerShortcutCommand) -> QueryResult[object]:
-        reply = await execute_player_shortcut(
-            service,
-            command,
-            context.message.actor,
-            conversation=context.message.conversation,
+    extension_actions = (
+        ()
+        if features is None or extensions is None
+        else tuple(
+            action
+            for action in extensions.actions()
+            if features.is_feature_allowed(
+                context.message.actor,
+                context.message.conversation,
+                action.feature,
+            )
         )
+    )
+
+    async def select(
+        command: PlayerShortcutCommand | PlayerDetailExtensionAction,
+    ) -> QueryResult[object]:
+        if isinstance(command, PlayerDetailExtensionAction):
+            reply = await command.query(
+                PlayerDetailActionRequest(
+                    player_id=pending.player_id,
+                    actor=context.message.actor,
+                    conversation=context.message.conversation,
+                    can_manage=(
+                        context.message.group_role in GROUP_MANAGER_ROLES
+                        or (
+                            features is not None
+                            and features.is_actor_superuser(context.message.actor)
+                        )
+                    ),
+                )
+            )
+        else:
+            reply = await execute_player_shortcut(
+                service,
+                command,
+                context.message.actor,
+                conversation=context.message.conversation,
+            )
         return QueryResult(reply=reply)
 
     menu = sessions.offer(
         context,
         QueryResult(
-            choices=tuple(
-                QueryChoice(
+            choices=(
+                *(
+                QueryChoice[PlayerShortcutCommand | PlayerDetailExtensionAction](
                     name=f"【{request.menu_label}】",
                     description="",
                     value=PlayerShortcutCommand(
@@ -194,6 +245,15 @@ def _prepare_player_query_reply(
                     ),
                 )
                 for request in requests
+                ),
+                *(
+                    QueryChoice[PlayerShortcutCommand | PlayerDetailExtensionAction](
+                        name=f"【{action.label}】",
+                        description="",
+                        value=action,
+                    )
+                    for action in extension_actions
+                ),
             )
         ),
         select=select,

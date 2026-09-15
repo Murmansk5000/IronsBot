@@ -496,6 +496,7 @@ def _fake_seer(
             battle_effect=unused,
             peak_query=peak_query or unused,
             player=unused,
+            player_detail_extensions=SimpleNamespace(actions=lambda: ()),
             rank_queries=rank_queries or unused,
             rank_admin=rank_admin or unused,
         ),
