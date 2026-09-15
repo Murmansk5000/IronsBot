@@ -13,6 +13,7 @@ from ironsbot.core.platform import (
     IncomingMessageRef,
     Platform,
 )
+from ironsbot.core.player_references import PlayerReferenceChoice
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.services.portable_player_commands import (
     build_portable_player_operations,
@@ -68,9 +69,10 @@ class _PlayerService:
         *,
         actor: ActorRef,
         conversation: ConversationRef | None,
+        target: ActorRef | None = None,
     ) -> PlayerQueryResult:
         del conversation
-        self.bound.append((actor, player_id))
+        self.bound.append((target or actor, player_id))
         return PlayerQueryResult(
             pending=_pending(player_id),
             offer_binding=self.replacement,
@@ -95,11 +97,12 @@ class _PlayerService:
         accepted: bool,
         replacing_existing: bool = False,
     ) -> str:
-        assert accepted
         assert replacing_existing
-        self.replacement_choices.append((actor, pending.player_id))
+        if accepted:
+            self.replacement_choices.append((actor, pending.player_id))
         pending.player_message = (
-            f"replaced:{pending.player_id}\n{pending.player_message}"
+            f"{'replaced' if accepted else 'retained'}:{pending.player_id}\n"
+            f"{pending.player_message}"
         )
         return "replaced"
 
@@ -155,17 +158,18 @@ def _context(
     *,
     actor_id: str = "caller-openid",
     mentions: tuple[ActorRef, ...] = (),
+    platform: Platform = Platform.QQ_OFFICIAL,
 ) -> MessageInputContext:
-    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "group-openid")
+    conversation = ConversationRef(platform, "group", "group-openid")
     actor = ActorRef(
-        Platform.QQ_OFFICIAL,
+        platform,
         actor_id,
         "member",
         conversation.id,
     )
     return MessageInputContext(
         IncomingMessageRef(
-            platform=Platform.QQ_OFFICIAL,
+            platform=platform,
             actor=actor,
             conversation=conversation,
             message_id=f"message-{text}",
@@ -192,6 +196,74 @@ def _resolver() -> PlayerIdResolver:
             "target-openid": 800001,
         }.get(actor.id),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+@pytest.mark.parametrize("selection", ["1", "0"])
+async def test_partial_binding_uses_shared_menu_before_business_work(
+    platform: Platform,
+    selection: str,
+) -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    choices = (
+        PlayerReferenceChoice(700001, "玩家甲"),
+        PlayerReferenceChoice(700002, "玩家乙"),
+    )
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        reference_search=lambda _reference, _actor, _conversation: choices,
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        resolver,
+        sessions,
+    )
+    context = _context("绑定米米号玩家", platform=platform)
+    reply = cast(
+        "PortableReply", await operations["seer.player.bind"](context.text, context)
+    )
+    assert "玩家甲" in _text(reply) and "玩家乙" in _text(reply)
+    assert not service.bound
+    stranger = _context(context.text, platform=platform, actor_id="stranger")
+    assert await sessions.select("1", stranger, allow_deferred=True) is None
+    selected = await sessions.select(selection, context, allow_deferred=True)
+    assert selected is not None
+    assert service.bound == (
+        [(context.message.actor, 700001)] if selection == "1" else []
+    )
+    assert not service.returned
+    if selection == "1":
+        cast("PortableReply", selected).delivered()
+        assert service.returned == [(context.message.actor, 700001)]
+
+
+@pytest.mark.asyncio
+async def test_binding_selection_rechecks_reference_visibility() -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    choices = (
+        PlayerReferenceChoice(700001, "玩家甲"),
+        PlayerReferenceChoice(700002, "玩家乙"),
+    )
+    resolver = PlayerIdResolver(
+        lambda _reference, _conversation: None,
+        lambda _actor: None,
+        reference_search=lambda _reference, _actor, _conversation: choices,
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        resolver,
+        sessions,
+    )
+    context = _context("绑定米米号玩家")
+    await operations["seer.player.bind"](context.text, context)
+    choices = ()
+    reply = await sessions.select("1", context, allow_deferred=True)
+    assert "已不可用" in _text(cast("PortableReply", reply))
+    assert not service.bound
 
 
 def _text(reply: PortableReply) -> str:
@@ -282,7 +354,7 @@ async def test_player_query_menu_includes_available_shared_extension() -> None:
 
 
 @pytest.mark.asyncio
-async def test_binding_accepts_one_mentioned_openid_binding() -> None:
+async def test_binding_does_not_copy_a_mentioned_members_binding() -> None:
     service = _PlayerService()
     operations = build_portable_player_operations(
         cast("PlayerService", service),
@@ -302,27 +374,93 @@ async def test_binding_accepts_one_mentioned_openid_binding() -> None:
         await operations["seer.player.bind"](context.text, context),
     )
 
-    assert "player:800001" in _text(reply)
-    assert service.bound == [(context.message.actor, 800001)]
+    assert "仅超级管理员" in _text(reply)
+    assert service.bound == []
 
 
 @pytest.mark.asyncio
-async def test_explicit_binding_confirms_an_existing_binding_replacement() -> None:
+@pytest.mark.parametrize("reference", ["700001", "别名"])
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_superuser_binds_explicit_player_to_mentioned_member(
+    reference: str, platform: Platform,
+) -> None:
+    service = _PlayerService()
+    features = cast("Any", SimpleNamespace(
+        is_actor_superuser=lambda _actor: True,
+    ))
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), PortableQuerySessions(), features,
+    )
+    target = ActorRef(platform, "target-openid", "member", "group-openid")
+    context = _context(
+        f"绑定米米号{reference}", mentions=(target,), platform=platform,
+    )
+    reply = cast(
+        "PortableReply", await operations["seer.player.bind"](context.text, context),
+    )
+    assert "player:700001" in _text(reply)
+    assert service.bound == [(target, 700001)]
+    reply.delivered()
+    assert service.returned == [(context.message.actor, 700001)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("selection", ["1", "2", "0"])
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_existing_binding_waits_for_explicit_confirmation(
+    selection: str, platform: Platform,
+) -> None:
     service = _PlayerService(replacement=True)
+    sessions = PortableQuerySessions()
     operations = build_portable_player_operations(
         cast("PlayerService", service),
         _resolver(),
-        PortableQuerySessions(),
+        sessions,
     )
-    context = _context("绑定米米号别名")
+    context = _context("绑定米米号别名", platform=platform)
 
     reply = cast(
         "PortableReply",
         await operations["seer.player.bind"](context.text, context),
     )
 
-    assert "replaced:700001" in _text(reply)
-    assert service.replacement_choices == [(context.message.actor, 700001)]
+    assert "确认换绑" in _text(reply)
+    assert service.replacement_choices == []
+    assert service.returned == []
+    selected = await sessions.select(selection, context, allow_deferred=True)
+    assert selected is not None
+    assert service.replacement_choices == (
+        [(context.message.actor, 700001)] if selection == "1" else []
+    )
+    assert service.returned == []
+    if selection != "0":
+        selected = cast("PortableReply", selected)
+        selected.delivered()
+        assert service.returned == [(context.message.actor, 700001)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("reference", "count", "expected"), [
+    ("", 1, "未找到该米米号"),
+    ("700001", 2, "请一次只 @ 一名成员"),
+])
+async def test_admin_binding_rejects_missing_account_or_multiple_recipients(
+    reference: str, count: int, expected: str,
+) -> None:
+    service = _PlayerService()
+    features = cast("Any", SimpleNamespace(is_actor_superuser=lambda _actor: True))
+    operations = build_portable_player_operations(
+        cast("PlayerService", service), _resolver(), PortableQuerySessions(), features,
+    )
+    mentions = tuple(
+        ActorRef(Platform.QQ_OFFICIAL, f"member-{i}") for i in range(count)
+    )
+    context = _context(f"绑定米米号{reference}", mentions=mentions)
+    reply = cast(
+        "PortableReply", await operations["seer.player.bind"](context.text, context),
+    )
+    assert expected in _text(reply)
+    assert service.bound == []
 
 
 @pytest.mark.asyncio
