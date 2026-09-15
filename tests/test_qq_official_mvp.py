@@ -1313,7 +1313,7 @@ def test_only_group_at_event_is_classified_as_bot_mention() -> None:
     assert qq_official_event_mentions_bot(at_message)
 
 
-def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
+def test_qq_official_renderer_preserves_leading_text_before_binary_image() -> None:
     conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
     rendered = render_qq_official_outbound_message(
         OutboundMessage(
@@ -1329,6 +1329,26 @@ def test_qq_official_renderer_preserves_text_and_binary_image() -> None:
     assert rendered[1] == QQOfficialImagePayload(
         content=b"image",
         filename="preview.png",
+    )
+
+
+def test_qq_official_renderer_compacts_text_around_image() -> None:
+    conversation = ConversationRef(Platform.QQ_OFFICIAL, "group", "opaque-group")
+
+    rendered = render_qq_official_outbound_message(
+        OutboundMessage(
+            (
+                TextPart("title\n"),
+                BinaryImagePart(b"image", "image/png", "preview.png"),
+                TextPart("details"),
+            )
+        ),
+        conversation=conversation,
+    )
+
+    assert rendered == (
+        QQOfficialImagePayload(content=b"image", filename="preview.png"),
+        QQOfficialTextPayload("title\ndetails"),
     )
 
 
