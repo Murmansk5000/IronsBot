@@ -26,6 +26,7 @@ from ironsbot.config.models.messaging import (
     MessageScheduledAction,
     PushUnsubscribeConfig,
 )
+from ironsbot.config.onebot_references import OneBotReferenceResolver
 from ironsbot.core.command_catalog import CommandCatalog, CommandContext
 from ironsbot.core.platform import ActorRef, ConversationRef, Platform
 from ironsbot.core.plugin_install import PluginContribution
@@ -40,6 +41,7 @@ from ironsbot.integrations.storage.push_subscriptions import (
 )
 from ironsbot.plugins.onebot.ai import _capture_ai_prompt
 from ironsbot.plugins.onebot.messaging import matcher_rules, plugin_contribution
+from ironsbot.plugins.onebot.messaging import matchers as messaging_matchers
 from ironsbot.plugins.onebot.messaging.matchers import _action_command_id
 from ironsbot.plugins.onebot.messaging.push_management_runtime import (
     PUSH_SUBSCRIPTION_FLOW,
@@ -71,6 +73,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from nonebot.adapters.onebot.v11 import Bot
+    from nonebot.matcher import Matcher
     from pytest import MonkeyPatch
 
     from ironsbot.config.models.messaging import MessageReplyAction
@@ -98,7 +101,7 @@ def _schedule(
 ) -> MessageScheduledAction:
     return MessageScheduledAction(
         id=schedule_id,
-        message=message,
+        messages=[message],
         at_user_ids=list(at_user_ids or []),
         time=time,
     )
@@ -495,14 +498,14 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
     config = MessageConfig(
         commands=[
             MessageCommandAction(
-                id="example", commands=["示例"], message="exact", enabled=enabled
+                id="example", commands=["示例"], messages=["exact"], enabled=enabled
             )
         ]
         if configured
         else [],
         keyword_replies=[
             MessageKeywordReplyAction(
-                id="example", keywords=["示例"], message="keyword", enabled=enabled
+                id="example", keywords=["示例"], messages=["keyword"], enabled=enabled
             )
         ]
         if keyword
@@ -542,12 +545,12 @@ async def test_configured_reply_and_menu_matchers_own_their_command_ids(
                     "MessageReplyAction", state[matcher_rules.MESSAGE_ACTION_KEY]
                 )
                 matches.append(
-                    (action.message, state.get(EXPLICIT_COMMAND_STATE_KEY, False))
+                    (action.messages, state.get(EXPLICIT_COMMAND_STATE_KEY, False))
                 )
         expected = (
-            [("exact", True)]
+            [(["exact"], True)]
             if enabled and configured and text == "示例"
-            else [("keyword", False)]
+            else [(["keyword"], False)]
             if enabled and keyword and "示例" in text
             else []
         )
@@ -589,7 +592,7 @@ def test_reply_selection_checks_each_action_permission_before_precedence(
             MessageCommandAction(
                 id="same",
                 commands=["示例"],
-                message="exact",
+                messages=["exact"],
                 feature="seerinfo",
                 enabled=exact_enabled,
             )
@@ -598,7 +601,7 @@ def test_reply_selection_checks_each_action_permission_before_precedence(
             MessageKeywordReplyAction(
                 id="same",
                 keywords=["示例"],
-                message="keyword",
+                messages=["keyword"],
                 feature="web_activity_link",
             )
         ],
@@ -631,7 +634,7 @@ def test_automatic_reply_does_not_become_a_direct_command_or_poke_hint() -> None
     config = MessageConfig(
         keyword_replies=[
             MessageKeywordReplyAction(
-                id="example", keywords=["示例"], message="keyword"
+                id="example", keywords=["示例"], messages=["keyword"]
             )
         ]
     )
@@ -649,13 +652,38 @@ def test_automatic_reply_does_not_become_a_direct_command_or_poke_hint() -> None
 def test_reply_cooldown_keys_distinguish_same_named_action_families() -> None:
     state = {
         matcher_rules.MESSAGE_ACTION_KEY: MessageKeywordReplyAction(
-            id="same", keywords=["示例"], message="keyword"
+            id="same", keywords=["示例"], messages=["keyword"]
         )
     }
     assert _action_command_id("message")(None, state) == "message.same"
     assert _action_command_id("message.keyword")(None, state) == "message.keyword.same"
     with pytest.raises(KeyError):
         _action_command_id("message.keyword")(None, {})
+
+
+@pytest.mark.asyncio
+async def test_onebot_configured_reply_sends_messages_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[str] = []
+
+    async def record(_matcher: object, message: str, **_kwargs: object) -> None:
+        sent.append(message)
+
+    monkeypatch.setattr(messaging_matchers, "send_matcher_message", record)
+    monkeypatch.setattr(messaging_matchers, "finish_matcher_message", record)
+    action = MessageCommandAction(
+        id="sequence",
+        commands=["连续回复"],
+        messages=["第一条", "第二条", "第三条"],
+    )
+    await messaging_matchers.handle_message_command(
+        cast("Matcher", object()),
+        private_message_event("连续回复", user_id=SUPERUSER_ID),
+        {matcher_rules.MESSAGE_ACTION_KEY: action},
+        references=OneBotReferenceResolver(group_aliases={}, user_aliases={}),
+    )
+    assert sent == action.messages
 
 
 def test_unified_command_action_uses_feature_policy_for_each_message_scope(
@@ -668,7 +696,7 @@ def test_unified_command_action_uses_feature_policy_for_each_message_scope(
                 id="activity_link",
                 commands=["activity"],
                 feature="web_activity_link",
-                message="activity link",
+                messages=["activity link"],
                 at_user_ids=[3001],
             )
         ],
@@ -712,7 +740,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="exact_reply",
                 commands=["出出"],
                 feature="text",
-                message="精确回复",
+                messages=["精确回复"],
             )
         ],
         keyword_replies=[
@@ -720,7 +748,7 @@ def test_keyword_reply_uses_feature_policy_after_exact_commands(
                 id="keyword_reply",
                 keywords=["出出"],
                 feature="text",
-                message="关键词回复",
+                messages=["关键词回复"],
             )
         ],
         group_policy={"1001": ["text"]},
@@ -806,7 +834,10 @@ def test_scheduled_messages_build_typed_private_and_group_deliveries(
         )
     )
 
-    assert [delivery.message for delivery in sent] == ["私聊定时", "群定时"]
+    assert [delivery.messages for delivery in sent] == [
+        ("私聊定时",),
+        ("群定时",),
+    ]
     assert sent[0].private_conversations == (_private(2001),)
     assert sent[0].subscription_key == "private"
     assert sent[1].group_conversations == (_group(1001),)
@@ -831,7 +862,7 @@ def test_private_schedule_builds_typed_delivery_for_enabled_user(
         )
     )
 
-    assert sent[0].message == "私聊定时"
+    assert sent[0].messages == ("私聊定时",)
     assert sent[0].private_conversations == (_private(2001),)
 
 
@@ -905,7 +936,7 @@ def test_group_schedule_override_job_targets_only_overridden_group(
         f"{OVERRIDE_HOUR:02d}:{OVERRIDE_MINUTE:02d}",
     )
     task = MessageScheduledAction(
-        message="group push",
+        messages=["group push"],
         at_user_ids=[],
         id="daily",
         time="23:00",
