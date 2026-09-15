@@ -96,11 +96,12 @@ class _PlayerService:
         accepted: bool,
         replacing_existing: bool = False,
     ) -> str:
-        assert accepted
         assert replacing_existing
-        self.replacement_choices.append((actor, pending.player_id))
+        if accepted:
+            self.replacement_choices.append((actor, pending.player_id))
         pending.player_message = (
-            f"replaced:{pending.player_id}\n{pending.player_message}"
+            f"{'replaced' if accepted else 'retained'}:{pending.player_id}\n"
+            f"{pending.player_message}"
         )
         return "replaced"
 
@@ -335,22 +336,38 @@ async def test_superuser_binds_explicit_player_to_mentioned_member(
 
 
 @pytest.mark.asyncio
-async def test_explicit_binding_confirms_an_existing_binding_replacement() -> None:
+@pytest.mark.parametrize("selection", ["1", "2", "0"])
+@pytest.mark.parametrize("platform", [Platform.ONEBOT, Platform.QQ_OFFICIAL])
+async def test_existing_binding_waits_for_explicit_confirmation(
+    selection: str, platform: Platform,
+) -> None:
     service = _PlayerService(replacement=True)
+    sessions = PortableQuerySessions()
     operations = build_portable_player_operations(
         cast("PlayerService", service),
         _resolver(),
-        PortableQuerySessions(),
+        sessions,
     )
-    context = _context("绑定米米号别名")
+    context = _context("绑定米米号别名", platform=platform)
 
     reply = cast(
         "PortableReply",
         await operations["seer.player.bind"](context.text, context),
     )
 
-    assert "replaced:700001" in _text(reply)
-    assert service.replacement_choices == [(context.message.actor, 700001)]
+    assert "确认换绑" in _text(reply)
+    assert service.replacement_choices == []
+    assert service.returned == []
+    selected = await sessions.select(selection, context, allow_deferred=True)
+    assert selected is not None
+    assert service.replacement_choices == (
+        [(context.message.actor, 700001)] if selection == "1" else []
+    )
+    assert service.returned == []
+    if selection != "0":
+        selected = cast("PortableReply", selected)
+        selected.delivered()
+        assert service.returned == [(context.message.actor, 700001)]
 
 
 @pytest.mark.asyncio

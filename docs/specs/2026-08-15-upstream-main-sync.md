@@ -18,6 +18,15 @@ Docker 维护菜单、更新确认和玩家绑定限制等行为。V5 已将插�
 
 ## Goal
 
+### Binding Confirmation And Command Inventory (2026-09-15)
+
+重新比较原版 81 项与目标版 78 项目录声明，完整清单和非目录功能范围见
+[命令迁移核对表](2026-09-15-command-parity.md)。同名 ID 不代表参数和交互已验收。
+本轮发现并修复共享绑定操作自动确认已有绑定替换的回归：现在显示“确认换绑 /
+保留原绑定”，确认前不写入；退出也保留原绑定。两平台复用现有 PortableMenuSpec，
+详情展示及查询额度回调仍在实际发送成功后执行。管理员代绑定行为不变。
+后续继续补部分账号别名候选选择和固定图片部署配置，配置 schema 无变化。
+
 ### Shared Lucky Window Watch Management (2026-09-15)
 
 查看、添加、删除、清空及重置关注全部使用共享 portable operations。OneBot 仅保留

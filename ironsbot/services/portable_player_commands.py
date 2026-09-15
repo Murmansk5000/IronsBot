@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
+from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailActionRequest,
@@ -128,20 +129,39 @@ class _PortablePlayerOperations:
             target=target,
         )
         if result.pending is not None and result.binding_replacement is not None:
-            self.service.save_binding_choice(
-                context.message.actor,
-                result.pending,
-                accepted=True,
-                replacing_existing=True,
+            pending = result.pending
+            previous = result.binding_replacement
+
+            async def confirm(choice: Literal["confirm", "keep"]) -> PortableReply:
+                self.service.save_binding_choice(
+                    context.message.actor, pending,
+                    accepted=choice == "confirm", replacing_existing=True,
+                )
+                return _prepare_player_query_reply(
+                    self.service, self.sessions, context,
+                    replace(result, offer_binding=False, binding_replacement=None),
+                    self.features, self.extensions,
+                )
+
+            prompt = OutboundMessage.from_text(
+                f"当前默认米米号：{previous.player_id}\n"
+                f"新的默认米米号：{pending.player_id}\n"
+                "1. 确认换绑\n2. 保留原绑定\n0. 退出"
             )
-        return _prepare_player_query_reply(
-            self.service,
-            self.sessions,
-            context,
-            result,
-            self.features,
-            self.extensions,
-        )
+            reply = PortableReply(self.sessions.offer_menu(
+                context,
+                PortableMenuSpec(
+                    choices=("confirm", "keep"), select=confirm, prompt=prompt,
+                    labels=("确认换绑", "保留原绑定"),
+                    exit_message="已保留原绑定。",
+                ),
+            ))
+        else:
+            reply = _prepare_player_query_reply(
+                self.service, self.sessions, context, result,
+                self.features, self.extensions,
+            )
+        return reply
 
     async def unbind(
         self,

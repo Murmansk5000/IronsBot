@@ -305,6 +305,8 @@ GITHUB_WORKFLOW_TOKEN=
 
 ### 幸运橱窗
 
+迁移核对范围和未完成项见[原版命令迁移核对表](docs/specs/2026-09-15-command-parity.md)。
+
 个人橱窗及关注管理向 TOML 明确配置、且已绑定对应米米号的用户开放。需要：
 
 1. 在 `[[seer.player_accounts]]` 创建账号，填写 `player_id`、`name` 和可选 `aliases`。
