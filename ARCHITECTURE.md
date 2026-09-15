@@ -327,6 +327,10 @@ The following rules are mandatory:
   TOML alias and feature-bundle compilation. All callers use
   `is_feature_allowed`, `conversation_has_feature`, or a typed domain
   predicate such as `is_message_blocked`.
+- Logical group and user aliases may own one endpoint per transport/account
+  scope, while each native endpoint belongs to exactly one logical alias.
+  Group-member endpoints retain their AppID and group scope and must never be
+  enumerated as private-message targets.
 - Services own cohesive use cases and depend on explicit ports, never on
   NoneBot, OneBot event classes, matchers, or global application state.
 - Renderers receive view models and assets. They do not execute raw SQL,

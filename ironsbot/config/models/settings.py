@@ -119,6 +119,30 @@ class QQOfficialConfigError(ValueError):
     def empty_target_alias(cls) -> QQOfficialConfigError:
         return cls("QQ Official target alias must not be empty or numeric")
 
+    @classmethod
+    def duplicate_alias_target(
+        cls,
+        kind: str,
+        first_alias: str,
+        second_alias: str,
+    ) -> QQOfficialConfigError:
+        return cls(
+            f"QQ Official {kind} aliases {first_alias} and {second_alias} "
+            "must not map to the same scoped target"
+        )
+
+    @classmethod
+    def duplicate_group_member_alias_target(
+        cls,
+        first_alias: str,
+        second_alias: str,
+    ) -> QQOfficialConfigError:
+        return cls.duplicate_alias_target(
+            "group member",
+            first_alias,
+            second_alias,
+        )
+
 
 def _command_starts(value: object) -> list[str]:
     if value is None:
@@ -309,6 +333,24 @@ class QQOfficialAccountConfig(BaseModel):
             groups[group] = cls.normalize_target_aliases(raw_aliases)
         return groups
 
+    @model_validator(mode="after")
+    def validate_unique_alias_targets(self) -> QQOfficialAccountConfig:
+        _validate_unique_openid_aliases(self.group_aliases, kind="group")
+        _validate_unique_openid_aliases(self.user_aliases, kind="user")
+        member_targets: dict[tuple[str, str], str] = {}
+        for group_reference, aliases in self.group_member_aliases.items():
+            group_openid = self.resolve_group_openid(group_reference)
+            for alias, member_openid in aliases.items():
+                target = (group_openid, member_openid)
+                existing_alias = member_targets.get(target)
+                if existing_alias is not None:
+                    raise QQOfficialConfigError.duplicate_group_member_alias_target(
+                        existing_alias,
+                        alias,
+                    )
+                member_targets[target] = alias
+        return self
+
     @field_validator("group_policy", "user_policy", mode="before")
     @classmethod
     def normalize_target_policy(cls, value: object) -> dict[str, list[str]]:
@@ -351,6 +393,23 @@ class QQOfficialAccountConfig(BaseModel):
                 for feature in features
             ),
         }
+
+
+def _validate_unique_openid_aliases(
+    aliases: Mapping[str, str],
+    *,
+    kind: str,
+) -> None:
+    target_aliases: dict[str, str] = {}
+    for alias, openid in aliases.items():
+        existing_alias = target_aliases.get(openid)
+        if existing_alias is not None:
+            raise QQOfficialConfigError.duplicate_alias_target(
+                kind,
+                existing_alias,
+                alias,
+            )
+        target_aliases[openid] = alias
 
 
 class QQOfficialConfig(BaseModel):

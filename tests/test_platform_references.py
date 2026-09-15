@@ -189,6 +189,49 @@ def test_platform_references_keep_group_member_alias_scoped() -> None:
         resolver.private_conversation_refs("member_only", location="test.private")
 
 
+@pytest.mark.parametrize("kind", ["group_aliases", "user_aliases"])
+def test_onebot_aliases_reject_duplicate_native_targets(kind: str) -> None:
+    with pytest.raises(ValueError, match="must not map to the same target"):
+        Settings.model_validate(
+            {
+                "features": {
+                    kind: {
+                        "first": 123456,
+                        "second": 123456,
+                    }
+                }
+            }
+        )
+
+
+@pytest.mark.parametrize("kind", ["group_aliases", "user_aliases"])
+def test_official_aliases_reject_duplicate_scoped_targets(kind: str) -> None:
+    with pytest.raises(ValueError, match="must not map to the same scoped target"):
+        QQOfficialAccountConfig.model_validate(
+            {
+                "enabled": True,
+                "app_id": "app-a",
+                "secret": "secret",
+                kind: {
+                    "first": "same-openid",
+                    "second": "same-openid",
+                },
+            }
+        )
+
+
+def test_official_member_aliases_reject_duplicate_scoped_targets() -> None:
+    with pytest.raises(ValueError, match="must not map to the same scoped target"):
+        _account(
+            "app-a",
+            group_aliases={"admin": "group-openid"},
+            group_member_aliases={
+                "admin": {"owner": "member-openid"},
+                "group-openid": {"duplicate": "member-openid"},
+            },
+        )
+
+
 def test_bilibili_targets_compile_official_aliases() -> None:
     config = BiliConfig.model_validate(
         {

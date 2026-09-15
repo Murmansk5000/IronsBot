@@ -145,6 +145,13 @@ class FeatureService:
             if feature in features
         ]
 
+    def private_actors_for_feature(self, feature: str) -> list[ActorRef]:
+        """Return feature actors that are valid direct-message destinations."""
+
+        return [
+            actor for actor in self.actors_for_feature(feature) if actor.kind == "user"
+        ]
+
     def superuser_actors(self) -> list[ActorRef]:
         return sorted(
             self.superusers,
@@ -161,10 +168,10 @@ class FeatureService:
 
         return [actor for actor in self.superuser_actors() if actor.kind == "user"]
 
-    def actors_with_superusers(self, feature: str) -> list[ActorRef]:
+    def private_actors_with_superusers(self, feature: str) -> list[ActorRef]:
         """Return private feature actors and private superusers once each."""
 
-        actors = self.actors_for_feature(feature)
+        actors = self.private_actors_for_feature(feature)
         actors.extend(
             actor for actor in self.private_superuser_actors() if actor not in actors
         )

@@ -1125,6 +1125,14 @@ def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> Non
             "example-app",
         ),
     }
+    assert set(features.private_actors_for_feature("ai_chat")) == {
+        ActorRef(Platform.ONEBOT, "2002"),
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-user",
+            account_id="example-app",
+        ),
+    }
     official_member = ActorRef(
         Platform.QQ_OFFICIAL,
         "opaque-member",

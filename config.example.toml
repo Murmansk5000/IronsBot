@@ -129,8 +129,10 @@ superusers = []
 
 # EN: Account-scoped endpoints for logical group/user aliases. Reusing a OneBot
 #     alias explicitly declares that both native IDs represent the same target.
+#     One native endpoint may belong to only one logical alias.
 # ZH: 逻辑群/用户别名在当前官方账号下的端点。同名 OneBot 别名与官方 OpenID
-#     会被视为同一个目标，共用 [features.group_policy] / user_policy。
+#     会被视为同一个目标，共用 [features.group_policy] / user_policy；一个原生端点
+#     只能归属一个逻辑别名，重复映射会在启动时失败。
 [bot.qq_official.accounts.example_bot.group_aliases]
 # group_a = "example-group-openid"
 
@@ -228,15 +230,15 @@ superuser_bypass = true
 
 [features.group_aliases]
 # Default: empty table
-# EN: Logical group aliases and their OneBot QQ group endpoints.
-# ZH: 逻辑群别名及其 OneBot QQ 群号端点；官方端点可复用同名别名。
+# EN: Logical group aliases and their unique OneBot QQ group endpoints.
+# ZH: 逻辑群别名及其唯一 OneBot QQ 群号端点；官方端点可复用同名别名。
 group_a = 987654321
 group_b = 876543210
 
 [features.user_aliases]
 # Default: empty table
-# EN: Logical user aliases and their OneBot QQ user endpoints.
-# ZH: 逻辑用户别名及其 OneBot QQ 号端点；官方私聊和群成员端点可复用同名别名。
+# EN: Logical user aliases and their unique OneBot QQ user endpoints.
+# ZH: 逻辑用户别名及其唯一 OneBot QQ 号端点；官方私聊和群成员端点可复用同名别名。
 owner = 1234567890
 user_a = 2345678901
 # Example automated account. Add the same alias to user_policy with blacklist so
