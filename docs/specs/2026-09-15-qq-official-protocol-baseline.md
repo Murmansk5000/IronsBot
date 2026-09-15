@@ -146,6 +146,33 @@ identity or ownership of the game account.
 | Media and identity | SDK uploader, safe `file_info` lifetime, explicit identity linking | Platform permissions and identity repository | completed; Lucky Skin Window consumes only exact links |
 | Real acceptance | Three deployment modes and real login/reply/media/reconnect/multi-account evidence | Authorized Tencent sandbox | partial; one-account READY, C2C command and ordered shutdown passed |
 
+## Feature And Command Matrix
+
+The command catalog, rather than a second platform-specific inventory, is the
+source of truth. The complete application profile currently has 78 direct
+commands shared by OneBot and QQ Official. Router construction fails when an
+official direct command has no portable operation, so a catalog entry cannot be
+silently advertised without an implementation.
+
+| Capability | OneBot / NapCat | QQ Official | Current limitation or evidence |
+| --- | --- | --- | --- |
+| Help, about, configured text and meeting replies | supported | supported | Real C2C help passed |
+| Seer data, player, team, pet, mintmark, equipment, type, peak and autocard queries | supported | supported | Shared services and portable operations; image delivery remains a real-platform gate |
+| Weekly content menus and details | supported | supported | Shared router returned a five-choice menu against the validated local release cache |
+| Global and sampled ranks, display limits and cache administration | supported | supported | Same rank services; administrative commands retain catalog audience checks |
+| Activity and Bilibili history queries | supported | supported | Query paths are portable; scheduled delivery is governed separately |
+| AI chat and intent actions | supported when configured | supported when configured | Command-first routing is shared; provider availability and feature policy still apply |
+| Message, Bilibili, activity and team-resource subscriptions | supported | supported when proactive delivery is enabled and authorized | Tencent proactive quota and permission failure remain a real-platform gate |
+| Data sync, status and Docker maintenance commands | supported | supported | Same services and superuser policy; destructive operations were not exercised during real acceptance |
+| Cross-platform identity-link initiation | supported | not supported | OneBot is the side that can authenticate the numeric QQ identity and issue a short-lived challenge |
+| Cross-platform identity-link confirmation | not supported | supported | Official OpenID confirms the challenge; no nickname, avatar or timing inference is accepted |
+| OneBot-native notices and client-specific passive events | supported where a plugin registers them | not implicitly supported | They require an explicit Tencent event and policy; no fake compatibility event is synthesized |
+| Binary and remote images | supported | implemented through SDK media upload | Real same-scope Tencent upload and send remain pending |
+
+Platform differences stay in command metadata, inbound adapters and delivery
+capabilities. Business services do not branch on the platform to maintain a
+second implementation.
+
 ## Migration And Rollback
 
 - Migration: none; this slice changes documentation only.
