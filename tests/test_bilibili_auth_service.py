@@ -153,7 +153,6 @@ async def test_bili_login_service_owns_qr_poll_and_cookie_refresh(
     await service.notify_required(
         "测试",
         send_notice=send_notice,
-        is_online=lambda: True,
     )
 
     task = service.poll_task
