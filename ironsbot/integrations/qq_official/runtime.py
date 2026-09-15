@@ -30,6 +30,7 @@ from ironsbot.integrations.qq_official.inbound_deduplication import (
 )
 from ironsbot.integrations.qq_official.media_upload import QQOfficialMediaUpload
 from ironsbot.integrations.qq_official.sdk_client import TencentQQClient
+from ironsbot.integrations.qq_official.token_lifecycle import QQOfficialTokenObserver
 from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
@@ -210,6 +211,7 @@ class _SessionState:
 @dataclass(slots=True)
 class _Connection:
     api: QQApiClient
+    tokens: QQOfficialTokenObserver
     sender: TencentQQClient
     websocket: QQWebSocket
     session: _SessionState
@@ -249,17 +251,19 @@ class QQOfficialRuntime:
                 f"IronsBot:{label}",
             )
             api.setup(QQOfficialHttpClient(http_client))
+            tokens = QQOfficialTokenObserver(label)
             session = _SessionState.load(account.app_id, session_root)
             lifecycle = _AccountLifecycle(label, account.required)
             callbacks = self._callbacks(
                 account.app_id,
-                label,
                 api,
+                tokens,
                 session,
                 lifecycle,
             )
             self._connections[account.app_id] = _Connection(
                 api=api,
+                tokens=tokens,
                 sender=TencentQQClient(
                     api,
                     QQOfficialMediaUpload(
@@ -271,6 +275,7 @@ class QQOfficialRuntime:
                         session_root / "media",
                     ),
                     custom_keyboards=account.custom_keyboards,
+                    token_observer=tokens,
                 ),
                 websocket=QQWebSocket(
                     callbacks=callbacks,
@@ -413,11 +418,13 @@ class QQOfficialRuntime:
     def _callbacks(
         self,
         app_id: str,
-        account_label: str,
         api: QQApiClient,
+        tokens: QQOfficialTokenObserver,
         session: _SessionState,
         lifecycle: _AccountLifecycle,
     ) -> WSCallbacks:
+        account_label = lifecycle.account
+
         async def on_message_event(
             event_type: str,
             raw: dict[str, object],
@@ -446,7 +453,7 @@ class QQOfficialRuntime:
             on_connected=connected,
             on_disconnected=disconnected,
             on_fatal_error=fatal_error,
-            get_token=api.ensure_token_sync,
+            get_token=lambda: tokens.ensure_sync(api),
             get_gateway_url=api.get_gateway_url_sync,
             get_session=session.get,
             set_session=session.set,
@@ -470,7 +477,7 @@ async def _start_connection(
 ) -> bool:
     connection.lifecycle.prepare(loop)
     try:
-        await connection.api.ensure_token()
+        await connection.tokens.ensure(connection.api)
         gateway_url = await connection.api.get_gateway_url()
         connection.websocket.start(gateway_url, loop)
         connection.started = True
