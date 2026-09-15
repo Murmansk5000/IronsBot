@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
@@ -33,7 +33,10 @@ if TYPE_CHECKING:
     from ironsbot.services.messaging.sendpic import SendpicService
     from ironsbot.services.messaging.service import MessagingService
     from ironsbot.services.messaging.subscriptions import PushSubscriptionOption
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.portable_query_sessions import (
+        MenuSelect,
+        PortableQuerySessions,
+    )
     from ironsbot.services.portable_reply import PortableOperation
 
 IMAGE_MISSING_MESSAGE = "图片文件不存在，请检查机器人图片目录。"
@@ -73,16 +76,11 @@ def _subscription_operation(
         context: MessageInputContext,
     ) -> OutboundMessage:
         del text
-        message = context.message
-        read_only = message.conversation.kind == "group" and not (
-            message.group_role in GROUP_MANAGER_ROLES
-            or messaging.feature_policy.is_actor_superuser(message.actor)
-        )
         return await _PortableSubscriptionMenus(
             messaging,
             sessions,
             context,
-        ).root(read_only=read_only)
+        ).root()
 
     return execute
 
@@ -120,9 +118,9 @@ class _PortableSubscriptionMenus:
     async def root(
         self,
         *,
-        read_only: bool,
         notice: str | None = None,
     ) -> OutboundMessage:
+        read_only = _push_read_only(self.messaging, self.context)
         options, prompt = await self.messaging.prepared_subscription_menu(
             self.conversation,
             read_only=read_only,
@@ -130,10 +128,12 @@ class _PortableSubscriptionMenus:
         if not options:
             return OutboundMessage.from_text("当前没有可管理的推送订阅。")
 
-        async def select(option: PushSubscriptionOption) -> OutboundMessage:
-            if read_only:
-                return await self.root(
-                    read_only=True,
+        async def select(
+            option: PushSubscriptionOption, context: MessageInputContext,
+        ) -> OutboundMessage:
+            menu = replace(self, context=context)
+            if _push_read_only(self.messaging, context):
+                return await menu.root(
                     notice="普通群成员只能查看本群推送订阅，不能修改。",
                 )
             submenu = self.messaging.subscription_submenu(
@@ -143,9 +143,9 @@ class _PortableSubscriptionMenus:
             )
             if submenu is not None:
                 submenu_options, submenu_prompt = submenu
-                return self.submenu(option, submenu_options, submenu_prompt)
+                return menu.submenu(option, submenu_options, submenu_prompt)
             result = self.messaging.toggle_subscription(self.conversation, option)
-            return await self.root(read_only=False, notice=result)
+            return await menu.root(notice=result)
 
         return self._install(options, select, prompt, notice)
 
@@ -156,7 +156,14 @@ class _PortableSubscriptionMenus:
         prompt: str,
         notice: str | None = None,
     ) -> OutboundMessage:
-        async def select(option: PushSubscriptionOption) -> OutboundMessage:
+        async def select(
+            option: PushSubscriptionOption, context: MessageInputContext,
+        ) -> OutboundMessage:
+            menu = replace(self, context=context)
+            if _push_read_only(self.messaging, context):
+                return await menu.root(
+                    notice="普通群成员只能查看本群推送订阅，不能修改。",
+                )
             result = self.messaging.toggle_subscription(self.conversation, option)
             refreshed = self.messaging.subscription_submenu(
                 self.conversation,
@@ -164,9 +171,9 @@ class _PortableSubscriptionMenus:
                 read_only=False,
             )
             if refreshed is None:
-                return await self.root(read_only=False, notice=result)
+                return await menu.root(notice=result)
             refreshed_options, refreshed_prompt = refreshed
-            return self.submenu(
+            return menu.submenu(
                 parent,
                 refreshed_options,
                 refreshed_prompt,
@@ -178,7 +185,7 @@ class _PortableSubscriptionMenus:
     def _install(
         self,
         options: list[PushSubscriptionOption],
-        select: Callable[[PushSubscriptionOption], Awaitable[OutboundMessage]],
+        select: MenuSelect[PushSubscriptionOption],
         prompt: str,
         notice: str | None,
     ) -> OutboundMessage:
@@ -205,13 +212,17 @@ class _PortablePushTimeMenus:
         return self.context.message.conversation
 
     def root(self, notice: str | None = None) -> OutboundMessage:
+        if _push_read_only(self.messaging, self.context):
+            return OutboundMessage.from_text("普通群成员不能修改推送时间。")
         options = self.messaging.push_time_options(self.conversation)
         if not options:
             return OutboundMessage.from_text("当前没有可修改时间的推送。")
         prompt = build_push_time_menu_prompt(self.conversation, options)
 
-        async def select(option: PushTimeOption) -> OutboundMessage:
-            return self._request_value(option)
+        async def select(
+            option: PushTimeOption, context: MessageInputContext,
+        ) -> OutboundMessage:
+            return replace(self, context=context)._request_value(option)
 
         self.sessions.offer_menu(
             self.context,
@@ -228,20 +239,25 @@ class _PortablePushTimeMenus:
         option: PushTimeOption,
         error: str | None = None,
     ) -> OutboundMessage:
+        if _push_read_only(self.messaging, self.context):
+            return OutboundMessage.from_text("普通群成员不能修改推送时间。")
         prompt = push_time_value_prompt(option)
 
-        async def submit(text: str) -> OutboundMessage:
+        async def submit(text: str, context: MessageInputContext) -> OutboundMessage:
+            menu = replace(self, context=context)
+            if _push_read_only(self.messaging, context):
+                return menu.root()
             try:
                 normalized = normalize_push_time_input(option, text)
             except ValueError as exc:
-                return self._request_value(option, str(exc))
+                return menu._request_value(option, str(exc))
             result = self.messaging.update_push_time(
                 conversation=self.conversation,
                 option=option,
                 value=normalized,
             )
             await self.refresh_jobs(option)
-            return self.root(result)
+            return menu.root(result)
 
         self.sessions.offer_text_input(
             self.context,
@@ -251,6 +267,14 @@ class _PortablePushTimeMenus:
             ),
         )
         return OutboundMessage.from_text(_menu_with_notice(prompt, error))
+
+
+def _push_read_only(messaging: MessagingService, context: MessageInputContext) -> bool:
+    message = context.message
+    return message.conversation.kind == "group" and not (
+        message.group_role in GROUP_MANAGER_ROLES
+        or messaging.feature_policy.is_actor_superuser(message.actor)
+    )
 
 
 def _menu_with_notice(prompt: str, notice: str | None) -> str:

@@ -27,11 +27,13 @@ QuerySelect = Callable[[_T], Awaitable[QueryResult[Any]]]
 QueryArgumentParser = Callable[[str], str | None]
 _SessionKey = tuple["ActorRef", "ConversationRef"]
 _UntypedMenuSelect = Callable[
-    [object],
+    [object, "MessageInputContext"],
     Awaitable[QueryResult[Any] | OutboundMessage | PortableReply],
 ]
-MenuSelect = Callable[[_T], Awaitable[OutboundMessage | PortableReply]]
-TextSubmit = Callable[[str], Awaitable[OutboundMessage]]
+MenuSelect = Callable[
+    [_T, "MessageInputContext"], Awaitable[OutboundMessage | PortableReply]
+]
+TextSubmit = Callable[[str, "MessageInputContext"], Awaitable[OutboundMessage]]
 _SESSION_EXPIRED_MESSAGE = "查询会话已超时，请重新发送原指令。"
 
 
@@ -156,7 +158,9 @@ class PortableQuerySessions:
         argument: str,
         spec: QueryOperationSpec[_T],
     ) -> OutboundMessage:
-        async def select_untyped(value: object) -> QueryResult[Any]:
+        async def select_untyped(
+            value: object, _context: MessageInputContext,
+        ) -> QueryResult[Any]:
             return await spec.select(cast("_T", value))
 
         result = await spec.search(argument)
@@ -179,7 +183,9 @@ class PortableQuerySessions:
     ) -> OutboundMessage:
         """Present choices produced outside the standard search operation."""
 
-        async def select_untyped(value: object) -> QueryResult[Any]:
+        async def select_untyped(
+            value: object, _context: MessageInputContext,
+        ) -> QueryResult[Any]:
             return await select(cast("_T", value))
 
         return self._present(
@@ -199,8 +205,9 @@ class PortableQuerySessions:
 
         async def select_untyped(
             value: object,
+            selection_context: MessageInputContext,
         ) -> OutboundMessage | PortableReply:
-            return await spec.select(cast("_T", value))
+            return await spec.select(cast("_T", value), selection_context)
 
         key = self._key(context)
         if not spec.choices:
@@ -281,7 +288,7 @@ class PortableQuerySessions:
         pending = self._pending.get(key)
         if isinstance(pending, _PendingTextInput):
             self._pending.pop(key, None)
-            return await self._select_text(text, pending)
+            return await self._select_text(text, pending, context)
         if pending is None:
             return None
         choice = pending.session.choice_from_action(text)
@@ -347,7 +354,7 @@ class PortableQuerySessions:
 
         if not pending.keep_open:
             self._pending.pop(key, None)
-        result = await pending.select(pending.choices[index - 1])
+        result = await pending.select(pending.choices[index - 1], context)
         if isinstance(result, (OutboundMessage, PortableReply)):
             if isinstance(result, PortableReply) and not allow_deferred:
                 raise PortableQuerySessionError.deferred_result_not_enabled()
@@ -371,10 +378,11 @@ class PortableQuerySessions:
     async def _select_text(
         text: str,
         pending: _PendingTextInput,
+        context: MessageInputContext,
     ) -> OutboundMessage:
         if text.strip() == "0":
             return OutboundMessage.from_text(pending.exit_message)
-        return await pending.submit(text.strip())
+        return await pending.submit(text.strip(), context)
 
     def _present(
         self,

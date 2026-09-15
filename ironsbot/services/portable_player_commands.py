@@ -114,7 +114,10 @@ class _PortablePlayerOperations:
             if len(context.member_mentions) != 1:
                 return _text_reply("请一次只 @ 一名成员绑定米米号。")
             target = context.member_mentions[0]
-        async def execute(player_id: int) -> PortableReply:
+
+        async def execute(
+            player_id: int, context: MessageInputContext
+        ) -> PortableReply:
             return await self._bind_player(player_id, context, target)
 
         reply = await select_player_reference(
@@ -141,7 +144,9 @@ class _PortablePlayerOperations:
             pending = result.pending
             previous = result.binding_replacement
 
-            async def confirm(choice: Literal["confirm", "keep"]) -> PortableReply:
+            async def confirm(
+                choice: Literal["confirm", "keep"], context: MessageInputContext,
+            ) -> PortableReply:
                 self.service.save_binding_choice(
                     context.message.actor, pending,
                     accepted=choice == "confirm", replacing_existing=True,
@@ -263,6 +268,7 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             | PlayerDetailExtensionAction
             | Literal["bind", "decline"]
         ),
+        context: MessageInputContext,
     ) -> OutboundMessage | PortableReply:
         if isinstance(command, str):
             service.save_binding_choice(

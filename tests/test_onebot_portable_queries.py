@@ -58,7 +58,7 @@ async def test_initial_reply_uses_the_same_delivery_contract_with_or_without_men
         portable_queries, "queued_conversation_is_cancelled", lambda _: False
     )
 
-    async def choose(_choice: str) -> OutboundMessage:
+    async def choose(_choice: str, _context: MessageInputContext) -> OutboundMessage:
         return OutboundMessage.from_text("selected")
 
     async def operation(text: str, context: MessageInputContext) -> PortableReply:
@@ -124,7 +124,7 @@ async def test_onebot_adapter_continues_menu_to_text_input_without_command_branc
     async def operation(text: str, context: MessageInputContext) -> OutboundMessage:
         del text
 
-        async def choose(_value: str) -> OutboundMessage:
+        async def choose(_value: str, context: MessageInputContext) -> OutboundMessage:
             return sessions.offer_text_input(
                 context,
                 PortableTextInputSpec(
@@ -151,7 +151,11 @@ async def test_onebot_adapter_continues_menu_to_text_input_without_command_branc
     assert entered.await_count == len(expected_prompts)
     assert entered.call_args.kwargs["reply_check"](group_message_event("22:30"))
     await resolve(matcher, group_message_event("22:30"), {})
-    submit.assert_awaited_once_with("22:30")
+    submit.assert_awaited_once()
+    assert submit.await_args is not None
+    value, selection_context = submit.await_args.args
+    assert value == "22:30"
+    assert selection_context.message.text == "22:30"
     assert entered.await_count == len(expected_prompts)
     assert [call.args[2].parts for call in sent.await_args_list] == [
         OutboundMessage.from_text(text).parts for text in (*expected_prompts, "saved")

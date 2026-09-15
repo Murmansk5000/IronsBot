@@ -65,7 +65,9 @@ def build_portable_bilibili_operations(
             context,
             PortableMenuSpec(
                 choices=result.dynamic_ids,
-                select=lambda dynamic_id: _dynamic_detail(service, dynamic_id),
+                select=lambda dynamic_id, _context: _dynamic_detail(
+                    service, dynamic_id
+                ),
                 prompt=OutboundMessage.from_text(result.prompt),
                 keep_open=True,
                 exit_message="已退出动态选择。",

@@ -503,6 +503,15 @@ This does not expand the platforms or access rules in the command contract.
 The old OneBot detail conversation remains a tracked migration item, not an
 alternative extension API to preserve.
 
+Portable menu and text-input callbacks receive the selected value and the
+current `MessageInputContext`. Session ownership still checks the scoped actor
+and conversation before invoking a callback. Nested menus propagate this current
+context; operations evaluate authorization when invoked, rather than storing a
+group-role decision made when the menu opened. Stateless data selectors keep
+their value-only service contract; they do not own message authorization.
+This contract does not itself authorize shared group menus or replace command
+admission policy.
+
 Separately distributed extensions import their permitted dependencies from an
 explicit public contract in `ironsbot.extensions.contracts`, never from
 `ironsbot.app.composition`, `ironsbot.app.private_extensions`, or a public

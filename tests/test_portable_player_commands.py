@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock
@@ -357,15 +358,19 @@ async def test_first_binding_confirmation_reuses_query_and_delivery(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("selection", ["4", "战队"])
 @pytest.mark.parametrize("revoke", [False, True])
+@pytest.mark.parametrize("manage", [False, True])
 async def test_player_query_menu_includes_available_shared_extension(
     selection: str,
-    *, revoke: bool,
+    *,
+    revoke: bool,
+    manage: bool,
 ) -> None:
     service = _PlayerService()
     sessions = PortableQuerySessions()
     extensions = PlayerDetailExtensionRegistry()
 
-    async def query(_request: PlayerDetailActionRequest) -> QueryReply:
+    async def query(request: PlayerDetailActionRequest) -> QueryReply:
+        assert request.can_manage is manage
         return QueryReply(text="team detail")
 
     extensions.register(
@@ -395,6 +400,13 @@ async def test_player_query_menu_includes_available_shared_extension(
         extensions,
     )
     context = _context("米米号700002")
+    context = replace(
+        context,
+        message=replace(
+            context.message,
+            group_role="member" if manage else "admin",
+        ),
+    )
 
     reply = cast(
         "PortableReply",
@@ -403,7 +415,15 @@ async def test_player_query_menu_includes_available_shared_extension(
 
     assert "4. 【战队】" in _text(reply)
     allowed = not revoke
-    selected = await sessions.select(selection, context, allow_deferred=True)
+    selection_context = replace(
+        context,
+        message=replace(
+            context.message,
+            message_id="selection",
+            group_role="admin" if manage else "member",
+        ),
+    )
+    selected = await sessions.select(selection, selection_context, allow_deferred=True)
     assert isinstance(selected, PortableReply)
     part = selected.message.parts[0]
     assert isinstance(part, TextPart)

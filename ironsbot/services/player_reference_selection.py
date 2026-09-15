@@ -17,7 +17,9 @@ if TYPE_CHECKING:
     from ironsbot.services.portable_reply import PortableReply
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
 
-PlayerReferenceAction = Callable[[int], Awaitable["OutboundMessage | PortableReply"]]
+PlayerReferenceAction = Callable[
+    [int, "MessageInputContext"], Awaitable["OutboundMessage | PortableReply"]
+]
 
 
 async def select_player_reference(  # noqa: PLR0913 - explicit session and domain ports
@@ -37,9 +39,11 @@ async def select_player_reference(  # noqa: PLR0913 - explicit session and domai
     if not choices:
         return OutboundMessage.from_text("未找到该米米号或已开放的玩家别名。")
     if len(choices) == 1:
-        return await execute(choices[0].player_id)
+        return await execute(choices[0].player_id, context)
 
-    async def select(choice: PlayerReferenceChoice) -> OutboundMessage | PortableReply:
+    async def select(
+        choice: PlayerReferenceChoice, context: MessageInputContext,
+    ) -> OutboundMessage | PortableReply:
         current = resolver.reference_choices(
             reference,
             context.message.actor,
@@ -47,7 +51,7 @@ async def select_player_reference(  # noqa: PLR0913 - explicit session and domai
         )
         if choice not in current:
             return OutboundMessage.from_text("该玩家别名已不可用，请重新发送原命令。")
-        return await execute(choice.player_id)
+        return await execute(choice.player_id, context)
 
     return sessions.offer_menu(
         context,
