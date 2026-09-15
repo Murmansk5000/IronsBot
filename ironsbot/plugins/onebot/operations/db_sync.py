@@ -17,7 +17,6 @@ from nonebot.rule import Rule
 from ironsbot.core.plugin_install import (
     HelpEntry,
     PluginContribution,
-    PluginHooks,
     active_plugin_install_context,
 )
 from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
@@ -40,8 +39,6 @@ if TYPE_CHECKING:
 
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.services.operations.data_sync import DataSyncService
-    from ironsbot.services.operations.scheduler import Scheduler
-    from ironsbot.services.operations.startup import StartupNoticeService
 
 __plugin_meta__ = PluginMetadata(
     name="数据更新",
@@ -62,19 +59,6 @@ def _help_visible(event: Event, *, features: FeatureService) -> bool:
     user_id = getattr(event, "user_id", None)
     return user_id is not None and features.is_actor_superuser(
         onebot_actor_ref(str(user_id))
-    )
-
-
-async def _start_data_sync(
-    *,
-    service: DataSyncService,
-    startup_notice: StartupNoticeService,
-    scheduler: Scheduler,
-) -> None:
-    startup_notice.add(
-        "startup_data_sync",
-        "startup data sync notice",
-        await service.startup(scheduler),
     )
 
 
@@ -162,10 +146,8 @@ def plugin_contribution(
     *,
     service: DataSyncService,
     features: FeatureService,
-    startup_notice: StartupNoticeService,
-    scheduler: Scheduler,
 ) -> PluginContribution:
-    """Declare admin data-sync commands and the configured startup sync."""
+    """Declare the OneBot administrator commands for application-owned sync."""
 
     return PluginContribution(
         id="db_sync",
@@ -178,19 +160,6 @@ def plugin_contribution(
         ),
         commands=data_sync_command_contracts(),
         install=partial(_install, service=service),
-        hooks=PluginHooks(
-            startup=(
-                (
-                    "db_sync",
-                    partial(
-                        _start_data_sync,
-                        service=service,
-                        startup_notice=startup_notice,
-                        scheduler=scheduler,
-                    ),
-                ),
-            ),
-        ),
     )
 
 
@@ -200,7 +169,5 @@ if (context := active_plugin_install_context()) is not None:
         plugin_contribution(
             service=context.resources.data_sync,
             features=context.resources.features,
-            startup_notice=context.resources.startup_notice,
-            scheduler=context.scheduler,
         ),
     )

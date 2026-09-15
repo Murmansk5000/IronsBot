@@ -9,8 +9,9 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from httpx import AsyncClient
 from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
-from qqbot_agent_sdk.event_parser import InboundEvent
+from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
 from ironsbot.config.loader import load_settings
 from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
@@ -18,7 +19,7 @@ from ironsbot.config.models.settings import (
     QQOfficialAccountConfig,
     QQOfficialConfig,
 )
-from ironsbot.core.command_catalog import CommandCatalog
+from ironsbot.core.command_catalog import CommandCatalog, CommandContract
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.help import DIRECT_COMMAND_HELP_HINT_TEXT
 from ironsbot.core.message_input import MessageInputContext
@@ -45,6 +46,8 @@ from ironsbot.integrations.qq_official.outbound_messenger import (
     QQOfficialOutboundMessenger,
 )
 from ironsbot.integrations.qq_official.runtime import (
+    QQOfficialRuntime,
+    QQOfficialRuntimeAccount,
     deliver_qq_official_reply,
     qq_official_event_is_supported,
     qq_official_event_mentions_bot,
@@ -52,6 +55,7 @@ from ironsbot.integrations.qq_official.runtime import (
 from ironsbot.services.about import AboutService, about_command_contracts
 from ironsbot.services.activity.command_contracts import activity_command_contracts
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.ai.input_routing import AiInputRoutingService
 from ironsbot.services.bilibili.command_contracts import bilibili_command_contracts
 from ironsbot.services.help_commands import help_command_contracts
 from ironsbot.services.messaging.addressed_input import AddressedInputHintService
@@ -67,7 +71,11 @@ from ironsbot.services.operations.server_status_commands import (
     server_status_command_contracts,
 )
 from ironsbot.services.pet_config_commands import pet_config_command_contracts
-from ironsbot.services.portable_commands import build_portable_command_router
+from ironsbot.services.portable_commands import (
+    PortableCommandRouter,
+    PortableCommandRouterError,
+    build_portable_command_router,
+)
 from ironsbot.services.portable_reply import PortableReply, progress_operation_reply
 from ironsbot.services.seer.command_contracts import seer_command_contracts
 from ironsbot.services.seer.data import DataUnavailableError
@@ -378,6 +386,14 @@ class _TransportError(RuntimeError):
     pass
 
 
+class _FailingPortableRouter:
+    def recognizes(self, _context: MessageInputContext) -> bool:
+        return True
+
+    async def dispatch(self, _context: MessageInputContext) -> PortableReply:
+        raise RuntimeError("sensitive-event-detail")
+
+
 def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
     *,
     event_type: str = "C2C_MESSAGE_CREATE",
@@ -399,6 +415,52 @@ def _sdk_event(  # noqa: PLR0913 - fixture exposes the SDK event dimensions
         message_type=message_type,
         raw=raw or {},
     )
+
+
+@pytest.mark.asyncio
+async def test_runtime_reports_unexpected_command_failure_without_event_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event = _sdk_event(content="private command body")
+    monkeypatch.setattr(
+        EventParser,
+        "parse",
+        staticmethod(lambda _event_type, _raw: event),
+    )
+    bot = _FakeOfficialBot()
+    messenger = QQOfficialOutboundMessenger(
+        {"example-app": False},
+        bot_provider=lambda _app_id: bot,
+    )
+    async with AsyncClient() as client:
+        runtime = QQOfficialRuntime(
+            (
+                QQOfficialRuntimeAccount(
+                    "example-app",
+                    "example-secret",
+                    label="safe-alias",
+                ),
+            ),
+            http_client=client,
+            session_root=tmp_path,
+        )
+        runtime.bind(cast("PortableCommandRouter", _FailingPortableRouter()), messenger)
+        caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
+
+        await runtime.handle_event("example-app", event.event_type, {})
+
+    payloads = cast("tuple[QQOfficialPayload, ...]", bot.calls[0][2])
+    assert payloads == (QQOfficialTextPayload("❌ 命令执行失败，请稍后再试。"),)
+    assert bot.sent == 1
+    assert "account=safe-alias" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "sensitive-event-detail" not in caplog.text
+    assert "private command body" not in caplog.text
+    assert "opaque-user" not in caplog.text
+    assert "example-app" not in caplog.text
+    assert "example-secret" not in caplog.text
 
 
 def _fake_seer(
@@ -1076,6 +1138,7 @@ def test_qq_official_renderer_uses_current_member_mention_markup() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fail", [False, True])
 async def test_qq_official_delivery_commits_only_after_transport_success(
+    caplog: pytest.LogCaptureFixture,
     *,
     fail: bool,
 ) -> None:
@@ -1091,11 +1154,15 @@ async def test_qq_official_delivery_commits_only_after_transport_success(
         {"example-app": False},
         bot_provider=lambda _app_id: bot,
     )
+    caplog.set_level("INFO", logger="ironsbot.integrations.qq_official.runtime")
     await deliver_qq_official_reply(messenger, incoming, reply)
 
     assert bot.sent == 1
     assert delivered == ([] if fail else [True])
     assert bot.calls[0][3:] == ("message-id", 1)
+    assert ("reply delivered" in caplog.text) is not fail
+    assert "example-app" not in caplog.text
+    assert "message-id" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -1225,6 +1292,39 @@ async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
         await router.dispatch(_portable_input("数据版本", actor, conversation))
         is None
     )
+
+
+def test_portable_router_rejects_unimplemented_official_direct_command() -> None:
+    catalog = CommandCatalog()
+    catalog.load(
+        (
+            PluginContribution(
+                id="missing",
+                commands=(
+                    CommandContract(
+                        id="missing.command",
+                        plugin_id="missing",
+                        section="测试",
+                        examples=("缺失命令",),
+                        description="验证官方命令覆盖守护",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(PortableCommandRouterError, match=r"missing\.command"):
+        PortableCommandRouter(
+            catalog,
+            {},
+            build_onebot_feature_service(FeatureConfig(), ()),
+            ai=cast("AiService", _FakeAi()),
+            ai_input_routing=AiInputRoutingService(
+                build_onebot_feature_service(FeatureConfig(), ()),
+                catalog,
+            ),
+            addressed_input_hints=AddressedInputHintService(),
+        )
 
 
 @pytest.mark.asyncio
