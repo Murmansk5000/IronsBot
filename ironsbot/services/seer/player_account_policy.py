@@ -39,11 +39,13 @@ class PlayerAccountPolicyMixin:
         self,
         actor: ActorRef,
         pending: PendingPlayerQuery,
+        *,
+        bypass_cooldown: bool = False,
     ) -> str:
         current = self._bindings.get(actor)
         if current.player_id == pending.player_id:
             return f"当前已绑定该米米号：{pending.player_id}。"
-        change_error = self._binding_change_error(
+        change_error = "" if bypass_cooldown else self._binding_change_error(
             actor,
             target_player_id=pending.player_id,
         )
