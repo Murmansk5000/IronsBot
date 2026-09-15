@@ -161,6 +161,7 @@ ironsbot/custom_plugins/bilibili_monitor/last_dynamic_time.txt
 /.fleet/
 
 # Local development caches
+/cache/
 /.ruff_cache/
 /.basedpyright/
 /.pyright/
