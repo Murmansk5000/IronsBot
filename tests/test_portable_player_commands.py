@@ -262,7 +262,8 @@ async def test_binding_selection_rechecks_reference_visibility() -> None:
     await operations["seer.player.bind"](context.text, context)
     choices = ()
     reply = await sessions.select("1", context, allow_deferred=True)
-    assert "已不可用" in _text(cast("PortableReply", reply))
+    assert isinstance(reply, OutboundMessage)
+    assert "已不可用" in cast("TextPart", reply.parts[0]).text
     assert not service.bound
 
 

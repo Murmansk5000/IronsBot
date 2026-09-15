@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal
 
 from ironsbot.core.authorization import GROUP_MANAGER_ROLES
 from ironsbot.core.outbound import OutboundMessage
-from ironsbot.core.selection import format_selection_menu
+from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.portable_reply import PortableReply
 from ironsbot.services.seer.player_detail_extensions import (
@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
-    from ironsbot.core.player_references import PlayerReferenceChoice
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
     from ironsbot.services.portable_reply import PortableOperation
     from ironsbot.services.seer.player_detail_extensions import (
@@ -116,36 +115,14 @@ class _PortablePlayerOperations:
             if len(context.member_mentions) != 1:
                 return _text_reply("请一次只 @ 一名成员绑定米米号。")
             target = context.member_mentions[0]
-        choices = self.resolver.reference_choices(
-            reference,
-            context.message.actor,
-            context.message.conversation,
-        )
-        if not choices:
-            return _text_reply("未找到该米米号或已开放的玩家别名。")
-        if len(choices) == 1:
-            return await self._bind_player(choices[0].player_id, context, target)
+        async def execute(player_id: int) -> PortableReply:
+            return await self._bind_player(player_id, context, target)
 
-        async def select(choice: PlayerReferenceChoice) -> PortableReply:
-            current = self.resolver.reference_choices(
-                reference, context.message.actor, context.message.conversation,
-            )
-            if choice not in current:
-                return _text_reply("该玩家别名已不可用，请重新发送绑定命令。")
-            return await self._bind_player(choice.player_id, context, target)
-
-        prompt = format_selection_menu(
+        reply = await select_player_reference(
+            reference, context, self.resolver, self.sessions, execute,
             title="请选择要绑定的玩家：",
-            items=tuple(f"{choice.label}（{choice.player_id}）" for choice in choices),
         )
-        return PortableReply(self.sessions.offer_menu(
-            context,
-            PortableMenuSpec(
-                choices=choices, select=select,
-                prompt=OutboundMessage.from_text(prompt),
-                labels=tuple(choice.label for choice in choices),
-            ),
-        ))
+        return reply if isinstance(reply, PortableReply) else PortableReply(reply)
 
     async def _bind_player(
         self, player_id: int, context: MessageInputContext, target: ActorRef | None,

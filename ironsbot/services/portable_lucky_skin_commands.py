@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal
 from ironsbot.core.outbound import OutboundMessage
 from ironsbot.core.platform import reference_digest
 from ironsbot.core.selection import SelectionMenuItem, format_selection_menu
+from ironsbot.services.player_reference_selection import select_player_reference
 from ironsbot.services.portable_query_sessions import PortableMenuSpec
 from ironsbot.services.seer.lucky_skin_commands import (
     LUCKY_SKIN_WATCH_LIST_COMMANDS,
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
     from ironsbot.core.platform import ActorRef
     from ironsbot.services.identity_linking import IdentityLinkingService
     from ironsbot.services.portable_query_sessions import PortableQuerySessions
-    from ironsbot.services.portable_reply import PortableOperation
+    from ironsbot.services.portable_reply import PortableOperation, PortableReply
     from ironsbot.services.seer.lucky_skin_window import LuckySkinWindowService
     from ironsbot.services.seer.pet_query import PetImageSelection, PetQueryService
     from ironsbot.services.seer.player_id_resolver import PlayerIdResolver
@@ -79,17 +80,30 @@ class PortableLuckySkinCommands:
 
     async def query(
         self, text: str, context: MessageInputContext
-    ) -> OutboundMessage:
+    ) -> OutboundMessage | PortableReply:
         reference = parse_lucky_skin_query(text)
         if reference is None:
             msg = "invalid lucky window command"
             raise ValueError(msg)
+        if reference and not context.has_member_mentions:
+            async def execute(player_id: int) -> OutboundMessage:
+                return await self._query_target(context, player_id)
+
+            return await select_player_reference(
+                reference, context, self.resolver, self.sessions, execute,
+                title="请选择要查询橱窗的玩家：",
+            )
         player_id = None
         if reference or context.has_member_mentions:
             resolution = self.resolver.resolve(context, reference)
             if resolution.error is not None:
                 return OutboundMessage.from_text(resolution.error)
             player_id = resolution.player_id
+        return await self._query_target(context, player_id)
+
+    async def _query_target(
+        self, context: MessageInputContext, player_id: int | None,
+    ) -> OutboundMessage:
         actor = await self._linked_actor(context)
         if actor is None and player_id is None:
             return OutboundMessage.from_text(_LINK_REQUIRED)
