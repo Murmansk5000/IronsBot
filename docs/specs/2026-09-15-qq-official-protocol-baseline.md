@@ -158,7 +158,7 @@ silently advertised without an implementation.
 | --- | --- | --- | --- |
 | Help, about, configured text and meeting replies | supported | supported | Real C2C help passed |
 | Seer data, player, team, pet, mintmark, equipment, type, peak and autocard queries | supported | supported | Shared services and portable operations; image delivery remains a real-platform gate |
-| Weekly content menus and details | supported | supported | Shared router returned a five-choice menu against the validated local release cache |
+| Weekly content menus and details | supported | supported | A real C2C `新增内容` command delivered the five-choice menu with passive sequence 1 |
 | Global and sampled ranks, display limits and cache administration | supported | supported | Same rank services; administrative commands retain catalog audience checks |
 | Activity and Bilibili history queries | supported | supported | Query paths are portable; scheduled delivery is governed separately |
 | AI chat and intent actions | supported when configured | supported when configured | Command-first routing is shared; provider availability and feature policy still apply |
@@ -210,7 +210,7 @@ second implementation.
 | 2026-09-15 | Runtime log redaction | 60 runtime, lifecycle, portable and QQ-enabled bootstrap tests; Ruff; BasedPyright; compileall | Connection logs use the configured account alias. Message and conversation identifiers use irreversible short digests; original AppIDs and OpenIDs remain available only to routing and persistence code |
 | 2026-09-15 | Real token and READY acceptance | Dedicated local test account with AppID in ignored TOML and AppSecret in an ignored environment file | SDK obtained an access token and the redacted account alias reached `ready`; no credential or raw platform identifier was retained in this document |
 | 2026-09-15 | Real C2C command acceptance | Operator sent `帮助` three times after READY; runtime recorded one recognized inbound route and one successful initial delivery for each message | Each operator message produced exactly one private reply; command recognition, C2C passive delivery and persistent inbound deduplication passed without duplicate execution |
-| 2026-09-15 | Application-owned data startup | 51 focused lifecycle/registry/bootstrap tests plus a local portable `新增内容` dispatch against a contract-validated release cache | Seer data now loads as an application resource rather than a OneBot plugin side effect; the shared router returned a five-choice menu after startup |
+| 2026-09-15 | Application-owned data startup | 51 focused lifecycle/registry/bootstrap tests, local portable dispatch and a real C2C `新增内容` command | Seer data now loads as an application resource rather than a OneBot plugin side effect; the shared router delivered the five-choice menu through Tencent with passive sequence 1 |
 | 2026-09-15 | Real ordered shutdown | Operator stopped the READY process repeatedly with the normal interrupt path | Uvicorn completed application shutdown and the process exited without a surviving QQ Official runtime task |
 
 ## Progress
