@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.core.platform import Platform
+from ironsbot.core.platform import ActorRef, Platform
 from ironsbot.services.identity_link_store import (
     CrossPlatformIdentityLink,
     IdentityLinkChallengeExpiredError,
@@ -21,8 +21,6 @@ from ironsbot.services.identity_link_store import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
-
-    from ironsbot.core.platform import ActorRef
 
 _TOKEN_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 _TOKEN_LENGTH = 8
@@ -172,7 +170,7 @@ class IdentityLinkingService:
         return () if link is None else (link,)
 
     async def linked_onebot_actor(self, actor: ActorRef) -> ActorRef | None:
-        """Resolve an exact, explicitly linked identity to its OneBot actor."""
+        """Resolve an exact, explicitly linked identity to its numeric QQ actor."""
 
         if actor.platform is Platform.ONEBOT:
             _onebot_qq_id(actor)
@@ -180,8 +178,6 @@ class IdentityLinkingService:
         link = await self.store.for_official(_official_identity(actor))
         if link is None:
             return None
-        from ironsbot.core.platform import ActorRef
-
         return ActorRef(Platform.ONEBOT, link.onebot_qq_id)
 
     async def revoke(self, actor: ActorRef) -> int:
