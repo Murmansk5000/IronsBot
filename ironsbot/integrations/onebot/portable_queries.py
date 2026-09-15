@@ -19,7 +19,7 @@ from ironsbot.integrations.onebot.conversations import (
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
 from ironsbot.integrations.onebot.message_input import message_input_context
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
-from ironsbot.services.portable_reply import PortableReply
+from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
 from ironsbot.services.seer.errors import DATABASE_UNAVAILABLE_MESSAGE
 
@@ -110,19 +110,10 @@ async def _deliver(
     event: MessageEvent,
     result: OutboundMessage | PortableReply | DataQueryImageReply | str,
 ) -> bool:
-    reply = _as_portable_reply(result)
-    receipt = await send_portable_event_reply(matcher, event, reply.message)
-    if not receipt.delivered:
-        reply.delivery_failed()
-        return False
-    reply.delivered()
-    for message in reply.additional_messages:
-        receipt = await send_portable_event_reply(matcher, event, message)
-        if not receipt.delivered:
-            return False
-    if reply.follow_up is not None:
-        return await _deliver(matcher, event, await reply.follow_up())
-    return True
+    return await deliver_portable_reply(
+        _as_portable_reply(result),
+        lambda message: send_portable_event_reply(matcher, event, message),
+    )
 
 
 def _as_portable_reply(

@@ -512,6 +512,14 @@ their value-only service contract; they do not own message authorization.
 This contract does not itself authorize shared group menus or replace command
 admission policy.
 
+`services.portable_reply.deliver_portable_reply` owns initial acknowledgement,
+ordered additional/follow-up delivery, and abort notification on transport
+rejection, exception, or cancellation. OneBot and QQ Official supply the send
+function; transport logging and the explicit follow-up error presentation policy
+remain at the adapter edge. An initial acknowledgement is not rolled back by a
+later failure. Cancelling preparation before the first progress value cancels
+and joins the owned operation instead of leaving it waiting in the background.
+
 `services.player_reference_selection.select_player_target` owns message-level
 target selection for shared player queries and contributed shortcuts: explicit
 references use visible candidates, while direct mentions and default bindings

@@ -30,6 +30,7 @@
 | 橱窗关注 | 五种操作统一到 shared portable operations | 07ba27ac；两平台选择及身份拒绝测试 |
 | 通用菜单送达 | OneBot 首次菜单也执行 PortableReply 的送达回调、附加消息和后续结果；发送失败不进入等待会话 | tests/test_onebot_portable_queries.py；移除首次菜单绕过 delivery 的发送分支，不修改业务命令 |
 | 通用交互状态 | 菜单和文字输入共享唯一会话状态、过期与所有者隔离；OneBot 两种模板均续接 | tests/test_portable_query_sessions.py、tests/test_onebot_portable_queries.py；覆盖菜单转文字输入、查询替换旧输入状态和送达失败 |
+| 顺序投递与取消 | 两端复用同一首条/附加/后续投递执行器，移除各自的发送循环；取消首次进度等待时回收后台任务 | tests/test_portable_reply.py 覆盖各发送阶段拒绝、异常、取消与失败清理；不代表加载期输入队列或共享菜单所有权已迁移 |
 | 玩家内置快捷查询 | OneBot 收集、巅峰、群星牌改用共享操作；共享菜单栏目复用送达感知进度模板 | 删除 handle_player_shortcut；tests/test_portable_player_commands.py 和 test_onebot_portable_queries.py 验证两端、菜单、排队/查询提示、缓存及提示失败取消 |
 | 玩家扩展操作 | OneBot 扩展直接命令和共享菜单使用同一执行器；官方路由按动作及命令声明生成操作 | 删除 handle_player_extension_shortcut；tests/test_player_extension_commands.py、test_portable_player_commands.py、test_onebot_portable_queries.py、test_qq_official_mvp.py 覆盖权限复查、请求上下文、反馈及既有战队命令不被覆盖；实际私有扩展仍需实机验收 |
 | 帮助 | 已接入共享二级菜单 | aa31d30e；仍需不同 Feature 配置下的完整可见性验收 |
@@ -180,7 +181,7 @@
 测试同时验证角色降级后不能修改订阅或时间。官方键盘权限仍是独立外部条件，
 此处只证明模板信息保留以及现有发送适配器的本地行为，不代表实机按钮验收。
 
-玩家目标选择模板接入后的本地验证：3709 passed、7 skipped；Ruff、生产与测试
+共享投递执行器接入后的本地验证：3728 passed、7 skipped；Ruff、生产与测试
 BasedPyright、compileall、check_repo --static、diff check 通过。
 8368 条警告来自 NoneBot ForwardRef 弃用提示和 SQLAlchemy 关系映射。
 这些结果不证明官方实机验收，也不代表下列剩余项目完成。
