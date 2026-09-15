@@ -9,6 +9,10 @@ import pytest
 from ironsbot.core.outbound import OutboundMessage, SendResult
 from ironsbot.core.semantic_requests import ActionDefinition
 from ironsbot.integrations.onebot import portable_queries
+from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.prompt_sessions import (
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
+)
 from ironsbot.plugins.onebot.seer.query.commands import player_shortcuts
 from ironsbot.services.operations.request_feedback import send_request_feedback
 from ironsbot.services.portable_query_sessions import (
@@ -160,6 +164,70 @@ async def test_onebot_adapter_continues_menu_to_text_input_without_command_branc
     assert [call.args[2].parts for call in sent.await_args_list] == [
         OutboundMessage.from_text(text).parts for text in (*expected_prompts, "saved")
     ]
+
+
+@pytest.mark.asyncio
+async def test_onebot_adapter_routes_quoted_shared_menu_to_replying_member(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = PortableQuerySessions()
+    sent = AsyncMock(return_value=SendResult(delivered=True, message_id="sent-1"))
+    entered = AsyncMock()
+    selected = AsyncMock(return_value=OutboundMessage.from_text("selected"))
+    prompt_manager = SimpleNamespace(detach_queued_conversation=Mock())
+    monkeypatch.setattr(portable_queries, "send_portable_event_reply", sent)
+    monkeypatch.setattr(portable_queries, "enter_event_reply_conversation", entered)
+    monkeypatch.setattr(
+        portable_queries, "queued_conversation_is_cancelled", lambda _: False
+    )
+    monkeypatch.setattr(
+        portable_queries, "get_prompt_session_manager", lambda _: prompt_manager
+    )
+
+    async def operation(
+        text: str,
+        context: MessageInputContext,
+    ) -> OutboundMessage:
+        del text
+        return sessions.offer_menu(
+            context,
+            PortableMenuSpec(
+                choices=("read-only", "owner-only"),
+                select=selected,
+                shared_select=selected,
+                shared_choice_indexes=frozenset({1}),
+                prompt=OutboundMessage.from_text("choose"),
+                keep_open=True,
+            ),
+        )
+
+    matcher = cast("Matcher", Mock())
+    owner_event = group_message_event("query", user_id=1001, message_id=501)
+    handler = portable_queries.make_portable_query_handler(operation, sessions)
+    await handler(matcher, {}, owner_event)
+    first_enter = entered.await_args
+    assert first_enter is not None
+    shared_check = first_enter.kwargs["group_reply_check"]
+    responder_event = group_message_event(
+        "1",
+        user_id=1002,
+        message_id=502,
+        reply_sender_user_id=owner_event.self_id,
+        reply_message_id=999,
+    )
+
+    assert shared_check(responder_event)
+    resolve = first_enter.kwargs["handlers"][0]
+    state = {QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY: True}
+    await resolve(matcher, responder_event, state)
+
+    prompt_manager.detach_queued_conversation.assert_called_once_with(state)
+    selected.assert_awaited_once()
+    assert selected.await_args is not None
+    assert selected.await_args.args[0] == "read-only"
+    assert selected.await_args.args[1].message.actor.id == "1002"
+    assert sessions.has_active_session(message_input_context(owner_event))
+    assert sessions.has_active_session(message_input_context(responder_event))
 
 
 @pytest.mark.asyncio

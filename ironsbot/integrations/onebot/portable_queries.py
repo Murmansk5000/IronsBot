@@ -16,8 +16,15 @@ from nonebot.typing import T_State  # noqa: TC002 - NoneBot resolves at runtime
 from ironsbot.integrations.onebot.conversations import (
     enter_event_reply_conversation,
 )
+from ironsbot.integrations.onebot.matcher_support import (
+    bind_async,
+    get_prompt_session_manager,
+)
 from ironsbot.integrations.onebot.matchers import queued_conversation_is_cancelled
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.prompt_sessions import (
+    QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY,
+)
 from ironsbot.integrations.onebot.replies import send_portable_event_reply
 from ironsbot.services.portable_reply import PortableReply, deliver_portable_reply
 from ironsbot.services.seer.data import DataUnavailableError
@@ -52,22 +59,44 @@ class _OneBotPortableQueryAdapter:
 
     async def resolve_selection(
         self,
+        owner_context: MessageInputContext,
         matcher: Matcher,
         event: MessageEvent,
-        _state: T_State,
+        state: T_State,
     ) -> None:
         context = message_input_context(event)
-        result = await self.sessions.select(
-            context.text,
-            context,
-            allow_deferred=True,
-        )
+        if state.get(QUEUED_CONVERSATION_SHARED_REPLY_STATE_KEY):
+            get_prompt_session_manager(matcher).detach_queued_conversation(state)
+            result = await self.sessions.select_shared(
+                context.text,
+                owner_context,
+                context,
+                allow_deferred=True,
+            )
+        else:
+            result = await self.sessions.select(
+                context.text,
+                context,
+                allow_deferred=True,
+            )
         if queued_conversation_is_cancelled(matcher):
             raise FinishedException
         if result is None:
             raise FinishedException
         if await _deliver(matcher, event, result):
             await self._continue_pending_session(matcher, event, context)
+
+    def shared_session_response(
+        self,
+        owner_context: MessageInputContext,
+        event: MessageEvent,
+    ) -> bool:
+        context = message_input_context(event)
+        return self.sessions.recognizes_shared_response(
+            context.text,
+            owner_context,
+            context,
+        )
 
     async def handle(
         self,
@@ -100,8 +129,12 @@ class _OneBotPortableQueryAdapter:
             matcher,
             event,
             namespace=_PORTABLE_QUERY_NAMESPACE,
-            handlers=[self.resolve_selection],
+            handlers=[bind_async(self.resolve_selection, context)],
             reply_check=self.session_response,
+            group_reply_check=lambda reply: self.shared_session_response(
+                context, reply
+            ),
+            allow_group_reply_exit=True,
         )
 
 

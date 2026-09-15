@@ -33,7 +33,10 @@ if TYPE_CHECKING:
     from ironsbot.core.feature_policy import FeatureService
     from ironsbot.core.message_input import MessageInputContext
     from ironsbot.core.platform import ActorRef
-    from ironsbot.services.portable_query_sessions import PortableQuerySessions
+    from ironsbot.services.portable_query_sessions import (
+        MenuSelect,
+        PortableQuerySessions,
+    )
     from ironsbot.services.portable_reply import PortableOperation, ProgressReporter
     from ironsbot.services.seer.player_detail_extensions import (
         PlayerDetailExtensionRegistry,
@@ -303,6 +306,22 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
             )
         return await _player_shortcut_reply(service, command, context)
 
+    async def shared_select(
+        command: (
+            PlayerShortcutCommand
+            | PlayerDetailExtensionAction
+            | Literal["bind", "decline"]
+        ),
+        context: MessageInputContext,
+    ) -> OutboundMessage | PortableReply:
+        return await _select_shared_player_detail(
+            command,
+            context,
+            sessions=sessions,
+            features=features,
+            select=select,
+        )
+
     choices: tuple[
         PlayerShortcutCommand
         | PlayerDetailExtensionAction
@@ -341,6 +360,10 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
                     else ()
                 ),
             ),
+            shared_select=shared_select,
+            shared_choice_indexes=frozenset(
+                range(1, len(requests) + len(extension_actions) + 1)
+            ),
             keep_open=True,
             exit_message="已退出米米号详情查询。",
             prompt=OutboundMessage.from_text(
@@ -362,6 +385,40 @@ def _prepare_player_query_reply(  # noqa: PLR0913 - explicit menu dependencies
         )
 
     return PortableReply(menu, on_delivered=delivered)
+
+
+async def _select_shared_player_detail(
+    command: (
+        PlayerShortcutCommand
+        | PlayerDetailExtensionAction
+        | Literal["bind", "decline"]
+    ),
+    context: MessageInputContext,
+    *,
+    sessions: PortableQuerySessions,
+    features: FeatureService,
+    select: MenuSelect[
+        PlayerShortcutCommand
+        | PlayerDetailExtensionAction
+        | Literal["bind", "decline"]
+    ],
+) -> OutboundMessage | PortableReply:
+    if isinstance(command, str):
+        sessions.discard(context)
+        return OutboundMessage.from_text("该选项仅限菜单发起者使用。")
+    required_feature = (
+        command.feature
+        if isinstance(command, PlayerDetailExtensionAction)
+        else "seer_player"
+    )
+    if not features.is_feature_allowed(
+        context.message.actor,
+        context.message.conversation,
+        required_feature,
+    ):
+        sessions.discard(context)
+        return OutboundMessage.from_text("该功能当前未对你开放。")
+    return await select(command, context)
 
 
 def _text_reply(message: str) -> PortableReply:

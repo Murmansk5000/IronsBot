@@ -58,6 +58,10 @@ class PortableQuerySessionError(ValueError):
     def menu_label_count_mismatch(cls) -> PortableQuerySessionError:
         return cls("portable menu labels must match the choice count")
 
+    @classmethod
+    def invalid_shared_choice(cls) -> PortableQuerySessionError:
+        return cls("portable shared menu choices must reference visible choices")
+
 
 @dataclass(frozen=True, slots=True)
 class QueryOperationSpec(Generic[_T]):
@@ -75,6 +79,8 @@ class PortableMenuSpec(Generic[_T]):
     prompt: OutboundMessage
     labels: tuple[str, ...] = ()
     text_inputs: tuple[frozenset[str], ...] = ()
+    shared_select: MenuSelect[_T] | None = None
+    shared_choice_indexes: frozenset[int] = frozenset()
     keep_open: bool = False
     exit_message: str = "已退出查询。"
 
@@ -83,6 +89,13 @@ class PortableMenuSpec(Generic[_T]):
             raise PortableQuerySessionError.menu_label_count_mismatch()
         if self.text_inputs and len(self.text_inputs) != len(self.choices):
             raise ValueError("menu text inputs must match the choice count")  # noqa: TRY003
+        if any(
+            index < 1 or index > len(self.choices)
+            for index in self.shared_choice_indexes
+        ):
+            raise PortableQuerySessionError.invalid_shared_choice()
+        if bool(self.shared_choice_indexes) != (self.shared_select is not None):
+            raise PortableQuerySessionError.invalid_shared_choice()
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +113,8 @@ class _PendingSelection:
     prompt_title: str
     not_found_message: str
     expires_at: float
+    shared_select: _UntypedMenuSelect | None = None
+    shared_choice_ids: frozenset[str] = frozenset()
     keep_open: bool = False
     exit_message: str = "已退出查询。"
 
@@ -214,6 +229,13 @@ class PortableQuerySessions:
         self._drop_expired(key)
         return key in self._pending
 
+    def discard(self, context: MessageInputContext) -> None:
+        """Remove every unfinished interaction owned by this participant."""
+
+        key = self._key(context)
+        self._cancel_reservation(key)
+        self._pending.pop(key, None)
+
     def active_prompt(self, context: MessageInputContext) -> PromptSession | None:
         key = self._key(context)
         self._drop_expired(key)
@@ -278,6 +300,14 @@ class PortableQuerySessions:
         ) -> OutboundMessage | PortableReply:
             return await spec.select(cast("_T", value), selection_context)
 
+        async def shared_select_untyped(
+            value: object,
+            selection_context: MessageInputContext,
+        ) -> OutboundMessage | PortableReply:
+            if spec.shared_select is None:
+                raise PortableQuerySessionError.invalid_shared_choice()
+            return await spec.shared_select(cast("_T", value), selection_context)
+
         key = self._key(context)
         if not spec.choices:
             self._pending.pop(key, None)
@@ -302,6 +332,12 @@ class PortableQuerySessions:
             prompt_title="",
             not_found_message="",
             expires_at=session.expires_at,
+            shared_select=(
+                shared_select_untyped if spec.shared_select is not None else None
+            ),
+            shared_choice_ids=frozenset(
+                str(index) for index in spec.shared_choice_indexes
+            ),
             keep_open=spec.keep_open,
             exit_message=spec.exit_message,
         )
@@ -406,6 +442,63 @@ class PortableQuerySessions:
             context,
             key=key,
             pending=pending,
+            choice=choice,
+            allow_deferred=allow_deferred,
+        )
+
+    def recognizes_shared_response(
+        self,
+        text: str,
+        owner: MessageInputContext,
+        responder: MessageInputContext,
+    ) -> bool:
+        """Recognize an explicitly shareable choice in a quoted group menu."""
+
+        pending = self._shared_pending(owner, responder)
+        if pending is None:
+            return False
+        choice = self._selection_choice(pending, text)
+        return choice is not None and (
+            choice.id == "0" or choice.id in pending.shared_choice_ids
+        )
+
+    async def select_shared(
+        self,
+        text: str,
+        owner: MessageInputContext,
+        responder: MessageInputContext,
+        *,
+        allow_deferred: bool = False,
+    ) -> OutboundMessage | PortableReply | None:
+        """Clone one shareable group menu choice for the replying member."""
+
+        pending = self._shared_pending(owner, responder)
+        if pending is None:
+            return None
+        choice = self._selection_choice(pending, text)
+        if choice is None or (
+            choice.id != "0" and choice.id not in pending.shared_choice_ids
+        ):
+            return None
+        key = self._key(responder)
+        self._cancel_reservation(key)
+        expires_at = self._now() + self._ttl_seconds
+        cloned = replace(
+            pending,
+            select=cast("_UntypedMenuSelect", pending.shared_select),
+            session=replace(
+                pending.session,
+                actor=responder.message.actor,
+                request_message_id=responder.message.message_id,
+                expires_at=expires_at,
+            ),
+            expires_at=expires_at,
+        )
+        self._pending[key] = cloned
+        return await self._select_choice(
+            responder,
+            key=key,
+            pending=cloned,
             choice=choice,
             allow_deferred=allow_deferred,
         )
@@ -570,6 +663,38 @@ class PortableQuerySessions:
             or pending.session.choice_from_text(text) is not None
             or text.strip().isdigit()
         )
+
+    def _shared_pending(
+        self,
+        owner: MessageInputContext,
+        responder: MessageInputContext,
+    ) -> _PendingSelection | None:
+        if (
+            not responder.is_reply
+            or responder.message.conversation.kind != "group"
+            or responder.message.conversation != owner.message.conversation
+            or responder.message.actor == owner.message.actor
+        ):
+            return None
+        key = self._key(owner)
+        self._drop_expired(key)
+        pending = self._pending.get(key)
+        if not isinstance(pending, _PendingSelection):
+            return None
+        return (
+            pending
+            if pending.shared_choice_ids and pending.shared_select is not None
+            else None
+        )
+
+    @staticmethod
+    def _selection_choice(
+        pending: _PendingSelection,
+        text: str,
+    ) -> PromptChoice | None:
+        return pending.session.choice_from_action(
+            text
+        ) or pending.session.choice_from_text(text)
 
     @staticmethod
     def _key(context: MessageInputContext) -> _SessionKey:

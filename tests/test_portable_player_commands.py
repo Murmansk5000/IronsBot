@@ -173,6 +173,7 @@ def _context(
     actor_id: str = "caller-openid",
     mentions: tuple[ActorRef, ...] = (),
     platform: Platform = Platform.QQ_OFFICIAL,
+    reply_to_id: str | None = None,
 ) -> MessageInputContext:
     conversation = ConversationRef(platform, "group", "group-openid")
     actor = ActorRef(
@@ -189,6 +190,7 @@ def _context(
             message_id=f"message-{text}",
             text=text,
             direct_mentions=mentions,
+            reply_to_id=reply_to_id,
         ),
         mentions_bot=True,
     )
@@ -603,6 +605,50 @@ async def test_player_query_menu_includes_available_shared_extension(
     part = selected.message.parts[0]
     assert isinstance(part, TextPart)
     assert part.text == ("该功能当前未对你开放。" if revoke else "team detail")
+
+
+@pytest.mark.asyncio
+async def test_quoted_player_menu_reauthorizes_replying_member() -> None:
+    service = _PlayerService()
+    sessions = PortableQuerySessions()
+    allowed = True
+    features = cast(
+        "Any",
+        SimpleNamespace(
+            is_feature_allowed=lambda *_args: allowed,
+            is_actor_superuser=lambda _actor: False,
+        ),
+    )
+    operations = build_portable_player_operations(
+        cast("PlayerService", service),
+        _resolver(),
+        sessions,
+        features,
+    )
+    owner = _context("米米号700002")
+    initial = cast(
+        "PortableReply",
+        await operations["seer.player.query"](owner.text, owner),
+    )
+    initial.delivered()
+    responder = _context(
+        "1",
+        actor_id="other-member",
+        reply_to_id="current-menu",
+    )
+    allowed = False
+
+    assert sessions.recognizes_shared_response("1", owner, responder)
+    result = await sessions.select_shared(
+        "1", owner, responder, allow_deferred=True
+    )
+
+    assert isinstance(result, OutboundMessage)
+    part = result.parts[0]
+    assert isinstance(part, TextPart)
+    assert part.text == "该功能当前未对你开放。"
+    assert sessions.has_active_session(owner)
+    assert not sessions.has_active_session(responder)
 
 
 @pytest.mark.asyncio

@@ -46,6 +46,17 @@ def test_portable_menu_rejects_mismatched_text_inputs() -> None:
         )
 
 
+def test_portable_menu_rejects_unknown_shared_choice() -> None:
+    with pytest.raises(PortableQuerySessionError, match="shared menu choices"):
+        PortableMenuSpec(
+            choices=("one",),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("choose"),
+            shared_select=AsyncMock(),
+            shared_choice_indexes=frozenset({2}),
+        )
+
+
 @pytest.mark.asyncio
 async def test_menu_text_aliases_are_explicit_and_share_button_selection() -> None:
     sessions = PortableQuerySessions()
@@ -158,6 +169,7 @@ def _context(
     actor_id: str,
     *,
     group_id: str = "group-a",
+    reply_to_id: str | None = None,
 ) -> MessageInputContext:
     actor = ActorRef(
         Platform.QQ_OFFICIAL,
@@ -173,6 +185,7 @@ def _context(
             conversation=conversation,
             message_id=f"message-{actor_id}-{group_id}",
             text="",
+            reply_to_id=reply_to_id,
         ),
         mentions_bot=True,
     )
@@ -224,6 +237,68 @@ async def test_selection_is_scoped_by_opaque_actor_and_conversation() -> None:
     assert sessions.recognizes_response("2", owner)
     assert _text(await sessions.select("2", owner)) == "selected:202"
     assert not sessions.recognizes_response("2", owner)
+
+
+@pytest.mark.asyncio
+async def test_shareable_group_choice_clones_session_for_quoted_responder() -> None:
+    sessions = PortableQuerySessions()
+    owner = _context("owner")
+    responder = _context("responder", reply_to_id="current-menu")
+    selected = AsyncMock(return_value=OutboundMessage.from_text("selected"))
+    sessions.offer_menu(
+        owner,
+        PortableMenuSpec(
+            choices=("read-only", "owner-only"),
+            select=selected,
+            prompt=OutboundMessage.from_text("menu"),
+            shared_select=selected,
+            shared_choice_indexes=frozenset({1}),
+            keep_open=True,
+        ),
+    )
+
+    assert sessions.recognizes_shared_response("1", owner, responder)
+    assert not sessions.recognizes_shared_response("2", owner, responder)
+    assert not sessions.recognizes_shared_response(
+        "1", owner, _context("responder")
+    )
+    assert not sessions.recognizes_shared_response(
+        "1", owner, _context("responder", group_id="other", reply_to_id="menu")
+    )
+
+    result = await sessions.select_shared("1", owner, responder)
+
+    assert isinstance(result, OutboundMessage)
+    assert _text(result) == "selected"
+    selected.assert_awaited_once_with("read-only", responder)
+    assert sessions.has_active_session(owner)
+    assert sessions.has_active_session(responder)
+
+
+@pytest.mark.asyncio
+async def test_shared_group_exit_does_not_close_owner_menu() -> None:
+    sessions = PortableQuerySessions()
+    owner = _context("owner")
+    responder = _context("responder", reply_to_id="current-menu")
+    sessions.offer_menu(
+        owner,
+        PortableMenuSpec(
+            choices=("read-only",),
+            select=AsyncMock(),
+            prompt=OutboundMessage.from_text("menu"),
+            shared_select=AsyncMock(),
+            shared_choice_indexes=frozenset({1}),
+            keep_open=True,
+            exit_message="responder exited",
+        ),
+    )
+
+    assert sessions.recognizes_shared_response("0", owner, responder)
+    result = await sessions.select_shared("0", owner, responder)
+    assert isinstance(result, OutboundMessage)
+    assert _text(result) == "responder exited"
+    assert sessions.has_active_session(owner)
+    assert not sessions.has_active_session(responder)
 
 
 @pytest.mark.asyncio
