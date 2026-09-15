@@ -51,7 +51,6 @@ class BiliLoginState:
 
 
 LoginNoticeSender = Callable[[BiliLoginNotice], Awaitable[None]]
-OnlineProbe = Callable[[], bool]
 LoginQrRequester = Callable[[], Awaitable[LoginQrRequest]]
 LoginQrPoller = Callable[[str], Awaitable[BiliLoginPollResponse]]
 
@@ -71,7 +70,6 @@ class BilibiliLoginService:
         reason: str = "",
         *,
         send_notice: LoginNoticeSender,
-        is_online: OnlineProbe,
         force: bool = False,
     ) -> None:
         self.state.required = True
@@ -81,10 +79,6 @@ class BilibiliLoginService:
             and now - self.state.last_notice_at < self.cooldown_seconds
         ):
             return
-        if not is_online():
-            logger.warning("no bot online, cannot send Bilibili login QR")
-            return
-
         try:
             qrcode = await self._request_qrcode(send_notice)
         except Exception:

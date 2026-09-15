@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""OneBot-independent construction of Bilibili login notices."""
+"""Build and deliver Bilibili login notices through administrator delivery."""
 
 from __future__ import annotations
 
+import logging
 from base64 import b64decode
 from typing import TYPE_CHECKING
-
-from nonebot.log import logger
 
 from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 
@@ -14,9 +13,10 @@ if TYPE_CHECKING:
     from ironsbot.services.bilibili.login import BiliLoginNotice
     from ironsbot.services.messaging.admin_notice import AdminNoticeService
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def build_bili_login_outbound_message(notice: BiliLoginNotice) -> OutboundMessage:
-    """Build a platform-neutral login notice from the Bilibili login state."""
     parts: list[TextPart | BinaryImagePart] = [TextPart(notice.text)]
     if notice.qrcode is None:
         return OutboundMessage(tuple(parts))
@@ -25,11 +25,11 @@ def build_bili_login_outbound_message(notice: BiliLoginNotice) -> OutboundMessag
         try:
             image = b64decode(notice.qrcode.image_base64, validate=True)
         except ValueError:
-            logger.warning("failed to decode Bilibili login QR image")
+            _LOGGER.warning("failed to decode Bilibili login QR image")
         else:
             parts.extend((BinaryImagePart(image, "image/png"), TextPart("\n")))
     elif notice.qrcode.image_error:
-        logger.warning(
+        _LOGGER.warning(
             "failed to build Bilibili login QR image: %s",
             notice.qrcode.image_error,
         )
@@ -41,7 +41,6 @@ async def send_bili_login_notice(
     admin_notices: AdminNoticeService,
     notice: BiliLoginNotice,
 ) -> None:
-    """Deliver a Bilibili login notice through the configured admin route."""
     await admin_notices.send_message(
         build_bili_login_outbound_message(notice),
         action_name="Bilibili login notice",
