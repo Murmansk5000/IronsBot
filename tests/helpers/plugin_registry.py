@@ -98,6 +98,7 @@ from ironsbot.services.messaging.addressed_input import AddressedInputHintServic
 from ironsbot.services.operations.docker_update import DockerUpdateService
 from ironsbot.services.operations.headless import HeadlessService
 from ironsbot.services.operations.scheduled_restart import ScheduledRestartService
+from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.player_detail_extensions import (
     PlayerDetailExtensionRegistry,
 )
@@ -285,6 +286,8 @@ def build_test_plugin_registry(
                     select=_noop_query,
                 ),
                 pet_query=SimpleNamespace(
+                    search_avatar=_noop_query,
+                    select_avatar=_noop_query,
                     search_image=_noop_query,
                     select_image=_noop_query,
                     search_info=_noop_query,
@@ -340,9 +343,10 @@ def build_test_plugin_registry(
             scheduled_restart=scheduled_restart,
             commands=commands,
             contribution_catalog=PluginContributionCatalog(),
+            query_sessions=PortableQuerySessions(),
             help_hint=object(),
             addressed_input_hints=AddressedInputHintService(),
-            identity_links=object(),
+            identity_links=SimpleNamespace(service=object()),
             private_extensions=SimpleNamespace(load_plugins=lambda: ()),
         ),
     )
@@ -400,6 +404,7 @@ def build_test_plugin_registry(
             contribution_catalog=resources.contribution_catalog,
             features=runtime.features,
             commands=resources.commands,
+            query_sessions=resources.query_sessions,
             ignored_plugins=tuple(config.features.help.ignored_plugins),
         ),
         sendpic_plugin_contribution(
@@ -438,6 +443,9 @@ def build_test_plugin_registry(
             resources.seer.pet_query,
             runtime.features,
             SchedulerFacade(),
+            resources.identity_links.service,
+            resources.query_sessions,
+            resources.player_id_resolver,
         ),
         team_audit_plugin_contribution(
             scheduler=SchedulerFacade(),
@@ -448,6 +456,9 @@ def build_test_plugin_registry(
             features=runtime.features,
             scheduler=SchedulerFacade(),
             service=resources.team_resource,
+            player_id_resolver=resources.player_id_resolver,
+            team_query=resources.seer.team_query,
+            query_sessions=resources.query_sessions,
         ),
         activity_plugin_contribution(
             service=resources.activity,

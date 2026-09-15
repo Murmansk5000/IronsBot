@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters import Event  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.adapters.onebot.v11 import (
-    GroupMessageEvent,
-    MessageEvent,
+    MessageEvent,  # noqa: TC002 - NoneBot resolves it at runtime
 )
 from nonebot.matcher import Matcher  # noqa: TC002 - NoneBot resolves it at runtime
 from nonebot.permission import SUPERUSER
@@ -20,7 +19,6 @@ from ironsbot.core.plugin_install import (
     active_plugin_install_context,
 )
 from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
-from ironsbot.integrations.onebot.identity import onebot_actor_ref
 from ironsbot.integrations.onebot.matchers import (
     CommandPolicy,
     MatcherFactory,
@@ -28,6 +26,7 @@ from ironsbot.integrations.onebot.matchers import (
 )
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.integrations.onebot.rules import explicit_command
+from ironsbot.services.help_visibility import superuser_help_visible
 from ironsbot.services.operations.data_sync_commands import (
     data_sync_command_contracts,
     is_force_data_sync_command,
@@ -51,15 +50,6 @@ __plugin_meta__ = PluginMetadata(
 
 DATA_SYNC_FORCE_STATE_KEY = "data_sync_force"
 DATA_SYNC_ACTION_NAMESPACE = "data_sync_action"
-
-
-def _help_visible(event: Event, *, features: FeatureService) -> bool:
-    if isinstance(event, GroupMessageEvent):
-        return False
-    user_id = getattr(event, "user_id", None)
-    return user_id is not None and features.is_actor_superuser(
-        onebot_actor_ref(str(user_id))
-    )
 
 
 async def _is_manual_sync_command(event: Event) -> bool:
@@ -156,7 +146,7 @@ def plugin_contribution(
             description="构建并同步赛尔数据库与别名数据库",
             group="admin",
             order=20,
-            visible=partial(_help_visible, features=features),
+            visible=partial(superuser_help_visible, features=features),
         ),
         commands=data_sync_command_contracts(),
         install=partial(_install, service=service),

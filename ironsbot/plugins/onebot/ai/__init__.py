@@ -23,9 +23,9 @@ from ironsbot.integrations.onebot.context import (
 )
 from ironsbot.integrations.onebot.matchers import CommandPolicy, MatcherFactory, bind
 from ironsbot.integrations.onebot.message_input import message_input_context
-from ironsbot.integrations.onebot.plugin_visibility import feature_help_visible
 from ironsbot.integrations.onebot.replies import finish_event_reply, send_event_reply
 from ironsbot.services.ai.command_contracts import ai_chat_command_contracts
+from ironsbot.services.help_visibility import feature_help_visible
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
