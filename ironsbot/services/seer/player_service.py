@@ -176,15 +176,17 @@ class PlayerService(PlayerAccountPolicyMixin):
         *,
         actor: ActorRef,
         conversation: ConversationRef | None = None,
+        target: ActorRef | None = None,
     ) -> PlayerQueryResult:
-        """Validate a player ID, save it as default, and return its info."""
-        binding = self._bindings.get(actor)
+        """Bind self, or a recipient authorized by the administrative command."""
+        recipient = target or actor
+        binding = self._bindings.get(recipient)
         if binding.player_id == player_id:
             nick = f"（{binding.player_nick}）" if binding.player_nick else ""
             return PlayerQueryResult(
                 message=f"当前已绑定该米米号：{player_id}{nick}。"
             )
-        if binding.player_id is not None:
+        if binding.player_id is not None and target is None:
             change_error = self._binding_change_error(actor)
             if change_error:
                 return PlayerQueryResult(message=change_error)
@@ -198,13 +200,19 @@ class PlayerService(PlayerAccountPolicyMixin):
             return result
 
         pending = result.pending
-        if binding.player_id is not None:
+        if binding.player_id is not None and target is None:
             return PlayerQueryResult(
                 pending=pending,
                 offer_binding=True,
                 binding_replacement=binding,
             )
-        status = self._save_binding(actor, pending)
+        status = (
+            self._save_binding(recipient, pending, bypass_cooldown=True)
+            if target is not None
+            else self._save_binding(recipient, pending)
+        )
+        if target is not None and status.startswith("已"):
+            status = f"已为该成员{status.removeprefix('已')}"
         pending.player_message = f"{status}\n\n{pending.player_message}"
         return PlayerQueryResult(pending=pending)
 
