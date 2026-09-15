@@ -5,6 +5,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -224,7 +225,7 @@ class PlayerService(PlayerAccountPolicyMixin):
         except Exception:
             logger.exception(
                 "记录已返回的米米号查询额度失败：user=%s player=%s",
-                actor.id,
+                reference_digest(actor.id),
                 pending.player_id,
             )
 

@@ -258,3 +258,4 @@ async def test_ai_error_visibility_and_restricted_admin_notice(
     assert reply == (REQUEST_FAILED_REPLY if admin else None)
     assert transport.attempts == []
     assert "skipped unsupported conversation: platform=qq_official" in caplog.text
+    assert "owner:opaque" not in caplog.text
