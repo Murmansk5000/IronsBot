@@ -151,33 +151,31 @@
 
 ## 下一步
 
-### 玩家旧会话替换前的行为门槛
+### 玩家旧会话替换结果
 
-当前调用链核对：`plugins/onebot/seer/query/commands/player.py` 仍调用
-`player_detail_conversation.py`；不能仅因共享菜单已有栏目和绑定按钮就删除该路径。
+OneBot 玩家主查询、绑定和解绑现已直接执行与 QQ Official 共用的 portable
+operation。原 `player_detail_conversation.py`、`player_context.py` 及其专用状态键
+已经删除，不保留转发入口或兼容导出。
 
-- `begin_player_detail_conversation` 在基础资料查询完成前预留数字回复队列。
-  通用 OneBot 适配器目前在操作及发送完成后才进入等待，必须把加载期输入保留
-  做成公共交互能力，并验证成功、失败、取消和新查询替换时的队列生命周期。
+- 通用会话在基础资料查询前预留数字回复，菜单成功送达后才消费；异常或发送失败
+  会取消预留。成功、失败、取消、过期和新会话替换均由公共会话测试覆盖。
 - 通用会话已支持引用当前群菜单：只克隆显式标记的只读栏目，使用回复者的
   当前 Feature 重新授权，并为回复者建立独立会话；原菜单和发起者的绑定选项
   不受影响。OneBot 适配器继续负责验证引用确实指向当前机器人菜单。
-- 内置和扩展栏目已通过 `progress_operation_reply` 复用首次网络请求/排队反馈
-  和送达控制，缓存命中不发提示，OneBot 两种独立快捷处理器已删除。旧详情
-  会话入口仍需迁移，实际私有扩展的渲染及投递仍需按安装包验收。
+- 内置和扩展栏目通过 `progress_operation_reply` 复用首次网络请求/排队反馈
+  和送达控制，缓存命中不发提示。实际私有扩展的渲染及投递仍需按安装包验收。
 - 通用菜单和自由输入回调已统一接收本次选择事件的上下文，所有调用方同步
   更新，不保留旧签名。玩家扩展、玩家别名选择、战队查询和嵌套菜单使用当前
   上下文；订阅及推送时间修改重查当前群角色。测试覆盖角色升降、文本/序号/
   按钮输入、OneBot 菜单转输入及跨成员引用；其余命令仍按各自准入策略验收。
-- 通用菜单已为栏目和扩展提供 `SemanticRequest`，OneBot 队列在实际消费选项前
-  读取动作、玩家目标和来源；跨成员引用使用当前回复者身份参与准入。替换旧
-  入口后不再需要玩家专用的语义请求解析器。
+- 通用菜单为栏目和扩展提供 `SemanticRequest`，OneBot 队列在消费选项前读取
+  动作、玩家目标和来源；跨成员引用使用当前回复者身份参与准入。玩家专用语义
+  请求解析器随旧会话删除。
 
-对应行为测试在 `test_seer_player_entry_conversation.py`、
-`test_seer_player_detail_conversation.py`、
-`test_seer_player_detail_conversation_runtime.py` 和
-`test_seer_player_initial_reply.py`。迁移时把行为测试转到通用模板及适配器，
-不能仅删除引用旧函数的测试来获得通过。
+替代行为测试集中在 `test_portable_player_commands.py`、
+`test_portable_query_sessions.py`、`test_onebot_portable_queries.py` 和
+`test_seer_player_background_refresh.py`。旧测试没有按原文件保留，因为它们只验证
+已删除的 matcher 状态字典与专用 handler，而不是当前运行路径。
 
 ### 当前验证与待办
 
@@ -191,7 +189,7 @@ BasedPyright、compileall、check_repo --static、diff check 通过。
 8368 条警告来自 NoneBot ForwardRef 弃用提示和 SQLAlchemy 关系映射。
 这些结果不证明官方实机验收，也不代表下列剩余项目完成。
 
-1. 共享玩家主查询、内置及扩展快捷查询已接入部分账号别名选择，默认绑定及成员目标由同一目标入口处理；继续替换 OneBot 旧玩家主查询会话，不恢复独立候选菜单。
+1. 共享玩家主查询、绑定、解绑、内置及扩展快捷查询已接入 portable operation；继续按官方客户端验收玩家菜单，不恢复 OneBot 专用详情会话。
 2. 按固定图片部署片段安装资源并验收实际发送；配置及资源对应清单已补齐，不恢复旧内置镜像资源。
 3. 按本表逐项核对参数、权限、交互和输出；每个完成结论附测试或实机证据。
 4. 继续官方真实环境验收，并明确记录无法用本地测试证明的项目。
