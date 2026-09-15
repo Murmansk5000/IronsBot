@@ -426,6 +426,12 @@ def build_seer_components(  # noqa: PLR0913, PLR0915 - explicit composition boun
         player.default_player_id,
         privileged_reference_lookup=resolve_privileged_player_reference,
         is_privileged_actor=features.is_actor_superuser,
+        reference_search=lambda reference, actor, conversation: (
+            player_accounts.find_references(
+                reference, conversation=conversation,
+                include_private=features.is_actor_superuser(actor),
+            )
+        ),
     )
     player_detail_extensions = PlayerDetailExtensionRegistry()
     team_query = SeerTeamQueryService(

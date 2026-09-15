@@ -14,6 +14,7 @@ from ironsbot.core.commands import parse_confirmation
 from ironsbot.integrations.onebot.conversations import enter_event_reply_conversation
 from ironsbot.integrations.onebot.matchers import CommandPolicy, bind_async
 from ironsbot.integrations.onebot.message_input import message_input_context
+from ironsbot.integrations.onebot.portable_queries import make_portable_query_handler
 from ironsbot.integrations.onebot.replies import finish_event_reply
 from ironsbot.integrations.onebot.rules import (
     BOT_COMMAND_ARG_KEY,
@@ -25,6 +26,7 @@ from ironsbot.services.identity_link_commands import (
     IDENTITY_LINK_BEGIN,
     IdentityLinkCommands,
 )
+from ironsbot.services.portable_player_commands import build_portable_player_operations
 from ironsbot.services.seer.ids import (
     PLAYER_ID_ERROR_MESSAGE,
 )
@@ -172,38 +174,6 @@ async def handle_player(
         int(state[PLAYER_ID_KEY]),
         actor=message_input_context(event).message.actor,
         explicit=explicit,
-        conversation=message_input_context(event).message.conversation,
-    )
-    await _handle_player_query_result(
-        dependencies,
-        matcher,
-        event,
-        state,
-        result,
-    )
-
-
-async def handle_player_binding_command(
-    dependencies: PlayerCommandDependencies,
-    matcher: Matcher,
-    event: MessageEvent,
-    state: T_State,
-) -> None:
-    player_reference = str(state.get(BOT_COMMAND_ARG_KEY, "")).strip()
-    target = resolve_player_target(
-        event,
-        player_reference=player_reference or None,
-        resolver=dependencies.player_id_resolver,
-        allow_default_binding=False,
-    )
-    if target.error is not None:
-        await finish_event_reply(matcher, event, target.error)
-        return
-    if target.player_id is None:
-        await matcher.finish(PLAYER_ID_ERROR_MESSAGE)
-    result = await dependencies.player.bind_player(
-        target.player_id,
-        actor=message_input_context(event).message.actor,
         conversation=message_input_context(event).message.conversation,
     )
     await _handle_player_query_result(
@@ -440,7 +410,16 @@ def install(group: SeerMatcherGroup) -> None:
         block=True,
     )
     binding_matcher.append_handler(
-        bind_async(handle_player_binding_command, dependencies)
+        make_portable_query_handler(
+            build_portable_player_operations(
+                service,
+                group.player_id_resolver,
+                group.query_sessions,
+                group.features,
+                group.resources.player_detail_extensions,
+            )["seer.player.bind"],
+            group.query_sessions,
+        )
     )
 
     unbind_matcher = group.on_fullmatch(
