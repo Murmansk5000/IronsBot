@@ -14,7 +14,7 @@ from qqbot_agent_sdk.dto import MSG_TYPE_QUOTE
 from qqbot_agent_sdk.event_parser import EventParser, InboundEvent
 
 from ironsbot.config.loader import load_settings
-from ironsbot.config.models.features import FeatureConfig, build_onebot_feature_service
+from ironsbot.config.models.features import FeatureConfig, build_feature_service
 from ironsbot.config.models.settings import (
     QQOfficialAccountConfig,
     QQOfficialConfig,
@@ -281,6 +281,26 @@ class _FakePetQuery:
         return QueryResult()
 
 
+class _FakeMintmarkQuery:
+    async def search_mintmark(self, argument: str) -> QueryResult[int]:
+        assert argument == "V8"
+        return QueryResult(
+            choices=(
+                QueryChoice("V8-1", "40001", 40001),
+                QueryChoice("V8-2", "40002", 40002),
+            )
+        )
+
+    async def select_mintmark(self, mintmark_id: int) -> QueryResult[object]:
+        return QueryResult(reply=QueryReply(text=f"刻印:{mintmark_id}"))
+
+    async def search_gem(self, _argument: str) -> QueryResult[int]:
+        return QueryResult()
+
+    async def select_gem(self, _category_id: int) -> QueryResult[object]:
+        return QueryResult()
+
+
 class _FakePeakQuery(_UnusedQueryService):
     async def pool(
         self,
@@ -480,6 +500,7 @@ async def test_runtime_reports_unexpected_command_failure_without_event_details(
 def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
     *,
     pet_query: object | None = None,
+    mintmark: object | None = None,
     peak_query: object | None = None,
     team_query: object | None = None,
     rank_queries: object | None = None,
@@ -493,7 +514,7 @@ def _fake_seer(  # noqa: PLR0913 - independently replaceable query services
             data_queries=_FakeDataQueries(),
             team_query=team_query or unused,
             pet_query=pet_query or unused,
-            mintmark=unused,
+            mintmark=mintmark or unused,
             equipment=unused,
             type_query=unused,
             battle_effect=unused,
@@ -723,6 +744,7 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
     group_superusers: dict[str, list[str]] | None = None,
     group_aliases: dict[str, str] | None = None,
     user_aliases: dict[str, str] | None = None,
+    group_member_aliases: dict[str, dict[str, str]] | None = None,
     proactive_messages: bool = False,
 ) -> QQOfficialConfig:
     return QQOfficialConfig(
@@ -741,6 +763,9 @@ def _qq_config(  # noqa: PLR0913 - tests vary independent account boundaries
                 ),
                 group_aliases={} if group_aliases is None else group_aliases,
                 user_aliases={} if user_aliases is None else user_aliases,
+                group_member_aliases=(
+                    {} if group_member_aliases is None else group_member_aliases
+                ),
                 proactive_messages=proactive_messages,
             )
         },
@@ -844,7 +869,7 @@ def test_qq_official_account_features_are_isolated_by_app_id() -> None:
             ),
         },
     )
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=config,
@@ -965,7 +990,7 @@ def test_qq_official_openid_policies_feed_shared_feature_service() -> None:
         group_policy={"opaque-group": ["seer_activity_push"]},
         user_policy={"opaque-user": ["bili_push"]},
     )
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=config,
@@ -996,7 +1021,7 @@ def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
         user_aliases={"official_admin": "opaque-admin"},
         group_policy={"official_group": ["seer_rank"]},
     )
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(superuser_bypass=True),
         (),
         qq_official=config,
@@ -1018,13 +1043,16 @@ def test_qq_official_aliases_feed_policy_and_superuser_identity() -> None:
 
 
 def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(superuser_bypass=True),
         (),
         qq_official=_qq_config(
             features=[],
             group_aliases={"official_group": "opaque-group"},
-            group_superusers={"official_group": ["opaque-member"]},
+            group_member_aliases={
+                "official_group": {"owner": "opaque-member"},
+            },
+            group_superusers={"official_group": ["owner"]},
         ),
     )
     member = ActorRef(
@@ -1048,6 +1076,95 @@ def test_qq_official_group_member_openid_can_be_a_superuser() -> None:
     )
     assert all(actor.kind == "member" for actor in features.superuser_actors())
     assert features.private_superuser_actors() == []
+
+
+def test_logical_aliases_share_feature_policy_across_platform_endpoints() -> None:
+    config = _qq_config(
+        features=[],
+        group_aliases={"admin": "opaque-group"},
+        user_aliases={"owner": "opaque-user"},
+        group_member_aliases={
+            "admin": {
+                "owner": "opaque-owner-member",
+                "pjx": "opaque-member",
+            }
+        },
+    )
+    features = build_feature_service(
+        FeatureConfig(
+            group_aliases={"admin": 1001},
+            user_aliases={"owner": 2002, "pjx": 3003},
+            group_policy={"admin": ["seer_rank"]},
+            user_policy={"owner": ["ai_chat"], "pjx": ["seer_player"]},
+        ),
+        ("owner",),
+        qq_official=config,
+    )
+
+    assert set(features.conversations_for_feature("seer_rank")) == {
+        ConversationRef(Platform.ONEBOT, "group", "1001"),
+        ConversationRef(
+            Platform.QQ_OFFICIAL,
+            "group",
+            "opaque-group",
+            account_id="example-app",
+        ),
+    }
+    assert set(features.actors_for_feature("ai_chat")) == {
+        ActorRef(Platform.ONEBOT, "2002"),
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-user",
+            account_id="example-app",
+        ),
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-owner-member",
+            "member",
+            "opaque-group",
+            "example-app",
+        ),
+    }
+    assert set(features.private_actors_for_feature("ai_chat")) == {
+        ActorRef(Platform.ONEBOT, "2002"),
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-user",
+            account_id="example-app",
+        ),
+    }
+    official_member = ActorRef(
+        Platform.QQ_OFFICIAL,
+        "opaque-member",
+        "member",
+        "opaque-group",
+        "example-app",
+    )
+    official_group = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "group",
+        "opaque-group",
+        account_id="example-app",
+    )
+    assert features.actor_has_feature(official_member, "seer_player")
+    assert features.is_feature_allowed(official_member, official_group, "seer_player")
+    assert features.is_actor_superuser(ActorRef(Platform.ONEBOT, "2002"))
+    assert features.is_actor_superuser(
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-user",
+            account_id="example-app",
+        )
+    )
+    assert features.is_actor_superuser(
+        ActorRef(
+            Platform.QQ_OFFICIAL,
+            "opaque-owner-member",
+            "member",
+            "opaque-group",
+            "example-app",
+        )
+    )
 
 
 def test_qq_official_identity_keeps_openids_opaque() -> None:
@@ -1290,7 +1407,7 @@ async def test_failed_initial_delivery_cancels_deferred_operation() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_reports_only_enabled_mvp_commands() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(
@@ -1365,10 +1482,10 @@ def test_portable_router_rejects_unimplemented_official_direct_command() -> None
         PortableCommandRouter(
             catalog,
             {},
-            build_onebot_feature_service(FeatureConfig(), ()),
+            build_feature_service(FeatureConfig(), ()),
             ai=cast("AiService", _FakeAi()),
             ai_input_routing=AiInputRoutingService(
-                build_onebot_feature_service(FeatureConfig(), ()),
+                build_feature_service(FeatureConfig(), ()),
                 catalog,
             ),
             addressed_input_hints=AddressedInputHintService(),
@@ -1377,7 +1494,7 @@ def test_portable_router_rejects_unimplemented_official_direct_command() -> None
 
 @pytest.mark.asyncio
 async def test_portable_router_runs_activity_queries_with_catalog_access() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(
@@ -1448,7 +1565,7 @@ async def test_portable_router_runs_activity_queries_with_catalog_access() -> No
 
 @pytest.mark.asyncio
 async def test_portable_router_enforces_operational_query_access() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(
@@ -1503,7 +1620,7 @@ async def test_portable_router_enforces_operational_query_access() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=[], superusers=["opaque-admin"]),
@@ -1591,7 +1708,7 @@ async def test_portable_router_runs_superuser_maintenance_with_delivery_gates() 
 
 @pytest.mark.asyncio
 async def test_portable_router_limits_rank_display_setting_to_group_managers() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["seer_rank"]),
@@ -1649,7 +1766,7 @@ async def test_portable_router_limits_rank_display_setting_to_group_managers() -
 
 @pytest.mark.asyncio
 async def test_portable_router_limits_bilibili_refresh_to_superusers() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(
@@ -1720,7 +1837,7 @@ async def test_portable_router_limits_bilibili_refresh_to_superusers() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_runs_pet_config_image_query() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["pet_config"]),
@@ -1759,7 +1876,7 @@ async def test_portable_router_runs_pet_config_image_query() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_restricts_rank_status_to_account_superuser() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(
@@ -1832,7 +1949,7 @@ async def test_portable_router_runs_scoped_query_selection(
     *,
     fail_selection: bool,
 ) -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["seer_pet"]),
@@ -1881,6 +1998,48 @@ async def test_portable_router_runs_scoped_query_selection(
 
 
 @pytest.mark.asyncio
+async def test_portable_router_runs_mintmark_query_and_selection() -> None:
+    features = build_feature_service(
+        FeatureConfig(),
+        (),
+        qq_official=_qq_config(features=["seer_mintmark"]),
+    )
+    router = build_portable_command_router(
+        catalog=_portable_catalog(),
+        about=AboutService("test"),
+        seer=_fake_seer(mintmark=_FakeMintmarkQuery()),
+        player_id_resolver=cast("PlayerIdResolver", _FakePlayerIdResolver()),
+        identity_links=_identity_links(),
+        features=features,
+        ai=cast("AiService", _FakeAi()),
+        addressed_input_hints=AddressedInputHintService(),
+        team_resource=_unused_team_resource(),
+    )
+    actor = ActorRef(Platform.QQ_OFFICIAL, "opaque-user", account_id="example-app")
+    conversation = ConversationRef(
+        Platform.QQ_OFFICIAL,
+        "private",
+        actor.id,
+        account_id="example-app",
+    )
+
+    choices = await router.dispatch(
+        _portable_input("刻印V8", actor, conversation)
+    )
+    assert choices is not None
+    assert "1. V8-1" in cast("TextPart", choices.message.parts[0]).text
+    prompt = choices.message.prompt
+    assert prompt is not None
+
+    selected = await router.dispatch(
+        _portable_input(prompt.action_data(prompt.choices[1]), actor, conversation)
+    )
+
+    assert selected is not None
+    assert cast("TextPart", selected.message.parts[0]).text == "刻印:40002"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("command", "expected"),
     (
@@ -1896,7 +2055,7 @@ async def test_portable_router_runs_pool_aliases_through_the_same_image_query(
     command: str,
     expected: bytes,
 ) -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["seer_peak"]),
@@ -1938,7 +2097,7 @@ async def test_portable_router_runs_team_query_with_opaque_context() -> None:
         command_help_id="seer.team.query", query=detail_query,
         action=ActionDefinition("player_team", "玩家所属战队"),
     ))
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["seer_team"]),
@@ -1995,7 +2154,7 @@ async def test_router_builds_extension_without_platform_handler() -> None:
         examples=("档案700001",), description="查询玩家档案",
         features_all=("seer_player",),
     )
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(), (), qq_official=_qq_config(features=["seer_player"]),
     )
     router = build_portable_command_router(
@@ -2018,7 +2177,7 @@ async def test_router_builds_extension_without_platform_handler() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_runs_rank_query() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["seer_rank"]),
@@ -2050,7 +2209,7 @@ async def test_portable_router_runs_rank_query() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["about", "ai_chat"]),
@@ -2089,7 +2248,7 @@ async def test_portable_router_routes_unclaimed_private_text_to_ai() -> None:
 
 @pytest.mark.asyncio
 async def test_portable_router_does_not_send_unavailable_command_to_ai() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["ai_chat"]),
@@ -2134,7 +2293,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         account_id="example-app",
     )
     ai = _FakeAi()
-    enabled_features = build_onebot_feature_service(
+    enabled_features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["ai_chat"]),
@@ -2160,7 +2319,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
         _portable_input("不会处理", actor, conversation, mentions_bot=False)
     )
 
-    disabled_features = build_onebot_feature_service(
+    disabled_features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["help"]),
@@ -2194,7 +2353,7 @@ async def test_portable_router_routes_group_mention_by_ai_availability() -> None
 
 @pytest.mark.asyncio
 async def test_portable_router_prompts_for_empty_group_ai_mention() -> None:
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(features=["ai_chat"]),
@@ -2358,7 +2517,7 @@ def test_qq_official_quoted_command_is_dispatched() -> None:
         message_type=MSG_TYPE_QUOTE,
         raw={"message_scene": {"ext": ["ref_msg_idx=quoted-sequence"]}},
     )
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         FeatureConfig(),
         (),
         qq_official=_qq_config(

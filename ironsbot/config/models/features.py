@@ -10,6 +10,7 @@ from ironsbot.config.onebot_references import (
     OneBotReferenceResolver,
     normalize_alias_mapping,
 )
+from ironsbot.config.platform_references import build_platform_reference_resolver
 from ironsbot.core.commands import (
     NormalizedStringList,
     csv_items,
@@ -456,9 +457,9 @@ def validate_feature_config(
     return resolved_bundles
 
 
-def build_onebot_feature_service(
+def build_feature_service(
     config: FeatureConfig,
-    superuser_ids: Iterable[int],
+    superuser_references: Iterable[object],
     *,
     command_features: Iterable[str] = (),
     schedule_features: Iterable[str] = (),
@@ -472,41 +473,34 @@ def build_onebot_feature_service(
         schedule_features=schedule_features,
         qq_official=qq_official,
     )
-    references = OneBotReferenceResolver(
+    onebot_references = OneBotReferenceResolver(
         group_aliases=config.group_aliases,
         user_aliases=config.user_aliases,
     )
+    qq_accounts = (
+        qq_official.enabled_accounts.values() if qq_official is not None else ()
+    )
+    references = build_platform_reference_resolver(onebot_references, qq_accounts)
     group_features: dict[ConversationRef, frozenset[str]] = {}
     for raw_ref, features in config.group_policy.items():
-        conversation = ConversationRef(
-            Platform.ONEBOT,
-            "group",
-            str(
-                references.resolve_group(
-                    raw_ref,
-                    location=f"features.group_policy.{raw_ref}",
-                )
-            ),
-        )
-        group_features[conversation] = group_features.get(
-            conversation,
-            frozenset(),
-        ) | _expand_policy_features(features, bundles)
+        expanded = _expand_policy_features(features, bundles)
+        for conversation in references.group_conversation_refs(
+            raw_ref,
+            location=f"features.group_policy.{raw_ref}",
+        ):
+            group_features[conversation] = group_features.get(
+                conversation,
+                frozenset(),
+            ) | expanded
 
     actor_features: dict[ActorRef, frozenset[str]] = {}
     for raw_ref, features in config.user_policy.items():
-        actor = ActorRef(
-            Platform.ONEBOT,
-            str(
-                references.resolve_user(
-                    raw_ref,
-                    location=f"features.user_policy.{raw_ref}",
-                )
-            ),
-        )
-        actor_features[actor] = actor_features.get(actor, frozenset()) | (
-            _expand_policy_features(features, bundles)
-        )
+        expanded = _expand_policy_features(features, bundles)
+        for actor in references.actor_refs(
+            raw_ref,
+            location=f"features.user_policy.{raw_ref}",
+        ):
+            actor_features[actor] = actor_features.get(actor, frozenset()) | expanded
 
     qq_superusers: list[ActorRef] = []
     qq_account_defaults: dict[tuple[Platform, str], frozenset[str]] = {}
@@ -526,13 +520,16 @@ def build_onebot_feature_service(
             qq_superusers.extend(
                 ActorRef(
                     Platform.QQ_OFFICIAL,
-                    member_openid,
+                    account.resolve_group_member_openid(
+                        group_reference,
+                        member_reference,
+                    ),
                     "member",
                     account.resolve_group_openid(group_reference),
                     account_id,
                 )
                 for group_reference, members in account.group_superusers.items()
-                for member_openid in members
+                for member_reference in members
             )
             for reference, features in account.group_policy.items():
                 conversation = ConversationRef(
@@ -541,23 +538,34 @@ def build_onebot_feature_service(
                     account.resolve_group_openid(reference),
                     account_id=account_id,
                 )
-                group_features[conversation] = default_features | (
-                    _expand_policy_features(features, bundles)
-                )
+                group_features[conversation] = group_features.get(
+                    conversation,
+                    frozenset(),
+                ) | _expand_policy_features(features, bundles)
             for reference, features in account.user_policy.items():
                 actor = ActorRef(
                     Platform.QQ_OFFICIAL,
                     account.resolve_user_openid(reference),
                     account_id=account_id,
                 )
-                actor_features[actor] = _expand_policy_features(features, bundles)
+                actor_features[actor] = actor_features.get(
+                    actor,
+                    frozenset(),
+                ) | _expand_policy_features(features, bundles)
 
     return FeatureService(
         group_features=group_features,
         actor_features=actor_features,
         superusers=frozenset(
             [
-                *(ActorRef(Platform.ONEBOT, str(user_id)) for user_id in superuser_ids),
+                *(
+                    actor
+                    for reference in superuser_references
+                    for actor in references.actor_refs(
+                        reference,
+                        location="bot.superusers",
+                    )
+                ),
                 *qq_superusers,
             ]
         ),

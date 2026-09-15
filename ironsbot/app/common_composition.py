@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ironsbot.config.models.features import build_onebot_feature_service
+from ironsbot.config.models.features import build_feature_service
 from ironsbot.core.platform import Platform
 from ironsbot.core.promotions import PromotionCatalog
 from ironsbot.integrations.onebot.matchers import PromptSessionManager
@@ -62,9 +62,9 @@ def build_common_components(
     cache_root: Path,
 ) -> CommonComponents:
     """Build policy, push delivery, and shared interaction primitives."""
-    features = build_onebot_feature_service(
+    features = build_feature_service(
         settings.features,
-        settings.superuser_ids,
+        settings.bot.superusers,
         command_features=settings.messaging.command_feature_keys,
         schedule_features=settings.messaging.schedule_feature_keys,
         qq_official=(

@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.services.bilibili.auth import is_bili_auth_invalid
 from ironsbot.services.bilibili.content import (
     CompactedDynamicContent,
@@ -197,9 +198,13 @@ class BilibiliService:
     ) -> DynamicMenuResult:
         query_uids = self.targets.query_uids(actor, conversation)
         logger.info(
-            "Bilibili dynamic menu query: actor=%s conversation=%s uids=%s",
-            actor,
-            conversation,
+            "Bilibili dynamic menu query: platform=%s actor_kind=%s actor_ref=%s "
+            "conversation_kind=%s conversation_ref=%s uids=%s",
+            actor.platform.value,
+            actor.kind,
+            reference_digest(actor.id),
+            conversation.kind,
+            reference_digest(conversation.id),
             query_uids,
         )
         if not query_uids:
@@ -228,11 +233,6 @@ class BilibiliService:
         if not records:
             return DynamicMenuResult(status="no_history")
 
-        logger.info(
-            "actor %s fetched Bilibili dynamic menu for %s",
-            actor,
-            query_uids,
-        )
         return DynamicMenuResult(
             status="ok",
             dynamic_ids=tuple(dynamic_record_ids(records)),

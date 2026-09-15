@@ -2,6 +2,7 @@
 import asyncio
 import logging
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.tasks import TaskSpawner
 from ironsbot.integrations.headless_seer.game import SeerGame
 from ironsbot.services.operations.headless import HeadlessLoginRequest
@@ -52,8 +53,8 @@ class ClientManager:
                     and int(current.user_id) == request.user_id
                 ):
                     logger.info(
-                        "Headless Seer login reused existing client: %s",
-                        request.user_id,
+                        "Headless Seer login reused existing client: worker_ref=%s",
+                        reference_digest(str(request.user_id)),
                     )
                     return current
                 current.logout()
@@ -76,8 +77,8 @@ class ClientManager:
             try:
                 await game.login()
                 logger.info(
-                    "Headless Seer client logged in: %s",
-                    request.user_id,
+                    "Headless Seer client logged in: worker_ref=%s",
+                    reference_digest(str(request.user_id)),
                 )
             except Exception:
                 if request.reconnect_retries != 0:

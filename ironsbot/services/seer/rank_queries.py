@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, TypeVar
 
+from ironsbot.core.platform import reference_digest
 from ironsbot.core.semantic_requests import (
     ActionDefinition,
     SemanticRequest,
@@ -463,11 +464,11 @@ class RankQueryService:
         actor: ActorRef | None,
     ) -> None:
         quota_message = self._record_player_quota(command, actor)
-        if quota_message:
+        if quota_message and actor is not None:
             logger.warning(
                 "rank player quota changed before successful record: "
-                "actor=%s player=%s rank_key=%s",
-                actor,
+                "actor_ref=%s player=%s rank_key=%s",
+                reference_digest(actor.id),
                 command.player_id,
                 command.rank_key,
             )
