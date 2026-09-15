@@ -21,6 +21,7 @@ from ironsbot.services.portable_query_sessions import (
     PortableMenuSpec,
     PortableTextInputSpec,
 )
+from ironsbot.services.portable_reply import PortableReply
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
@@ -293,9 +294,12 @@ def _text_operation(action: MessageReplyAction) -> PortableOperation:
     async def execute(
         text: str,
         context: MessageInputContext,
-    ) -> OutboundMessage:
+    ) -> PortableReply:
         del text, context
-        return OutboundMessage.from_text(action.message)
+        messages = tuple(
+            OutboundMessage.from_text(message) for message in action.messages
+        )
+        return PortableReply(messages[0], additional_messages=messages[1:])
 
     return execute
 

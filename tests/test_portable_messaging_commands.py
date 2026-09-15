@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ironsbot.services.messaging.push_time import PushTimeOption
+    from ironsbot.services.portable_reply import PortableReply
 
 from ironsbot.config.models.activity import ActivityConfig
 from ironsbot.config.models.messaging import (
@@ -66,12 +67,12 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
                 MessageCommandAction(
                     id="portable",
                     commands=["链接"],
-                    message="https://example.test",
+                    messages=["第一条", "https://example.test"],
                 ),
                 MessageCommandAction(
                     id="onebot-only",
                     commands=["提醒"],
-                    message="提醒内容",
+                    messages=["提醒内容"],
                     at_user_ids=[123456],
                 ),
             ]
@@ -93,10 +94,15 @@ async def test_portable_text_commands_exclude_onebot_mention_targets() -> None:
         "messaging.push_subscription",
     }
     result = cast(
-        "OutboundMessage",
+        "PortableReply",
         await operations["messaging.portable"]("链接", _context("链接")),
     )
-    assert cast("TextPart", result.parts[0]).text == "https://example.test"
+    assert cast("TextPart", result.message.parts[0]).text == "第一条"
+    assert len(result.additional_messages) == 1
+    assert (
+        cast("TextPart", result.additional_messages[0].parts[0]).text
+        == "https://example.test"
+    )
 
 
 @pytest.mark.asyncio
@@ -188,7 +194,7 @@ async def test_portable_push_time_updates_qq_official_conversation(
                 MessageScheduledAction(
                     id="daily",
                     name="每日消息",
-                    message="消息",
+                    messages=["消息"],
                     time="23:00",
                 )
             ]

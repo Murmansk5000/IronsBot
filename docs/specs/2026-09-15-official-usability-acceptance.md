@@ -29,6 +29,9 @@
 当前四份策略意图：owner 为 all + admin_notice；pjx 为 all_push + lucky_skin_window；admin 为 all；ouc 为 standard + meeting + lucky_skin_window + player_lineup_private + chuchu_3。
 官方身份尚待显式确认，开发配置尚未应用这些授权。
 
+审查原开发配置时确认配置消息序列曾在重构中从 `messages` 退回单条 `message`，会丢失 chuchu_3 等连续回复。
+现已恢复唯一的 `messages` 数组结构，覆盖命令、关键词回复和定时推送；不保留单数旧字段双读。
+
 ## 验收进度
 
 按以下 8 项验收里程碑计数：4/8 有完成记录，50%。

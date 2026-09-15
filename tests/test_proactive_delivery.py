@@ -374,7 +374,7 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
     )
     await ScheduledMessageOutboundSender(delivery).send(
         ScheduledMessageDelivery(
-            message="定时推送",
+            messages=("定时推送一", "定时推送二"),
             private_conversations=(PRIVATE,),
             group_conversations=(GROUP,),
             group_mentions=(MENTION,),
@@ -391,11 +391,15 @@ async def test_specialized_outbound_senders_keep_typed_targets_and_mentions() ->
         GROUP,
         PRIVATE,
         GROUP,
+        PRIVATE,
+        GROUP,
     ]
     assert isinstance(messenger.calls[2][1].parts[0], MentionPart)
     assert messenger.calls[2][1].parts[0].actor == MENTION
     assert isinstance(messenger.calls[4][1].parts[0], MentionPart)
     assert messenger.calls[4][1].parts[0].actor == MENTION
+    assert isinstance(messenger.calls[6][1].parts[0], MentionPart)
+    assert messenger.calls[6][1].parts[0].actor == MENTION
 
 
 @pytest.mark.asyncio

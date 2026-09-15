@@ -684,7 +684,10 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # ZH: 固定文本回复动作默认同时适用于私聊和群聊；实际在哪些位置回复由 feature 的用户/群策略决定。
 # `at_user_ids` accepts user aliases or QQ IDs, only applies to group replies,
 # and is ignored in private chats.
-# Example action fields: id, enabled, feature, message, commands, at_user_ids.
+# `messages` is an ordered non-empty list. Every entry is sent as a separate
+# message on both OneBot and QQ Official.
+# `messages` 是有序非空列表；每项在 OneBot 和 QQ 官方机器人上分别发送一条消息。
+# Example action fields: id, enabled, feature, messages, commands, at_user_ids.
 # `id` uniquely identifies the action. `feature` declares its permission key;
 # that key may then be referenced by features.bundles/group_policy/user_policy.
 # `id` 唯一标识这条动作；`feature` 同时声明它的权限名，随后可在
@@ -694,7 +697,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # [[messaging.commands]]
 # id = "seerinfo_page"
 # commands = ["xm", "xrym", "雷小伊", "重聚"]
-# message = "https://seerinfo.yuyuqaq.cn/"
+# messages = ["https://seerinfo.yuyuqaq.cn/"]
 # feature = "seerinfo_link"
 
 # Default: []
@@ -710,7 +713,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # [[messaging.keyword_replies]]
 # id = "chuchu_reply"
 # keywords = ["出出"]
-# message = "出出是蛆"
+# messages = ["第一条回复", "第二条回复"]
 # feature = "chuchu_reply"
 
 # Default: []
@@ -725,7 +728,7 @@ patterns = ["中奖", "获奖", "私信通知", "抽奖结果", "抽奖名单"]
 # resets TD and push-time preferences for that schedule.
 # `id` 必填，必须保持稳定且全局唯一；修改 `id` 会重置该推送的 TD 和时间覆盖记录。
 # `name` is shown in TD/unsubscribe menus; if omitted, the first message line is used.
-# Example task fields: id, name, enabled, feature, message, time,
+# Example task fields: id, name, enabled, feature, messages, time,
 # day_of_week, at_user_ids.
 # Add each task with `[[messaging.schedules]]`; omit this table when no task is needed.
 
