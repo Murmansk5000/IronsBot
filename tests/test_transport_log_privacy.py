@@ -29,7 +29,9 @@ TRANSPORT_REFERENCE_NAMES = frozenset(
     }
 )
 BUSINESS_REFERENCE_NAMES = frozenset({"actor", "conversation", "worker_id"})
-HEADLESS_REFERENCE_NAMES = frozenset({"user_id", "worker_id"})
+HEADLESS_REFERENCE_NAMES = frozenset(
+    {"head", "headinfo", "user_id", "worker_id"}
+)
 
 
 def _logger_calls(path: Path) -> list[ast.Call]:
