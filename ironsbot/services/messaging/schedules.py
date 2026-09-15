@@ -62,7 +62,7 @@ async def send_private_schedule(
 
     await messaging._schedule_sender.send(
         ScheduledMessageDelivery(
-            message=task.message,
+            messages=tuple(task.messages),
             private_conversations=recipients,
             group_conversations=(),
             group_mentions=(),
@@ -99,7 +99,7 @@ async def send_group_schedule(
 
     await messaging._schedule_sender.send(
         ScheduledMessageDelivery(
-            message=task.message,
+            messages=tuple(task.messages),
             private_conversations=(),
             group_conversations=recipients,
             group_mentions=messaging.schedule_mentions(index),
