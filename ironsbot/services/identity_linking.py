@@ -38,6 +38,10 @@ class IdentityLinkingError(ValueError):
         return cls("identity link account aliases must be canonical")
 
     @classmethod
+    def duplicate_account_alias(cls) -> IdentityLinkingError:
+        return cls("identity link account aliases must be unique after normalization")
+
+    @classmethod
     def invalid_account_app_id(cls) -> IdentityLinkingError:
         return cls("identity link account AppIDs must be unique")
 
@@ -115,6 +119,8 @@ class IdentityLinkingService:
             alias = raw_alias.strip().casefold()
             if not alias or alias != account.alias.strip().casefold():
                 raise IdentityLinkingError.invalid_account_alias()
+            if alias in normalized:
+                raise IdentityLinkingError.duplicate_account_alias()
             app_id = account.app_id.strip()
             if not app_id or app_id in app_ids:
                 raise IdentityLinkingError.invalid_account_app_id()

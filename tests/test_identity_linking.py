@@ -208,6 +208,19 @@ def test_service_rejects_app_ids_that_collide_after_normalization(
         )
 
 
+def test_service_rejects_aliases_that_collide_after_normalization(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(IdentityLinkingError, match="unique after normalization"):
+        _service(
+            tmp_path / "state.sqlite",
+            accounts={
+                "Main": OfficialAccount("main", "app-main"),
+                "main": OfficialAccount("MAIN", "app-duplicate"),
+            },
+        )
+
+
 @pytest.mark.asyncio
 async def test_service_rejects_wrong_platforms_and_non_numeric_onebot_id(
     tmp_path: Path,
