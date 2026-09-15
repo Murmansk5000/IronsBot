@@ -13,6 +13,10 @@ from ironsbot.services.ai.source_context import format_ai_source_context
 from ironsbot.services.identity_link_commands import (
     build_portable_identity_link_operations,
 )
+from ironsbot.services.official_identity_info import (
+    OFFICIAL_IDENTITY_INFO_COMMAND_ID,
+    official_identity_info,
+)
 from ironsbot.services.player_extension_commands import build_player_extension_operation
 from ironsbot.services.portable_activity_commands import (
     build_portable_activity_operations,
@@ -536,6 +540,8 @@ def build_portable_command_router(  # noqa: PLR0913 - composition dependencies
         **rank_operations,
         **rank_admin_operations,
     }
+    if OFFICIAL_IDENTITY_INFO_COMMAND_ID in catalog.command_ids:
+        operations[OFFICIAL_IDENTITY_INFO_COMMAND_ID] = official_identity_info
     extension_operation = build_player_extension_operation(
         seer.player_detail_extensions, player_id_resolver, features, sessions,
     )
