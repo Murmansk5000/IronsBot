@@ -28,8 +28,7 @@ reply sequences, and outbound routing by the owning AppID.
 - `[bot.qq_official]` owns process-wide enablement and sandbox selection.
 - `[bot.qq_official.accounts.<alias>]` owns one account. Aliases contain only
   letters, digits, and underscores and are unique ignoring case.
-- Each enabled account loads its unique AppID and AppSecret from
-  `QQ_OFFICIAL_APP_ID_<ALIAS_UPPER>` and
+- Each enabled account requires a unique AppID and
   `QQ_OFFICIAL_SECRET_<ALIAS_UPPER>`.
 - The retired static Token and old single-account fields are rejected.
 - Accounts in one process use the same production or sandbox environment because

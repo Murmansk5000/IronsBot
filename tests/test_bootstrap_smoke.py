@@ -19,7 +19,11 @@ def test_application_bootstrap_smoke(tmp_path: Path) -> None:
     account_start = config.index("[bot.qq_official.accounts.example_bot]")
     account_end = config.index("[", account_start + 1)
     account = config[account_start:account_end]
-    account = account.replace("enabled = false", "enabled = true", 1)
+    account = account.replace("enabled = false", "enabled = true", 1).replace(
+        'app_id = ""',
+        'app_id = "example-app"',
+        1,
+    )
     config = config[:account_start] + account + config[account_end:]
     config_path = tmp_path / "bootstrap.toml"
     config_path.write_text(config, encoding="utf-8")
@@ -112,7 +116,6 @@ print("BOOTSTRAP_OK")
         env={
             **dict(os.environ),
             "APP_CONFIG_PATH": str(config_path),
-            "QQ_OFFICIAL_APP_ID_EXAMPLE_BOT": "example-app",
             "QQ_OFFICIAL_SECRET_EXAMPLE_BOT": "test-secret",
         },
     )
