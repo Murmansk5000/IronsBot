@@ -47,6 +47,7 @@ from ironsbot.services.seer.query_commands import (
     SUIT_QUERY,
     TITLE_QUERY,
     TYPE_QUERY,
+    pet_avatar_input,
     pet_image_input,
     pet_query_input,
     team_query_input,
@@ -176,6 +177,16 @@ def seer_command_contracts(
                         "routing_matcher": parsed_command_input_matcher(
                             pet_query_input(image_commands)
                         ),
+                    },
+                ),
+                (
+                    "seer.pet.avatar",
+                    ("头像雷伊", "谱尼头像", "头像70"),
+                    "查询精灵头像",
+                    {
+                        "routing_matcher": parsed_command_input_matcher(
+                            pet_avatar_input(image_commands)
+                        )
                     },
                 ),
                 (
