@@ -435,7 +435,18 @@ class QQOfficialRuntime:
             event_type: str,
             raw: dict[str, object],
         ) -> None:
-            await self.handle_event(app_id, event_type, raw)
+            try:
+                await self.handle_event(app_id, event_type, raw)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:  # noqa: BLE001 - SDK callback boundary
+                logger.error(  # noqa: TRY400 - exception text may contain private data
+                    "QQ Official inbound handling failed: "
+                    "account=%s event_type=%s error_type=%s",
+                    account_label,
+                    event_type,
+                    type(error).__name__,
+                )
 
         def connected() -> None:
             lifecycle.ready()

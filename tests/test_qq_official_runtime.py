@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, ClassVar, cast
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -253,6 +254,57 @@ def test_runtime_reports_parser_rejection_without_event_details(
             assert "inbound event rejected by parser" in caplog.text
             assert "account=preview" in caplog.text
             assert "event_type=C2C_MESSAGE_CREATE" in caplog.text
+            assert "private-app-id" not in caplog.text
+            assert "private-message-id" not in caplog.text
+            assert "private command body" not in caplog.text
+            assert "private-openid" not in caplog.text
+
+    asyncio.run(run())
+
+
+def test_sdk_callback_reports_inbound_failure_without_event_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def run() -> None:
+        _install_fake_sdk(monkeypatch, ready=True)
+        async with httpx.AsyncClient() as client:
+            runtime = QQOfficialRuntime(
+                (
+                    QQOfficialRuntimeAccount(
+                        "private-app-id",
+                        "secret",
+                        label="preview",
+                    ),
+                ),
+                http_client=client,
+                session_root=tmp_path,
+            )
+            _bind(runtime)
+            handle_event = AsyncMock(
+                side_effect=ValueError("private-message-id private command body")
+            )
+            monkeypatch.setattr(runtime, "handle_event", handle_event)
+            callback = _FakeWebSocket.instances[0].callbacks.on_message_event
+            raw = {
+                "id": "private-message-id",
+                "content": "private command body",
+                "author": {"username": "private-openid"},
+            }
+            caplog.set_level("INFO", logger=runtime_module.__name__)
+
+            await callback("C2C_MESSAGE_CREATE", raw)
+
+            handle_event.assert_awaited_once_with(
+                "private-app-id",
+                "C2C_MESSAGE_CREATE",
+                raw,
+            )
+            assert "inbound handling failed" in caplog.text
+            assert "account=preview" in caplog.text
+            assert "event_type=C2C_MESSAGE_CREATE" in caplog.text
+            assert "error_type=ValueError" in caplog.text
             assert "private-app-id" not in caplog.text
             assert "private-message-id" not in caplog.text
             assert "private command body" not in caplog.text
