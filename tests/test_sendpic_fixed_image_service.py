@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+import tomllib
 from pydantic import ValidationError
 
 from ironsbot.core.messaging import PicConfig, SendpicBehaviorConfig
@@ -21,6 +22,44 @@ def _service(root: Path, *commands: PicConfig) -> SendpicService:
         lambda _kind: backend,
         command_starts=("/", ""),
     )
+
+
+def test_fixed_image_deployment_template_preserves_original_commands(
+    tmp_path: Path,
+) -> None:
+    example = Path(__file__).resolve().parents[1] / "docs/examples/fixed-images.toml"
+    data = tomllib.loads(example.read_text(encoding="utf-8"))
+    config = SendpicBehaviorConfig.model_validate(data["messaging"]["sendpic"])
+    expected = {
+        "学习力": "学习力表格.png",
+        "学习力表": "学习力表格.png",
+        "学习力表格": "学习力表格.png",
+        "巅峰姬": "巅峰姬.png",
+        "必先": "必先.png",
+        "技能石": "技能石.png",
+        "周年庆伪随机表": "周年庆伪随机表.png",
+        "伪随机表": "周年庆伪随机表.png",
+    }
+    actual = {
+        name: item.image_file
+        for item in config.configs
+        for name in (item.command, *item.aliases)
+    }
+    assert actual == expected
+    assert len(config.configs) == len(set(expected.values()))
+    service = _service(tmp_path, *config.configs)
+    assert service.exact_command_texts == expected.keys()
+    assert {
+        name
+        for contract in sendpic_command_contracts(service)
+        for name in contract.examples
+    } == expected.keys()
+    for command in config.configs:
+        assert command.image_file is not None
+        payload = command.image_file.encode("utf-8")
+        (tmp_path / command.image_file).write_bytes(payload)
+        result = asyncio.run(service.fetch_single(command))
+        assert result.to_outbound().parts == (BinaryImagePart(payload, "image/png"),)
 
 
 def test_sendpic_service_raises_for_missing_single_image(
