@@ -107,6 +107,10 @@ from ironsbot.app.bootstrap import bootstrap
 state = bootstrap()
 assert not unresolved_annotations, "\\n".join(unresolved_annotations)
 assert state.lifecycle is not None
+assert [name for name, _hook in state.lifecycle.resource_startup_hooks] == [
+    "data_sync",
+    "qq_official",
+]
 assert len(state.resources.commands.qq_official_direct_command_ids) == 78
 assert len(state.contributions) > 0
 assert len(state.matcher_factory.message_matchers) > 0

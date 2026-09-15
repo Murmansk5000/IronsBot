@@ -66,6 +66,21 @@ from ironsbot.services.messaging.command_cooldown import CommandCooldownService
 
 if TYPE_CHECKING:
     from ironsbot.config.models.settings import Settings
+    from ironsbot.core.plugin_install import NamedLifecycleHook
+    from ironsbot.services.operations.data_sync import DataSyncService
+    from ironsbot.services.operations.startup import StartupNoticeService
+
+
+async def _start_data_sync_resource(
+    service: DataSyncService,
+    startup_notice: StartupNoticeService,
+    scheduler: SchedulerFacade,
+) -> None:
+    startup_notice.add(
+        "startup_data_sync",
+        "startup data sync notice",
+        await service.startup(scheduler),
+    )
 
 
 def build_application(settings: Settings) -> Application:  # noqa: PLR0915
@@ -307,7 +322,17 @@ def build_application(settings: Settings) -> Application:  # noqa: PLR0915
             settings.messaging.command_cooldown,
         ),
     )
-    resource_startup_hooks = []
+    resource_startup_hooks: list[NamedLifecycleHook] = [
+        (
+            "data_sync",
+            partial(
+                _start_data_sync_resource,
+                service=data_sync,
+                startup_notice=operations.startup_notice,
+                scheduler=scheduler,
+            ),
+        )
+    ]
     resource_shutdown_hooks = [
         ("file_logging", file_logging.close),
         ("http_clients", http_clients.close),
