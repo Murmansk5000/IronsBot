@@ -7,7 +7,7 @@ import pytest
 
 from ironsbot.core.feature_policy import FeatureService
 from ironsbot.core.message_input import MessageInputContext
-from ironsbot.core.outbound import OutboundMessage, TextPart
+from ironsbot.core.outbound import BinaryImagePart, OutboundMessage, TextPart
 from ironsbot.core.platform import (
     ActorRef,
     ConversationRef,
@@ -19,9 +19,11 @@ from ironsbot.services.portable_new_content_commands import (
 )
 from ironsbot.services.portable_query_sessions import PortableQuerySessions
 from ironsbot.services.seer.new_content import (
+    NewContentCategory,
     NewContentCategoryState,
     NewContentItem,
     NewContentSnapshot,
+    NewContentSnapshotChangedError,
 )
 from ironsbot.services.seer.query_result import QueryReply
 
@@ -51,6 +53,30 @@ class _Details:
 class _AutocardMedia:
     async def outbound(self, *_args: object, **_kwargs: object) -> OutboundMessage:
         raise AssertionError
+
+
+class _MenuRenderer:
+    def __init__(self, *, changed: bool = False) -> None:
+        self.changed = changed
+        self.calls: list[
+            tuple[tuple[NewContentCategory, ...], NewContentCategory | None]
+        ] = []
+
+    async def __call__(  # noqa: PLR0913
+        self,
+        snapshot: NewContentSnapshot,
+        display_categories: tuple[NewContentCategory, ...],
+        focused_category: NewContentCategory | None,
+        menu_title: str,
+        expanded_categories: frozenset[NewContentCategory],
+        auto_expand_max_items: int,
+    ) -> bytes:
+        del snapshot, expanded_categories, auto_expand_max_items
+        assert menu_title == "新增内容"
+        self.calls.append((display_categories, focused_category))
+        if self.changed:
+            raise NewContentSnapshotChangedError
+        return b"rendered-menu"
 
 
 def _snapshot() -> NewContentSnapshot:
@@ -106,13 +132,16 @@ def _features(*features: str) -> FeatureService:
     )
 
 
-def _resources(snapshot: NewContentSnapshot) -> SeerQueryResources:
+def _resources(
+    snapshot: NewContentSnapshot, renderer: _MenuRenderer | None = None,
+) -> SeerQueryResources:
     return cast(
         "SeerQueryResources",
         SimpleNamespace(
             data_queries=_DataQueries(snapshot),
             new_content_details=_Details(),
             autocard_media=_AutocardMedia(),
+            new_content_menu=renderer or _MenuRenderer(),
         ),
     )
 
@@ -127,8 +156,9 @@ def _text(message: OutboundMessage | None) -> str:
 @pytest.mark.asyncio
 async def test_root_menu_replaces_category_session_with_numeric_item_menu() -> None:
     sessions = PortableQuerySessions()
+    renderer = _MenuRenderer()
     operations = build_portable_new_content_operations(
-        _resources(_snapshot()),
+        _resources(_snapshot(), renderer),
         sessions,
         _features("seer_data", "seer_pet"),
         preview_max_items=0,
@@ -142,9 +172,16 @@ async def test_root_menu_replaces_category_session_with_numeric_item_menu() -> N
     category = await sessions.select("1", context)
     detail = await sessions.select("1", context)
 
-    assert "1. ▶ 新增精灵" in _text(root)
-    assert "2. ▶ 新增成就" in _text(root)
-    assert "1. 超级噗纽" in _text(category)
+    assert root.parts == (BinaryImagePart(b"rendered-menu", "image/png"),)
+    assert root.prompt is not None
+    assert [choice.label for choice in root.prompt.choices][:2] == [
+        "▶ 新增精灵", "▶ 新增成就",
+    ]
+    assert category is not None
+    assert category.parts == root.parts
+    assert category.prompt is not None
+    assert category.prompt.choices[0].label == "超级噗纽"
+    assert renderer.calls == [(("pet", "achievement"), None), (("pet",), "pet")]
     assert _text(detail) == "精灵详情:4927"
     assert sessions.recognizes_response("1", context)
 
@@ -174,8 +211,27 @@ async def test_focused_command_reuses_spec_and_enforces_category_features() -> N
         await denied["seer.data.new_pet"]("新增精灵", context),
     )
 
-    assert "1. 超级噗纽" in _text(menu)
+    assert menu.parts == (BinaryImagePart(b"rendered-menu", "image/png"),)
+    assert menu.prompt is not None
+    assert menu.prompt.choices[0].label == "超级噗纽"
     assert _text(denied_result) == "当前群未开放此新增内容分类。"
+
+
+@pytest.mark.asyncio
+async def test_changed_publication_does_not_install_an_unrendered_menu() -> None:
+    sessions = PortableQuerySessions()
+    operations = build_portable_new_content_operations(
+        _resources(_snapshot(), _MenuRenderer(changed=True)),
+        sessions,
+        _features("seer_data", "seer_pet"),
+    )
+    context = _context()
+    result = cast(
+        "OutboundMessage",
+        await operations["seer.data.new_content"]("新增内容", context),
+    )
+    assert "数据已更新" in _text(result)
+    assert not sessions.has_active_session(context)
 
 
 def test_new_content_specs_are_the_single_operation_inventory() -> None:

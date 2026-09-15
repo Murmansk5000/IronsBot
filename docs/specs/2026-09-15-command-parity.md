@@ -35,6 +35,7 @@
 | 玩家扩展操作 | OneBot 扩展直接命令和共享菜单使用同一执行器；官方路由按动作及命令声明生成操作 | 删除 handle_player_extension_shortcut；tests/test_player_extension_commands.py、test_portable_player_commands.py、test_onebot_portable_queries.py、test_qq_official_mvp.py 覆盖权限复查、请求上下文、反馈及既有战队命令不被覆盖；实际私有扩展仍需实机验收 |
 | 帮助 | 已接入共享二级菜单 | aa31d30e；仍需不同 Feature 配置下的完整可见性验收 |
 | 竞技池/专家池/大师池 | 共享图片功能已恢复，需继续逐项核对呈现 | 命令声明本身不能证明箭头、资源和图片投递正确 |
+| 新增内容及分类菜单 | 修复共享操作只生成文本、漏接现有图片渲染器的问题；根菜单和分类共用渲染端口及 PortableMenuSpec | 69 项菜单、渲染及会话测试通过；保留图片消息和结构化选项，数据版本变化不安装未渲染的菜单；官方客户端图片仍待复验 |
 
 ## 原版声明全清单
 
