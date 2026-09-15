@@ -162,7 +162,7 @@ def seer_command_contracts(
                     {
                         "show_in_poke": True,
                         "routing_matcher": team_query_input_matcher(
-                            player_id_resolver.has_known_reference
+                            player_id_resolver.has_reference_choices
                         ),
                     },
                 ),
