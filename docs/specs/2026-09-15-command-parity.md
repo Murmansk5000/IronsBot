@@ -126,6 +126,8 @@
 
 ## 目标版新增声明
 
+- `about.official_identity_info`：官方身份。仅 QQ 官方平台可用，且必须显式启用
+  `qq_official_identity_info`；用于读取当前事件中的开发配置标识，不建立跨端关联。
 - `seer.player.identity.begin`：关联官方账号；关联官方账号 main。
 - `seer.player.identity.confirm`：关联账号 ABCD-EFGH。
 - `seer.player.identity.status`：账号关联。
